@@ -8,7 +8,7 @@ class TestObjCHelpers:
 
     def test_find_child_by_type_returns_none(self) -> None:
         """Returns None when no matching child type is found."""
-        from hypergumbo.analyze.objc import _find_child_by_type
+        from hypergumbo_lang_mainstream.objc import _find_child_by_type
 
         mock_node = MagicMock()
         mock_child = MagicMock()
@@ -24,7 +24,7 @@ class TestFindObjCFiles:
 
     def test_finds_m_files(self, tmp_path: Path) -> None:
         """Finds .m files."""
-        from hypergumbo.analyze.objc import find_objc_files
+        from hypergumbo_lang_mainstream.objc import find_objc_files
 
         (tmp_path / "MyClass.m").write_text("#import <Foundation/Foundation.h>")
         (tmp_path / "Other.h").write_text("@interface Other : NSObject @end")
@@ -39,7 +39,7 @@ class TestFindObjCFiles:
 
     def test_finds_mm_files(self, tmp_path: Path) -> None:
         """Finds .mm (Objective-C++) files."""
-        from hypergumbo.analyze.objc import find_objc_files
+        from hypergumbo_lang_mainstream.objc import find_objc_files
 
         (tmp_path / "Mixed.mm").write_text("// Objective-C++")
 
@@ -54,7 +54,7 @@ class TestObjCTreeSitterAvailability:
 
     def test_is_objc_tree_sitter_available_true(self) -> None:
         """Returns True when tree-sitter-objc is available."""
-        from hypergumbo.analyze.objc import is_objc_tree_sitter_available
+        from hypergumbo_lang_mainstream.objc import is_objc_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = object()
@@ -62,7 +62,7 @@ class TestObjCTreeSitterAvailability:
 
     def test_is_objc_tree_sitter_available_false(self) -> None:
         """Returns False when tree-sitter is not available."""
-        from hypergumbo.analyze.objc import is_objc_tree_sitter_available
+        from hypergumbo_lang_mainstream.objc import is_objc_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = None
@@ -70,7 +70,7 @@ class TestObjCTreeSitterAvailability:
 
     def test_is_objc_tree_sitter_available_no_objc(self) -> None:
         """Returns False when tree-sitter is available but objc grammar is not."""
-        from hypergumbo.analyze.objc import is_objc_tree_sitter_available
+        from hypergumbo_lang_mainstream.objc import is_objc_tree_sitter_available
 
         def mock_find_spec(name: str) -> object | None:
             if name == "tree_sitter":
@@ -86,11 +86,11 @@ class TestAnalyzeObjCFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-objc unavailable."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         (tmp_path / "test.m").write_text("#import <Foundation/Foundation.h>")
 
-        with patch("hypergumbo.analyze.objc.is_objc_tree_sitter_available", return_value=False):
+        with patch("hypergumbo_lang_mainstream.objc.is_objc_tree_sitter_available", return_value=False):
             result = analyze_objc(tmp_path)
 
         assert result.skipped is True
@@ -102,7 +102,7 @@ class TestObjCClassExtraction:
 
     def test_extracts_interface_declaration(self, tmp_path: Path) -> None:
         """Extracts @interface declarations."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         objc_file = tmp_path / "MyClass.h"
         objc_file.write_text("""
@@ -120,7 +120,7 @@ class TestObjCClassExtraction:
 
     def test_extracts_implementation(self, tmp_path: Path) -> None:
         """Extracts @implementation definitions."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         objc_file = tmp_path / "MyClass.m"
         objc_file.write_text("""
@@ -144,7 +144,7 @@ class TestObjCProtocolExtraction:
 
     def test_extracts_protocol_declaration(self, tmp_path: Path) -> None:
         """Extracts @protocol declarations."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         objc_file = tmp_path / "MyProtocol.h"
         objc_file.write_text("""
@@ -168,7 +168,7 @@ class TestObjCMethodExtraction:
 
     def test_extracts_instance_methods(self, tmp_path: Path) -> None:
         """Extracts instance method declarations."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         objc_file = tmp_path / "MyClass.h"
         objc_file.write_text("""
@@ -187,7 +187,7 @@ class TestObjCMethodExtraction:
 
     def test_extracts_class_methods(self, tmp_path: Path) -> None:
         """Extracts class method declarations."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         objc_file = tmp_path / "MyClass.h"
         objc_file.write_text("""
@@ -209,7 +209,7 @@ class TestObjCPropertyExtraction:
 
     def test_extracts_properties(self, tmp_path: Path) -> None:
         """Extracts @property declarations."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         objc_file = tmp_path / "MyClass.h"
         objc_file.write_text("""
@@ -232,7 +232,7 @@ class TestObjCImportEdges:
 
     def test_extracts_framework_imports(self, tmp_path: Path) -> None:
         """Extracts framework #import statements."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         objc_file = tmp_path / "MyClass.m"
         objc_file.write_text("""
@@ -253,7 +253,7 @@ class TestObjCImportEdges:
 
     def test_extracts_local_imports(self, tmp_path: Path) -> None:
         """Extracts local #import statements."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         objc_file = tmp_path / "MyClass.m"
         objc_file.write_text("""
@@ -278,7 +278,7 @@ class TestObjCCallEdges:
 
     def test_extracts_message_send_calls(self, tmp_path: Path) -> None:
         """Extracts [receiver message] calls."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         objc_file = tmp_path / "MyClass.m"
         objc_file.write_text("""
@@ -303,7 +303,7 @@ class TestObjCCallEdges:
 
     def test_extracts_cross_file_call_edges(self, tmp_path: Path) -> None:
         """Extracts call edges between classes in different files."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         helper_file = tmp_path / "Helper.m"
         helper_file.write_text("""
@@ -342,7 +342,7 @@ class TestObjCSymbolProperties:
 
     def test_symbol_has_correct_span(self, tmp_path: Path) -> None:
         """Symbols have correct line number spans."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         objc_file = tmp_path / "test.m"
         objc_file.write_text("""@interface TestClass : NSObject
@@ -364,7 +364,7 @@ class TestObjCEdgeProperties:
 
     def test_edge_has_confidence(self, tmp_path: Path) -> None:
         """Edges have confidence values."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         objc_file = tmp_path / "test.m"
         objc_file.write_text("""
@@ -385,7 +385,7 @@ class TestObjCEmptyFile:
 
     def test_handles_empty_file(self, tmp_path: Path) -> None:
         """Handles empty Objective-C files gracefully."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         objc_file = tmp_path / "empty.m"
         objc_file.write_text("")
@@ -397,7 +397,7 @@ class TestObjCEmptyFile:
 
     def test_handles_comment_only_file(self, tmp_path: Path) -> None:
         """Handles files with only comments."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         objc_file = tmp_path / "comments.m"
         objc_file.write_text("""// This is a comment
@@ -415,12 +415,12 @@ class TestObjCParserFailure:
 
     def test_handles_parser_load_failure(self, tmp_path: Path) -> None:
         """Handles failure to load Objective-C parser."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         objc_file = tmp_path / "test.m"
         objc_file.write_text("#import <Foundation/Foundation.h>")
 
-        with patch("hypergumbo.analyze.objc.is_objc_tree_sitter_available", return_value=True):
+        with patch("hypergumbo_lang_mainstream.objc.is_objc_tree_sitter_available", return_value=True):
             with patch("tree_sitter_objc.language", side_effect=Exception("Parser error")):
                 result = analyze_objc(tmp_path)
 
@@ -433,7 +433,7 @@ class TestObjCCategoryExtraction:
 
     def test_extracts_category_interface(self, tmp_path: Path) -> None:
         """Extracts category @interface declarations."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         objc_file = tmp_path / "NSString+Utils.h"
         objc_file.write_text("""
@@ -455,7 +455,7 @@ class TestObjCInstantiationEdges:
 
     def test_extracts_alloc_init_pattern(self, tmp_path: Path) -> None:
         """Extracts [[Class alloc] init] instantiation pattern."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         objc_file = tmp_path / "test.m"
         objc_file.write_text("""
@@ -484,7 +484,7 @@ class TestObjCSignatureExtraction:
 
     def test_basic_method_signature(self, tmp_path: Path) -> None:
         """Extracts signature from a basic method."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         (tmp_path / "Calculator.h").write_text("""
 @interface Calculator : NSObject
@@ -498,7 +498,7 @@ class TestObjCSignatureExtraction:
 
     def test_void_method_signature(self, tmp_path: Path) -> None:
         """Extracts signature from void method (omits void)."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         (tmp_path / "Logger.h").write_text("""
 @interface Logger : NSObject
@@ -512,7 +512,7 @@ class TestObjCSignatureExtraction:
 
     def test_no_params_signature(self, tmp_path: Path) -> None:
         """Extracts signature from method with no parameters."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         (tmp_path / "Counter.h").write_text("""
 @interface Counter : NSObject
@@ -535,7 +535,7 @@ class TestObjCInheritanceExtraction:
 
     def test_extracts_superclass(self, tmp_path: Path) -> None:
         """Extracts superclass from class interface."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         objc_file = tmp_path / "Dog.h"
         objc_file.write_text("""
@@ -556,7 +556,7 @@ class TestObjCInheritanceExtraction:
 
     def test_extracts_protocol_conformance(self, tmp_path: Path) -> None:
         """Extracts protocol conformance as base_classes."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         objc_file = tmp_path / "Logger.h"
         objc_file.write_text("""
@@ -579,7 +579,7 @@ class TestObjCInheritanceExtraction:
 
     def test_extracts_multiple_protocols(self, tmp_path: Path) -> None:
         """Extracts multiple protocol conformances."""
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         objc_file = tmp_path / "Multi.h"
         objc_file.write_text("""
@@ -603,7 +603,7 @@ class TestObjCInheritanceExtraction:
         Note: In real Objective-C, all classes inherit from NSObject, but
         we only extract what's explicitly written in the source.
         """
-        from hypergumbo.analyze.objc import analyze_objc
+        from hypergumbo_lang_mainstream.objc import analyze_objc
 
         # Root class pattern without explicit superclass
         objc_file = tmp_path / "Root.h"

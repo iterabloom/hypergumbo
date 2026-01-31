@@ -1,13 +1,13 @@
 """Tests for entrypoint detection heuristics."""
 import pytest
 
-from hypergumbo.ir import Symbol, Edge, Span
-from hypergumbo.entrypoints import (
+from hypergumbo_core.ir import Symbol, Edge, Span
+from hypergumbo_core.entrypoints import (
     detect_entrypoints,
     Entrypoint,
     EntrypointKind,
 )
-from hypergumbo.paths import is_test_file
+from hypergumbo_core.paths import is_test_file
 
 
 def make_symbol(

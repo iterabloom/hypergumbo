@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from hypergumbo.supply_chain import (
+from hypergumbo_core.supply_chain import (
     Tier,
     FileClassification,
     classify_file,
@@ -553,7 +553,7 @@ class TestEdgeCases:
 
     def test_scoped_package_only_scope(self, tmp_path):
         """Scoped package with just @scope returns just @scope."""
-        from hypergumbo.supply_chain import _extract_package_name
+        from hypergumbo_core.supply_chain import _extract_package_name
 
         # Edge case: only @scope in path
         result = _extract_package_name("node_modules/@types", "node_modules/")
@@ -562,7 +562,7 @@ class TestEdgeCases:
     def test_node_modules_empty_path(self, tmp_path):
         """Handle edge case where path ends at node_modules/."""
         # Test the _extract_package_name function edge case
-        from hypergumbo.supply_chain import _extract_package_name
+        from hypergumbo_core.supply_chain import _extract_package_name
 
         # Empty after split: "node_modules/" -> parts = [""]
         result = _extract_package_name("node_modules/", "node_modules/")
@@ -626,7 +626,7 @@ class TestSupplyChainConfig:
 
     def test_custom_first_party_pattern(self, tmp_path: Path) -> None:
         """Custom first_party_patterns override default classification."""
-        from hypergumbo.supply_chain import SupplyChainConfig
+        from hypergumbo_core.supply_chain import SupplyChainConfig
 
         # File in custom_code/ would normally be tier 1 by default
         # but we can explicitly configure it
@@ -643,7 +643,7 @@ class TestSupplyChainConfig:
 
     def test_custom_derived_pattern(self, tmp_path: Path) -> None:
         """Custom derived_patterns classify as tier 4."""
-        from hypergumbo.supply_chain import SupplyChainConfig
+        from hypergumbo_core.supply_chain import SupplyChainConfig
 
         # File in generated/ would normally be tier 1 by default
         file_path = tmp_path / "generated" / "types.py"
@@ -659,7 +659,7 @@ class TestSupplyChainConfig:
 
     def test_custom_internal_package_roots(self, tmp_path: Path) -> None:
         """Custom internal_package_roots override detection."""
-        from hypergumbo.supply_chain import SupplyChainConfig
+        from hypergumbo_core.supply_chain import SupplyChainConfig
 
         # File in custom_packages/shared would be internal dep
         file_path = tmp_path / "custom_packages" / "shared" / "utils.py"
@@ -675,7 +675,7 @@ class TestSupplyChainConfig:
 
     def test_config_defaults(self) -> None:
         """SupplyChainConfig has sensible defaults."""
-        from hypergumbo.supply_chain import SupplyChainConfig
+        from hypergumbo_core.supply_chain import SupplyChainConfig
 
         config = SupplyChainConfig()
         assert config.first_party_patterns == []
@@ -685,7 +685,7 @@ class TestSupplyChainConfig:
 
     def test_config_to_dict(self) -> None:
         """SupplyChainConfig serializes correctly."""
-        from hypergumbo.supply_chain import SupplyChainConfig
+        from hypergumbo_core.supply_chain import SupplyChainConfig
 
         config = SupplyChainConfig(
             analysis_tiers=[1, 2],
@@ -701,7 +701,7 @@ class TestSupplyChainConfig:
 
     def test_config_from_dict(self) -> None:
         """SupplyChainConfig parses from dict."""
-        from hypergumbo.supply_chain import SupplyChainConfig
+        from hypergumbo_core.supply_chain import SupplyChainConfig
 
         data = {
             "analysis_tiers": [1],
@@ -721,7 +721,7 @@ class TestSupplyChainLimits:
 
     def test_limits_has_supply_chain_section(self) -> None:
         """Limits includes supply_chain section."""
-        from hypergumbo.limits import Limits
+        from hypergumbo_core.limits import Limits
 
         limits = Limits()
         result = limits.to_dict()
@@ -729,7 +729,7 @@ class TestSupplyChainLimits:
 
     def test_add_classification_failure(self) -> None:
         """Can add classification failure."""
-        from hypergumbo.limits import Limits
+        from hypergumbo_core.limits import Limits
 
         limits = Limits()
         limits.add_classification_failure("weird/path.py", "unable to classify")
@@ -740,7 +740,7 @@ class TestSupplyChainLimits:
 
     def test_add_ambiguous_path(self) -> None:
         """Can add ambiguous path."""
-        from hypergumbo.limits import Limits
+        from hypergumbo_core.limits import Limits
 
         limits = Limits()
         limits.add_ambiguous_path(
@@ -758,7 +758,7 @@ class TestSupplyChainLimits:
 
     def test_empty_supply_chain_section(self) -> None:
         """Empty limits has empty supply_chain section."""
-        from hypergumbo.limits import Limits
+        from hypergumbo_core.limits import Limits
 
         limits = Limits()
         result = limits.to_dict()
@@ -767,7 +767,7 @@ class TestSupplyChainLimits:
 
     def test_merge_preserves_supply_chain(self) -> None:
         """Merging limits preserves supply_chain data."""
-        from hypergumbo.limits import Limits
+        from hypergumbo_core.limits import Limits
 
         limits1 = Limits()
         limits1.add_classification_failure("file1.py", "reason1")

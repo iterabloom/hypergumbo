@@ -1,4 +1,4 @@
-from hypergumbo.schema import new_behavior_map, SCHEMA_VERSION
+from hypergumbo_core.schema import new_behavior_map, SCHEMA_VERSION
 
 
 def test_new_behavior_map_has_required_top_level_fields():

@@ -8,7 +8,7 @@ Tests verify that the analyzer correctly extracts:
 - Architecture-entity relationships
 """
 
-from hypergumbo.analyze.vhdl import (
+from hypergumbo_lang_extended1.vhdl import (
     PASS_ID,
     PASS_VERSION,
     VHDLAnalysisResult,
@@ -185,7 +185,7 @@ end entity;
 
 def test_tree_sitter_not_available():
     """Test graceful degradation when tree-sitter is not available."""
-    from hypergumbo.analyze.vhdl import is_vhdl_tree_sitter_available
+    from hypergumbo_lang_extended1.vhdl import is_vhdl_tree_sitter_available
 
     # The function should return a boolean
     result = is_vhdl_tree_sitter_available()

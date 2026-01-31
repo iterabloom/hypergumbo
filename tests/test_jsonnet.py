@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import jsonnet as jsonnet_module
-from hypergumbo.analyze.jsonnet import (
+from hypergumbo_lang_extended1 import jsonnet as jsonnet_module
+from hypergumbo_lang_extended1.jsonnet import (
     JsonnetAnalysisResult,
     analyze_jsonnet,
     find_jsonnet_files,

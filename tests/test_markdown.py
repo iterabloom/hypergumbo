@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import markdown as markdown_module
-from hypergumbo.analyze.markdown import (
+from hypergumbo_lang_mainstream import markdown as markdown_module
+from hypergumbo_lang_mainstream.markdown import (
     MarkdownAnalysisResult,
     analyze_markdown,
     find_markdown_files,

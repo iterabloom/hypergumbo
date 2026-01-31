@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import puppet as puppet_module
-from hypergumbo.analyze.puppet import (
+from hypergumbo_lang_common import puppet as puppet_module
+from hypergumbo_lang_common.puppet import (
     PuppetAnalysisResult,
     analyze_puppet,
     find_puppet_files,

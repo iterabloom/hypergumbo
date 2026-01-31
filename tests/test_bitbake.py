@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import bitbake as bitbake_module
-from hypergumbo.analyze.bitbake import (
+from hypergumbo_lang_extended1 import bitbake as bitbake_module
+from hypergumbo_lang_extended1.bitbake import (
     BitBakeAnalysisResult,
     analyze_bitbake,
     find_bitbake_files,

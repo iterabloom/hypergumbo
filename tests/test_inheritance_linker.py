@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
-from hypergumbo.ir import Symbol, Span, Edge
-from hypergumbo.linkers.inheritance import link_inheritance
-from hypergumbo.linkers.registry import LinkerContext
+from hypergumbo_core.ir import Symbol, Span, Edge
+from hypergumbo_core.linkers.inheritance import link_inheritance
+from hypergumbo_core.linkers.registry import LinkerContext
 
 
 class TestInheritanceLinker:

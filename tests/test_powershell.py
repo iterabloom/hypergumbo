@@ -12,8 +12,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import powershell as ps_module
-from hypergumbo.analyze.powershell import (
+from hypergumbo_lang_mainstream import powershell as ps_module
+from hypergumbo_lang_mainstream.powershell import (
     analyze_powershell,
     find_powershell_files,
     is_powershell_tree_sitter_available,

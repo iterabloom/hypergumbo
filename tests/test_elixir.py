@@ -9,7 +9,7 @@ class TestFindElixirFiles:
 
     def test_finds_elixir_files(self, tmp_path: Path) -> None:
         """Finds .ex and .exs files."""
-        from hypergumbo.analyze.elixir import find_elixir_files
+        from hypergumbo_lang_common.elixir import find_elixir_files
 
         (tmp_path / "app.ex").write_text("defmodule App do end")
         (tmp_path / "test.exs").write_text("defmodule AppTest do end")
@@ -26,7 +26,7 @@ class TestElixirTreeSitterAvailability:
 
     def test_is_elixir_tree_sitter_available_true(self) -> None:
         """Returns True when tree-sitter-elixir is available."""
-        from hypergumbo.analyze.elixir import is_elixir_tree_sitter_available
+        from hypergumbo_lang_common.elixir import is_elixir_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = object()  # Non-None = available
@@ -34,7 +34,7 @@ class TestElixirTreeSitterAvailability:
 
     def test_is_elixir_tree_sitter_available_false(self) -> None:
         """Returns False when tree-sitter is not available."""
-        from hypergumbo.analyze.elixir import is_elixir_tree_sitter_available
+        from hypergumbo_lang_common.elixir import is_elixir_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = None
@@ -42,7 +42,7 @@ class TestElixirTreeSitterAvailability:
 
     def test_is_elixir_tree_sitter_available_no_language_pack(self) -> None:
         """Returns False when tree-sitter is available but language pack is not."""
-        from hypergumbo.analyze.elixir import is_elixir_tree_sitter_available
+        from hypergumbo_lang_common.elixir import is_elixir_tree_sitter_available
 
         def mock_find_spec(name: str) -> object | None:
             if name == "tree_sitter":
@@ -58,11 +58,11 @@ class TestAnalyzeElixirFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-elixir unavailable."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "test.ex").write_text("defmodule Test do end")
 
-        with patch("hypergumbo.analyze.elixir.is_elixir_tree_sitter_available", return_value=False):
+        with patch("hypergumbo_lang_common.elixir.is_elixir_tree_sitter_available", return_value=False):
             result = analyze_elixir(tmp_path)
 
         assert result.skipped is True
@@ -74,7 +74,7 @@ class TestElixirModuleExtraction:
 
     def test_extracts_module(self, tmp_path: Path) -> None:
         """Extracts Elixir module declarations."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         ex_file = tmp_path / "person.ex"
         ex_file.write_text("""
@@ -99,7 +99,7 @@ end
 
     def test_extracts_nested_module(self, tmp_path: Path) -> None:
         """Extracts nested Elixir modules."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         ex_file = tmp_path / "my_app.ex"
         ex_file.write_text("""
@@ -126,7 +126,7 @@ class TestElixirFunctionExtraction:
 
     def test_extracts_public_function(self, tmp_path: Path) -> None:
         """Extracts public function (def)."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         ex_file = tmp_path / "utils.ex"
         ex_file.write_text("""
@@ -144,7 +144,7 @@ end
 
     def test_extracts_private_function(self, tmp_path: Path) -> None:
         """Extracts private function (defp)."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         ex_file = tmp_path / "utils.ex"
         ex_file.write_text("""
@@ -168,7 +168,7 @@ class TestElixirFunctionCalls:
 
     def test_detects_local_function_call(self, tmp_path: Path) -> None:
         """Detects calls to functions in same module."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         ex_file = tmp_path / "utils.ex"
         ex_file.write_text("""
@@ -196,7 +196,7 @@ class TestElixirImports:
 
     def test_detects_use_directive(self, tmp_path: Path) -> None:
         """Detects use directives."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         ex_file = tmp_path / "controller.ex"
         ex_file.write_text("""
@@ -218,7 +218,7 @@ end
 
     def test_detects_import_directive(self, tmp_path: Path) -> None:
         """Detects import directives."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         ex_file = tmp_path / "helper.ex"
         ex_file.write_text("""
@@ -243,7 +243,7 @@ class TestElixirMacros:
 
     def test_extracts_macro(self, tmp_path: Path) -> None:
         """Extracts macro declarations."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         ex_file = tmp_path / "macros.ex"
         ex_file.write_text("""
@@ -273,11 +273,11 @@ class TestElixirEdgeCases:
 
     def test_parser_load_failure(self, tmp_path: Path) -> None:
         """Returns skipped with run when parser loading fails."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "test.ex").write_text("defmodule Test do end")
 
-        with patch("hypergumbo.analyze.elixir.is_elixir_tree_sitter_available", return_value=True):
+        with patch("hypergumbo_lang_common.elixir.is_elixir_tree_sitter_available", return_value=True):
             with patch.dict("sys.modules", {"tree_sitter_language_pack": MagicMock()}):
                 import sys
                 mock_module = sys.modules["tree_sitter_language_pack"]
@@ -290,7 +290,7 @@ class TestElixirEdgeCases:
 
     def test_file_with_no_symbols_is_skipped(self, tmp_path: Path) -> None:
         """Files with no extractable symbols are counted as skipped."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         # Create a file with only comments and whitespace
         (tmp_path / "empty.ex").write_text("# Just a comment\n\n")
@@ -303,7 +303,7 @@ class TestElixirEdgeCases:
 
     def test_unreadable_file_handled_gracefully(self, tmp_path: Path) -> None:
         """Unreadable files don't crash the analyzer."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         ex_file = tmp_path / "test.ex"
         ex_file.write_text("defmodule Test do end")
@@ -316,7 +316,7 @@ class TestElixirEdgeCases:
 
     def test_cross_file_function_call(self, tmp_path: Path) -> None:
         """Detects function calls across files."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         # File 1: defines helper
         (tmp_path / "helper.ex").write_text("""
@@ -345,7 +345,7 @@ end
 
     def test_simple_function_definition(self, tmp_path: Path) -> None:
         """Extracts simple function definition without parentheses."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         ex_file = tmp_path / "simple.ex"
         # This uses the simple identifier form: def foo, do: :ok
@@ -368,11 +368,11 @@ class TestElixirFileReadErrors:
 
     def test_symbol_extraction_handles_read_error(self, tmp_path: Path) -> None:
         """Symbol extraction handles file read errors gracefully."""
-        from hypergumbo.analyze.elixir import (
+        from hypergumbo_lang_common.elixir import (
             _extract_symbols_from_file,
             is_elixir_tree_sitter_available,
         )
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_core.ir import AnalysisRun
 
         if not is_elixir_tree_sitter_available():
             pytest.skip("tree-sitter-elixir not available")
@@ -392,11 +392,11 @@ class TestElixirFileReadErrors:
 
     def test_edge_extraction_handles_read_error(self, tmp_path: Path) -> None:
         """Edge extraction handles file read errors gracefully."""
-        from hypergumbo.analyze.elixir import (
+        from hypergumbo_lang_common.elixir import (
             _extract_edges_from_file,
             is_elixir_tree_sitter_available,
         )
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_core.ir import AnalysisRun
 
         if not is_elixir_tree_sitter_available():
             pytest.skip("tree-sitter-elixir not available")
@@ -419,7 +419,7 @@ class TestElixirMalformedCode:
 
     def test_malformed_defmodule_no_name(self, tmp_path: Path) -> None:
         """Handles defmodule without a proper name."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         ex_file = tmp_path / "malformed.ex"
         # Intentionally malformed - defmodule with no alias argument
@@ -437,7 +437,7 @@ end
 
     def test_get_function_name_no_match(self, tmp_path: Path) -> None:
         """_get_function_name returns None for unrecognized patterns."""
-        from hypergumbo.analyze.elixir import _get_function_name, is_elixir_tree_sitter_available
+        from hypergumbo_lang_common.elixir import _get_function_name, is_elixir_tree_sitter_available
 
         if not is_elixir_tree_sitter_available():
             pytest.skip("tree-sitter-elixir not available")
@@ -471,7 +471,7 @@ class TestElixirSignatureExtraction:
 
     def test_positional_params(self, tmp_path: Path) -> None:
         """Extracts signature with positional parameters."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "calc.ex").write_text("""
 defmodule Calc do
@@ -487,7 +487,7 @@ end
 
     def test_no_params_function(self, tmp_path: Path) -> None:
         """Extracts signature for function with no parameters."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "simple.ex").write_text("""
 defmodule Simple do
@@ -503,7 +503,7 @@ end
 
     def test_macro_signature(self, tmp_path: Path) -> None:
         """Extracts signature from macro definition."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "macros.ex").write_text("""
 defmodule Macros do
@@ -525,7 +525,7 @@ class TestAliasHintsExtraction:
 
     def test_extracts_simple_alias(self, tmp_path: Path) -> None:
         """Extracts alias directives using last component of module path."""
-        from hypergumbo.analyze.elixir import (
+        from hypergumbo_lang_common.elixir import (
             _extract_alias_hints,
             is_elixir_tree_sitter_available,
         )
@@ -565,7 +565,7 @@ end
 
     def test_extracts_alias_with_as_option(self, tmp_path: Path) -> None:
         """Extracts alias directives with 'as:' custom alias."""
-        from hypergumbo.analyze.elixir import (
+        from hypergumbo_lang_common.elixir import (
             _extract_alias_hints,
             is_elixir_tree_sitter_available,
         )
@@ -601,7 +601,7 @@ end
 
     def test_extracts_alias_with_other_options(self, tmp_path: Path) -> None:
         """Falls back to last component when alias has options but not 'as:'."""
-        from hypergumbo.analyze.elixir import (
+        from hypergumbo_lang_common.elixir import (
             _extract_alias_hints,
             is_elixir_tree_sitter_available,
         )
@@ -641,7 +641,7 @@ class TestElixirPhoenixUsageContext:
 
     def test_phoenix_get_route(self, tmp_path: Path) -> None:
         """Extracts UsageContext for Phoenix get route."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
@@ -666,7 +666,7 @@ end
 
     def test_phoenix_post_route(self, tmp_path: Path) -> None:
         """Extracts UsageContext for Phoenix post route."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
@@ -682,7 +682,7 @@ end
 
     def test_phoenix_resources_route(self, tmp_path: Path) -> None:
         """Extracts UsageContext for Phoenix resources route."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
@@ -700,7 +700,7 @@ end
 
     def test_phoenix_route_with_path_only(self, tmp_path: Path) -> None:
         """Extracts UsageContext for route with minimal args."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
@@ -716,7 +716,7 @@ end
 
     def test_phoenix_all_http_methods(self, tmp_path: Path) -> None:
         """Extracts UsageContext for all HTTP methods."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
@@ -745,7 +745,7 @@ class TestPhoenixRouteSymbols:
 
     def test_route_symbols_created_for_http_methods(self, tmp_path: Path) -> None:
         """Phoenix HTTP routes create Symbol objects with kind='route'."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
@@ -773,7 +773,7 @@ end
 
     def test_route_symbols_for_resources_macro(self, tmp_path: Path) -> None:
         """Phoenix resources macro creates expanded RESTful route symbols."""
-        from hypergumbo.analyze.elixir import analyze_elixir
+        from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do

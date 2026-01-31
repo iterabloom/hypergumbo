@@ -8,7 +8,7 @@ class TestHCLHelpers:
 
     def test_find_child_by_type_returns_none(self) -> None:
         """Returns None when no matching child type is found."""
-        from hypergumbo.analyze.hcl import _find_child_by_type
+        from hypergumbo_lang_common.hcl import _find_child_by_type
 
         mock_node = MagicMock()
         mock_child = MagicMock()
@@ -24,7 +24,7 @@ class TestFindHCLFiles:
 
     def test_finds_tf_files(self, tmp_path: Path) -> None:
         """Finds .tf files."""
-        from hypergumbo.analyze.hcl import find_hcl_files
+        from hypergumbo_lang_common.hcl import find_hcl_files
 
         (tmp_path / "main.tf").write_text('resource "aws_instance" "web" {}')
         (tmp_path / "variables.tf").write_text('variable "region" {}')
@@ -37,7 +37,7 @@ class TestFindHCLFiles:
 
     def test_finds_hcl_files(self, tmp_path: Path) -> None:
         """Finds .hcl files (Packer, Consul, etc.)."""
-        from hypergumbo.analyze.hcl import find_hcl_files
+        from hypergumbo_lang_common.hcl import find_hcl_files
 
         (tmp_path / "config.hcl").write_text("key = value")
 
@@ -48,7 +48,7 @@ class TestFindHCLFiles:
 
     def test_excludes_terraform_cache(self, tmp_path: Path) -> None:
         """Excludes .terraform directory."""
-        from hypergumbo.analyze.hcl import find_hcl_files
+        from hypergumbo_lang_common.hcl import find_hcl_files
 
         # Create .terraform cache directory
         tf_cache = tmp_path / ".terraform" / "modules"
@@ -69,7 +69,7 @@ class TestHCLTreeSitterAvailability:
 
     def test_is_hcl_tree_sitter_available_true(self) -> None:
         """Returns True when tree-sitter-hcl is available."""
-        from hypergumbo.analyze.hcl import is_hcl_tree_sitter_available
+        from hypergumbo_lang_common.hcl import is_hcl_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = object()
@@ -77,7 +77,7 @@ class TestHCLTreeSitterAvailability:
 
     def test_is_hcl_tree_sitter_available_false(self) -> None:
         """Returns False when tree-sitter is not available."""
-        from hypergumbo.analyze.hcl import is_hcl_tree_sitter_available
+        from hypergumbo_lang_common.hcl import is_hcl_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = None
@@ -85,7 +85,7 @@ class TestHCLTreeSitterAvailability:
 
     def test_is_hcl_tree_sitter_available_no_hcl(self) -> None:
         """Returns False when tree-sitter is available but hcl grammar is not."""
-        from hypergumbo.analyze.hcl import is_hcl_tree_sitter_available
+        from hypergumbo_lang_common.hcl import is_hcl_tree_sitter_available
 
         def mock_find_spec(name: str) -> object | None:
             if name == "tree_sitter":
@@ -101,11 +101,11 @@ class TestAnalyzeHCLFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-hcl unavailable."""
-        from hypergumbo.analyze.hcl import analyze_hcl
+        from hypergumbo_lang_common.hcl import analyze_hcl
 
         (tmp_path / "main.tf").write_text('resource "aws_instance" "web" {}')
 
-        with patch("hypergumbo.analyze.hcl.is_hcl_tree_sitter_available", return_value=False):
+        with patch("hypergumbo_lang_common.hcl.is_hcl_tree_sitter_available", return_value=False):
             result = analyze_hcl(tmp_path)
 
         assert result.skipped is True
@@ -117,7 +117,7 @@ class TestHCLResourceExtraction:
 
     def test_extracts_resource_blocks(self, tmp_path: Path) -> None:
         """Extracts resource block definitions."""
-        from hypergumbo.analyze.hcl import analyze_hcl
+        from hypergumbo_lang_common.hcl import analyze_hcl
 
         tf_file = tmp_path / "main.tf"
         tf_file.write_text('''
@@ -145,7 +145,7 @@ class TestHCLDataSourceExtraction:
 
     def test_extracts_data_blocks(self, tmp_path: Path) -> None:
         """Extracts data source block definitions."""
-        from hypergumbo.analyze.hcl import analyze_hcl
+        from hypergumbo_lang_common.hcl import analyze_hcl
 
         tf_file = tmp_path / "data.tf"
         tf_file.write_text('''
@@ -172,7 +172,7 @@ class TestHCLVariableExtraction:
 
     def test_extracts_variable_blocks(self, tmp_path: Path) -> None:
         """Extracts variable block definitions."""
-        from hypergumbo.analyze.hcl import analyze_hcl
+        from hypergumbo_lang_common.hcl import analyze_hcl
 
         tf_file = tmp_path / "variables.tf"
         tf_file.write_text('''
@@ -201,7 +201,7 @@ class TestHCLOutputExtraction:
 
     def test_extracts_output_blocks(self, tmp_path: Path) -> None:
         """Extracts output block definitions."""
-        from hypergumbo.analyze.hcl import analyze_hcl
+        from hypergumbo_lang_common.hcl import analyze_hcl
 
         tf_file = tmp_path / "outputs.tf"
         tf_file.write_text('''
@@ -228,7 +228,7 @@ class TestHCLModuleExtraction:
 
     def test_extracts_module_blocks(self, tmp_path: Path) -> None:
         """Extracts module block definitions."""
-        from hypergumbo.analyze.hcl import analyze_hcl
+        from hypergumbo_lang_common.hcl import analyze_hcl
 
         tf_file = tmp_path / "modules.tf"
         tf_file.write_text('''
@@ -257,7 +257,7 @@ class TestHCLProviderExtraction:
 
     def test_extracts_provider_blocks(self, tmp_path: Path) -> None:
         """Extracts provider block definitions."""
-        from hypergumbo.analyze.hcl import analyze_hcl
+        from hypergumbo_lang_common.hcl import analyze_hcl
 
         tf_file = tmp_path / "providers.tf"
         tf_file.write_text('''
@@ -284,7 +284,7 @@ class TestHCLLocalsExtraction:
 
     def test_extracts_local_values(self, tmp_path: Path) -> None:
         """Extracts local value definitions."""
-        from hypergumbo.analyze.hcl import analyze_hcl
+        from hypergumbo_lang_common.hcl import analyze_hcl
 
         tf_file = tmp_path / "locals.tf"
         tf_file.write_text('''
@@ -308,7 +308,7 @@ class TestHCLDependencyEdges:
 
     def test_extracts_variable_references(self, tmp_path: Path) -> None:
         """Extracts references to variables."""
-        from hypergumbo.analyze.hcl import analyze_hcl
+        from hypergumbo_lang_common.hcl import analyze_hcl
 
         tf_file = tmp_path / "main.tf"
         tf_file.write_text('''
@@ -330,7 +330,7 @@ resource "aws_instance" "web" {
 
     def test_extracts_resource_references(self, tmp_path: Path) -> None:
         """Extracts references to other resources."""
-        from hypergumbo.analyze.hcl import analyze_hcl
+        from hypergumbo_lang_common.hcl import analyze_hcl
 
         tf_file = tmp_path / "main.tf"
         tf_file.write_text('''
@@ -356,7 +356,7 @@ class TestHCLModuleSourceEdges:
 
     def test_extracts_local_module_source(self, tmp_path: Path) -> None:
         """Extracts local module source references."""
-        from hypergumbo.analyze.hcl import analyze_hcl
+        from hypergumbo_lang_common.hcl import analyze_hcl
 
         tf_file = tmp_path / "main.tf"
         tf_file.write_text('''
@@ -378,7 +378,7 @@ class TestHCLSymbolProperties:
 
     def test_symbol_has_correct_span(self, tmp_path: Path) -> None:
         """Symbols have correct line number spans."""
-        from hypergumbo.analyze.hcl import analyze_hcl
+        from hypergumbo_lang_common.hcl import analyze_hcl
 
         tf_file = tmp_path / "main.tf"
         tf_file.write_text('''resource "aws_instance" "web" {
@@ -401,7 +401,7 @@ class TestHCLEdgeProperties:
 
     def test_edge_has_confidence(self, tmp_path: Path) -> None:
         """Edges have confidence values."""
-        from hypergumbo.analyze.hcl import analyze_hcl
+        from hypergumbo_lang_common.hcl import analyze_hcl
 
         tf_file = tmp_path / "main.tf"
         tf_file.write_text('''
@@ -426,7 +426,7 @@ class TestHCLEmptyFile:
 
     def test_handles_empty_file(self, tmp_path: Path) -> None:
         """Handles empty HCL files gracefully."""
-        from hypergumbo.analyze.hcl import analyze_hcl
+        from hypergumbo_lang_common.hcl import analyze_hcl
 
         tf_file = tmp_path / "empty.tf"
         tf_file.write_text("")
@@ -438,7 +438,7 @@ class TestHCLEmptyFile:
 
     def test_handles_comment_only_file(self, tmp_path: Path) -> None:
         """Handles files with only comments."""
-        from hypergumbo.analyze.hcl import analyze_hcl
+        from hypergumbo_lang_common.hcl import analyze_hcl
 
         tf_file = tmp_path / "comments.tf"
         tf_file.write_text("""# This is a comment
@@ -456,12 +456,12 @@ class TestHCLParserFailure:
 
     def test_handles_parser_load_failure(self, tmp_path: Path) -> None:
         """Handles failure to load HCL parser."""
-        from hypergumbo.analyze.hcl import analyze_hcl
+        from hypergumbo_lang_common.hcl import analyze_hcl
 
         tf_file = tmp_path / "main.tf"
         tf_file.write_text('resource "x" "y" {}')
 
-        with patch("hypergumbo.analyze.hcl.is_hcl_tree_sitter_available", return_value=True):
+        with patch("hypergumbo_lang_common.hcl.is_hcl_tree_sitter_available", return_value=True):
             with patch("tree_sitter_hcl.language", side_effect=Exception("Parser error")):
                 result = analyze_hcl(tmp_path)
 

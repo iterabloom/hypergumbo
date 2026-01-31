@@ -13,8 +13,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import d_lang as d_module
-from hypergumbo.analyze.d_lang import (
+from hypergumbo_lang_extended1 import d_lang as d_module
+from hypergumbo_lang_extended1.d_lang import (
     analyze_d,
     find_d_files,
     is_d_tree_sitter_available,
@@ -300,7 +300,7 @@ class TestDImportAliases:
 
     def test_extracts_import_alias(self, temp_repo: Path) -> None:
         """Extracts import alias from 'import alias = module' statement."""
-        from hypergumbo.analyze.d_lang import _extract_import_aliases
+        from hypergumbo_lang_extended1.d_lang import _extract_import_aliases
         from tree_sitter_language_pack import get_parser
 
         parser = get_parser("d")

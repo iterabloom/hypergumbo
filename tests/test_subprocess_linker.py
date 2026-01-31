@@ -7,15 +7,15 @@ from pathlib import Path
 
 import pytest
 
-from hypergumbo.ir import Edge, Span, Symbol
-from hypergumbo.linkers.subprocess_cli import (
+from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.linkers.subprocess_cli import (
     SubprocessCall,
     link_subprocess,
     _scan_python_file,
     _extract_command_info,
     _detect_project_cli_name,
 )
-from hypergumbo.linkers.registry import LinkerContext
+from hypergumbo_core.linkers.registry import LinkerContext
 
 
 class TestScanPythonFile:
@@ -385,7 +385,7 @@ class TestHasCommandConcept:
 
     def test_symbol_without_meta(self) -> None:
         """Returns False when symbol has no meta."""
-        from hypergumbo.linkers.subprocess_cli import _has_command_concept
+        from hypergumbo_core.linkers.subprocess_cli import _has_command_concept
 
         symbol = Symbol(
             id="test:1",
@@ -400,7 +400,7 @@ class TestHasCommandConcept:
 
     def test_symbol_with_command_concept(self) -> None:
         """Returns True when symbol has command concept."""
-        from hypergumbo.linkers.subprocess_cli import _has_command_concept
+        from hypergumbo_core.linkers.subprocess_cli import _has_command_concept
 
         symbol = Symbol(
             id="test:1",
@@ -415,7 +415,7 @@ class TestHasCommandConcept:
 
     def test_symbol_with_other_concept(self) -> None:
         """Returns False when symbol has non-command concept."""
-        from hypergumbo.linkers.subprocess_cli import _has_command_concept
+        from hypergumbo_core.linkers.subprocess_cli import _has_command_concept
 
         symbol = Symbol(
             id="test:1",
@@ -437,10 +437,10 @@ class TestLinkerRegistration:
         # Reload the module to force re-registration (in case registry was cleared)
         import importlib
 
-        import hypergumbo.linkers.subprocess_cli
-        importlib.reload(hypergumbo.linkers.subprocess_cli)
+        import hypergumbo_core.linkers.subprocess_cli
+        importlib.reload(hypergumbo_core.linkers.subprocess_cli)
 
-        from hypergumbo.linkers.registry import get_linker
+        from hypergumbo_core.linkers.registry import get_linker
 
         linker = get_linker("subprocess")
         assert linker is not None
@@ -448,7 +448,7 @@ class TestLinkerRegistration:
 
     def test_linker_via_context(self, tmp_path: Path) -> None:
         """Linker works via LinkerContext interface."""
-        from hypergumbo.linkers.subprocess_cli import subprocess_linker
+        from hypergumbo_core.linkers.subprocess_cli import subprocess_linker
 
         (tmp_path / "pyproject.toml").write_text('[project]\nname = "myapp"')
         test_dir = tmp_path / "tests"
@@ -473,7 +473,7 @@ class TestLinkerRegistration:
 
     def test_requirement_check_counts_commands(self, tmp_path: Path) -> None:
         """Requirement check correctly counts CLI command symbols."""
-        from hypergumbo.linkers.subprocess_cli import _count_cli_command_symbols
+        from hypergumbo_core.linkers.subprocess_cli import _count_cli_command_symbols
 
         cli_symbol = Symbol(
             id="test:1",

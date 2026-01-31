@@ -25,7 +25,7 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze.lean import analyze_lean, is_lean_tree_sitter_available
+from hypergumbo_lang_extended1.lean import analyze_lean, is_lean_tree_sitter_available
 
 
 def make_lean_file(tmp_path: Path, name: str, content: str) -> Path:
@@ -158,7 +158,7 @@ class TestLeanAnalyzerWhenUnavailable:
 
     def test_analyze_lean_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Analyzer returns skipped result when tree-sitter-lean not available."""
-        from hypergumbo.analyze import lean as lean_module
+        from hypergumbo_lang_extended1 import lean as lean_module
 
         # Create a Lean file
         make_lean_file(tmp_path, "Example.lean", "def foo := 42")

@@ -7,7 +7,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-from hypergumbo.analyze.matlab import (
+from hypergumbo_lang_common.matlab import (
     analyze_matlab,
     find_matlab_files,
     is_matlab_tree_sitter_available,
@@ -89,7 +89,7 @@ class TestIsMatlabTreeSitterAvailable:
 
     def test_returns_false_when_unavailable(self) -> None:
         """Should return False when tree-sitter-language-pack is not installed."""
-        import hypergumbo.analyze.matlab as matlab_module
+        import hypergumbo_lang_common.matlab as matlab_module
         with patch.object(matlab_module, "is_matlab_tree_sitter_available", return_value=False):
             assert matlab_module.is_matlab_tree_sitter_available() is False
 
@@ -99,7 +99,7 @@ class TestAnalyzeMatlab:
 
     def test_skips_when_unavailable(self, matlab_repo: Path) -> None:
         """Should skip analysis and warn when tree-sitter is unavailable."""
-        import hypergumbo.analyze.matlab as matlab_module
+        import hypergumbo_lang_common.matlab as matlab_module
 
         with patch.object(matlab_module, "is_matlab_tree_sitter_available", return_value=False):
             with pytest.warns(UserWarning, match="tree-sitter-language-pack not available"):

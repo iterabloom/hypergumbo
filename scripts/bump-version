@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Version bump script.
+# Version bump script for multi-package hypergumbo.
 #
-# Updates version in pyproject.toml and optionally updates CHANGELOG.
+# Updates version in all 5 package pyproject.toml files and __init__.py files.
 #
 # Usage:
 #   ./scripts/bump-version [major|minor|patch|VERSION]
 #
 # Examples:
-#   ./scripts/bump-version patch     # 0.5.1 -> 0.5.2
-#   ./scripts/bump-version minor     # 0.5.1 -> 0.6.0
-#   ./scripts/bump-version major     # 0.5.1 -> 1.0.0
-#   ./scripts/bump-version 0.7.0     # Explicit version
+#   ./scripts/bump-version patch     # 2.0.0 -> 2.0.1
+#   ./scripts/bump-version minor     # 2.0.0 -> 2.1.0
+#   ./scripts/bump-version major     # 2.0.0 -> 3.0.0
+#   ./scripts/bump-version 2.1.0     # Explicit version
 #
 set -euo pipefail
 
@@ -26,11 +26,36 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
-# Extract current version
-CURRENT=$(grep -E '^version\s*=' pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+# All package pyproject.toml locations
+PYPROJECT_FILES=(
+    "pyproject.toml"  # Root (legacy, if exists)
+    "packages/hypergumbo-core/pyproject.toml"
+    "packages/hypergumbo-lang-mainstream/pyproject.toml"
+    "packages/hypergumbo-lang-common/pyproject.toml"
+    "packages/hypergumbo-lang-extended1/pyproject.toml"
+    "packages/hypergumbo/pyproject.toml"
+)
+
+# All __init__.py locations with __version__
+INIT_FILES=(
+    "src/hypergumbo/__init__.py"  # Legacy (if exists)
+    "packages/hypergumbo-core/src/hypergumbo_core/__init__.py"
+    "packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/__init__.py"
+    "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/__init__.py"
+    "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/__init__.py"
+)
+
+# Extract current version from core package (source of truth)
+CORE_PYPROJECT="packages/hypergumbo-core/pyproject.toml"
+if [[ ! -f "$CORE_PYPROJECT" ]]; then
+    # Fall back to root pyproject.toml for pre-2.0 structure
+    CORE_PYPROJECT="pyproject.toml"
+fi
+
+CURRENT=$(grep -E '^version\s*=' "$CORE_PYPROJECT" | head -1 | sed 's/.*"\(.*\)".*/\1/')
 
 if [[ -z "$CURRENT" ]]; then
-    echo "Error: Could not extract current version from pyproject.toml"
+    echo "Error: Could not extract current version from $CORE_PYPROJECT"
     exit 1
 fi
 
@@ -39,7 +64,7 @@ echo "Current version: $CURRENT"
 # Parse version components
 IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
 
-# Handle pre-release suffix (e.g., 0.5.1-dev.1)
+# Handle pre-release suffix (e.g., 2.0.0-dev.1)
 PATCH_BASE="${PATCH%%-*}"
 SUFFIX="${PATCH#$PATCH_BASE}"
 
@@ -68,16 +93,33 @@ if ! [[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
     exit 1
 fi
 
-# Update pyproject.toml
-echo "Updating pyproject.toml..."
-sed -i "s/^version = \"$CURRENT\"/version = \"$NEW_VERSION\"/" pyproject.toml
+# Update all pyproject.toml files
+echo ""
+echo "Updating pyproject.toml files..."
+for pyproject in "${PYPROJECT_FILES[@]}"; do
+    if [[ -f "$pyproject" ]]; then
+        # Update version = "x.y.z" line
+        sed -i "s/^version = \"[0-9]*\.[0-9]*\.[0-9]*[^\"]*\"/version = \"$NEW_VERSION\"/" "$pyproject"
 
-# Update __init__.py if it has version
-INIT_FILE="src/hypergumbo/__init__.py"
-if [[ -f "$INIT_FILE" ]] && grep -q "__version__" "$INIT_FILE"; then
-    echo "Updating $INIT_FILE..."
-    sed -i "s/__version__ = \"$CURRENT\"/__version__ = \"$NEW_VERSION\"/" "$INIT_FILE"
-fi
+        # Update internal dependencies (e.g., hypergumbo-core==x.y.z)
+        sed -i "s/hypergumbo-core==[0-9]*\.[0-9]*\.[0-9]*/hypergumbo-core==$NEW_VERSION/g" "$pyproject"
+        sed -i "s/hypergumbo-lang-mainstream==[0-9]*\.[0-9]*\.[0-9]*/hypergumbo-lang-mainstream==$NEW_VERSION/g" "$pyproject"
+        sed -i "s/hypergumbo-lang-common==[0-9]*\.[0-9]*\.[0-9]*/hypergumbo-lang-common==$NEW_VERSION/g" "$pyproject"
+        sed -i "s/hypergumbo-lang-extended1==[0-9]*\.[0-9]*\.[0-9]*/hypergumbo-lang-extended1==$NEW_VERSION/g" "$pyproject"
+
+        echo "  Updated: $pyproject"
+    fi
+done
+
+# Update all __init__.py files
+echo ""
+echo "Updating __init__.py files..."
+for init_file in "${INIT_FILES[@]}"; do
+    if [[ -f "$init_file" ]] && grep -q "__version__" "$init_file"; then
+        sed -i "s/__version__ = \"[0-9]*\.[0-9]*\.[0-9]*[^\"]*\"/__version__ = \"$NEW_VERSION\"/" "$init_file"
+        echo "  Updated: $init_file"
+    fi
+done
 
 # Prompt to update CHANGELOG
 if [[ -f "CHANGELOG.md" ]]; then
@@ -95,6 +137,13 @@ fi
 
 echo ""
 echo "Version bumped: $CURRENT -> $NEW_VERSION"
+echo ""
+echo "Packages updated:"
+for pyproject in "${PYPROJECT_FILES[@]}"; do
+    if [[ -f "$pyproject" ]]; then
+        echo "  - $(dirname "$pyproject")"
+    fi
+done
 echo ""
 echo "Next steps:"
 echo "  1. Review changes: git diff"

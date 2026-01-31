@@ -9,7 +9,7 @@ class TestFindGoFiles:
 
     def test_finds_go_files(self, tmp_path: Path) -> None:
         """Finds .go files."""
-        from hypergumbo.analyze.go import find_go_files
+        from hypergumbo_lang_mainstream.go import find_go_files
 
         (tmp_path / "main.go").write_text("package main")
         (tmp_path / "utils.go").write_text("package utils")
@@ -26,7 +26,7 @@ class TestGoTreeSitterAvailability:
 
     def test_is_go_tree_sitter_available_true(self) -> None:
         """Returns True when tree-sitter-go is available."""
-        from hypergumbo.analyze.go import is_go_tree_sitter_available
+        from hypergumbo_lang_mainstream.go import is_go_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = object()  # Non-None = available
@@ -34,7 +34,7 @@ class TestGoTreeSitterAvailability:
 
     def test_is_go_tree_sitter_available_false(self) -> None:
         """Returns False when tree-sitter is not available."""
-        from hypergumbo.analyze.go import is_go_tree_sitter_available
+        from hypergumbo_lang_mainstream.go import is_go_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = None
@@ -42,7 +42,7 @@ class TestGoTreeSitterAvailability:
 
     def test_is_go_tree_sitter_available_no_go(self) -> None:
         """Returns False when tree-sitter is available but go grammar is not."""
-        from hypergumbo.analyze.go import is_go_tree_sitter_available
+        from hypergumbo_lang_mainstream.go import is_go_tree_sitter_available
 
         def mock_find_spec(name: str) -> object | None:
             if name == "tree_sitter":
@@ -58,11 +58,11 @@ class TestAnalyzeGoFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-go unavailable."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         (tmp_path / "test.go").write_text("package main")
 
-        with patch("hypergumbo.analyze.go.is_go_tree_sitter_available", return_value=False):
+        with patch("hypergumbo_lang_mainstream.go.is_go_tree_sitter_available", return_value=False):
             result = analyze_go(tmp_path)
 
         assert result.skipped is True
@@ -74,7 +74,7 @@ class TestGoFunctionExtraction:
 
     def test_extracts_function(self, tmp_path: Path) -> None:
         """Extracts Go function declarations."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
         go_file.write_text("""package main
@@ -100,7 +100,7 @@ func helper(x int) int {
 
     def test_extracts_exported_function(self, tmp_path: Path) -> None:
         """Extracts exported (capitalized) function declarations."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "lib.go"
         go_file.write_text("""package mylib
@@ -126,7 +126,7 @@ class TestGoStructExtraction:
 
     def test_extracts_struct(self, tmp_path: Path) -> None:
         """Extracts struct declarations."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "models.go"
         go_file.write_text("""package models
@@ -155,7 +155,7 @@ class TestGoInterfaceExtraction:
 
     def test_extracts_interface(self, tmp_path: Path) -> None:
         """Extracts interface declarations."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "interfaces.go"
         go_file.write_text("""package main
@@ -183,7 +183,7 @@ class TestGoMethodExtraction:
 
     def test_extracts_method(self, tmp_path: Path) -> None:
         """Extracts methods with receivers."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "user.go"
         go_file.write_text("""package main
@@ -216,7 +216,7 @@ class TestGoFunctionCalls:
 
     def test_detects_function_call(self, tmp_path: Path) -> None:
         """Detects calls to functions in same file."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "utils.go"
         go_file.write_text("""package main
@@ -243,7 +243,7 @@ class TestGoImports:
 
     def test_detects_import_statement(self, tmp_path: Path) -> None:
         """Detects import statements."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
         go_file.write_text("""package main
@@ -271,11 +271,11 @@ class TestGoEdgeCases:
 
     def test_parser_load_failure(self, tmp_path: Path) -> None:
         """Returns skipped with run when parser loading fails."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         (tmp_path / "test.go").write_text("package main")
 
-        with patch("hypergumbo.analyze.go.is_go_tree_sitter_available", return_value=True):
+        with patch("hypergumbo_lang_mainstream.go.is_go_tree_sitter_available", return_value=True):
             with patch.dict("sys.modules", {"tree_sitter_go": MagicMock()}):
                 import sys
                 mock_module = sys.modules["tree_sitter_go"]
@@ -288,7 +288,7 @@ class TestGoEdgeCases:
 
     def test_file_with_no_symbols_is_skipped(self, tmp_path: Path) -> None:
         """Files with no extractable symbols are counted as skipped."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         # Create a file with only comments
         (tmp_path / "empty.go").write_text("// Just a comment\npackage main\n")
@@ -301,7 +301,7 @@ class TestGoEdgeCases:
 
     def test_cross_file_function_call(self, tmp_path: Path) -> None:
         """Detects function calls across files."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         # File 1: defines helper
         (tmp_path / "helper.go").write_text("""package main
@@ -331,7 +331,7 @@ class TestGoCallPatterns:
 
     def test_method_call(self, tmp_path: Path) -> None:
         """Detects method calls on objects."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "calls.go"
         go_file.write_text("""package main
@@ -354,7 +354,7 @@ func caller() {
 
     def test_qualified_call(self, tmp_path: Path) -> None:
         """Detects calls to package functions."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
         go_file.write_text("""package main
@@ -378,7 +378,7 @@ class TestGoAnonymousFunctionCalls:
 
     def test_call_inside_goroutine_attributed_to_caller(self, tmp_path: Path) -> None:
         """Calls inside goroutines are attributed to the containing function."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
         go_file.write_text("""package main
@@ -408,7 +408,7 @@ func main() {
 
     def test_call_inside_callback_attributed_to_caller(self, tmp_path: Path) -> None:
         """Calls inside callback func literals are attributed to the containing function."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
         go_file.write_text("""package main
@@ -445,7 +445,7 @@ class TestGoTypeAliasExtraction:
 
     def test_extracts_type_alias(self, tmp_path: Path) -> None:
         """Extracts type alias declarations (not struct or interface)."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "types.go"
         go_file.write_text("""package main
@@ -467,8 +467,8 @@ class TestGoHelperFunctions:
 
     def test_find_child_by_type_returns_none(self, tmp_path: Path) -> None:
         """find_child_by_type returns None when no matching child."""
-        from hypergumbo.analyze.base import find_child_by_type
-        from hypergumbo.analyze.go import is_go_tree_sitter_available
+        from hypergumbo_core.analyze.base import find_child_by_type
+        from hypergumbo_lang_mainstream.go import is_go_tree_sitter_available
 
         if not is_go_tree_sitter_available():
             pytest.skip("tree-sitter-go not available")
@@ -492,11 +492,11 @@ class TestGoFileReadErrors:
 
     def test_symbol_extraction_handles_read_error(self, tmp_path: Path) -> None:
         """Symbol extraction handles file read errors gracefully."""
-        from hypergumbo.analyze.go import (
+        from hypergumbo_lang_mainstream.go import (
             _extract_symbols_from_file,
             is_go_tree_sitter_available,
         )
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_core.ir import AnalysisRun
 
         if not is_go_tree_sitter_available():
             pytest.skip("tree-sitter-go not available")
@@ -518,11 +518,11 @@ class TestGoFileReadErrors:
 
     def test_edge_extraction_handles_read_error(self, tmp_path: Path) -> None:
         """Edge extraction handles file read errors gracefully."""
-        from hypergumbo.analyze.go import (
+        from hypergumbo_lang_mainstream.go import (
             _extract_edges_from_file,
             is_go_tree_sitter_available,
         )
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_core.ir import AnalysisRun
 
         if not is_go_tree_sitter_available():
             pytest.skip("tree-sitter-go not available")
@@ -548,7 +548,7 @@ class TestGoRouteDetection:
 
     def test_detects_gin_routes(self, tmp_path: Path) -> None:
         """Detects Gin router.GET("/path", handler) pattern."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
         go_file.write_text("""
@@ -577,7 +577,7 @@ func createUser(c *gin.Context) {}
 
     def test_detects_echo_routes(self, tmp_path: Path) -> None:
         """Detects Echo e.GET("/path", handler) pattern."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
         go_file.write_text("""
@@ -615,7 +615,7 @@ func deleteUser(c echo.Context) error { return nil }
 
     def test_detects_fiber_lowercase_routes(self, tmp_path: Path) -> None:
         """Detects Fiber app.Get("/path", handler) pattern (lowercase methods)."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
         go_file.write_text("""
@@ -644,7 +644,7 @@ func postData(c *fiber.Ctx) error { return nil }
 
     def test_route_has_stable_id(self, tmp_path: Path) -> None:
         """Route symbols have stable_id set to lowercase HTTP method."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
         go_file.write_text("""
@@ -666,7 +666,7 @@ func handler() {}
 
     def test_route_path_extraction(self, tmp_path: Path) -> None:
         """Route path is correctly extracted to metadata."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
         go_file.write_text("""
@@ -689,11 +689,11 @@ func getUser() {}
 
     def test_extract_go_routes_directly(self, tmp_path: Path) -> None:
         """Tests _extract_go_routes function directly."""
-        from hypergumbo.analyze.go import (
+        from hypergumbo_lang_mainstream.go import (
             _extract_go_routes,
             is_go_tree_sitter_available,
         )
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_core.ir import AnalysisRun
 
         if not is_go_tree_sitter_available():
             pytest.skip("tree-sitter-go not available")
@@ -726,7 +726,7 @@ func main() {
 
     def test_no_routes_in_non_web_code(self, tmp_path: Path) -> None:
         """No routes detected in code without web framework patterns."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
         go_file.write_text("""
@@ -749,7 +749,7 @@ func PostProcess(s string) {}
 
     def test_selector_handler(self, tmp_path: Path) -> None:
         """Handles selector expression handlers like pkg.Handler."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
         go_file.write_text("""
@@ -773,7 +773,7 @@ class TestGoSignatureExtraction:
 
     def test_extracts_simple_signature(self, tmp_path: Path) -> None:
         """Extracts signature with simple parameter types."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
         go_file.write_text("""
@@ -792,7 +792,7 @@ func add(x int, y int) int {
 
     def test_extracts_signature_with_multiple_returns(self, tmp_path: Path) -> None:
         """Extracts signature with multiple return types."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
         go_file.write_text("""
@@ -811,7 +811,7 @@ func divide(a int, b int) (int, error) {
 
     def test_extracts_signature_with_shared_types(self, tmp_path: Path) -> None:
         """Extracts signature where parameters share types."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
         go_file.write_text("""
@@ -830,7 +830,7 @@ func sum(a, b, c int) int {
 
     def test_extracts_signature_with_no_params(self, tmp_path: Path) -> None:
         """Extracts signature for function with no parameters."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
         go_file.write_text("""
@@ -849,7 +849,7 @@ func getAnswer() int {
 
     def test_extracts_signature_with_no_return(self, tmp_path: Path) -> None:
         """Extracts signature for function with no return type."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
         go_file.write_text("""
@@ -868,7 +868,7 @@ func printHello(name string) {
 
     def test_extracts_method_signature(self, tmp_path: Path) -> None:
         """Extracts signature for method with receiver."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
         go_file.write_text("""
@@ -897,7 +897,7 @@ func (c Counter) Get() int {
 
     def test_extracts_signature_with_complex_types(self, tmp_path: Path) -> None:
         """Extracts signature with complex types."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
         go_file.write_text("""
@@ -919,7 +919,7 @@ func process(items []string) map[string]int {
 
     def test_symbol_to_dict_includes_signature(self, tmp_path: Path) -> None:
         """Symbol.to_dict() includes the signature field."""
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
         go_file.write_text("""
@@ -945,21 +945,21 @@ class TestImportPathToDirHint:
 
     def test_with_src_pattern(self) -> None:
         """Returns /src/... for paths containing /src/."""
-        from hypergumbo.analyze.go import _import_path_to_dir_hint
+        from hypergumbo_lang_mainstream.go import _import_path_to_dir_hint
 
         result = _import_path_to_dir_hint("github.com/example/src/foo/bar")
         assert result == "/src/foo/bar"
 
     def test_fallback_without_src(self) -> None:
         """Returns last 2 components for paths without /src/."""
-        from hypergumbo.analyze.go import _import_path_to_dir_hint
+        from hypergumbo_lang_mainstream.go import _import_path_to_dir_hint
 
         result = _import_path_to_dir_hint("github.com/example/genproto")
         assert result == "/example/genproto"
 
     def test_single_component(self) -> None:
         """Returns None for single-component paths."""
-        from hypergumbo.analyze.go import _import_path_to_dir_hint
+        from hypergumbo_lang_mainstream.go import _import_path_to_dir_hint
 
         result = _import_path_to_dir_hint("fmt")
         assert result is None
@@ -981,7 +981,7 @@ class TestGoImportPathResolution:
         Fixed in INV-007: ListNameResolver now tries progressively shorter
         path suffixes to find unique matches.
         """
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         # Create structure where alphabetically first file has 'wrong' definition
         # aaa_wrong comes before zzz_correct alphabetically
@@ -1045,7 +1045,7 @@ class TestGoReceiverMethodCalls:
         This is a baseline test - method calls should work when the
         receiver type and method are both in our symbol registry.
         """
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
         go_file.write_text("""package main
@@ -1105,7 +1105,7 @@ func main() {
         The `s.RegisterService()` call should create an edge, even though
         ServiceRegistrar is from google.golang.org/grpc.
         """
-        from hypergumbo.analyze.go import analyze_go
+        from hypergumbo_lang_mainstream.go import analyze_go
 
         go_file = tmp_path / "main.go"
         go_file.write_text("""package main

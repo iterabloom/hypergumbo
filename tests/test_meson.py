@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import meson as meson_module
-from hypergumbo.analyze.meson import (
+from hypergumbo_lang_common import meson as meson_module
+from hypergumbo_lang_common.meson import (
     MesonAnalysisResult,
     analyze_meson,
     find_meson_files,

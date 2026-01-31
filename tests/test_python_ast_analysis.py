@@ -2,8 +2,8 @@
 import json
 from pathlib import Path
 
-from hypergumbo.cli import run_behavior_map
-from hypergumbo.analyze.py import (
+from hypergumbo_core.cli import run_behavior_map
+from hypergumbo_lang_mainstream.py import (
     extract_nodes,
     _module_name_from_path,
     _resolve_relative_import,
@@ -764,7 +764,7 @@ def test_flask_method_specific_decorator_metadata(tmp_path: Path) -> None:
 
 def test_flask_add_url_rule_usage_context(tmp_path: Path) -> None:
     """Flask add_url_rule() should emit UsageContext records."""
-    from hypergumbo.analyze.py import analyze_python
+    from hypergumbo_lang_mainstream.py import analyze_python
 
     py_file = tmp_path / "app.py"
     py_file.write_text(
@@ -792,7 +792,7 @@ def test_flask_add_url_rule_usage_context(tmp_path: Path) -> None:
 
 def test_flask_add_url_rule_with_view_func_kwarg(tmp_path: Path) -> None:
     """Flask add_url_rule with view_func keyword argument."""
-    from hypergumbo.analyze.py import analyze_python
+    from hypergumbo_lang_mainstream.py import analyze_python
 
     py_file = tmp_path / "app.py"
     py_file.write_text(
@@ -816,7 +816,7 @@ def test_flask_add_url_rule_with_view_func_kwarg(tmp_path: Path) -> None:
 
 def test_flask_add_url_rule_with_methods(tmp_path: Path) -> None:
     """Flask add_url_rule with explicit methods."""
-    from hypergumbo.analyze.py import analyze_python
+    from hypergumbo_lang_mainstream.py import analyze_python
 
     py_file = tmp_path / "app.py"
     py_file.write_text(
@@ -839,7 +839,7 @@ def test_flask_add_url_rule_with_methods(tmp_path: Path) -> None:
 
 def test_flask_blueprint_add_url_rule(tmp_path: Path) -> None:
     """Flask Blueprint add_url_rule should also be detected."""
-    from hypergumbo.analyze.py import analyze_python
+    from hypergumbo_lang_mainstream.py import analyze_python
 
     py_file = tmp_path / "views.py"
     py_file.write_text(
@@ -863,7 +863,7 @@ def test_flask_blueprint_add_url_rule(tmp_path: Path) -> None:
 
 def test_flask_add_url_rule_with_attribute_view_func(tmp_path: Path) -> None:
     """Flask add_url_rule with attribute-based view_func (views.handler)."""
-    from hypergumbo.analyze.py import analyze_python
+    from hypergumbo_lang_mainstream.py import analyze_python
 
     py_file = tmp_path / "routes.py"
     py_file.write_text(
@@ -885,7 +885,7 @@ def test_flask_add_url_rule_with_attribute_view_func(tmp_path: Path) -> None:
 
 def test_flask_add_url_rule_positional_attribute_handler(tmp_path: Path) -> None:
     """Flask add_url_rule with attribute as third positional argument."""
-    from hypergumbo.analyze.py import analyze_python
+    from hypergumbo_lang_mainstream.py import analyze_python
 
     py_file = tmp_path / "routes.py"
     py_file.write_text(
@@ -3665,7 +3665,7 @@ class TestPythonInheritanceEdges:
 
     def test_extracts_extends_edge_same_file(self, tmp_path: Path) -> None:
         """Extracts extends relationship edges for classes in the same file."""
-        from hypergumbo.analyze.py import analyze_python
+        from hypergumbo_lang_mainstream.py import analyze_python
 
         py_file = tmp_path / "models.py"
         py_file.write_text(
@@ -3691,7 +3691,7 @@ class TestPythonInheritanceEdges:
 
     def test_extracts_extends_edge_cross_file(self, tmp_path: Path) -> None:
         """Extracts extends relationship edges for classes in different files."""
-        from hypergumbo.analyze.py import analyze_python
+        from hypergumbo_lang_mainstream.py import analyze_python
 
         (tmp_path / "base.py").write_text(
             "class BaseModel:\n"
@@ -3718,7 +3718,7 @@ class TestPythonInheritanceEdges:
 
     def test_extracts_multiple_inheritance_edges(self, tmp_path: Path) -> None:
         """Extracts extends edges for multiple inheritance."""
-        from hypergumbo.analyze.py import analyze_python
+        from hypergumbo_lang_mainstream.py import analyze_python
 
         py_file = tmp_path / "mixins.py"
         py_file.write_text(
@@ -3750,7 +3750,7 @@ class TestPythonInheritanceEdges:
 
     def test_no_extends_edge_for_external_base_class(self, tmp_path: Path) -> None:
         """No extends edge created when base class is external (not in repo)."""
-        from hypergumbo.analyze.py import analyze_python
+        from hypergumbo_lang_mainstream.py import analyze_python
 
         py_file = tmp_path / "models.py"
         py_file.write_text(

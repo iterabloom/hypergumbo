@@ -1,7 +1,7 @@
 """Tests for IPC linker."""
 from pathlib import Path
 
-from hypergumbo.ir import AnalysisRun, Symbol, Span
+from hypergumbo_core.ir import AnalysisRun, Symbol, Span
 
 
 class TestIpcPatternDetection:
@@ -9,7 +9,7 @@ class TestIpcPatternDetection:
 
     def test_detect_electron_ipc_send(self) -> None:
         """Detects Electron ipcRenderer.send pattern."""
-        from hypergumbo.linkers.ipc import detect_ipc_patterns
+        from hypergumbo_core.linkers.ipc import detect_ipc_patterns
 
         source = b"""
 function sendMessage() {
@@ -25,7 +25,7 @@ function sendMessage() {
 
     def test_detect_electron_ipc_on(self) -> None:
         """Detects Electron ipcMain.on pattern."""
-        from hypergumbo.linkers.ipc import detect_ipc_patterns
+        from hypergumbo_core.linkers.ipc import detect_ipc_patterns
 
         source = b"""
 ipcMain.on('user-login', (event, data) => {
@@ -41,7 +41,7 @@ ipcMain.on('user-login', (event, data) => {
 
     def test_detect_electron_ipc_invoke(self) -> None:
         """Detects Electron ipcRenderer.invoke pattern."""
-        from hypergumbo.linkers.ipc import detect_ipc_patterns
+        from hypergumbo_core.linkers.ipc import detect_ipc_patterns
 
         source = b"""
 async function getData() {
@@ -57,7 +57,7 @@ async function getData() {
 
     def test_detect_electron_ipc_handle(self) -> None:
         """Detects Electron ipcMain.handle pattern."""
-        from hypergumbo.linkers.ipc import detect_ipc_patterns
+        from hypergumbo_core.linkers.ipc import detect_ipc_patterns
 
         source = b"""
 ipcMain.handle('get-data', async (event, args) => {
@@ -72,7 +72,7 @@ ipcMain.handle('get-data', async (event, args) => {
 
     def test_detect_postmessage(self) -> None:
         """Detects window.postMessage pattern."""
-        from hypergumbo.linkers.ipc import detect_ipc_patterns
+        from hypergumbo_core.linkers.ipc import detect_ipc_patterns
 
         source = b"""
 function notifyParent() {
@@ -86,7 +86,7 @@ function notifyParent() {
 
     def test_detect_message_event_listener(self) -> None:
         """Detects addEventListener('message', ...) pattern."""
-        from hypergumbo.linkers.ipc import detect_ipc_patterns
+        from hypergumbo_core.linkers.ipc import detect_ipc_patterns
 
         source = b"""
 window.addEventListener('message', (event) => {
@@ -100,7 +100,7 @@ window.addEventListener('message', (event) => {
 
     def test_detect_worker_postmessage(self) -> None:
         """Detects Web Worker postMessage pattern."""
-        from hypergumbo.linkers.ipc import detect_ipc_patterns
+        from hypergumbo_core.linkers.ipc import detect_ipc_patterns
 
         source = b"""
 const worker = new Worker('worker.js');
@@ -113,7 +113,7 @@ worker.postMessage({ cmd: 'start', data: input });
 
     def test_no_patterns_in_regular_code(self) -> None:
         """Returns empty for code without IPC patterns."""
-        from hypergumbo.linkers.ipc import detect_ipc_patterns
+        from hypergumbo_core.linkers.ipc import detect_ipc_patterns
 
         source = b"""
 function add(a, b) {
@@ -126,7 +126,7 @@ function add(a, b) {
 
     def test_non_javascript_returns_empty(self) -> None:
         """Returns empty for non-JavaScript code."""
-        from hypergumbo.linkers.ipc import detect_ipc_patterns
+        from hypergumbo_core.linkers.ipc import detect_ipc_patterns
 
         source = b"""
 def send_message():
@@ -162,7 +162,7 @@ class TestIpcLinker:
 
     def test_links_ipc_send_receive(self, tmp_path: Path) -> None:
         """Links IPC send to receive on same channel."""
-        from hypergumbo.linkers.ipc import link_ipc
+        from hypergumbo_core.linkers.ipc import link_ipc
 
         # Create renderer file with send
         renderer = tmp_path / "renderer.js"
@@ -190,7 +190,7 @@ ipcMain.on('user-login', (event, data) => {
 
     def test_links_invoke_handle_pair(self, tmp_path: Path) -> None:
         """Links ipcRenderer.invoke to ipcMain.handle."""
-        from hypergumbo.linkers.ipc import link_ipc
+        from hypergumbo_core.linkers.ipc import link_ipc
 
         renderer = tmp_path / "renderer.js"
         renderer.write_text("""
@@ -213,7 +213,7 @@ ipcMain.handle('fetch-data', async (event, args) => {
 
     def test_no_js_files(self, tmp_path: Path) -> None:
         """Handles directory with no JavaScript files."""
-        from hypergumbo.linkers.ipc import link_ipc
+        from hypergumbo_core.linkers.ipc import link_ipc
 
         (tmp_path / "app.py").write_text("print('hello')")
 
@@ -224,7 +224,7 @@ ipcMain.handle('fetch-data', async (event, args) => {
 
     def test_empty_directory(self, tmp_path: Path) -> None:
         """Handles empty directory."""
-        from hypergumbo.linkers.ipc import link_ipc
+        from hypergumbo_core.linkers.ipc import link_ipc
 
         result = link_ipc(tmp_path)
 
@@ -237,7 +237,7 @@ class TestIpcChannelMatching:
 
     def test_exact_channel_match(self, tmp_path: Path) -> None:
         """Matches exact channel names."""
-        from hypergumbo.linkers.ipc import link_ipc
+        from hypergumbo_core.linkers.ipc import link_ipc
 
         (tmp_path / "send.js").write_text("""
 ipcRenderer.send('my-channel', data);
@@ -255,7 +255,7 @@ ipcMain.on('my-channel', handler);
 
     def test_no_match_different_channels(self, tmp_path: Path) -> None:
         """Does not match different channel names."""
-        from hypergumbo.linkers.ipc import link_ipc
+        from hypergumbo_core.linkers.ipc import link_ipc
 
         (tmp_path / "send.js").write_text("""
 ipcRenderer.send('channel-a', data);
@@ -275,7 +275,7 @@ class TestIpcLinkerEdgeCases:
 
     def test_file_read_error(self, tmp_path: Path) -> None:
         """Handles file read errors gracefully."""
-        from hypergumbo.linkers.ipc import link_ipc
+        from hypergumbo_core.linkers.ipc import link_ipc
 
         js_file = tmp_path / "test.js"
         js_file.write_text("ipcRenderer.send('test', data);")
@@ -297,7 +297,7 @@ class TestIpcLinkerEdgeCases:
 
     def test_multiple_patterns_in_file(self, tmp_path: Path) -> None:
         """Handles multiple IPC patterns in single file."""
-        from hypergumbo.linkers.ipc import link_ipc
+        from hypergumbo_core.linkers.ipc import link_ipc
 
         (tmp_path / "multi.js").write_text("""
 ipcRenderer.send('channel-1', data1);
@@ -311,7 +311,7 @@ ipcRenderer.invoke('channel-3', data3);
 
     def test_nested_quotes(self) -> None:
         """Handles nested quotes in channel detection."""
-        from hypergumbo.linkers.ipc import detect_ipc_patterns
+        from hypergumbo_core.linkers.ipc import detect_ipc_patterns
 
         source = b"""
 ipcRenderer.send("channel-with-'quotes'", data);
@@ -323,7 +323,7 @@ ipcRenderer.send("channel-with-'quotes'", data);
 
     def test_template_literals(self) -> None:
         """Handles template literal channel names."""
-        from hypergumbo.linkers.ipc import detect_ipc_patterns
+        from hypergumbo_core.linkers.ipc import detect_ipc_patterns
 
         source = b"""
 const channel = `user-${id}`;
@@ -340,7 +340,7 @@ class TestIpcEdgeCreation:
 
     def test_edge_has_channel_in_meta(self, tmp_path: Path) -> None:
         """Created edges include channel name in metadata."""
-        from hypergumbo.linkers.ipc import link_ipc
+        from hypergumbo_core.linkers.ipc import link_ipc
 
         (tmp_path / "app.js").write_text("""
 ipcRenderer.send('test-channel', data);
@@ -354,7 +354,7 @@ ipcMain.on('test-channel', handler);
 
     def test_edge_confidence(self, tmp_path: Path) -> None:
         """Edges have appropriate confidence levels."""
-        from hypergumbo.linkers.ipc import link_ipc
+        from hypergumbo_core.linkers.ipc import link_ipc
 
         (tmp_path / "app.js").write_text("""
 ipcRenderer.send('test-channel', data);
@@ -372,7 +372,7 @@ class TestIpcRunMetadata:
 
     def test_run_has_pass_id(self, tmp_path: Path) -> None:
         """Run has correct pass ID."""
-        from hypergumbo.linkers.ipc import link_ipc
+        from hypergumbo_core.linkers.ipc import link_ipc
 
         result = link_ipc(tmp_path)
 
@@ -381,7 +381,7 @@ class TestIpcRunMetadata:
 
     def test_run_tracks_files(self, tmp_path: Path) -> None:
         """Run tracks files analyzed."""
-        from hypergumbo.linkers.ipc import link_ipc
+        from hypergumbo_core.linkers.ipc import link_ipc
 
         (tmp_path / "a.js").write_text("const x = 1;")
         (tmp_path / "b.js").write_text("const y = 2;")
@@ -397,7 +397,7 @@ class TestIpcTypeScriptSupport:
 
     def test_detect_typescript_ipc(self, tmp_path: Path) -> None:
         """Detects IPC patterns in TypeScript files."""
-        from hypergumbo.linkers.ipc import link_ipc
+        from hypergumbo_core.linkers.ipc import link_ipc
 
         (tmp_path / "renderer.ts").write_text("""
 async function sendData(): Promise<void> {
@@ -411,7 +411,7 @@ async function sendData(): Promise<void> {
 
     def test_detect_tsx_ipc(self, tmp_path: Path) -> None:
         """Detects IPC patterns in TSX files."""
-        from hypergumbo.linkers.ipc import link_ipc
+        from hypergumbo_core.linkers.ipc import link_ipc
 
         (tmp_path / "component.tsx").write_text("""
 const Component = () => {
@@ -432,7 +432,7 @@ class TestIpcEmptyChannelHandling:
 
     def test_postmessage_sender_skipped(self, tmp_path: Path) -> None:
         """PostMessage senders with empty channel are skipped in linking."""
-        from hypergumbo.linkers.ipc import link_ipc
+        from hypergumbo_core.linkers.ipc import link_ipc
 
         # Only postMessage (no named channel)
         (tmp_path / "sender.js").write_text("""
@@ -450,7 +450,7 @@ window.addEventListener('message', handler);
 
     def test_mixed_empty_and_named_channels(self, tmp_path: Path) -> None:
         """Handles mix of empty and named channel patterns."""
-        from hypergumbo.linkers.ipc import link_ipc
+        from hypergumbo_core.linkers.ipc import link_ipc
 
         (tmp_path / "app.js").write_text("""
 // Named channel - should create edges
@@ -475,8 +475,8 @@ class TestIpcLinkerRequirements:
 
     def test_count_js_ts_files(self, tmp_path: Path) -> None:
         """Counts JavaScript/TypeScript files in the repository."""
-        from hypergumbo.linkers.ipc import _count_js_ts_files
-        from hypergumbo.linkers.registry import LinkerContext
+        from hypergumbo_core.linkers.ipc import _count_js_ts_files
+        from hypergumbo_core.linkers.registry import LinkerContext
 
         (tmp_path / "app.js").write_text("const x = 1;")
         (tmp_path / "component.tsx").write_text("export default () => <div/>;")
@@ -489,9 +489,9 @@ class TestIpcLinkerRequirements:
 
     def test_count_electron_patterns_in_symbols(self, tmp_path: Path) -> None:
         """Counts Electron IPC patterns in symbols."""
-        from hypergumbo.ir import Span, Symbol
-        from hypergumbo.linkers.ipc import _count_electron_patterns_in_code
-        from hypergumbo.linkers.registry import LinkerContext
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.linkers.ipc import _count_electron_patterns_in_code
+        from hypergumbo_core.linkers.registry import LinkerContext
 
         sym_ipc = Symbol(
             id="js:main.js:1-10:ipcHandler:function",
@@ -538,8 +538,8 @@ class TestIpcLinkerRegistration:
 
     def test_linker_is_registered(self) -> None:
         """IPC linker is registered with the registry."""
-        import hypergumbo.linkers.ipc
-        from hypergumbo.linkers.registry import get_linker
+        import hypergumbo_core.linkers.ipc
+        from hypergumbo_core.linkers.registry import get_linker
 
         linker = get_linker("ipc")
         assert linker is not None
@@ -548,8 +548,8 @@ class TestIpcLinkerRegistration:
 
     def test_ipc_linker_returns_result(self, tmp_path: Path) -> None:
         """ipc_linker function returns LinkerResult."""
-        from hypergumbo.linkers.ipc import ipc_linker
-        from hypergumbo.linkers.registry import LinkerContext
+        from hypergumbo_core.linkers.ipc import ipc_linker
+        from hypergumbo_core.linkers.registry import LinkerContext
 
         ctx = LinkerContext(repo_root=tmp_path)
         result = ipc_linker(ctx)
@@ -564,7 +564,7 @@ class TestVariableChannelPatterns:
 
     def test_detect_variable_send_channel(self) -> None:
         """Detects ipcRenderer.send with variable channel."""
-        from hypergumbo.linkers.ipc import detect_ipc_patterns
+        from hypergumbo_core.linkers.ipc import detect_ipc_patterns
 
         source = b"""
 const CHANNEL = 'open-file';
@@ -578,7 +578,7 @@ ipcRenderer.send(CHANNEL, { path: '/tmp/file.txt' });
 
     def test_detect_variable_receive_channel(self) -> None:
         """Detects ipcMain.on with variable channel."""
-        from hypergumbo.linkers.ipc import detect_ipc_patterns
+        from hypergumbo_core.linkers.ipc import detect_ipc_patterns
 
         source = b"""
 const OPEN_FILE_CHANNEL = 'open-file';
@@ -594,7 +594,7 @@ ipcMain.on(OPEN_FILE_CHANNEL, (event, data) => {
 
     def test_detect_attribute_access_channel(self) -> None:
         """Detects channel with attribute access like config.channel."""
-        from hypergumbo.linkers.ipc import detect_ipc_patterns
+        from hypergumbo_core.linkers.ipc import detect_ipc_patterns
 
         source = b"""
 ipcRenderer.invoke(config.ipcChannel, { data: 'test' });
@@ -607,7 +607,7 @@ ipcRenderer.invoke(config.ipcChannel, { data: 'test' });
 
     def test_literal_channel_has_literal_type(self) -> None:
         """Verifies literal channels have channel_type='literal'."""
-        from hypergumbo.linkers.ipc import detect_ipc_patterns
+        from hypergumbo_core.linkers.ipc import detect_ipc_patterns
 
         source = b"""
 ipcRenderer.send('user-login', { user: 'test' });
@@ -620,7 +620,7 @@ ipcRenderer.send('user-login', { user: 'test' });
 
     def test_variable_channel_linking(self, tmp_path: Path) -> None:
         """Links variable channels when using same variable name."""
-        from hypergumbo.linkers.ipc import link_ipc
+        from hypergumbo_core.linkers.ipc import link_ipc
 
         renderer = tmp_path / "renderer.js"
         renderer.write_text("""
@@ -647,7 +647,7 @@ ipcMain.on(OPEN_CHANNEL, (event, data) => {
 
     def test_symbol_has_channel_type_metadata(self, tmp_path: Path) -> None:
         """Symbols include channel_type in metadata."""
-        from hypergumbo.linkers.ipc import link_ipc
+        from hypergumbo_core.linkers.ipc import link_ipc
 
         js_file = tmp_path / "test.js"
         js_file.write_text("""
@@ -665,7 +665,7 @@ ipcMain.on(CHANNEL_VAR, handler);
 
     def test_mixed_literal_and_variable_no_match(self, tmp_path: Path) -> None:
         """Literal channel doesn't match different variable name."""
-        from hypergumbo.linkers.ipc import link_ipc
+        from hypergumbo_core.linkers.ipc import link_ipc
 
         renderer = tmp_path / "renderer.js"
         renderer.write_text("""

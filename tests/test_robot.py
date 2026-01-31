@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import robot as robot_module
-from hypergumbo.analyze.robot import (
+from hypergumbo_lang_common import robot as robot_module
+from hypergumbo_lang_common.robot import (
     RobotAnalysisResult,
     analyze_robot,
     find_robot_files,

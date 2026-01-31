@@ -19,8 +19,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import perl as perl_module
-from hypergumbo.analyze.perl import analyze_perl
+from hypergumbo_lang_mainstream import perl as perl_module
+from hypergumbo_lang_mainstream.perl import analyze_perl
 
 
 def make_perl_file(tmp: Path, name: str, content: str) -> Path:

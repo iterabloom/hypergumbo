@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from hypergumbo.linkers.registry import (
+from hypergumbo_core.linkers.registry import (
     LinkerActivation,
     LinkerContext,
     LinkerResult,
@@ -221,7 +221,7 @@ class TestLinkerActivationFromRegistry:
     def test_grpc_linker_has_framework_activation(self) -> None:
         """gRPC linker should have framework-based activation."""
         # Import to trigger registration
-        import hypergumbo.linkers.grpc
+        import hypergumbo_core.linkers.grpc
 
         linker = _LINKER_REGISTRY.get("grpc")
         assert linker is not None
@@ -231,7 +231,7 @@ class TestLinkerActivationFromRegistry:
 
     def test_graphql_linker_has_framework_activation(self) -> None:
         """GraphQL linker should have framework-based activation."""
-        import hypergumbo.linkers.graphql
+        import hypergumbo_core.linkers.graphql
 
         linker = _LINKER_REGISTRY.get("graphql")
         assert linker is not None
@@ -240,7 +240,7 @@ class TestLinkerActivationFromRegistry:
 
     def test_phoenix_linker_has_framework_activation(self) -> None:
         """Phoenix IPC linker should have framework-based activation."""
-        import hypergumbo.linkers.phoenix_ipc
+        import hypergumbo_core.linkers.phoenix_ipc
 
         linker = _LINKER_REGISTRY.get("phoenix_ipc")
         assert linker is not None
@@ -249,7 +249,7 @@ class TestLinkerActivationFromRegistry:
 
     def test_jni_linker_has_language_pair_activation(self) -> None:
         """JNI linker should have language-pair activation."""
-        import hypergumbo.linkers.jni
+        import hypergumbo_core.linkers.jni
 
         linker = _LINKER_REGISTRY.get("jni")
         assert linker is not None
@@ -260,7 +260,7 @@ class TestLinkerActivationFromRegistry:
 
     def test_swift_objc_linker_has_language_pair_activation(self) -> None:
         """Swift/Objective-C linker should have language-pair activation."""
-        import hypergumbo.linkers.swift_objc
+        import hypergumbo_core.linkers.swift_objc
 
         linker = _LINKER_REGISTRY.get("swift_objc")
         assert linker is not None
@@ -269,7 +269,7 @@ class TestLinkerActivationFromRegistry:
 
     def test_http_linker_always_runs(self) -> None:
         """HTTP linker (protocol) should always run."""
-        import hypergumbo.linkers.http
+        import hypergumbo_core.linkers.http
 
         linker = _LINKER_REGISTRY.get("http")
         assert linker is not None
@@ -278,7 +278,7 @@ class TestLinkerActivationFromRegistry:
 
     def test_websocket_linker_always_runs(self) -> None:
         """WebSocket linker (protocol) should always run."""
-        import hypergumbo.linkers.websocket
+        import hypergumbo_core.linkers.websocket
 
         linker = _LINKER_REGISTRY.get("websocket")
         assert linker is not None
@@ -286,7 +286,7 @@ class TestLinkerActivationFromRegistry:
 
     def test_message_queue_linker_always_runs(self) -> None:
         """Message queue linker (protocol) should always run."""
-        import hypergumbo.linkers.message_queue
+        import hypergumbo_core.linkers.message_queue
 
         linker = _LINKER_REGISTRY.get("message_queue")
         assert linker is not None

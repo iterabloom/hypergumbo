@@ -32,7 +32,7 @@ class TestAgdaAnalyzerAvailability:
 
     def test_is_agda_tree_sitter_available(self) -> None:
         """Check if tree-sitter-agda is detected."""
-        from hypergumbo.analyze.agda import is_agda_tree_sitter_available
+        from hypergumbo_lang_extended1.agda import is_agda_tree_sitter_available
 
         # Should be True since we installed tree-sitter-agda
         assert is_agda_tree_sitter_available() is True
@@ -43,7 +43,7 @@ class TestAgdaModuleDetection:
 
     def test_detect_module(self, tmp_path: Path) -> None:
         """Detect module declaration."""
-        from hypergumbo.analyze.agda import analyze_agda
+        from hypergumbo_lang_extended1.agda import analyze_agda
 
         make_agda_file(tmp_path, "Example.agda", """
 module Example where
@@ -66,7 +66,7 @@ class TestAgdaFunctionDetection:
 
     def test_detect_function_with_signature(self, tmp_path: Path) -> None:
         """Detect function with type signature."""
-        from hypergumbo.analyze.agda import analyze_agda
+        from hypergumbo_lang_extended1.agda import analyze_agda
 
         make_agda_file(tmp_path, "Example.agda", """
 module Example where
@@ -87,7 +87,7 @@ double (suc n) = suc (suc (double n))
 
     def test_detect_infix_operator(self, tmp_path: Path) -> None:
         """Detect infix operator definition."""
-        from hypergumbo.analyze.agda import analyze_agda
+        from hypergumbo_lang_extended1.agda import analyze_agda
 
         make_agda_file(tmp_path, "Example.agda", """
 module Example where
@@ -110,7 +110,7 @@ class TestAgdaDataTypeDetection:
 
     def test_detect_data_type(self, tmp_path: Path) -> None:
         """Detect data type definition."""
-        from hypergumbo.analyze.agda import analyze_agda
+        from hypergumbo_lang_extended1.agda import analyze_agda
 
         make_agda_file(tmp_path, "Example.agda", """
 module Example where
@@ -130,7 +130,7 @@ data List (A : Set) : Set where
 
     def test_detect_data_constructors(self, tmp_path: Path) -> None:
         """Detect data constructors."""
-        from hypergumbo.analyze.agda import analyze_agda
+        from hypergumbo_lang_extended1.agda import analyze_agda
 
         make_agda_file(tmp_path, "Example.agda", """
 module Example where
@@ -154,7 +154,7 @@ class TestAgdaRecordDetection:
 
     def test_detect_record(self, tmp_path: Path) -> None:
         """Detect record definition."""
-        from hypergumbo.analyze.agda import analyze_agda
+        from hypergumbo_lang_extended1.agda import analyze_agda
 
         make_agda_file(tmp_path, "Example.agda", """
 module Example where
@@ -180,7 +180,7 @@ class TestAgdaImportDetection:
 
     def test_detect_open_import(self, tmp_path: Path) -> None:
         """Detect open import statement."""
-        from hypergumbo.analyze.agda import analyze_agda
+        from hypergumbo_lang_extended1.agda import analyze_agda
 
         make_agda_file(tmp_path, "Example.agda", """
 module Example where
@@ -202,7 +202,7 @@ open import Data.Bool using (Bool; true; false)
 
     def test_detect_import_with_renaming(self, tmp_path: Path) -> None:
         """Detect import with renaming."""
-        from hypergumbo.analyze.agda import analyze_agda
+        from hypergumbo_lang_extended1.agda import analyze_agda
 
         make_agda_file(tmp_path, "Example.agda", """
 module Example where
@@ -218,7 +218,7 @@ open import Data.Nat renaming (zero to z; suc to s)
 
     def test_detect_plain_import(self, tmp_path: Path) -> None:
         """Detect plain import statement (without open)."""
-        from hypergumbo.analyze.agda import analyze_agda
+        from hypergumbo_lang_extended1.agda import analyze_agda
 
         make_agda_file(tmp_path, "Example.agda", """
 module Example where
@@ -240,11 +240,11 @@ class TestAgdaImportAliases:
 
     def test_extract_renaming_aliases(self, tmp_path: Path) -> None:
         """Extract aliases from renaming directive."""
-        from hypergumbo.analyze.agda import (
+        from hypergumbo_lang_extended1.agda import (
             _extract_edges_from_file,
             _make_file_id,
         )
-        from hypergumbo.symbol_resolution import NameResolver
+        from hypergumbo_core.symbol_resolution import NameResolver
         import tree_sitter
         import tree_sitter_agda
 
@@ -272,7 +272,7 @@ class TestAgdaPostulateDetection:
 
     def test_detect_postulate(self, tmp_path: Path) -> None:
         """Detect postulate declaration."""
-        from hypergumbo.analyze.agda import analyze_agda
+        from hypergumbo_lang_extended1.agda import analyze_agda
 
         make_agda_file(tmp_path, "Example.agda", """
 module Example where
@@ -295,7 +295,7 @@ class TestAgdaCrossFileResolution:
 
     def test_cross_file_import(self, tmp_path: Path) -> None:
         """Detect cross-file imports."""
-        from hypergumbo.analyze.agda import analyze_agda
+        from hypergumbo_lang_extended1.agda import analyze_agda
 
         # Create two Agda files
         make_agda_file(tmp_path, "MyNat.agda", """
@@ -335,7 +335,7 @@ class TestAgdaTheoremDetection:
 
     def test_detect_theorem_style_definition(self, tmp_path: Path) -> None:
         """Detect theorem-style definitions."""
-        from hypergumbo.analyze.agda import analyze_agda
+        from hypergumbo_lang_extended1.agda import analyze_agda
 
         make_agda_file(tmp_path, "Example.agda", """
 module Example where
@@ -361,7 +361,7 @@ class TestAgdaAnalyzerSkipsWhenUnavailable:
 
     def test_returns_skipped_when_no_agda_files(self, tmp_path: Path) -> None:
         """Returns empty result when no Agda files present."""
-        from hypergumbo.analyze.agda import analyze_agda
+        from hypergumbo_lang_extended1.agda import analyze_agda
 
         # Create a non-Agda file
         (tmp_path / "test.py").write_text("print('hello')")
@@ -378,7 +378,7 @@ class TestAgdaSignatureExtraction:
 
     def test_function_signature(self, tmp_path: Path) -> None:
         """Extract type signature from function with type annotation."""
-        from hypergumbo.analyze.agda import analyze_agda
+        from hypergumbo_lang_extended1.agda import analyze_agda
 
         make_agda_file(tmp_path, "Example.agda", """
 module Example where
@@ -393,7 +393,7 @@ double x = x + x
 
     def test_infix_operator_signature(self, tmp_path: Path) -> None:
         """Extract type signature from infix operator."""
-        from hypergumbo.analyze.agda import analyze_agda
+        from hypergumbo_lang_extended1.agda import analyze_agda
 
         make_agda_file(tmp_path, "Example.agda", """
 module Example where
@@ -409,7 +409,7 @@ suc n + m = suc (n + m)
 
     def test_postulate_signature(self, tmp_path: Path) -> None:
         """Extract type signature from postulate."""
-        from hypergumbo.analyze.agda import analyze_agda
+        from hypergumbo_lang_extended1.agda import analyze_agda
 
         make_agda_file(tmp_path, "Example.agda", """
 module Example where
@@ -424,7 +424,7 @@ postulate
 
     def test_constructor_signature(self, tmp_path: Path) -> None:
         """Extract type signature from data constructor."""
-        from hypergumbo.analyze.agda import analyze_agda
+        from hypergumbo_lang_extended1.agda import analyze_agda
 
         make_agda_file(tmp_path, "Example.agda", """
 module Example where

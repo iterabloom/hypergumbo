@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from hypergumbo.sketch import (
+from hypergumbo_core.sketch import (
     generate_sketch,
     estimate_tokens,
     truncate_to_tokens,
@@ -36,11 +36,11 @@ from hypergumbo.sketch import (
     _extract_path_from_forge_url,
     _extract_readme_internal_links,
 )
-from hypergumbo.ranking import compute_centrality, _is_test_path
-from hypergumbo.profile import detect_profile
-from hypergumbo.ir import Symbol, Edge, Span
-from hypergumbo.entrypoints import Entrypoint, EntrypointKind
-from hypergumbo.datamodels import DataModel, DataModelKind
+from hypergumbo_core.ranking import compute_centrality, _is_test_path
+from hypergumbo_core.profile import detect_profile
+from hypergumbo_core.ir import Symbol, Edge, Span
+from hypergumbo_core.entrypoints import Entrypoint, EntrypointKind
+from hypergumbo_core.datamodels import DataModel, DataModelKind
 
 
 def _has_sentence_transformers() -> bool:
@@ -896,36 +896,36 @@ class TestFindReadmePath:
 
     def test_finds_readme_md(self, tmp_path: Path) -> None:
         """Finds README.md in repo root."""
-        from hypergumbo.sketch import _find_readme_path
+        from hypergumbo_core.sketch import _find_readme_path
         (tmp_path / "README.md").write_text("# Hello")
         assert _find_readme_path(tmp_path) == tmp_path / "README.md"
 
     def test_finds_lowercase_readme(self, tmp_path: Path) -> None:
         """Finds lowercase readme.md."""
-        from hypergumbo.sketch import _find_readme_path
+        from hypergumbo_core.sketch import _find_readme_path
         (tmp_path / "readme.md").write_text("# Hello")
         assert _find_readme_path(tmp_path) == tmp_path / "readme.md"
 
     def test_finds_readme_rst(self, tmp_path: Path) -> None:
         """Finds README.rst when .md is absent."""
-        from hypergumbo.sketch import _find_readme_path
+        from hypergumbo_core.sketch import _find_readme_path
         (tmp_path / "README.rst").write_text("Hello\n=====")
         assert _find_readme_path(tmp_path) == tmp_path / "README.rst"
 
     def test_returns_none_if_missing(self, tmp_path: Path) -> None:
         """Returns None when no README exists."""
-        from hypergumbo.sketch import _find_readme_path
+        from hypergumbo_core.sketch import _find_readme_path
         assert _find_readme_path(tmp_path) is None
 
     def test_finds_mixedcase_readme(self, tmp_path: Path) -> None:
         """Finds mixed-case Readme.md (case-insensitive)."""
-        from hypergumbo.sketch import _find_readme_path
+        from hypergumbo_core.sketch import _find_readme_path
         (tmp_path / "Readme.md").write_text("# Hello")
         assert _find_readme_path(tmp_path) == tmp_path / "Readme.md"
 
     def test_prefers_readme_md_over_readme_rst(self, tmp_path: Path) -> None:
         """Prefers .md extension over .rst."""
-        from hypergumbo.sketch import _find_readme_path
+        from hypergumbo_core.sketch import _find_readme_path
         (tmp_path / "README.rst").write_text("Hello\n=====")
         (tmp_path / "Readme.md").write_text("# Hello")
         result = _find_readme_path(tmp_path)
@@ -938,25 +938,25 @@ class TestTruncateDescription:
 
     def test_no_truncation_needed(self) -> None:
         """Short descriptions are returned as-is."""
-        from hypergumbo.sketch import _truncate_description
+        from hypergumbo_core.sketch import _truncate_description
         assert _truncate_description("Hello world", 100) == "Hello world"
 
     def test_truncates_at_word_boundary(self) -> None:
         """Truncates at last word boundary before limit."""
-        from hypergumbo.sketch import _truncate_description
+        from hypergumbo_core.sketch import _truncate_description
         result = _truncate_description("Hello world foo bar", 15)
         assert result == "Hello world…"
 
     def test_truncates_long_word(self) -> None:
         """Truncates mid-word if no good boundary."""
-        from hypergumbo.sketch import _truncate_description
+        from hypergumbo_core.sketch import _truncate_description
         result = _truncate_description("aaaaaaaaaaaaaaaaaa", 10)
         assert len(result) == 10
         assert result.endswith("…")
 
     def test_prefers_sentence_boundary(self) -> None:
         """Truncates at sentence boundary when available."""
-        from hypergumbo.sketch import _truncate_description
+        from hypergumbo_core.sketch import _truncate_description
         # "First sentence. This is a" would be the word-boundary truncation
         # but we want sentence boundary at "First sentence."
         text = "First sentence. This is a longer continuation that goes on."
@@ -967,28 +967,28 @@ class TestTruncateDescription:
 
     def test_sentence_boundary_with_exclamation(self) -> None:
         """Handles exclamation marks as sentence boundaries."""
-        from hypergumbo.sketch import _truncate_description
+        from hypergumbo_core.sketch import _truncate_description
         text = "Hello world! This continues for a while after the mark."
         result = _truncate_description(text, 40)
         assert result == "Hello world!"
 
     def test_sentence_boundary_with_question(self) -> None:
         """Handles question marks as sentence boundaries."""
-        from hypergumbo.sketch import _truncate_description
+        from hypergumbo_core.sketch import _truncate_description
         text = "What is this? It's a test of the truncation logic."
         result = _truncate_description(text, 40)
         assert result == "What is this?"
 
     def test_sentence_boundary_with_colon(self) -> None:
         """Handles colons as sentence boundaries."""
-        from hypergumbo.sketch import _truncate_description
+        from hypergumbo_core.sketch import _truncate_description
         text = "Here is the point: we need good truncation always."
         result = _truncate_description(text, 40)
         assert result == "Here is the point:"
 
     def test_falls_back_to_word_boundary(self) -> None:
         """Falls back to word boundary if no sentence boundary is found."""
-        from hypergumbo.sketch import _truncate_description
+        from hypergumbo_core.sketch import _truncate_description
         # No sentence-ending punctuation, should fall back to word boundary
         text = "This is a very long text without any sentence endings at all"
         result = _truncate_description(text, 30)
@@ -999,7 +999,7 @@ class TestTruncateDescription:
 
     def test_sentence_too_short_falls_back(self) -> None:
         """Falls back if sentence boundary is too short (< 10 chars)."""
-        from hypergumbo.sketch import _truncate_description
+        from hypergumbo_core.sketch import _truncate_description
         # "Hi." is only 3 chars, so falls back to word boundary
         text = "Hi. This is a much longer text that we want."
         result = _truncate_description(text, 30)
@@ -1010,7 +1010,7 @@ class TestTruncateDescription:
 
     def test_sentence_at_end_of_search_range(self) -> None:
         """Handles sentence ending exactly at max_chars."""
-        from hypergumbo.sketch import _truncate_description
+        from hypergumbo_core.sketch import _truncate_description
         # "Exactly." is 8 chars, put it right at the limit
         text = "Exactly."
         result = _truncate_description(text, 8)
@@ -1018,7 +1018,7 @@ class TestTruncateDescription:
 
     def test_sentence_punctuation_at_max_chars_boundary(self) -> None:
         """Handles punctuation at exact max_chars position in longer text."""
-        from hypergumbo.sketch import _truncate_description
+        from hypergumbo_core.sketch import _truncate_description
         # Text longer than max_chars, with period at position 14 (0-indexed)
         # "Hello world123." is 15 chars, with period at index 14
         text = "Hello world123. More text follows here."
@@ -1033,7 +1033,7 @@ class TestExtractReadmeDescriptionHeuristic:
 
     def test_extracts_paragraph_after_title(self, tmp_path: Path) -> None:
         """Extracts first paragraph after markdown title."""
-        from hypergumbo.sketch import _extract_readme_description_heuristic
+        from hypergumbo_core.sketch import _extract_readme_description_heuristic
         readme = tmp_path / "README.md"
         readme.write_text("# Project\n\nA tool for doing things.\n")
         result = _extract_readme_description_heuristic(readme)
@@ -1041,7 +1041,7 @@ class TestExtractReadmeDescriptionHeuristic:
 
     def test_stops_at_section_header(self, tmp_path: Path) -> None:
         """Stops extraction at section headers."""
-        from hypergumbo.sketch import _extract_readme_description_heuristic
+        from hypergumbo_core.sketch import _extract_readme_description_heuristic
         readme = tmp_path / "README.md"
         readme.write_text("# Project\n\nIntro.\n## Usage\nNot included.")
         result = _extract_readme_description_heuristic(readme)
@@ -1050,7 +1050,7 @@ class TestExtractReadmeDescriptionHeuristic:
 
     def test_skips_badges_and_images(self, tmp_path: Path) -> None:
         """Skips badge and image markdown."""
-        from hypergumbo.sketch import _extract_readme_description_heuristic
+        from hypergumbo_core.sketch import _extract_readme_description_heuristic
         readme = tmp_path / "README.md"
         readme.write_text("# Project\n\n![badge](url)\n[![CI](ci.png)](link)\nActual description.")
         result = _extract_readme_description_heuristic(readme)
@@ -1058,7 +1058,7 @@ class TestExtractReadmeDescriptionHeuristic:
 
     def test_skips_html_tags(self, tmp_path: Path) -> None:
         """Skips HTML-only lines."""
-        from hypergumbo.sketch import _extract_readme_description_heuristic
+        from hypergumbo_core.sketch import _extract_readme_description_heuristic
         readme = tmp_path / "README.md"
         readme.write_text("# Project\n\n<picture><img src='x'></picture>\nReal description.")
         result = _extract_readme_description_heuristic(readme)
@@ -1066,7 +1066,7 @@ class TestExtractReadmeDescriptionHeuristic:
 
     def test_extracts_title_subtitle(self, tmp_path: Path) -> None:
         """Falls back to title subtitle if no paragraph."""
-        from hypergumbo.sketch import _extract_readme_description_heuristic
+        from hypergumbo_core.sketch import _extract_readme_description_heuristic
         readme = tmp_path / "README.md"
         readme.write_text("# Project: A description in the title\n\n## Section")
         result = _extract_readme_description_heuristic(readme)
@@ -1074,7 +1074,7 @@ class TestExtractReadmeDescriptionHeuristic:
 
     def test_handles_rst_format(self, tmp_path: Path) -> None:
         """Handles RST title format with underlines."""
-        from hypergumbo.sketch import _extract_readme_description_heuristic
+        from hypergumbo_core.sketch import _extract_readme_description_heuristic
         readme = tmp_path / "README.rst"
         readme.write_text("Project\n=======\n\nRST description here.\n")
         result = _extract_readme_description_heuristic(readme)
@@ -1082,7 +1082,7 @@ class TestExtractReadmeDescriptionHeuristic:
 
     def test_returns_none_for_empty(self, tmp_path: Path) -> None:
         """Returns None when no description found."""
-        from hypergumbo.sketch import _extract_readme_description_heuristic
+        from hypergumbo_core.sketch import _extract_readme_description_heuristic
         readme = tmp_path / "README.md"
         readme.write_text("# Title\n\n## Section\nNo intro paragraph.")
         result = _extract_readme_description_heuristic(readme)
@@ -1090,7 +1090,7 @@ class TestExtractReadmeDescriptionHeuristic:
 
     def test_skips_link_only_lines(self, tmp_path: Path) -> None:
         """Skips lines that are just markdown links."""
-        from hypergumbo.sketch import _extract_readme_description_heuristic
+        from hypergumbo_core.sketch import _extract_readme_description_heuristic
         readme = tmp_path / "README.md"
         readme.write_text("# Project\n\n[Docs](https://example.com)\nActual text.")
         result = _extract_readme_description_heuristic(readme)
@@ -1098,7 +1098,7 @@ class TestExtractReadmeDescriptionHeuristic:
 
     def test_skips_badges_before_title(self, tmp_path: Path) -> None:
         """Skips badge images that appear before the markdown title."""
-        from hypergumbo.sketch import _extract_readme_description_heuristic
+        from hypergumbo_core.sketch import _extract_readme_description_heuristic
         readme = tmp_path / "README.md"
         # Badge at top, then title, then description
         readme.write_text("![Badge](https://img.shields.io/badge)\n# Project\n\nDescription text.")
@@ -1107,7 +1107,7 @@ class TestExtractReadmeDescriptionHeuristic:
 
     def test_skips_html_before_title(self, tmp_path: Path) -> None:
         """Skips HTML tags that appear before the markdown title."""
-        from hypergumbo.sketch import _extract_readme_description_heuristic
+        from hypergumbo_core.sketch import _extract_readme_description_heuristic
         readme = tmp_path / "README.md"
         # HTML logo at top, then title, then description
         readme.write_text("<p align='center'><img src='logo.png'></p>\n# Project\n\nDescription.")
@@ -1116,7 +1116,7 @@ class TestExtractReadmeDescriptionHeuristic:
 
     def test_skips_html_comments_in_description(self, tmp_path: Path) -> None:
         """Skips HTML comments that appear in the description area."""
-        from hypergumbo.sketch import _extract_readme_description_heuristic
+        from hypergumbo_core.sketch import _extract_readme_description_heuristic
         readme = tmp_path / "README.md"
         readme.write_text("# Project\n\n<!-- CI badge placeholder -->\nActual description here.")
         result = _extract_readme_description_heuristic(readme)
@@ -1124,7 +1124,7 @@ class TestExtractReadmeDescriptionHeuristic:
 
     def test_completes_sentence_across_paragraph_break(self, tmp_path: Path) -> None:
         """Completes sentence when split across paragraph break."""
-        from hypergumbo.sketch import _extract_readme_description_heuristic
+        from hypergumbo_core.sketch import _extract_readme_description_heuristic
         readme = tmp_path / "README.md"
         # Sentence incomplete at first paragraph, continues after blank line
         readme.write_text(
@@ -1138,7 +1138,7 @@ class TestExtractReadmeDescriptionHeuristic:
 
     def test_completes_sentence_stops_at_period(self, tmp_path: Path) -> None:
         """Stops appending words when period is reached."""
-        from hypergumbo.sketch import _extract_readme_description_heuristic
+        from hypergumbo_core.sketch import _extract_readme_description_heuristic
         readme = tmp_path / "README.md"
         readme.write_text(
             "# Project\n\n"
@@ -1151,7 +1151,7 @@ class TestExtractReadmeDescriptionHeuristic:
 
     def test_does_not_complete_into_header(self, tmp_path: Path) -> None:
         """Does not append words from header lines."""
-        from hypergumbo.sketch import _extract_readme_description_heuristic
+        from hypergumbo_core.sketch import _extract_readme_description_heuristic
         readme = tmp_path / "README.md"
         readme.write_text(
             "# Project\n\n"
@@ -1164,7 +1164,7 @@ class TestExtractReadmeDescriptionHeuristic:
 
     def test_completes_sentence_strips_html(self, tmp_path: Path) -> None:
         """Strips HTML tags when checking continuation line."""
-        from hypergumbo.sketch import _extract_readme_description_heuristic
+        from hypergumbo_core.sketch import _extract_readme_description_heuristic
         readme = tmp_path / "README.md"
         readme.write_text(
             "# Project\n\n"
@@ -1179,7 +1179,7 @@ class TestExtractReadmeDescriptionHeuristic:
 
     def test_no_completion_when_sentence_complete(self, tmp_path: Path) -> None:
         """Does not append when sentence already ends with punctuation."""
-        from hypergumbo.sketch import _extract_readme_description_heuristic
+        from hypergumbo_core.sketch import _extract_readme_description_heuristic
         readme = tmp_path / "README.md"
         readme.write_text(
             "# Project\n\n"
@@ -1193,7 +1193,7 @@ class TestExtractReadmeDescriptionHeuristic:
     def test_returns_none_when_no_content(self, tmp_path: Path) -> None:
         """Returns None when both embedding and heuristic fail."""
         from unittest.mock import patch
-        from hypergumbo.sketch import _extract_readme_description
+        from hypergumbo_core.sketch import _extract_readme_description
 
         readme = tmp_path / "README.md"
         # README with only title and section header - no description
@@ -1201,7 +1201,7 @@ class TestExtractReadmeDescriptionHeuristic:
 
         # Mock embedding to return None
         with patch(
-            "hypergumbo.sketch_embeddings.extract_readme_description_embedding",
+            "hypergumbo_core.sketch_embeddings.extract_readme_description_embedding",
             return_value=None
         ):
             result = _extract_readme_description(tmp_path)
@@ -1210,14 +1210,14 @@ class TestExtractReadmeDescriptionHeuristic:
     def test_fallback_when_embedding_fails(self, tmp_path: Path) -> None:
         """Falls back to heuristic when embedding returns None."""
         from unittest.mock import patch
-        from hypergumbo.sketch import _extract_readme_description
+        from hypergumbo_core.sketch import _extract_readme_description
 
         readme = tmp_path / "README.md"
         readme.write_text("# Project\n\nHeuristic description text.\n")
 
         # Mock embedding to return None (simulating failure/unavailable)
         with patch(
-            "hypergumbo.sketch_embeddings.extract_readme_description_embedding",
+            "hypergumbo_core.sketch_embeddings.extract_readme_description_embedding",
             return_value=None
         ):
             result = _extract_readme_description(tmp_path)
@@ -1226,14 +1226,14 @@ class TestExtractReadmeDescriptionHeuristic:
     def test_fallback_when_embedding_raises(self, tmp_path: Path) -> None:
         """Falls back to heuristic when embedding raises exception."""
         from unittest.mock import patch
-        from hypergumbo.sketch import _extract_readme_description
+        from hypergumbo_core.sketch import _extract_readme_description
 
         readme = tmp_path / "README.md"
         readme.write_text("# Project\n\nFallback description.\n")
 
         # Mock embedding to raise an exception
         with patch(
-            "hypergumbo.sketch_embeddings.extract_readme_description_embedding",
+            "hypergumbo_core.sketch_embeddings.extract_readme_description_embedding",
             side_effect=ImportError("No module")
         ):
             result = _extract_readme_description(tmp_path)
@@ -1245,39 +1245,39 @@ class TestReadmeLineFilterable:
 
     def test_skips_empty_lines(self) -> None:
         """Empty lines are filterable."""
-        from hypergumbo.sketch_embeddings import _is_readme_line_filterable
+        from hypergumbo_core.sketch_embeddings import _is_readme_line_filterable
         assert _is_readme_line_filterable("") is True
         assert _is_readme_line_filterable("   ") is True
 
     def test_skips_badges(self) -> None:
         """Badge markdown is filterable."""
-        from hypergumbo.sketch_embeddings import _is_readme_line_filterable
+        from hypergumbo_core.sketch_embeddings import _is_readme_line_filterable
         assert _is_readme_line_filterable("[![Build](https://img.shields.io/badge)](link)") is True
         assert _is_readme_line_filterable("![Logo](logo.png)") is True
 
     def test_skips_link_only_lines(self) -> None:
         """Pure link lines are filterable."""
-        from hypergumbo.sketch_embeddings import _is_readme_line_filterable
+        from hypergumbo_core.sketch_embeddings import _is_readme_line_filterable
         assert _is_readme_line_filterable("[Link](https://example.com)") is True
 
     def test_skips_html_comments(self) -> None:
         """HTML comments are filterable."""
-        from hypergumbo.sketch_embeddings import _is_readme_line_filterable
+        from hypergumbo_core.sketch_embeddings import _is_readme_line_filterable
         assert _is_readme_line_filterable("<!-- Comment -->") is True
 
     def test_keeps_text_content(self) -> None:
         """Normal text is not filterable."""
-        from hypergumbo.sketch_embeddings import _is_readme_line_filterable
+        from hypergumbo_core.sketch_embeddings import _is_readme_line_filterable
         assert _is_readme_line_filterable("This is a project description.") is False
 
     def test_keeps_html_with_text(self) -> None:
         """HTML containing text is kept."""
-        from hypergumbo.sketch_embeddings import _is_readme_line_filterable
+        from hypergumbo_core.sketch_embeddings import _is_readme_line_filterable
         assert _is_readme_line_filterable("<p>Project description here</p>") is False
 
     def test_skips_link_reference_definitions(self) -> None:
         """Markdown link reference definitions are filterable."""
-        from hypergumbo.sketch_embeddings import _is_readme_line_filterable
+        from hypergumbo_core.sketch_embeddings import _is_readme_line_filterable
         # Common pattern at top of READMEs
         assert _is_readme_line_filterable("[bep]: https://github.com/bep") is True
         assert _is_readme_line_filterable("[docs]: https://example.com/docs") is True
@@ -1288,7 +1288,7 @@ class TestReadmeLineFilterable:
 
     def test_skips_github_callout_syntax(self) -> None:
         """GitHub callout syntax is filterable."""
-        from hypergumbo.sketch_embeddings import _is_readme_line_filterable
+        from hypergumbo_core.sketch_embeddings import _is_readme_line_filterable
         assert _is_readme_line_filterable("> [!NOTE]") is True
         assert _is_readme_line_filterable("> [!IMPORTANT]") is True
         assert _is_readme_line_filterable("> [!WARNING]") is True
@@ -1778,13 +1778,13 @@ class TestFormatAdditionalFiles:
             return dict.fromkeys(files, None)
 
         with patch(
-            "hypergumbo.sketch_embeddings._has_sentence_transformers",
+            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
             return_value=True
         ), patch(
-            "hypergumbo.sketch_embeddings.batch_embed_files",
+            "hypergumbo_core.sketch_embeddings.batch_embed_files",
             side_effect=mock_batch_embed
         ), patch(
-            "hypergumbo.sketch_embeddings._get_cache_dir",
+            "hypergumbo_core.sketch_embeddings._get_cache_dir",
             return_value=tmp_path / ".cache"
         ):
             result, _, _ = _format_additional_files(
@@ -1820,15 +1820,15 @@ class TestFormatAdditionalFiles:
             return dict.fromkeys(files, fake_embedding)
 
         with patch(
-            "hypergumbo.sketch_embeddings._has_sentence_transformers",
+            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
             return_value=True
         ), patch(
-            "hypergumbo.sketch_embeddings.batch_embed_files",
+            "hypergumbo_core.sketch_embeddings.batch_embed_files",
             side_effect=mock_batch_embed
         ), patch(
-            "hypergumbo.sketch_embeddings.compute_5w1h_similarity", return_value=0.5
+            "hypergumbo_core.sketch_embeddings.compute_5w1h_similarity", return_value=0.5
         ), patch(
-            "hypergumbo.sketch_embeddings._get_cache_dir",
+            "hypergumbo_core.sketch_embeddings._get_cache_dir",
             return_value=tmp_path / ".cache"
         ):
             result, _, _ = _format_additional_files(
@@ -3469,7 +3469,7 @@ class TestCLISketch:
 
     def test_sketch_nonexistent_path(self, capsys) -> None:
         """Sketch command handles nonexistent paths."""
-        from hypergumbo.cli import main
+        from hypergumbo_core.cli import main
 
         result = main(["/nonexistent/path/that/does/not/exist"])
 
@@ -3479,7 +3479,7 @@ class TestCLISketch:
 
     def test_sketch_default_mode(self, tmp_path: Path, capsys) -> None:
         """Default mode runs sketch."""
-        from hypergumbo.cli import main
+        from hypergumbo_core.cli import main
 
         (tmp_path / "app.py").write_text("def main():\n    pass\n")
 
@@ -3491,7 +3491,7 @@ class TestCLISketch:
 
     def test_sketch_with_tokens_flag(self, tmp_path: Path, capsys) -> None:
         """Sketch respects -t flag."""
-        from hypergumbo.cli import main
+        from hypergumbo_core.cli import main
 
         (tmp_path / "app.py").write_text("def main():\n    pass\n")
 
@@ -3507,7 +3507,7 @@ class TestCLISketch:
 
     def test_sketch_explicit_command(self, tmp_path: Path, capsys) -> None:
         """Sketch works with explicit 'sketch' command."""
-        from hypergumbo.cli import main
+        from hypergumbo_core.cli import main
 
         (tmp_path / "app.py").write_text("def main():\n    pass\n")
 
@@ -3519,7 +3519,7 @@ class TestCLISketch:
 
     def test_sketch_exclude_tests_flag(self, tmp_path: Path, capsys) -> None:
         """Sketch respects --exclude-tests flag."""
-        from hypergumbo.cli import main
+        from hypergumbo_core.cli import main
 
         (tmp_path / "app.py").write_text("def main():\n    pass\n")
 
@@ -3531,8 +3531,8 @@ class TestCLISketch:
 
     def test_sketch_caches_to_file(self, tmp_path: Path, capsys) -> None:
         """Sketch is cached to a file in the cache directory."""
-        from hypergumbo.cli import main
-        from hypergumbo.sketch_embeddings import _get_results_cache_dir
+        from hypergumbo_core.cli import main
+        from hypergumbo_core.sketch_embeddings import _get_results_cache_dir
 
         (tmp_path / "app.py").write_text("def main():\n    pass\n")
 
@@ -3552,8 +3552,8 @@ class TestCLISketch:
 
     def test_sketch_cache_filename_with_flags(self, tmp_path: Path, capsys) -> None:
         """Sketch cache filename includes non-default flags."""
-        from hypergumbo.cli import main
-        from hypergumbo.sketch_embeddings import _get_results_cache_dir
+        from hypergumbo_core.cli import main
+        from hypergumbo_core.sketch_embeddings import _get_results_cache_dir
 
         (tmp_path / "app.py").write_text("def main():\n    pass\n")
 
@@ -3572,35 +3572,35 @@ class TestGenerateSketchFilename:
 
     def test_no_budget(self) -> None:
         """Returns 'sketch.md' when no budget specified."""
-        from hypergumbo.cli import _generate_sketch_filename
+        from hypergumbo_core.cli import _generate_sketch_filename
 
         result = _generate_sketch_filename()
         assert result == "sketch.md"
 
     def test_with_budget(self) -> None:
         """Includes token budget in filename."""
-        from hypergumbo.cli import _generate_sketch_filename
+        from hypergumbo_core.cli import _generate_sketch_filename
 
         result = _generate_sketch_filename(tokens=4000)
         assert result == "sketch.4000.md"
 
     def test_with_exclude_tests(self) -> None:
         """Includes 'notests' suffix when exclude_tests=True."""
-        from hypergumbo.cli import _generate_sketch_filename
+        from hypergumbo_core.cli import _generate_sketch_filename
 
         result = _generate_sketch_filename(tokens=8000, exclude_tests=True)
         assert result == "sketch.8000.notests.md"
 
     def test_with_source(self) -> None:
         """Includes 'withsource' suffix when with_source=True."""
-        from hypergumbo.cli import _generate_sketch_filename
+        from hypergumbo_core.cli import _generate_sketch_filename
 
         result = _generate_sketch_filename(tokens=16000, with_source=True)
         assert result == "sketch.16000.withsource.md"
 
     def test_all_flags(self) -> None:
         """Includes all flags in filename."""
-        from hypergumbo.cli import _generate_sketch_filename
+        from hypergumbo_core.cli import _generate_sketch_filename
 
         result = _generate_sketch_filename(
             tokens=4000, exclude_tests=True, with_source=True
@@ -3609,7 +3609,7 @@ class TestGenerateSketchFilename:
 
     def test_no_budget_with_flags(self) -> None:
         """Handles flags without budget."""
-        from hypergumbo.cli import _generate_sketch_filename
+        from hypergumbo_core.cli import _generate_sketch_filename
 
         result = _generate_sketch_filename(exclude_tests=True)
         assert result == "sketch.notests.md"
@@ -3694,7 +3694,7 @@ class TestExcludeTests:
         _format_language_stats was recalculating totals from an empty
         filtered_source_files list instead of using the profile's counts.
         """
-        from hypergumbo.profile import RepoProfile, LanguageStats
+        from hypergumbo_core.profile import RepoProfile, LanguageStats
 
         # Simulate a markdown/JSON repo (like compose-spec)
         profile = RepoProfile()
@@ -4004,7 +4004,7 @@ class TestFormatStructureTreeFallback:
         (tmp_path / "node_modules").mkdir()
         (tmp_path / ".git").mkdir()
 
-        from hypergumbo.discovery import DEFAULT_EXCLUDES
+        from hypergumbo_core.discovery import DEFAULT_EXCLUDES
         result = _format_structure_tree_fallback(
             tmp_path, list(DEFAULT_EXCLUDES), exclude_tests=False
         )
@@ -4841,7 +4841,7 @@ class TestConfigExtraction:
 
     def test_extract_package_json_fields(self, tmp_path: Path) -> None:
         """Extracts key fields from package.json."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         (tmp_path / "package.json").write_text('''{
             "name": "my-project",
@@ -4868,7 +4868,7 @@ class TestConfigExtraction:
 
     def test_extract_non_dict_package_json(self, tmp_path: Path) -> None:
         """Handles non-dict package.json gracefully (returns empty)."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         # Valid JSON but not a dict - should be skipped
         (tmp_path / "package.json").write_text('"just a string"')
@@ -4880,7 +4880,7 @@ class TestConfigExtraction:
 
     def test_extract_go_mod_fields(self, tmp_path: Path) -> None:
         """Extracts module and dependencies from go.mod."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         (tmp_path / "go.mod").write_text("""module github.com/example/myproject
 
@@ -4900,7 +4900,7 @@ require (
 
     def test_extract_cargo_toml_fields(self, tmp_path: Path) -> None:
         """Extracts package info from Cargo.toml."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         (tmp_path / "Cargo.toml").write_text('''[package]
 name = "my-rust-project"
@@ -4916,7 +4916,7 @@ license = "Apache-2.0"
 
     def test_extract_pyproject_toml_fields(self, tmp_path: Path) -> None:
         """Extracts project info from pyproject.toml."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         (tmp_path / "pyproject.toml").write_text('''[project]
 name = "my-python-project"
@@ -4931,7 +4931,7 @@ license = "GPL-3.0"
 
     def test_extract_license_detection(self, tmp_path: Path) -> None:
         """Detects license type from LICENSE file."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         (tmp_path / "LICENSE").write_text(
             "MIT License\n\n"
@@ -4944,7 +4944,7 @@ license = "GPL-3.0"
 
     def test_extract_agpl_license(self, tmp_path: Path) -> None:
         """Detects AGPL license correctly (before GPL)."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         (tmp_path / "LICENSE").write_text(
             "GNU AFFERO GENERAL PUBLIC LICENSE\n"
@@ -4957,7 +4957,7 @@ license = "GPL-3.0"
 
     def test_extract_lgpl_license(self, tmp_path: Path) -> None:
         """Detects LGPL license."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         # Use the actual LGPL-style text with both GPL and Lesser
         (tmp_path / "LICENSE").write_text(
@@ -4971,7 +4971,7 @@ license = "GPL-3.0"
 
     def test_extract_gpl_license(self, tmp_path: Path) -> None:
         """Detects GPL license."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         (tmp_path / "LICENSE").write_text(
             "GPL-3.0 License\n"
@@ -4984,7 +4984,7 @@ license = "GPL-3.0"
 
     def test_extract_apache_license(self, tmp_path: Path) -> None:
         """Detects Apache license."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         (tmp_path / "LICENSE").write_text(
             "Apache License\n"
@@ -4997,7 +4997,7 @@ license = "GPL-3.0"
 
     def test_extract_bsd_license(self, tmp_path: Path) -> None:
         """Detects BSD license."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         (tmp_path / "LICENSE").write_text(
             "BSD 3-Clause License\n"
@@ -5010,7 +5010,7 @@ license = "GPL-3.0"
 
     def test_extract_mpl_license(self, tmp_path: Path) -> None:
         """Detects Mozilla Public License."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         (tmp_path / "LICENSE").write_text(
             "Mozilla Public License Version 2.0\n"
@@ -5022,7 +5022,7 @@ license = "GPL-3.0"
 
     def test_extract_isc_license(self, tmp_path: Path) -> None:
         """Detects ISC License."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         (tmp_path / "LICENSE").write_text(
             "ISC License\n"
@@ -5035,7 +5035,7 @@ license = "GPL-3.0"
 
     def test_extract_unlicense(self, tmp_path: Path) -> None:
         """Detects Unlicense."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         (tmp_path / "LICENSE").write_text(
             "This is free and unencumbered software released into the public domain.\n"
@@ -5048,7 +5048,7 @@ license = "GPL-3.0"
 
     def test_extract_mix_exs(self, tmp_path: Path) -> None:
         """Extracts Elixir project info from mix.exs."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         (tmp_path / "mix.exs").write_text('''
 defmodule MyApp.MixProject do
@@ -5074,7 +5074,7 @@ end
 
     def test_extract_build_gradle(self, tmp_path: Path) -> None:
         """Extracts Kotlin/Java project info from build.gradle.kts."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         (tmp_path / "build.gradle.kts").write_text('''
 plugins {
@@ -5099,7 +5099,7 @@ dependencies {
 
     def test_extract_gemfile(self, tmp_path: Path) -> None:
         """Extracts Ruby gems from Gemfile."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         (tmp_path / "Gemfile").write_text('''
 source "https://rubygems.org"
@@ -5119,7 +5119,7 @@ gem "puma"
 
     def test_monorepo_subdir_support(self, tmp_path: Path) -> None:
         """Extracts config from monorepo subdirectories."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         (tmp_path / "server").mkdir()
         (tmp_path / "server" / "package.json").write_text('''{
@@ -5141,7 +5141,7 @@ gem "puma"
 
     def test_truncates_long_output(self, tmp_path: Path) -> None:
         """Truncates output when exceeding max_chars."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         # Create package.json with many dependencies
         deps = {f"pkg-{i}": f"^{i}.0.0" for i in range(100)}
@@ -5165,7 +5165,7 @@ gem "puma"
     )
     def test_embedding_mode_requires_model(self, tmp_path: Path) -> None:
         """Embedding mode uses sentence-transformer model."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         (tmp_path / "package.json").write_text('''{
             "name": "test-project",
@@ -5191,7 +5191,7 @@ gem "puma"
     )
     def test_embedding_mode_centroid_selection(self, tmp_path: Path) -> None:
         """Embedding mode uses dual-probe centroid selection."""
-        from hypergumbo.sketch import (
+        from hypergumbo_core.sketch import (
             _extract_config_info,
             ConfigExtractionMode,
             ANSWER_PATTERNS,
@@ -5239,7 +5239,7 @@ gem "puma"
         but has low information density. A 50% penalty is applied to LICENSE/COPYING
         files to prioritize more useful config content.
         """
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         # Create a rich package.json and a verbose LICENSE
         (tmp_path / "package.json").write_text('''{
@@ -5264,7 +5264,7 @@ gem "puma"
     )
     def test_embedding_mode_provides_context(self, tmp_path: Path) -> None:
         """Embedding mode provides context lines around selected lines."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         # Create a package.json with a nested dependency
         (tmp_path / "package.json").write_text('''{
@@ -5293,7 +5293,7 @@ gem "puma"
     )
     def test_embedding_mode_multi_file_overflow(self, tmp_path: Path) -> None:
         """Embedding mode handles overflow with multiple files (diversity mechanism)."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         # Create multiple config files to trigger multi-file overflow handling
         # Package.json with lots of content
@@ -5372,7 +5372,7 @@ services:
     )
     def test_hybrid_mode_combines_both(self, tmp_path: Path) -> None:
         """Hybrid mode uses heuristics first, then embeddings for remaining."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         (tmp_path / "package.json").write_text('''{
             "name": "hybrid-test",
@@ -5402,7 +5402,7 @@ services:
 
     def test_heuristic_is_default_mode(self, tmp_path: Path) -> None:
         """Heuristic is the default mode when not specified."""
-        from hypergumbo.sketch import _extract_config_info
+        from hypergumbo_core.sketch import _extract_config_info
 
         (tmp_path / "package.json").write_text('{"name": "test", "version": "1.0.0"}')
 
@@ -5414,7 +5414,7 @@ services:
 
     def test_generate_sketch_with_config_mode(self, tmp_path: Path) -> None:
         """generate_sketch accepts config_extraction_mode parameter."""
-        from hypergumbo.sketch import ConfigExtractionMode
+        from hypergumbo_core.sketch import ConfigExtractionMode
 
         (tmp_path / "package.json").write_text('''{
             "name": "sketch-test",
@@ -5434,7 +5434,7 @@ services:
 
     def test_no_config_files_returns_empty(self, tmp_path: Path) -> None:
         """Returns empty string when no config files found."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         (tmp_path / "app.py").write_text("print('hello')\n")
 
@@ -5444,7 +5444,7 @@ services:
 
     def test_invalid_json_handled_gracefully(self, tmp_path: Path) -> None:
         """Handles invalid JSON in package.json gracefully."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         (tmp_path / "package.json").write_text("{ invalid json }")
 
@@ -5455,7 +5455,7 @@ services:
 
     def test_pom_xml_extraction(self, tmp_path: Path) -> None:
         """Extracts Maven coordinates from pom.xml."""
-        from hypergumbo.sketch import _extract_config_info, ConfigExtractionMode
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
 
         (tmp_path / "pom.xml").write_text('''<?xml version="1.0"?>
 <project>
@@ -5478,7 +5478,7 @@ class TestLogScaledSampling:
 
     def test_compute_log_sample_size_small_file(self) -> None:
         """Small files return their full line count."""
-        from hypergumbo.sketch import _compute_log_sample_size
+        from hypergumbo_core.sketch import _compute_log_sample_size
 
         # File smaller than fleximax
         assert _compute_log_sample_size(50, fleximax=100) == 50
@@ -5486,7 +5486,7 @@ class TestLogScaledSampling:
 
     def test_compute_log_sample_size_large_file(self) -> None:
         """Large files use log-scaled formula."""
-        from hypergumbo.sketch import _compute_log_sample_size
+        from hypergumbo_core.sketch import _compute_log_sample_size
 
         # 1000 lines with fleximax=100: 100 + log10(1000) * 10 = 100 + 30 = 130
         result = _compute_log_sample_size(1000, fleximax=100)
@@ -5498,14 +5498,14 @@ class TestLogScaledSampling:
 
     def test_compute_stride_small_file(self) -> None:
         """Small files get stride 1 (sample all)."""
-        from hypergumbo.sketch import _compute_stride
+        from hypergumbo_core.sketch import _compute_stride
 
         assert _compute_stride(50, sample_size=100) == 1
         assert _compute_stride(100, sample_size=100) == 1
 
     def test_compute_stride_large_file(self) -> None:
         """Large files get stride >= 4."""
-        from hypergumbo.sketch import _compute_stride
+        from hypergumbo_core.sketch import _compute_stride
 
         # 400 lines with sample_size=100 -> stride 4
         assert _compute_stride(400, sample_size=100) == 4
@@ -5518,7 +5518,7 @@ class TestLogScaledSampling:
 
     def test_build_context_chunk_simple(self) -> None:
         """Builds 3-line chunk with context."""
-        from hypergumbo.sketch import _build_context_chunk
+        from hypergumbo_core.sketch import _build_context_chunk
 
         lines = ["line0", "line1", "line2", "line3", "line4"]
 
@@ -5530,7 +5530,7 @@ class TestLogScaledSampling:
 
     def test_build_context_chunk_at_start(self) -> None:
         """Chunk at start of file only includes available context."""
-        from hypergumbo.sketch import _build_context_chunk
+        from hypergumbo_core.sketch import _build_context_chunk
 
         lines = ["line0", "line1", "line2"]
 
@@ -5541,7 +5541,7 @@ class TestLogScaledSampling:
 
     def test_build_context_chunk_at_end(self) -> None:
         """Chunk at end of file only includes available context."""
-        from hypergumbo.sketch import _build_context_chunk
+        from hypergumbo_core.sketch import _build_context_chunk
 
         lines = ["line0", "line1", "line2"]
 
@@ -5552,7 +5552,7 @@ class TestLogScaledSampling:
 
     def test_build_context_chunk_word_subsampling(self) -> None:
         """Long chunks get word-level subsampling with ellipsis."""
-        from hypergumbo.sketch import _build_context_chunk
+        from hypergumbo_core.sketch import _build_context_chunk
 
         # Create lines that together exceed max_chunk_chars
         long_line = "word " * 200  # 1000+ chars
@@ -5567,7 +5567,7 @@ class TestLogScaledSampling:
 
     def test_build_context_chunk_truncation(self) -> None:
         """Chunks that exceed max_chars but have few words get truncated."""
-        from hypergumbo.sketch import _build_context_chunk
+        from hypergumbo_core.sketch import _build_context_chunk
 
         # Create a line with few but very long words
         long_word = "x" * 300
@@ -5582,7 +5582,7 @@ class TestLogScaledSampling:
 
     def test_min_chunk_chars_expands_forward(self) -> None:
         """Minimum chunk size causes expansion forward."""
-        from hypergumbo.sketch import _build_context_chunk
+        from hypergumbo_core.sketch import _build_context_chunk
 
         # Short heading followed by longer content
         lines = [
@@ -5607,7 +5607,7 @@ class TestLogScaledSampling:
 
     def test_min_chunk_chars_stops_at_file_end(self) -> None:
         """Expansion stops at end of file if minimum can't be reached."""
-        from hypergumbo.sketch import _build_context_chunk
+        from hypergumbo_core.sketch import _build_context_chunk
 
         # Short content that can't meet minimum
         lines = ["Short", "text", "here"]
@@ -5624,7 +5624,7 @@ class TestLogScaledSampling:
 
     def test_min_chunk_chars_skips_empty_lines(self) -> None:
         """Empty lines are skipped during forward expansion."""
-        from hypergumbo.sketch import _build_context_chunk
+        from hypergumbo_core.sketch import _build_context_chunk
 
         lines = [
             "Heading",
@@ -5642,7 +5642,7 @@ class TestLogScaledSampling:
 
     def test_min_chunk_chars_zero_no_expansion(self) -> None:
         """min_chunk_chars=0 (default) doesn't trigger expansion."""
-        from hypergumbo.sketch import _build_context_chunk
+        from hypergumbo_core.sketch import _build_context_chunk
 
         lines = ["A", "B", "C", "D", "E"]
 
@@ -5864,7 +5864,7 @@ class TestDetectProjectBinaryNames:
     def test_meson_build_executable(self, tmp_path: Path) -> None:
         """Detects executable from meson.build."""
         (tmp_path / "meson.build").write_text("executable('myapp', 'main.c')")
-        from hypergumbo.sketch import _detect_project_binary_names
+        from hypergumbo_core.sketch import _detect_project_binary_names
         result = _detect_project_binary_names(tmp_path)
         assert "myapp" in result
 
@@ -5873,7 +5873,7 @@ class TestDetectProjectBinaryNames:
         (tmp_path / "meson.build").write_text(
             "executable('app1', 'main1.c')\nexecutable('app2', 'main2.c')"
         )
-        from hypergumbo.sketch import _detect_project_binary_names
+        from hypergumbo_core.sketch import _detect_project_binary_names
         result = _detect_project_binary_names(tmp_path)
         assert "app1" in result
         assert "app2" in result
@@ -5881,42 +5881,42 @@ class TestDetectProjectBinaryNames:
     def test_makefile_target(self, tmp_path: Path) -> None:
         """Detects binary target from Makefile variable."""
         (tmp_path / "Makefile").write_text("TARGET = myapp\n\nmyapp: main.o\n\t$(CC) -o $(TARGET) main.o")
-        from hypergumbo.sketch import _detect_project_binary_names
+        from hypergumbo_core.sketch import _detect_project_binary_names
         result = _detect_project_binary_names(tmp_path)
         assert "myapp" in result
 
     def test_cmake_add_executable(self, tmp_path: Path) -> None:
         """Detects executable from CMakeLists.txt."""
         (tmp_path / "CMakeLists.txt").write_text("add_executable(myapp main.cpp)")
-        from hypergumbo.sketch import _detect_project_binary_names
+        from hypergumbo_core.sketch import _detect_project_binary_names
         result = _detect_project_binary_names(tmp_path)
         assert "myapp" in result
 
     def test_cargo_toml_package_name(self, tmp_path: Path) -> None:
         """Detects binary name from Cargo.toml package name."""
         (tmp_path / "Cargo.toml").write_text('[package]\nname = "myapp"\nversion = "0.1.0"')
-        from hypergumbo.sketch import _detect_project_binary_names
+        from hypergumbo_core.sketch import _detect_project_binary_names
         result = _detect_project_binary_names(tmp_path)
         assert "myapp" in result
 
     def test_cargo_toml_explicit_bin(self, tmp_path: Path) -> None:
         """Detects explicit [[bin]] name from Cargo.toml."""
         (tmp_path / "Cargo.toml").write_text('[[bin]]\nname = "my-cli"\npath = "src/main.rs"')
-        from hypergumbo.sketch import _detect_project_binary_names
+        from hypergumbo_core.sketch import _detect_project_binary_names
         result = _detect_project_binary_names(tmp_path)
         assert "my-cli" in result
 
     def test_go_mod_module_name(self, tmp_path: Path) -> None:
         """Detects binary name from go.mod module path."""
         (tmp_path / "go.mod").write_text("module github.com/user/myapp\n\ngo 1.21")
-        from hypergumbo.sketch import _detect_project_binary_names
+        from hypergumbo_core.sketch import _detect_project_binary_names
         result = _detect_project_binary_names(tmp_path)
         assert "myapp" in result
 
     def test_configure_ac_package_name(self, tmp_path: Path) -> None:
         """Detects package name from configure.ac."""
         (tmp_path / "configure.ac").write_text('AC_INIT([myapp], [1.0])')
-        from hypergumbo.sketch import _detect_project_binary_names
+        from hypergumbo_core.sketch import _detect_project_binary_names
         result = _detect_project_binary_names(tmp_path)
         assert "myapp" in result
 
@@ -5924,7 +5924,7 @@ class TestDetectProjectBinaryNames:
         """Falls back to directory name when no build files found."""
         # Create a .c file so it looks like a C project
         (tmp_path / "main.c").write_text("int main() { return 0; }")
-        from hypergumbo.sketch import _detect_project_binary_names
+        from hypergumbo_core.sketch import _detect_project_binary_names
         result = _detect_project_binary_names(tmp_path)
         # Falls back to directory name
         assert tmp_path.name in result
@@ -5932,7 +5932,7 @@ class TestDetectProjectBinaryNames:
     def test_no_build_files_no_c_files(self, tmp_path: Path) -> None:
         """Returns empty list when no build files and no C/C++/Go/Rust files."""
         (tmp_path / "main.py").write_text("print('hello')")
-        from hypergumbo.sketch import _detect_project_binary_names
+        from hypergumbo_core.sketch import _detect_project_binary_names
         result = _detect_project_binary_names(tmp_path)
         assert result == []
 
@@ -5945,7 +5945,7 @@ class TestDetectShellIntegrationTests:
         tests = tmp_path / "tests"
         tests.mkdir()
         (tests / "test-app.sh").write_text("#!/bin/bash\n./myapp --help")
-        from hypergumbo.sketch import _detect_shell_integration_tests
+        from hypergumbo_core.sketch import _detect_shell_integration_tests
         result = _detect_shell_integration_tests(tmp_path, ["myapp"])
         assert len(result) == 1
         assert result[0].name == "test-app.sh"
@@ -5958,7 +5958,7 @@ class TestDetectShellIntegrationTests:
         (tests / "test1.sh").write_text("#!/bin/bash\n./myapp arg")
         (tests / "test2.sh").write_text("#!/bin/bash\nmyapp arg1 arg2")
         (tests / "test3.sh").write_text("#!/bin/bash\n/usr/bin/myapp ")
-        from hypergumbo.sketch import _detect_shell_integration_tests
+        from hypergumbo_core.sketch import _detect_shell_integration_tests
         result = _detect_shell_integration_tests(tmp_path, ["myapp"])
         assert len(result) == 3
 
@@ -5966,14 +5966,14 @@ class TestDetectShellIntegrationTests:
         """Ignores shell scripts not in test directories or without test names."""
         # Script not in test directory and no test-like name
         (tmp_path / "build.sh").write_text("#!/bin/bash\n./myapp build")
-        from hypergumbo.sketch import _detect_shell_integration_tests
+        from hypergumbo_core.sketch import _detect_shell_integration_tests
         result = _detect_shell_integration_tests(tmp_path, ["myapp"])
         assert len(result) == 0
 
     def test_detects_test_named_scripts_outside_test_dir(self, tmp_path: Path) -> None:
         """Detects scripts with test-like names even outside test directories."""
         (tmp_path / "test-integration.sh").write_text("#!/bin/bash\n./myapp test")
-        from hypergumbo.sketch import _detect_shell_integration_tests
+        from hypergumbo_core.sketch import _detect_shell_integration_tests
         result = _detect_shell_integration_tests(tmp_path, ["myapp"])
         assert len(result) == 1
 
@@ -5983,7 +5983,7 @@ class TestDetectShellIntegrationTests:
         tests.mkdir()
         (tests / "test1.sh").write_text("#!/bin/bash\n./app1 arg")
         (tests / "test2.sh").write_text("#!/bin/bash\n./app2 arg")
-        from hypergumbo.sketch import _detect_shell_integration_tests
+        from hypergumbo_core.sketch import _detect_shell_integration_tests
         result = _detect_shell_integration_tests(tmp_path, ["app1", "app2"])
         assert len(result) == 2
 
@@ -5992,7 +5992,7 @@ class TestDetectShellIntegrationTests:
         tests = tmp_path / "tests"
         tests.mkdir()
         (tests / "test.sh").write_text("#!/bin/bash\n./myapp test")
-        from hypergumbo.sketch import _detect_shell_integration_tests
+        from hypergumbo_core.sketch import _detect_shell_integration_tests
         result = _detect_shell_integration_tests(tmp_path, [])
         assert len(result) == 0
 
@@ -6163,7 +6163,7 @@ class TestGroupFilesByLanguage:
 
     def test_single_language(self) -> None:
         """All files grouped under one language."""
-        from hypergumbo.sketch import _group_files_by_language
+        from hypergumbo_core.sketch import _group_files_by_language
 
         sym1 = Symbol(
             id="s1", name="foo", kind="function", language="python",
@@ -6183,7 +6183,7 @@ class TestGroupFilesByLanguage:
 
     def test_multi_language(self) -> None:
         """Files separated by dominant language."""
-        from hypergumbo.sketch import _group_files_by_language
+        from hypergumbo_core.sketch import _group_files_by_language
 
         py_sym = Symbol(
             id="s1", name="foo", kind="function", language="python",
@@ -6204,7 +6204,7 @@ class TestGroupFilesByLanguage:
 
     def test_empty_files_skipped(self) -> None:
         """Files with no symbols are excluded."""
-        from hypergumbo.sketch import _group_files_by_language
+        from hypergumbo_core.sketch import _group_files_by_language
 
         sym = Symbol(
             id="s1", name="foo", kind="function", language="python",
@@ -6224,7 +6224,7 @@ class TestAllocateLanguageBudget:
 
     def test_proportional_allocation(self) -> None:
         """Budget split matches symbol proportions."""
-        from hypergumbo.sketch import _allocate_language_budget
+        from hypergumbo_core.sketch import _allocate_language_budget
 
         # 60% kotlin (6 symbols), 40% python (4 symbols) -> budget 10
         kt_syms = [
@@ -6250,7 +6250,7 @@ class TestAllocateLanguageBudget:
 
     def test_minimum_guarantee(self) -> None:
         """Each language gets at least 1 slot."""
-        from hypergumbo.sketch import _allocate_language_budget
+        from hypergumbo_core.sketch import _allocate_language_budget
 
         # 90% kotlin (9 symbols), 10% python (1 symbol)
         kt_syms = [
@@ -6274,7 +6274,7 @@ class TestAllocateLanguageBudget:
 
     def test_remainder_redistribution(self) -> None:
         """Leftover slots go to largest languages."""
-        from hypergumbo.sketch import _allocate_language_budget
+        from hypergumbo_core.sketch import _allocate_language_budget
 
         # 3 languages with odd proportions
         kt_syms = [
@@ -6305,7 +6305,7 @@ class TestAllocateLanguageBudget:
 
     def test_empty_returns_empty(self) -> None:
         """No symbols → no budget."""
-        from hypergumbo.sketch import _allocate_language_budget
+        from hypergumbo_core.sketch import _allocate_language_budget
 
         lang_groups: dict = {}
         result = _allocate_language_budget(lang_groups, max_symbols=10)
@@ -6318,8 +6318,8 @@ class TestLanguageProportionalSelection:
 
     def test_language_proportional_selection(self, tmp_path: Path) -> None:
         """Multi-language project sketch reflects language proportions."""
-        from hypergumbo.sketch import _select_symbols_two_phase
-        from hypergumbo.ranking import compute_centrality, group_symbols_by_file
+        from hypergumbo_core.sketch import _select_symbols_two_phase
+        from hypergumbo_core.ranking import compute_centrality, group_symbols_by_file
 
         # Create 60% Kotlin (6 symbols), 40% Python (4 symbols)
         kt_syms = [
@@ -6380,8 +6380,8 @@ class TestLanguageProportionalSelection:
 
     def test_language_proportional_on_by_default(self, tmp_path: Path) -> None:
         """Default behavior uses language-proportional selection."""
-        from hypergumbo.sketch import _select_symbols_two_phase
-        from hypergumbo.ranking import group_symbols_by_file, compute_centrality
+        from hypergumbo_core.sketch import _select_symbols_two_phase
+        from hypergumbo_core.ranking import group_symbols_by_file, compute_centrality
 
         # Create symbols
         syms = [
@@ -6407,8 +6407,8 @@ class TestLanguageProportionalSelection:
 
     def test_single_language_unaffected(self, tmp_path: Path) -> None:
         """Single-language projects work identically with flag on or off."""
-        from hypergumbo.sketch import _select_symbols_two_phase
-        from hypergumbo.ranking import group_symbols_by_file, compute_centrality
+        from hypergumbo_core.sketch import _select_symbols_two_phase
+        from hypergumbo_core.ranking import group_symbols_by_file, compute_centrality
 
         # Create single-language symbols
         syms = [
@@ -6739,7 +6739,7 @@ class TestCachedResults:
 
         # Mock _get_results_cache_dir in sketch_embeddings module
         # (this is where it gets imported from in generate_sketch)
-        import hypergumbo.sketch_embeddings as sketch_embeddings_module
+        import hypergumbo_core.sketch_embeddings as sketch_embeddings_module
         monkeypatch.setattr(
             sketch_embeddings_module,
             "_get_results_cache_dir",
@@ -7000,7 +7000,7 @@ class TestRepoFingerprint:
 
     def _init_git_repo(self, path: Path) -> None:
         """Initialize a git repo with a commit for testing."""
-        from hypergumbo.sketch_embeddings import _run_git_command
+        from hypergumbo_core.sketch_embeddings import _run_git_command
 
         _run_git_command(["init"], cwd=path)
         _run_git_command(["config", "user.email", "test@test.com"], cwd=path)
@@ -7011,7 +7011,7 @@ class TestRepoFingerprint:
 
     def test_fingerprint_git_repo(self, tmp_path: Path) -> None:
         """Git repos use remote URL + first commit for fingerprint."""
-        from hypergumbo.sketch_embeddings import _get_repo_fingerprint
+        from hypergumbo_core.sketch_embeddings import _get_repo_fingerprint
 
         # Create a git repo with a commit
         self._init_git_repo(tmp_path)
@@ -7028,7 +7028,7 @@ class TestRepoFingerprint:
 
     def test_fingerprint_non_git_dir(self, tmp_path: Path) -> None:
         """Non-git directories use path hash for fingerprint."""
-        from hypergumbo.sketch_embeddings import _get_repo_fingerprint
+        from hypergumbo_core.sketch_embeddings import _get_repo_fingerprint
 
         fingerprint = _get_repo_fingerprint(tmp_path)
 
@@ -7042,7 +7042,7 @@ class TestRepoFingerprint:
 
     def test_fingerprint_different_dirs_differ(self, tmp_path: Path) -> None:
         """Different directories have different fingerprints."""
-        from hypergumbo.sketch_embeddings import _get_repo_fingerprint
+        from hypergumbo_core.sketch_embeddings import _get_repo_fingerprint
 
         dir1 = tmp_path / "dir1"
         dir2 = tmp_path / "dir2"
@@ -7056,7 +7056,7 @@ class TestRepoFingerprint:
 
     def test_xdg_cache_base_default(self, tmp_path: Path, monkeypatch) -> None:
         """XDG cache base defaults to ~/.cache/hypergumbo."""
-        from hypergumbo.sketch_embeddings import _get_xdg_cache_base
+        from hypergumbo_core.sketch_embeddings import _get_xdg_cache_base
 
         # Clear XDG_CACHE_HOME to test default
         monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
@@ -7067,7 +7067,7 @@ class TestRepoFingerprint:
 
     def test_xdg_cache_base_respects_env(self, tmp_path: Path, monkeypatch) -> None:
         """XDG cache base respects XDG_CACHE_HOME environment variable."""
-        from hypergumbo.sketch_embeddings import _get_xdg_cache_base
+        from hypergumbo_core.sketch_embeddings import _get_xdg_cache_base
 
         custom_cache = tmp_path / "custom_cache"
         monkeypatch.setenv("XDG_CACHE_HOME", str(custom_cache))
@@ -7078,7 +7078,7 @@ class TestRepoFingerprint:
 
     def test_get_cache_dir_creates_directory(self, tmp_path: Path, monkeypatch) -> None:
         """Cache directory is created under XDG cache location."""
-        from hypergumbo.sketch_embeddings import _get_cache_dir
+        from hypergumbo_core.sketch_embeddings import _get_cache_dir
 
         # Use tmp_path as XDG_CACHE_HOME to avoid polluting real cache
         monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg_cache"))
@@ -7095,7 +7095,7 @@ class TestRepoFingerprint:
 
     def test_get_cache_dir_stable_for_same_repo(self, tmp_path: Path, monkeypatch) -> None:
         """Same repo always gets same cache directory."""
-        from hypergumbo.sketch_embeddings import _get_cache_dir
+        from hypergumbo_core.sketch_embeddings import _get_cache_dir
 
         monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg_cache"))
         repo = tmp_path / "my_repo"
@@ -7110,7 +7110,7 @@ class TestRepoFingerprint:
         self, tmp_path: Path, monkeypatch
     ) -> None:
         """State hash changes when files are modified."""
-        from hypergumbo.sketch_embeddings import _get_repo_state_hash
+        from hypergumbo_core.sketch_embeddings import _get_repo_state_hash
 
         self._init_git_repo(tmp_path)
 
@@ -7126,7 +7126,7 @@ class TestRepoFingerprint:
 
     def test_state_hash_stable_without_changes(self, tmp_path: Path) -> None:
         """State hash is stable when no changes are made."""
-        from hypergumbo.sketch_embeddings import _get_repo_state_hash
+        from hypergumbo_core.sketch_embeddings import _get_repo_state_hash
 
         self._init_git_repo(tmp_path)
 
@@ -7138,7 +7138,7 @@ class TestRepoFingerprint:
     def test_state_hash_non_git_uses_mtime(self, tmp_path: Path) -> None:
         """Non-git directories use file mtime for state hash."""
         import time
-        from hypergumbo.sketch_embeddings import _get_repo_state_hash
+        from hypergumbo_core.sketch_embeddings import _get_repo_state_hash
 
         # Create a Python file (source file)
         (tmp_path / "main.py").write_text("print('hello')")
@@ -7156,7 +7156,7 @@ class TestRepoFingerprint:
 
     def test_results_cache_dir_per_state(self, tmp_path: Path, monkeypatch) -> None:
         """Results cache directory changes with repo state."""
-        from hypergumbo.sketch_embeddings import (
+        from hypergumbo_core.sketch_embeddings import (
             _get_results_cache_dir,
             _get_repo_fingerprint,
         )
@@ -7186,7 +7186,7 @@ class TestBatchEmbedFiles:
 
     def test_returns_empty_dict_for_empty_input(self, tmp_path: Path) -> None:
         """Empty file list returns empty dict."""
-        from hypergumbo.sketch_embeddings import batch_embed_files
+        from hypergumbo_core.sketch_embeddings import batch_embed_files
 
         result = batch_embed_files([])
         assert result == {}
@@ -7194,13 +7194,13 @@ class TestBatchEmbedFiles:
     def test_returns_none_when_no_sentence_transformers(self, tmp_path: Path) -> None:
         """Returns None for all files when sentence-transformers unavailable."""
         from unittest.mock import patch
-        from hypergumbo.sketch_embeddings import batch_embed_files
+        from hypergumbo_core.sketch_embeddings import batch_embed_files
 
         (tmp_path / "file1.py").write_text("print('hello')")
         (tmp_path / "file2.py").write_text("print('world')")
 
         with patch(
-            "hypergumbo.sketch_embeddings._has_sentence_transformers",
+            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
             return_value=False,
         ):
             result = batch_embed_files([
@@ -7215,7 +7215,7 @@ class TestBatchEmbedFiles:
     def test_uses_cache_when_available(self, tmp_path: Path) -> None:
         """Uses cached embeddings when available."""
         from unittest.mock import patch, MagicMock
-        from hypergumbo.sketch_embeddings import batch_embed_files
+        from hypergumbo_core.sketch_embeddings import batch_embed_files
 
         # Create test file
         test_file = tmp_path / "test.py"
@@ -7226,13 +7226,13 @@ class TestBatchEmbedFiles:
         mock_model = MagicMock()
 
         with patch(
-            "hypergumbo.sketch_embeddings._has_sentence_transformers",
+            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
             return_value=True,
         ), patch(
-            "hypergumbo.sketch_embeddings._load_cached_embedding",
+            "hypergumbo_core.sketch_embeddings._load_cached_embedding",
             return_value=fake_cached_embedding,
         ), patch(
-            "hypergumbo.sketch_embeddings._load_modernbert_model",
+            "hypergumbo_core.sketch_embeddings._load_modernbert_model",
             return_value=mock_model,
         ):
             cache_dir = tmp_path / "cache"
@@ -7249,7 +7249,7 @@ class TestBatchEmbedFiles:
     def test_batches_uncached_files(self, tmp_path: Path) -> None:
         """Encodes uncached files in batches."""
         from unittest.mock import patch, MagicMock
-        from hypergumbo.sketch_embeddings import batch_embed_files
+        from hypergumbo_core.sketch_embeddings import batch_embed_files
 
         # Create test files
         files = []
@@ -7268,10 +7268,10 @@ class TestBatchEmbedFiles:
         mock_model.encode.side_effect = mock_encode
 
         with patch(
-            "hypergumbo.sketch_embeddings._has_sentence_transformers",
+            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
             return_value=True,
         ), patch(
-            "hypergumbo.sketch_embeddings._load_modernbert_model",
+            "hypergumbo_core.sketch_embeddings._load_modernbert_model",
             return_value=mock_model,
         ):
             result = batch_embed_files(files, batch_size=3)
@@ -7287,7 +7287,7 @@ class TestBatchEmbedFiles:
     def test_handles_unreadable_files(self, tmp_path: Path) -> None:
         """Returns None for files that can't be read."""
         from unittest.mock import patch, MagicMock
-        from hypergumbo.sketch_embeddings import batch_embed_files
+        from hypergumbo_core.sketch_embeddings import batch_embed_files
 
         # Create one good file and one that doesn't exist
         good_file = tmp_path / "good.py"
@@ -7298,10 +7298,10 @@ class TestBatchEmbedFiles:
         mock_model.encode.return_value = [MagicMock()]  # Single embedding for good file
 
         with patch(
-            "hypergumbo.sketch_embeddings._has_sentence_transformers",
+            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
             return_value=True,
         ), patch(
-            "hypergumbo.sketch_embeddings._load_modernbert_model",
+            "hypergumbo_core.sketch_embeddings._load_modernbert_model",
             return_value=mock_model,
         ):
             result = batch_embed_files([good_file, missing_file])
@@ -7313,7 +7313,7 @@ class TestBatchEmbedFiles:
     def test_calls_progress_callback(self, tmp_path: Path) -> None:
         """Progress callback is called for each batch."""
         from unittest.mock import patch, MagicMock
-        from hypergumbo.sketch_embeddings import batch_embed_files
+        from hypergumbo_core.sketch_embeddings import batch_embed_files
 
         # Create test files
         files = []
@@ -7335,10 +7335,10 @@ class TestBatchEmbedFiles:
             progress_calls.append((done, total))
 
         with patch(
-            "hypergumbo.sketch_embeddings._has_sentence_transformers",
+            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
             return_value=True,
         ), patch(
-            "hypergumbo.sketch_embeddings._load_modernbert_model",
+            "hypergumbo_core.sketch_embeddings._load_modernbert_model",
             return_value=mock_model,
         ):
             batch_embed_files(files, batch_size=2, progress_callback=track_progress)
@@ -7352,7 +7352,7 @@ class TestBatchEmbedFiles:
     def test_saves_embeddings_to_cache(self, tmp_path: Path) -> None:
         """Computed embeddings are saved to cache."""
         from unittest.mock import patch, MagicMock
-        from hypergumbo.sketch_embeddings import batch_embed_files
+        from hypergumbo_core.sketch_embeddings import batch_embed_files
 
         cache_dir = tmp_path / "cache"
         cache_dir.mkdir()
@@ -7370,13 +7370,13 @@ class TestBatchEmbedFiles:
             save_calls.append((cache_dir, file_hash, embedding))
 
         with patch(
-            "hypergumbo.sketch_embeddings._has_sentence_transformers",
+            "hypergumbo_core.sketch_embeddings._has_sentence_transformers",
             return_value=True,
         ), patch(
-            "hypergumbo.sketch_embeddings._load_modernbert_model",
+            "hypergumbo_core.sketch_embeddings._load_modernbert_model",
             return_value=mock_model,
         ), patch(
-            "hypergumbo.sketch_embeddings._save_cached_embedding",
+            "hypergumbo_core.sketch_embeddings._save_cached_embedding",
             side_effect=mock_save,
         ):
             batch_embed_files([test_file], cache_dir=cache_dir)

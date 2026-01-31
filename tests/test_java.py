@@ -9,7 +9,7 @@ class TestFindJavaFiles:
 
     def test_finds_java_files(self, tmp_path: Path) -> None:
         """Finds .java files."""
-        from hypergumbo.analyze.java import find_java_files
+        from hypergumbo_lang_mainstream.java import find_java_files
 
         (tmp_path / "Main.java").write_text("public class Main {}")
         (tmp_path / "Utils.java").write_text("public class Utils {}")
@@ -26,7 +26,7 @@ class TestJavaTreeSitterAvailability:
 
     def test_is_java_tree_sitter_available_true(self) -> None:
         """Returns True when tree-sitter-java is available."""
-        from hypergumbo.analyze.java import is_java_tree_sitter_available
+        from hypergumbo_lang_mainstream.java import is_java_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = object()  # Non-None = available
@@ -34,7 +34,7 @@ class TestJavaTreeSitterAvailability:
 
     def test_is_java_tree_sitter_available_false(self) -> None:
         """Returns False when tree-sitter is not available."""
-        from hypergumbo.analyze.java import is_java_tree_sitter_available
+        from hypergumbo_lang_mainstream.java import is_java_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = None
@@ -42,7 +42,7 @@ class TestJavaTreeSitterAvailability:
 
     def test_is_java_tree_sitter_available_no_java_grammar(self) -> None:
         """Returns False when tree-sitter-java is not available."""
-        from hypergumbo.analyze.java import is_java_tree_sitter_available
+        from hypergumbo_lang_mainstream.java import is_java_tree_sitter_available
 
         def mock_find_spec(name: str):
             if name == "tree_sitter":
@@ -58,11 +58,11 @@ class TestAnalyzeJavaFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-java unavailable."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "Test.java").write_text("public class Test {}")
 
-        with patch("hypergumbo.analyze.java.is_java_tree_sitter_available", return_value=False):
+        with patch("hypergumbo_lang_mainstream.java.is_java_tree_sitter_available", return_value=False):
             result = analyze_java(tmp_path)
 
         assert result.skipped is True
@@ -74,7 +74,7 @@ class TestJavaClassExtraction:
 
     def test_extracts_class(self, tmp_path: Path) -> None:
         """Extracts Java class declarations."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Person.java"
         java_file.write_text("""
@@ -100,7 +100,7 @@ public class Person {
 
     def test_extracts_interface(self, tmp_path: Path) -> None:
         """Extracts Java interface declarations."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Runnable.java"
         java_file.write_text("""
@@ -119,7 +119,7 @@ public interface Runnable {
 
     def test_extracts_enum(self, tmp_path: Path) -> None:
         """Extracts Java enum declarations."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Color.java"
         java_file.write_text("""
@@ -138,7 +138,7 @@ public enum Color {
 
     def test_extracts_methods(self, tmp_path: Path) -> None:
         """Extracts Java method declarations."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Calculator.java"
         java_file.write_text("""
@@ -164,7 +164,7 @@ public class Calculator {
 
     def test_handles_empty_file(self, tmp_path: Path) -> None:
         """Handles Java file with no classes."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Empty.java"
         java_file.write_text("// Just a comment")
@@ -181,7 +181,7 @@ class TestJavaCallEdges:
 
     def test_extracts_call_edges(self, tmp_path: Path) -> None:
         """Extracts call edges between Java methods."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Service.java"
         java_file.write_text("""
@@ -205,7 +205,7 @@ public class Service {
 
     def test_extracts_this_method_calls(self, tmp_path: Path) -> None:
         """Extracts this.method() calls."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Service.java"
         java_file.write_text("""
@@ -232,7 +232,7 @@ class TestJavaInheritanceEdges:
 
     def test_extracts_extends_edge(self, tmp_path: Path) -> None:
         """Extracts extends relationship edges."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "Animal.java").write_text("""
 public class Animal {
@@ -256,7 +256,7 @@ public class Dog extends Animal {
 
     def test_extracts_implements_edge(self, tmp_path: Path) -> None:
         """Extracts implements relationship edges."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "Runnable.java").write_text("""
 public interface Runnable {
@@ -284,7 +284,7 @@ class TestJavaInstantiationEdges:
 
     def test_extracts_instantiation_edges(self, tmp_path: Path) -> None:
         """Extracts new ClassName() instantiation edges."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "Person.java").write_text("""
 public class Person {
@@ -312,7 +312,7 @@ class TestJavaCrossFileResolution:
 
     def test_cross_file_method_call(self, tmp_path: Path) -> None:
         """Resolves method calls across files."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "Helper.java").write_text("""
 public class Helper {
@@ -345,7 +345,7 @@ class TestJavaJNIPatterns:
 
     def test_detects_native_methods(self, tmp_path: Path) -> None:
         """Detects native method declarations."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Native.java"
         java_file.write_text("""
@@ -375,7 +375,7 @@ class TestJavaAnalysisRun:
 
     def test_tracks_files_analyzed(self, tmp_path: Path) -> None:
         """Tracks number of files analyzed."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "A.java").write_text("public class A {}")
         (tmp_path / "B.java").write_text("public class B {}")
@@ -389,7 +389,7 @@ class TestJavaAnalysisRun:
 
     def test_empty_repo(self, tmp_path: Path) -> None:
         """Handles repo with no Java files."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "app.py").write_text("print('hello')")
 
@@ -405,7 +405,7 @@ class TestJavaEdgeCases:
 
     def test_find_name_in_children_no_name(self) -> None:
         """Returns None when node has no identifier child."""
-        from hypergumbo.analyze.java import _find_identifier_in_children
+        from hypergumbo_lang_mainstream.java import _find_identifier_in_children
 
         mock_child = MagicMock()
         mock_child.type = "other"
@@ -418,7 +418,7 @@ class TestJavaEdgeCases:
 
     def test_get_java_parser_import_error(self) -> None:
         """Returns None when tree-sitter-java is not available."""
-        from hypergumbo.analyze.java import _get_java_parser
+        from hypergumbo_lang_mainstream.java import _get_java_parser
 
         with patch.dict(sys.modules, {
             "tree_sitter": None,
@@ -429,15 +429,15 @@ class TestJavaEdgeCases:
 
     def test_analyze_java_file_parser_unavailable(self, tmp_path: Path) -> None:
         """Returns failure when parser is unavailable."""
-        from hypergumbo.analyze.java import _analyze_java_file
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.java import _analyze_java_file
+        from hypergumbo_core.ir import AnalysisRun
 
         java_file = tmp_path / "Test.java"
         java_file.write_text("public class Test {}")
 
         run = AnalysisRun.create(pass_id="test", version="test")
 
-        with patch("hypergumbo.analyze.java._get_java_parser", return_value=None):
+        with patch("hypergumbo_lang_mainstream.java._get_java_parser", return_value=None):
             symbols, edges, success = _analyze_java_file(java_file, run)
 
         assert success is False
@@ -445,8 +445,8 @@ class TestJavaEdgeCases:
 
     def test_analyze_java_file_read_error(self, tmp_path: Path) -> None:
         """Returns failure when file cannot be read."""
-        from hypergumbo.analyze.java import _analyze_java_file
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.java import _analyze_java_file
+        from hypergumbo_core.ir import AnalysisRun
 
         java_file = tmp_path / "missing.java"
         # Don't create the file
@@ -459,7 +459,7 @@ class TestJavaEdgeCases:
 
     def test_java_file_skipped_increments_counter(self, tmp_path: Path) -> None:
         """Java files that fail to read increment skipped counter."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Test.java"
         java_file.write_text("public class Test {}")
@@ -479,16 +479,16 @@ class TestJavaEdgeCases:
 
     def test_analyze_java_parser_none_after_check(self, tmp_path: Path) -> None:
         """analyze_java handles case where parser is None after availability check."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Test.java"
         java_file.write_text("public class Test {}")
 
         with patch(
-            "hypergumbo.analyze.java.is_java_tree_sitter_available",
+            "hypergumbo_lang_mainstream.java.is_java_tree_sitter_available",
             return_value=True,
         ), patch(
-            "hypergumbo.analyze.java._get_java_parser",
+            "hypergumbo_lang_mainstream.java._get_java_parser",
             return_value=None,
         ):
             result = analyze_java(tmp_path)
@@ -503,7 +503,7 @@ class TestJavaConstructors:
 
     def test_extracts_constructors(self, tmp_path: Path) -> None:
         """Extracts Java constructor declarations."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Person.java"
         java_file.write_text("""
@@ -533,7 +533,7 @@ class TestJavaStaticMembers:
 
     def test_extracts_static_methods(self, tmp_path: Path) -> None:
         """Extracts static method declarations."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Utils.java"
         java_file.write_text("""
@@ -560,7 +560,7 @@ class TestJavaInnerClasses:
 
     def test_extracts_inner_classes(self, tmp_path: Path) -> None:
         """Extracts inner class declarations."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Outer.java"
         java_file.write_text("""
@@ -589,7 +589,7 @@ class TestJavaAnnotations:
 
     def test_handles_annotated_classes(self, tmp_path: Path) -> None:
         """Handles classes with annotations."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Service.java"
         java_file.write_text("""
@@ -614,7 +614,7 @@ class TestJavaGenerics:
 
     def test_handles_generic_classes(self, tmp_path: Path) -> None:
         """Handles classes with generic type parameters."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Container.java"
         java_file.write_text("""
@@ -643,8 +643,8 @@ class TestJavaAnalyzeFileSuccess:
 
     def test_analyze_java_file_success(self, tmp_path: Path) -> None:
         """_analyze_java_file returns symbols and edges on success."""
-        from hypergumbo.analyze.java import _analyze_java_file
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.java import _analyze_java_file
+        from hypergumbo_core.ir import AnalysisRun
 
         java_file = tmp_path / "Test.java"
         java_file.write_text("""
@@ -671,7 +671,7 @@ class TestJavaMultipleInterfaces:
 
     def test_multiple_implements(self, tmp_path: Path) -> None:
         """Handles class implementing multiple interfaces."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "Readable.java").write_text("public interface Readable { void read(); }")
         (tmp_path / "Writable.java").write_text("public interface Writable { void write(); }")
@@ -695,7 +695,7 @@ class TestJavaAbstractClasses:
 
     def test_extracts_abstract_class(self, tmp_path: Path) -> None:
         """Extracts abstract class declarations."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Shape.java"
         java_file.write_text("""
@@ -724,8 +724,8 @@ class TestSpringBootRouteDetection:
 
     def test_get_mapping_detection(self, tmp_path: Path) -> None:
         """Detects @GetMapping annotation via YAML patterns."""
-        from hypergumbo.analyze.java import analyze_java
-        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+        from hypergumbo_lang_mainstream.java import analyze_java
+        from hypergumbo_core.framework_patterns import enrich_symbols, clear_pattern_cache
 
         clear_pattern_cache()
 
@@ -759,8 +759,8 @@ public class UserController {
 
     def test_post_mapping_detection(self, tmp_path: Path) -> None:
         """Detects @PostMapping annotation via YAML patterns."""
-        from hypergumbo.analyze.java import analyze_java
-        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+        from hypergumbo_lang_mainstream.java import analyze_java
+        from hypergumbo_core.framework_patterns import enrich_symbols, clear_pattern_cache
 
         clear_pattern_cache()
 
@@ -790,8 +790,8 @@ public class UserController {
 
     def test_all_http_method_mappings(self, tmp_path: Path) -> None:
         """Detects all Spring Boot HTTP method annotations via YAML patterns."""
-        from hypergumbo.analyze.java import analyze_java
-        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+        from hypergumbo_lang_mainstream.java import analyze_java
+        from hypergumbo_core.framework_patterns import enrich_symbols, clear_pattern_cache
 
         clear_pattern_cache()
 
@@ -834,8 +834,8 @@ public class ResourceController {
 
     def test_request_mapping_with_method(self, tmp_path: Path) -> None:
         """Detects @RequestMapping with method attribute via YAML patterns."""
-        from hypergumbo.analyze.java import analyze_java
-        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+        from hypergumbo_lang_mainstream.java import analyze_java
+        from hypergumbo_core.framework_patterns import enrich_symbols, clear_pattern_cache
 
         clear_pattern_cache()
 
@@ -868,8 +868,8 @@ public class LegacyController {
 
     def test_mapping_with_path_variable(self, tmp_path: Path) -> None:
         """Detects routes with path variables like {id} via YAML patterns."""
-        from hypergumbo.analyze.java import analyze_java
-        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+        from hypergumbo_lang_mainstream.java import analyze_java
+        from hypergumbo_core.framework_patterns import enrich_symbols, clear_pattern_cache
 
         clear_pattern_cache()
 
@@ -899,8 +899,8 @@ public class ItemController {
 
     def test_get_mapping_with_value_attribute(self, tmp_path: Path) -> None:
         """Detects @GetMapping with explicit value attribute via YAML patterns."""
-        from hypergumbo.analyze.java import analyze_java
-        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+        from hypergumbo_lang_mainstream.java import analyze_java
+        from hypergumbo_core.framework_patterns import enrich_symbols, clear_pattern_cache
 
         clear_pattern_cache()
 
@@ -928,8 +928,8 @@ public class Controller {
 
     def test_request_mapping_without_qualified_method(self, tmp_path: Path) -> None:
         """Detects @RequestMapping with unqualified method via YAML patterns."""
-        from hypergumbo.analyze.java import analyze_java
-        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+        from hypergumbo_lang_mainstream.java import analyze_java
+        from hypergumbo_core.framework_patterns import enrich_symbols, clear_pattern_cache
 
         clear_pattern_cache()
 
@@ -966,8 +966,8 @@ class TestJaxRsRouteDetection:
 
     def test_jaxrs_get_with_path(self, tmp_path: Path) -> None:
         """Detects JAX-RS @GET via YAML patterns."""
-        from hypergumbo.analyze.java import analyze_java
-        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+        from hypergumbo_lang_mainstream.java import analyze_java
+        from hypergumbo_core.framework_patterns import enrich_symbols, clear_pattern_cache
 
         clear_pattern_cache()
 
@@ -998,8 +998,8 @@ public class UserResource {
 
     def test_jaxrs_post_with_path(self, tmp_path: Path) -> None:
         """Detects JAX-RS @POST via YAML patterns."""
-        from hypergumbo.analyze.java import analyze_java
-        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+        from hypergumbo_lang_mainstream.java import analyze_java
+        from hypergumbo_core.framework_patterns import enrich_symbols, clear_pattern_cache
 
         clear_pattern_cache()
 
@@ -1029,8 +1029,8 @@ public class UserResource {
 
     def test_jaxrs_method_level_path(self, tmp_path: Path) -> None:
         """Detects JAX-RS @GET and @Path via YAML patterns."""
-        from hypergumbo.analyze.java import analyze_java
-        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+        from hypergumbo_lang_mainstream.java import analyze_java
+        from hypergumbo_core.framework_patterns import enrich_symbols, clear_pattern_cache
 
         clear_pattern_cache()
 
@@ -1067,8 +1067,8 @@ public class UserResource {
 
     def test_jaxrs_all_http_methods(self, tmp_path: Path) -> None:
         """Detects all JAX-RS HTTP method annotations via YAML patterns."""
-        from hypergumbo.analyze.java import analyze_java
-        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+        from hypergumbo_lang_mainstream.java import analyze_java
+        from hypergumbo_core.framework_patterns import enrich_symbols, clear_pattern_cache
 
         clear_pattern_cache()
 
@@ -1115,7 +1115,7 @@ class TestJavaModifiersCapture:
 
     def test_native_modifier_captured(self, tmp_path: Path) -> None:
         """Native methods should have 'native' in modifiers list."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Native.java"
         java_file.write_text("""
@@ -1134,7 +1134,7 @@ public class Native {
 
     def test_public_static_modifiers_captured(self, tmp_path: Path) -> None:
         """Public static methods should have both modifiers in list."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Utils.java"
         java_file.write_text("""
@@ -1156,7 +1156,7 @@ public class Utils {
 
     def test_all_modifiers_captured(self, tmp_path: Path) -> None:
         """All method modifiers should be captured."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "JNIBridge.java"
         java_file.write_text("""
@@ -1194,7 +1194,7 @@ class TestJavaSignatureExtraction:
 
     def test_basic_method_signature(self, tmp_path: Path) -> None:
         """Extracts signature from a basic method."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Calculator.java"
         java_file.write_text("""
@@ -1215,7 +1215,7 @@ public class Calculator {
 
     def test_void_method_signature(self, tmp_path: Path) -> None:
         """Extracts signature from void method."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Logger.java"
         java_file.write_text("""
@@ -1236,7 +1236,7 @@ public class Logger {
 
     def test_no_params_signature(self, tmp_path: Path) -> None:
         """Extracts signature from method with no parameters."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Counter.java"
         java_file.write_text("""
@@ -1257,7 +1257,7 @@ public class Counter {
 
     def test_generic_type_signature(self, tmp_path: Path) -> None:
         """Extracts signature with generic types."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Container.java"
         java_file.write_text("""
@@ -1278,7 +1278,7 @@ public class Container {
 
     def test_constructor_signature(self, tmp_path: Path) -> None:
         """Extracts signature from constructor."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Person.java"
         java_file.write_text("""
@@ -1304,7 +1304,7 @@ public class Person {
 
     def test_array_type_signature(self, tmp_path: Path) -> None:
         """Extracts signature with array types."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Processor.java"
         java_file.write_text("""
@@ -1325,7 +1325,7 @@ public class Processor {
 
     def test_varargs_signature(self, tmp_path: Path) -> None:
         """Extracts signature with varargs parameters."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Formatter.java"
         java_file.write_text("""
@@ -1346,7 +1346,7 @@ public class Formatter {
 
     def test_array_notation_after_name(self, tmp_path: Path) -> None:
         """Extracts signature with array notation after variable name (C-style)."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Legacy.java"
         # C-style array declaration: String args[]
@@ -1372,7 +1372,7 @@ class TestJavaStaticImportSkip:
 
     def test_static_imports_skipped(self, tmp_path: Path) -> None:
         """Static imports are skipped (we only track class imports)."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Consumer.java"
         java_file.write_text("""
@@ -1402,7 +1402,7 @@ class TestJavaVariableTypeInference:
         self, tmp_path: Path
     ) -> None:
         """Variable method calls resolved via constructor-based type inference."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         # Define a helper class with a method
         (tmp_path / "Helper.java").write_text("""
@@ -1460,7 +1460,7 @@ class TestJavaImportResolution:
 
     def test_imported_class_static_method_resolution(self, tmp_path: Path) -> None:
         """Method calls resolved via import mapping."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         # Define utils in a package
         (tmp_path / "Utils.java").write_text("""
@@ -1518,7 +1518,7 @@ class TestParameterTypeInference:
 
     def test_parameter_type_inference_basic(self, tmp_path: Path) -> None:
         """Method parameter types should enable method call resolution."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         # Service class with methods
         (tmp_path / "Database.java").write_text("""
@@ -1596,7 +1596,7 @@ class TestAnnotationMetadata:
 
     def test_class_annotation_simple(self, tmp_path: Path) -> None:
         """Extracts simple class annotation without arguments."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "User.java").write_text("""
 @Entity
@@ -1619,7 +1619,7 @@ public class User {
 
     def test_class_annotation_with_string_arg(self, tmp_path: Path) -> None:
         """Extracts class annotation with string argument."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "User.java").write_text("""
 @Table(name = "users")
@@ -1640,7 +1640,7 @@ public class User {
 
     def test_method_annotation_simple(self, tmp_path: Path) -> None:
         """Extracts simple method annotation."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "UserService.java").write_text("""
 public class UserService {
@@ -1661,7 +1661,7 @@ public class UserService {
 
     def test_method_annotation_with_args(self, tmp_path: Path) -> None:
         """Extracts method annotation with arguments."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "Controller.java").write_text("""
 public class Controller {
@@ -1684,7 +1684,7 @@ public class Controller {
 
     def test_multiple_annotations_on_method(self, tmp_path: Path) -> None:
         """Extracts multiple annotations from a method."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "Controller.java").write_text("""
 public class Controller {
@@ -1707,7 +1707,7 @@ public class Controller {
 
     def test_multiple_annotations_on_class(self, tmp_path: Path) -> None:
         """Extracts multiple annotations from a class."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "User.java").write_text("""
 @Entity
@@ -1730,7 +1730,7 @@ public class User {
 
     def test_annotation_with_boolean_value(self, tmp_path: Path) -> None:
         """Extracts annotation with boolean value."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "User.java").write_text("""
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -1752,7 +1752,7 @@ public class User {
 
     def test_interface_annotation(self, tmp_path: Path) -> None:
         """Extracts annotation from interface."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "UserRepo.java").write_text("""
 @Repository
@@ -1776,7 +1776,7 @@ class TestJavaBaseClassMetadata:
 
     def test_class_extends_single(self, tmp_path: Path) -> None:
         """Extracts single base class from extends clause."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "Admin.java").write_text("""
 public class Admin extends User {
@@ -1794,7 +1794,7 @@ public class Admin extends User {
 
     def test_class_implements_single(self, tmp_path: Path) -> None:
         """Extracts single interface from implements clause."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "UserService.java").write_text("""
 public class UserService implements IUserService {
@@ -1812,7 +1812,7 @@ public class UserService implements IUserService {
 
     def test_class_implements_multiple(self, tmp_path: Path) -> None:
         """Extracts multiple interfaces from implements clause."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "UserService.java").write_text("""
 public class UserService implements IUserService, Serializable, Comparable<User> {
@@ -1832,7 +1832,7 @@ public class UserService implements IUserService, Serializable, Comparable<User>
 
     def test_class_extends_and_implements(self, tmp_path: Path) -> None:
         """Extracts both extends and implements clauses."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "AdminService.java").write_text("""
 public class AdminService extends BaseService implements IAdminService {
@@ -1851,7 +1851,7 @@ public class AdminService extends BaseService implements IAdminService {
 
     def test_interface_extends(self, tmp_path: Path) -> None:
         """Extracts base interfaces from interface extends clause."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "IUserRepo.java").write_text("""
 public interface IUserRepo extends JpaRepository, CrudRepository {
@@ -1870,7 +1870,7 @@ public interface IUserRepo extends JpaRepository, CrudRepository {
 
     def test_generic_base_class(self, tmp_path: Path) -> None:
         """Extracts generic base class with type parameters."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "UserRepo.java").write_text("""
 public class UserRepo extends Repository<User, Long> {
@@ -1890,7 +1890,7 @@ public class UserRepo extends Repository<User, Long> {
 
     def test_class_no_inheritance(self, tmp_path: Path) -> None:
         """Class without extends/implements has empty base_classes."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "Simple.java").write_text("""
 public class Simple {
@@ -1909,7 +1909,7 @@ public class Simple {
 
     def test_interface_extends_generic_type(self, tmp_path: Path) -> None:
         """Extracts generic type from interface extends clause."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "IUserRepo.java").write_text("""
 public interface IUserRepo extends Repository<User, Long> {
@@ -1933,7 +1933,7 @@ class TestAnnotationValueTypes:
 
     def test_annotation_with_integer_value(self, tmp_path: Path) -> None:
         """Extracts annotation with integer value."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "RateLimited.java").write_text("""
 @RateLimit(maxRequests = 100)
@@ -1955,7 +1955,7 @@ public class RateLimited {
 
     def test_annotation_with_hex_integer_value(self, tmp_path: Path) -> None:
         """Extracts annotation with hexadecimal integer value."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "Permissions.java").write_text("""
 @Permission(mask = 0xFF)
@@ -1977,7 +1977,7 @@ public class Permissions {
 
     def test_annotation_with_float_value(self, tmp_path: Path) -> None:
         """Extracts annotation with float value."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "Timeout.java").write_text("""
 @Timeout(seconds = 30.5)
@@ -1999,7 +1999,7 @@ public class Timeout {
 
     def test_annotation_with_array_value(self, tmp_path: Path) -> None:
         """Extracts annotation with array value."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "Roles.java").write_text("""
 @Authorized(roles = {"admin", "user"})
@@ -2032,7 +2032,7 @@ class TestMethodParentBaseClasses:
 
     def test_method_inherits_parent_base_classes(self, tmp_path: Path) -> None:
         """Method has parent_base_classes when parent extends another class."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "MainActivity.java").write_text("""
 public class MainActivity extends Activity {
@@ -2054,7 +2054,7 @@ public class MainActivity extends Activity {
 
     def test_method_inherits_multiple_parent_base_classes(self, tmp_path: Path) -> None:
         """Method has all parent_base_classes when parent implements multiple interfaces."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "MyService.java").write_text("""
 public class MyService extends Service implements Runnable, Comparable<MyService> {
@@ -2080,7 +2080,7 @@ public class MyService extends Service implements Runnable, Comparable<MyService
         self, tmp_path: Path
     ) -> None:
         """Method has no parent_base_classes when parent has no extends/implements."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "PlainClass.java").write_text("""
 public class PlainClass {
@@ -2098,8 +2098,8 @@ public class PlainClass {
 
     def test_android_activity_pattern_matching(self, tmp_path: Path) -> None:
         """Android Activity.onCreate matches lifecycle_hook pattern."""
-        from hypergumbo.analyze.java import analyze_java
-        from hypergumbo.framework_patterns import load_framework_patterns
+        from hypergumbo_lang_mainstream.java import analyze_java
+        from hypergumbo_core.framework_patterns import load_framework_patterns
 
         (tmp_path / "MyActivity.java").write_text("""
 public class MyActivity extends AppCompatActivity {
@@ -2135,8 +2135,8 @@ public class MyActivity extends AppCompatActivity {
 
     def test_android_application_pattern_matching(self, tmp_path: Path) -> None:
         """Android Application.onCreate matches lifecycle_hook pattern."""
-        from hypergumbo.analyze.java import analyze_java
-        from hypergumbo.framework_patterns import load_framework_patterns
+        from hypergumbo_lang_mainstream.java import analyze_java
+        from hypergumbo_core.framework_patterns import load_framework_patterns
 
         (tmp_path / "MyApp.java").write_text("""
 public class MyApp extends Application {
@@ -2186,7 +2186,7 @@ class TestJavaLambdaCallAttribution:
 
         The call to helper() should be attributed to process, not lost.
         """
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "App.java"
         java_file.write_text("""
@@ -2233,7 +2233,7 @@ public class App {
 
     def test_call_inside_callback_lambda_attributed(self, tmp_path: Path) -> None:
         """Calls inside callback lambdas are attributed to enclosing method."""
-        from hypergumbo.analyze.java import analyze_java
+        from hypergumbo_lang_mainstream.java import analyze_java
 
         java_file = tmp_path / "Callback.java"
         java_file.write_text("""

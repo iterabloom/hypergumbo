@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from hypergumbo.cli import run_behavior_map
+from hypergumbo_core.cli import run_behavior_map
 
 
 def test_output_has_analysis_runs(tmp_path: Path) -> None:

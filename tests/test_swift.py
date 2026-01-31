@@ -9,7 +9,7 @@ class TestFindSwiftFiles:
 
     def test_finds_swift_files(self, tmp_path: Path) -> None:
         """Finds .swift files."""
-        from hypergumbo.analyze.swift import find_swift_files
+        from hypergumbo_lang_mainstream.swift import find_swift_files
 
         (tmp_path / "Main.swift").write_text("func main() {}")
         (tmp_path / "Utils.swift").write_text("class Utils {}")
@@ -26,7 +26,7 @@ class TestSwiftTreeSitterAvailability:
 
     def test_is_swift_tree_sitter_available_true(self) -> None:
         """Returns True when tree-sitter-swift is available."""
-        from hypergumbo.analyze.swift import is_swift_tree_sitter_available
+        from hypergumbo_lang_mainstream.swift import is_swift_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = object()
@@ -34,7 +34,7 @@ class TestSwiftTreeSitterAvailability:
 
     def test_is_swift_tree_sitter_available_false(self) -> None:
         """Returns False when tree-sitter is not available."""
-        from hypergumbo.analyze.swift import is_swift_tree_sitter_available
+        from hypergumbo_lang_mainstream.swift import is_swift_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = None
@@ -42,7 +42,7 @@ class TestSwiftTreeSitterAvailability:
 
     def test_is_swift_tree_sitter_available_no_swift(self) -> None:
         """Returns False when tree-sitter is available but swift grammar is not."""
-        from hypergumbo.analyze.swift import is_swift_tree_sitter_available
+        from hypergumbo_lang_mainstream.swift import is_swift_tree_sitter_available
 
         def mock_find_spec(name: str) -> object | None:
             if name == "tree_sitter":
@@ -58,11 +58,11 @@ class TestAnalyzeSwiftFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-swift unavailable."""
-        from hypergumbo.analyze.swift import analyze_swift
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
         (tmp_path / "test.swift").write_text("func test() {}")
 
-        with patch("hypergumbo.analyze.swift.is_swift_tree_sitter_available", return_value=False):
+        with patch("hypergumbo_lang_mainstream.swift.is_swift_tree_sitter_available", return_value=False):
             result = analyze_swift(tmp_path)
 
         assert result.skipped is True
@@ -74,7 +74,7 @@ class TestSwiftFunctionExtraction:
 
     def test_extracts_function(self, tmp_path: Path) -> None:
         """Extracts Swift function declarations."""
-        from hypergumbo.analyze.swift import analyze_swift
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
         swift_file = tmp_path / "Main.swift"
         swift_file.write_text("""
@@ -103,7 +103,7 @@ class TestSwiftClassExtraction:
 
     def test_extracts_class(self, tmp_path: Path) -> None:
         """Extracts class declarations."""
-        from hypergumbo.analyze.swift import analyze_swift
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
         swift_file = tmp_path / "Models.swift"
         swift_file.write_text("""
@@ -139,7 +139,7 @@ class TestSwiftStructExtraction:
 
     def test_extracts_struct(self, tmp_path: Path) -> None:
         """Extracts struct declarations."""
-        from hypergumbo.analyze.swift import analyze_swift
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
         swift_file = tmp_path / "Types.swift"
         swift_file.write_text("""
@@ -168,7 +168,7 @@ class TestSwiftProtocolExtraction:
 
     def test_extracts_protocol(self, tmp_path: Path) -> None:
         """Extracts protocol declarations."""
-        from hypergumbo.analyze.swift import analyze_swift
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
         swift_file = tmp_path / "Protocols.swift"
         swift_file.write_text("""
@@ -195,7 +195,7 @@ class TestSwiftEnumExtraction:
 
     def test_extracts_enum(self, tmp_path: Path) -> None:
         """Extracts enum declarations."""
-        from hypergumbo.analyze.swift import analyze_swift
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
         swift_file = tmp_path / "Enums.swift"
         swift_file.write_text("""
@@ -225,7 +225,7 @@ class TestSwiftFunctionCalls:
 
     def test_detects_function_call(self, tmp_path: Path) -> None:
         """Detects calls to functions in same file."""
-        from hypergumbo.analyze.swift import analyze_swift
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
         swift_file = tmp_path / "Utils.swift"
         swift_file.write_text("""
@@ -250,7 +250,7 @@ class TestSwiftImports:
 
     def test_detects_import_statement(self, tmp_path: Path) -> None:
         """Detects import statements."""
-        from hypergumbo.analyze.swift import analyze_swift
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
         swift_file = tmp_path / "Main.swift"
         swift_file.write_text("""
@@ -274,11 +274,11 @@ class TestSwiftEdgeCases:
 
     def test_parser_load_failure(self, tmp_path: Path) -> None:
         """Returns skipped with run when parser loading fails."""
-        from hypergumbo.analyze.swift import analyze_swift
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
         (tmp_path / "test.swift").write_text("func test() {}")
 
-        with patch("hypergumbo.analyze.swift.is_swift_tree_sitter_available", return_value=True):
+        with patch("hypergumbo_lang_mainstream.swift.is_swift_tree_sitter_available", return_value=True):
             with patch.dict("sys.modules", {"tree_sitter_swift": MagicMock()}):
                 import sys
                 mock_module = sys.modules["tree_sitter_swift"]
@@ -291,7 +291,7 @@ class TestSwiftEdgeCases:
 
     def test_file_with_no_symbols_is_skipped(self, tmp_path: Path) -> None:
         """Files with no extractable symbols are counted as skipped."""
-        from hypergumbo.analyze.swift import analyze_swift
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
         (tmp_path / "empty.swift").write_text("// Just a comment\n")
 
@@ -302,7 +302,7 @@ class TestSwiftEdgeCases:
 
     def test_cross_file_function_call(self, tmp_path: Path) -> None:
         """Detects function calls across files."""
-        from hypergumbo.analyze.swift import analyze_swift
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
         (tmp_path / "Helper.swift").write_text("""
 func greet(name: String) -> String {
@@ -327,7 +327,7 @@ class TestSwiftMethodExtraction:
 
     def test_extracts_class_methods(self, tmp_path: Path) -> None:
         """Extracts methods defined inside classes."""
-        from hypergumbo.analyze.swift import analyze_swift
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
         swift_file = tmp_path / "User.swift"
         swift_file.write_text("""
@@ -357,11 +357,11 @@ class TestSwiftFileReadErrors:
 
     def test_symbol_extraction_handles_read_error(self, tmp_path: Path) -> None:
         """Symbol extraction handles file read errors gracefully."""
-        from hypergumbo.analyze.swift import (
+        from hypergumbo_lang_mainstream.swift import (
             _extract_symbols_from_file,
             is_swift_tree_sitter_available,
         )
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_core.ir import AnalysisRun
 
         if not is_swift_tree_sitter_available():
             pytest.skip("tree-sitter-swift not available")
@@ -383,11 +383,11 @@ class TestSwiftFileReadErrors:
 
     def test_edge_extraction_handles_read_error(self, tmp_path: Path) -> None:
         """Edge extraction handles file read errors gracefully."""
-        from hypergumbo.analyze.swift import (
+        from hypergumbo_lang_mainstream.swift import (
             _extract_edges_from_file,
             is_swift_tree_sitter_available,
         )
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_core.ir import AnalysisRun
 
         if not is_swift_tree_sitter_available():
             pytest.skip("tree-sitter-swift not available")
@@ -413,7 +413,7 @@ class TestSwiftHelperFunctions:
 
     def test_find_child_by_type_returns_none(self, tmp_path: Path) -> None:
         """_find_child_by_type returns None when no matching child."""
-        from hypergumbo.analyze.swift import (
+        from hypergumbo_lang_mainstream.swift import (
             _find_child_by_type,
             is_swift_tree_sitter_available,
         )
@@ -439,7 +439,7 @@ class TestSwiftSignatureExtraction:
 
     def test_basic_function_signature(self, tmp_path: Path) -> None:
         """Extracts signature from a basic function."""
-        from hypergumbo.analyze.swift import analyze_swift
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
         (tmp_path / "Calculator.swift").write_text("""
 class Calculator {
@@ -455,7 +455,7 @@ class Calculator {
 
     def test_void_function_signature(self, tmp_path: Path) -> None:
         """Extracts signature from void function."""
-        from hypergumbo.analyze.swift import analyze_swift
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
         (tmp_path / "Logger.swift").write_text("""
 class Logger {
@@ -471,7 +471,7 @@ class Logger {
 
     def test_no_params_signature(self, tmp_path: Path) -> None:
         """Extracts signature from function with no parameters."""
-        from hypergumbo.analyze.swift import analyze_swift
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
         (tmp_path / "Counter.swift").write_text("""
 class Counter {
@@ -503,7 +503,7 @@ class TestSwiftClosureCallAttribution:
 
         The call to helper() should be attributed to process, not lost.
         """
-        from hypergumbo.analyze.swift import analyze_swift
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
         swift_file = tmp_path / "App.swift"
         swift_file.write_text("""
@@ -546,7 +546,7 @@ func process() {
 
     def test_call_inside_completion_handler_attributed(self, tmp_path: Path) -> None:
         """Calls inside completion handler closures are attributed to enclosing function."""
-        from hypergumbo.analyze.swift import analyze_swift
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
         swift_file = tmp_path / "Async.swift"
         swift_file.write_text("""
@@ -603,7 +603,7 @@ class TestSwiftInheritanceExtraction:
 
     def test_extracts_class_inheritance(self, tmp_path: Path) -> None:
         """Extracts base class from class inheritance."""
-        from hypergumbo.analyze.swift import analyze_swift
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
         swift_file = tmp_path / "Models.swift"
         swift_file.write_text("""
@@ -626,7 +626,7 @@ class Dog: Animal {
 
     def test_extracts_protocol_conformance(self, tmp_path: Path) -> None:
         """Extracts protocol conformance as base_classes."""
-        from hypergumbo.analyze.swift import analyze_swift
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
         swift_file = tmp_path / "Protocols.swift"
         swift_file.write_text("""
@@ -649,7 +649,7 @@ class Circle: Drawable {
 
     def test_extracts_multiple_protocols(self, tmp_path: Path) -> None:
         """Extracts multiple protocol conformances."""
-        from hypergumbo.analyze.swift import analyze_swift
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
         swift_file = tmp_path / "Multi.swift"
         swift_file.write_text("""
@@ -673,7 +673,7 @@ struct Point: Equatable, Hashable {
 
     def test_extracts_class_plus_protocol(self, tmp_path: Path) -> None:
         """Extracts both class inheritance and protocol conformance."""
-        from hypergumbo.analyze.swift import analyze_swift
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
         swift_file = tmp_path / "Mixed.swift"
         swift_file.write_text("""
@@ -694,7 +694,7 @@ class Car: Vehicle, Drivable {}
 
     def test_no_base_classes_when_none(self, tmp_path: Path) -> None:
         """Does not add base_classes when class has no inheritance."""
-        from hypergumbo.analyze.swift import analyze_swift
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
         swift_file = tmp_path / "Standalone.swift"
         swift_file.write_text("""

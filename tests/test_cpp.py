@@ -7,7 +7,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-from hypergumbo.analyze.cpp import (
+from hypergumbo_lang_mainstream.cpp import (
     analyze_cpp,
     find_cpp_files,
     is_cpp_tree_sitter_available,
@@ -277,7 +277,7 @@ class TestCppGracefulDegradation:
     def test_returns_skipped_when_unavailable(self) -> None:
         """Should return skipped result when tree-sitter unavailable."""
         with patch(
-            "hypergumbo.analyze.cpp.is_cpp_tree_sitter_available",
+            "hypergumbo_lang_mainstream.cpp.is_cpp_tree_sitter_available",
             return_value=False,
         ):
             import warnings
@@ -508,7 +508,7 @@ class TestCppSignatureExtraction:
 
     def test_basic_function_signature(self, tmp_path: Path) -> None:
         """Basic function with parameters extracts signature."""
-        from hypergumbo.analyze.cpp import analyze_cpp
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
 
         cpp_file = tmp_path / "math.cpp"
         cpp_file.write_text("int add(int x, int y) { return x + y; }")
@@ -521,7 +521,7 @@ class TestCppSignatureExtraction:
 
     def test_void_function_signature(self, tmp_path: Path) -> None:
         """Void return type function extracts signature without return type."""
-        from hypergumbo.analyze.cpp import analyze_cpp
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
 
         cpp_file = tmp_path / "util.cpp"
         cpp_file.write_text("void process(int count) { /* work */ }")
@@ -534,7 +534,7 @@ class TestCppSignatureExtraction:
 
     def test_reference_parameter_signature(self, tmp_path: Path) -> None:
         """Reference parameters appear in signature."""
-        from hypergumbo.analyze.cpp import analyze_cpp
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
 
         cpp_file = tmp_path / "str.cpp"
         cpp_file.write_text("int size(const std::string& str) { return 0; }")
@@ -548,7 +548,7 @@ class TestCppSignatureExtraction:
 
     def test_class_method_signature(self, tmp_path: Path) -> None:
         """Class method has signature extracted."""
-        from hypergumbo.analyze.cpp import analyze_cpp
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
 
         cpp_file = tmp_path / "class.cpp"
         cpp_file.write_text("void MyClass::process(int value) { /* impl */ }")
@@ -561,7 +561,7 @@ class TestCppSignatureExtraction:
 
     def test_empty_params_signature(self, tmp_path: Path) -> None:
         """Function with no parameters has empty parens."""
-        from hypergumbo.analyze.cpp import analyze_cpp
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
 
         cpp_file = tmp_path / "main.cpp"
         cpp_file.write_text("int main() { return 0; }")
@@ -574,7 +574,7 @@ class TestCppSignatureExtraction:
 
     def test_qualified_return_type(self, tmp_path: Path) -> None:
         """Qualified return type (std::string) appears in signature."""
-        from hypergumbo.analyze.cpp import analyze_cpp
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
 
         cpp_file = tmp_path / "str.cpp"
         cpp_file.write_text("std::string getName() { return \"\"; }")
@@ -591,7 +591,7 @@ class TestCppNamespaceAliases:
 
     def test_extracts_namespace_alias(self, tmp_path: Path) -> None:
         """Extracts namespace aliases from namespace_alias_definition."""
-        from hypergumbo.analyze.cpp import _extract_namespace_aliases
+        from hypergumbo_lang_mainstream.cpp import _extract_namespace_aliases
         import tree_sitter
         import tree_sitter_cpp
 
@@ -612,7 +612,7 @@ namespace io = std::iostream;
 
     def test_namespace_alias_provides_path_hint(self, tmp_path: Path) -> None:
         """Namespace aliases are stored in FileAnalysis for call resolution."""
-        from hypergumbo.analyze.cpp import analyze_cpp
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
 
         (tmp_path / "test.cpp").write_text("""
 namespace MyNS = Some::Namespace;
@@ -642,7 +642,7 @@ class TestCppInheritanceExtraction:
 
     def test_extracts_class_inheritance(self, tmp_path: Path) -> None:
         """Extracts base class from public inheritance."""
-        from hypergumbo.analyze.cpp import analyze_cpp
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
 
         cpp_file = tmp_path / "animal.cpp"
         cpp_file.write_text("""
@@ -667,7 +667,7 @@ public:
 
     def test_extracts_private_inheritance(self, tmp_path: Path) -> None:
         """Extracts base class from private inheritance."""
-        from hypergumbo.analyze.cpp import analyze_cpp
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
 
         cpp_file = tmp_path / "impl.cpp"
         cpp_file.write_text("""
@@ -685,7 +685,7 @@ class Impl : private Base {};
 
     def test_extracts_multiple_inheritance(self, tmp_path: Path) -> None:
         """Extracts multiple base classes."""
-        from hypergumbo.analyze.cpp import analyze_cpp
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
 
         cpp_file = tmp_path / "multi.cpp"
         cpp_file.write_text("""
@@ -705,7 +705,7 @@ class Cat : public Animal, public Printable {};
 
     def test_extracts_struct_inheritance(self, tmp_path: Path) -> None:
         """Extracts inheritance for struct (default public)."""
-        from hypergumbo.analyze.cpp import analyze_cpp
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
 
         cpp_file = tmp_path / "vec.cpp"
         cpp_file.write_text("""
@@ -723,7 +723,7 @@ struct Vector : BaseStruct { int y; };
 
     def test_extracts_qualified_base_class(self, tmp_path: Path) -> None:
         """Extracts qualified base class names (std::exception)."""
-        from hypergumbo.analyze.cpp import analyze_cpp
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
 
         cpp_file = tmp_path / "err.cpp"
         cpp_file.write_text("""
@@ -743,7 +743,7 @@ class MyError : public std::runtime_error {
 
     def test_no_base_classes_when_none(self, tmp_path: Path) -> None:
         """No base_classes when class has no inheritance."""
-        from hypergumbo.analyze.cpp import analyze_cpp
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
 
         cpp_file = tmp_path / "standalone.cpp"
         cpp_file.write_text("""

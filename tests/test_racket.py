@@ -7,7 +7,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-from hypergumbo.analyze.racket import (
+from hypergumbo_lang_common.racket import (
     analyze_racket,
     find_racket_files,
     is_racket_tree_sitter_available,
@@ -88,7 +88,7 @@ class TestIsRacketTreeSitterAvailable:
 
     def test_returns_false_when_unavailable(self) -> None:
         """Should return False when tree-sitter-language-pack is not installed."""
-        import hypergumbo.analyze.racket as racket_module
+        import hypergumbo_lang_common.racket as racket_module
         with patch.object(racket_module, "is_racket_tree_sitter_available", return_value=False):
             assert racket_module.is_racket_tree_sitter_available() is False
 
@@ -98,7 +98,7 @@ class TestAnalyzeRacket:
 
     def test_skips_when_unavailable(self, racket_repo: Path) -> None:
         """Should skip analysis and warn when tree-sitter is unavailable."""
-        import hypergumbo.analyze.racket as racket_module
+        import hypergumbo_lang_common.racket as racket_module
 
         with patch.object(racket_module, "is_racket_tree_sitter_available", return_value=False):
             with pytest.warns(UserWarning, match="tree-sitter-language-pack not available"):

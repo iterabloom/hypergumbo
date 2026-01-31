@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from hypergumbo.analyze.latex import analyze_latex
+from hypergumbo_lang_common.latex import analyze_latex
 
 
 class TestAnalyzeLaTeX:
@@ -275,7 +275,7 @@ class TestAnalyzeLaTeXFallback:
         (tmp_path / "test.tex").write_text(r"\documentclass{article}")
 
         # Temporarily make it unavailable by mocking
-        import hypergumbo.analyze.latex as latex_mod
+        import hypergumbo_lang_common.latex as latex_mod
 
         original_func = latex_mod.is_latex_tree_sitter_available
 

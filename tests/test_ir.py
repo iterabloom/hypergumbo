@@ -1,8 +1,8 @@
 """Tests for the internal representation (IR) layer."""
 from pathlib import Path
 
-from hypergumbo.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
-from hypergumbo.analyze.py import analyze_python
+from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
+from hypergumbo_lang_mainstream.py import analyze_python
 
 
 def test_symbol_has_required_fields() -> None:

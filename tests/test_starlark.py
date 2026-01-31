@@ -11,8 +11,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import starlark as starlark_module
-from hypergumbo.analyze.starlark import (
+from hypergumbo_lang_common import starlark as starlark_module
+from hypergumbo_lang_common.starlark import (
     analyze_starlark,
     find_starlark_files,
     is_starlark_tree_sitter_available,

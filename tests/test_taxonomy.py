@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from hypergumbo.taxonomy import (
+from hypergumbo_core.taxonomy import (
     FileRole,
     LanguageSpec,
     LANGUAGES,
@@ -281,7 +281,7 @@ class TestLanguageExtensions:
 
     def test_language_extensions_derived_from_languages(self) -> None:
         """LANGUAGE_EXTENSIONS is derived from LANGUAGES registry."""
-        from hypergumbo.taxonomy import LANGUAGE_EXTENSIONS, LANGUAGES
+        from hypergumbo_core.taxonomy import LANGUAGE_EXTENSIONS, LANGUAGES
 
         # Check that all LANGUAGES entries are in LANGUAGE_EXTENSIONS
         for name in LANGUAGES:
@@ -290,7 +290,7 @@ class TestLanguageExtensions:
 
     def test_shell_alias_exists(self) -> None:
         """Shell alias maps to bash extensions for backward compatibility."""
-        from hypergumbo.taxonomy import LANGUAGE_EXTENSIONS, LANGUAGES
+        from hypergumbo_core.taxonomy import LANGUAGE_EXTENSIONS, LANGUAGES
 
         assert "shell" in LANGUAGE_EXTENSIONS
         assert "bash" in LANGUAGES
@@ -298,14 +298,14 @@ class TestLanguageExtensions:
 
     def test_language_extensions_has_expected_count(self) -> None:
         """LANGUAGE_EXTENSIONS has all languages plus aliases."""
-        from hypergumbo.taxonomy import LANGUAGE_EXTENSIONS, LANGUAGES, _LANGUAGE_ALIASES
+        from hypergumbo_core.taxonomy import LANGUAGE_EXTENSIONS, LANGUAGES, _LANGUAGE_ALIASES
 
         expected_count = len(LANGUAGES) + len(_LANGUAGE_ALIASES)
         assert len(LANGUAGE_EXTENSIONS) == expected_count
 
     def test_get_language_extensions_returns_copy(self) -> None:
         """get_language_extensions returns a new dict each call."""
-        from hypergumbo.taxonomy import get_language_extensions
+        from hypergumbo_core.taxonomy import get_language_extensions
 
         result1 = get_language_extensions()
         result2 = get_language_extensions()
@@ -318,7 +318,7 @@ class TestSourceExtensions:
 
     def test_source_extensions_only_analyzable(self) -> None:
         """SOURCE_EXTENSIONS only includes ANALYZABLE languages."""
-        from hypergumbo.taxonomy import SOURCE_EXTENSIONS, LANGUAGES, FileRole
+        from hypergumbo_core.taxonomy import SOURCE_EXTENSIONS, LANGUAGES, FileRole
 
         for name in SOURCE_EXTENSIONS:
             # Skip aliases
@@ -327,33 +327,33 @@ class TestSourceExtensions:
 
     def test_source_extensions_includes_python(self) -> None:
         """SOURCE_EXTENSIONS includes Python (an analyzable language)."""
-        from hypergumbo.taxonomy import SOURCE_EXTENSIONS
+        from hypergumbo_core.taxonomy import SOURCE_EXTENSIONS
 
         assert "python" in SOURCE_EXTENSIONS
         assert "*.py" in SOURCE_EXTENSIONS["python"]
 
     def test_source_extensions_excludes_markdown(self) -> None:
         """SOURCE_EXTENSIONS excludes Markdown (documentation, not analyzable)."""
-        from hypergumbo.taxonomy import SOURCE_EXTENSIONS
+        from hypergumbo_core.taxonomy import SOURCE_EXTENSIONS
 
         assert "markdown" not in SOURCE_EXTENSIONS
 
     def test_source_extensions_excludes_json(self) -> None:
         """SOURCE_EXTENSIONS excludes JSON (config/data, not analyzable)."""
-        from hypergumbo.taxonomy import SOURCE_EXTENSIONS
+        from hypergumbo_core.taxonomy import SOURCE_EXTENSIONS
 
         assert "json" not in SOURCE_EXTENSIONS
 
     def test_source_extensions_has_shell_alias(self) -> None:
         """Shell alias is included for analyzable bash."""
-        from hypergumbo.taxonomy import SOURCE_EXTENSIONS
+        from hypergumbo_core.taxonomy import SOURCE_EXTENSIONS
 
         assert "shell" in SOURCE_EXTENSIONS
         assert "*.sh" in SOURCE_EXTENSIONS["shell"]
 
     def test_get_analyzable_extensions_returns_copy(self) -> None:
         """get_analyzable_extensions returns a new dict each call."""
-        from hypergumbo.taxonomy import get_analyzable_extensions
+        from hypergumbo_core.taxonomy import get_analyzable_extensions
 
         result1 = get_analyzable_extensions()
         result2 = get_analyzable_extensions()
@@ -366,7 +366,7 @@ class TestIsAdditionalFileCandidate:
 
     def test_config_yaml_is_candidate(self, tmp_path: Path) -> None:
         """YAML config files are candidates for Additional Files."""
-        from hypergumbo.taxonomy import is_additional_file_candidate
+        from hypergumbo_core.taxonomy import is_additional_file_candidate
 
         f = tmp_path / "config.yaml"
         f.touch()
@@ -374,7 +374,7 @@ class TestIsAdditionalFileCandidate:
 
     def test_markdown_is_candidate(self, tmp_path: Path) -> None:
         """Markdown documentation files are candidates."""
-        from hypergumbo.taxonomy import is_additional_file_candidate
+        from hypergumbo_core.taxonomy import is_additional_file_candidate
 
         f = tmp_path / "README.md"
         f.touch()
@@ -382,7 +382,7 @@ class TestIsAdditionalFileCandidate:
 
     def test_python_is_not_candidate(self, tmp_path: Path) -> None:
         """Python source files are ANALYZABLE, not candidates."""
-        from hypergumbo.taxonomy import is_additional_file_candidate
+        from hypergumbo_core.taxonomy import is_additional_file_candidate
 
         f = tmp_path / "main.py"
         f.touch()
@@ -390,7 +390,7 @@ class TestIsAdditionalFileCandidate:
 
     def test_data_json_is_not_candidate(self, tmp_path: Path) -> None:
         """DATA JSON files are not candidates."""
-        from hypergumbo.taxonomy import is_additional_file_candidate
+        from hypergumbo_core.taxonomy import is_additional_file_candidate
 
         f = tmp_path / "prices_data.json"
         f.write_text("{}")
@@ -398,7 +398,7 @@ class TestIsAdditionalFileCandidate:
 
     def test_unknown_file_is_not_candidate(self, tmp_path: Path) -> None:
         """Unknown file types (binary, etc.) are not candidates."""
-        from hypergumbo.taxonomy import is_additional_file_candidate
+        from hypergumbo_core.taxonomy import is_additional_file_candidate
 
         f = tmp_path / "image.png"
         f.touch()
@@ -406,7 +406,7 @@ class TestIsAdditionalFileCandidate:
 
     def test_config_json_is_candidate(self, tmp_path: Path) -> None:
         """CONFIG JSON files are candidates."""
-        from hypergumbo.taxonomy import is_additional_file_candidate
+        from hypergumbo_core.taxonomy import is_additional_file_candidate
 
         f = tmp_path / "package.json"
         f.write_text("{}")

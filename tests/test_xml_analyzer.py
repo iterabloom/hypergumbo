@@ -5,7 +5,7 @@ Tests verify that the analyzer correctly extracts:
 - Android Manifest: activities, services, permissions, intent-filters
 """
 
-from hypergumbo.analyze.xml_config import (
+from hypergumbo_lang_mainstream.xml_config import (
     PASS_ID,
     PASS_VERSION,
     XMLAnalysisResult,

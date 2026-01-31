@@ -8,7 +8,7 @@ class TestYAMLHelpers:
 
     def test_find_child_by_type_returns_none(self) -> None:
         """Returns None when no matching child type is found."""
-        from hypergumbo.analyze.yaml_ansible import _find_child_by_type
+        from hypergumbo_lang_mainstream.yaml_ansible import _find_child_by_type
 
         mock_node = MagicMock()
         mock_child = MagicMock()
@@ -24,7 +24,7 @@ class TestFindAnsibleFiles:
 
     def test_finds_ansible_playbooks(self, tmp_path: Path) -> None:
         """Finds Ansible playbook files."""
-        from hypergumbo.analyze.yaml_ansible import find_ansible_files
+        from hypergumbo_lang_mainstream.yaml_ansible import find_ansible_files
 
         (tmp_path / "playbook.yml").write_text("- hosts: all")
         (tmp_path / "site.yml").write_text("- hosts: webservers")
@@ -37,7 +37,7 @@ class TestFindAnsibleFiles:
 
     def test_finds_ansible_roles_tasks(self, tmp_path: Path) -> None:
         """Finds Ansible role task files."""
-        from hypergumbo.analyze.yaml_ansible import find_ansible_files
+        from hypergumbo_lang_mainstream.yaml_ansible import find_ansible_files
 
         # Create role structure
         tasks_dir = tmp_path / "roles" / "webserver" / "tasks"
@@ -55,7 +55,7 @@ class TestYAMLTreeSitterAvailability:
 
     def test_is_yaml_tree_sitter_available_true(self) -> None:
         """Returns True when tree-sitter-yaml is available."""
-        from hypergumbo.analyze.yaml_ansible import is_yaml_tree_sitter_available
+        from hypergumbo_lang_mainstream.yaml_ansible import is_yaml_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = object()
@@ -63,7 +63,7 @@ class TestYAMLTreeSitterAvailability:
 
     def test_is_yaml_tree_sitter_available_false(self) -> None:
         """Returns False when tree-sitter is not available."""
-        from hypergumbo.analyze.yaml_ansible import is_yaml_tree_sitter_available
+        from hypergumbo_lang_mainstream.yaml_ansible import is_yaml_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = None
@@ -75,11 +75,11 @@ class TestAnalyzeYAMLFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-yaml unavailable."""
-        from hypergumbo.analyze.yaml_ansible import analyze_ansible
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
 
         (tmp_path / "playbook.yml").write_text("- hosts: all")
 
-        with patch("hypergumbo.analyze.yaml_ansible.is_yaml_tree_sitter_available", return_value=False):
+        with patch("hypergumbo_lang_mainstream.yaml_ansible.is_yaml_tree_sitter_available", return_value=False):
             result = analyze_ansible(tmp_path)
 
         assert result.skipped is True
@@ -91,7 +91,7 @@ class TestAnsiblePlaybookExtraction:
 
     def test_extracts_playbook_with_name(self, tmp_path: Path) -> None:
         """Extracts named playbooks."""
-        from hypergumbo.analyze.yaml_ansible import analyze_ansible
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
 
         playbook = tmp_path / "deploy.yml"
         playbook.write_text('''
@@ -117,7 +117,7 @@ class TestAnsibleTaskExtraction:
 
     def test_extracts_tasks_with_names(self, tmp_path: Path) -> None:
         """Extracts named tasks."""
-        from hypergumbo.analyze.yaml_ansible import analyze_ansible
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
 
         playbook = tmp_path / "playbook.yml"
         playbook.write_text('''
@@ -146,7 +146,7 @@ class TestAnsibleHandlerExtraction:
 
     def test_extracts_handlers(self, tmp_path: Path) -> None:
         """Extracts handler definitions."""
-        from hypergumbo.analyze.yaml_ansible import analyze_ansible
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
 
         playbook = tmp_path / "playbook.yml"
         playbook.write_text('''
@@ -177,7 +177,7 @@ class TestAnsibleIncludeEdges:
 
     def test_extracts_include_tasks(self, tmp_path: Path) -> None:
         """Extracts include_tasks references."""
-        from hypergumbo.analyze.yaml_ansible import analyze_ansible
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
 
         playbook = tmp_path / "playbook.yml"
         playbook.write_text('''
@@ -199,7 +199,7 @@ class TestAnsibleVariableExtraction:
 
     def test_extracts_vars_section(self, tmp_path: Path) -> None:
         """Extracts variables from vars section."""
-        from hypergumbo.analyze.yaml_ansible import analyze_ansible
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
 
         playbook = tmp_path / "playbook.yml"
         playbook.write_text('''
@@ -224,7 +224,7 @@ class TestAnsibleSymbolProperties:
 
     def test_symbol_has_correct_properties(self, tmp_path: Path) -> None:
         """Symbols have correct language and origin."""
-        from hypergumbo.analyze.yaml_ansible import analyze_ansible
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
 
         playbook = tmp_path / "test.yml"
         playbook.write_text('''
@@ -248,7 +248,7 @@ class TestAnsibleEdgeProperties:
 
     def test_edges_have_confidence(self, tmp_path: Path) -> None:
         """Edges have confidence values."""
-        from hypergumbo.analyze.yaml_ansible import analyze_ansible
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
 
         playbook = tmp_path / "test.yml"
         playbook.write_text('''
@@ -270,7 +270,7 @@ class TestAnsibleEmptyFile:
 
     def test_handles_empty_file(self, tmp_path: Path) -> None:
         """Handles empty YAML files gracefully."""
-        from hypergumbo.analyze.yaml_ansible import analyze_ansible
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
 
         playbook = tmp_path / "empty.yml"
         playbook.write_text("")
@@ -282,7 +282,7 @@ class TestAnsibleEmptyFile:
 
     def test_handles_comment_only_file(self, tmp_path: Path) -> None:
         """Handles files with only comments."""
-        from hypergumbo.analyze.yaml_ansible import analyze_ansible
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
 
         playbook = tmp_path / "comments.yml"
         playbook.write_text("""# This is a comment
@@ -300,12 +300,12 @@ class TestAnsibleParserFailure:
 
     def test_handles_parser_load_failure(self, tmp_path: Path) -> None:
         """Handles failure to load YAML parser."""
-        from hypergumbo.analyze.yaml_ansible import analyze_ansible
+        from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
 
         playbook = tmp_path / "test.yml"
         playbook.write_text("- hosts: all")
 
-        with patch("hypergumbo.analyze.yaml_ansible.is_yaml_tree_sitter_available", return_value=True):
+        with patch("hypergumbo_lang_mainstream.yaml_ansible.is_yaml_tree_sitter_available", return_value=True):
             with patch("tree_sitter_yaml.language", side_effect=Exception("Parser error")):
                 result = analyze_ansible(tmp_path)
 

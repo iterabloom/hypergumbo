@@ -1,6 +1,6 @@
 """Tests for the selection.token_budget module."""
 
-from hypergumbo.selection.token_budget import (
+from hypergumbo_core.selection.token_budget import (
     CHARS_PER_TOKEN,
     DEFAULT_TIERS,
     TOKENS_BEHAVIOR_MAP_OVERHEAD,

@@ -3,7 +3,7 @@
 from pathlib import Path
 from textwrap import dedent
 
-from hypergumbo.linkers.message_queue import (
+from hypergumbo_core.linkers.message_queue import (
     _scan_file,
     link_message_queues,
 )

@@ -29,7 +29,7 @@ class TestDartAnalyzerAvailability:
 
     def test_is_dart_tree_sitter_available(self) -> None:
         """Check if tree-sitter for Dart is detected."""
-        from hypergumbo.analyze.dart import is_dart_tree_sitter_available
+        from hypergumbo_lang_common.dart import is_dart_tree_sitter_available
 
         # Should be True since we have tree-sitter-language-pack
         assert is_dart_tree_sitter_available() is True
@@ -40,7 +40,7 @@ class TestDartClassDetection:
 
     def test_detect_class(self, tmp_path: Path) -> None:
         """Detect class definition."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """
 class Person {
@@ -62,7 +62,7 @@ class Person {
 
     def test_detect_abstract_class(self, tmp_path: Path) -> None:
         """Detect abstract class definition."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """
 abstract class Animal {
@@ -83,7 +83,7 @@ class TestDartFunctionDetection:
 
     def test_detect_top_level_function(self, tmp_path: Path) -> None:
         """Detect top-level function definition."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """
 void main() {
@@ -107,7 +107,7 @@ int add(int a, int b) {
 
     def test_detect_method(self, tmp_path: Path) -> None:
         """Detect method inside class."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """
 class Calculator {
@@ -133,7 +133,7 @@ class Calculator {
 
     def test_detect_constructor(self, tmp_path: Path) -> None:
         """Detect constructor."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """
 class User {
@@ -154,7 +154,7 @@ class User {
 
     def test_detect_getter_setter(self, tmp_path: Path) -> None:
         """Detect getters and setters."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """
 class Box {
@@ -182,7 +182,7 @@ class TestDartEnumAndMixin:
 
     def test_detect_enum(self, tmp_path: Path) -> None:
         """Detect enum definition."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """
 enum Color {
@@ -201,7 +201,7 @@ enum Color {
 
     def test_detect_mixin(self, tmp_path: Path) -> None:
         """Detect mixin definition."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """
 mixin Flyable {
@@ -220,7 +220,7 @@ mixin Flyable {
 
     def test_detect_extension(self, tmp_path: Path) -> None:
         """Detect extension definition."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """
 extension StringExtension on String {
@@ -243,7 +243,7 @@ class TestDartImportEdges:
 
     def test_detect_import(self, tmp_path: Path) -> None:
         """Detect import statements."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """
 import 'dart:io';
@@ -264,7 +264,7 @@ void main() {
 
     def test_detect_export(self, tmp_path: Path) -> None:
         """Detect export statements."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """
 export 'src/models.dart';
@@ -286,7 +286,7 @@ class TestDartCallEdges:
 
     def test_detect_function_call(self, tmp_path: Path) -> None:
         """Detect function call edges."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """
 void greet() {
@@ -306,7 +306,7 @@ void main() {
 
     def test_detect_method_call(self, tmp_path: Path) -> None:
         """Detect method call edges."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         # Method calls where the callee is a known function in the same file
         make_dart_file(tmp_path, "main.dart", """
@@ -328,7 +328,7 @@ void main() {
 
     def test_detect_constructor_call(self, tmp_path: Path) -> None:
         """Detect constructor call (instantiation) edges using new keyword."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         # Using explicit 'new' keyword which is easier to detect
         make_dart_file(tmp_path, "main.dart", """
@@ -354,7 +354,7 @@ class TestDartFlutterWidgets:
 
     def test_detect_stateless_widget(self, tmp_path: Path) -> None:
         """Detect StatelessWidget subclass."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """
 import 'package:flutter/material.dart';
@@ -376,7 +376,7 @@ class MyApp extends StatelessWidget {
 
     def test_detect_stateful_widget(self, tmp_path: Path) -> None:
         """Detect StatefulWidget and State subclasses."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """
 import 'package:flutter/material.dart';
@@ -410,7 +410,7 @@ class TestDartCrossFileResolution:
 
     def test_cross_file_call(self, tmp_path: Path) -> None:
         """Calls to functions in other files are resolved."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "utils.dart", """
 int helper() {
@@ -441,7 +441,7 @@ class TestDartEdgeCases:
 
     def test_empty_file(self, tmp_path: Path) -> None:
         """Empty Dart file produces no symbols."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "empty.dart", "")
 
@@ -453,7 +453,7 @@ class TestDartEdgeCases:
 
     def test_syntax_error_file(self, tmp_path: Path) -> None:
         """File with syntax error is handled gracefully."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "bad.dart", """
 class Broken {
@@ -467,7 +467,7 @@ class Broken {
 
     def test_no_dart_files(self, tmp_path: Path) -> None:
         """Directory with no Dart files returns empty result."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.py", "print('hello')")
 
@@ -483,7 +483,7 @@ class TestDartSpanAccuracy:
 
     def test_function_span(self, tmp_path: Path) -> None:
         """Function span includes full definition."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """void hello() {
   print('hi');
@@ -504,7 +504,7 @@ class TestDartAnalyzeFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path, monkeypatch) -> None:
         """Returns skipped result when tree-sitter not available."""
-        from hypergumbo.analyze import dart
+        from hypergumbo_lang_common import dart
 
         # Mock tree-sitter as unavailable
         monkeypatch.setattr(dart, "is_dart_tree_sitter_available", lambda: False)
@@ -525,7 +525,7 @@ class TestDartSignatureExtraction:
 
     def test_function_with_params_and_return_type(self, tmp_path: Path) -> None:
         """Extract signature from function with params and return type."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """
 int add(int a, int b) {
@@ -539,7 +539,7 @@ int add(int a, int b) {
 
     def test_void_function(self, tmp_path: Path) -> None:
         """Extract signature from void function."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """
 void greet(String name) {
@@ -554,7 +554,7 @@ void greet(String name) {
 
     def test_method_signature(self, tmp_path: Path) -> None:
         """Extract signature from method inside class."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """
 class Calculator {
@@ -570,7 +570,7 @@ class Calculator {
 
     def test_no_params_function(self, tmp_path: Path) -> None:
         """Extract signature from function with no parameters."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """
 String getName() {
@@ -584,7 +584,7 @@ String getName() {
 
     def test_optional_named_params(self, tmp_path: Path) -> None:
         """Extract signature from function with optional named parameters."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """
 void configure({int timeout = 30, String name = 'default'}) {
@@ -603,7 +603,7 @@ class TestDartTypeInference:
 
     def test_parameter_type_inference(self, tmp_path: Path) -> None:
         """Method calls on typed parameters are resolved to class methods."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """
 class Database {
@@ -630,7 +630,7 @@ void processData(Database db) {
 
     def test_constructor_type_inference(self, tmp_path: Path) -> None:
         """Method calls on constructor-assigned variables are resolved."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """
 class HttpClient {
@@ -658,7 +658,7 @@ void main() {
 
     def test_optional_param_type_inference(self, tmp_path: Path) -> None:
         """Method calls on optional typed parameters are resolved."""
-        from hypergumbo.analyze.dart import analyze_dart
+        from hypergumbo_lang_common.dart import analyze_dart
 
         make_dart_file(tmp_path, "main.dart", """
 class Logger {
@@ -689,7 +689,7 @@ class TestDartImportHintsExtraction:
 
     def test_extracts_as_prefix(self, tmp_path: Path) -> None:
         """Extracts import prefix from 'as' clause."""
-        from hypergumbo.analyze.dart import _extract_import_hints
+        from hypergumbo_lang_common.dart import _extract_import_hints
 
         import tree_sitter
         from tree_sitter_language_pack import get_language
@@ -717,7 +717,7 @@ void main() {
 
     def test_extracts_show_names(self, tmp_path: Path) -> None:
         """Extracts names from 'show' combinator."""
-        from hypergumbo.analyze.dart import _extract_import_hints
+        from hypergumbo_lang_common.dart import _extract_import_hints
 
         import tree_sitter
         from tree_sitter_language_pack import get_language

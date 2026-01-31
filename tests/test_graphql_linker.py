@@ -3,8 +3,8 @@
 from pathlib import Path
 from textwrap import dedent
 
-from hypergumbo.ir import Span, Symbol
-from hypergumbo.linkers.graphql import (
+from hypergumbo_core.ir import Span, Symbol
+from hypergumbo_core.linkers.graphql import (
     _extract_operation_name,
     _scan_javascript_graphql,
     _scan_python_graphql,
@@ -231,8 +231,8 @@ class TestGraphQLLinkerRegistered:
 
     def test_graphql_linker_returns_result(self, tmp_path: Path) -> None:
         """graphql_linker function returns LinkerResult."""
-        from hypergumbo.linkers.graphql import graphql_linker
-        from hypergumbo.linkers.registry import LinkerContext
+        from hypergumbo_core.linkers.graphql import graphql_linker
+        from hypergumbo_core.linkers.registry import LinkerContext
 
         ctx = LinkerContext(repo_root=tmp_path)
         result = graphql_linker(ctx)
@@ -243,8 +243,8 @@ class TestGraphQLLinkerRegistered:
 
     def test_graphql_linker_extracts_operations(self, tmp_path: Path) -> None:
         """graphql_linker extracts GraphQL operation symbols from context."""
-        from hypergumbo.linkers.graphql import graphql_linker
-        from hypergumbo.linkers.registry import LinkerContext
+        from hypergumbo_core.linkers.graphql import graphql_linker
+        from hypergumbo_core.linkers.registry import LinkerContext
 
         # Create a GraphQL operation symbol in the context
         operation_sym = Symbol(

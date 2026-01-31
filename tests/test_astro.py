@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import astro as astro_module
-from hypergumbo.analyze.astro import (
+from hypergumbo_lang_common import astro as astro_module
+from hypergumbo_lang_common.astro import (
     AstroAnalysisResult,
     analyze_astro,
     find_astro_files,

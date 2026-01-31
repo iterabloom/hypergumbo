@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from hypergumbo.ir import AnalysisRun, Edge, Symbol
-from hypergumbo.linkers.registry import (
+from hypergumbo_core.ir import AnalysisRun, Edge, Symbol
+from hypergumbo_core.linkers.registry import (
     LinkerContext,
     LinkerRequirement,
     LinkerResult,
@@ -59,7 +59,7 @@ class TestLinkerContextSymbolLookup:
         self, name: str, lang: str = "go", kind: str = "function"
     ) -> Symbol:
         """Helper to create a symbol."""
-        from hypergumbo.ir import Span, Symbol
+        from hypergumbo_core.ir import Span, Symbol
 
         sym_id = f"{lang}:test.go:1-10:{name}:{kind}"
         return Symbol(
@@ -111,7 +111,7 @@ class TestLinkerContextSymbolLookup:
 
     def test_find_symbols_by_name_with_dot_qualified(self):
         """find_symbols_by_name indexes by short name from qualified names."""
-        from hypergumbo.ir import Span, Symbol
+        from hypergumbo_core.ir import Span, Symbol
 
         # Create a symbol with qualified name
         sym = Symbol(
@@ -151,7 +151,7 @@ class TestLinkerContextUnresolvedEdges:
 
     def _make_edge(self, src: str, dst: str, edge_type: str = "calls") -> Edge:
         """Helper to create an edge."""
-        from hypergumbo.ir import Edge
+        from hypergumbo_core.ir import Edge
 
         return Edge.create(
             src=src,
@@ -538,7 +538,7 @@ class TestLinkerRequirements:
 
     def test_check_requirements_all_met(self):
         """check_linker_requirements reports all_met=True when requirements are met."""
-        from hypergumbo.ir import Symbol, Span
+        from hypergumbo_core.ir import Symbol, Span
 
         def count_items(ctx: LinkerContext) -> int:
             return len(ctx.symbols)
@@ -653,7 +653,7 @@ class TestFindEnclosingSymbol:
 
     def test_finds_enclosing_function(self):
         """Finds function that contains a given line."""
-        from hypergumbo.ir import Symbol, Span
+        from hypergumbo_core.ir import Symbol, Span
 
         func = Symbol(
             id="python:test.py:10-20:my_func:function",
@@ -674,7 +674,7 @@ class TestFindEnclosingSymbol:
 
     def test_returns_none_when_no_match(self):
         """Returns None when no enclosing symbol found."""
-        from hypergumbo.ir import Symbol, Span
+        from hypergumbo_core.ir import Symbol, Span
 
         func = Symbol(
             id="python:test.py:10-20:my_func:function",
@@ -694,7 +694,7 @@ class TestFindEnclosingSymbol:
 
     def test_prefers_method_over_class(self):
         """Prefers method (more specific) over class when both enclose the line."""
-        from hypergumbo.ir import Symbol, Span
+        from hypergumbo_core.ir import Symbol, Span
 
         cls = Symbol(
             id="python:test.py:5-30:MyClass:class",
@@ -725,7 +725,7 @@ class TestFindEnclosingSymbol:
 
     def test_suffix_matching_for_paths(self):
         """Matches paths by suffix (handles absolute vs relative)."""
-        from hypergumbo.ir import Symbol, Span
+        from hypergumbo_core.ir import Symbol, Span
 
         func = Symbol(
             id="python:/home/user/project/src/test.py:10-20:my_func:function",
@@ -747,7 +747,7 @@ class TestFindEnclosingSymbol:
 
     def test_filters_by_kinds(self):
         """Only considers symbols of specified kinds."""
-        from hypergumbo.ir import Symbol, Span
+        from hypergumbo_core.ir import Symbol, Span
 
         # A variable (not in default kinds)
         var = Symbol(
@@ -784,7 +784,7 @@ class TestEnclosureLinker:
 
     def test_creates_uses_edges_for_synthetic_nodes(self):
         """Creates 'uses' edges from enclosing functions to synthetic nodes."""
-        from hypergumbo.ir import Symbol, Span
+        from hypergumbo_core.ir import Symbol, Span
 
         # A function in the analyzer output
         func = Symbol(
@@ -833,7 +833,7 @@ class TestEnclosureLinker:
 
     def test_skips_non_synthetic_kinds(self):
         """Doesn't create edges for non-synthetic node kinds."""
-        from hypergumbo.ir import Symbol, Span
+        from hypergumbo_core.ir import Symbol, Span
 
         func = Symbol(
             id="python:test.py:10-20:my_func:function",
@@ -871,7 +871,7 @@ class TestEnclosureLinker:
 
     def test_handles_no_enclosing_function(self):
         """Gracefully handles synthetic nodes with no enclosing function."""
-        from hypergumbo.ir import Symbol, Span
+        from hypergumbo_core.ir import Symbol, Span
 
         # Synthetic node at module level (no enclosing function)
         stub = Symbol(

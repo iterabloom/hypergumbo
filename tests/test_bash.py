@@ -8,7 +8,7 @@ class TestBashHelpers:
 
     def test_find_child_by_type_returns_none(self) -> None:
         """Returns None when no matching child type is found."""
-        from hypergumbo.analyze.bash import _find_child_by_type
+        from hypergumbo_lang_mainstream.bash import _find_child_by_type
 
         mock_node = MagicMock()
         mock_child = MagicMock()
@@ -24,7 +24,7 @@ class TestFindBashFiles:
 
     def test_finds_sh_files(self, tmp_path: Path) -> None:
         """Finds .sh files."""
-        from hypergumbo.analyze.bash import find_bash_files
+        from hypergumbo_lang_mainstream.bash import find_bash_files
 
         (tmp_path / "script.sh").write_text("#!/bin/bash\necho hello")
         (tmp_path / "utils.bash").write_text("#!/bin/bash\nfunction test() { :; }")
@@ -39,7 +39,7 @@ class TestFindBashFiles:
 
     def test_finds_files_without_extension_with_shebang(self, tmp_path: Path) -> None:
         """Finds executable files with shell shebang but no extension."""
-        from hypergumbo.analyze.bash import find_bash_files
+        from hypergumbo_lang_mainstream.bash import find_bash_files
 
         # File with shebang but no extension
         script_file = tmp_path / "run-script"
@@ -56,7 +56,7 @@ class TestBashTreeSitterAvailability:
 
     def test_is_bash_tree_sitter_available_true(self) -> None:
         """Returns True when tree-sitter-bash is available."""
-        from hypergumbo.analyze.bash import is_bash_tree_sitter_available
+        from hypergumbo_lang_mainstream.bash import is_bash_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = object()
@@ -64,7 +64,7 @@ class TestBashTreeSitterAvailability:
 
     def test_is_bash_tree_sitter_available_false(self) -> None:
         """Returns False when tree-sitter is not available."""
-        from hypergumbo.analyze.bash import is_bash_tree_sitter_available
+        from hypergumbo_lang_mainstream.bash import is_bash_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = None
@@ -72,7 +72,7 @@ class TestBashTreeSitterAvailability:
 
     def test_is_bash_tree_sitter_available_no_bash(self) -> None:
         """Returns False when tree-sitter is available but bash grammar is not."""
-        from hypergumbo.analyze.bash import is_bash_tree_sitter_available
+        from hypergumbo_lang_mainstream.bash import is_bash_tree_sitter_available
 
         def mock_find_spec(name: str) -> object | None:
             if name == "tree_sitter":
@@ -88,11 +88,11 @@ class TestAnalyzeBashFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-bash unavailable."""
-        from hypergumbo.analyze.bash import analyze_bash
+        from hypergumbo_lang_mainstream.bash import analyze_bash
 
         (tmp_path / "test.sh").write_text("#!/bin/bash\necho hello")
 
-        with patch("hypergumbo.analyze.bash.is_bash_tree_sitter_available", return_value=False):
+        with patch("hypergumbo_lang_mainstream.bash.is_bash_tree_sitter_available", return_value=False):
             result = analyze_bash(tmp_path)
 
         assert result.skipped is True
@@ -104,7 +104,7 @@ class TestBashFunctionExtraction:
 
     def test_extracts_function_keyword_style(self, tmp_path: Path) -> None:
         """Extracts function declarations with 'function' keyword."""
-        from hypergumbo.analyze.bash import analyze_bash
+        from hypergumbo_lang_mainstream.bash import analyze_bash
 
         bash_file = tmp_path / "utils.sh"
         bash_file.write_text("""#!/bin/bash
@@ -128,7 +128,7 @@ function helper() {
 
     def test_extracts_posix_style_function(self, tmp_path: Path) -> None:
         """Extracts POSIX-style function definitions (name())."""
-        from hypergumbo.analyze.bash import analyze_bash
+        from hypergumbo_lang_mainstream.bash import analyze_bash
 
         bash_file = tmp_path / "script.sh"
         bash_file.write_text("""#!/bin/bash
@@ -156,7 +156,7 @@ class TestBashVariableExtraction:
 
     def test_extracts_exported_variables(self, tmp_path: Path) -> None:
         """Extracts exported variable declarations."""
-        from hypergumbo.analyze.bash import analyze_bash
+        from hypergumbo_lang_mainstream.bash import analyze_bash
 
         bash_file = tmp_path / "config.sh"
         bash_file.write_text("""#!/bin/bash
@@ -179,7 +179,7 @@ class TestBashSourceEdges:
 
     def test_extracts_source_statements(self, tmp_path: Path) -> None:
         """Extracts source statements as import edges."""
-        from hypergumbo.analyze.bash import analyze_bash
+        from hypergumbo_lang_mainstream.bash import analyze_bash
 
         bash_file = tmp_path / "main.sh"
         bash_file.write_text("""#!/bin/bash
@@ -200,7 +200,7 @@ source lib/common.sh
 
     def test_extracts_dot_source_statements(self, tmp_path: Path) -> None:
         """Extracts dot (.) source statements as import edges."""
-        from hypergumbo.analyze.bash import analyze_bash
+        from hypergumbo_lang_mainstream.bash import analyze_bash
 
         bash_file = tmp_path / "main.sh"
         bash_file.write_text("""#!/bin/bash
@@ -221,7 +221,7 @@ class TestBashCallEdges:
 
     def test_extracts_call_edges(self, tmp_path: Path) -> None:
         """Extracts call edges between functions."""
-        from hypergumbo.analyze.bash import analyze_bash
+        from hypergumbo_lang_mainstream.bash import analyze_bash
 
         bash_file = tmp_path / "main.sh"
         bash_file.write_text("""#!/bin/bash
@@ -243,7 +243,7 @@ function main() {
 
     def test_extracts_cross_file_call_edges(self, tmp_path: Path) -> None:
         """Extracts call edges between functions in different files."""
-        from hypergumbo.analyze.bash import analyze_bash
+        from hypergumbo_lang_mainstream.bash import analyze_bash
 
         helper_file = tmp_path / "helper.sh"
         helper_file.write_text("""#!/bin/bash
@@ -279,7 +279,7 @@ class TestBashSymbolProperties:
 
     def test_symbol_has_correct_span(self, tmp_path: Path) -> None:
         """Symbols have correct line number spans."""
-        from hypergumbo.analyze.bash import analyze_bash
+        from hypergumbo_lang_mainstream.bash import analyze_bash
 
         bash_file = tmp_path / "test.sh"
         bash_file.write_text("""function test() {
@@ -302,7 +302,7 @@ class TestBashEdgeProperties:
 
     def test_edge_has_confidence(self, tmp_path: Path) -> None:
         """Edges have confidence values."""
-        from hypergumbo.analyze.bash import analyze_bash
+        from hypergumbo_lang_mainstream.bash import analyze_bash
 
         bash_file = tmp_path / "test.sh"
         bash_file.write_text("""#!/bin/bash
@@ -324,7 +324,7 @@ class TestBashEmptyFile:
 
     def test_handles_empty_file(self, tmp_path: Path) -> None:
         """Handles empty Bash files gracefully."""
-        from hypergumbo.analyze.bash import analyze_bash
+        from hypergumbo_lang_mainstream.bash import analyze_bash
 
         bash_file = tmp_path / "empty.sh"
         bash_file.write_text("")
@@ -336,7 +336,7 @@ class TestBashEmptyFile:
 
     def test_handles_comment_only_file(self, tmp_path: Path) -> None:
         """Handles files with only comments."""
-        from hypergumbo.analyze.bash import analyze_bash
+        from hypergumbo_lang_mainstream.bash import analyze_bash
 
         bash_file = tmp_path / "comments.sh"
         bash_file.write_text("""#!/bin/bash
@@ -355,12 +355,12 @@ class TestBashParserFailure:
 
     def test_handles_parser_load_failure(self, tmp_path: Path) -> None:
         """Handles failure to load Bash parser."""
-        from hypergumbo.analyze.bash import analyze_bash
+        from hypergumbo_lang_mainstream.bash import analyze_bash
 
         bash_file = tmp_path / "test.sh"
         bash_file.write_text("#!/bin/bash\necho hello")
 
-        with patch("hypergumbo.analyze.bash.is_bash_tree_sitter_available", return_value=True):
+        with patch("hypergumbo_lang_mainstream.bash.is_bash_tree_sitter_available", return_value=True):
             with patch("tree_sitter_bash.language", side_effect=Exception("Parser error")):
                 result = analyze_bash(tmp_path)
 
@@ -373,7 +373,7 @@ class TestBashAliasExtraction:
 
     def test_extracts_aliases(self, tmp_path: Path) -> None:
         """Extracts alias declarations."""
-        from hypergumbo.analyze.bash import analyze_bash
+        from hypergumbo_lang_mainstream.bash import analyze_bash
 
         bash_file = tmp_path / "aliases.sh"
         bash_file.write_text("""#!/bin/bash
@@ -396,14 +396,14 @@ class TestBashInternalHelpers:
 
     def test_is_bash_shebang_no_shebang(self) -> None:
         """Returns False when line doesn't start with #!."""
-        from hypergumbo.analyze.bash import _is_bash_shebang
+        from hypergumbo_lang_mainstream.bash import _is_bash_shebang
 
         assert _is_bash_shebang("not a shebang") is False
         assert _is_bash_shebang("echo hello") is False
 
     def test_extract_alias_word_format(self, tmp_path: Path) -> None:
         """Extracts alias from word format (alias name=value without quotes)."""
-        from hypergumbo.analyze.bash import analyze_bash
+        from hypergumbo_lang_mainstream.bash import analyze_bash
 
         bash_file = tmp_path / "alias.sh"
         bash_file.write_text("""#!/bin/bash
@@ -422,7 +422,7 @@ class TestBashShebangHandling:
 
     def test_ignores_non_bash_shebang(self, tmp_path: Path) -> None:
         """Ignores files with non-bash shebang."""
-        from hypergumbo.analyze.bash import find_bash_files
+        from hypergumbo_lang_mainstream.bash import find_bash_files
 
         # Python script without extension
         py_file = tmp_path / "run-python"
@@ -439,7 +439,7 @@ class TestBashShebangHandling:
 
     def test_handles_various_bash_shebangs(self, tmp_path: Path) -> None:
         """Handles various bash shebang formats."""
-        from hypergumbo.analyze.bash import find_bash_files
+        from hypergumbo_lang_mainstream.bash import find_bash_files
 
         # Various shebang formats
         (tmp_path / "bash1").write_text("#!/bin/bash\necho 1")
@@ -457,7 +457,7 @@ class TestBashSignatureExtraction:
 
     def test_function_signature_is_empty_parens(self, tmp_path: Path) -> None:
         """Bash functions always have () signature (no formal parameters)."""
-        from hypergumbo.analyze.bash import analyze_bash
+        from hypergumbo_lang_mainstream.bash import analyze_bash
 
         bash_file = tmp_path / "funcs.sh"
         bash_file.write_text("""#!/bin/bash
@@ -473,7 +473,7 @@ function greet() {
 
     def test_posix_function_signature(self, tmp_path: Path) -> None:
         """POSIX-style functions also have () signature."""
-        from hypergumbo.analyze.bash import analyze_bash
+        from hypergumbo_lang_mainstream.bash import analyze_bash
 
         bash_file = tmp_path / "funcs.sh"
         bash_file.write_text("""#!/bin/bash
@@ -489,7 +489,7 @@ say_hello() {
 
     def test_multiple_functions_all_have_signatures(self, tmp_path: Path) -> None:
         """All extracted functions have signatures."""
-        from hypergumbo.analyze.bash import analyze_bash
+        from hypergumbo_lang_mainstream.bash import analyze_bash
 
         bash_file = tmp_path / "utils.sh"
         bash_file.write_text("""#!/bin/bash

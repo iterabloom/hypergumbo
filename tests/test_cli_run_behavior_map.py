@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from hypergumbo.schema import SCHEMA_VERSION
+from hypergumbo_core.schema import SCHEMA_VERSION
 
 
 def _has_sentence_transformers() -> bool:
@@ -85,7 +85,7 @@ def test_cli_run_with_max_files(tmp_path: Path) -> None:
 
 def test_run_behavior_map_returns_generated_files(tmp_path: Path) -> None:
     """Test that run_behavior_map returns list of generated file paths."""
-    from hypergumbo.cli import run_behavior_map
+    from hypergumbo_core.cli import run_behavior_map
 
     # Create a simple Python file
     (tmp_path / "test.py").write_text("def hello(): pass\n")
@@ -101,7 +101,7 @@ def test_run_behavior_map_returns_generated_files(tmp_path: Path) -> None:
 
 def test_run_behavior_map_returns_budget_files(tmp_path: Path) -> None:
     """Test that run_behavior_map returns budget files when generated."""
-    from hypergumbo.cli import run_behavior_map
+    from hypergumbo_core.cli import run_behavior_map
 
     # Create a simple Python file
     (tmp_path / "test.py").write_text("def hello(): pass\n")
@@ -182,7 +182,7 @@ def test_run_behavior_map_stores_sketch_precomputed(tmp_path: Path) -> None:
     This test requires sentence-transformers because it tests the HYBRID
     config extraction mode which uses embeddings.
     """
-    from hypergumbo.cli import run_behavior_map
+    from hypergumbo_core.cli import run_behavior_map
 
     # Create a mini project with config file and README
     (tmp_path / "main.py").write_text("def hello(): pass\n")

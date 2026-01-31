@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
-from hypergumbo.analyze.base import (
+from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     find_child_by_field,

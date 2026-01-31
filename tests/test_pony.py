@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import pony as pony_module
-from hypergumbo.analyze.pony import (
+from hypergumbo_lang_extended1 import pony as pony_module
+from hypergumbo_lang_extended1.pony import (
     PonyAnalysisResult,
     analyze_pony,
     find_pony_files,

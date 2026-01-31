@@ -3,12 +3,12 @@
 from pathlib import Path
 from textwrap import dedent
 
-from hypergumbo.linkers.graphql_resolver import (
+from hypergumbo_core.linkers.graphql_resolver import (
     _scan_javascript_resolvers,
     _scan_python_resolvers,
     link_graphql_resolvers,
 )
-from hypergumbo.ir import Symbol, Span
+from hypergumbo_core.ir import Symbol, Span
 
 
 class TestJavaScriptResolverPatterns:

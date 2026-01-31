@@ -9,7 +9,7 @@ class TestGroovyHelpers:
     def test_find_child_by_type_returns_none(self) -> None:
         """Returns None when no matching child type is found."""
         from unittest.mock import MagicMock
-        from hypergumbo.analyze.groovy import _find_child_by_type
+        from hypergumbo_lang_mainstream.groovy import _find_child_by_type
 
         # Create a mock node with no children matching the type
         mock_node = MagicMock()
@@ -26,7 +26,7 @@ class TestFindGroovyFiles:
 
     def test_finds_groovy_files(self, tmp_path: Path) -> None:
         """Finds .groovy files."""
-        from hypergumbo.analyze.groovy import find_groovy_files
+        from hypergumbo_lang_mainstream.groovy import find_groovy_files
 
         (tmp_path / "Main.groovy").write_text("class Main {}")
         (tmp_path / "build.gradle").write_text("apply plugin: 'java'")
@@ -44,7 +44,7 @@ class TestGroovyTreeSitterAvailability:
 
     def test_is_groovy_tree_sitter_available_true(self) -> None:
         """Returns True when tree-sitter-groovy is available."""
-        from hypergumbo.analyze.groovy import is_groovy_tree_sitter_available
+        from hypergumbo_lang_mainstream.groovy import is_groovy_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = object()
@@ -52,7 +52,7 @@ class TestGroovyTreeSitterAvailability:
 
     def test_is_groovy_tree_sitter_available_false(self) -> None:
         """Returns False when tree-sitter is not available."""
-        from hypergumbo.analyze.groovy import is_groovy_tree_sitter_available
+        from hypergumbo_lang_mainstream.groovy import is_groovy_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = None
@@ -60,7 +60,7 @@ class TestGroovyTreeSitterAvailability:
 
     def test_is_groovy_tree_sitter_available_no_groovy(self) -> None:
         """Returns False when tree-sitter is available but groovy grammar is not."""
-        from hypergumbo.analyze.groovy import is_groovy_tree_sitter_available
+        from hypergumbo_lang_mainstream.groovy import is_groovy_tree_sitter_available
 
         def mock_find_spec(name: str) -> object | None:
             if name == "tree_sitter":
@@ -76,11 +76,11 @@ class TestAnalyzeGroovyFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-groovy unavailable."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         (tmp_path / "test.groovy").write_text("def test() {}")
 
-        with patch("hypergumbo.analyze.groovy.is_groovy_tree_sitter_available", return_value=False):
+        with patch("hypergumbo_lang_mainstream.groovy.is_groovy_tree_sitter_available", return_value=False):
             result = analyze_groovy(tmp_path)
 
         assert result.skipped is True
@@ -92,7 +92,7 @@ class TestGroovyClassExtraction:
 
     def test_extracts_class(self, tmp_path: Path) -> None:
         """Extracts class declarations."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         groovy_file = tmp_path / "Main.groovy"
         groovy_file.write_text("""
@@ -125,7 +125,7 @@ class TestGroovyMethodExtraction:
 
     def test_extracts_methods(self, tmp_path: Path) -> None:
         """Extracts method declarations from classes."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         groovy_file = tmp_path / "Utils.groovy"
         groovy_file.write_text("""
@@ -154,7 +154,7 @@ class TestGroovyFunctionExtraction:
 
     def test_extracts_functions(self, tmp_path: Path) -> None:
         """Extracts top-level function definitions."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         groovy_file = tmp_path / "scripts.groovy"
         groovy_file.write_text("""
@@ -181,7 +181,7 @@ class TestGroovyImportEdges:
 
     def test_extracts_imports(self, tmp_path: Path) -> None:
         """Extracts import statements as edges."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         groovy_file = tmp_path / "Main.groovy"
         groovy_file.write_text("""
@@ -211,7 +211,7 @@ class TestGroovyCallEdges:
 
     def test_extracts_call_edges(self, tmp_path: Path) -> None:
         """Extracts call edges between functions."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         groovy_file = tmp_path / "Main.groovy"
         groovy_file.write_text("""
@@ -246,7 +246,7 @@ class Main {
 
     def test_extracts_cross_file_call_edges(self, tmp_path: Path) -> None:
         """Extracts call edges between functions in different files."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         helper_file = tmp_path / "Helper.groovy"
         helper_file.write_text("""
@@ -283,7 +283,7 @@ class TestGradleBuildFile:
 
     def test_analyzes_gradle_file(self, tmp_path: Path) -> None:
         """Analyzes .gradle files."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         gradle_file = tmp_path / "build.gradle"
         gradle_file.write_text("""
@@ -317,7 +317,7 @@ class TestGroovyInterfaceExtraction:
 
     def test_extracts_interface(self, tmp_path: Path) -> None:
         """Extracts interface declarations."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         groovy_file = tmp_path / "Api.groovy"
         groovy_file.write_text("""
@@ -350,7 +350,7 @@ class TestGroovyTraitExtraction:
 
     def test_trait_parsing_limitation(self, tmp_path: Path) -> None:
         """Documents trait parsing limitation in tree-sitter-groovy grammar."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         groovy_file = tmp_path / "Traits.groovy"
         groovy_file.write_text("""
@@ -377,7 +377,7 @@ class TestGroovyEnumExtraction:
 
     def test_extracts_enum(self, tmp_path: Path) -> None:
         """Extracts enum declarations."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         groovy_file = tmp_path / "Enums.groovy"
         groovy_file.write_text("""
@@ -404,7 +404,7 @@ class TestGroovySymbolProperties:
 
     def test_symbol_has_correct_span(self, tmp_path: Path) -> None:
         """Symbols have correct line number spans."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         groovy_file = tmp_path / "Test.groovy"
         groovy_file.write_text("""class Test {
@@ -425,7 +425,7 @@ class TestGroovySymbolProperties:
 
     def test_method_prefixed_with_class(self, tmp_path: Path) -> None:
         """Methods are prefixed with class name."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         groovy_file = tmp_path / "Example.groovy"
         groovy_file.write_text("""
@@ -446,7 +446,7 @@ class TestGroovyEdgeProperties:
 
     def test_edge_has_confidence(self, tmp_path: Path) -> None:
         """Edges have confidence values."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         groovy_file = tmp_path / "Test.groovy"
         groovy_file.write_text("""
@@ -469,7 +469,7 @@ class TestGroovyEmptyFile:
 
     def test_handles_empty_file(self, tmp_path: Path) -> None:
         """Handles empty Groovy files gracefully."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         groovy_file = tmp_path / "Empty.groovy"
         groovy_file.write_text("")
@@ -482,7 +482,7 @@ class TestGroovyEmptyFile:
 
     def test_handles_comment_only_file(self, tmp_path: Path) -> None:
         """Handles files with only comments."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         groovy_file = tmp_path / "Comments.groovy"
         groovy_file.write_text("""
@@ -502,12 +502,12 @@ class TestGroovyParserFailure:
 
     def test_handles_parser_load_failure(self, tmp_path: Path) -> None:
         """Handles failure to load Groovy parser."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         groovy_file = tmp_path / "test.groovy"
         groovy_file.write_text("class Test {}")
 
-        with patch("hypergumbo.analyze.groovy.is_groovy_tree_sitter_available", return_value=True):
+        with patch("hypergumbo_lang_mainstream.groovy.is_groovy_tree_sitter_available", return_value=True):
             with patch("tree_sitter_groovy.language", side_effect=Exception("Parser error")):
                 result = analyze_groovy(tmp_path)
 
@@ -516,7 +516,7 @@ class TestGroovyParserFailure:
 
     def test_handles_unreadable_file(self, tmp_path: Path) -> None:
         """Handles files that can't be read."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         # Create a valid groovy file and an unreadable one
         valid_file = tmp_path / "Valid.groovy"
@@ -541,7 +541,7 @@ class TestGroovySignatureExtraction:
 
     def test_params_extraction(self, tmp_path: Path) -> None:
         """Extracts signature with parameter names."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         (tmp_path / "Calculator.groovy").write_text("""
 class Calculator {
@@ -560,7 +560,7 @@ class Calculator {
 
     def test_void_return_type_omitted(self, tmp_path: Path) -> None:
         """Void return type is omitted from signature."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         (tmp_path / "Logger.groovy").write_text("""
 class Logger {
@@ -578,7 +578,7 @@ class Logger {
 
     def test_no_params_function(self, tmp_path: Path) -> None:
         """Extracts signature for method with no parameters."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         (tmp_path / "Counter.groovy").write_text("""
 class Counter {
@@ -599,7 +599,7 @@ class TestGroovyImportAliases:
 
     def test_extracts_import_alias(self, tmp_path: Path) -> None:
         """Extracts import alias from 'import as' statement."""
-        from hypergumbo.analyze.groovy import _extract_import_aliases
+        from hypergumbo_lang_mainstream.groovy import _extract_import_aliases
         import tree_sitter
         import tree_sitter_groovy
 
@@ -632,7 +632,7 @@ class Main {
 
     def test_qualified_call_uses_alias(self, tmp_path: Path) -> None:
         """Qualified call resolution uses import alias for path hint."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         # Note: Coll.sort is an external JDK call, so no edge is created
         # (we don't have the JDK in our symbol table).
@@ -661,7 +661,7 @@ class Main {
 
     def test_import_alias_helps_cross_file_resolution(self, tmp_path: Path) -> None:
         """Import alias helps disambiguate calls to local symbols."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         # Create a Utils class in its own file
         (tmp_path / "utils/Utils.groovy").mkdir(parents=True, exist_ok=True)
@@ -703,7 +703,7 @@ class TestGroovyInheritanceEdges:
 
     def test_class_extends_class_has_base_classes(self, tmp_path: Path) -> None:
         """Class extending another class has base_classes metadata."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         (tmp_path / "Models.groovy").write_text("""
 class BaseModel {
@@ -727,7 +727,7 @@ class User extends BaseModel {
 
     def test_class_implements_interface_has_base_classes(self, tmp_path: Path) -> None:
         """Class implementing interface has base_classes metadata."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         (tmp_path / "Models.groovy").write_text("""
 interface Serializable {
@@ -751,7 +751,7 @@ class User implements Serializable {
 
     def test_class_extends_and_implements_has_both(self, tmp_path: Path) -> None:
         """Class extending and implementing has both in base_classes."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         (tmp_path / "Models.groovy").write_text("""
 class BaseModel {}
@@ -777,7 +777,7 @@ class User extends BaseModel implements Serializable, Comparable {
 
     def test_generic_base_class_strips_type_params(self, tmp_path: Path) -> None:
         """Generic base class has type params stripped in base_classes."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         (tmp_path / "Repository.groovy").write_text("""
 class Repository<T> {
@@ -804,7 +804,7 @@ class User {}
 
     def test_generic_interface_strips_type_params(self, tmp_path: Path) -> None:
         """Generic interface has type params stripped in base_classes."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         (tmp_path / "Comparable.groovy").write_text("""
 interface Comparable<T> {
@@ -829,7 +829,7 @@ class User implements Comparable<User> {
 
     def test_class_without_extends_has_no_base_classes(self, tmp_path: Path) -> None:
         """Class without extends clause has no base_classes metadata."""
-        from hypergumbo.analyze.groovy import analyze_groovy
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
         (tmp_path / "Simple.groovy").write_text("""
 class SimpleClass {
@@ -849,9 +849,9 @@ class SimpleClass {
 
     def test_linker_creates_extends_edge(self, tmp_path: Path) -> None:
         """Inheritance linker creates extends edge from base_classes."""
-        from hypergumbo.analyze.groovy import analyze_groovy
-        from hypergumbo.linkers.inheritance import link_inheritance
-        from hypergumbo.linkers.registry import LinkerContext
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+        from hypergumbo_core.linkers.inheritance import link_inheritance
+        from hypergumbo_core.linkers.registry import LinkerContext
 
         (tmp_path / "Models.groovy").write_text("""
 class BaseModel {

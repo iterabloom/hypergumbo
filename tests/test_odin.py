@@ -7,7 +7,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-from hypergumbo.analyze.odin import (
+from hypergumbo_lang_extended1.odin import (
     analyze_odin,
     find_odin_files,
     is_odin_tree_sitter_available,
@@ -139,7 +139,7 @@ class TestAnalyzeOdin:
 
     def test_skips_when_unavailable(self, odin_repo: Path) -> None:
         """Should skip analysis and warn when tree-sitter-odin is unavailable."""
-        import hypergumbo.analyze.odin as odin_module
+        import hypergumbo_lang_extended1.odin as odin_module
 
         with patch.object(odin_module, "is_odin_tree_sitter_available", return_value=False):
             with pytest.warns(UserWarning, match="tree-sitter-odin not available"):

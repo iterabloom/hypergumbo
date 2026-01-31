@@ -7,8 +7,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import llvm_ir as llvm_module
-from hypergumbo.analyze.llvm_ir import (
+from hypergumbo_lang_extended1 import llvm_ir as llvm_module
+from hypergumbo_lang_extended1.llvm_ir import (
     analyze_llvm_ir,
     find_llvm_ir_files,
     is_llvm_tree_sitter_available,

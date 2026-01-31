@@ -7,7 +7,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-from hypergumbo.analyze.csharp import (
+from hypergumbo_lang_mainstream.csharp import (
     analyze_csharp,
     find_csharp_files,
     is_csharp_tree_sitter_available,
@@ -201,7 +201,7 @@ class TestCSharpInheritanceEdges:
 
     def test_extracts_base_class_metadata(self, tmp_path: Path) -> None:
         """Extracts base_classes metadata for class with base class."""
-        from hypergumbo.analyze.csharp import analyze_csharp
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
 
         cs_file = tmp_path / "Models.cs"
         cs_file.write_text("""
@@ -223,7 +223,7 @@ public class User : BaseModel {
 
     def test_extracts_interface_implementation(self, tmp_path: Path) -> None:
         """Extracts base_classes metadata for class implementing interface."""
-        from hypergumbo.analyze.csharp import analyze_csharp
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
 
         cs_file = tmp_path / "Models.cs"
         cs_file.write_text("""
@@ -245,7 +245,7 @@ public class User : IEntity {
 
     def test_extracts_multiple_inheritance(self, tmp_path: Path) -> None:
         """Extracts all base types for class extending class and interfaces."""
-        from hypergumbo.analyze.csharp import analyze_csharp
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
 
         cs_file = tmp_path / "Models.cs"
         cs_file.write_text("""
@@ -280,7 +280,7 @@ public class User : BaseModel, IEntity, IDisposable {
 
     def test_strips_generic_parameters(self, tmp_path: Path) -> None:
         """Strips generic parameters from base class names."""
-        from hypergumbo.analyze.csharp import analyze_csharp
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
 
         cs_file = tmp_path / "Models.cs"
         cs_file.write_text("""
@@ -299,9 +299,9 @@ public class UserRepository : Repository<User> {
 
     def test_creates_extends_edge(self, tmp_path: Path) -> None:
         """Creates extends edge from class to its base class via linker."""
-        from hypergumbo.analyze.csharp import analyze_csharp
-        from hypergumbo.linkers.inheritance import link_inheritance
-        from hypergumbo.linkers.registry import LinkerContext
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+        from hypergumbo_core.linkers.inheritance import link_inheritance
+        from hypergumbo_core.linkers.registry import LinkerContext
 
         cs_file = tmp_path / "Models.cs"
         cs_file.write_text("""
@@ -332,9 +332,9 @@ public class User : BaseModel {
 
     def test_creates_implements_edge_for_interface(self, tmp_path: Path) -> None:
         """Creates implements edge from class to interface via linker."""
-        from hypergumbo.analyze.csharp import analyze_csharp
-        from hypergumbo.linkers.inheritance import link_inheritance
-        from hypergumbo.linkers.registry import LinkerContext
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+        from hypergumbo_core.linkers.inheritance import link_inheritance
+        from hypergumbo_core.linkers.registry import LinkerContext
 
         cs_file = tmp_path / "Models.cs"
         cs_file.write_text("""
@@ -365,9 +365,9 @@ public class User : IEntity {
 
     def test_no_edge_for_external_base_class(self, tmp_path: Path) -> None:
         """No edge created when base class is not in analyzed codebase."""
-        from hypergumbo.analyze.csharp import analyze_csharp
-        from hypergumbo.linkers.inheritance import link_inheritance
-        from hypergumbo.linkers.registry import LinkerContext
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+        from hypergumbo_core.linkers.inheritance import link_inheritance
+        from hypergumbo_core.linkers.registry import LinkerContext
 
         cs_file = tmp_path / "Models.cs"
         cs_file.write_text("""
@@ -589,7 +589,7 @@ class TestCSharpGracefulDegradation:
     def test_returns_skipped_when_unavailable(self) -> None:
         """Should return skipped result when tree-sitter unavailable."""
         with patch(
-            "hypergumbo.analyze.csharp.is_csharp_tree_sitter_available",
+            "hypergumbo_lang_mainstream.csharp.is_csharp_tree_sitter_available",
             return_value=False,
         ):
             import warnings
@@ -1115,7 +1115,7 @@ class TestUsingAliasExtraction:
 
     def test_extracts_aliased_using(self, tmp_path: Path) -> None:
         """Extracts aliased using directives like 'using Svc = MyApp.Services;'."""
-        from hypergumbo.analyze.csharp import (
+        from hypergumbo_lang_mainstream.csharp import (
             _extract_using_aliases,
             is_csharp_tree_sitter_available,
         )
@@ -1156,7 +1156,7 @@ public class Program
 
     def test_extracts_simple_namespace_using(self, tmp_path: Path) -> None:
         """Extracts simple using directives as name -> full path."""
-        from hypergumbo.analyze.csharp import (
+        from hypergumbo_lang_mainstream.csharp import (
             _extract_using_aliases,
             is_csharp_tree_sitter_available,
         )
@@ -1207,7 +1207,7 @@ class TestCSharpLambdaCallAttribution:
 
         The call to Filter() should be attributed to Process, not lost.
         """
-        from hypergumbo.analyze.csharp import analyze_csharp
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
 
         cs_file = tmp_path / "Lambda.cs"
         cs_file.write_text("""
@@ -1251,7 +1251,7 @@ public class Example {
 
     def test_call_inside_foreach_lambda_attributed(self, tmp_path: Path) -> None:
         """Calls inside ForEach lambda are attributed to enclosing method."""
-        from hypergumbo.analyze.csharp import analyze_csharp
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
 
         cs_file = tmp_path / "ForEach.cs"
         cs_file.write_text("""
@@ -1290,7 +1290,7 @@ public class Example {
 
     def test_chained_linq_lambdas_attributed(self, tmp_path: Path) -> None:
         """Calls in chained LINQ lambdas are all attributed to enclosing method."""
-        from hypergumbo.analyze.csharp import analyze_csharp
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
 
         cs_file = tmp_path / "LinqChain.cs"
         cs_file.write_text("""

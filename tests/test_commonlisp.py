@@ -18,8 +18,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import commonlisp as commonlisp_module
-from hypergumbo.analyze.commonlisp import analyze_commonlisp
+from hypergumbo_lang_common import commonlisp as commonlisp_module
+from hypergumbo_lang_common.commonlisp import analyze_commonlisp
 
 
 def make_lisp_file(tmp: Path, name: str, content: str) -> Path:

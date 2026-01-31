@@ -10,7 +10,7 @@ Tests verify that the analyzer correctly extracts:
 - Subdirectory includes
 """
 
-from hypergumbo.analyze.cmake import (
+from hypergumbo_lang_mainstream.cmake import (
     PASS_ID,
     PASS_VERSION,
     CMakeAnalysisResult,
@@ -242,7 +242,7 @@ add_library(mylib lib.cpp)
 
 def test_tree_sitter_not_available():
     """Test graceful degradation when tree-sitter is not available."""
-    from hypergumbo.analyze.cmake import is_cmake_tree_sitter_available
+    from hypergumbo_lang_mainstream.cmake import is_cmake_tree_sitter_available
 
     # The function should return a boolean
     result = is_cmake_tree_sitter_available()

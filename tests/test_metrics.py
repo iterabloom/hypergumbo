@@ -1,7 +1,7 @@
 """Tests for metrics computation."""
 import pytest
 
-from hypergumbo.metrics import compute_metrics
+from hypergumbo_core.metrics import compute_metrics
 
 
 class TestComputeMetrics:

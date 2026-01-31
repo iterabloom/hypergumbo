@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import svelte as svelte_module
-from hypergumbo.analyze.svelte import (
+from hypergumbo_lang_common import svelte as svelte_module
+from hypergumbo_lang_common.svelte import (
     SvelteAnalysisResult,
     analyze_svelte,
     find_svelte_files,

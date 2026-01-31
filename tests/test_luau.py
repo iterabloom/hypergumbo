@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import luau as luau_module
-from hypergumbo.analyze.luau import (
+from hypergumbo_lang_extended1 import luau as luau_module
+from hypergumbo_lang_extended1.luau import (
     LuauAnalysisResult,
     analyze_luau,
     find_luau_files,

@@ -11,7 +11,7 @@ class TestFindPhpFiles:
 
     def test_finds_php_files(self, tmp_path: Path) -> None:
         """Finds .php files."""
-        from hypergumbo.analyze.php import find_php_files
+        from hypergumbo_lang_mainstream.php import find_php_files
 
         (tmp_path / "index.php").write_text("<?php echo 'hello'; ?>")
         (tmp_path / "other.txt").write_text("not php")
@@ -23,7 +23,7 @@ class TestFindPhpFiles:
 
     def test_excludes_vendor(self, tmp_path: Path) -> None:
         """Excludes vendor directory."""
-        from hypergumbo.analyze.php import find_php_files
+        from hypergumbo_lang_mainstream.php import find_php_files
 
         (tmp_path / "app.php").write_text("<?php class App {} ?>")
         vendor = tmp_path / "vendor"
@@ -41,7 +41,7 @@ class TestPhpTreeSitterAvailability:
 
     def test_is_php_tree_sitter_available_true(self) -> None:
         """Returns True when tree-sitter-php is available."""
-        from hypergumbo.analyze.php import is_php_tree_sitter_available
+        from hypergumbo_lang_mainstream.php import is_php_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = object()  # Non-None = available
@@ -49,7 +49,7 @@ class TestPhpTreeSitterAvailability:
 
     def test_is_php_tree_sitter_available_false(self) -> None:
         """Returns False when tree-sitter is not available."""
-        from hypergumbo.analyze.php import is_php_tree_sitter_available
+        from hypergumbo_lang_mainstream.php import is_php_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = None
@@ -57,7 +57,7 @@ class TestPhpTreeSitterAvailability:
 
     def test_is_php_tree_sitter_available_no_php_grammar(self) -> None:
         """Returns False when tree-sitter-php is not available."""
-        from hypergumbo.analyze.php import is_php_tree_sitter_available
+        from hypergumbo_lang_mainstream.php import is_php_tree_sitter_available
 
         def mock_find_spec(name: str):
             if name == "tree_sitter":
@@ -73,11 +73,11 @@ class TestAnalyzePhpFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-php unavailable."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         (tmp_path / "test.php").write_text("<?php function foo() {} ?>")
 
-        with patch("hypergumbo.analyze.php.is_php_tree_sitter_available", return_value=False):
+        with patch("hypergumbo_lang_mainstream.php.is_php_tree_sitter_available", return_value=False):
             result = analyze_php(tmp_path)
 
         assert result.skipped is True
@@ -89,7 +89,7 @@ class TestPhpFunctionExtraction:
 
     def test_extracts_function(self, tmp_path: Path) -> None:
         """Extracts PHP function declarations."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         php_file = tmp_path / "functions.php"
         php_file.write_text("""<?php
@@ -112,7 +112,7 @@ function goodbye() {
 
     def test_extracts_class(self, tmp_path: Path) -> None:
         """Extracts PHP class declarations."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         php_file = tmp_path / "MyClass.php"
         php_file.write_text("""<?php
@@ -133,7 +133,7 @@ class MyClass {
 
     def test_handles_empty_file(self, tmp_path: Path) -> None:
         """Handles PHP file with no functions/classes."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         php_file = tmp_path / "empty.php"
         php_file.write_text("<?php echo 'Hello'; ?>")
@@ -151,7 +151,7 @@ class TestPhpMixedContent:
 
     def test_handles_html_with_php(self, tmp_path: Path) -> None:
         """Handles files with mixed HTML and PHP."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         php_file = tmp_path / "template.php"
         php_file.write_text("""<!DOCTYPE html>
@@ -183,7 +183,7 @@ class TestPhpAnalysisRun:
 
     def test_tracks_files_analyzed(self, tmp_path: Path) -> None:
         """Tracks number of files analyzed."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         (tmp_path / "a.php").write_text("<?php function a() {} ?>")
         (tmp_path / "b.php").write_text("<?php function b() {} ?>")
@@ -197,7 +197,7 @@ class TestPhpAnalysisRun:
 
     def test_empty_repo(self, tmp_path: Path) -> None:
         """Handles repo with no PHP files."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         (tmp_path / "app.js").write_text("const x = 1;")
 
@@ -213,7 +213,7 @@ class TestPhpEdgeCases:
 
     def test_find_name_in_children_no_name(self) -> None:
         """Returns None when node has no 'name' child."""
-        from hypergumbo.analyze.php import _find_name_in_children
+        from hypergumbo_lang_mainstream.php import _find_name_in_children
         from unittest.mock import MagicMock
 
         # Create mock node with no "name" child
@@ -228,7 +228,7 @@ class TestPhpEdgeCases:
 
     def test_get_php_parser_import_error(self) -> None:
         """Returns None when tree-sitter-php is not available."""
-        from hypergumbo.analyze.php import _get_php_parser
+        from hypergumbo_lang_mainstream.php import _get_php_parser
 
         # Mark tree-sitter modules as unavailable in sys.modules
         with patch.dict(sys.modules, {
@@ -240,15 +240,15 @@ class TestPhpEdgeCases:
 
     def test_analyze_php_file_parser_unavailable(self, tmp_path: Path) -> None:
         """Returns failure when parser is unavailable."""
-        from hypergumbo.analyze.php import _analyze_php_file
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.php import _analyze_php_file
+        from hypergumbo_core.ir import AnalysisRun
 
         php_file = tmp_path / "test.php"
         php_file.write_text("<?php function test() {} ?>")
 
         run = AnalysisRun.create(pass_id="test", version="test")
 
-        with patch("hypergumbo.analyze.php._get_php_parser", return_value=None):
+        with patch("hypergumbo_lang_mainstream.php._get_php_parser", return_value=None):
             symbols, edges, success = _analyze_php_file(php_file, run)
 
         assert success is False
@@ -256,8 +256,8 @@ class TestPhpEdgeCases:
 
     def test_analyze_php_file_read_error(self, tmp_path: Path) -> None:
         """Returns failure when file cannot be read."""
-        from hypergumbo.analyze.php import _analyze_php_file
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.php import _analyze_php_file
+        from hypergumbo_core.ir import AnalysisRun
 
         php_file = tmp_path / "missing.php"
         # Don't create the file
@@ -270,7 +270,7 @@ class TestPhpEdgeCases:
 
     def test_php_file_skipped_increments_counter(self, tmp_path: Path) -> None:
         """PHP files that fail to read increment skipped counter."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         php_file = tmp_path / "test.php"
         php_file.write_text("<?php function test() {} ?>")
@@ -291,7 +291,7 @@ class TestPhpEdgeCases:
 
     def test_extracts_call_edges(self, tmp_path: Path) -> None:
         """Extracts call edges between PHP functions."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         php_file = tmp_path / "functions.php"
         php_file.write_text("""<?php
@@ -323,7 +323,7 @@ class TestPhpMethodCalls:
 
     def test_this_method_call(self, tmp_path: Path) -> None:
         """Detects $this->method() calls within a class."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         php_file = tmp_path / "MyClass.php"
         php_file.write_text("""<?php
@@ -356,7 +356,7 @@ class MyClass {
 
     def test_static_method_call(self, tmp_path: Path) -> None:
         """Detects ClassName::method() static calls."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         php_file = tmp_path / "StaticClass.php"
         php_file.write_text("""<?php
@@ -381,7 +381,7 @@ class StaticClass {
 
     def test_self_static_call(self, tmp_path: Path) -> None:
         """Detects self:: and static:: calls."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         php_file = tmp_path / "SelfCall.php"
         php_file.write_text("""<?php
@@ -410,7 +410,7 @@ class SelfCall {
 
     def test_object_instantiation(self, tmp_path: Path) -> None:
         """Detects new ClassName() instantiation."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         php_file = tmp_path / "Factory.php"
         php_file.write_text("""<?php
@@ -435,7 +435,7 @@ class Factory {
 
     def test_inferred_method_call(self, tmp_path: Path) -> None:
         """Detects $obj->method() with inferred type."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         php_file = tmp_path / "Caller.php"
         php_file.write_text("""<?php
@@ -469,7 +469,7 @@ class TestPhpCrossFileResolution:
 
     def test_cross_file_function_call(self, tmp_path: Path) -> None:
         """Resolves function calls across files."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         # Create two files
         (tmp_path / "helpers.php").write_text("""<?php
@@ -500,7 +500,7 @@ function main() {
 
     def test_cross_file_class_instantiation(self, tmp_path: Path) -> None:
         """Resolves class instantiation across files."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         (tmp_path / "Product.php").write_text("""<?php
 class Product {
@@ -529,7 +529,7 @@ class Factory {
 
     def test_cross_file_static_call(self, tmp_path: Path) -> None:
         """Resolves static method calls across files."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         (tmp_path / "Helper.php").write_text("""<?php
 class Helper {
@@ -561,7 +561,7 @@ class TestUseAliasExtraction:
 
     def test_extracts_simple_use(self, tmp_path: Path) -> None:
         """Extracts simple use statements using last component."""
-        from hypergumbo.analyze.php import (
+        from hypergumbo_lang_mainstream.php import (
             _extract_use_aliases,
             is_php_tree_sitter_available,
             _get_php_parser,
@@ -601,7 +601,7 @@ class Main {
 
     def test_extracts_aliased_use(self, tmp_path: Path) -> None:
         """Extracts use statements with 'as' alias."""
-        from hypergumbo.analyze.php import (
+        from hypergumbo_lang_mainstream.php import (
             _extract_use_aliases,
             is_php_tree_sitter_available,
             _get_php_parser,
@@ -642,7 +642,7 @@ class TestPhpEdgeExtraction:
 
     def test_no_edges_outside_function(self, tmp_path: Path) -> None:
         """Calls outside functions/methods don't create edges."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         php_file = tmp_path / "top_level.php"
         php_file.write_text("""<?php
@@ -663,7 +663,7 @@ helper();
 
     def test_nested_class_method(self, tmp_path: Path) -> None:
         """Handles nested method calls."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         php_file = tmp_path / "Nested.php"
         php_file.write_text("""<?php
@@ -686,8 +686,8 @@ class Outer {
 
     def test_method_without_class_context(self, tmp_path: Path) -> None:
         """Method outside class still extracts symbol."""
-        from hypergumbo.analyze.php import _extract_symbols, _get_php_parser
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.php import _extract_symbols, _get_php_parser
+        from hypergumbo_core.ir import AnalysisRun
 
         # This is an edge case - method_declaration outside class
         # Tree-sitter may parse it differently, but we handle it
@@ -706,8 +706,8 @@ class Outer {
 
     def test_analyze_php_file_success(self, tmp_path: Path) -> None:
         """_analyze_php_file returns symbols and edges on success."""
-        from hypergumbo.analyze.php import _analyze_php_file
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.php import _analyze_php_file
+        from hypergumbo_core.ir import AnalysisRun
 
         php_file = tmp_path / "test.php"
         php_file.write_text("""<?php
@@ -735,7 +735,7 @@ class MyClass {
 
     def test_analyze_php_parser_none_after_check(self, tmp_path: Path) -> None:
         """analyze_php handles case where parser is None after availability check."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         php_file = tmp_path / "test.php"
         php_file.write_text("<?php function test() {} ?>")
@@ -743,10 +743,10 @@ class MyClass {
         # Mock is_php_tree_sitter_available to return True
         # but _get_php_parser to return None
         with patch(
-            "hypergumbo.analyze.php.is_php_tree_sitter_available",
+            "hypergumbo_lang_mainstream.php.is_php_tree_sitter_available",
             return_value=True,
         ), patch(
-            "hypergumbo.analyze.php._get_php_parser",
+            "hypergumbo_lang_mainstream.php._get_php_parser",
             return_value=None,
         ):
             result = analyze_php(tmp_path)
@@ -761,7 +761,7 @@ class TestPHPSignatureExtraction:
 
     def test_typed_method_with_return_type(self, tmp_path: Path) -> None:
         """Extracts signature from method with typed params and return type."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         (tmp_path / "Calculator.php").write_text("""<?php
 class Calculator {
@@ -777,7 +777,7 @@ class Calculator {
 
     def test_void_method_signature(self, tmp_path: Path) -> None:
         """Extracts signature from void method (omits void return type)."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         (tmp_path / "Logger.php").write_text("""<?php
 class Logger {
@@ -793,7 +793,7 @@ class Logger {
 
     def test_no_type_hints_signature(self, tmp_path: Path) -> None:
         """Extracts signature from method without type hints."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         (tmp_path / "Utils.php").write_text("""<?php
 class Utils {
@@ -818,7 +818,7 @@ class TestLaravelUsageContextExtraction:
 
     def test_extracts_get_route_usage_context(self, tmp_path: Path) -> None:
         """Extracts UsageContext for Route::get() calls."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         routes_file = tmp_path / "web.php"
         routes_file.write_text("""<?php
@@ -843,7 +843,7 @@ Route::get('/users', [UserController::class, 'index']);
 
     def test_extracts_post_route_usage_context(self, tmp_path: Path) -> None:
         """Extracts UsageContext for Route::post() calls."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         routes_file = tmp_path / "web.php"
         routes_file.write_text("""<?php
@@ -860,7 +860,7 @@ Route::post('/users', [UserController::class, 'store']);
 
     def test_extracts_resource_route_usage_context(self, tmp_path: Path) -> None:
         """Extracts UsageContext for Route::resource() calls."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         routes_file = tmp_path / "web.php"
         routes_file.write_text("""<?php
@@ -879,7 +879,7 @@ Route::resource('photos', PhotoController::class);
 
     def test_extracts_apiresource_route_usage_context(self, tmp_path: Path) -> None:
         """Extracts UsageContext for Route::apiResource() calls."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         routes_file = tmp_path / "web.php"
         routes_file.write_text("""<?php
@@ -896,7 +896,7 @@ Route::apiResource('posts', PostController::class);
 
     def test_extracts_any_route_usage_context(self, tmp_path: Path) -> None:
         """Extracts UsageContext for Route::any() calls."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         routes_file = tmp_path / "web.php"
         routes_file.write_text("""<?php
@@ -913,7 +913,7 @@ Route::any('/catchall', [CatchAllController::class, 'handle']);
 
     def test_match_route_with_array_first_arg_skipped(self, tmp_path: Path) -> None:
         """Route::match() with array first arg is skipped (path not extractable)."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         routes_file = tmp_path / "web.php"
         routes_file.write_text("""<?php
@@ -933,7 +933,7 @@ Route::match(['get', 'post'], '/form', [FormController::class, 'handle']);
 
     def test_skips_non_route_scoped_calls(self, tmp_path: Path) -> None:
         """Doesn't extract UsageContext for non-Route scoped calls."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         php_file = tmp_path / "app.php"
         php_file.write_text("""<?php
@@ -948,7 +948,7 @@ OtherClass::post('/also-not-route');
 
     def test_handles_missing_route_path(self, tmp_path: Path) -> None:
         """Handles Route calls without string path argument."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         php_file = tmp_path / "web.php"
         php_file.write_text("""<?php
@@ -967,7 +967,7 @@ class TestLaravelControllerExtraction:
 
     def test_extracts_array_style_controller(self, tmp_path: Path) -> None:
         """Extracts controller from [Controller::class, 'action'] syntax."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         routes_file = tmp_path / "web.php"
         routes_file.write_text("""<?php
@@ -984,7 +984,7 @@ Route::get('/users', [UserController::class, 'index']);
 
     def test_extracts_string_style_controller(self, tmp_path: Path) -> None:
         """Extracts controller from 'Controller@action' string syntax."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         routes_file = tmp_path / "web.php"
         routes_file.write_text("""<?php
@@ -1005,7 +1005,7 @@ class TestLaravelRouteSymbols:
 
     def test_route_symbols_created_for_http_methods(self, tmp_path: Path) -> None:
         """Laravel HTTP routes create Symbol objects with kind='route'."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         routes_file = tmp_path / "web.php"
         routes_file.write_text("""<?php
@@ -1032,7 +1032,7 @@ Route::post('/login', 'AuthController@login');
 
     def test_route_symbols_for_resource_macro(self, tmp_path: Path) -> None:
         """Laravel resource routes create expanded RESTful route symbols."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         routes_file = tmp_path / "web.php"
         routes_file.write_text("""<?php
@@ -1068,7 +1068,7 @@ class TestPhpInheritanceEdges:
 
     def test_class_extends_class_has_base_classes(self, tmp_path: Path) -> None:
         """Class extending another class has base_classes metadata."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         (tmp_path / "Models.php").write_text("""<?php
 class BaseModel {
@@ -1092,7 +1092,7 @@ class User extends BaseModel {
 
     def test_class_implements_interface_has_base_classes(self, tmp_path: Path) -> None:
         """Class implementing interface has base_classes metadata."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         (tmp_path / "Models.php").write_text("""<?php
 interface Serializable {
@@ -1116,7 +1116,7 @@ class User implements Serializable {
 
     def test_class_extends_and_implements_has_both(self, tmp_path: Path) -> None:
         """Class extending and implementing has both in base_classes."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         (tmp_path / "Models.php").write_text("""<?php
 class BaseModel {}
@@ -1142,7 +1142,7 @@ class User extends BaseModel implements Serializable, Comparable {
 
     def test_class_without_extends_has_no_base_classes(self, tmp_path: Path) -> None:
         """Class without extends/implements has no base_classes metadata."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         (tmp_path / "Simple.php").write_text("""<?php
 class SimpleClass {
@@ -1162,7 +1162,7 @@ class SimpleClass {
 
     def test_qualified_names_in_base_classes(self, tmp_path: Path) -> None:
         """Extracts fully qualified namespace names in extends/implements."""
-        from hypergumbo.analyze.php import analyze_php
+        from hypergumbo_lang_mainstream.php import analyze_php
 
         (tmp_path / "Controller.php").write_text(r"""<?php
 namespace App\Controllers;
@@ -1186,9 +1186,9 @@ class UserController extends \Illuminate\Routing\Controller implements \App\Cont
 
     def test_linker_creates_extends_edge(self, tmp_path: Path) -> None:
         """Inheritance linker creates extends edge from base_classes."""
-        from hypergumbo.analyze.php import analyze_php
-        from hypergumbo.linkers.inheritance import link_inheritance
-        from hypergumbo.linkers.registry import LinkerContext
+        from hypergumbo_lang_mainstream.php import analyze_php
+        from hypergumbo_core.linkers.inheritance import link_inheritance
+        from hypergumbo_core.linkers.registry import LinkerContext
 
         (tmp_path / "Models.php").write_text("""<?php
 class BaseModel {

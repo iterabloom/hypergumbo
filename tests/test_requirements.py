@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import requirements as requirements_module
-from hypergumbo.analyze.requirements import (
+from hypergumbo_lang_mainstream import requirements as requirements_module
+from hypergumbo_lang_mainstream.requirements import (
     RequirementsAnalysisResult,
     analyze_requirements,
     find_requirements_files,

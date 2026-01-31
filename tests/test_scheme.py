@@ -7,7 +7,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-from hypergumbo.analyze.scheme import (
+from hypergumbo_lang_common.scheme import (
     analyze_scheme,
     find_scheme_files,
     is_scheme_tree_sitter_available,
@@ -92,7 +92,7 @@ class TestIsSchemeTreeSitterAvailable:
 
     def test_returns_false_when_unavailable(self) -> None:
         """Should return False when tree-sitter-language-pack is not installed."""
-        import hypergumbo.analyze.scheme as scheme_module
+        import hypergumbo_lang_common.scheme as scheme_module
         with patch.object(scheme_module, "is_scheme_tree_sitter_available", return_value=False):
             assert scheme_module.is_scheme_tree_sitter_available() is False
 
@@ -102,7 +102,7 @@ class TestAnalyzeScheme:
 
     def test_skips_when_unavailable(self, scheme_repo: Path) -> None:
         """Should skip analysis and warn when tree-sitter is unavailable."""
-        import hypergumbo.analyze.scheme as scheme_module
+        import hypergumbo_lang_common.scheme as scheme_module
 
         with patch.object(scheme_module, "is_scheme_tree_sitter_available", return_value=False):
             with pytest.warns(UserWarning, match="tree-sitter-language-pack not available"):

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from hypergumbo.cli import build_parser, run_behavior_map
+from hypergumbo_core.cli import build_parser, run_behavior_map
 
 
 class TestMaxTierParser:

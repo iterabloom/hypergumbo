@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import purescript as purescript_module
-from hypergumbo.analyze.purescript import (
+from hypergumbo_lang_common import purescript as purescript_module
+from hypergumbo_lang_common.purescript import (
     PureScriptAnalysisResult,
     analyze_purescript,
     find_purescript_files,

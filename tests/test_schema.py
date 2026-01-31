@@ -59,7 +59,7 @@ class TestSchemaValidation:
 
     def test_empty_behavior_map_validates(self):
         """An empty behavior map from new_behavior_map() validates."""
-        from hypergumbo.schema import new_behavior_map
+        from hypergumbo_core.schema import new_behavior_map
 
         schema = load_schema()
         behavior_map = new_behavior_map()
@@ -109,7 +109,7 @@ class TestSchemaValidation:
 
     def test_symbol_with_all_fields_validates(self):
         """A Symbol with all optional fields validates."""
-        from hypergumbo.ir import Span, Symbol
+        from hypergumbo_core.ir import Span, Symbol
 
         schema = load_schema()
 
@@ -138,7 +138,7 @@ class TestSchemaValidation:
 
     def test_edge_with_all_fields_validates(self):
         """An Edge with all optional fields validates."""
-        from hypergumbo.ir import Edge
+        from hypergumbo_core.ir import Edge
 
         schema = load_schema()
 
@@ -161,7 +161,7 @@ class TestSchemaValidation:
 
     def test_analysis_run_validates(self):
         """An AnalysisRun validates."""
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_core.ir import AnalysisRun
 
         schema = load_schema()
 
@@ -235,7 +235,7 @@ class TestSchemaUpToDate:
 
     def test_schema_version_matches_code(self):
         """schema.json schema_version matches schema.py SCHEMA_VERSION."""
-        from hypergumbo.schema import SCHEMA_VERSION
+        from hypergumbo_core.schema import SCHEMA_VERSION
 
         schema = load_schema()
         schema_version_in_json = schema["properties"]["schema_version"]["const"]

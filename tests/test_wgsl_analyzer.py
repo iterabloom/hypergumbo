@@ -8,7 +8,7 @@ Tests verify that the analyzer correctly extracts:
 - Binding attributes (@group/@binding)
 """
 
-from hypergumbo.analyze.wgsl import (
+from hypergumbo_lang_common.wgsl import (
     PASS_ID,
     PASS_VERSION,
     WGSLAnalysisResult,

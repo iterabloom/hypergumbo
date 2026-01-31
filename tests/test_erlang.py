@@ -20,8 +20,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import erlang as erlang_module
-from hypergumbo.analyze.erlang import analyze_erlang
+from hypergumbo_lang_common import erlang as erlang_module
+from hypergumbo_lang_common.erlang import analyze_erlang
 
 
 def make_erl_file(tmp: Path, name: str, content: str) -> Path:
@@ -399,7 +399,7 @@ class TestErlangImportAliases:
 
     def test_extracts_import_aliases(self, tmp_path: Path) -> None:
         """Extracts function -> module mapping from -import statements."""
-        from hypergumbo.analyze.erlang import _extract_import_aliases
+        from hypergumbo_lang_common.erlang import _extract_import_aliases
         from tree_sitter_language_pack import get_parser
 
         source = b"""

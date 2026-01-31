@@ -20,8 +20,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import fsharp as fsharp_module
-from hypergumbo.analyze.fsharp import analyze_fsharp
+from hypergumbo_lang_common import fsharp as fsharp_module
+from hypergumbo_lang_common.fsharp import analyze_fsharp
 
 
 def make_fsharp_file(tmp: Path, name: str, content: str) -> Path:
@@ -334,7 +334,7 @@ class TestFsharpModuleAliases:
 
     def test_extracts_module_alias(self, tmp_path: Path) -> None:
         """Extracts module alias from 'module M = List' statement."""
-        from hypergumbo.analyze.fsharp import _extract_module_aliases
+        from hypergumbo_lang_common.fsharp import _extract_module_aliases
         from tree_sitter_language_pack import get_parser
 
         parser = get_parser("fsharp")
@@ -361,7 +361,7 @@ let main args =
 
     def test_extracts_dotted_module_alias(self, tmp_path: Path) -> None:
         """Extracts module alias from dotted module path."""
-        from hypergumbo.analyze.fsharp import _extract_module_aliases
+        from hypergumbo_lang_common.fsharp import _extract_module_aliases
         from tree_sitter_language_pack import get_parser
 
         parser = get_parser("fsharp")
@@ -526,14 +526,14 @@ val double: int -> int
         forth_file = tmp_path / "long.fs"
         forth_file.write_text("".join(lines), encoding="utf-8")
 
-        from hypergumbo.analyze.fsharp import _is_likely_forth_file
+        from hypergumbo_lang_common.fsharp import _is_likely_forth_file
 
         # Should detect Forth pattern in first 30 lines
         assert _is_likely_forth_file(forth_file) is True
 
     def test_forth_detection_handles_io_error(self, tmp_path: Path) -> None:
         """Forth detection gracefully handles I/O errors."""
-        from hypergumbo.analyze.fsharp import _is_likely_forth_file
+        from hypergumbo_lang_common.fsharp import _is_likely_forth_file
 
         # Non-existent file returns False (not a crash)
         nonexistent = tmp_path / "nonexistent.fs"

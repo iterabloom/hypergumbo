@@ -7,7 +7,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-from hypergumbo.analyze.tcl import (
+from hypergumbo_lang_extended1.tcl import (
     analyze_tcl,
     find_tcl_files,
     is_tcl_tree_sitter_available,
@@ -103,7 +103,7 @@ class TestIsTclTreeSitterAvailable:
 
     def test_returns_false_when_unavailable(self) -> None:
         """Should return False when tree-sitter-language-pack is not installed."""
-        import hypergumbo.analyze.tcl as tcl_module
+        import hypergumbo_lang_extended1.tcl as tcl_module
         with patch.object(tcl_module, "is_tcl_tree_sitter_available", return_value=False):
             assert tcl_module.is_tcl_tree_sitter_available() is False
 
@@ -113,7 +113,7 @@ class TestAnalyzeTcl:
 
     def test_skips_when_unavailable(self, tcl_repo: Path) -> None:
         """Should skip analysis and warn when tree-sitter is unavailable."""
-        import hypergumbo.analyze.tcl as tcl_module
+        import hypergumbo_lang_extended1.tcl as tcl_module
 
         with patch.object(tcl_module, "is_tcl_tree_sitter_available", return_value=False):
             with pytest.warns(UserWarning, match="tree-sitter-language-pack not available"):

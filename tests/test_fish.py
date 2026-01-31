@@ -11,8 +11,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import fish as fish_module
-from hypergumbo.analyze.fish import (
+from hypergumbo_lang_extended1 import fish as fish_module
+from hypergumbo_lang_extended1.fish import (
     analyze_fish,
     find_fish_files,
     is_fish_tree_sitter_available,

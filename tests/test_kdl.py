@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo.analyze import kdl as kdl_module
-from hypergumbo.analyze.kdl import (
+from hypergumbo_lang_extended1 import kdl as kdl_module
+from hypergumbo_lang_extended1.kdl import (
     KdlAnalysisResult,
     analyze_kdl,
     find_kdl_files,

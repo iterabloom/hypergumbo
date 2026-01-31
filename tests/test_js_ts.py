@@ -10,7 +10,7 @@ class TestFindJsTsFiles:
 
     def test_finds_js_files(self, tmp_path: Path) -> None:
         """Finds .js files."""
-        from hypergumbo.analyze.js_ts import find_js_ts_files
+        from hypergumbo_lang_mainstream.js_ts import find_js_ts_files
 
         (tmp_path / "app.js").write_text("const x = 1;")
         (tmp_path / "other.txt").write_text("not js")
@@ -22,7 +22,7 @@ class TestFindJsTsFiles:
 
     def test_finds_ts_files(self, tmp_path: Path) -> None:
         """Finds .ts files."""
-        from hypergumbo.analyze.js_ts import find_js_ts_files
+        from hypergumbo_lang_mainstream.js_ts import find_js_ts_files
 
         (tmp_path / "app.ts").write_text("const x: number = 1;")
 
@@ -33,7 +33,7 @@ class TestFindJsTsFiles:
 
     def test_finds_jsx_tsx_files(self, tmp_path: Path) -> None:
         """Finds .jsx and .tsx files."""
-        from hypergumbo.analyze.js_ts import find_js_ts_files
+        from hypergumbo_lang_mainstream.js_ts import find_js_ts_files
 
         (tmp_path / "App.jsx").write_text("export default () => <div />;")
         (tmp_path / "App.tsx").write_text("export default () => <div />;")
@@ -46,7 +46,7 @@ class TestFindJsTsFiles:
 
     def test_excludes_node_modules(self, tmp_path: Path) -> None:
         """Excludes node_modules directory."""
-        from hypergumbo.analyze.js_ts import find_js_ts_files
+        from hypergumbo_lang_mainstream.js_ts import find_js_ts_files
 
         (tmp_path / "app.js").write_text("const x = 1;")
         nm = tmp_path / "node_modules"
@@ -65,7 +65,7 @@ class TestTreeSitterAvailability:
 
     def test_is_tree_sitter_available_true(self) -> None:
         """Returns True when tree-sitter is available."""
-        from hypergumbo.analyze.js_ts import is_tree_sitter_available
+        from hypergumbo_lang_mainstream.js_ts import is_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = object()  # Non-None = available
@@ -73,7 +73,7 @@ class TestTreeSitterAvailability:
 
     def test_is_tree_sitter_available_false(self) -> None:
         """Returns False when tree-sitter is not available."""
-        from hypergumbo.analyze.js_ts import is_tree_sitter_available
+        from hypergumbo_lang_mainstream.js_ts import is_tree_sitter_available
 
         with patch("importlib.util.find_spec") as mock_find:
             mock_find.return_value = None
@@ -81,7 +81,7 @@ class TestTreeSitterAvailability:
 
     def test_is_tree_sitter_available_no_js_grammar(self) -> None:
         """Returns False when tree-sitter-javascript is not available."""
-        from hypergumbo.analyze.js_ts import is_tree_sitter_available
+        from hypergumbo_lang_mainstream.js_ts import is_tree_sitter_available
 
         def mock_find_spec(name: str):
             if name == "tree_sitter":
@@ -97,11 +97,11 @@ class TestAnalyzeJavascriptFallback:
 
     def test_returns_empty_when_tree_sitter_unavailable(self, tmp_path: Path) -> None:
         """Returns empty result with skipped pass when tree-sitter unavailable."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text("function foo() {}")
 
-        with patch("hypergumbo.analyze.js_ts.is_tree_sitter_available", return_value=False):
+        with patch("hypergumbo_lang_mainstream.js_ts.is_tree_sitter_available", return_value=False):
             result = analyze_javascript(tmp_path)
 
         assert result.symbols == []
@@ -122,7 +122,7 @@ class TestAnalyzeJavascriptWithTreeSitter:
 
     def test_extracts_function_declaration(self, tmp_path: Path) -> None:
         """Extracts function declarations as symbols."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text("function greet(name) {\n  return 'Hello ' + name;\n}")
 
@@ -136,7 +136,7 @@ class TestAnalyzeJavascriptWithTreeSitter:
 
     def test_extracts_arrow_function(self, tmp_path: Path) -> None:
         """Extracts arrow functions assigned to variables."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text("const add = (a, b) => a + b;")
 
@@ -148,7 +148,7 @@ class TestAnalyzeJavascriptWithTreeSitter:
 
     def test_extracts_class_declaration(self, tmp_path: Path) -> None:
         """Extracts class declarations."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text("class User {\n  constructor(name) {\n    this.name = name;\n  }\n}")
 
@@ -160,7 +160,7 @@ class TestAnalyzeJavascriptWithTreeSitter:
 
     def test_extracts_class_methods(self, tmp_path: Path) -> None:
         """Extracts methods from class declarations."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         code = """
 class UserService {
@@ -192,7 +192,7 @@ class UserService {
 
     def test_extracts_getters_and_setters(self, tmp_path: Path) -> None:
         """Extracts getters and setters from class declarations."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         code = """
 class User {
@@ -233,7 +233,7 @@ class User {
 
     def test_extracts_es6_import(self, tmp_path: Path) -> None:
         """Extracts ES6 import statements as edges."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text("import { helper } from './utils';\n\nfunction main() { helper(); }")
 
@@ -245,7 +245,7 @@ class User {
 
     def test_extracts_require_call(self, tmp_path: Path) -> None:
         """Extracts CommonJS require() calls as edges."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text("const fs = require('fs');\n\nfunction main() { fs.readFile('x'); }")
 
@@ -257,7 +257,7 @@ class User {
 
     def test_extracts_function_calls(self, tmp_path: Path) -> None:
         """Extracts function call edges."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         code = """
 function helper() {
@@ -281,7 +281,7 @@ function main() {
         """Handles TypeScript files with type annotations."""
         pytest.importorskip("tree_sitter_typescript")
 
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         code = """
 interface User {
@@ -302,7 +302,7 @@ function greet(user: User): string {
 
     def test_jsx_component(self, tmp_path: Path) -> None:
         """Handles JSX component files."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         code = """
 function App() {
@@ -320,7 +320,7 @@ export default App;
 
     def test_tracks_provenance(self, tmp_path: Path) -> None:
         """Sets origin and origin_run_id on symbols and edges."""
-        from hypergumbo.analyze.js_ts import analyze_javascript, PASS_ID
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript, PASS_ID
 
         code = """
 function foo() {}
@@ -343,7 +343,7 @@ function bar() { foo(); }
 
     def test_import_edge_confidence(self, tmp_path: Path) -> None:
         """Import edges have appropriate confidence scores."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text("import { x } from './utils';")
 
@@ -357,7 +357,7 @@ function bar() { foo(); }
 
     def test_require_edge_evidence_type(self, tmp_path: Path) -> None:
         """Require calls have correct evidence type."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text("const x = require('./utils');")
 
@@ -369,7 +369,7 @@ function bar() { foo(); }
 
     def test_dynamic_import_lower_confidence(self, tmp_path: Path) -> None:
         """Dynamic imports/requires have lower confidence."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         code = """
 const name = 'utils';
@@ -387,7 +387,7 @@ const x = require(name);
 
     def test_handles_syntax_errors(self, tmp_path: Path) -> None:
         """Gracefully handles files with syntax errors."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "good.js").write_text("function foo() {}")
         (tmp_path / "bad.js").write_text("function { broken")
@@ -404,7 +404,7 @@ const x = require(name);
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         """Analysis run has correct metadata."""
-        from hypergumbo.analyze.js_ts import analyze_javascript, PASS_ID, PASS_VERSION
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript, PASS_ID, PASS_VERSION
 
         (tmp_path / "app.js").write_text("function foo() {}")
 
@@ -418,7 +418,7 @@ const x = require(name);
 
     def test_symbol_has_span(self, tmp_path: Path) -> None:
         """Symbols include span information."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text("function foo() {\n  return 1;\n}")
 
@@ -431,7 +431,7 @@ const x = require(name);
 
     def test_exports_default_function(self, tmp_path: Path) -> None:
         """Handles export default function syntax."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text("export default function handler() { return 1; }")
 
@@ -442,7 +442,7 @@ const x = require(name);
 
     def test_exports_class_declaration(self, tmp_path: Path) -> None:
         """Handles export class syntax."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text("export class ApiClient { fetch() { return 1; } }")
 
@@ -456,7 +456,7 @@ const x = require(name);
         """Handles TypeScript export class syntax."""
         pytest.importorskip("tree_sitter_typescript")
 
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         code = """
 export class ApiClient {
@@ -484,7 +484,7 @@ export class ApiClient {
         """Extracts TypeScript interface declarations."""
         pytest.importorskip("tree_sitter_typescript")
 
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         code = """
 interface User {
@@ -522,7 +522,7 @@ export interface Config {
         """Extracts TypeScript type alias declarations."""
         pytest.importorskip("tree_sitter_typescript")
 
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         code = """
 type UserId = string;
@@ -552,7 +552,7 @@ export type Config = {
         """Extracts TypeScript enum declarations."""
         pytest.importorskip("tree_sitter_typescript")
 
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         code = """
 enum Status {
@@ -585,7 +585,7 @@ const enum Direction {
 
     def test_empty_directory(self, tmp_path: Path) -> None:
         """Handles empty directories gracefully."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         result = analyze_javascript(tmp_path)
 
@@ -630,7 +630,7 @@ class TestMockedTreeSitter:
 
     def test_get_parser_for_js_file(self, tmp_path: Path) -> None:
         """Gets JavaScript parser for .js files."""
-        from hypergumbo.analyze.js_ts import _get_parser_for_file
+        from hypergumbo_lang_mainstream.js_ts import _get_parser_for_file
 
         js_file = tmp_path / "app.js"
         js_file.write_text("const x = 1;")
@@ -654,7 +654,7 @@ class TestMockedTreeSitter:
 
     def test_get_parser_for_ts_file(self, tmp_path: Path) -> None:
         """Gets TypeScript parser for .ts files."""
-        from hypergumbo.analyze.js_ts import _get_parser_for_file
+        from hypergumbo_lang_mainstream.js_ts import _get_parser_for_file
 
         ts_file = tmp_path / "app.ts"
         ts_file.write_text("const x: number = 1;")
@@ -677,7 +677,7 @@ class TestMockedTreeSitter:
 
     def test_get_parser_for_tsx_file(self, tmp_path: Path) -> None:
         """Gets TSX parser for .tsx files."""
-        from hypergumbo.analyze.js_ts import _get_parser_for_file
+        from hypergumbo_lang_mainstream.js_ts import _get_parser_for_file
 
         tsx_file = tmp_path / "App.tsx"
         tsx_file.write_text("const App = () => <div />;")
@@ -700,7 +700,7 @@ class TestMockedTreeSitter:
 
     def test_get_parser_ts_fallback_to_js(self, tmp_path: Path) -> None:
         """Falls back to JS parser when TS grammar not available."""
-        from hypergumbo.analyze.js_ts import _get_parser_for_file
+        from hypergumbo_lang_mainstream.js_ts import _get_parser_for_file
 
         ts_file = tmp_path / "app.ts"
         ts_file.write_text("const x = 1;")
@@ -733,7 +733,7 @@ class TestMockedTreeSitter:
 
     def test_get_parser_no_tree_sitter(self, tmp_path: Path) -> None:
         """Returns None when tree-sitter not available."""
-        from hypergumbo.analyze.js_ts import _get_parser_for_file
+        from hypergumbo_lang_mainstream.js_ts import _get_parser_for_file
 
         js_file = tmp_path / "app.js"
         js_file.write_text("const x = 1;")
@@ -753,7 +753,7 @@ class TestMockedTreeSitter:
 
     def test_node_text_helper(self) -> None:
         """Tests _node_text helper function."""
-        from hypergumbo.analyze.js_ts import _node_text
+        from hypergumbo_lang_mainstream.js_ts import _node_text
 
         node = MagicMock()
         node.start_byte = 0
@@ -766,7 +766,7 @@ class TestMockedTreeSitter:
 
     def test_find_name_in_children(self) -> None:
         """Tests _find_name_in_children helper function."""
-        from hypergumbo.analyze.js_ts import _find_name_in_children
+        from hypergumbo_lang_mainstream.js_ts import _find_name_in_children
 
         # Child with identifier type
         identifier_child = MagicMock()
@@ -784,7 +784,7 @@ class TestMockedTreeSitter:
 
     def test_find_name_in_children_property(self) -> None:
         """Tests _find_name_in_children with property_identifier."""
-        from hypergumbo.analyze.js_ts import _find_name_in_children
+        from hypergumbo_lang_mainstream.js_ts import _find_name_in_children
 
         prop_child = MagicMock()
         prop_child.type = "property_identifier"
@@ -801,7 +801,7 @@ class TestMockedTreeSitter:
 
     def test_find_name_in_children_none(self) -> None:
         """Returns None when no identifier found."""
-        from hypergumbo.analyze.js_ts import _find_name_in_children
+        from hypergumbo_lang_mainstream.js_ts import _find_name_in_children
 
         other_child = MagicMock()
         other_child.type = "other"
@@ -816,7 +816,7 @@ class TestMockedTreeSitter:
 
     def test_find_name_in_children_type_identifier(self) -> None:
         """Finds type_identifier for TypeScript classes."""
-        from hypergumbo.analyze.js_ts import _find_name_in_children
+        from hypergumbo_lang_mainstream.js_ts import _find_name_in_children
 
         type_id_child = MagicMock()
         type_id_child.type = "type_identifier"
@@ -833,7 +833,7 @@ class TestMockedTreeSitter:
 
     def test_get_language_for_file(self, tmp_path: Path) -> None:
         """Tests language detection based on file extension."""
-        from hypergumbo.analyze.js_ts import _get_language_for_file
+        from hypergumbo_lang_mainstream.js_ts import _get_language_for_file
 
         assert _get_language_for_file(tmp_path / "app.js") == "javascript"
         assert _get_language_for_file(tmp_path / "app.jsx") == "javascript"
@@ -842,7 +842,7 @@ class TestMockedTreeSitter:
 
     def test_make_symbol_id(self) -> None:
         """Tests symbol ID generation."""
-        from hypergumbo.analyze.js_ts import _make_symbol_id
+        from hypergumbo_lang_mainstream.js_ts import _make_symbol_id
 
         symbol_id = _make_symbol_id("app.js", 1, 5, "foo", "function", "javascript")
 
@@ -850,7 +850,7 @@ class TestMockedTreeSitter:
 
     def test_analyze_javascript_with_mocked_tree_sitter(self, tmp_path: Path) -> None:
         """Tests full analysis with mocked tree-sitter."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text("function foo() {}")
 
@@ -871,8 +871,8 @@ class TestMockedTreeSitter:
         mock_parser = MagicMock()
         mock_parser.parse.return_value = mock_tree
 
-        with patch("hypergumbo.analyze.js_ts.is_tree_sitter_available", return_value=True):
-            with patch("hypergumbo.analyze.js_ts._get_parser_for_file", return_value=mock_parser):
+        with patch("hypergumbo_lang_mainstream.js_ts.is_tree_sitter_available", return_value=True):
+            with patch("hypergumbo_lang_mainstream.js_ts._get_parser_for_file", return_value=mock_parser):
                 result = analyze_javascript(tmp_path)
 
         assert result.skipped is False
@@ -881,8 +881,8 @@ class TestMockedTreeSitter:
 
     def test_extract_symbols_function_declaration(self) -> None:
         """Tests extraction of function declarations."""
-        from hypergumbo.analyze.js_ts import _extract_symbols_and_edges
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.js_ts import _extract_symbols_and_edges
+        from hypergumbo_core.ir import AnalysisRun
 
         source = b"function greet(name) { return name; }"
         run = AnalysisRun.create(pass_id="test", version="1.0")
@@ -909,8 +909,8 @@ class TestMockedTreeSitter:
 
     def test_extract_symbols_class_declaration(self) -> None:
         """Tests extraction of class declarations."""
-        from hypergumbo.analyze.js_ts import _extract_symbols_and_edges
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.js_ts import _extract_symbols_and_edges
+        from hypergumbo_core.ir import AnalysisRun
 
         source = b"class User { }"
         run = AnalysisRun.create(pass_id="test", version="1.0")
@@ -936,8 +936,8 @@ class TestMockedTreeSitter:
 
     def test_extract_class_with_methods_builds_registry(self) -> None:
         """Tests that method registry is built correctly for cross-file resolution."""
-        from hypergumbo.analyze.js_ts import _extract_symbols_and_edges
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.js_ts import _extract_symbols_and_edges
+        from hypergumbo_core.ir import AnalysisRun
 
         source = b"class Svc { save() {} }"
         run = AnalysisRun.create(pass_id="test", version="1.0")
@@ -976,8 +976,8 @@ class TestMockedTreeSitter:
 
     def test_extract_arrow_function(self) -> None:
         """Tests extraction of arrow functions assigned to const."""
-        from hypergumbo.analyze.js_ts import _extract_symbols_and_edges
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.js_ts import _extract_symbols_and_edges
+        from hypergumbo_core.ir import AnalysisRun
 
         source = b"const add = (a, b) => a + b;"
         run = AnalysisRun.create(pass_id="test", version="1.0")
@@ -1011,8 +1011,8 @@ class TestMockedTreeSitter:
 
     def test_extract_arrow_function_with_body(self) -> None:
         """Tests extraction of arrow functions with nested calls."""
-        from hypergumbo.analyze.js_ts import _extract_symbols_and_edges
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.js_ts import _extract_symbols_and_edges
+        from hypergumbo_core.ir import AnalysisRun
 
         source = b"function helper() {} const add = (a, b) => { helper(); return a + b; };"
         run = AnalysisRun.create(pass_id="test", version="1.0")
@@ -1075,8 +1075,8 @@ class TestMockedTreeSitter:
         Pattern: const handler = catchAsync(async (req, res) => { ... })
         This is common in Express.js error handling middleware.
         """
-        from hypergumbo.analyze.js_ts import _extract_symbols_and_edges
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.js_ts import _extract_symbols_and_edges
+        from hypergumbo_core.ir import AnalysisRun
 
         source = b"function helper() {} const handler = catchAsync(async (req, res) => { helper(); });"
         run = AnalysisRun.create(pass_id="test", version="1.0")
@@ -1148,8 +1148,8 @@ class TestMockedTreeSitter:
 
     def test_extract_es6_import(self) -> None:
         """Tests extraction of ES6 import statements."""
-        from hypergumbo.analyze.js_ts import _extract_symbols_and_edges
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.js_ts import _extract_symbols_and_edges
+        from hypergumbo_core.ir import AnalysisRun
 
         source = b"import { helper } from './utils';"
         run = AnalysisRun.create(pass_id="test", version="1.0")
@@ -1176,8 +1176,8 @@ class TestMockedTreeSitter:
 
     def test_extract_require_static(self) -> None:
         """Tests extraction of static require() calls."""
-        from hypergumbo.analyze.js_ts import _extract_symbols_and_edges
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.js_ts import _extract_symbols_and_edges
+        from hypergumbo_core.ir import AnalysisRun
 
         source = b"const fs = require('fs');"
         run = AnalysisRun.create(pass_id="test", version="1.0")
@@ -1206,8 +1206,8 @@ class TestMockedTreeSitter:
 
     def test_extract_require_dynamic(self) -> None:
         """Tests extraction of dynamic require() calls."""
-        from hypergumbo.analyze.js_ts import _extract_symbols_and_edges
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.js_ts import _extract_symbols_and_edges
+        from hypergumbo_core.ir import AnalysisRun
 
         source = b"const m = require(name);"
         run = AnalysisRun.create(pass_id="test", version="1.0")
@@ -1235,8 +1235,8 @@ class TestMockedTreeSitter:
 
     def test_extract_function_call(self) -> None:
         """Tests extraction of function calls within functions."""
-        from hypergumbo.analyze.js_ts import _extract_symbols_and_edges
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.js_ts import _extract_symbols_and_edges
+        from hypergumbo_core.ir import AnalysisRun
 
         source = b"function helper() {} function main() { helper(); }"
         run = AnalysisRun.create(pass_id="test", version="1.0")
@@ -1287,8 +1287,8 @@ class TestMockedTreeSitter:
 
     def test_extract_export_default_function(self) -> None:
         """Tests extraction of export default function."""
-        from hypergumbo.analyze.js_ts import _extract_symbols_and_edges
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.js_ts import _extract_symbols_and_edges
+        from hypergumbo_core.ir import AnalysisRun
 
         source = b"export default function handler() {}"
         run = AnalysisRun.create(pass_id="test", version="1.0")
@@ -1320,7 +1320,7 @@ class TestMockedTreeSitter:
 
     def test_analyze_with_parse_errors(self, tmp_path: Path) -> None:
         """Continues analysis even with parse errors."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text("function { broken")
 
@@ -1332,8 +1332,8 @@ class TestMockedTreeSitter:
         mock_parser = MagicMock()
         mock_parser.parse.return_value = tree
 
-        with patch("hypergumbo.analyze.js_ts.is_tree_sitter_available", return_value=True):
-            with patch("hypergumbo.analyze.js_ts._get_parser_for_file", return_value=mock_parser):
+        with patch("hypergumbo_lang_mainstream.js_ts.is_tree_sitter_available", return_value=True):
+            with patch("hypergumbo_lang_mainstream.js_ts._get_parser_for_file", return_value=mock_parser):
                 result = analyze_javascript(tmp_path)
 
         # Should still succeed but with limited results
@@ -1342,7 +1342,7 @@ class TestMockedTreeSitter:
 
     def test_analyze_with_file_errors(self, tmp_path: Path) -> None:
         """Tracks files that fail to read."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "good.js").write_text("function foo() {}")
         (tmp_path / "bad.js").write_text("function bar() {}")
@@ -1368,7 +1368,7 @@ class TestSvelteFileDiscovery:
 
     def test_finds_svelte_files(self, tmp_path: Path) -> None:
         """Finds .svelte files."""
-        from hypergumbo.analyze.js_ts import find_svelte_files
+        from hypergumbo_lang_mainstream.js_ts import find_svelte_files
 
         (tmp_path / "App.svelte").write_text("<script>const x = 1;</script>")
         (tmp_path / "other.txt").write_text("not svelte")
@@ -1384,7 +1384,7 @@ class TestSvelteScriptExtraction:
 
     def test_extracts_typescript_script(self) -> None:
         """Extracts TypeScript script with lang='ts'."""
-        from hypergumbo.analyze.js_ts import extract_svelte_scripts
+        from hypergumbo_lang_mainstream.js_ts import extract_svelte_scripts
 
         source = '''<script lang="ts">
 const x: number = 1;
@@ -1402,7 +1402,7 @@ function foo() { return x; }
 
     def test_extracts_javascript_script(self) -> None:
         """Extracts JavaScript script without lang attribute."""
-        from hypergumbo.analyze.js_ts import extract_svelte_scripts
+        from hypergumbo_lang_mainstream.js_ts import extract_svelte_scripts
 
         source = '''<script>
 const x = 1;
@@ -1416,7 +1416,7 @@ const x = 1;
 
     def test_extracts_multiple_scripts(self) -> None:
         """Extracts multiple script blocks."""
-        from hypergumbo.analyze.js_ts import extract_svelte_scripts
+        from hypergumbo_lang_mainstream.js_ts import extract_svelte_scripts
 
         source = '''<script lang="ts">
 export let name: string;
@@ -1436,7 +1436,7 @@ export const preload = () => {};
 
     def test_handles_no_script(self) -> None:
         """Returns empty list when no script block."""
-        from hypergumbo.analyze.js_ts import extract_svelte_scripts
+        from hypergumbo_lang_mainstream.js_ts import extract_svelte_scripts
 
         source = '''<div>Just HTML</div>
 <style>
@@ -1449,7 +1449,7 @@ export const preload = () => {};
 
     def test_correct_line_offset(self) -> None:
         """Script content line offset is calculated correctly."""
-        from hypergumbo.analyze.js_ts import extract_svelte_scripts
+        from hypergumbo_lang_mainstream.js_ts import extract_svelte_scripts
 
         source = '''<!-- Comment -->
 <style>
@@ -1474,8 +1474,8 @@ class TestSvelteAnalysis:
 
     def test_analyzes_svelte_functions(self, tmp_path: Path) -> None:
         """Analyzes functions in Svelte script block."""
-        from hypergumbo.analyze.js_ts import _analyze_svelte_file
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.js_ts import _analyze_svelte_file
+        from hypergumbo_core.ir import AnalysisRun
 
         svelte_file = tmp_path / "Component.svelte"
         svelte_file.write_text('''<script lang="ts">
@@ -1498,8 +1498,8 @@ const double = (x: number) => x * 2;
 
     def test_svelte_line_numbers_adjusted(self, tmp_path: Path) -> None:
         """Line numbers are adjusted for script block offset."""
-        from hypergumbo.analyze.js_ts import _analyze_svelte_file
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.js_ts import _analyze_svelte_file
+        from hypergumbo_core.ir import AnalysisRun
 
         svelte_file = tmp_path / "Component.svelte"
         svelte_file.write_text('''<!-- Header comment -->
@@ -1525,7 +1525,7 @@ function myFunc() {
 
     def test_analyze_javascript_includes_svelte(self, tmp_path: Path) -> None:
         """analyze_javascript processes Svelte files too."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         # Create a JS file and a Svelte file
         (tmp_path / "app.js").write_text("function jsFunc() {}")
@@ -1543,8 +1543,8 @@ function svelteFunc() {}
 
     def test_svelte_no_script_blocks(self, tmp_path: Path) -> None:
         """Svelte file without script blocks returns empty symbols."""
-        from hypergumbo.analyze.js_ts import _analyze_svelte_file
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.js_ts import _analyze_svelte_file
+        from hypergumbo_core.ir import AnalysisRun
 
         svelte_file = tmp_path / "Static.svelte"
         svelte_file.write_text('''<style>
@@ -1568,7 +1568,7 @@ class TestSvelteEdgeCases:
 
     def test_get_parser_for_lang_import_error(self) -> None:
         """Returns None when tree-sitter is not available."""
-        from hypergumbo.analyze.js_ts import _get_parser_for_lang
+        from hypergumbo_lang_mainstream.js_ts import _get_parser_for_lang
 
         # Mark tree-sitter modules as unavailable in sys.modules
         with patch.dict(sys.modules, {
@@ -1580,7 +1580,7 @@ class TestSvelteEdgeCases:
 
     def test_get_parser_for_lang_ts_fallback_to_js(self) -> None:
         """Falls back to JavaScript parser when TypeScript unavailable."""
-        from hypergumbo.analyze.js_ts import _get_parser_for_lang
+        from hypergumbo_lang_mainstream.js_ts import _get_parser_for_lang
 
         mock_ts = MagicMock()
         mock_ts_js = MagicMock()
@@ -1602,7 +1602,7 @@ class TestSvelteEdgeCases:
 
     def test_get_parser_for_lang_javascript(self) -> None:
         """Gets JavaScript parser when is_typescript=False."""
-        from hypergumbo.analyze.js_ts import _get_parser_for_lang
+        from hypergumbo_lang_mainstream.js_ts import _get_parser_for_lang
 
         mock_ts = MagicMock()
         mock_ts_js = MagicMock()
@@ -1621,8 +1621,8 @@ class TestSvelteEdgeCases:
 
     def test_svelte_file_read_error(self, tmp_path: Path) -> None:
         """Returns failure when Svelte file cannot be read."""
-        from hypergumbo.analyze.js_ts import _analyze_svelte_file
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.js_ts import _analyze_svelte_file
+        from hypergumbo_core.ir import AnalysisRun
 
         svelte_file = tmp_path / "Component.svelte"
         # Don't create the file - will cause read error
@@ -1636,8 +1636,8 @@ class TestSvelteEdgeCases:
 
     def test_svelte_parser_unavailable(self, tmp_path: Path) -> None:
         """Skips script block when parser is unavailable."""
-        from hypergumbo.analyze.js_ts import _analyze_svelte_file
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.js_ts import _analyze_svelte_file
+        from hypergumbo_core.ir import AnalysisRun
 
         svelte_file = tmp_path / "Component.svelte"
         svelte_file.write_text('''<script lang="ts">
@@ -1646,7 +1646,7 @@ function test() {}
 
         run = AnalysisRun.create(pass_id="test", version="test")
 
-        with patch("hypergumbo.analyze.js_ts._get_parser_for_lang", return_value=None):
+        with patch("hypergumbo_lang_mainstream.js_ts._get_parser_for_lang", return_value=None):
             symbols, edges, success = _analyze_svelte_file(svelte_file, run)
 
         # Still succeeds but with no symbols
@@ -1655,7 +1655,7 @@ function test() {}
 
     def test_svelte_file_skipped_increments_counter(self, tmp_path: Path) -> None:
         """Svelte files that fail to read increment skipped counter."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         svelte_file = tmp_path / "Component.svelte"
         svelte_file.write_text('''<script lang="ts">
@@ -1682,12 +1682,12 @@ class TestParserUnavailableEdgeCases:
 
     def test_js_parser_unavailable_skips_files(self, tmp_path: Path) -> None:
         """JS files are skipped when parser is unavailable."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text("function foo() {}")
 
-        with patch("hypergumbo.analyze.js_ts.is_tree_sitter_available", return_value=True):
-            with patch("hypergumbo.analyze.js_ts._get_parser_for_file", return_value=None):
+        with patch("hypergumbo_lang_mainstream.js_ts.is_tree_sitter_available", return_value=True):
+            with patch("hypergumbo_lang_mainstream.js_ts._get_parser_for_file", return_value=None):
                 result = analyze_javascript(tmp_path)
 
         assert result.run is not None
@@ -1696,14 +1696,14 @@ class TestParserUnavailableEdgeCases:
 
     def test_svelte_parser_unavailable_in_main_analysis(self, tmp_path: Path) -> None:
         """Svelte script blocks are skipped when parser unavailable."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "App.svelte").write_text('''<script lang="ts">
 function test() {}
 </script>''')
 
-        with patch("hypergumbo.analyze.js_ts.is_tree_sitter_available", return_value=True):
-            with patch("hypergumbo.analyze.js_ts._get_parser_for_lang", return_value=None):
+        with patch("hypergumbo_lang_mainstream.js_ts.is_tree_sitter_available", return_value=True):
+            with patch("hypergumbo_lang_mainstream.js_ts._get_parser_for_lang", return_value=None):
                 result = analyze_javascript(tmp_path)
 
         assert result.run is not None
@@ -1724,8 +1724,8 @@ class TestSvelteMethodResolution:
 
     def test_svelte_with_class_methods(self, tmp_path: Path) -> None:
         """Svelte files with class methods build proper method registry."""
-        from hypergumbo.analyze.js_ts import _analyze_svelte_file
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.js_ts import _analyze_svelte_file
+        from hypergumbo_core.ir import AnalysisRun
 
         svelte_file = tmp_path / "Component.svelte"
         svelte_file.write_text('''<script lang="ts">
@@ -1755,7 +1755,7 @@ class UserService {
 
     def test_analyze_svelte_file_no_scripts_in_main(self, tmp_path: Path) -> None:
         """Svelte files with no script blocks count as analyzed."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         # Create Svelte file with no script
         (tmp_path / "Static.svelte").write_text('''<style>
@@ -1780,7 +1780,7 @@ class TestCrossFileResolution:
 
     def test_this_method_call(self, tmp_path: Path) -> None:
         """Detects this.method() calls within a class."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         code = """
 class UserService {
@@ -1806,7 +1806,7 @@ class UserService {
 
     def test_inferred_method_call(self, tmp_path: Path) -> None:
         """Detects obj.method() calls with inferred type."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         code = """
 class Logger {
@@ -1831,7 +1831,7 @@ function main(logger) {
 
     def test_new_class_instantiation(self, tmp_path: Path) -> None:
         """Detects new ClassName() instantiation."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         code = """
 class User {
@@ -1856,7 +1856,7 @@ function createUser() {
 
     def test_cross_file_function_call(self, tmp_path: Path) -> None:
         """Resolves function calls across files."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "utils.js").write_text("function helper() { return 42; }")
         (tmp_path / "main.js").write_text("function main() { helper(); }")
@@ -1870,7 +1870,7 @@ function createUser() {
 
     def test_cross_file_class_instantiation(self, tmp_path: Path) -> None:
         """Resolves class instantiation across files."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "models.js").write_text("class User { constructor() {} }")
         (tmp_path / "main.js").write_text("function createUser() { return new User(); }")
@@ -1887,7 +1887,7 @@ class TestVueFileDiscovery:
 
     def test_finds_vue_files(self, tmp_path: Path) -> None:
         """Finds .vue files."""
-        from hypergumbo.analyze.js_ts import find_vue_files
+        from hypergumbo_lang_mainstream.js_ts import find_vue_files
 
         (tmp_path / "App.vue").write_text("<script>const x = 1;</script>")
         (tmp_path / "other.txt").write_text("not vue")
@@ -1903,7 +1903,7 @@ class TestVueScriptExtraction:
 
     def test_extracts_typescript_script(self) -> None:
         """Extracts TypeScript script with lang='ts'."""
-        from hypergumbo.analyze.js_ts import extract_vue_scripts
+        from hypergumbo_lang_mainstream.js_ts import extract_vue_scripts
 
         source = '''<template>
 <div>Hello</div>
@@ -1925,7 +1925,7 @@ export default {
 
     def test_extracts_javascript_script(self) -> None:
         """Extracts JavaScript script without lang attribute."""
-        from hypergumbo.analyze.js_ts import extract_vue_scripts
+        from hypergumbo_lang_mainstream.js_ts import extract_vue_scripts
 
         source = '''<script>
 const x = 1;
@@ -1939,7 +1939,7 @@ const x = 1;
 
     def test_extracts_script_setup(self) -> None:
         """Extracts <script setup> blocks (Vue 3 Composition API)."""
-        from hypergumbo.analyze.js_ts import extract_vue_scripts
+        from hypergumbo_lang_mainstream.js_ts import extract_vue_scripts
 
         source = '''<script setup lang="ts">
 import { ref } from 'vue'
@@ -1958,7 +1958,7 @@ const count = ref(0)
 
     def test_handles_no_script(self) -> None:
         """Returns empty list when no script block."""
-        from hypergumbo.analyze.js_ts import extract_vue_scripts
+        from hypergumbo_lang_mainstream.js_ts import extract_vue_scripts
 
         source = '''<template>
 <div>Just HTML</div>
@@ -1974,7 +1974,7 @@ const count = ref(0)
 
     def test_correct_line_offset(self) -> None:
         """Script content line offset is calculated correctly."""
-        from hypergumbo.analyze.js_ts import extract_vue_scripts
+        from hypergumbo_lang_mainstream.js_ts import extract_vue_scripts
 
         source = '''<template>
 <div>Hello</div>
@@ -1998,8 +1998,8 @@ class TestVueAnalysis:
 
     def test_analyzes_vue_functions(self, tmp_path: Path) -> None:
         """Analyzes functions in Vue script block."""
-        from hypergumbo.analyze.js_ts import _analyze_vue_file
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.js_ts import _analyze_vue_file
+        from hypergumbo_core.ir import AnalysisRun
 
         vue_file = tmp_path / "Component.vue"
         vue_file.write_text('''<script lang="ts">
@@ -2026,7 +2026,7 @@ const helper = () => {
 
     def test_analyze_javascript_includes_vue(self, tmp_path: Path) -> None:
         """analyze_javascript processes Vue files too."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         # Create a JS file and a Vue file
         (tmp_path / "app.js").write_text("function main() {}")
@@ -2043,8 +2043,8 @@ function vueHelper() {}
 
     def test_vue_file_no_script(self, tmp_path: Path) -> None:
         """Vue file without script blocks returns empty symbols."""
-        from hypergumbo.analyze.js_ts import _analyze_vue_file
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.js_ts import _analyze_vue_file
+        from hypergumbo_core.ir import AnalysisRun
 
         vue_file = tmp_path / "NoScript.vue"
         vue_file.write_text('''<template>
@@ -2068,8 +2068,8 @@ class TestVueEdgeCases:
 
     def test_vue_file_read_error(self, tmp_path: Path) -> None:
         """Returns failure when Vue file cannot be read."""
-        from hypergumbo.analyze.js_ts import _analyze_vue_file
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.js_ts import _analyze_vue_file
+        from hypergumbo_core.ir import AnalysisRun
         from unittest.mock import patch
 
         vue_file = tmp_path / "Broken.vue"
@@ -2086,7 +2086,7 @@ class TestVueEdgeCases:
 
     def test_vue_files_increment_analyzed_counter(self, tmp_path: Path) -> None:
         """Vue files without script blocks count as analyzed."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         # Create Vue file with no script
         (tmp_path / "Empty.vue").write_text("<template><div>Hi</div></template>")
@@ -2100,7 +2100,7 @@ class TestVueEdgeCases:
 
     def test_vue_file_read_error_increments_skipped(self, tmp_path: Path) -> None:
         """Vue files that fail to read increment skipped counter."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
         from unittest.mock import patch
 
         vue_file = tmp_path / "Component.vue"
@@ -2127,8 +2127,8 @@ class TestVueEdgeCases:
 
     def test_vue_with_class_and_methods(self, tmp_path: Path) -> None:
         """Vue file with class and methods builds proper symbol registry."""
-        from hypergumbo.analyze.js_ts import _analyze_vue_file
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.js_ts import _analyze_vue_file
+        from hypergumbo_core.ir import AnalysisRun
 
         vue_file = tmp_path / "WithClass.vue"
         vue_file.write_text('''<script lang="ts">
@@ -2165,8 +2165,8 @@ class MyComponent {
 
     def test_vue_parser_unavailable_skips_block(self, tmp_path: Path) -> None:
         """Vue script blocks are skipped when parser unavailable."""
-        from hypergumbo.analyze.js_ts import _analyze_vue_file
-        from hypergumbo.ir import AnalysisRun
+        from hypergumbo_lang_mainstream.js_ts import _analyze_vue_file
+        from hypergumbo_core.ir import AnalysisRun
         from unittest.mock import patch
 
         vue_file = tmp_path / "Test.vue"
@@ -2175,7 +2175,7 @@ class MyComponent {
         run = AnalysisRun.create(pass_id="test", version="test")
 
         # Mock _get_parser_for_lang to return None
-        with patch("hypergumbo.analyze.js_ts._get_parser_for_lang", return_value=None):
+        with patch("hypergumbo_lang_mainstream.js_ts._get_parser_for_lang", return_value=None):
             symbols, edges, success = _analyze_vue_file(vue_file, run)
 
         assert success is True
@@ -2184,7 +2184,7 @@ class MyComponent {
 
     def test_vue_parser_unavailable_in_analyze_javascript(self, tmp_path: Path) -> None:
         """Vue script blocks are skipped in analyze_javascript when parser unavailable."""
-        from hypergumbo.analyze.js_ts import analyze_javascript, is_tree_sitter_available
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript, is_tree_sitter_available
         from unittest.mock import patch
 
         if not is_tree_sitter_available():
@@ -2208,7 +2208,7 @@ class MyComponent {
             parser.language = tree_sitter.Language(tree_sitter_javascript.language())
             return parser
 
-        with patch("hypergumbo.analyze.js_ts._get_parser_for_lang", side_effect=mock_get_parser):
+        with patch("hypergumbo_lang_mainstream.js_ts._get_parser_for_lang", side_effect=mock_get_parser):
             result = analyze_javascript(tmp_path)
 
         # Should still succeed with the JS file
@@ -2226,14 +2226,14 @@ class TestExpressRouteDetection:
     @pytest.fixture(autouse=True)
     def skip_if_no_tree_sitter(self) -> None:
         """Skip tests if tree-sitter is not available."""
-        from hypergumbo.analyze.js_ts import is_tree_sitter_available
+        from hypergumbo_lang_mainstream.js_ts import is_tree_sitter_available
 
         if not is_tree_sitter_available():
             pytest.skip("tree-sitter not available")
 
     def test_express_get_route_detected(self, tmp_path: Path) -> None:
         """Express app.get() route handler sets stable_id to 'get'."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "app.js"
         js_file.write_text("""
@@ -2260,7 +2260,7 @@ app.get('/users', function getUsers(req, res) {
 
     def test_express_post_route_detected(self, tmp_path: Path) -> None:
         """Express app.post() route handler sets stable_id to 'post'."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "app.js"
         js_file.write_text("""
@@ -2282,7 +2282,7 @@ app.post('/users', function createUser(req, res) {
 
     def test_express_router_route_detected(self, tmp_path: Path) -> None:
         """Express router.get() also sets stable_id to HTTP method."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "routes.js"
         js_file.write_text("""
@@ -2313,7 +2313,7 @@ router.delete('/items/:id', function deleteItem(req, res) {
 
     def test_express_arrow_function_route(self, tmp_path: Path) -> None:
         """Express route with arrow function handler."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "app.js"
         js_file.write_text("""
@@ -2336,7 +2336,7 @@ app.get('/health', (req, res) => {
 
     def test_express_all_http_methods(self, tmp_path: Path) -> None:
         """All HTTP methods should be detected: get, post, put, patch, delete."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "app.js"
         js_file.write_text("""
@@ -2362,7 +2362,7 @@ app.delete('/delete', function doDelete(req, res) { res.send('delete'); });
 
     def test_non_route_function_keeps_original_stable_id(self, tmp_path: Path) -> None:
         """Functions not in route calls keep their original stable_id."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "utils.js"
         js_file.write_text("""
@@ -2381,7 +2381,7 @@ function helper() {
 
     def test_typescript_express_route(self, tmp_path: Path) -> None:
         """Express routes in TypeScript files are detected."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "app.ts"
         ts_file.write_text("""
@@ -2403,7 +2403,7 @@ app.get('/users', function getUsers(req: Request, res: Response): void {
 
     def test_express_external_handler_detected(self, tmp_path: Path) -> None:
         """Express routes with external handler references are detected."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "routes.js"
         js_file.write_text("""
@@ -2446,7 +2446,7 @@ router.delete('/users/:id', userController.deleteUser);
 
     def test_express_external_identifier_handler(self, tmp_path: Path) -> None:
         """Express routes with identifier (non-member) handlers are detected."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "routes.js"
         js_file.write_text("""
@@ -2468,7 +2468,7 @@ router.get('/users', handleUsers);
 
     def test_express_chained_route_syntax(self, tmp_path: Path) -> None:
         """Express chained route syntax: router.route('/path').get(handler)."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "routes.js"
         js_file.write_text("""
@@ -2511,7 +2511,7 @@ router
         This is critical for YAML pattern enrichment to work - the enrichment
         phase skips UsageContexts with no symbol_ref.
         """
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "app.js"
         js_file.write_text("""
@@ -2544,7 +2544,7 @@ app.get('/users', (req, res) => {
         For external handlers like `app.get('/users', listUsers)`, the UsageContext
         references the route symbol created for the handler reference.
         """
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "app.js"
         js_file.write_text("""
@@ -2591,14 +2591,14 @@ class TestCallbackCallAttribution:
     @pytest.fixture(autouse=True)
     def skip_if_no_tree_sitter(self) -> None:
         """Skip tests if tree-sitter is not available."""
-        from hypergumbo.analyze.js_ts import is_tree_sitter_available
+        from hypergumbo_lang_mainstream.js_ts import is_tree_sitter_available
 
         if not is_tree_sitter_available():
             pytest.skip("tree-sitter not available")
 
     def test_call_inside_express_route_handler_attributed(self, tmp_path: Path) -> None:
         """Calls inside Express route callbacks are attributed to route handler symbol."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         # Create a helper module
         helper_file = tmp_path / "helper.js"
@@ -2639,7 +2639,7 @@ app.get('/data', (req, res) => {
 
     def test_call_inside_callback_in_named_function_attributed(self, tmp_path: Path) -> None:
         """Calls inside callbacks within named functions are attributed to the named function."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "app.js"
         js_file.write_text("""
@@ -2681,14 +2681,14 @@ class TestNestJSRouteDetection:
     @pytest.fixture(autouse=True)
     def skip_if_no_tree_sitter(self) -> None:
         """Skip tests if tree-sitter is not available."""
-        from hypergumbo.analyze.js_ts import is_tree_sitter_available
+        from hypergumbo_lang_mainstream.js_ts import is_tree_sitter_available
 
         if not is_tree_sitter_available():
             pytest.skip("tree-sitter not available")
 
     def test_nestjs_get_decorator(self, tmp_path: Path) -> None:
         """NestJS @Get() decorator should set stable_id to 'get'."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "users.controller.ts"
         ts_file.write_text("""
@@ -2713,7 +2713,7 @@ export class UsersController {
 
     def test_nestjs_post_decorator(self, tmp_path: Path) -> None:
         """NestJS @Post() decorator should set stable_id to 'post'."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "users.controller.ts"
         ts_file.write_text("""
@@ -2742,8 +2742,8 @@ export class UsersController {
         Route path combination is now handled by enrichment (via prefix_from_parent)
         rather than at the analyzer level.
         """
-        from hypergumbo.analyze.js_ts import analyze_javascript
-        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+        from hypergumbo_core.framework_patterns import enrich_symbols, clear_pattern_cache
 
         ts_file = tmp_path / "users.controller.ts"
         ts_file.write_text("""
@@ -2778,7 +2778,7 @@ export class UsersController {
 
     def test_nestjs_all_http_methods(self, tmp_path: Path) -> None:
         """NestJS should detect all HTTP method decorators."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "resource.controller.ts"
         ts_file.write_text("""
@@ -2816,8 +2816,8 @@ export class ResourceController {
 
     def test_nestjs_controller_no_path_method_with_path(self, tmp_path: Path) -> None:
         """NestJS @Controller() with no path + @Get('users/:id') gives just method path."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
-        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+        from hypergumbo_core.framework_patterns import enrich_symbols, clear_pattern_cache
 
         ts_file = tmp_path / "users.controller.ts"
         ts_file.write_text("""
@@ -2849,8 +2849,8 @@ export class UsersController {
 
     def test_nestjs_controller_with_path_method_no_path(self, tmp_path: Path) -> None:
         """NestJS @Controller('users') + @Get() gives just controller path."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
-        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+        from hypergumbo_core.framework_patterns import enrich_symbols, clear_pattern_cache
 
         ts_file = tmp_path / "users.controller.ts"
         ts_file.write_text("""
@@ -2882,8 +2882,8 @@ export class UsersController {
 
     def test_nestjs_path_normalization(self, tmp_path: Path) -> None:
         """NestJS paths are normalized (no double slashes)."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
-        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+        from hypergumbo_core.framework_patterns import enrich_symbols, clear_pattern_cache
 
         ts_file = tmp_path / "api.controller.ts"
         ts_file.write_text("""
@@ -2915,8 +2915,8 @@ export class ApiController {
 
     def test_nestjs_no_controller_decorator(self, tmp_path: Path) -> None:
         """Class without @Controller - method path only."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
-        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+        from hypergumbo_core.framework_patterns import enrich_symbols, clear_pattern_cache
 
         ts_file = tmp_path / "service.ts"
         ts_file.write_text("""
@@ -2945,8 +2945,8 @@ class UsersService {
 
     def test_nestjs_non_exported_class_with_controller(self, tmp_path: Path) -> None:
         """Non-exported class with @Controller - decorator as child of class_declaration."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
-        from hypergumbo.framework_patterns import enrich_symbols, clear_pattern_cache
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+        from hypergumbo_core.framework_patterns import enrich_symbols, clear_pattern_cache
 
         ts_file = tmp_path / "internal.controller.ts"
         ts_file.write_text("""
@@ -2990,14 +2990,14 @@ class TestKoaRouteDetection:
     @pytest.fixture(autouse=True)
     def skip_if_no_tree_sitter(self) -> None:
         """Skip tests if tree-sitter is not available."""
-        from hypergumbo.analyze.js_ts import is_tree_sitter_available
+        from hypergumbo_lang_mainstream.js_ts import is_tree_sitter_available
 
         if not is_tree_sitter_available():
             pytest.skip("tree-sitter not available")
 
     def test_koa_router_get_route(self, tmp_path: Path) -> None:
         """Koa Router router.get() route handler sets stable_id to 'get'."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "routes.js"
         js_file.write_text("""
@@ -3024,7 +3024,7 @@ module.exports = router;
 
     def test_koa_router_post_route(self, tmp_path: Path) -> None:
         """Koa Router router.post() route handler sets stable_id to 'post'."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "routes.js"
         js_file.write_text("""
@@ -3046,7 +3046,7 @@ router.post('/users', function createUser(ctx) {
 
     def test_koa_router_arrow_function(self, tmp_path: Path) -> None:
         """Koa Router with arrow function handler also detects routes."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "routes.js"
         js_file.write_text("""
@@ -3082,14 +3082,14 @@ class TestFastifyRouteDetection:
     @pytest.fixture(autouse=True)
     def skip_if_no_tree_sitter(self) -> None:
         """Skip tests if tree-sitter is not available."""
-        from hypergumbo.analyze.js_ts import is_tree_sitter_available
+        from hypergumbo_lang_mainstream.js_ts import is_tree_sitter_available
 
         if not is_tree_sitter_available():
             pytest.skip("tree-sitter not available")
 
     def test_fastify_get_route(self, tmp_path: Path) -> None:
         """Fastify fastify.get() route handler sets stable_id to 'get'."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "server.js"
         js_file.write_text("""
@@ -3113,7 +3113,7 @@ fastify.get('/users', function getUsers(request, reply) {
 
     def test_fastify_post_route(self, tmp_path: Path) -> None:
         """Fastify fastify.post() route handler sets stable_id to 'post'."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "server.js"
         js_file.write_text("""
@@ -3134,7 +3134,7 @@ fastify.post('/users', function createUser(request, reply) {
 
     def test_fastify_arrow_function(self, tmp_path: Path) -> None:
         """Fastify with arrow function handler also detects routes."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "server.js"
         js_file.write_text("""
@@ -3155,7 +3155,7 @@ fastify.put('/users/:id', async (request, reply) => {
 
     def test_fastify_all_http_methods(self, tmp_path: Path) -> None:
         """Fastify supports all HTTP methods."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "server.js"
         js_file.write_text("""
@@ -3205,7 +3205,7 @@ class TestReexportResolution:
         The call edge from caller -> helper should be created, pointing to
         the real symbol in helper.js, not a placeholder.
         """
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         # Create barrel structure
         utils = tmp_path / "utils"
@@ -3268,7 +3268,7 @@ class TestJsTsSignatureExtraction:
 
     def test_extracts_js_function_signature(self, tmp_path: Path) -> None:
         """Extracts signature from JavaScript function declarations."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "main.js"
         js_file.write_text("""
@@ -3285,7 +3285,7 @@ function add(x, y) {
 
     def test_extracts_ts_function_signature_with_types(self, tmp_path: Path) -> None:
         """Extracts signature from TypeScript function with type annotations."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "main.ts"
         ts_file.write_text("""
@@ -3306,7 +3306,7 @@ function add(x: number, y: number): number {
 
     def test_extracts_arrow_function_signature(self, tmp_path: Path) -> None:
         """Extracts signature from arrow functions."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "main.ts"
         ts_file.write_text("""
@@ -3324,7 +3324,7 @@ const add = (x: number, y: number): number => x + y;
 
     def test_extracts_method_signature(self, tmp_path: Path) -> None:
         """Extracts signature from class methods."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "main.ts"
         ts_file.write_text("""
@@ -3345,7 +3345,7 @@ class Calculator {
 
     def test_extracts_signature_with_default_params(self, tmp_path: Path) -> None:
         """Extracts signature with default parameters (shows ...)."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "main.js"
         js_file.write_text("""
@@ -3366,7 +3366,7 @@ function greet(name, greeting = "Hello") {
 
     def test_extracts_signature_with_rest_params(self, tmp_path: Path) -> None:
         """Extracts signature with rest parameters."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "main.js"
         js_file.write_text("""
@@ -3385,7 +3385,7 @@ function sum(...numbers) {
 
     def test_symbol_to_dict_includes_signature(self, tmp_path: Path) -> None:
         """Symbol.to_dict() includes the signature field."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "main.ts"
         ts_file.write_text("""
@@ -3409,7 +3409,7 @@ class TestNamespaceImports:
 
     def test_extract_namespace_import_star_as(self, tmp_path: Path) -> None:
         """Extracts 'import * as alias from module' statements."""
-        from hypergumbo.analyze.js_ts import _extract_namespace_imports, _get_parser_for_file
+        from hypergumbo_lang_mainstream.js_ts import _extract_namespace_imports, _get_parser_for_file
 
         js_file = tmp_path / "main.js"
         js_file.write_text("""
@@ -3430,7 +3430,7 @@ import * as utils from './utils';
 
     def test_extract_default_import(self, tmp_path: Path) -> None:
         """Extracts default imports as namespace mappings."""
-        from hypergumbo.analyze.js_ts import _extract_namespace_imports, _get_parser_for_file
+        from hypergumbo_lang_mainstream.js_ts import _extract_namespace_imports, _get_parser_for_file
 
         js_file = tmp_path / "main.js"
         js_file.write_text("""
@@ -3451,7 +3451,7 @@ import axios from 'axios';
 
     def test_namespace_function_call_resolution(self, tmp_path: Path) -> None:
         """Namespace function calls (alias.func()) should be resolved."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         # Create a utils module
         utils_file = tmp_path / "utils.js"
@@ -3493,7 +3493,7 @@ function run() {
         So z_late (WRONG) overwrites a_early (CORRECT) in global_symbols.
         Without path_hint, resolution incorrectly picks z_late.
         """
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         # Create two modules with same function name in different directories
         # rglob processes alphabetically: a_early/ before z_late/
@@ -3553,7 +3553,7 @@ function run() {
         So z_late (WRONG) overwrites a_early (CORRECT) in global_classes.
         Without path_hint, resolution incorrectly picks z_late.
         """
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         # Create two modules with same class name in different directories
         # rglob processes alphabetically: a_early/ before z_late/
@@ -3609,7 +3609,7 @@ class TestVariableTypeInference:
 
     def test_variable_type_tracked_from_new(self, tmp_path: Path) -> None:
         """Variable types should be tracked from 'new ClassName()' assignments."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "main.js"
         js_file.write_text("""
@@ -3647,7 +3647,7 @@ function run() {
 
     def test_type_inference_limited_to_constructors(self, tmp_path: Path) -> None:
         """Type inference should NOT track types from function returns."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "main.js"
         js_file.write_text("""
@@ -3689,7 +3689,7 @@ function run() {
 
     def test_namespace_class_instantiation(self, tmp_path: Path) -> None:
         """new namespace.ClassName() should track type correctly."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         # Create a service module with a class
         service_file = tmp_path / "service.js"
@@ -3724,7 +3724,7 @@ function run() {
 
     def test_parameter_type_inference_typescript(self, tmp_path: Path) -> None:
         """TypeScript function parameter types should enable method call resolution."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         # Service class with methods
         service_file = tmp_path / "service.ts"
@@ -3808,7 +3808,7 @@ class TestDecoratorMetadata:
 
     def test_class_decorator_simple(self, tmp_path: Path) -> None:
         """Extracts simple class decorator without arguments."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "service.ts"
         ts_file.write_text("""
@@ -3832,7 +3832,7 @@ class UserService {
 
     def test_class_decorator_with_string_arg(self, tmp_path: Path) -> None:
         """Extracts class decorator with string argument."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "controller.ts"
         ts_file.write_text("""
@@ -3854,7 +3854,7 @@ class UsersController {
 
     def test_method_decorator_simple(self, tmp_path: Path) -> None:
         """Extracts simple method decorator."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "controller.ts"
         ts_file.write_text("""
@@ -3877,7 +3877,7 @@ class UsersController {
 
     def test_method_decorator_with_path_arg(self, tmp_path: Path) -> None:
         """Extracts method decorator with path argument."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "controller.ts"
         ts_file.write_text("""
@@ -3899,7 +3899,7 @@ class UsersController {
 
     def test_multiple_decorators_on_method(self, tmp_path: Path) -> None:
         """Extracts multiple decorators from a method."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "controller.ts"
         ts_file.write_text("""
@@ -3923,7 +3923,7 @@ class UsersController {
 
     def test_multiple_decorators_on_class(self, tmp_path: Path) -> None:
         """Extracts multiple decorators from a class."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "controller.ts"
         ts_file.write_text("""
@@ -3962,7 +3962,7 @@ class TestBaseClassMetadata:
 
     def test_class_extends_single(self, tmp_path: Path) -> None:
         """Extracts single base class from extends clause."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "user.ts"
         ts_file.write_text("""
@@ -3982,7 +3982,7 @@ class User extends BaseModel {
 
     def test_class_implements_single(self, tmp_path: Path) -> None:
         """Extracts single interface from implements clause."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "service.ts"
         ts_file.write_text("""
@@ -4001,7 +4001,7 @@ class UserService implements IUserService {
 
     def test_class_implements_multiple(self, tmp_path: Path) -> None:
         """Extracts multiple interfaces from implements clause."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "service.ts"
         ts_file.write_text("""
@@ -4025,7 +4025,7 @@ class UserService implements IUserService, IDisposable, Serializable {
 
     def test_class_extends_and_implements(self, tmp_path: Path) -> None:
         """Extracts both extends and implements clauses."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "controller.ts"
         ts_file.write_text("""
@@ -4046,7 +4046,7 @@ class UserController extends BaseController implements IController {
 
     def test_class_extends_generic(self, tmp_path: Path) -> None:
         """Extracts generic base class with type parameters."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "repo.ts"
         ts_file.write_text("""
@@ -4067,7 +4067,7 @@ class UserRepository extends Repository<User> {
 
     def test_javascript_extends(self, tmp_path: Path) -> None:
         """Extracts base class from JavaScript ES6 class."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "widget.js"
         js_file.write_text("""
@@ -4086,7 +4086,7 @@ class Widget extends BaseWidget {
 
     def test_class_no_inheritance(self, tmp_path: Path) -> None:
         """Class without extends/implements has empty base_classes."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "simple.ts"
         ts_file.write_text("""
@@ -4106,7 +4106,7 @@ class SimpleClass {
 
     def test_qualified_base_class(self, tmp_path: Path) -> None:
         """Extracts qualified base class name (e.g., React.Component)."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "component.tsx"
         ts_file.write_text("""
@@ -4126,7 +4126,7 @@ class MyComponent extends React.Component {
 
     def test_javascript_qualified_base_class(self, tmp_path: Path) -> None:
         """Extracts qualified base class in JavaScript (React.Component style)."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "widget.js"
         js_file.write_text("""
@@ -4146,7 +4146,7 @@ class Widget extends React.Component {
 
     def test_implements_generic_interface(self, tmp_path: Path) -> None:
         """Extracts generic interface from implements clause."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "service.ts"
         ts_file.write_text("""
@@ -4176,7 +4176,7 @@ class TestDecoratorEdgeCases:
 
     def test_decorator_with_identifier_arg(self, tmp_path: Path) -> None:
         """Extracts decorator with identifier argument (variable reference)."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "controller.ts"
         ts_file.write_text("""
@@ -4198,7 +4198,7 @@ class UserController {
 
     def test_decorator_with_array_arg(self, tmp_path: Path) -> None:
         """Extracts decorator with array argument."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "controller.ts"
         ts_file.write_text("""
@@ -4220,7 +4220,7 @@ class AdminController {
 
     def test_decorator_with_number_arg(self, tmp_path: Path) -> None:
         """Extracts decorator with number argument."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "controller.ts"
         ts_file.write_text("""
@@ -4241,7 +4241,7 @@ class RateLimitedController {
 
     def test_decorator_with_boolean_arg(self, tmp_path: Path) -> None:
         """Extracts decorator with boolean argument."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "controller.ts"
         ts_file.write_text("""
@@ -4262,7 +4262,7 @@ class CachedController {
 
     def test_decorator_with_member_expression_arg(self, tmp_path: Path) -> None:
         """Extracts decorator with member expression argument."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "controller.ts"
         ts_file.write_text("""
@@ -4283,7 +4283,7 @@ class UserController {
 
     def test_qualified_decorator_name(self, tmp_path: Path) -> None:
         """Extracts decorator with qualified name (module.Decorator)."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "controller.ts"
         ts_file.write_text("""
@@ -4305,7 +4305,7 @@ class ServiceController {
 
     def test_decorator_with_template_string(self, tmp_path: Path) -> None:
         """Extracts decorator with template string argument."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "controller.ts"
         ts_file.write_text("""
@@ -4326,7 +4326,7 @@ class UserController {
 
     def test_decorator_with_float_arg(self, tmp_path: Path) -> None:
         """Extracts decorator with float argument."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "controller.ts"
         ts_file.write_text("""
@@ -4351,7 +4351,7 @@ class TestHapiUsageContext:
 
     def test_hapi_server_route_object(self, tmp_path: Path) -> None:
         """Detects server.route({ method, path, handler }) pattern."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "server.js").write_text("""
 const Hapi = require('@hapi/hapi');
@@ -4378,7 +4378,7 @@ server.route({
 
     def test_hapi_server_route_post(self, tmp_path: Path) -> None:
         """Detects POST route in config object."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "server.js").write_text("""
 server.route({
@@ -4394,7 +4394,7 @@ server.route({
 
     def test_hapi_array_of_routes(self, tmp_path: Path) -> None:
         """Detects array of route configs."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "server.js").write_text("""
 server.route([
@@ -4411,7 +4411,7 @@ server.route([
 
     def test_hapi_shorthand_properties(self, tmp_path: Path) -> None:
         """Handles shorthand property syntax."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "server.js").write_text("""
 const method = 'GET';
@@ -4426,7 +4426,7 @@ server.route({ method, path, handler: () => {} });
 
     def test_hapi_inline_handler_function(self, tmp_path: Path) -> None:
         """Handles inline arrow function handlers."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "server.js").write_text("""
 server.route({
@@ -4447,7 +4447,7 @@ class TestNextJsUsageContext:
 
     def test_nextjs_pages_index(self, tmp_path: Path) -> None:
         """Detects index page in pages directory."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         pages_dir = tmp_path / "pages"
         pages_dir.mkdir()
@@ -4464,7 +4464,7 @@ export default function Home() {
 
     def test_nextjs_pages_about(self, tmp_path: Path) -> None:
         """Detects about page."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         pages_dir = tmp_path / "pages"
         pages_dir.mkdir()
@@ -4480,7 +4480,7 @@ export default function About() {
 
     def test_nextjs_dynamic_route(self, tmp_path: Path) -> None:
         """Detects dynamic route with [id] parameter."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         pages_dir = tmp_path / "pages" / "posts"
         pages_dir.mkdir(parents=True)
@@ -4496,7 +4496,7 @@ export default function Post({ id }) {
 
     def test_nextjs_catch_all_route(self, tmp_path: Path) -> None:
         """Detects catch-all route with [...slug]."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         pages_dir = tmp_path / "pages" / "docs"
         pages_dir.mkdir(parents=True)
@@ -4512,7 +4512,7 @@ export default function Doc({ slug }) {
 
     def test_nextjs_api_route(self, tmp_path: Path) -> None:
         """Detects API route in pages/api directory."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         api_dir = tmp_path / "pages" / "api"
         api_dir.mkdir(parents=True)
@@ -4529,7 +4529,7 @@ export default function handler(req, res) {
 
     def test_nextjs_app_router_page(self, tmp_path: Path) -> None:
         """Detects App Router page.tsx."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         app_dir = tmp_path / "app" / "about"
         app_dir.mkdir(parents=True)
@@ -4545,7 +4545,7 @@ export default function About() {
 
     def test_nextjs_app_router_route_ts(self, tmp_path: Path) -> None:
         """Detects App Router route.ts for API routes."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         api_dir = tmp_path / "app" / "api" / "users"
         api_dir.mkdir(parents=True)
@@ -4562,7 +4562,7 @@ export async function GET() {
 
     def test_nextjs_non_page_file_ignored(self, tmp_path: Path) -> None:
         """Non-page files in pages directory are ignored."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         pages_dir = tmp_path / "pages"
         pages_dir.mkdir()
@@ -4581,7 +4581,7 @@ export default function App({ Component, pageProps }) {
 
     def test_nextjs_data_fetching_exports(self, tmp_path: Path) -> None:
         """Detects getServerSideProps and getStaticProps."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         pages_dir = tmp_path / "pages"
         pages_dir.mkdir()
@@ -4605,7 +4605,7 @@ class TestLibraryExportContext:
 
     def test_index_ts_default_export(self, tmp_path: Path) -> None:
         """Detects default export from index.ts."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "index.ts").write_text("""
 export default class Hls {
@@ -4622,7 +4622,7 @@ export default class Hls {
 
     def test_index_js_named_exports(self, tmp_path: Path) -> None:
         """Detects named exports from index.js."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "index.js").write_text("""
 export function doSomething() {
@@ -4643,7 +4643,7 @@ export function doOtherThing() {
 
     def test_index_tsx_export_clause(self, tmp_path: Path) -> None:
         """Detects export clause from index.tsx."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "index.tsx").write_text("""
 function Button() {
@@ -4664,7 +4664,7 @@ export { Button, Input };
 
     def test_index_const_export(self, tmp_path: Path) -> None:
         """Detects exported constants from index.js."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "index.js").write_text("""
 export const VERSION = "1.0.0";
@@ -4678,7 +4678,7 @@ export const CONFIG = { debug: false };
 
     def test_non_index_file_ignored(self, tmp_path: Path) -> None:
         """Non-index files don't generate library export contexts."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "utils.ts").write_text("""
 export function helper() {
@@ -4691,7 +4691,7 @@ export function helper() {
 
     def test_index_jsx_supported(self, tmp_path: Path) -> None:
         """Detects exports from index.jsx."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "index.jsx").write_text("""
 export function ReactComponent() {
@@ -4705,7 +4705,7 @@ export function ReactComponent() {
 
     def test_export_symbol_ref_resolved(self, tmp_path: Path) -> None:
         """Exported symbols have their symbol_ref resolved."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "index.ts").write_text("""
 export function myExportedFunction() {
@@ -4724,7 +4724,7 @@ export function myExportedFunction() {
 
     def test_class_export(self, tmp_path: Path) -> None:
         """Detects exported class from index.ts."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "index.ts").write_text("""
 export class MyLibrary {
@@ -4741,7 +4741,7 @@ export class MyLibrary {
 
     def test_default_export_identifier(self, tmp_path: Path) -> None:
         """Detects 'export default Identifier' pattern."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "index.js").write_text("""
 function MyComponent() {
@@ -4773,7 +4773,7 @@ class TestJsTsInheritanceEdges:
 
     def test_extracts_extends_edge_same_file(self, tmp_path: Path) -> None:
         """Extracts extends relationship edges for classes in the same file."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "models.ts").write_text("""
 class Animal {
@@ -4802,7 +4802,7 @@ class Dog extends Animal {
 
     def test_extracts_implements_edge(self, tmp_path: Path) -> None:
         """Extracts implements relationship edges for interfaces."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "service.ts").write_text("""
 interface UserService {
@@ -4828,7 +4828,7 @@ class UserServiceImpl implements UserService {
 
     def test_extracts_extends_edge_with_generics(self, tmp_path: Path) -> None:
         """Extracts extends edges when base class has generics."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "repo.ts").write_text("""
 class Repository<T> {
@@ -4852,7 +4852,7 @@ class UserRepository extends Repository<User> {
 
     def test_no_extends_edge_for_external_class(self, tmp_path: Path) -> None:
         """No extends edge created when base class is external (not in repo)."""
-        from hypergumbo.analyze.js_ts import analyze_javascript
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "component.tsx").write_text("""
 import React from 'react';
