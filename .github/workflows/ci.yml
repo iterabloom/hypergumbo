@@ -244,7 +244,8 @@ jobs:
           pip list | grep -E "hypergumbo|pytest|tree-sitter"
 
           echo "=== Test directory structure ==="
-          ls -la packages/*/tests/ | head -20
+          # Use || true to avoid SIGPIPE exit code when head closes early
+          ls -la packages/*/tests/ | head -20 || true
 
           echo "=== Running full test suite ==="
           # Run without explicit test path - pytest will auto-discover from packages/*/tests/
