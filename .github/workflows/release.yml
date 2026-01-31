@@ -46,7 +46,16 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install -e .[dev]
+          # Install modular packages if available, otherwise legacy
+          if [ -d "packages/hypergumbo-core" ]; then
+            pip install -e packages/hypergumbo-core \
+                        -e packages/hypergumbo-lang-mainstream \
+                        -e packages/hypergumbo-lang-common \
+                        -e packages/hypergumbo-lang-extended1 \
+                        -e "packages/hypergumbo[dev]"
+          else
+            pip install -e .[dev]
+          fi
 
       - name: Build source-only grammars
         run: ./scripts/build-source-grammars
@@ -65,13 +74,22 @@ jobs:
 
       - name: Run tests with coverage
         run: |
+          # Use modular package paths if available
+          if [ -d "packages/hypergumbo-core" ]; then
+            COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src"
+            TEST_PATHS="packages/*/tests/"
+          else
+            COV_PATHS="--cov=src"
+            TEST_PATHS=""
+          fi
+
           if [ "$EMBEDDINGS_AVAILABLE" = "true" ]; then
             echo "Embeddings available - using standard coverage"
-            pytest -n 2 --cov=src --cov-report=term-missing --cov-fail-under=100
+            pytest -n 2 $COV_PATHS --cov-report=term-missing --cov-fail-under=100 $TEST_PATHS
           else
             echo "::warning::Embeddings unavailable - using reduced coverage config"
-            pytest -n 2 --cov=src --cov-report=term-missing --cov-fail-under=100 \
-              --cov-config=.coveragerc.no-embeddings
+            pytest -n 2 $COV_PATHS --cov-report=term-missing --cov-fail-under=100 \
+              --cov-config=.coveragerc.no-embeddings $TEST_PATHS
           fi
 
   # ─────────────────────────────────────────────────────────────
@@ -92,14 +110,28 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install -e .[dev]
+          # Install modular packages if available, otherwise legacy
+          if [ -d "packages/hypergumbo-core" ]; then
+            pip install -e packages/hypergumbo-core \
+                        -e packages/hypergumbo-lang-mainstream \
+                        -e packages/hypergumbo-lang-common \
+                        -e packages/hypergumbo-lang-extended1 \
+                        -e "packages/hypergumbo[dev]"
+          else
+            pip install -e .[dev]
+          fi
           pip install pip-audit bandit safety pip-licenses
 
       - name: Vulnerability scan (pip-audit)
         run: pip-audit --skip-editable
 
       - name: Security linting (Bandit)
-        run: bandit -r src/ -c pyproject.toml
+        run: |
+          if [ -d "packages/hypergumbo-core" ]; then
+            bandit -r packages/*/src/ -c pyproject.toml
+          else
+            bandit -r src/ -c pyproject.toml
+          fi
 
       - name: Dependency safety check
         run: safety check || true  # Advisory, don't fail
@@ -137,7 +169,16 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install -e .[dev]
+          # Install modular packages if available, otherwise legacy
+          if [ -d "packages/hypergumbo-core" ]; then
+            pip install -e packages/hypergumbo-core \
+                        -e packages/hypergumbo-lang-mainstream \
+                        -e packages/hypergumbo-lang-common \
+                        -e packages/hypergumbo-lang-extended1 \
+                        -e "packages/hypergumbo[dev]"
+          else
+            pip install -e .[dev]
+          fi
 
       - name: Build source-only grammars
         run: ./scripts/build-source-grammars
@@ -182,8 +223,25 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "Building version: $VERSION"
 
-      - name: Build package
-        run: python -m build
+      - name: Build packages
+        run: |
+          # Build all packages in dependency order
+          if [ -d "packages/hypergumbo-core" ]; then
+            echo "Building modular packages..."
+            mkdir -p dist
+
+            # Build in dependency order
+            for pkg in hypergumbo-core hypergumbo-lang-mainstream hypergumbo-lang-common hypergumbo-lang-extended1 hypergumbo; do
+              echo "Building packages/$pkg..."
+              python -m build "packages/$pkg" --outdir dist/
+            done
+
+            echo "Built packages:"
+            ls -la dist/
+          else
+            echo "Building legacy single package..."
+            python -m build
+          fi
 
       - name: Generate checksums
         run: |
@@ -195,9 +253,13 @@ jobs:
         run: |
           cyclonedx-py environment -o dist/sbom.json --format json || true
 
-      - name: Verify wheel
+      - name: Verify wheels
         run: |
-          pip install dist/*.whl --dry-run
+          # Verify all wheels
+          for wheel in dist/*.whl; do
+            echo "Verifying $wheel..."
+            pip install "$wheel" --dry-run
+          done
           twine check dist/*.whl dist/*.tar.gz
 
       - name: Publish to PyPI
@@ -208,6 +270,7 @@ jobs:
         run: |
           if [[ -n "$TWINE_PASSWORD" ]]; then
             echo "Publishing to PyPI..."
+            # Upload all wheels and source distributions
             twine upload dist/*.whl dist/*.tar.gz --skip-existing
           else
             echo "::warning::PYPI_TOKEN not set, skipping publish"

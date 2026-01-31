@@ -1,0 +1,2 @@
+# CI artifacts - logs are ignored, manifests are committed
+full-suite.log

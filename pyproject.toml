@@ -21,7 +21,7 @@ omit = [
 [tool.ruff]
 target-version = "py310"
 line-length = 100
-src = ["packages/*/src", "tests"]
+src = ["packages/*/src", "packages/*/tests"]
 
 [tool.ruff.lint]
 select = [
@@ -46,7 +46,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 # Tests can use assert, hardcoded values, subprocess, temp paths, side-effect imports
-"tests/**/*.py" = ["S101", "S105", "S106", "S603", "S108", "E741", "F401", "F841", "RUF005"]
+"packages/*/tests/**/*.py" = ["S101", "S105", "S106", "S603", "S108", "E741", "F401", "F841", "RUF005"]
 # Conditional imports for optional tree-sitter deps
 "packages/*/src/**/*.py" = ["E402"]
 

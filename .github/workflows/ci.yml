@@ -41,9 +41,53 @@ jobs:
             echo "Docs-only changes, skipping expensive jobs"
           fi
 
+  # Stop-the-line protocol: Block PRs when full-suite is broken
+  # Exception: PRs titled "fix(job-XXXXX):" are allowed through
+  stop-the-line:
+    runs-on: codeberg-small-lazy
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Check full-suite status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Get the most recent full-suite workflow run on dev
+          WORKFLOW_RUNS=$(gh api repos/${{ github.repository }}/actions/workflows/full-suite.yml/runs?per_page=1 2>/dev/null || echo '{"workflow_runs":[]}')
+
+          # Extract conclusion from latest run
+          CONCLUSION=$(echo "$WORKFLOW_RUNS" | jq -r '.workflow_runs[0].conclusion // "unknown"')
+          RUN_ID=$(echo "$WORKFLOW_RUNS" | jq -r '.workflow_runs[0].id // "unknown"')
+
+          echo "Latest full-suite run: $RUN_ID (conclusion: $CONCLUSION)"
+
+          if [[ "$CONCLUSION" == "failure" ]]; then
+            PR_TITLE="${{ github.event.pull_request.title }}"
+            REQUIRED_PREFIX="fix(job-$RUN_ID):"
+
+            echo "⚠️ Full suite is broken (run $RUN_ID failed)"
+
+            if [[ "$PR_TITLE" == "$REQUIRED_PREFIX"* ]] || [[ "$PR_TITLE" == fix\(job-* ]]; then
+              echo "✅ PR title indicates this is a fix - allowing through"
+              echo "   Title: $PR_TITLE"
+            else
+              echo "❌ PRs blocked until full suite is fixed"
+              echo ""
+              echo "To unblock, either:"
+              echo "  1. Fix the broken full suite"
+              echo "  2. Rename your PR to start with: $REQUIRED_PREFIX"
+              echo ""
+              echo "Current PR title: $PR_TITLE"
+              exit 1
+            fi
+          elif [[ "$CONCLUSION" == "unknown" ]]; then
+            echo "⚠️ No full-suite runs found - allowing PR (first run scenario)"
+          else
+            echo "✅ Full suite is passing - PR allowed"
+          fi
+
   lint:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
+    needs: [changes, stop-the-line]
+    if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure'
     runs-on: codeberg-small-lazy
     steps:
       - uses: actions/checkout@v4
@@ -57,7 +101,7 @@ jobs:
           pip install --upgrade pip
           pip install ruff bandit
       - name: Run Ruff (linting)
-        run: ruff check packages/*/src/ tests/
+        run: ruff check packages/*/src/ packages/*/tests/
       - name: Run Bandit (security)
         run: bandit -r packages/*/src/ -c pyproject.toml
 
@@ -85,8 +129,8 @@ jobs:
           echo "✅ All commits have DCO sign-off"
 
   audit:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
+    needs: [changes, stop-the-line]
+    if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure'
     runs-on: codeberg-small-lazy
     steps:
       - uses: actions/checkout@v4
@@ -103,8 +147,8 @@ jobs:
         run: pip-audit --skip-editable
 
   verify-generated:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
+    needs: [changes, stop-the-line]
+    if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure'
     runs-on: codeberg-small-lazy
     steps:
       - uses: actions/checkout@v4
@@ -128,8 +172,8 @@ jobs:
         run: ./scripts/generate-architecture --check
 
   pytest:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
+    needs: [changes, stop-the-line]
+    if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure'
     runs-on: codeberg-small-lazy
     timeout-minutes: 30
     steps:
@@ -161,13 +205,53 @@ jobs:
             echo "sentence-transformers not installed, embedding tests will be skipped"
             echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
           fi
+      - name: Validate manifest (if present)
+        id: manifest
+        run: |
+          MANIFEST=".ci/affected-tests.txt"
+          if [ -f "$MANIFEST" ]; then
+            echo "Manifest found: $MANIFEST"
+
+            # Count tests per module for sanity check
+            CORE_TESTS=$(grep -c "hypergumbo-core/tests" "$MANIFEST" 2>/dev/null || echo 0)
+            MAINSTREAM_TESTS=$(grep -c "hypergumbo-lang-mainstream/tests" "$MANIFEST" 2>/dev/null || echo 0)
+            COMMON_TESTS=$(grep -c "hypergumbo-lang-common/tests" "$MANIFEST" 2>/dev/null || echo 0)
+            EXTENDED_TESTS=$(grep -c "hypergumbo-lang-extended1/tests" "$MANIFEST" 2>/dev/null || echo 0)
+            TOTAL_TESTS=$((CORE_TESTS + MAINSTREAM_TESTS + COMMON_TESTS + EXTENDED_TESTS))
+
+            echo "Manifest tests: core=$CORE_TESTS mainstream=$MAINSTREAM_TESTS common=$COMMON_TESTS extended=$EXTENDED_TESTS total=$TOTAL_TESTS"
+
+            # Sanity check: if total is suspiciously low, fall back to full suite
+            if [ "$TOTAL_TESTS" -lt 10 ]; then
+              echo "⚠️ Manifest has only $TOTAL_TESTS tests - falling back to full suite"
+              echo "use_manifest=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "✅ Manifest validated ($TOTAL_TESTS tests)"
+              echo "use_manifest=true" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "No manifest found, running full suite"
+            echo "use_manifest=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Run tests with coverage
         run: |
-          # Run tests against packages/*/src (new) or src/ directory (legacy)
-          # Use concise output to reduce log size and speed up CI
+          COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src"
+
+          echo "=== Python version ==="
+          python --version
+
+          echo "=== Installed packages ==="
+          pip list | grep -E "hypergumbo|pytest|tree-sitter"
+
+          echo "=== Test directory structure ==="
+          ls -la packages/*/tests/ | head -20
+
+          echo "=== Running full test suite ==="
+          # Run without explicit test path - pytest will auto-discover from packages/*/tests/
           if [ -d "packages/hypergumbo-core" ]; then
-            pytest -n 2 --tb=short --cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov-report=term 2>&1 | tee coverage-output.txt
+            pytest -n 2 --tb=short $COV_PATHS --cov-report=term 2>&1 | tee coverage-output.txt
           else
+            # Legacy structure
             pytest -n 2 --tb=short --cov=src --cov-report=term 2>&1 | tee coverage-output.txt
           fi
       - name: Update coverage badge
@@ -212,7 +296,7 @@ jobs:
   # Final gate job - ensures workflow completes even when jobs are skipped
   # This fixes Forgejo Actions bug where skipped jobs leave workflow in "running" state
   ci-complete:
-    needs: [changes, lint, audit, verify-generated, pytest, dco]
+    needs: [changes, stop-the-line, lint, audit, verify-generated, pytest, dco]
     if: always()
     runs-on: codeberg-small-lazy
     steps:
@@ -220,6 +304,7 @@ jobs:
         run: |
           echo "Job results:"
           echo "  changes: ${{ needs.changes.result }}"
+          echo "  stop-the-line: ${{ needs.stop-the-line.result }}"
           echo "  lint: ${{ needs.lint.result }}"
           echo "  audit: ${{ needs.audit.result }}"
           echo "  verify-generated: ${{ needs.verify-generated.result }}"
@@ -228,6 +313,7 @@ jobs:
 
           # Fail if any required job failed (skipped is OK)
           if [[ "${{ needs.changes.result }}" == "failure" ]] || \
+             [[ "${{ needs.stop-the-line.result }}" == "failure" ]] || \
              [[ "${{ needs.lint.result }}" == "failure" ]] || \
              [[ "${{ needs.audit.result }}" == "failure" ]] || \
              [[ "${{ needs.verify-generated.result }}" == "failure" ]] || \
