@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hypergumbo"
+version = "2.0.0"
+description = "Local-first repo behavior map generator"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "AGPL-3.0-or-later" }
+authors = [{ name = "Hypergumbo contributors" }]
+keywords = ["static-analysis", "code-graph", "cli", "local-first"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+]
+dependencies = [
+  # Meta-package that pulls in all hypergumbo components
+  "hypergumbo-core==2.0.0",
+  "hypergumbo-lang-mainstream==2.0.0",
+  "hypergumbo-lang-common==2.0.0",
+  "hypergumbo-lang-extended1==2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "pytest-cov>=5",
+  "pytest-xdist>=3",
+  "ruff>=0.8",
+  "bandit>=1.8",
+  "pip-audit>=2.7",
+  "jsonschema>=4.18",
+  "yamllint>=1.35",
+  "check-jsonschema>=0.29",
+]
+embeddings = [
+  "sentence-transformers>=2.2",
+]
+
+[project.scripts]
+hypergumbo = "hypergumbo_core.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hypergumbo"]

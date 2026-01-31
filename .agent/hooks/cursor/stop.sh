@@ -16,7 +16,10 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 INPUT=$(cat)
 
 # Check autonomous mode - if disabled, allow stop (empty output = no followup)
-if [[ "$(cat "$REPO_ROOT/AUTONOMOUS_MODE.txt" 2>/dev/null)" != "TRUE" ]]; then
+# TRUE, BROAD, and DEEP all enable autonomous behavior
+# OFF and FALSE both mean disabled (see scripts/loop-toggle)
+MODE=$(cat "$REPO_ROOT/AUTONOMOUS_MODE.txt" 2>/dev/null | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+if [[ -z "$MODE" || "$MODE" == "OFF" || "$MODE" == "FALSE" ]]; then
   echo '{}'
   exit 0
 fi

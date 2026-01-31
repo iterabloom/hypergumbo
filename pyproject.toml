@@ -1,97 +1,6 @@
-[build-system]
-requires = ["hatchling>=1.24"]
-build-backend = "hatchling.build"
-
-[project]
-name = "hypergumbo"
-version = "1.2.1"
-description = "Local-first repo behavior map generator (MVP)"
-readme = "README.md"
-requires-python = ">=3.10"
-license = { text = "AGPL-3.0-or-later" }
-authors = [{ name = "Hypergumbo contributors" }]
-keywords = ["static-analysis", "code-graph", "cli", "local-first"]
-classifiers = [
-  "Development Status :: 3 - Alpha",
-  "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
-  "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3 :: Only",
-]
-dependencies = [
-  # All language analyzers included by default
-  "tree-sitter>=0.21",
-  "tree-sitter-javascript>=0.21",
-  "tree-sitter-typescript>=0.21",
-  "tree-sitter-php>=0.23",
-  "tree-sitter-c>=0.21",
-  "tree-sitter-java>=0.21",
-  "tree-sitter-rust>=0.21",
-  "tree-sitter-go>=0.21",
-  "tree-sitter-ruby>=0.21",
-  "tree-sitter-kotlin>=1.0",
-  "tree-sitter-swift>=0.0.1",
-  "tree-sitter-scala>=0.23",
-  "tree-sitter-lua>=0.0.14",
-  "tree-sitter-haskell>=0.21",
-  "tree-sitter-agda>=0.2.1",
-  "tree-sitter-ocaml>=0.21",
-  "tree-sitter-language-pack>=0.13",  # Elixir, COBOL, Dart, LaTeX, R
-  "tree-sitter-commonlisp>=0.4",  # Common Lisp analyzer
-  "tree-sitter-llvm>=1.1",  # LLVM IR analyzer
-  "tree-sitter-solidity>=0.0.1",
-  "tree-sitter-c-sharp>=0.21",
-  "tree-sitter-cpp>=0.22",
-  "tree-sitter-zig>=0.0.1",
-  "tree-sitter-odin>=1.0",
-  "tree-sitter-groovy>=0.1",
-  "tree-sitter-julia>=0.23",
-  "tree-sitter-bash>=0.21",
-  "tree-sitter-objc>=3.0",
-  "tree-sitter-hcl>=1.2",
-  # Additional analyzers
-  "tree-sitter-cmake>=0.7",
-  "tree-sitter-css>=0.21",
-  "tree-sitter-cuda>=0.20",
-  "tree-sitter-dockerfile>=0.2",
-  "tree-sitter-fortran>=0.1",
-  "tree-sitter-glsl>=0.1",
-  "tree-sitter-graphql>=0.1",
-  "tree-sitter-html>=0.20",
-  "tree-sitter-json>=0.21",
-  "tree-sitter-make>=1.1",
-  "tree-sitter-nix>=0.1",
-  "tree-sitter-sql>=0.3",
-  "tree-sitter-toml>=0.6",
-  "tree-sitter-verilog>=1.0",
-  "tree-sitter-vhdl>=1.2",
-  "tree-sitter-wgsl>=0.0.1",
-  "tree-sitter-xml>=0.6",
-  "tree-sitter-yaml>=0.6",
-  "tree-sitter-robot>=1.1",  # Robot Framework test automation
-  # CLI formatting
-  "rich>=13.0",
-]
-
-[project.optional-dependencies]
-dev = [
-  "pytest>=8",
-  "pytest-cov>=5",
-  "pytest-xdist>=3",  # Parallel test execution
-  "ruff>=0.8",
-  "bandit>=1.8",
-  "pip-audit>=2.7",
-  "jsonschema>=4.18",  # For schema validation tests (4.18+ uses referencing)
-  "yamllint>=1.35",  # YAML syntax linting
-  "check-jsonschema>=0.29",  # Validate YAML against JSON schema
-  # Note: sentence-transformers not in dev deps due to 1GB+ torch dependency
-  # Embedding tests skip gracefully when unavailable
-]
-embeddings = [
-  "sentence-transformers>=2.2",  # For embedding-based config extraction
-]
-
-[project.scripts]
-hypergumbo = "hypergumbo.cli:main"
+# Root pyproject.toml - shared tool configuration only
+# Packages are defined in packages/*/pyproject.toml
+# This file provides pytest, ruff, bandit, and coverage configuration
 
 [tool.pytest.ini_options]
 # Filter expected warnings from tests
@@ -107,15 +16,14 @@ filterwarnings = [
 # Omit optional modules that require extra dependencies
 omit = [
     "*/sketch_embeddings.py",  # Requires sentence-transformers
+    "*/_embedding_data.py",    # Generated embedding data
+    "*/__main__.py",           # Entry point
 ]
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/hypergumbo"]
 
 [tool.ruff]
 target-version = "py310"
 line-length = 100
-src = ["src", "tests"]
+src = ["packages/*/src", "packages/*/tests"]
 
 [tool.ruff.lint]
 select = [
@@ -140,9 +48,9 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 # Tests can use assert, hardcoded values, subprocess, temp paths, side-effect imports
-"tests/**/*.py" = ["S101", "S105", "S106", "S603", "S108", "E741", "F401", "F841", "RUF005"]
+"packages/*/tests/**/*.py" = ["S101", "S105", "S106", "S603", "S108", "E741", "F401", "F841", "RUF005"]
 # Conditional imports for optional tree-sitter deps
-"src/hypergumbo/analyze/*.py" = ["E402"]
+"packages/*/src/**/*.py" = ["E402"]
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv"]

@@ -1,0 +1,112 @@
+# Servant framework patterns (ADR-0003 v1.1.x)
+#
+# Servant is a Haskell library for defining type-safe APIs.
+# APIs are defined at the type level using combinators.
+# Handlers implement the server logic for each endpoint.
+# Uses WAI (Web Application Interface) for running servers.
+
+id: servant
+language: haskell
+
+patterns:
+  # serve function (run server)
+  - concept: server
+    usage:
+      kind: "^call$"
+      name: "^serve$"
+
+  # run function (Warp)
+  - concept: server
+    usage:
+      kind: "^call$"
+      name: "^run$"
+
+  # runSettings function
+  - concept: server
+    usage:
+      kind: "^call$"
+      name: "^runSettings$"
+
+  # Handler type (return type indicates handler)
+  - concept: handler
+    base_class: "^Handler$"
+
+  # ServerT transformer
+  - concept: handler
+    base_class: "^ServerT$"
+
+  # hoistServer (natural transformation)
+  - concept: transformer
+    usage:
+      kind: "^call$"
+      name: "^hoistServer$"
+
+  # hoistServerWithContext
+  - concept: transformer
+    usage:
+      kind: "^call$"
+      name: "^hoistServerWithContext$"
+
+  # serveWithDocs (documentation)
+  - concept: documentation
+    usage:
+      kind: "^call$"
+      name: "^serveWithDocs$"
+
+  # swaggerDocs
+  - concept: documentation
+    usage:
+      kind: "^call$"
+      name: "^(swagger|openapi).*$"
+
+  # Error responses
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^err[0-9]+$"
+
+  # throwError
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^throwError$"
+
+  # catchError
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^catchError$"
+
+  # ServerError
+  - concept: error_handler
+    base_class: "^ServerError$"
+
+  # Application (WAI)
+  - concept: application
+    base_class: "^Application$"
+
+  # Middleware (WAI)
+  - concept: middleware
+    base_class: "^Middleware$"
+
+  # Request/Response types
+  - concept: request
+    base_class: "^Request$"
+
+  - concept: response
+    base_class: "^Response$"
+
+  # Auth context
+  - concept: authentication
+    usage:
+      kind: "^call$"
+      name: "^(basicAuth|bearerAuth|jwtAuth).*$"
+
+  # Servant combinators (API definition)
+  - concept: route
+    usage:
+      kind: "^type$"
+      name: "^(Get|Post|Put|Delete|Patch|ReqBody|Capture|QueryParam|Header)$"
+
+linkers:
+  - http

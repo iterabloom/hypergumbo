@@ -1,0 +1,478 @@
+#!/usr/bin/env python3
+"""
+bakeoff-features-reflect - LLM-driven qualitative assessment of hypergumbo outputs
+
+This script performs developer-perspective usefulness assessment by invoking
+an LLM agent to examine raw artifacts and raw repo code side-by-side.
+
+The agent adopts the persona of a developer working on that repo and asks:
+"Would I actually find this useful?"
+
+## Assessment Protocol
+
+For each repo, the agent examines artifacts through the lens of 3 developer tasks:
+
+### A. Refactoring Task Assessment
+- Pick a function from the slice output
+- Look at the actual function in the repo
+- Ask: "If I wanted to refactor this, does the slice show me what I'd break?"
+- Check: Does reverse-slice correctly identify callers that would need updates?
+- Note: Missing dependencies, false connections, unhelpful noise
+
+### B. New Feature Implementation Assessment
+- Identify a realistic feature addition point
+- Ask: "Does the entrypoint detection find similar existing endpoints?"
+- Ask: "Does the slice from an existing endpoint show the implementation pattern?"
+- Check: Does supply chain tier help focus on first-party code to copy?
+- Note: Missing patterns, irrelevant includes, wrong abstraction level
+
+### C. Integration/Understanding Assessment
+- Pretend unfamiliarity with the codebase
+- Ask: "Do the top-ranked symbols by centrality match actual important code?"
+- Ask: "Does the behavior map help understand the architecture?"
+- Check: Are cross-file edges actually meaningful relationships?
+- Note: Misleading centrality, missing key components, noise ratio
+
+## Output Format
+
+```yaml
+developer_assessment:
+  repo: django
+  refactoring:
+    target: "django/views/generic/base.py:View.dispatch"
+    slice_useful: true
+    reverse_slice_useful: false
+    missing: ["middleware chain not shown"]
+    noise: ["unrelated admin code included"]
+  new_feature:
+    scenario: "add new generic view type"
+    entrypoint_helpful: true
+    pattern_discoverable: true
+    notes: "..."
+  understanding:
+    centrality_accurate: true
+    architecture_visible: false
+    notes: "..."
+  overall_verdict: USEFUL | PARTIALLY_USEFUL | NOT_USEFUL
+  improvement_ideas: ["increase max_hops for deep inheritance", "..."]
+```
+
+## Usage
+
+    # Run reflection on latest feature bakeoff results
+    ./scripts/bakeoff-features-reflect --workdir /tmp/feature-bakeoff
+
+    # Specify a specific iteration
+    ./scripts/bakeoff-features-reflect --workdir /tmp/feature-bakeoff --iteration 1
+
+    # Output to custom file
+    ./scripts/bakeoff-features-reflect --workdir /tmp/feature-bakeoff --out reflect.yaml
+
+Environment:
+    BAKEOFF_FEATURES_WORKDIR: Override workdir location
+"""
+
+import argparse
+import datetime
+import json
+import os
+import sys
+from pathlib import Path
+
+# Structured prompt template for the LLM agent
+ASSESSMENT_PROMPT_TEMPLATE = """
+You are a developer working on the {repo_name} repository. Your task is to evaluate
+whether hypergumbo's analysis outputs would be useful to you for common development tasks.
+
+## Repository Information
+- Name: {repo_name}
+- Path: {repo_path}
+
+## Available Artifacts
+The following hypergumbo outputs are available for your assessment:
+{artifact_list}
+
+## Assessment Protocol
+
+Examine the artifacts and source code, then evaluate usefulness for these 3 tasks:
+
+### Task A: Refactoring Assessment
+1. Pick a non-trivial function from the slice output (slice.0.json or similar)
+2. Read the actual function in the source code
+3. Imagine you want to refactor this function
+4. Evaluate:
+   - Does the forward slice show what code depends on this function?
+   - Does the reverse slice (rslice.*.json) show what would need to change?
+   - What's missing that a real refactoring would need?
+   - What's included that's not actually relevant?
+
+### Task B: New Feature Implementation
+1. Identify where you'd add a new feature (e.g., new API endpoint, new view)
+2. Look at existing similar features in the entrypoint list
+3. Evaluate:
+   - Can you find similar existing implementations?
+   - Does the slice from those implementations show the pattern to follow?
+   - Does supply chain tier help you focus on code to modify vs libraries?
+
+### Task C: Codebase Understanding
+1. Pretend you're new to this codebase
+2. Look at the symbols output (symbols.txt) for high-connectivity nodes
+3. Evaluate:
+   - Do the top-ranked symbols match what's actually important?
+   - Does the call graph reveal the architecture?
+   - Are the cross-file relationships meaningful?
+
+## Output Format
+
+Provide your assessment as YAML:
+
+```yaml
+developer_assessment:
+  repo: {repo_name}
+  timestamp: "{timestamp}"
+
+  refactoring:
+    target: "path/to/file.py:function_name"
+    slice_useful: true/false
+    reverse_slice_useful: true/false
+    missing:
+      - "description of what's missing"
+    noise:
+      - "description of irrelevant content"
+    notes: "additional observations"
+
+  new_feature:
+    scenario: "brief description of feature to add"
+    entrypoint_helpful: true/false
+    pattern_discoverable: true/false
+    tier_filtering_helpful: true/false
+    missing:
+      - "what patterns weren't found"
+    notes: "additional observations"
+
+  understanding:
+    centrality_accurate: true/false
+    architecture_visible: true/false
+    cross_file_edges_meaningful: true/false
+    missing:
+      - "key components not surfaced"
+    noise:
+      - "misleading or confusing elements"
+    notes: "additional observations"
+
+  overall_verdict: USEFUL | PARTIALLY_USEFUL | NOT_USEFUL
+  confidence: HIGH | MEDIUM | LOW
+
+  improvement_ideas:
+    - "specific, actionable suggestion 1"
+    - "specific, actionable suggestion 2"
+
+  questions:
+    - "open question about hypergumbo behavior or output"
+```
+
+Be specific and concrete. Reference actual files and functions from the repo.
+Focus on practical utility, not theoretical correctness.
+"""
+
+
+def get_artifact_list(repo_out_dir: str) -> str:
+    """Generate a list of available artifacts for the prompt."""
+    artifacts = []
+
+    artifact_descriptions = {
+        "hg.json": "Full behavior map (nodes, edges, entrypoints)",
+        "entries.txt": "Detected entrypoints for the repo",
+        "symbols.txt": "Symbols ranked by connectivity (in/out degree)",
+        "routes.txt": "Detected API routes and endpoints",
+        "slice.0.json": "Forward slice from top entrypoint",
+        "slice.1.json": "Forward slice from second entrypoint",
+        "rslice.0.json": "Reverse slice (what calls) from top entrypoint",
+        "rslice.1.json": "Reverse slice from second entrypoint",
+        "slice.tier1.json": "Slice limited to tier-1 (first-party) code",
+        "slice.tier2.json": "Slice limited to tier-1 and tier-2 code",
+    }
+
+    for fname, desc in artifact_descriptions.items():
+        fpath = os.path.join(repo_out_dir, fname)
+        if os.path.exists(fpath):
+            size = os.path.getsize(fpath)
+            artifacts.append(f"- {fname} ({size // 1024}KB): {desc}")
+
+    return "\n".join(artifacts) if artifacts else "No artifacts found"
+
+
+def load_state(workdir: str) -> dict:
+    """Load bakeoff state from workdir."""
+    state_path = os.path.join(workdir, "state.json")
+    if not os.path.exists(state_path):
+        return None
+
+    with open(state_path, "r") as f:
+        return json.load(f)
+
+
+def generate_assessment_prompt(repo_name: str, repo_path: str, repo_out_dir: str) -> str:
+    """Generate the assessment prompt for a specific repo."""
+    artifact_list = get_artifact_list(repo_out_dir)
+    timestamp = datetime.datetime.now().isoformat()
+
+    return ASSESSMENT_PROMPT_TEMPLATE.format(
+        repo_name=repo_name,
+        repo_path=repo_path,
+        artifact_list=artifact_list,
+        timestamp=timestamp,
+    )
+
+
+def aggregate_assessments(assessments: list) -> dict:
+    """Aggregate individual assessments into a summary report."""
+    summary = {
+        "total_repos": len(assessments),
+        "verdicts": {"USEFUL": 0, "PARTIALLY_USEFUL": 0, "NOT_USEFUL": 0},
+        "common_issues": [],
+        "improvement_ideas": [],
+        "questions": [],
+    }
+
+    all_missing = []
+    all_noise = []
+    all_ideas = []
+    all_questions = []
+
+    for a in assessments:
+        if not a:
+            continue
+
+        # Count verdicts
+        verdict = a.get("overall_verdict", "NOT_USEFUL")
+        if verdict in summary["verdicts"]:
+            summary["verdicts"][verdict] += 1
+
+        # Collect issues
+        for section in ["refactoring", "new_feature", "understanding"]:
+            section_data = a.get(section, {})
+            all_missing.extend(section_data.get("missing", []))
+            all_noise.extend(section_data.get("noise", []))
+
+        all_ideas.extend(a.get("improvement_ideas", []))
+        all_questions.extend(a.get("questions", []))
+
+    # Deduplicate and count
+    def count_items(items):
+        counts = {}
+        for item in items:
+            counts[item] = counts.get(item, 0) + 1
+        return sorted(counts.items(), key=lambda x: -x[1])
+
+    missing_counts = count_items(all_missing)
+    summary["common_missing"] = [{"issue": m, "count": c} for m, c in missing_counts[:10]]
+
+    noise_counts = count_items(all_noise)
+    summary["common_noise"] = [{"issue": n, "count": c} for n, c in noise_counts[:10]]
+
+    idea_counts = count_items(all_ideas)
+    summary["improvement_ideas"] = [{"idea": i, "count": c} for i, c in idea_counts[:10]]
+
+    question_counts = count_items(all_questions)
+    summary["questions"] = [{"question": q, "count": c} for q, c in question_counts[:10]]
+
+    return summary
+
+
+def cmd_reflect(args):
+    """Run LLM-driven reflection on feature bakeoff results."""
+    workdir = os.environ.get("BAKEOFF_FEATURES_WORKDIR", args.workdir or ".")
+    state = load_state(workdir)
+
+    if not state:
+        print("Error: No feature bakeoff session found.", file=sys.stderr)
+        return 1
+
+    cohort_number = state.get("cohort_number", 0)
+    iteration = args.iteration or state.get("iteration", 0)
+    pool_path = state.get("pool_path", "")
+
+    out_dir = os.path.join(workdir, "out", f"cohort-{cohort_number:03d}", f"iter-{iteration:03d}")
+
+    if not os.path.isdir(out_dir):
+        print(f"Error: No output found at {out_dir}.", file=sys.stderr)
+        return 1
+
+    current_cohort = state.get("current_cohort", [])
+
+    print(f"Feature Bakeoff Reflection")
+    print(f"  Cohort: #{cohort_number}")
+    print(f"  Iteration: {iteration}")
+    print(f"  Repos: {', '.join(current_cohort)}")
+    print()
+
+    # Generate prompts for each repo
+    prompts_dir = os.path.join(workdir, "reflect", f"cohort-{cohort_number:03d}", f"iter-{iteration:03d}")
+    os.makedirs(prompts_dir, exist_ok=True)
+
+    for repo_name in current_cohort:
+        repo_path = os.path.join(pool_path, repo_name)
+        repo_out = os.path.join(out_dir, repo_name)
+
+        if not os.path.isdir(repo_out):
+            print(f"[{repo_name}] Skipped (no output)")
+            continue
+
+        prompt = generate_assessment_prompt(repo_name, repo_path, repo_out)
+
+        # Write prompt to file
+        prompt_path = os.path.join(prompts_dir, f"{repo_name}.prompt.md")
+        with open(prompt_path, "w") as f:
+            f.write(prompt)
+
+        print(f"[{repo_name}] Prompt generated: {prompt_path}")
+
+    print()
+    print("=" * 60)
+    print("NEXT STEPS")
+    print("=" * 60)
+    print()
+    print("The reflection prompts have been generated. To complete the assessment:")
+    print()
+    print("1. For each repo, invoke an LLM agent with the prompt:")
+    print(f"   Prompts are in: {prompts_dir}/")
+    print()
+    print("2. The agent should have access to:")
+    print(f"   - The repo source code at: {pool_path}/<repo_name>/")
+    print(f"   - The hypergumbo artifacts at: {out_dir}/<repo_name>/")
+    print()
+    print("3. Save the YAML assessment output to:")
+    print(f"   {prompts_dir}/<repo_name>.assessment.yaml")
+    print()
+    print("4. Run aggregate to synthesize findings:")
+    print(f"   ./scripts/bakeoff-features-reflect aggregate --workdir {workdir}")
+    print()
+
+    return 0
+
+
+def cmd_aggregate(args):
+    """Aggregate individual assessments into a summary report."""
+    workdir = os.environ.get("BAKEOFF_FEATURES_WORKDIR", args.workdir or ".")
+    state = load_state(workdir)
+
+    if not state:
+        print("Error: No feature bakeoff session found.", file=sys.stderr)
+        return 1
+
+    cohort_number = state.get("cohort_number", 0)
+    iteration = args.iteration or state.get("iteration", 0)
+
+    prompts_dir = os.path.join(workdir, "reflect", f"cohort-{cohort_number:03d}", f"iter-{iteration:03d}")
+
+    if not os.path.isdir(prompts_dir):
+        print(f"Error: No reflection directory found at {prompts_dir}.", file=sys.stderr)
+        return 1
+
+    # Load all assessments
+    import yaml
+
+    assessments = []
+    current_cohort = state.get("current_cohort", [])
+
+    for repo_name in current_cohort:
+        assessment_path = os.path.join(prompts_dir, f"{repo_name}.assessment.yaml")
+
+        if not os.path.exists(assessment_path):
+            print(f"[{repo_name}] No assessment found (skipped)")
+            continue
+
+        try:
+            with open(assessment_path) as f:
+                data = yaml.safe_load(f)
+                if data and "developer_assessment" in data:
+                    assessments.append(data["developer_assessment"])
+                elif data:
+                    assessments.append(data)
+                print(f"[{repo_name}] Loaded assessment")
+        except Exception as e:
+            print(f"[{repo_name}] Error loading assessment: {e}")
+
+    if not assessments:
+        print()
+        print("No assessments found to aggregate.")
+        print("Run the reflection prompts first, then save results as:")
+        print(f"  {prompts_dir}/<repo_name>.assessment.yaml")
+        return 1
+
+    # Aggregate
+    summary = aggregate_assessments(assessments)
+    summary["cohort"] = cohort_number
+    summary["iteration"] = iteration
+    summary["timestamp"] = datetime.datetime.now().isoformat()
+
+    # Write summary
+    summary_path = os.path.join(prompts_dir, "summary.yaml")
+    with open(summary_path, "w") as f:
+        yaml.dump(summary, f, default_flow_style=False, sort_keys=False)
+
+    print()
+    print("=" * 60)
+    print("REFLECTION SUMMARY")
+    print("=" * 60)
+    print()
+    print(f"Assessed repos: {summary['total_repos']}")
+    print(f"Verdicts:")
+    for verdict, count in summary["verdicts"].items():
+        print(f"  {verdict}: {count}")
+    print()
+
+    if summary.get("common_missing"):
+        print("Common missing items:")
+        for item in summary["common_missing"][:5]:
+            print(f"  - {item['issue']} (x{item['count']})")
+        print()
+
+    if summary.get("improvement_ideas"):
+        print("Top improvement ideas:")
+        for item in summary["improvement_ideas"][:5]:
+            print(f"  - {item['idea']} (x{item['count']})")
+        print()
+
+    print(f"Full summary: {summary_path}")
+
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="LLM-driven qualitative assessment of hypergumbo outputs",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    subparsers = parser.add_subparsers(dest="command", help="Command")
+
+    # reflect (default)
+    p_reflect = subparsers.add_parser("reflect", help="Generate reflection prompts")
+    p_reflect.add_argument("--workdir", help="Bakeoff workdir")
+    p_reflect.add_argument("--iteration", type=int, help="Specific iteration to reflect on")
+
+    # aggregate
+    p_aggregate = subparsers.add_parser("aggregate", help="Aggregate assessment results")
+    p_aggregate.add_argument("--workdir", help="Bakeoff workdir")
+    p_aggregate.add_argument("--iteration", type=int, help="Specific iteration")
+
+    args = parser.parse_args()
+
+    # Default to reflect if no command given
+    if not args.command:
+        args.command = "reflect"
+        args.workdir = None
+        args.iteration = None
+
+    commands = {
+        "reflect": cmd_reflect,
+        "aggregate": cmd_aggregate,
+    }
+
+    return commands[args.command](args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

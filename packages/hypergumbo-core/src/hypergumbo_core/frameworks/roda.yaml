@@ -1,0 +1,148 @@
+# Roda framework patterns (ADR-0003 v1.1.x)
+#
+# Roda is a Ruby web framework with a routing tree approach.
+# Routes are defined using r.on, r.get, r.post, etc. within a route block.
+# Known for performance and simplicity.
+
+id: roda
+language: ruby
+
+patterns:
+  # Application class (inherits Roda)
+  - concept: application
+    base_class: "^Roda$"
+
+  # Route block - main entry point for routing
+  - concept: route_definition
+    usage:
+      kind: "^call$"
+      name: "^route$"
+
+  # Root route handler
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^r\\.root$"
+
+  # Path segment matching - r.on "path" do ... end
+  - concept: route_segment
+    usage:
+      kind: "^call$"
+      name: "^r\\.on$"
+      position: "^args\\[0\\]$"
+
+  # Terminal path segment - r.is "path" do ... end
+  - concept: route_terminal
+    usage:
+      kind: "^call$"
+      name: "^r\\.is$"
+      position: "^args\\[0\\]$"
+
+  # HTTP GET method handler
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^r\\.get$"
+    extract:
+      method: "GET"
+
+  # HTTP POST method handler
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^r\\.post$"
+    extract:
+      method: "POST"
+
+  # HTTP PUT method handler
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^r\\.put$"
+    extract:
+      method: "PUT"
+
+  # HTTP PATCH method handler
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^r\\.patch$"
+    extract:
+      method: "PATCH"
+
+  # HTTP DELETE method handler
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^r\\.delete$"
+    extract:
+      method: "DELETE"
+
+  # HTTP HEAD method handler
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^r\\.head$"
+    extract:
+      method: "HEAD"
+
+  # HTTP OPTIONS method handler
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^r\\.options$"
+    extract:
+      method: "OPTIONS"
+
+  # Hash routes plugin - hash-based routing
+  - concept: hash_route
+    usage:
+      kind: "^call$"
+      name: "^r\\.hash_routes$"
+
+  # Hash branch plugin - hash-based branching
+  - concept: hash_branch
+    usage:
+      kind: "^call$"
+      name: "^r\\.hash_branch$"
+
+  # Plugin system - plugin :name
+  - concept: plugin
+    usage:
+      kind: "^call$"
+      name: "^plugin$"
+      position: "^args\\[0\\]$"
+
+  # Halt processing - r.halt
+  - concept: halt
+    usage:
+      kind: "^call$"
+      name: "^r\\.halt$"
+
+  # Redirect - r.redirect
+  - concept: redirect
+    usage:
+      kind: "^call$"
+      name: "^r\\.redirect$"
+
+  # Response body - response.write
+  - concept: response
+    usage:
+      kind: "^call$"
+      name: "^response\\.(write|status|headers|body)$"
+
+  # Request parameters - r.params
+  - concept: params
+    usage:
+      kind: "^call$"
+      name: "^r\\.params$"
+
+  # View rendering - view method from render plugin
+  - concept: view
+    usage:
+      kind: "^call$"
+      name: "^view$"
+      position: "^args\\[0\\]$"
+
+linkers:
+  - http

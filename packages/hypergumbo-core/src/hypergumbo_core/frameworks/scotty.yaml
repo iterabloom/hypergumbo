@@ -1,0 +1,169 @@
+# Scotty framework patterns (ADR-0003 v1.1.x)
+#
+# Scotty is a Haskell web micro-framework inspired by Ruby's Sinatra.
+# Routes are defined with get, post, put, delete, patch functions.
+# Uses WAI for the underlying web server.
+# Simple and minimal API for building web applications.
+
+id: scotty
+language: haskell
+
+patterns:
+  # scotty application starter
+  - concept: application
+    usage:
+      kind: "^call$"
+      name: "^scotty$"
+
+  # scottyT (transformer version)
+  - concept: application
+    usage:
+      kind: "^call$"
+      name: "^scottyT$"
+
+  # scottyOpts (with options)
+  - concept: application
+    usage:
+      kind: "^call$"
+      name: "^scottyOpts$"
+
+  # GET route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^get$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "GET"
+      path: "metadata.url"
+
+  # POST route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^post$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "POST"
+      path: "metadata.url"
+
+  # PUT route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^put$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "PUT"
+      path: "metadata.url"
+
+  # DELETE route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^delete$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "DELETE"
+      path: "metadata.url"
+
+  # PATCH route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^patch$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "PATCH"
+      path: "metadata.url"
+
+  # OPTIONS route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^options$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "OPTIONS"
+      path: "metadata.url"
+
+  # middleware
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^middleware$"
+
+  # Response helpers
+  - concept: response
+    usage:
+      kind: "^call$"
+      name: "^(text|html|json|file|stream|raw)$"
+
+  # Status setting
+  - concept: response
+    usage:
+      kind: "^call$"
+      name: "^status$"
+
+  # Header setting
+  - concept: response
+    usage:
+      kind: "^call$"
+      name: "^(setHeader|addHeader|header)$"
+
+  # Content type
+  - concept: response
+    usage:
+      kind: "^call$"
+      name: "^(setContent|contentType)$"
+
+  # Parameter extraction
+  - concept: request
+    usage:
+      kind: "^call$"
+      name: "^(param|params|captureParam|formParam|queryParam)$"
+
+  # Request body
+  - concept: request
+    usage:
+      kind: "^call$"
+      name: "^(body|jsonData)$"
+
+  # Error handling - raise
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^raise$"
+
+  # Error handling - rescue
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^rescue$"
+
+  # Default handler
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^(defaultHandler|notFound)$"
+
+  # Redirect
+  - concept: redirect
+    usage:
+      kind: "^call$"
+      name: "^redirect$"
+
+  # Next (skip to next route)
+  - concept: control_flow
+    usage:
+      kind: "^call$"
+      name: "^next$"
+
+  # Finish (end request)
+  - concept: control_flow
+    usage:
+      kind: "^call$"
+      name: "^finish$"
+
+linkers:
+  - http

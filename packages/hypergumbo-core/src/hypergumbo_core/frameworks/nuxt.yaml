@@ -1,0 +1,143 @@
+# Nuxt framework patterns (ADR-0003)
+#
+# Nuxt is a Vue.js meta-framework for building server-rendered,
+# static, and universal Vue applications.
+#
+# Nuxt uses:
+# - File-based routing (pages/ directory)
+# - Server routes via Nitro (server/api/ directory)
+# - Composables (composables/ directory)
+# - Middleware (middleware/ directory)
+# - Plugins (plugins/ directory)
+# - Layouts (layouts/ directory)
+#
+# See: https://nuxt.com/ and https://github.com/nuxt/nuxt
+
+id: nuxt
+language: javascript
+
+patterns:
+  # ==================== DEFINITION-BASED PATTERNS ====================
+
+  # Page metadata definition
+  - concept: route
+    symbol_name: "^definePageMeta$"
+
+  # ==================== SERVER ROUTES (NITRO) ====================
+  # Nitro server handlers (server/api/*)
+
+  - concept: api_handler
+    symbol_name: "^defineEventHandler$"
+
+  - concept: api_handler
+    symbol_name: "^eventHandler$"
+
+  # Cached event handler
+  - concept: api_handler
+    symbol_name: "^defineCachedEventHandler$"
+
+  # ==================== MIDDLEWARE ====================
+  # Route middleware
+
+  - concept: middleware
+    symbol_name: "^defineNuxtRouteMiddleware$"
+
+  # Legacy middleware
+  - concept: middleware
+    symbol_name: "^defineNuxtMiddleware$"
+
+  # ==================== PLUGINS ====================
+  # Nuxt plugins
+
+  - concept: plugin
+    symbol_name: "^defineNuxtPlugin$"
+
+  # ==================== DATA FETCHING ====================
+  # Nuxt composables for data fetching
+
+  - concept: data_fetcher
+    symbol_name: "^useAsyncData$"
+
+  - concept: data_fetcher
+    symbol_name: "^useFetch$"
+
+  - concept: data_fetcher
+    symbol_name: "^useLazyAsyncData$"
+
+  - concept: data_fetcher
+    symbol_name: "^useLazyFetch$"
+
+  # ==================== STATE MANAGEMENT ====================
+  # State composables
+
+  - concept: state
+    symbol_name: "^useState$"
+
+  - concept: state
+    symbol_name: "^useCookie$"
+
+  # ==================== CONFIGURATION ====================
+  # Nuxt config
+
+  - concept: config
+    symbol_name: "^defineNuxtConfig$"
+
+  # ==================== COMPONENTS ====================
+  # Component definition helpers
+
+  - concept: component
+    symbol_name: "^defineNuxtComponent$"
+
+  # ==================== ERROR HANDLING ====================
+  # Error handling
+
+  - concept: error_handler
+    symbol_name: "^createError$"
+
+  - concept: error_handler
+    symbol_name: "^showError$"
+
+  - concept: error_handler
+    symbol_name: "^useError$"
+
+  # ==================== ROUTING ====================
+  # Navigation and routing composables
+
+  - concept: router
+    symbol_name: "^useRouter$"
+
+  - concept: router
+    symbol_name: "^useRoute$"
+
+  - concept: router
+    symbol_name: "^navigateTo$"
+
+  # ==================== HEAD/SEO ====================
+  # SEO and head management
+
+  - concept: metadata_generator
+    symbol_name: "^useHead$"
+
+  - concept: metadata_generator
+    symbol_name: "^useSeoMeta$"
+
+  - concept: metadata_generator
+    symbol_name: "^useServerSeoMeta$"
+
+  # ==================== SERVER UTILITIES ====================
+  # Server-side utilities
+
+  - concept: api_handler
+    symbol_name: "^getQuery$"
+
+  - concept: api_handler
+    symbol_name: "^readBody$"
+
+  - concept: api_handler
+    symbol_name: "^getRequestURL$"
+
+  - concept: api_handler
+    symbol_name: "^setResponseStatus$"
+
+linkers:
+  - http

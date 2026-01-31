@@ -1,0 +1,86 @@
+name: Full Test Suite
+
+# Full test suite runs as a singleton to validate all packages together.
+# When this fails, the stop-the-line protocol blocks PRs until fixed.
+
+on:
+  # Triggered after PR merges to dev
+  push:
+    branches: [ "dev" ]
+  # Manual trigger for debugging
+  workflow_dispatch:
+  # Nightly validation
+  schedule:
+    - cron: '0 4 * * *'  # 4 AM UTC daily
+
+# Singleton concurrency - only one full suite runs at a time
+# This prevents resource contention and ensures clear pass/fail state
+concurrency:
+  group: full-suite-singleton
+  cancel-in-progress: false
+
+jobs:
+  full-suite:
+    runs-on: codeberg-small-lazy
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -e packages/hypergumbo-core \
+                      -e packages/hypergumbo-lang-mainstream \
+                      -e packages/hypergumbo-lang-common \
+                      -e packages/hypergumbo-lang-extended1 \
+                      -e "packages/hypergumbo[dev]"
+
+      - name: Build source-only grammars
+        run: ./scripts/build-source-grammars
+
+      - name: Run full test suite
+        id: tests
+        run: |
+          COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src"
+          pytest packages/*/tests/ -n 2 --tb=short $COV_PATHS --cov-report=term --cov-fail-under=100 2>&1 | tee full-suite-output.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract test summary
+        if: always()
+        run: |
+          # Extract summary line for status reporting
+          SUMMARY=$(grep -E "^(PASSED|FAILED|ERROR)" full-suite-output.txt | tail -1 || echo "Unknown")
+          echo "Test summary: $SUMMARY"
+
+          # Extract coverage percentage
+          COV=$(grep "^TOTAL" full-suite-output.txt | awk '{print $NF}' | tr -d '%' || echo "0")
+          echo "Coverage: ${COV}%"
+
+      - name: Record run result
+        if: always()
+        run: |
+          # Create a JSON artifact with run metadata for stop-the-line checks
+          echo "{
+            \"run_id\": \"${{ github.run_id }}\",
+            \"sha\": \"${{ github.sha }}\",
+            \"conclusion\": \"${{ steps.tests.outcome }}\",
+            \"timestamp\": \"$(date -Iseconds)\",
+            \"triggered_by\": \"${{ github.event_name }}\"
+          }" > full-suite-result.json
+
+      - name: Upload result artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-suite-result
+          path: full-suite-result.json
+          retention-days: 30

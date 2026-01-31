@@ -1,0 +1,122 @@
+# Hanami framework patterns (ADR-0003)
+#
+# Hanami is a modern, full-stack Ruby web framework focused on
+# clean architecture and separation of concerns.
+#
+# Hanami uses:
+# - Actions (single-responsibility controllers)
+# - Repositories (data access layer, ROM-based)
+# - Entities (domain objects)
+# - Interactors (business logic/use cases)
+# - Views (presentation layer)
+# - Templates (HTML rendering)
+#
+# See: https://hanamirb.org/ and https://github.com/hanami/hanami
+
+id: hanami
+language: ruby
+
+patterns:
+  # ==================== ACTIONS ====================
+  # Hanami actions (single-responsibility controllers)
+
+  - concept: controller
+    base_class: "^Hanami::Action$"
+
+  # Application-specific action base class
+  - concept: controller
+    base_class: "^Action$"
+
+  # Hanami 2.0+ action base
+  - concept: controller
+    base_class: "^Hanami::Action::Base$"
+
+  # ==================== REPOSITORIES ====================
+  # Data access layer (ROM-based)
+
+  - concept: repository
+    base_class: "^Hanami::Repository$"
+
+  - concept: repository
+    base_class: "^Repository$"
+
+  # ROM relations (used by repositories)
+  - concept: repository
+    base_class: "^ROM::Relation$"
+
+  # ==================== ENTITIES ====================
+  # Domain objects
+
+  - concept: model
+    base_class: "^Hanami::Entity$"
+
+  - concept: model
+    base_class: "^Dry::Struct$"
+
+  # ROM structs (entity-like)
+  - concept: model
+    base_class: "^ROM::Struct$"
+
+  # ==================== INTERACTORS ====================
+  # Business logic / use cases
+
+  - concept: service
+    base_class: "^Hanami::Interactor$"
+
+  # Dry::Monads for operation results
+  - concept: service
+    base_class: "^Dry::Monads$"
+
+  # ==================== VIEWS ====================
+  # Presentation layer
+
+  - concept: view
+    base_class: "^Hanami::View$"
+
+  - concept: view
+    base_class: "^Hanami::View::Context$"
+
+  # Hanami 2.0 views
+  - concept: view
+    base_class: "^View$"
+
+  # ==================== VALIDATION ====================
+  # Input validation
+
+  - concept: validator
+    base_class: "^Hanami::Validations$"
+
+  - concept: validator
+    base_class: "^Dry::Validation::Contract$"
+
+  # ==================== CONFIGURATION ====================
+  # Application configuration
+
+  - concept: config
+    base_class: "^Hanami::Application$"
+
+  # Slice configuration
+  - concept: config
+    base_class: "^Hanami::Slice$"
+
+  # ==================== PROVIDERS ====================
+  # Dependency injection
+
+  - concept: provider
+    base_class: "^Hanami::Provider$"
+
+  # ==================== MIDDLEWARE ====================
+  # Rack middleware
+
+  - concept: middleware
+    base_class: "^Rack::Middleware$"
+
+  # ==================== MAILERS ====================
+  # Email handling
+
+  - concept: mailer
+    base_class: "^Hanami::Mailer$"
+
+linkers:
+  - http
+  - database_query

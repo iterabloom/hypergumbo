@@ -1,0 +1,125 @@
+# Yii framework patterns (ADR-0003 v1.1.x)
+#
+# Yii is a high-performance PHP framework following MVC pattern.
+# Controllers extend Controller (from yii\web or yii\base).
+# Models use ActiveRecord for database operations.
+# Component-based architecture with widgets, modules, and behaviors.
+
+id: yii
+language: php
+
+patterns:
+  # Controller base class
+  - concept: controller
+    base_class: "^Controller$"
+
+  # ActiveRecord model
+  - concept: model
+    base_class: "^ActiveRecord$"
+
+  # Model (generic base)
+  - concept: model
+    base_class: "^Model$"
+
+  # Module
+  - concept: module
+    base_class: "^Module$"
+
+  # Widget
+  - concept: widget
+    base_class: "^Widget$"
+
+  # Standalone action
+  - concept: action
+    base_class: "^Action$"
+
+  # Behavior
+  - concept: behavior
+    base_class: "^Behavior$"
+
+  # Validator
+  - concept: validator
+    base_class: "^Validator$"
+
+  # Migration
+  - concept: migration
+    base_class: "^Migration$"
+
+  # Console command (yii\console\Controller)
+  - concept: command
+    base_class: "^ConsoleController$"
+
+  # Asset bundle
+  - concept: asset
+    base_class: "^AssetBundle$"
+
+  # Event handler
+  - concept: event_handler
+    base_class: "^Event$"
+
+  # Filter (action filter)
+  - concept: middleware
+    base_class: "^ActionFilter$"
+
+  # Access control filter
+  - concept: authorization
+    base_class: "^AccessControl$"
+
+  # RBAC (role-based access)
+  - concept: authorization
+    base_class: "^(Role|Permission|Rule)$"
+
+  # Identity interface
+  - concept: authentication
+    base_class: "^IdentityInterface$"
+
+  # User component
+  - concept: authentication
+    base_class: "^User$"
+
+  # Cache component
+  - concept: cache
+    base_class: "^Cache$"
+
+  # Queue job
+  - concept: job
+    base_class: "^(BaseJob|Job)$"
+
+  # Bootstrap interface
+  - concept: bootstrap
+    base_class: "^BootstrapInterface$"
+
+  # Application component
+  - concept: component
+    base_class: "^Component$"
+
+  # Object base class
+  - concept: object
+    base_class: "^BaseObject$"
+
+  # REST controller
+  - concept: controller
+    base_class: "^ActiveController$"
+
+  # Search model
+  - concept: search
+    base_class: "^SearchModel$"
+
+  # Formatter
+  - concept: formatter
+    base_class: "^Formatter$"
+
+  # URL rule
+  - concept: route
+    base_class: "^UrlRule$"
+
+  # Test case
+  - concept: test
+    base_class: "^(Unit|Functional|Acceptance)?TestCase$"
+
+  # Fixture
+  - concept: fixture
+    base_class: "^(Fixture|ActiveFixture)$"
+
+linkers:
+  - http

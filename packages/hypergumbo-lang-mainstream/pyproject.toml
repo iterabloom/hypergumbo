@@ -1,0 +1,71 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hypergumbo-lang-mainstream"
+version = "2.0.0"
+description = "Mainstream language analyzers for hypergumbo"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "AGPL-3.0-or-later" }
+authors = [{ name = "Hypergumbo contributors" }]
+keywords = ["static-analysis", "code-graph", "language-support"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+]
+dependencies = [
+  "hypergumbo-core==2.0.0",
+  # Tree-sitter grammars for mainstream languages
+  "tree-sitter-javascript>=0.21",
+  "tree-sitter-typescript>=0.21",
+  "tree-sitter-php>=0.23",
+  "tree-sitter-c>=0.21",
+  "tree-sitter-cpp>=0.22",
+  "tree-sitter-c-sharp>=0.21",
+  "tree-sitter-java>=0.21",
+  "tree-sitter-go>=0.21",
+  "tree-sitter-rust>=0.21",
+  "tree-sitter-ruby>=0.21",
+  "tree-sitter-kotlin>=1.0",
+  "tree-sitter-swift>=0.0.1",
+  "tree-sitter-scala>=0.23",
+  "tree-sitter-bash>=0.21",
+  "tree-sitter-lua>=0.0.14",
+  "tree-sitter-groovy>=0.1",
+  "tree-sitter-objc>=3.0",
+  "tree-sitter-css>=0.21",
+  "tree-sitter-html>=0.20",
+  "tree-sitter-sql>=0.3",
+  "tree-sitter-json>=0.21",
+  "tree-sitter-yaml>=0.6",
+  "tree-sitter-xml>=0.6",
+  "tree-sitter-toml>=0.6",
+  "tree-sitter-dockerfile>=0.2",
+  "tree-sitter-make>=1.1",
+  "tree-sitter-cmake>=0.7",
+  # Perl uses the language pack (not a separate tree-sitter-perl package)
+  "tree-sitter-language-pack>=0.13",
+]
+
+[project.entry-points."hypergumbo.analyzers"]
+mainstream = "hypergumbo_lang_mainstream:ANALYZER_SPECS"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hypergumbo_lang_mainstream"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "B", "C4", "S", "RUF"]
+ignore = ["E501", "S101", "S105", "S106", "S110", "RUF059", "RUF005", "B028"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "S105", "S106", "S603", "S108", "E741", "F401", "F841", "RUF005"]
+"src/hypergumbo_lang_mainstream/*.py" = ["E402"]

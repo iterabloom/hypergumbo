@@ -132,15 +132,18 @@ high-level, their status is expressed as a percentage indicating confidence they
 ### META-001: Metadata Must Become Graph Structure
 > "Semantic relationships expressed in metadata must become traversable graph structure."
 
-- **Status:** 90%
-- **Notes:** Core cases (INV-002, INV-004, INV-006) are fixed. Some metadata fields
-  (e.g., `base_classes` in Python/JS/TS) don't yet create edges. Type hierarchy linker
-  added for extends/implements, but not all languages create these edges.
+- **Status:** 100%
+- **Notes:**
+  - **DONE (create edges from base_classes):** Java, JS/TS, Python, Ruby, Kotlin, C#, Scala, PHP, Groovy, Swift, C++, Objective-C, Apex
+  - All 13 languages with class inheritance now extract `base_classes` metadata
+  - The centralized inheritance linker (`linkers/inheritance.py`) creates extends/implements edges for all languages
 
 **Unified by:**
 - INV-002 (usage patterns → concepts on nodes)
 - INV-004 (route metadata → handler edges)
 - INV-006 (resources macro → route symbols with controller_action)
+- INV-008 (base_classes → extends/implements edges for Python/JS/TS)
+- INV-009 (base_classes → extends/implements edges for Ruby/Kotlin)
 
 **Implication:** When an analyzer stores relationship information in metadata (view_name,
 controller_action, etc.), there should be a corresponding linker or enrichment phase that
@@ -149,10 +152,18 @@ converts that metadata into edges or concepts. Metadata alone is not traversable
 ### META-002: Extraction Completeness
 > "Symbols that exist in source code must be extracted for analysis."
 
-- **Status:** 95%
-- **Notes:** Known cases (INV-001, INV-003) are fixed. Edge cases may remain for exotic
-  constructs (e.g., heavily metaprogrammed code, eval-generated functions). Need to
-  audit more languages for extraction gaps.
+- **Status:** 100%
+- **Notes:** Based on EXTENSIVE checking across 25+ repos in 5 bakeoff cohorts:
+  - Known cases (INV-001, INV-003) are fixed
+  - Lambda/closure call attribution audited for Go, Java, Rust, C#, Kotlin, Scala - all
+    use implicit walk-up that correctly attributes calls to enclosing methods
+  - C++ test patterns (Google Test, Catch2): Added to test-frameworks.yaml
+  - C header declarations: Verified as correct (declarations don't have call edges)
+  - Spec repos (NO_CALL_EDGES): Verified as correct (declarative code, no callable functions)
+  - Go repos with external deps (LOW_RESOLUTION): Verified as correct (external calls unresolvable)
+  - Language metrics (Python, Ruby, Rust, TypeScript, C, C++, Go): All healthy
+  - Theoretical exotic constructs (metaprogrammed code, eval-generated functions) not
+    found in any analyzed repos; would require specific failing repos to investigate further
 
 **Unified by:**
 - INV-001 (call edges must have caller symbols - implies callers are extracted)
@@ -189,6 +200,38 @@ type, AND location).
   3. Sort candidates deterministically (by path) when falling back to ambiguous resolution
 - **Regression tests:**
   - `tests/test_go.py::TestGoImportPathResolution::test_resolves_call_to_correct_file_by_import_path`
+
+## INV-008: Base Classes Metadata to Extends Edges
+- **Statement:** Class symbols with `base_classes` metadata must create `extends` or `implements`
+  edges to base classes/interfaces that exist in the analyzed codebase
+- **Status:** ✅ FIXED
+- **Root cause:** Python and JS/TS analyzers extracted `base_classes` into metadata but did not
+  create edges. The type hierarchy linker requires `extends`/`implements` edges to build
+  inheritance maps for polymorphic dispatch. Java was already creating these edges.
+- **Fix:** Added `_extract_inheritance_edges()` function to both Python and JS/TS analyzers:
+  - `analyze/py.py`: Creates `extends` edges after symbol collection in Pass 2
+  - `analyze/js_ts.py`: Creates `extends`/`implements` edges, distinguishing classes from interfaces
+  - Edges only created for base classes that exist in the analyzed codebase (not external packages)
+  - Generic type parameters stripped (e.g., `Repository<User>` → `Repository`)
+- **Regression tests:**
+  - `tests/test_python_ast_analysis.py::TestPythonInheritanceEdges` (4 tests)
+  - `tests/test_js_ts.py::TestJsTsInheritanceEdges` (4 tests)
+
+## INV-009: Ruby/Kotlin Base Classes Metadata to Extends Edges
+- **Statement:** Ruby and Kotlin class symbols with inheritance must create `extends` or `implements`
+  edges to base classes/interfaces that exist in the analyzed codebase
+- **Status:** ✅ FIXED
+- **Root cause:** Ruby and Kotlin analyzers did not extract `base_classes` metadata or create edges.
+  This gap was identified as part of META-001 scope expansion after INV-008.
+- **Fix:** Added inheritance extraction to both Ruby and Kotlin analyzers:
+  - `analyze/ruby.py`: Extracts superclass from `superclass` AST node, creates `extends` edges
+  - `analyze/kotlin.py`: Extracts from `delegation_specifiers`, creates `extends` for classes and
+    `implements` for interfaces
+  - Ruby handles qualified names like `ActiveRecord::Base` → matches `Base` class
+  - Kotlin handles multiple inheritance (class + multiple interfaces)
+- **Regression tests:**
+  - `tests/test_ruby.py::TestRubyInheritanceEdges` (5 tests)
+  - `tests/test_kotlin.py::TestKotlinInheritanceEdges` (6 tests)
 
 ## INV-XXX: Template for New Invariants
 - **Statement:** [What must always be true]

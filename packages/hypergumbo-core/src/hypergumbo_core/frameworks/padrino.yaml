@@ -1,0 +1,170 @@
+# Padrino framework patterns (ADR-0003 v1.1.x)
+#
+# Padrino is a Ruby web framework built on Sinatra.
+# Controllers use routing DSL: get '/path' do ... end
+# Adds structure around Sinatra: controllers, models, helpers, mailers.
+
+id: padrino
+language: ruby
+
+patterns:
+  # Padrino Application
+  - concept: application
+    base_class: "^Padrino::Application$"
+
+  # Controller definition
+  - concept: controller
+    usage:
+      kind: "^call$"
+      name: "^controller$"
+
+  # GET route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^get$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "GET"
+      path: "metadata.url"
+
+  # POST route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^post$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "POST"
+      path: "metadata.url"
+
+  # PUT route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^put$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "PUT"
+      path: "metadata.url"
+
+  # DELETE route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^delete$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "DELETE"
+      path: "metadata.url"
+
+  # PATCH route
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^patch$"
+      position: "^args\\[0\\]$"
+    extract:
+      method: "PATCH"
+      path: "metadata.url"
+
+  # Before filter
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^before$"
+
+  # After filter
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^after$"
+
+  # Helper module
+  - concept: helper
+    usage:
+      kind: "^call$"
+      name: "^helpers$"
+
+  # Register helper
+  - concept: helper
+    usage:
+      kind: "^call$"
+      name: "^register$"
+
+  # Mailer
+  - concept: mailer
+    usage:
+      kind: "^call$"
+      name: "^mailer$"
+
+  # Email delivery
+  - concept: mailer
+    usage:
+      kind: "^call$"
+      name: "^email$"
+
+  # Deliver mail
+  - concept: mailer
+    usage:
+      kind: "^call$"
+      name: "^deliver$"
+
+  # Model (ActiveRecord)
+  - concept: model
+    base_class: "^ActiveRecord::Base$"
+
+  # Model (Sequel)
+  - concept: model
+    base_class: "^Sequel::Model$"
+
+  # Model (DataMapper)
+  - concept: model
+    base_class: "^DataMapper::Resource$"
+
+  # Model (Mongoid)
+  - concept: model
+    base_class: "^Mongoid::Document$"
+
+  # Render template
+  - concept: view
+    usage:
+      kind: "^call$"
+      name: "^render$"
+
+  # Halt request
+  - concept: halt
+    usage:
+      kind: "^call$"
+      name: "^halt$"
+
+  # Redirect
+  - concept: redirect
+    usage:
+      kind: "^call$"
+      name: "^redirect$"
+
+  # Error handler
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^error$"
+
+  # Not found handler
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^not_found$"
+
+  # Admin app
+  - concept: admin
+    base_class: "^Padrino::Admin::App$"
+
+  # Access control
+  - concept: authorization
+    usage:
+      kind: "^call$"
+      name: "^access_control$"
+
+linkers:
+  - http

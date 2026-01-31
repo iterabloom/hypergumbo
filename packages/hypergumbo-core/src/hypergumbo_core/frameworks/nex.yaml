@@ -1,0 +1,85 @@
+# Nex framework patterns (ADR-0003)
+#
+# Nex is a minimalist Elixir web framework powered by HTMX.
+# It uses file-based routing (convention over configuration):
+#   src/pages/*.ex -> GET routes
+#   src/api/*.ex -> REST API endpoints
+#
+# Symbols matching these patterns get enriched with concept metadata.
+# See: https://github.com/gofenix/nex
+
+id: nex
+language: elixir
+
+patterns:
+  # ==================== DEFINITION-BASED PATTERNS ====================
+
+  # Nex Page/API handler module - use Nex
+  # The unified macro that identifies all Nex handlers (pages and APIs).
+  # Module type is inferred from file location (src/pages/ vs src/api/).
+  - concept: page_handler
+    decorator: "^use Nex$"
+
+  # ==================== FUNCTION-BASED PATTERNS ====================
+  # These match functions that serve as route handlers in Nex
+  # Note: Elixir uses qualified names like "Module.function", so we match at end
+
+  # Page lifecycle - mount/1 initializes page state
+  - concept: lifecycle_hook
+    symbol_name: "\\.mount$"
+    symbol_kind: "^function$"
+
+  # Page lifecycle - render/1 returns HTML
+  - concept: lifecycle_hook
+    symbol_name: "\\.render$"
+    symbol_kind: "^function$"
+
+  # API route handlers - HTTP method functions
+  # Only match when in pages/ or api/ paths to avoid false positives
+  - concept: route_handler
+    symbol_name: "\\.get$"
+    symbol_kind: "^function$"
+    symbol_path: "(pages|api)/"
+
+  - concept: route_handler
+    symbol_name: "\\.post$"
+    symbol_kind: "^function$"
+    symbol_path: "(pages|api)/"
+
+  - concept: route_handler
+    symbol_name: "\\.put$"
+    symbol_kind: "^function$"
+    symbol_path: "(pages|api)/"
+
+  - concept: route_handler
+    symbol_name: "\\.delete$"
+    symbol_kind: "^function$"
+    symbol_path: "(pages|api)/"
+
+  - concept: route_handler
+    symbol_name: "\\.patch$"
+    symbol_kind: "^function$"
+    symbol_path: "(pages|api)/"
+
+  # ==================== USAGE-BASED PATTERNS ====================
+
+  # Nex.json/1 and Nex.json/2 - JSON response helper
+  - concept: json_response
+    usage:
+      kind: "^call$"
+      name: "^Nex\\.json$"
+
+  # Nex.stream/1 - Server-Sent Events streaming
+  - concept: sse_handler
+    usage:
+      kind: "^call$"
+      name: "^Nex\\.stream$"
+
+  # Nex.Store state management
+  - concept: state_management
+    usage:
+      kind: "^call$"
+      name: "^Nex\\.Store\\.(get|put|update)$"
+
+linkers:
+  - http

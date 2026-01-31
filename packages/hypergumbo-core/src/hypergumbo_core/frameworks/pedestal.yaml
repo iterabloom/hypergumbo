@@ -1,0 +1,145 @@
+# Pedestal framework patterns (ADR-0003 v1.1.x)
+#
+# Pedestal is a Clojure web framework focused on interceptors.
+# Routes are defined as data tables or with defroutes.
+# Interceptors (enter/leave/error) replace traditional middleware.
+# Built on Ring but adds more structure and async support.
+
+id: pedestal
+language: clojure
+
+patterns:
+  # defroutes macro
+  - concept: router
+    usage:
+      kind: "^call$"
+      name: "^defroutes$"
+
+  # table-routes for route tables
+  - concept: router
+    usage:
+      kind: "^call$"
+      name: "^table-routes$"
+
+  # expand-routes for route expansion
+  - concept: router
+    usage:
+      kind: "^call$"
+      name: "^expand-routes$"
+
+  # url-for route helper
+  - concept: route_helper
+    usage:
+      kind: "^call$"
+      name: "^url-for(-routes)?$"
+
+  # definterceptor macro
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^definterceptor$"
+
+  # interceptor function
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^interceptor$"
+
+  # on-request interceptor
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^on-request$"
+
+  # on-response interceptor
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^on-response$"
+
+  # terminate chain
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^terminate$"
+
+  # body-params interceptor
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^body-params$"
+
+  # json-body interceptor
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^json-body$"
+
+  # transit-body interceptor
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^transit-body$"
+
+  # edn-body interceptor
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^edn-body$"
+
+  # content-type negotiation
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^content-negotiation$"
+
+  # create-server
+  - concept: server
+    usage:
+      kind: "^call$"
+      name: "^create-server$"
+
+  # start server
+  - concept: server
+    usage:
+      kind: "^call$"
+      name: "^start$"
+
+  # stop server
+  - concept: server
+    usage:
+      kind: "^call$"
+      name: "^stop$"
+
+  # dev-interceptors
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^dev-interceptors$"
+
+  # default-interceptors
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^default-interceptors$"
+
+  # Response helpers
+  - concept: response
+    usage:
+      kind: "^call$"
+      name: "^(response|redirect|not-found|created|bad-request|status)$"
+
+  # SSE (Server-Sent Events)
+  - concept: sse
+    usage:
+      kind: "^call$"
+      name: "^(sse-setup|start-event-stream|send-event)$"
+
+  # WebSocket
+  - concept: websocket
+    usage:
+      kind: "^call$"
+      name: "^(ws-listener|on-connect|on-close|on-text|on-binary)$"
+
+linkers:
+  - http

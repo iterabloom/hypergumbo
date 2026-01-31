@@ -1,0 +1,165 @@
+# Quarkus framework patterns (ADR-0003)
+#
+# Quarkus is a Kubernetes-native Java framework designed for fast startup
+# and low memory footprint. It supports JAX-RS (RESTEasy Reactive),
+# MicroProfile, and many Java standards.
+#
+# Quarkus extends JAX-RS with reactive capabilities and adds:
+# - Panache for simplified ORM (active record pattern)
+# - Scheduler for scheduled tasks
+# - MicroProfile health checks
+# - RESTEasy Reactive extensions
+#
+# Note: JAX-RS annotations (@GET, @POST, @Path, etc.) are handled by
+# the jax-rs.yaml patterns. This file adds Quarkus-specific patterns.
+#
+# See: https://quarkus.io/ and https://github.com/quarkusio/quarkus
+
+id: quarkus
+language: java
+
+patterns:
+  # ==================== PANACHE ORM ====================
+  # Entities extending PanacheEntity or PanacheEntityBase (Active Record pattern)
+
+  - concept: model
+    base_class: "^PanacheEntity$"
+
+  - concept: model
+    base_class: "^PanacheEntityBase$"
+
+  - concept: model
+    base_class: "^io\\.quarkus\\.hibernate\\.orm\\.panache\\.PanacheEntity$"
+
+  # Repositories extending PanacheRepository (Repository pattern)
+  - concept: repository
+    base_class: "^PanacheRepository$"
+
+  - concept: repository
+    base_class: "^PanacheRepositoryBase$"
+
+  - concept: repository
+    base_class: "^io\\.quarkus\\.hibernate\\.orm\\.panache\\.PanacheRepository$"
+
+  # Reactive Panache variants
+  - concept: model
+    base_class: "^PanacheEntityBase$"
+
+  - concept: repository
+    base_class: "^ReactivePanacheRepository$"
+
+  # ==================== SCHEDULER ====================
+  # Scheduled tasks
+
+  - concept: task
+    decorator: "^Scheduled$"
+
+  - concept: task
+    decorator: "^io\\.quarkus\\.scheduler\\.Scheduled$"
+
+  # ==================== REACTIVE/BLOCKING ====================
+  # RESTEasy Reactive threading control
+
+  - concept: async
+    decorator: "^Blocking$"
+
+  - concept: async
+    decorator: "^io\\.smallrye\\.common\\.annotation\\.Blocking$"
+
+  - concept: async
+    decorator: "^NonBlocking$"
+
+  - concept: async
+    decorator: "^io\\.smallrye\\.common\\.annotation\\.NonBlocking$"
+
+  # ==================== MICROPROFILE HEALTH ====================
+  # Health check endpoints
+
+  - concept: health_check
+    decorator: "^Liveness$"
+
+  - concept: health_check
+    decorator: "^org\\.eclipse\\.microprofile\\.health\\.Liveness$"
+
+  - concept: health_check
+    decorator: "^Readiness$"
+
+  - concept: health_check
+    decorator: "^org\\.eclipse\\.microprofile\\.health\\.Readiness$"
+
+  - concept: health_check
+    decorator: "^Startup$"
+
+  # ==================== REST CLIENT ====================
+  # MicroProfile REST client
+
+  - concept: client
+    decorator: "^RegisterRestClient$"
+
+  - concept: client
+    decorator: "^org\\.eclipse\\.microprofile\\.rest\\.client\\.inject\\.RegisterRestClient$"
+
+  - concept: client
+    decorator: "^RestClient$"
+
+  # ==================== CONFIGURATION ====================
+  # Config mapping
+
+  - concept: config
+    decorator: "^ConfigMapping$"
+
+  - concept: config
+    decorator: "^io\\.smallrye\\.config\\.ConfigMapping$"
+
+  - concept: config
+    decorator: "^ConfigProperties$"
+
+  # ==================== TESTING ====================
+  # Quarkus test annotations
+
+  - concept: test
+    decorator: "^QuarkusTest$"
+
+  - concept: test
+    decorator: "^io\\.quarkus\\.test\\.junit\\.QuarkusTest$"
+
+  - concept: test
+    decorator: "^QuarkusIntegrationTest$"
+
+  # ==================== NATIVE BUILD ====================
+  # Reflection registration for GraalVM native builds
+
+  - concept: config
+    decorator: "^RegisterForReflection$"
+
+  - concept: config
+    decorator: "^io\\.quarkus\\.runtime\\.annotations\\.RegisterForReflection$"
+
+  # ==================== MESSAGING ====================
+  # SmallRye Reactive Messaging
+
+  - concept: event_handler
+    decorator: "^Incoming$"
+
+  - concept: event_handler
+    decorator: "^org\\.eclipse\\.microprofile\\.reactive\\.messaging\\.Incoming$"
+
+  - concept: event_publisher
+    decorator: "^Outgoing$"
+
+  - concept: event_publisher
+    decorator: "^org\\.eclipse\\.microprofile\\.reactive\\.messaging\\.Outgoing$"
+
+  # ==================== SECURITY ====================
+  # Security annotations (from Jakarta EE / MicroProfile)
+
+  - concept: authorization
+    decorator: "^RolesAllowed$"
+
+  - concept: authentication
+    decorator: "^Authenticated$"
+
+linkers:
+  - http
+  - database_query
+  - message_queue

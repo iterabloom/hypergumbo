@@ -1,0 +1,171 @@
+# Language-level test function detection (ADR-0003 v1.2.x)
+#
+# Detects idiomatic test functions across languages and frameworks:
+# - Python: pytest (test_*), unittest (test_*)
+# - JavaScript/TypeScript: jest/mocha/vitest (test/it functions with "test" in name)
+# - Go: Test* functions, Benchmark* functions
+# - Java: @Test annotation (JUnit, TestNG)
+# - Ruby: RSpec (describe/it), Minitest (test_*)
+# - Rust: #[test] attribute
+# - C#: [Test], [Fact], [Theory] attributes
+# - Kotlin: @Test annotation
+# - Swift: XCTest (test* methods)
+# - PHP: PHPUnit (test*)
+#
+# These patterns identify test code which is useful for:
+# - Filtering test files from production code slices
+# - Understanding test coverage and structure
+# - Identifying test entry points
+#
+# Note: Some patterns use decorator matching (Java/C#/Rust) while others use
+# naming conventions (Python/Go/Swift).
+
+id: test-frameworks
+language: multi
+
+patterns:
+  # ====== Python ======
+  # pytest and unittest: test_* function naming convention
+  - concept: test_function
+    symbol_name: "^test_"
+    symbol_kind: "^function$"
+    language: "^python$"
+
+  # pytest: test_* method in test classes
+  - concept: test_function
+    symbol_name: "^test_"
+    symbol_kind: "^method$"
+    language: "^python$"
+
+  # pytest fixture functions (decorated with @pytest.fixture)
+  - concept: test_fixture
+    decorator: "^(pytest\\.)?fixture$"
+    language: "^python$"
+
+  # ====== Go ======
+  # Go testing: Test* functions
+  - concept: test_function
+    symbol_name: "^Test[A-Z]"
+    symbol_kind: "^function$"
+    language: "^go$"
+
+  # Go testing: Benchmark* functions
+  - concept: benchmark_function
+    symbol_name: "^Benchmark[A-Z]"
+    symbol_kind: "^function$"
+    language: "^go$"
+
+  # Go testing: Example* functions
+  - concept: example_function
+    symbol_name: "^Example[A-Z]?"
+    symbol_kind: "^function$"
+    language: "^go$"
+
+  # ====== Java ======
+  # JUnit 4/5, TestNG: @Test annotation
+  - concept: test_function
+    decorator: "^Test$"
+    language: "^java$"
+
+  # JUnit 5: @BeforeEach, @AfterEach
+  - concept: test_lifecycle
+    decorator: "^(BeforeEach|AfterEach|BeforeAll|AfterAll)$"
+    language: "^java$"
+
+  # JUnit 5: @ParameterizedTest
+  - concept: test_function
+    decorator: "^ParameterizedTest$"
+    language: "^java$"
+
+  # ====== Kotlin ======
+  # JUnit: @Test annotation
+  - concept: test_function
+    decorator: "^Test$"
+    language: "^kotlin$"
+
+  # ====== JavaScript/TypeScript ======
+  # jest/mocha/vitest: function names containing "test" or starting with "test"
+  - concept: test_function
+    symbol_name: "^test"
+    symbol_kind: "^function$"
+    language: "^(javascript|typescript)$"
+
+  # ====== Ruby ======
+  # Minitest: test_* methods
+  - concept: test_function
+    symbol_name: "^test_"
+    symbol_kind: "^method$"
+    language: "^ruby$"
+
+  # ====== Rust ======
+  # Rust #[test] attribute
+  - concept: test_function
+    decorator: "^test$"
+    language: "^rust$"
+
+  # Rust #[bench] attribute
+  - concept: benchmark_function
+    decorator: "^bench$"
+    language: "^rust$"
+
+  # ====== C# ======
+  # NUnit: [Test] attribute
+  - concept: test_function
+    decorator: "^Test$"
+    language: "^csharp$"
+
+  # xUnit: [Fact] attribute
+  - concept: test_function
+    decorator: "^Fact$"
+    language: "^csharp$"
+
+  # xUnit: [Theory] attribute
+  - concept: test_function
+    decorator: "^Theory$"
+    language: "^csharp$"
+
+  # MSTest: [TestMethod] attribute
+  - concept: test_function
+    decorator: "^TestMethod$"
+    language: "^csharp$"
+
+  # ====== Swift ======
+  # XCTest: test* methods
+  - concept: test_function
+    symbol_name: "^test"
+    symbol_kind: "^method$"
+    language: "^swift$"
+
+  # XCTest: setUp/tearDown lifecycle methods
+  - concept: test_lifecycle
+    symbol_name: "^(setUp|tearDown)(WithError)?$"
+    symbol_kind: "^method$"
+    language: "^swift$"
+
+  # ====== PHP ======
+  # PHPUnit: test* methods or @test annotation
+  - concept: test_function
+    symbol_name: "^test"
+    symbol_kind: "^method$"
+    language: "^php$"
+
+  # PHPUnit: @test annotation
+  - concept: test_function
+    decorator: "^test$"
+    language: "^php$"
+
+  # ====== C/C++ ======
+  # Google Test: TEST(), TEST_F(), TEST_P() macros
+  # These macros expand to functions named TEST/TEST_F/TEST_P
+  - concept: test_function
+    symbol_name: "^TEST(_F|_P)?$"
+    symbol_kind: "^function$"
+    language: "^(cpp|c)$"
+
+  # Catch2: TEST_CASE(), SCENARIO() macros
+  - concept: test_function
+    symbol_name: "^(TEST_CASE|SCENARIO)$"
+    symbol_kind: "^function$"
+    language: "^(cpp|c)$"
+
+linkers: []

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pre-release validation script.
+# Pre-release validation script for multi-package hypergumbo.
 #
 # Runs all checks required before a release can proceed.
 # This is more thorough than dev CI - it's the "go/no-go" gate.
@@ -55,7 +55,17 @@ cd "$PROJECT_ROOT"
 
 echo "╔════════════════════════════════════════╗"
 echo "║       Release Readiness Check          ║"
+echo "║       (Multi-Package v2.0+)            ║"
 echo "╚════════════════════════════════════════╝"
+
+# Package directories
+PACKAGES=(
+    "packages/hypergumbo-core"
+    "packages/hypergumbo-lang-mainstream"
+    "packages/hypergumbo-lang-common"
+    "packages/hypergumbo-lang-extended1"
+    "packages/hypergumbo"
+)
 
 # ─────────────────────────────────────────────────────────────
 section "1. Git State"
@@ -90,16 +100,34 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────
-section "2. Version & Changelog"
+section "2. Version Sync Across Packages"
 # ─────────────────────────────────────────────────────────────
 
-# Extract version from pyproject.toml
-VERSION=$(grep -E '^version\s*=' pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
-if [[ -n "$VERSION" ]]; then
-    pass "Version in pyproject.toml: $VERSION"
-else
-    fail "Could not extract version from pyproject.toml"
+# Extract version from core package (source of truth)
+CORE_PYPROJECT="packages/hypergumbo-core/pyproject.toml"
+if [[ ! -f "$CORE_PYPROJECT" ]]; then
+    CORE_PYPROJECT="pyproject.toml"  # Fallback for pre-2.0
 fi
+
+VERSION=$(grep -E '^version\s*=' "$CORE_PYPROJECT" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+if [[ -n "$VERSION" ]]; then
+    pass "Core version: $VERSION"
+else
+    fail "Could not extract version from $CORE_PYPROJECT"
+fi
+
+# Check all packages have the same version
+for pkg in "${PACKAGES[@]}"; do
+    pyproject="$pkg/pyproject.toml"
+    if [[ -f "$pyproject" ]]; then
+        PKG_VERSION=$(grep -E '^version\s*=' "$pyproject" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+        if [[ "$PKG_VERSION" == "$VERSION" ]]; then
+            pass "$pkg: v$PKG_VERSION"
+        else
+            fail "$pkg: v$PKG_VERSION (expected v$VERSION)"
+        fi
+    fi
+done
 
 # Check CHANGELOG.md exists and has entry for this version
 if [[ -f "CHANGELOG.md" ]]; then
@@ -131,18 +159,14 @@ section "3. Dependencies & Security"
 # ─────────────────────────────────────────────────────────────
 
 # Check for known vulnerabilities
-# Note: We use pip-audit without --strict because some packages (tree-sitter-lean,
-# tree-sitter-wolfram) are built from source and not on PyPI. --strict fails on these.
 echo "  Running pip-audit..."
 if pip-audit 2>/dev/null; then
     pass "No known vulnerabilities in dependencies"
 else
-    # Check if it's a real vulnerability or just a non-PyPI package warning
     AUDIT_OUTPUT=$(pip-audit 2>&1 || true)
     if echo "$AUDIT_OUTPUT" | grep -q "found [1-9]"; then
         fail "Vulnerabilities detected (run 'pip-audit' for details)"
     else
-        # Likely just warnings about non-PyPI packages
         pass "No known vulnerabilities (some packages not on PyPI)"
     fi
 fi
@@ -167,7 +191,7 @@ fi
 
 # Security linting
 echo "  Running Bandit..."
-if bandit -r src/ -c pyproject.toml --quiet 2>/dev/null; then
+if bandit -r src/ packages/*/src/ -c pyproject.toml --quiet 2>/dev/null; then
     pass "Security linting passed (Bandit)"
 else
     fail "Security issues detected (run 'bandit -r src/' for details)"
@@ -179,7 +203,7 @@ section "4. Code Quality"
 
 # Linting
 echo "  Running Ruff..."
-if ruff check src/ tests/ --quiet 2>/dev/null; then
+if ruff check src/ tests/ packages/*/src/ --quiet 2>/dev/null; then
     pass "Linting passed (Ruff)"
 else
     fail "Linting issues detected (run 'ruff check src/ tests/')"
@@ -201,53 +225,85 @@ section "5. Test Suite"
 
 # Run tests with coverage
 echo "  Running pytest with coverage..."
-if pytest --cov=src --cov-fail-under=100 --quiet 2>/dev/null; then
+if pytest --cov=src --cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov-fail-under=100 --quiet 2>/dev/null; then
     pass "All tests passed with 100% coverage"
 else
     fail "Tests failed or coverage < 100%"
 fi
 
 # ─────────────────────────────────────────────────────────────
-section "6. Build Verification"
+section "6. Build Verification (All Packages)"
 # ─────────────────────────────────────────────────────────────
 
-# Test that package builds
-echo "  Building package..."
+# Test that all packages build
+echo "  Building all packages..."
 rm -rf dist/ build/ *.egg-info
-if pip wheel . --no-deps --wheel-dir dist/ --quiet 2>/dev/null; then
-    WHEEL=$(ls dist/*.whl 2>/dev/null | head -1)
-    if [[ -n "$WHEEL" ]]; then
-        pass "Package builds successfully: $(basename "$WHEEL")"
-    else
-        fail "Wheel not created"
+
+BUILD_FAILED=0
+for pkg in "${PACKAGES[@]}"; do
+    if [[ -f "$pkg/pyproject.toml" ]]; then
+        echo "    Building $pkg..."
+        if pip wheel "$pkg" --no-deps --wheel-dir dist/ --quiet 2>/dev/null; then
+            PKG_NAME=$(basename "$pkg")
+            WHEEL=$(ls dist/*"$PKG_NAME"*.whl 2>/dev/null | head -1 || echo "")
+            if [[ -n "$WHEEL" ]]; then
+                pass "  Built: $(basename "$WHEEL")"
+            else
+                fail "  Wheel not created for $pkg"
+                BUILD_FAILED=1
+            fi
+        else
+            fail "  Build failed for $pkg"
+            BUILD_FAILED=1
+        fi
     fi
-else
-    fail "Package build failed"
+done
+
+if [[ $BUILD_FAILED -eq 0 ]]; then
+    pass "All packages build successfully"
 fi
 
-# Verify wheel can be installed
-echo "  Verifying wheel installation..."
-if pip install "$WHEEL" --quiet --dry-run 2>/dev/null; then
-    pass "Wheel can be installed"
-else
-    warn "Wheel installation check failed (may be pip version issue)"
-fi
+# Verify wheels can be installed
+echo "  Verifying wheel installation order..."
+# Install in dependency order: core -> lang packages -> meta
+INSTALL_ORDER=(
+    "packages/hypergumbo-core"
+    "packages/hypergumbo-lang-mainstream"
+    "packages/hypergumbo-lang-common"
+    "packages/hypergumbo-lang-extended1"
+    "packages/hypergumbo"
+)
+for pkg in "${INSTALL_ORDER[@]}"; do
+    PKG_NAME=$(basename "$pkg")
+    WHEEL=$(ls dist/*"${PKG_NAME//-/_}"*.whl 2>/dev/null | head -1 || echo "")
+    if [[ -n "$WHEEL" ]]; then
+        if pip install "$WHEEL" --quiet --dry-run 2>/dev/null; then
+            pass "  $PKG_NAME can be installed"
+        else
+            warn "  $PKG_NAME installation check failed (may be pip version issue)"
+        fi
+    fi
+done
 
 # ─────────────────────────────────────────────────────────────
 section "7. Documentation"
 # ─────────────────────────────────────────────────────────────
 
 # Check generated files are up to date
-if ./scripts/generate-schema --check 2>/dev/null; then
-    pass "Schema is up to date"
-else
-    fail "Schema needs regeneration (run './scripts/generate-schema')"
+if [[ -x "./scripts/generate-schema" ]]; then
+    if ./scripts/generate-schema --check 2>/dev/null; then
+        pass "Schema is up to date"
+    else
+        fail "Schema needs regeneration (run './scripts/generate-schema')"
+    fi
 fi
 
-if ./scripts/generate-architecture --check 2>/dev/null; then
-    pass "Architecture docs up to date"
-else
-    fail "Architecture docs need regeneration"
+if [[ -x "./scripts/generate-architecture" ]]; then
+    if ./scripts/generate-architecture --check 2>/dev/null; then
+        pass "Architecture docs up to date"
+    else
+        fail "Architecture docs need regeneration"
+    fi
 fi
 
 # ─────────────────────────────────────────────────────────────
@@ -257,7 +313,6 @@ section "8. License Compliance"
 # Check dependency licenses (if pip-licenses available)
 if command -v pip-licenses &>/dev/null; then
     echo "  Checking dependency licenses..."
-    # List of problematic licenses
     PROBLEMATIC="GPL;AGPL;SSPL;BUSL"
     if pip-licenses --format=csv 2>/dev/null | grep -qiE "$PROBLEMATIC"; then
         warn "Some dependencies have copyleft licenses (review manually)"
@@ -282,9 +337,14 @@ if [[ $FAILED -eq 0 ]]; then
         echo -e "${YELLOW}($WARNINGS warnings - review recommended)${NC}"
     fi
     echo ""
+    echo "Packages to release:"
+    for pkg in "${PACKAGES[@]}"; do
+        echo "  - $(basename "$pkg")"
+    done
+    echo ""
     echo "Next steps:"
     echo "  1. Review CHANGELOG.md"
-    echo "  2. Run: ./scripts/release $VERSION"
+    echo "  2. Run: ./scripts/prepare-release $VERSION"
     exit 0
 else
     echo -e "${RED}╔════════════════════════════════════════╗${NC}"

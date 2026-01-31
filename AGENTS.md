@@ -11,7 +11,7 @@
 - **Governance Files:** Changes to `.githooks/**`, `.agent/**`, `scripts/install-hooks`, `scripts/auto-pr`, `scripts/contribute`, `scripts/ci-debug`, `CODEOWNERS`, `AUTONOMOUS_MODE.txt.default`, `ALLOWED_WEBSITES.md` and `AGENTS.md` require human approval. Do NOT self-merge PRs touching these files.
 
 ## Premature Stopping Prevention (Autonomous Mode Only)
-  When AUTONOMOUS_MODE.txt is TRUE:
+  When AUTONOMOUS_MODE.txt is TRUE, BROAD, or DEEP (any non-OFF value):
   - NEVER output a "summary" or "status report" as a final action
   - Before ANY stopping point: check todo list - if items remain, continue
   - Before ANY stopping point: check `.agent/invariant-ledger.md` for unfixed or partially-addressed root causes related to your work
@@ -19,8 +19,31 @@
   - After completing a major milestone: immediately start next item from priority queue
   - Follow the below section titled "Autonomous Development Mode Stipulations"
   - "Profoundly stuck" means: all priority queue items attempted, all tests failing, no clear path forward, AND no unfixed root causes you could address
-  - To reiterate: If and only if the root-level file `AUTONOMOUS_MODE.txt` comprises the single word "TRUE", you are authorized for indefinite continuous work according to the below section titled "Autonomous Development Mode Stipulations".
-  - Use `./scripts/loop-toggle` to enable/disable autonomous mode (manages both `AUTONOMOUS_MODE.txt` and `.agent/LOOP` sentinel).
+  - To reiterate: If AUTONOMOUS_MODE.txt contains TRUE, BROAD, or DEEP, you are authorized for indefinite continuous work according to the below section titled "Autonomous Development Mode Stipulations".
+  - Use `./scripts/loop-toggle` to manage autonomous mode:
+    - `./scripts/loop-toggle off` - Disable autonomous mode
+    - `./scripts/loop-toggle broad` - Enable BROAD mode (parse correctness, fast iteration)
+    - `./scripts/loop-toggle deep` - Enable DEEP mode (feature usefulness, larger repos)
+    - `./scripts/loop-toggle status` - Show current mode
+  - Backward compatibility: TRUE is treated as BROAD.
+
+## No Weasel Words
+When documenting status, coverage, or completion:
+- **BANNED:** "all known issues", "no known problems", "all identified cases"
+  - These are copouts. If you haven't investigated something, you don't know it's not a problem.
+  - "All known" just means "cases I bothered to check" — it's the guy from Memento saying "I've investigated all known leads."
+- **BANNED:** "should work", "mostly complete", "generally handles"
+  - Either it works or it doesn't. Be specific about what works and what doesn't.
+- **BANNED:** "in most cases", "typically", "usually"
+  - State the actual scope. Which cases? Under what conditions?
+- **REQUIRED:** Concrete enumeration over vague claims
+  - ❌ "All major languages are supported"
+  - ✅ "Supported: Java, Python, JS/TS, Ruby, Kotlin. Not supported: C#, Scala, Swift, PHP, Go, C++."
+- **REQUIRED:** Explicit gaps over implicit completeness
+  - ❌ "META-001 is 100% fixed"
+  - ✅ "META-001: 5/13 languages done. Missing: C#, Scala, Swift, PHP, Groovy, C++, Objective-C, Apex."
+
+No weak shit. If you don't know, say you don't know. If you haven't checked, say you haven't checked.
 
 ## Required Checks
 - **100% Coverage:** No code may be committed without full test coverage. Verify with:
@@ -126,7 +149,14 @@ git commit -s -m "feat: description"
 - **TDD Protocol:**
   1. **Red:** Write a failing test first.
   2. **Green:** Write minimal code to pass the test.
-  3. **Refactor:** Clean up code and then re-run tests. If tests go red, no worries; that just means you are back at step 1; repeat for as many cycles as seems appropriate.
+  3. **Refactor:** CRITICAL phase - do not skip! This is where you pay down technical debt:
+     - Look for repetitive patterns that could be extracted into shared utilities
+     - Identify copy-paste code that creates maintenance burden
+     - Recognize structural similarities across languages/frameworks
+     - Ask: "If I add another language/framework, would I need to copy this code?"
+     - Apply DRY: if you see the same pattern 3+ times, extract it
+     - Green code that works is not the same as good code
+     - Re-run tests after refactoring. If they go red, you're back at step 1; iterate.
 - **Branch Naming:** Use `<author>/[feat|fix|docs|refactor]/<short-description>` (e.g., `jgstern-agent/feat/dart-analyzer`).
 - **Integration Protocol:**
   1. Run full suite locally (`pytest`).
@@ -362,10 +392,27 @@ def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
   - ADR-0001: Portable agent instructions (this file as canonical source)
   - ADR-0003: YAML-driven framework patterns
   - ADR-0008: Autonomous governance and vendor-agnostic hooks
+  - ADR-0009: Feature-focused bakeoff suite (DEEP mode)
 
 ## Autonomous Development Mode Stipulations
-When the root-level file `AUTONOMOUS_MODE.txt` comprises the single word "TRUE", you are authorized for indefinite continuous work:
-- **PUSH IT TO THE LIMIT.** Keep exploring how hypergumbo performs on real-world repos using the bakeoff loop defined in the scripts. Keep refactoring, improving, or adding features, frameworks, and cross-language & cross-environment communication detection.
+When AUTONOMOUS_MODE.txt is TRUE, BROAD, or DEEP, you are authorized for indefinite continuous work.
+
+### Mode Selection
+| Mode | Focus | Bakeoff Script | When to Use |
+|------|-------|----------------|-------------|
+| **BROAD** | Parse correctness | `scripts/bakeoff` | Default. Fast iteration on call graph, routes, frameworks |
+| **DEEP** | Feature usefulness | `scripts/bakeoff-features` | Test slice/reverse-slice/tier on larger repos (20-200MB) |
+
+- **BROAD** answers: "Does hypergumbo parse this correctly?"
+- **DEEP** answers: "Are hypergumbo's outputs useful to developers?"
+
+Use DEEP mode when:
+- You've converged on parse correctness (no CRITICAL/HIGH issues)
+- You want to test slice limits, supply chain tiers, or graph centrality
+- You're preparing for a release and want qualitative assessment
+
+
+**PUSH IT TO THE LIMIT.** Keep exploring how hypergumbo performs on real-world repos using bakeoff loops, as defined in the scripts. Keep refactoring and improving cross-language & cross-environment communication detection and other developer-centric features and behaviors.
 - **Always TDD:** Red → Green → Refactor. Write failing tests first.
 - **Always structural:** Assume bugs are structural until proven otherwise. See "Structural Fix Protocol" above and ADR-0008.
 - **Always PR:** Every feature gets its own PR. Prefer `./scripts/auto-pr` for blocking CI-poll-merge workflow; use manual PR for more control.
@@ -381,16 +428,42 @@ When the root-level file `AUTONOMOUS_MODE.txt` comprises the single word "TRUE",
 - **If you run out of Spec A items, dive into Spec B. Focus on building good software.**
 - **Don't stop until you've finished Spec B or you've become profoundly stuck.**
 
-Priority queue:
+### BROAD Mode Priority Queue:
 1. **Actionable invariants** in `.agent/invariant-ledger.md`:
    - Meta-invariants: Any status below 100% (even 99%) (the percentages are extremely cursory and vibes-based and will mislead if taken at face value)
    - Regular: Status: UNFIXED or PARTIALLY ADDRESSED
-2. Frameworks: Django, FastAPI, Phoenix, Rails, etc.
-3. Linkers: polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
+2. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
+3. **Frameworks** (see `docs/FRAMEWORKS.md` for comprehensive list, 150+ frameworks): Pattern detection for frameworks helps hypergumbo understand routes, handlers, lifecycle hooks, and application structure.
 
+### DEEP Mode Priority Queue:
+When in DEEP mode, focus on feature quality rather than parse correctness:
+1. **Actionable invariants** in `.agent/invariant-ledger.md`:
+   - Meta-invariants: Any status below 100% (even 99%)
+   - Regular: Status: UNFIXED or PARTIALLY ADDRESSED
+2. **Slice quality:** Does forward slice capture actual dependencies?
+3. **Reverse slice:** Does it correctly identify callers?
+4. **Supply chain tiers:** Is tier classification accurate for monorepos?
+5. **Centrality ranking:** Do top-ranked symbols match developer intuition?
+6. **Developer usefulness:** Run `bakeoff-features-reflect` for LLM assessment
+7. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
+
+DEEP mode scripts:
+```bash
+# Initialize and run feature bakeoff
+./scripts/bakeoff-features init --pool ~/repos --workdir /tmp/feature-bakeoff
+./scripts/bakeoff-features cohort --count 4 --min-size 20 --max-size 200
+./scripts/bakeoff-features run
+./scripts/bakeoff-features diagnose
+
+# LLM-driven qualitative assessment
+./scripts/bakeoff-features-reflect
+./scripts/bakeoff-features-reflect aggregate
+```
+
+See ADR-0009 for design rationale.
 
 ## Modifying This Document
 - Propose changes via PR with rationale.
 - Prefer minimal, additive changes.
 
-<!-- CANARY: agents-policy-v2026-01-28.0 -->
+<!-- CANARY: agents-policy-v2026-01-30.0 -->

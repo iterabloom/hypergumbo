@@ -1,0 +1,101 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hypergumbo-core"
+version = "2.0.0"
+description = "Core infrastructure for hypergumbo repo behavior map generator"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "AGPL-3.0-or-later" }
+authors = [{ name = "Hypergumbo contributors" }]
+keywords = ["static-analysis", "code-graph", "cli", "local-first"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+]
+dependencies = [
+  # Core tree-sitter for parsing
+  "tree-sitter>=0.21",
+  # CLI formatting
+  "rich>=13.0",
+  # YAML parsing for framework patterns
+  "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "pytest-cov>=5",
+  "pytest-xdist>=3",
+  "ruff>=0.8",
+  "bandit>=1.8",
+  "pip-audit>=2.7",
+  "jsonschema>=4.18",
+  "yamllint>=1.35",
+  "check-jsonschema>=0.29",
+]
+embeddings = [
+  "sentence-transformers>=2.2",
+]
+
+[project.scripts]
+hypergumbo = "hypergumbo_core.cli:main"
+
+[project.entry-points."hypergumbo.analyzers"]
+# Core analyzers are registered here (none for core package)
+# Language packages will add their own entry points
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hypergumbo_core"]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:tree-sitter-.*not available:UserWarning",
+    "ignore:.*analysis skipped.*requires tree-sitter:UserWarning",
+    "ignore:int argument support is deprecated:DeprecationWarning",
+]
+
+[tool.coverage.run]
+omit = [
+    "*/sketch_embeddings.py",
+    "*/_embedding_data.py",
+    "*/__main__.py",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "W",
+  "F",
+  "B",
+  "C4",
+  "S",
+  "RUF",
+]
+ignore = [
+  "E501",
+  "S101",
+  "S105",
+  "S106",
+  "S110",
+  "RUF059",
+  "RUF005",
+  "B028",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "S105", "S106", "S603", "S108", "E741", "F401", "F841", "RUF005"]
+"src/hypergumbo_core/analyze/*.py" = ["E402"]
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]
+skips = ["B101", "B105", "B110"]

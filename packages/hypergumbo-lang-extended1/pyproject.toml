@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hypergumbo-lang-extended1"
+version = "2.0.0"
+description = "Extended language analyzers (set 1) for hypergumbo"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "AGPL-3.0-or-later" }
+authors = [{ name = "Hypergumbo contributors" }]
+keywords = ["static-analysis", "code-graph", "language-support"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+]
+dependencies = [
+  "hypergumbo-core==2.0.0",
+  # Tree-sitter grammars for extended languages
+  "tree-sitter-zig>=0.0.1",
+  "tree-sitter-odin>=1.0",
+  "tree-sitter-agda>=0.2.1",
+  "tree-sitter-solidity>=0.0.1",
+  "tree-sitter-verilog>=1.0",
+  "tree-sitter-vhdl>=1.2",
+  "tree-sitter-llvm>=1.1",
+  # Note: Some grammars (Lean, Wolfram) may need to be built from source
+  # (see scripts/build-source-grammars)
+]
+
+[project.entry-points."hypergumbo.analyzers"]
+extended1 = "hypergumbo_lang_extended1:ANALYZER_SPECS"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hypergumbo_lang_extended1"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "B", "C4", "S", "RUF"]
+ignore = ["E501", "S101", "S105", "S106", "S110", "RUF059", "RUF005", "B028"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "S105", "S106", "S603", "S108", "E741", "F401", "F841", "RUF005"]
+"src/hypergumbo_lang_extended1/*.py" = ["E402"]

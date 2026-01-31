@@ -1,0 +1,126 @@
+# Remix framework patterns (ADR-0003)
+#
+# Remix is a full-stack React framework focused on web standards and
+# progressive enhancement. It uses file-based routing with special exports.
+#
+# Key conventions:
+# - loader: Server-side data fetching (runs on server, passes to component)
+# - action: Handle form submissions/mutations (POST, PUT, DELETE, PATCH)
+# - meta: Export page metadata for SEO
+# - links: Export stylesheet/preload links
+# - headers: Export HTTP headers for the route
+# - handle: Export route handle object for parent routes
+# - ErrorBoundary: Error boundary component for the route
+# - CatchBoundary: Legacy catch boundary (pre-v2)
+#
+# See: https://remix.run/ and https://github.com/remix-run/remix
+
+id: remix
+language: javascript
+
+patterns:
+  # ==================== DATA LOADING ====================
+  # Server-side data fetching
+
+  - concept: data_fetcher
+    symbol_name: "^loader$"
+
+  # Client-side loader (Remix v2+)
+  - concept: data_fetcher
+    symbol_name: "^clientLoader$"
+
+  # ==================== MUTATIONS ====================
+  # Form handling and mutations
+
+  - concept: mutation
+    symbol_name: "^action$"
+
+  # Client-side action (Remix v2+)
+  - concept: mutation
+    symbol_name: "^clientAction$"
+
+  # ==================== METADATA/SEO ====================
+  # Page metadata
+
+  - concept: metadata_generator
+    symbol_name: "^meta$"
+
+  # ==================== STYLESHEETS ====================
+  # Stylesheet and preload links
+
+  - concept: stylesheet
+    symbol_name: "^links$"
+
+  # ==================== HTTP HEADERS ====================
+  # Custom HTTP headers
+
+  - concept: headers
+    symbol_name: "^headers$"
+
+  # ==================== ROUTE CONFIGURATION ====================
+  # Route handle and configuration
+
+  - concept: route_config
+    symbol_name: "^handle$"
+
+  # Should revalidate function
+  - concept: route_config
+    symbol_name: "^shouldRevalidate$"
+
+  # ==================== ERROR HANDLING ====================
+  # Error boundaries
+
+  - concept: error_handler
+    symbol_name: "^ErrorBoundary$"
+
+  # Legacy catch boundary (Remix v1)
+  - concept: error_handler
+    symbol_name: "^CatchBoundary$"
+
+  # ==================== HOOKS ====================
+  # Remix-specific hooks
+
+  - concept: data_fetcher
+    symbol_name: "^useLoaderData$"
+
+  - concept: mutation
+    symbol_name: "^useActionData$"
+
+  - concept: router
+    symbol_name: "^useNavigate$"
+
+  - concept: router
+    symbol_name: "^useLocation$"
+
+  - concept: router
+    symbol_name: "^useParams$"
+
+  - concept: router
+    symbol_name: "^useSearchParams$"
+
+  - concept: mutation
+    symbol_name: "^useFetcher$"
+
+  - concept: mutation
+    symbol_name: "^useSubmit$"
+
+  - concept: router
+    symbol_name: "^useMatches$"
+
+  - concept: router
+    symbol_name: "^useOutletContext$"
+
+  # Form component
+  - concept: form
+    symbol_name: "^Form$"
+
+  # Await component for deferred data
+  - concept: async
+    symbol_name: "^Await$"
+
+  # Defer utility for streaming
+  - concept: async
+    symbol_name: "^defer$"
+
+linkers:
+  - http

@@ -8,8 +8,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
-# Check autonomous mode
-if [[ "$(cat "$REPO_ROOT/AUTONOMOUS_MODE.txt" 2>/dev/null)" != "TRUE" ]]; then
+# Check autonomous mode (TRUE, BROAD, or DEEP all enable autonomous behavior)
+# OFF and FALSE both mean disabled (see scripts/loop-toggle)
+MODE=$(cat "$REPO_ROOT/AUTONOMOUS_MODE.txt" 2>/dev/null | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+if [[ -z "$MODE" || "$MODE" == "OFF" || "$MODE" == "FALSE" ]]; then
   echo '{"decision": "approve", "reason": "Autonomous mode disabled"}'
   exit 0
 fi

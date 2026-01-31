@@ -30,7 +30,10 @@ if [[ "$EVENT_TYPE" != "agent-turn-complete" ]]; then
 fi
 
 # Check autonomous mode and loop sentinel
-if [[ "$(cat "$REPO_ROOT/AUTONOMOUS_MODE.txt" 2>/dev/null)" == "TRUE" ]]; then
+# TRUE, BROAD, and DEEP all enable autonomous behavior
+# OFF and FALSE both mean disabled (see scripts/loop-toggle)
+MODE=$(cat "$REPO_ROOT/AUTONOMOUS_MODE.txt" 2>/dev/null | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+if [[ -n "$MODE" && "$MODE" != "OFF" && "$MODE" != "FALSE" ]]; then
   if [[ -f "$REPO_ROOT/.agent/LOOP" ]]; then
     # Output the full reflection prompt to stderr
     # Even though Codex can't auto-continue, this gets the words into context
