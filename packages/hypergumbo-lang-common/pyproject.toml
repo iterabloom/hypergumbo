@@ -24,7 +24,7 @@ dependencies = [
   "tree-sitter-ocaml>=0.21",
   "tree-sitter-language-pack>=0.13",  # Elixir, Dart, LaTeX, R, COBOL
   "tree-sitter-commonlisp>=0.4",
-  # Additional common language grammars
+  # Additional common language grammars (separate packages, not in language-pack)
   "tree-sitter-cuda>=0.20",
   "tree-sitter-fortran>=0.1",
   "tree-sitter-glsl>=0.1",
@@ -32,11 +32,9 @@ dependencies = [
   "tree-sitter-hcl>=1.2",
   "tree-sitter-julia>=0.23",
   "tree-sitter-nix>=0.1",
-  "tree-sitter-scss>=1.0",
-  "tree-sitter-wgsl>=0.0.1",
-  "tree-sitter-hlsl>=0.1.0",
-  # proto uses tree-sitter-language-pack (get_language("proto")), not a separate package
   "tree-sitter-robot>=1.1",
+  # Note: scss, hlsl, wgsl, proto use tree-sitter-language-pack (get_language()),
+  # not separate packages
   # Note: Some grammars may need to be built from source
   # (see scripts/build-source-grammars)
 ]
