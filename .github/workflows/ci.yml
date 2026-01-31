@@ -57,9 +57,9 @@ jobs:
           pip install --upgrade pip
           pip install ruff bandit
       - name: Run Ruff (linting)
-        run: ruff check src/ tests/ packages/*/src/ 2>/dev/null || ruff check src/ tests/
+        run: ruff check packages/*/src/ tests/
       - name: Run Bandit (security)
-        run: bandit -r src/ packages/*/src/ -c pyproject.toml 2>/dev/null || bandit -r src/ -c pyproject.toml
+        run: bandit -r packages/*/src/ -c pyproject.toml
 
 
   dco:
