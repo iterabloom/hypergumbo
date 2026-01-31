@@ -238,13 +238,17 @@ jobs:
           COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src"
           MANIFEST=".ci/affected-tests.txt"
 
-          if [ "${{ steps.manifest.outputs.use_manifest }}" = "true" ] && [ -f "$MANIFEST" ]; then
+          # TODO: Enable manifest-based test selection once debugged
+          # For now, always run full suite for reliability
+          USE_MANIFEST="false"
+
+          if [ "$USE_MANIFEST" = "true" ] && [ "${{ steps.manifest.outputs.use_manifest }}" = "true" ] && [ -f "$MANIFEST" ]; then
             # Run only manifest-listed tests
             TESTS=$(grep -v '^#' "$MANIFEST" | tr '\n' ' ')
             echo "Running manifest tests: $(echo "$TESTS" | wc -w) files"
             pytest $TESTS -n 2 --tb=short $COV_PATHS --cov-report=term 2>&1 | tee coverage-output.txt
           elif [ -d "packages/hypergumbo-core" ]; then
-            # Fall back to full suite
+            # Run full suite
             echo "Running full test suite"
             pytest packages/*/tests/ -n 2 --tb=short $COV_PATHS --cov-report=term 2>&1 | tee coverage-output.txt
           else
