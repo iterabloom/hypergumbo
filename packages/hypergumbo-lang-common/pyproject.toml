@@ -35,7 +35,7 @@ dependencies = [
   "tree-sitter-scss>=1.0",
   "tree-sitter-wgsl>=0.0.1",
   "tree-sitter-hlsl>=0.1.0",
-  "tree-sitter-proto>=0.0.1",
+  # proto uses tree-sitter-language-pack (get_language("proto")), not a separate package
   "tree-sitter-robot>=1.1",
   # Note: Some grammars may need to be built from source
   # (see scripts/build-source-grammars)
