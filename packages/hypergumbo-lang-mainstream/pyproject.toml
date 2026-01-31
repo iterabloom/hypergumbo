@@ -47,6 +47,7 @@ dependencies = [
   "tree-sitter-dockerfile>=0.2",
   "tree-sitter-make>=1.1",
   "tree-sitter-cmake>=0.7",
+  "tree-sitter-perl>=0.0.1",
 ]
 
 [project.entry-points."hypergumbo.analyzers"]
