@@ -2502,6 +2502,129 @@ def test_cmd_slice_default_output_includes_entry_name(tmp_path: Path, capsys) ->
         os.chdir(original_cwd)
 
 
+def test_cmd_slice_files_mode(tmp_path: Path, capsys) -> None:
+    """Test that --files mode finds dependent files for smart test selection."""
+    from hypergumbo_core.cli import _handle_files_mode
+    from hypergumbo_core.ir import Symbol, Edge, Span
+
+    # Create symbols in multiple files with dependencies
+    # File A contains func_a which is called by func_b in File B
+    symbols = [
+        Symbol(
+            id="python:a.py:1-5:func_a:function",
+            name="func_a",
+            kind="function",
+            language="python",
+            path="a.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        ),
+        Symbol(
+            id="python:b.py:1-5:func_b:function",
+            name="func_b",
+            kind="function",
+            language="python",
+            path="b.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        ),
+        Symbol(
+            id="python:tests/test_a.py:1-5:test_func_a:function",
+            name="test_func_a",
+            kind="function",
+            language="python",
+            path="tests/test_a.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        ),
+    ]
+
+    edges = [
+        # func_b calls func_a
+        Edge(
+            id="edge:b->a",
+            src="python:b.py:1-5:func_b:function",
+            dst="python:a.py:1-5:func_a:function",
+            edge_type="calls",
+            line=3,
+            confidence=0.9,
+        ),
+        # test_func_a calls func_a
+        Edge(
+            id="edge:test->a",
+            src="python:tests/test_a.py:1-5:test_func_a:function",
+            dst="python:a.py:1-5:func_a:function",
+            edge_type="calls",
+            line=3,
+            confidence=0.9,
+        ),
+    ]
+
+    # Create changed files list (a.py changed)
+    changed_files = tmp_path / "changed.txt"
+    changed_files.write_text("a.py\n")
+
+    # Create output file path
+    output_file = tmp_path / "dependent.txt"
+
+    # Create args namespace
+    class Args:
+        files = str(changed_files)
+        output = str(output_file)
+        max_hops = 10
+
+    result = _handle_files_mode(Args(), symbols, edges, tmp_path)
+
+    assert result == 0
+    assert output_file.exists()
+
+    # Should find a.py (the changed file), b.py (calls func_a), and tests/test_a.py
+    dependent = output_file.read_text().strip().split("\n")
+    assert "a.py" in dependent
+    assert "b.py" in dependent
+    assert "tests/test_a.py" in dependent
+
+
+def test_cmd_slice_files_mode_no_changed_files(tmp_path: Path) -> None:
+    """Test --files mode with empty file list."""
+    from hypergumbo_core.cli import _handle_files_mode
+    from hypergumbo_core.ir import Symbol, Span
+
+    symbols = [
+        Symbol(
+            id="python:a.py:1-5:func_a:function",
+            name="func_a",
+            kind="function",
+            language="python",
+            path="a.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        ),
+    ]
+
+    # Create empty changed files list
+    changed_files = tmp_path / "changed.txt"
+    changed_files.write_text("# comment only\n\n")
+
+    class Args:
+        files = str(changed_files)
+        output = None
+        max_hops = 10
+
+    # Should fail because no changed files
+    result = _handle_files_mode(Args(), symbols, [], tmp_path)
+    assert result == 1
+
+
+def test_cmd_slice_files_mode_file_not_found(tmp_path: Path) -> None:
+    """Test --files mode when files list doesn't exist."""
+    from hypergumbo_core.cli import _handle_files_mode
+
+    class Args:
+        files = str(tmp_path / "nonexistent.txt")
+        output = None
+        max_hops = 10
+
+    result = _handle_files_mode(Args(), [], [], tmp_path)
+    assert result == 1
+
+
 def test_cmd_compact_converts_behavior_map(tmp_path: Path) -> None:
     """Test that cmd_compact converts a behavior map to compact form."""
     # Create a test behavior map with some symbols
