@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "hypergumbo-lang-common"
 version = "2.0.0"
 description = "Common domain-specific language analyzers for hypergumbo"
-readme = "../../README.md"
+readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "AGPL-3.0-or-later" }
 authors = [{ name = "Hypergumbo contributors" }]

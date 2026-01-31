@@ -49,7 +49,7 @@ If you import hypergumbo modules directly in your code, update the import paths:
 # Before (1.x)
 from hypergumbo.ir import Symbol, Edge, Span
 from hypergumbo.sketch import generate_sketch
-from hypergumbo.slice import forward_slice, reverse_slice
+from hypergumbo.slice import slice_graph, SliceQuery
 from hypergumbo.schema import new_behavior_map
 from hypergumbo.ranking import rank_symbols
 from hypergumbo.supply_chain import classify_tier
@@ -57,7 +57,7 @@ from hypergumbo.supply_chain import classify_tier
 # After (2.0)
 from hypergumbo_core.ir import Symbol, Edge, Span
 from hypergumbo_core.sketch import generate_sketch
-from hypergumbo_core.slice import forward_slice, reverse_slice
+from hypergumbo_core.slice import slice_graph, SliceQuery
 from hypergumbo_core.schema import new_behavior_map
 from hypergumbo_core.ranking import rank_symbols
 from hypergumbo_core.supply_chain import classify_tier
@@ -137,7 +137,7 @@ from hypergumbo_core.cli import main
 from hypergumbo_core.ir import Symbol, Edge, Span, AnalysisRun
 from hypergumbo_core.schema import new_behavior_map, SCHEMA_VERSION
 from hypergumbo_core.sketch import generate_sketch
-from hypergumbo_core.slice import forward_slice, reverse_slice
+from hypergumbo_core.slice import slice_graph, SliceQuery
 from hypergumbo_core.ranking import rank_symbols, rank_slice_nodes
 from hypergumbo_core.supply_chain import classify_tier
 from hypergumbo_core.compact import compact_behavior_map
