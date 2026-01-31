@@ -161,13 +161,50 @@ jobs:
             echo "sentence-transformers not installed, embedding tests will be skipped"
             echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
           fi
+      - name: Validate manifest (if present)
+        id: manifest
+        run: |
+          MANIFEST=".ci/affected-tests.txt"
+          if [ -f "$MANIFEST" ]; then
+            echo "Manifest found: $MANIFEST"
+
+            # Count tests per module for sanity check
+            CORE_TESTS=$(grep -c "hypergumbo-core/tests" "$MANIFEST" 2>/dev/null || echo 0)
+            MAINSTREAM_TESTS=$(grep -c "hypergumbo-lang-mainstream/tests" "$MANIFEST" 2>/dev/null || echo 0)
+            COMMON_TESTS=$(grep -c "hypergumbo-lang-common/tests" "$MANIFEST" 2>/dev/null || echo 0)
+            EXTENDED_TESTS=$(grep -c "hypergumbo-lang-extended1/tests" "$MANIFEST" 2>/dev/null || echo 0)
+            TOTAL_TESTS=$((CORE_TESTS + MAINSTREAM_TESTS + COMMON_TESTS + EXTENDED_TESTS))
+
+            echo "Manifest tests: core=$CORE_TESTS mainstream=$MAINSTREAM_TESTS common=$COMMON_TESTS extended=$EXTENDED_TESTS total=$TOTAL_TESTS"
+
+            # Sanity check: if total is suspiciously low, fall back to full suite
+            if [ "$TOTAL_TESTS" -lt 10 ]; then
+              echo "⚠️ Manifest has only $TOTAL_TESTS tests - falling back to full suite"
+              echo "use_manifest=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "✅ Manifest validated ($TOTAL_TESTS tests)"
+              echo "use_manifest=true" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "No manifest found, running full suite"
+            echo "use_manifest=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Run tests with coverage
         run: |
-          # Run tests from package directories
-          # Use concise output to reduce log size and speed up CI
-          if [ -d "packages/hypergumbo-core" ]; then
-            pytest packages/*/tests/ -n 2 --tb=short --cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov-report=term 2>&1 | tee coverage-output.txt
+          COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src"
+          MANIFEST=".ci/affected-tests.txt"
+
+          if [ "${{ steps.manifest.outputs.use_manifest }}" = "true" ] && [ -f "$MANIFEST" ]; then
+            # Run only manifest-listed tests
+            TESTS=$(grep -v '^#' "$MANIFEST" | tr '\n' ' ')
+            echo "Running manifest tests: $(echo "$TESTS" | wc -w) files"
+            pytest $TESTS -n 2 --tb=short $COV_PATHS --cov-report=term 2>&1 | tee coverage-output.txt
+          elif [ -d "packages/hypergumbo-core" ]; then
+            # Fall back to full suite
+            echo "Running full test suite"
+            pytest packages/*/tests/ -n 2 --tb=short $COV_PATHS --cov-report=term 2>&1 | tee coverage-output.txt
           else
+            # Legacy structure
             pytest -n 2 --tb=short --cov=src --cov-report=term 2>&1 | tee coverage-output.txt
           fi
       - name: Update coverage badge
