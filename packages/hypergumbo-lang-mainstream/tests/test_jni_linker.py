@@ -1,6 +1,8 @@
 """Tests for JNI linker."""
 from pathlib import Path
 
+import pytest
+
 from hypergumbo_core.ir import AnalysisRun, Symbol, Span
 
 
@@ -322,10 +324,20 @@ JNIEXPORT jint JNICALL Java_Native_getValue(
 class TestJniLinkerRegistry:
     """Tests for JNI linker registry integration."""
 
+    @pytest.fixture(autouse=True)
+    def ensure_jni_registered(self) -> None:
+        """Ensure JNI linker is registered before each test.
+
+        With pytest-xdist, other test files may clear the linker registry.
+        Python caches module imports, so `import jni` is a no-op if already
+        imported. We use reload() to force re-execution of @register_linker.
+        """
+        import importlib
+        import hypergumbo_core.linkers.jni as jni_module
+        importlib.reload(jni_module)
+
     def test_jni_linker_registered(self) -> None:
         """JNI linker is registered in the linker registry."""
-        # Import the jni module to trigger registration
-        import hypergumbo_core.linkers.jni
         from hypergumbo_core.linkers.registry import get_linker
 
         linker = get_linker("jni")
@@ -336,7 +348,6 @@ class TestJniLinkerRegistry:
 
     def test_jni_linker_has_requirements(self) -> None:
         """JNI linker declares its requirements."""
-        import hypergumbo_core.linkers.jni
         from hypergumbo_core.linkers.registry import get_linker
 
         linker = get_linker("jni")
@@ -349,7 +360,6 @@ class TestJniLinkerRegistry:
 
     def test_jni_linker_via_registry(self) -> None:
         """JNI linker works via registry dispatch."""
-        import hypergumbo_core.linkers.jni
         from pathlib import Path
         from hypergumbo_core.linkers.registry import LinkerContext, run_linker
 
@@ -389,7 +399,6 @@ class TestJniLinkerRegistry:
 
     def test_jni_requirements_check_with_matching_symbols(self) -> None:
         """JNI requirements report as met when matching symbols exist."""
-        import hypergumbo_core.linkers.jni
         from pathlib import Path
         from hypergumbo_core.linkers.registry import LinkerContext, check_linker_requirements
 
@@ -435,7 +444,6 @@ class TestJniLinkerRegistry:
 
     def test_jni_requirements_check_missing_java_native(self) -> None:
         """JNI requirements report unmet when Java native methods missing."""
-        import hypergumbo_core.linkers.jni
         from pathlib import Path
         from hypergumbo_core.linkers.registry import LinkerContext, check_linker_requirements
 
