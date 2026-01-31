@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "hypergumbo-core"
 version = "2.0.0"
 description = "Core infrastructure for hypergumbo repo behavior map generator"
-readme = "../../README.md"
+readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "AGPL-3.0-or-later" }
 authors = [{ name = "Hypergumbo contributors" }]
@@ -22,6 +22,8 @@ dependencies = [
   "tree-sitter>=0.21",
   # CLI formatting
   "rich>=13.0",
+  # YAML parsing for framework patterns
+  "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
