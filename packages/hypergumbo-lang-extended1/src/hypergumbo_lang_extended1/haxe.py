@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator, Optional, TYPE_CHECKING
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 
 if TYPE_CHECKING:
@@ -58,7 +59,7 @@ def is_haxe_tree_sitter_available() -> bool:
 
 def find_haxe_files(root: Path) -> Iterator[Path]:
     """Find all Haxe files in the given directory."""
-    for path in root.rglob("*.hx"):
+    for path in find_files(root, ["*.hx"]):
         if path.is_file():
             yield path
 

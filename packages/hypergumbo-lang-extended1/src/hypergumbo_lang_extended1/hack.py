@@ -31,6 +31,7 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 
 if TYPE_CHECKING:
@@ -85,10 +86,10 @@ def find_hack_files(repo_root: Path) -> list[Path]:
     patterns = ["**/*.hack", "**/*.hh"]
     files = []
     for pattern in patterns:
-        files.extend(repo_root.glob(pattern))
+        files.extend(find_files(repo_root, [pattern]))
 
     # Also check .php files for <?hh header
-    for php_file in repo_root.glob("**/*.php"):
+    for php_file in find_files(repo_root, ["*.php"]):
         try:
             content = php_file.read_text(errors="ignore")[:50]
             if content.startswith("<?hh"):

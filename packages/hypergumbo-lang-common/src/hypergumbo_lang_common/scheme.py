@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator, Optional, TYPE_CHECKING
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 
 if TYPE_CHECKING:
@@ -56,7 +57,7 @@ def is_scheme_tree_sitter_available() -> bool:
 def find_scheme_files(root: Path) -> Iterator[Path]:
     """Find all Scheme files in the given directory."""
     for ext in ("*.scm", "*.ss", "*.sld", "*.sls"):
-        for path in root.rglob(ext):
+        for path in find_files(root, [ext]):
             if path.is_file():
                 yield path
 

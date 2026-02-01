@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
 
@@ -371,7 +372,7 @@ def analyze_cobol(repo_root: Path) -> COBOLAnalysisResult:
     cobol_patterns = ["**/*.cob", "**/*.cbl", "**/*.cobol", "**/*.cpy"]
     cobol_files: list[Path] = []
     for pattern in cobol_patterns:
-        cobol_files.extend(repo_root.glob(pattern))
+        cobol_files.extend(find_files(repo_root, [pattern]))
 
     # Deduplicate
     cobol_files = list(set(cobol_files))

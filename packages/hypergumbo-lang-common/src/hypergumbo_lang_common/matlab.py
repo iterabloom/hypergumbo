@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator, Optional, TYPE_CHECKING
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 
 if TYPE_CHECKING:
@@ -58,7 +59,7 @@ def is_matlab_tree_sitter_available() -> bool:
 
 def find_matlab_files(root: Path) -> Iterator[Path]:
     """Find all MATLAB files in the given directory."""
-    for path in root.rglob("*.m"):
+    for path in find_files(root, ["*.m"]):
         if path.is_file():
             yield path
 

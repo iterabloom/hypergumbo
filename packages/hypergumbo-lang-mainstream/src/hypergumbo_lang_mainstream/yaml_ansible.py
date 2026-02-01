@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from hypergumbo_core.discovery import is_excluded
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.analyze.base import iter_tree
 
@@ -61,11 +62,8 @@ def find_ansible_files(root: Path) -> list[Path]:
         if not path.is_file():  # pragma: no cover - directories skipped
             continue
 
-        # Skip common non-ansible directories
-        if any(
-            part.startswith(".") or part in ("node_modules", "venv", ".venv", "__pycache__")
-            for part in path.parts
-        ):  # pragma: no cover - test dirs clean
+        # Skip excluded directories (node_modules, .venv, __pycache__, etc.)
+        if is_excluded(path, root):  # pragma: no cover - test dirs clean
             continue
 
         if path.suffix in yaml_extensions:

@@ -31,6 +31,7 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 
 if TYPE_CHECKING:
@@ -101,8 +102,8 @@ def _extract_base_classes_apex(node: "tree_sitter.Node") -> list[str]:
 
 def find_apex_files(repo_root: Path) -> list[Path]:
     """Find all Apex files in the repository."""
-    cls_files = list(repo_root.glob("**/*.cls"))
-    trigger_files = list(repo_root.glob("**/*.trigger"))
+    cls_files = list(find_files(repo_root, ["*.cls"]))
+    trigger_files = list(find_files(repo_root, ["*.trigger"]))
     return sorted(cls_files + trigger_files)
 
 
