@@ -35,8 +35,12 @@ jobs:
         run: |
           pip install --upgrade pip
           # Install test deps directly - NEVER use meta-package (it pulls from PyPI)
-          pip install pytest pytest-cov pytest-xdist
-          pip install -e packages/hypergumbo-core
+          pip install pytest pytest-cov pytest-xdist jsonschema
+          # Install ALL local packages - tests have cross-package dependencies
+          pip install -e packages/hypergumbo-core \
+                      -e packages/hypergumbo-lang-mainstream \
+                      -e packages/hypergumbo-lang-common \
+                      -e packages/hypergumbo-lang-extended1
       - name: Build source-only grammars
         run: ./scripts/build-source-grammars
       - name: Run tests
@@ -62,8 +66,12 @@ jobs:
         run: |
           pip install --upgrade pip
           # Install test deps directly - NEVER use meta-package (it pulls from PyPI)
-          pip install pytest pytest-cov pytest-xdist
-          pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream
+          pip install pytest pytest-cov pytest-xdist jsonschema
+          # Install ALL local packages - tests have cross-package dependencies
+          pip install -e packages/hypergumbo-core \
+                      -e packages/hypergumbo-lang-mainstream \
+                      -e packages/hypergumbo-lang-common \
+                      -e packages/hypergumbo-lang-extended1
       - name: Build source-only grammars
         run: ./scripts/build-source-grammars
       - name: Run tests
@@ -89,8 +97,12 @@ jobs:
         run: |
           pip install --upgrade pip
           # Install test deps directly - NEVER use meta-package (it pulls from PyPI)
-          pip install pytest pytest-cov pytest-xdist
-          pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-common
+          pip install pytest pytest-cov pytest-xdist jsonschema
+          # Install ALL local packages - tests have cross-package dependencies
+          pip install -e packages/hypergumbo-core \
+                      -e packages/hypergumbo-lang-mainstream \
+                      -e packages/hypergumbo-lang-common \
+                      -e packages/hypergumbo-lang-extended1
       - name: Build source-only grammars
         run: ./scripts/build-source-grammars
       - name: Run tests
@@ -116,8 +128,12 @@ jobs:
         run: |
           pip install --upgrade pip
           # Install test deps directly - NEVER use meta-package (it pulls from PyPI)
-          pip install pytest pytest-cov pytest-xdist
-          pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-extended1
+          pip install pytest pytest-cov pytest-xdist jsonschema
+          # Install ALL local packages - tests have cross-package dependencies
+          pip install -e packages/hypergumbo-core \
+                      -e packages/hypergumbo-lang-mainstream \
+                      -e packages/hypergumbo-lang-common \
+                      -e packages/hypergumbo-lang-extended1
       - name: Build source-only grammars
         run: ./scripts/build-source-grammars
       - name: Run tests
