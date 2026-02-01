@@ -21,8 +21,32 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Run each package's tests in parallel
+  # Build grammars once, cache wheels for test jobs
+  build-grammars:
+    runs-on: codeberg-small-lazy
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Cache grammar wheels
+        id: cache
+        uses: actions/cache@v3
+        with:
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Build grammar wheels
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          pip install --upgrade pip setuptools wheel
+          ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+      - name: Verify wheels exist
+        run: ls -la /tmp/grammar-wheels/*.whl
+
+  # Run each package's tests in parallel (after grammars are built)
   test-core:
+    needs: build-grammars
     runs-on: codeberg-small-lazy
     outputs:
       coverage: ${{ steps.tests.outputs.coverage }}
@@ -33,11 +57,11 @@ jobs:
         with:
           python-version: "3.11"
           cache: 'pip'
-      - name: Cache built grammars
+      - name: Restore grammar wheels
         uses: actions/cache@v3
         with:
-          path: /tmp/ts-grammar-build
-          key: grammars-${{ hashFiles('scripts/build-source-grammars') }}
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
       - name: Install dependencies
         run: |
           pip install --upgrade pip
@@ -50,8 +74,8 @@ jobs:
                       -e packages/hypergumbo-lang-common \
                       -e packages/hypergumbo-lang-extended1 \
                       -e packages/hypergumbo
-      - name: Build source-only grammars
-        run: ./scripts/build-source-grammars
+      - name: Install grammars from wheels
+        run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
       - name: Run tests
         id: tests
         run: |
@@ -61,6 +85,7 @@ jobs:
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
   test-mainstream:
+    needs: build-grammars
     runs-on: codeberg-small-lazy
     outputs:
       coverage: ${{ steps.tests.outputs.coverage }}
@@ -71,11 +96,11 @@ jobs:
         with:
           python-version: "3.11"
           cache: 'pip'
-      - name: Cache built grammars
+      - name: Restore grammar wheels
         uses: actions/cache@v3
         with:
-          path: /tmp/ts-grammar-build
-          key: grammars-${{ hashFiles('scripts/build-source-grammars') }}
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
       - name: Install dependencies
         run: |
           pip install --upgrade pip
@@ -88,8 +113,8 @@ jobs:
                       -e packages/hypergumbo-lang-common \
                       -e packages/hypergumbo-lang-extended1 \
                       -e packages/hypergumbo
-      - name: Build source-only grammars
-        run: ./scripts/build-source-grammars
+      - name: Install grammars from wheels
+        run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
       - name: Run tests
         id: tests
         run: |
@@ -99,6 +124,7 @@ jobs:
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
   test-common:
+    needs: build-grammars
     runs-on: codeberg-small-lazy
     outputs:
       coverage: ${{ steps.tests.outputs.coverage }}
@@ -109,11 +135,11 @@ jobs:
         with:
           python-version: "3.11"
           cache: 'pip'
-      - name: Cache built grammars
+      - name: Restore grammar wheels
         uses: actions/cache@v3
         with:
-          path: /tmp/ts-grammar-build
-          key: grammars-${{ hashFiles('scripts/build-source-grammars') }}
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
       - name: Install dependencies
         run: |
           pip install --upgrade pip
@@ -126,8 +152,8 @@ jobs:
                       -e packages/hypergumbo-lang-common \
                       -e packages/hypergumbo-lang-extended1 \
                       -e packages/hypergumbo
-      - name: Build source-only grammars
-        run: ./scripts/build-source-grammars
+      - name: Install grammars from wheels
+        run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
       - name: Run tests
         id: tests
         run: |
@@ -137,6 +163,7 @@ jobs:
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
   test-extended:
+    needs: build-grammars
     runs-on: codeberg-small-lazy
     outputs:
       coverage: ${{ steps.tests.outputs.coverage }}
@@ -147,11 +174,11 @@ jobs:
         with:
           python-version: "3.11"
           cache: 'pip'
-      - name: Cache built grammars
+      - name: Restore grammar wheels
         uses: actions/cache@v3
         with:
-          path: /tmp/ts-grammar-build
-          key: grammars-${{ hashFiles('scripts/build-source-grammars') }}
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
       - name: Install dependencies
         run: |
           pip install --upgrade pip
@@ -164,8 +191,8 @@ jobs:
                       -e packages/hypergumbo-lang-common \
                       -e packages/hypergumbo-lang-extended1 \
                       -e packages/hypergumbo
-      - name: Build source-only grammars
-        run: ./scripts/build-source-grammars
+      - name: Install grammars from wheels
+        run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
       - name: Run tests
         id: tests
         run: |
