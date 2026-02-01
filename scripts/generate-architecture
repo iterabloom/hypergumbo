@@ -132,7 +132,7 @@ def run_hypergumbo_sketch() -> str:
     """Run hypergumbo sketch on the entire repo."""
     result = run_command(
         [sys.executable, "-m", "hypergumbo_core", "sketch", str(REPO_ROOT),
-         "-t", "4000"],
+         "-t", "8000"],
         "hypergumbo sketch",
     )
     return result.stdout

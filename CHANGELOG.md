@@ -9,6 +9,14 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Changed
+
+- **Increased default token budget to 8000**: The default sketch token budget was increased from 4000 to 8000 tokens. This ensures the Source Files Content section has sufficient budget to include actual production files rather than just tiny test files. Use `-t` flag to override (e.g., `-t 16000` for more detail or `-t 4000` for brevity).
+
+### Fixed
+
+- **Density score path normalization**: Fixed path format mismatch in `compute_symbol_importance_density` where absolute paths from cached analysis results weren't normalized to relative paths for lookups. This caused files to sort arbitrarily instead of by density in the Source Files and Source Files Content sections.
+
 ## [2.0.1] - 2026-01-31
 
 ### Added

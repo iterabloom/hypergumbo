@@ -5347,9 +5347,9 @@ def generate_sketch(
     import sys
     import time
 
-    # Default to 4000 tokens if not specified (unified behavior)
+    # Default to 8000 tokens if not specified (unified behavior)
     if max_tokens is None:
-        max_tokens = 4000
+        max_tokens = 8000
 
     def _log(msg: str) -> None:
         if verbose:  # pragma: no cover
@@ -5514,7 +5514,7 @@ def generate_sketch(
             shell_tests = _detect_shell_integration_tests(repo_root, binary_names)
             shell_integration_count = len(shell_tests)
 
-    # Note: max_tokens is always set (defaults to 4000 in CLI)
+    # Note: max_tokens is always set (defaults to 8000 in CLI)
     # If budget is very small, return truncated base sketch
     if max_tokens <= base_tokens:
         # Set token_budget before early return so Representativeness Table shows correct value

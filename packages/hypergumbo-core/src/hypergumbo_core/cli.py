@@ -288,11 +288,11 @@ def _generate_sketch_filename(
 
     Examples:
         - sketch.md (no budget)
-        - sketch.4000.md (4000 token budget)
+        - sketch.8000.md (8000 token budget)
         - sketch.16000.md (16000 token budget)
-        - sketch.4000.notests.md (4000 tokens, exclude_tests=True)
-        - sketch.4000.withsource.md (4000 tokens, with_source=True)
-        - sketch.4000.notests.withsource.md (both flags)
+        - sketch.8000.notests.md (8000 tokens, exclude_tests=True)
+        - sketch.8000.withsource.md (8000 tokens, with_source=True)
+        - sketch.8000.notests.withsource.md (both flags)
 
     Args:
         tokens: Token budget (None for no budget).
@@ -341,8 +341,8 @@ def cmd_sketch(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
 
-    # Default to 4000 tokens when -t not specified (unified behavior)
-    max_tokens = args.tokens if args.tokens else 4000
+    # Default to 8000 tokens when -t not specified (unified behavior)
+    max_tokens = args.tokens if args.tokens else 8000
     exclude_tests = getattr(args, "exclude_tests", False)
     first_party_priority = getattr(args, "first_party_priority", True)
     extra_excludes = getattr(args, "extra_excludes", [])
@@ -2182,8 +2182,8 @@ def build_parser() -> argparse.ArgumentParser:
 Generate codebase summaries for AI assistants and coding agents.
 
 Quick start:
-  hypergumbo .              Generate Markdown sketch (paste into ChatGPT/Claude)
-  hypergumbo . -t 4000      Limit output to ~4000 tokens
+  hypergumbo .              Generate Markdown sketch (~8000 tokens default)
+  hypergumbo . -t 16000     Larger sketch with more detail
   hypergumbo run .          Full JSON analysis for tooling
 
 Workflow:
@@ -2234,9 +2234,9 @@ For help on ALL commands:   hypergumbo --help --all"""
     # hypergumbo [path] [-t tokens] (default sketch mode)
     sketch_epilog = """\
 Examples:
-  hypergumbo sketch .                   # Auto-runs analysis if needed
-  hypergumbo sketch ~/project -t 4000   # 4000-token limit
-  hypergumbo sketch . -t 1000 -x        # Brief overview, no tests
+  hypergumbo sketch .                   # Auto-runs analysis if needed (~8000 tokens)
+  hypergumbo sketch ~/project -t 16000  # Larger sketch with more detail
+  hypergumbo sketch . -t 4000 -x        # Brief overview, no tests
   hypergumbo . -t 8000                  # Shorthand (sketch is default)
 
 Caching:
