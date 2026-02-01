@@ -11,15 +11,72 @@
 # - pip
 #
 # Usage:
-#   ./scripts/build-source-grammars
+#   ./scripts/build-source-grammars                    # Build and install
+#   ./scripts/build-source-grammars --wheels-dir DIR   # Use DIR for wheel caching
+#
+# With --wheels-dir:
+#   - If DIR contains pre-built wheels, installs from them (fast)
+#   - Otherwise, builds wheels, saves to DIR, then installs
 #
 set -euo pipefail
 
 BUILD_DIR="${BUILD_DIR:-/tmp/ts-grammar-build}"
+WHEELS_DIR=""
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --wheels-dir)
+            WHEELS_DIR="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
 mkdir -p "$BUILD_DIR"
+if [ -n "$WHEELS_DIR" ]; then
+    mkdir -p "$WHEELS_DIR"
+fi
+
+# Check if we can install from cached wheels
+install_from_wheels() {
+    if [ -z "$WHEELS_DIR" ]; then
+        return 1
+    fi
+
+    local lean_wheel="$WHEELS_DIR/tree_sitter_lean-"*.whl
+    local wolfram_wheel="$WHEELS_DIR/tree_sitter_wolfram-"*.whl
+
+    # Check if both wheels exist
+    if ls $lean_wheel 1>/dev/null 2>&1 && ls $wolfram_wheel 1>/dev/null 2>&1; then
+        echo "Installing from cached wheels..."
+        pip install "$WHEELS_DIR"/tree_sitter_lean-*.whl --quiet --no-cache-dir 2>&1
+        pip install "$WHEELS_DIR"/tree_sitter_wolfram-*.whl --quiet --no-cache-dir 2>&1
+        echo "Successfully installed grammars from wheels"
+        return 0
+    fi
+
+    return 1
+}
+
+# Try installing from cached wheels first
+if install_from_wheels; then
+    echo ""
+    echo "=== Grammars installed from cache ==="
+    python3 -c "import tree_sitter_lean; print('tree-sitter-lean:', tree_sitter_lean.language())"
+    python3 -c "import tree_sitter_wolfram; print('tree-sitter-wolfram:', tree_sitter_wolfram.language())"
+    exit 0
+fi
 
 echo "Building tree-sitter grammars from source..."
 echo "Build directory: $BUILD_DIR"
+if [ -n "$WHEELS_DIR" ]; then
+    echo "Wheels directory: $WHEELS_DIR"
+fi
 
 # Function to build a grammar
 # Args: name, repo_url, function_name, scanner_type (none|c|cc)
@@ -143,6 +200,16 @@ setup(
     install_requires=['tree-sitter>=0.21.0'],
 )
 SETUPEOF
+
+    # Build wheel if wheels directory is specified
+    if [ -n "$WHEELS_DIR" ]; then
+        echo "Building wheel..."
+        pip wheel "$pkg_dir" -w "$WHEELS_DIR" --quiet --no-cache-dir 2>&1
+        echo "Installing from wheel..."
+        pip install "$WHEELS_DIR"/tree_sitter_${name}-*.whl --quiet --no-cache-dir 2>&1
+        echo "Successfully built and installed tree-sitter-$name"
+        return 0
+    fi
 
     # Build and install with retry logic (compilation can OOM on small runners)
     echo "Building and installing..."
