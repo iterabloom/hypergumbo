@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
 
@@ -46,30 +47,13 @@ def is_hcl_tree_sitter_available() -> bool:
 
 
 def find_hcl_files(root: Path) -> list[Path]:
-    """Find all HCL/Terraform files in a directory tree.
+    """Find all HCL/Terraform files in a directory tree, excluding vendor dirs.
 
     Identifies files by extensions:
     - .tf: Terraform configuration
     - .hcl: Generic HCL (Packer, Consul, etc.)
     """
-    hcl_files: list[Path] = []
-    hcl_extensions = (".tf", ".hcl")
-
-    for path in root.rglob("*"):
-        if not path.is_file():  # pragma: no cover - directories skipped
-            continue
-
-        # Skip Terraform cache and lock files
-        if any(
-            part.startswith(".") or part == "terraform.tfstate.d"
-            for part in path.parts
-        ):  # pragma: no cover - test dirs don't have these
-            continue
-
-        if path.suffix in hcl_extensions:
-            hcl_files.append(path)
-
-    return hcl_files
+    return list(find_files(root, ["*.tf", "*.hcl"]))
 
 
 def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:

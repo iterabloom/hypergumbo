@@ -40,6 +40,7 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 
 if TYPE_CHECKING:
@@ -82,8 +83,8 @@ def is_twig_tree_sitter_available() -> bool:
 def find_twig_files(repo_root: Path) -> list[Path]:
     """Find all Twig template files in the repository."""
     files: list[Path] = []
-    files.extend(repo_root.glob("**/*.twig"))
-    files.extend(repo_root.glob("**/*.html.twig"))
+    files.extend(find_files(repo_root, ["*.twig"]))
+    files.extend(find_files(repo_root, ["*.html.twig"]))
     return sorted(set(files))
 
 

@@ -38,6 +38,7 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 
 if TYPE_CHECKING:
@@ -79,7 +80,7 @@ def is_rst_tree_sitter_available() -> bool:
 
 def find_rst_files(repo_root: Path) -> list[Path]:
     """Find all RST files in the repository."""
-    return sorted(repo_root.glob("**/*.rst"))
+    return sorted(find_files(repo_root, ["*.rst"]))
 
 
 def _get_node_text(node: "tree_sitter.Node") -> str:

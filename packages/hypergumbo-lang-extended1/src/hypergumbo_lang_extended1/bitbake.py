@@ -39,6 +39,7 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 
 if TYPE_CHECKING:
@@ -82,7 +83,7 @@ def find_bitbake_files(repo_root: Path) -> list[Path]:
     """Find all BitBake files in the repository."""
     files: list[Path] = []
     for pattern in ["**/*.bb", "**/*.bbappend", "**/*.bbclass", "**/*.inc"]:
-        files.extend(repo_root.glob(pattern))
+        files.extend(find_files(repo_root, [pattern]))
     return sorted(files)
 
 

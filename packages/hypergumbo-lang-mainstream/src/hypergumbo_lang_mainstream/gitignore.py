@@ -33,6 +33,7 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 
 if TYPE_CHECKING:
@@ -74,7 +75,7 @@ def is_gitignore_tree_sitter_available() -> bool:
 
 def find_gitignore_files(repo_root: Path) -> list[Path]:
     """Find all gitignore files in the repository."""
-    files = list(repo_root.glob("**/.gitignore"))
+    files = list(find_files(repo_root, [".gitignore"]))
     # Also look for the root .gitignore
     root_gitignore = repo_root / ".gitignore"
     if root_gitignore.exists() and root_gitignore not in files:  # pragma: no cover

@@ -30,6 +30,7 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Span, Symbol
 
 if TYPE_CHECKING:
@@ -71,7 +72,7 @@ def is_kdl_tree_sitter_available() -> bool:
 def find_kdl_files(repo_root: Path) -> list[Path]:
     """Find all KDL configuration files in the repository."""
     files: list[Path] = []
-    files.extend(repo_root.glob("**/*.kdl"))
+    files.extend(find_files(repo_root, ["*.kdl"]))
     return sorted(set(files))
 
 

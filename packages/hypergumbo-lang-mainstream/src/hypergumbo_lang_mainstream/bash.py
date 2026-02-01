@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from hypergumbo_core.discovery import find_files, is_excluded
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import iter_tree
@@ -55,7 +56,7 @@ def _is_bash_shebang(first_line: str) -> bool:
 
 
 def find_bash_files(root: Path) -> list[Path]:
-    """Find all Bash/shell script files in a directory tree.
+    """Find all Bash/shell script files in a directory tree, excluding vendor dirs.
 
     Identifies files by:
     - .sh extension
@@ -64,28 +65,24 @@ def find_bash_files(root: Path) -> list[Path]:
     """
     bash_files: list[Path] = []
 
+    # Get .sh and .bash files using find_files (respects DEFAULT_EXCLUDES)
+    bash_files.extend(find_files(root, ["*.sh", "*.bash"]))
+
+    # For files without extension, check shebang (still need to walk)
     for path in root.rglob("*"):
         if not path.is_file():
             continue
-
-        # Skip common non-script directories
-        if any(part.startswith(".") or part == "node_modules" for part in path.parts):
+        if path.suffix != "":
+            continue  # Already handled above or not a shell script
+        if is_excluded(path, root):
             continue
-
-        # Check extension first
-        if path.suffix in (".sh", ".bash"):
-            bash_files.append(path)
-            continue
-
-        # For files without extension, check shebang
-        if path.suffix == "":
-            try:
-                with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                    first_line = f.readline()
-                    if _is_bash_shebang(first_line):
-                        bash_files.append(path)
-            except (OSError, IOError):  # pragma: no cover
-                pass
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                first_line = f.readline()
+                if _is_bash_shebang(first_line):
+                    bash_files.append(path)
+        except (OSError, IOError):  # pragma: no cover
+            pass
 
     return bash_files
 

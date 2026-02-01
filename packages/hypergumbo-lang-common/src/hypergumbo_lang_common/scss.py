@@ -37,6 +37,7 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 
 if TYPE_CHECKING:
@@ -77,11 +78,8 @@ def is_scss_tree_sitter_available() -> bool:
 
 
 def find_scss_files(repo_root: Path) -> list[Path]:
-    """Find all SCSS/Sass files in the repository."""
-    files: list[Path] = []
-    files.extend(repo_root.glob("**/*.scss"))
-    files.extend(repo_root.glob("**/*.sass"))
-    return sorted(set(files))
+    """Find all SCSS/Sass files in the repository, excluding vendor dirs."""
+    return sorted(set(find_files(repo_root, ["*.scss", "*.sass"])))
 
 
 def _get_node_text(node: "tree_sitter.Node") -> str:

@@ -39,6 +39,7 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 
 if TYPE_CHECKING:
@@ -81,7 +82,7 @@ def is_puppet_tree_sitter_available() -> bool:
 def find_puppet_files(repo_root: Path) -> list[Path]:
     """Find all Puppet manifest files in the repository."""
     files: list[Path] = []
-    files.extend(repo_root.glob("**/*.pp"))
+    files.extend(find_files(repo_root, ["*.pp"]))
     return sorted(set(files))
 
 
