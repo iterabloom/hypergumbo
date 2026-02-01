@@ -172,8 +172,11 @@ cd hypergumbo
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .[dev]
 ./scripts/install-hooks
-pytest -n auto --cov=src --cov-fail-under=100  # parallel (~2 min)
+source .venv/bin/activate  # reload to enable pytest alias
+pytest                      # runs smart-test (affected tests only)
 ```
+
+After `install-hooks`, `pytest` is aliased to `./scripts/smart-test`, which uses hypergumbo's own call graph to run only tests affected by your changes. Use `pytest --full` or `command pytest` for the complete suite.
 
 100% test coverage required. All agent instructions live in [AGENTS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/AGENTS.md). Vendor-specific files (`CLAUDE.md`, `GEMINI.md`, etc.) are thin adapters that import the canonical source.
 

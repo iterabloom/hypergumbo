@@ -101,3 +101,32 @@ if have bandit; then
 else
   echo "     ✗ bandit NOT installed (commits will fail)"
 fi
+
+# -----------------------------
+# Install smart-test pytest alias
+# -----------------------------
+# Inject alias into venv activate script so `pytest` runs smart-test by default
+# This gives developers and LLMs fast feedback by running only affected tests
+
+ACTIVATE_SCRIPT=".venv/bin/activate"
+ALIAS_MARKER="# smart-test alias"
+ALIAS_LINE="alias pytest='./scripts/smart-test'  $ALIAS_MARKER"
+
+if [[ -f "$ACTIVATE_SCRIPT" ]]; then
+  if grep -q "$ALIAS_MARKER" "$ACTIVATE_SCRIPT" 2>/dev/null; then
+    echo ""
+    echo "✅ pytest alias already installed in .venv/bin/activate"
+  else
+    echo "" >> "$ACTIVATE_SCRIPT"
+    echo "$ALIAS_LINE" >> "$ACTIVATE_SCRIPT"
+    echo ""
+    echo "✅ pytest alias installed in .venv/bin/activate"
+    echo "   Re-activate your venv to enable: source .venv/bin/activate"
+    echo "   Then 'pytest' will run smart-test (affected tests only)"
+    echo "   Use 'pytest --full' or 'command pytest' for full suite"
+  fi
+else
+  echo ""
+  echo "⚠️  No .venv/bin/activate found - skipping pytest alias"
+  echo "   Create venv first: python3 -m venv .venv && source .venv/bin/activate"
+fi
