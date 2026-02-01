@@ -164,7 +164,7 @@ jobs:
           if [ -d "packages/hypergumbo-core" ]; then
             # Install test deps directly - NEVER use meta-package (it pulls from PyPI)
             pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
-            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1
+            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo
           else
             pip install -e .[dev]
           fi
@@ -194,7 +194,7 @@ jobs:
           if [ -d "packages/hypergumbo-core" ]; then
             # Install test deps directly - NEVER use meta-package (it pulls from PyPI)
             pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
-            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1
+            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo
           else
             pip install -e .[dev]
           fi
