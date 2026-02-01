@@ -146,16 +146,19 @@ This uniform IR is what allows 67 language analyzers and 15 cross-language linke
 ## Architecture
 
 ```
-src/hypergumbo/
-├── cli.py              # Entry point, argument parsing
-├── profile.py          # Repository scanning (languages, LOC)
-├── ir.py               # Internal representation (Symbol, Edge, Span)
-├── sketch.py           # Markdown generation with token budgeting
-├── ranking.py          # Graph centrality for symbol importance
-├── analyze/            # 67 language analyzers
-├── linkers/            # 15 cross-language linkers
-├── frameworks/         # 37 YAML pattern definitions
-└── selection/          # Token budget allocation
+packages/
+├── hypergumbo-core/           # CLI, IR, slice, sketch, linkers
+│   └── src/hypergumbo_core/
+│       ├── cli.py             # Entry point
+│       ├── ir.py              # Symbol, Edge, Span
+│       ├── sketch.py          # Token-budgeted Markdown
+│       ├── slice.py           # Subgraph extraction
+│       ├── linkers/           # 15 cross-language linkers
+│       └── frameworks/        # 37 YAML patterns
+├── hypergumbo-lang-mainstream/  # Python, JS, Java, Go, Rust, etc.
+├── hypergumbo-lang-common/      # Haskell, Elixir, GraphQL, etc.
+├── hypergumbo-lang-extended1/   # Zig, Solidity, Agda, etc.
+└── hypergumbo/                  # Meta-package (installs all above)
 ```
 
 Key design choices:
