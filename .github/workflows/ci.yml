@@ -232,8 +232,24 @@ jobs:
             done
 
             if [ "$CORE_CHANGED" = "true" ]; then
-              echo "use_manifest=false" >> "$GITHUB_OUTPUT"
-              exit 0
+              echo "❌ Core infrastructure changed - manifest must include comprehensive tests"
+              echo ""
+              echo "When changing core files (sketch.py, slice.py, etc.), smart-test"
+              echo "should generate a full-suite manifest. Run locally:"
+              echo "  ./scripts/smart-test --manifest"
+              echo ""
+              echo "If smart-test falls back to full suite, that's expected for core changes."
+              # For bootstrap: allow if manifest exists and has full suite marker
+              if [ -f ".ci/affected-tests.txt" ] && grep -q "^# Full test suite required" ".ci/affected-tests.txt"; then
+                echo "✓ Found full-suite manifest (bootstrap mode)"
+                echo "skip_tests=true" >> "$GITHUB_OUTPUT"
+                echo "bootstrap_mode=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              echo ""
+              echo "During bootstrap (before stable hypergumbo has --files):"
+              echo "PRs touching core files require manual merge."
+              exit 1
             fi
 
             # Check if manifest exists (contributor ran scripts/smart-test --manifest locally)
@@ -253,10 +269,21 @@ jobs:
             head -10 "$MANIFEST"
 
             # Check if manifest indicates full suite is required (bootstrap case)
-            # This happens when smart-test couldn't run proper slice (no stable hypergumbo)
+            # This happens when smart-test couldn't run proper slice (no stable hypergumbo with --files)
             if grep -q "^# Full test suite required" "$MANIFEST"; then
-              echo "⚠️ Manifest indicates full suite required (bootstrap mode)"
-              echo "use_manifest=false" >> "$GITHUB_OUTPUT"
+              echo "⚠️ Bootstrap mode: stable hypergumbo lacks --files flag"
+              echo ""
+              echo "Smart-test fell back to full suite because:"
+              echo "  - Stable hypergumbo on PyPI doesn't have 'slice --files' yet"
+              echo "  - This is expected during the bootstrap period"
+              echo ""
+              echo "Options:"
+              echo "  1. Manually merge this PR (tests will run in full-suite.yml after merge)"
+              echo "  2. Wait for hypergumbo with --files to be published to PyPI"
+              echo ""
+              echo "Skipping CI tests - full-suite.yml will validate after merge."
+              echo "skip_tests=true" >> "$GITHUB_OUTPUT"
+              echo "bootstrap_mode=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
 
@@ -299,11 +326,12 @@ jobs:
               echo "use_manifest=true" >> "$GITHUB_OUTPUT"
             fi
           else
-            # Push events (not PRs) run full suite
-            echo "Push event - running full suite"
-            echo "use_manifest=false" >> "$GITHUB_OUTPUT"
+            # Push events skip pytest in ci.yml - full-suite.yml handles that
+            echo "Push event - skipping pytest (full-suite.yml handles comprehensive validation)"
+            echo "skip_tests=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Run tests with coverage
+        if: steps.manifest.outputs.skip_tests != 'true'
         run: |
           COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src"
 
@@ -321,51 +349,28 @@ jobs:
             echo "Running: pytest $AFFECTED_TESTS"
             pytest -n 2 --tb=short $COV_PATHS --cov-report=term $AFFECTED_TESTS 2>&1 | tee coverage-output.txt
           else
-            echo "=== Running full test suite ==="
-            if [ -d "packages/hypergumbo-core" ]; then
-              pytest -n 2 --tb=short $COV_PATHS --cov-report=term 2>&1 | tee coverage-output.txt
-            else
-              pytest -n 2 --tb=short --cov=src --cov-report=term 2>&1 | tee coverage-output.txt
-            fi
+            echo "❌ No valid manifest - cannot run tests"
+            echo ""
+            echo "Fast-CI requires a manifest with targeted tests."
+            echo "Full suite runs in full-suite.yml after merge, not here."
+            exit 1
           fi
-      - name: Update coverage badge
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main')
+
+      - name: Bootstrap mode notice
+        if: steps.manifest.outputs.bootstrap_mode == 'true'
         run: |
-          # Extract coverage percentage from pytest output
-          COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
-          if [ -z "$COV" ]; then
-            echo "Could not extract coverage percentage"
-            exit 0  # Don't fail the build
-          fi
-
-          # Determine badge color based on coverage
-          if [ "$COV" -ge 90 ]; then
-            COLOR="brightgreen"
-          elif [ "$COV" -ge 70 ]; then
-            COLOR="yellow"
-          else
-            COLOR="red"
-          fi
-
-          # Create shields.io endpoint JSON in temp location
-          echo "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"${COV}%\",\"color\":\"${COLOR}\"}" > /tmp/coverage.json
-
-          # Configure git
-          git config user.name "CI Bot"
-          git config user.email "ci@iterabloom.com"
-
-          # Fetch badges branch or create orphan
-          git fetch origin badges:badges 2>/dev/null || true
-          git checkout badges 2>/dev/null || git checkout --orphan badges
-
-          # Clean branch and add only coverage.json
-          git rm -rf . 2>/dev/null || true
-          cp /tmp/coverage.json coverage.json
-
-          # Commit and push
-          git add coverage.json
-          git commit -m "Update coverage badge: ${COV}%" || echo "No changes to commit"
-          git push origin badges --force || echo "Push failed - may need write permissions"
+          echo "╔════════════════════════════════════════════════════════════╗"
+          echo "║  BOOTSTRAP MODE - Tests skipped in fast-CI                 ║"
+          echo "╚════════════════════════════════════════════════════════════╝"
+          echo ""
+          echo "This PR can be manually merged. After merge, full-suite.yml"
+          echo "will run comprehensive validation."
+          echo ""
+          echo "To enable smart test selection, publish hypergumbo with"
+          echo "'slice --files' to PyPI, then contributors can generate"
+          echo "targeted manifests."
+      # Coverage badge is updated by full-suite.yml, not here
+      # (ci.yml skips pytest on push events)
 
   # Final gate job - ensures workflow completes even when jobs are skipped
   # This fixes Forgejo Actions bug where skipped jobs leave workflow in "running" state
