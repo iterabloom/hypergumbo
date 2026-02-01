@@ -2,20 +2,22 @@
 
 All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-- Released **tool** is at: v2.0.1
+- Released **tool** is at: v2.0.2
 - Released **schema** is at: v0.2.1
 
 This changelog tracks the **tool version** (package releases). The **schema version** is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version changes when `docs/schema.json` has significant updates: breaking changes to the behavior map output format (minor bump) or additions like new type definitions for YAML validation (patch bump).
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-02-01
+
 ### Changed
 
-- **Increased default token budget to 8000**: The default sketch token budget was increased from 4000 to 8000 tokens. This ensures the Source Files Content section has sufficient budget to include actual production files rather than just tiny test files. Use `-t` flag to override (e.g., `-t 16000` for more detail or `-t 4000` for brevity).
+- **Default token budget increased to 8000**: Ensures Source Files Content section has sufficient budget to include production files. Use `-t` flag to override.
 
 ### Fixed
 
-- **Density score path normalization**: Fixed path format mismatch in `compute_symbol_importance_density` where absolute paths from cached analysis results weren't normalized to relative paths for lookups. This caused files to sort arbitrarily instead of by density in the Source Files and Source Files Content sections.
+- **Density score path normalization**: Fixed path mismatch where cached absolute paths weren't normalized to relative paths, causing files to sort arbitrarily instead of by density.
 
 ## [2.0.1] - 2026-01-31
 
