@@ -1,0 +1,14 @@
+#!/bin/bash
+# Post-checkout hook: Repair pytest wrapper after git checkout (ADR-0010)
+#
+# This proactively repairs the pytest wrapper after branch switches or
+# file checkouts. It's a belt-and-suspenders approach alongside
+# the self-healing in conftest.py.
+
+# Run in repo root
+cd "$(git rev-parse --show-toplevel)" || exit 0
+
+# Silently repair shims if install-hooks exists
+if [[ -x "./scripts/install-hooks" ]]; then
+    ./scripts/install-hooks --repair-shims >/dev/null 2>&1 || true
+fi

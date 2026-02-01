@@ -21,6 +21,11 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# Signal that we're running through smart-test (ADR-0010)
+# This prevents infinite recursion when the pytest wrapper calls smart-test
+# and smart-test subsequently calls pytest.
+export SMART_TEST_ACTIVE=1
+
 # Manifest location (committed with PR for CI validation)
 MANIFEST_DIR=".ci"
 MANIFEST_FILE="$MANIFEST_DIR/affected-tests.txt"

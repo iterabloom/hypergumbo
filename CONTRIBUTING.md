@@ -38,14 +38,85 @@ Codeberg is the source of truth for issues/PRs. GitHub is a mirror.
 
 ## Testing
 
+### Smart Test Selection (ADR-0010)
+
+When you run `pytest`, you automatically get **smart-test**, which runs only tests affected by your changes. This speeds up the development cycle.
+
+```bash
+pytest                    # Runs affected tests only (via smart-test)
+pytest --full             # Runs complete test suite
+pytest tests/test_foo.py  # Specific file (still goes through smart-test)
+pytest --version          # Fast-path, no smart-test overhead
+```
+
+#### How It Works
+
+```
+pytest invocation
+       │
+       ▼
+┌─────────────────────────────────────┐
+│  .venv/bin/pytest (wrapper)         │
+│  - Fast-path for --version, --help  │
+│  - Checks SMART_TEST_ACTIVE env var │
+│  - Delegates to scripts/smart-test  │
+└──────────────┬──────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────┐
+│  scripts/smart-test                 │
+│  - Sets SMART_TEST_ACTIVE=1         │
+│  - Finds affected tests via slice   │
+│  - Calls pytest with affected tests │
+└──────────────┬──────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────┐
+│  .venv/bin/pytest (wrapper again)   │
+│  - Sees SMART_TEST_ACTIVE=1         │
+│  - Calls python -m pytest directly  │
+└─────────────────────────────────────┘
+```
+
+#### Self-Healing
+
+If `pip install pytest` overwrites the wrapper, it repairs automatically on the next pytest run:
+
+```
+pip install pytest  →  Overwrites wrapper with pip's entry point
+       │
+       ▼
+pytest invocation
+       │
+       ▼
+┌─────────────────────────────────────┐
+│  conftest.py (pytest_configure)     │
+│  - Detects wrapper is broken        │
+│  - Runs: install-hooks --repair     │
+│  - Prints: "wrapper repaired"       │
+│  - Re-execs through fixed wrapper   │
+└─────────────────────────────────────┘
+```
+
+#### Escape Hatches
+
+```bash
+python -m pytest ...              # Bypass wrapper completely
+SMART_TEST_ACTIVE=1 pytest ...    # Skip smart-test, use real pytest
+./scripts/install-hooks --repair-shims  # Manual repair
+```
+
 ### Running Tests Locally
 
 ```bash
-# Fast parallel run with coverage
+# Fast parallel run with coverage (goes through smart-test)
 pytest -n auto --cov=src --cov-fail-under=100
 
 # Sequential run (for debugging)
 pytest --cov=src --cov-fail-under=100
+
+# Bypass smart-test for full control
+SMART_TEST_ACTIVE=1 pytest -n auto --cov=src --cov-fail-under=100
 ```
 
 ### Embedding Tests and sentence-transformers
