@@ -146,16 +146,19 @@ This uniform IR is what allows 67 language analyzers and 15 cross-language linke
 ## Architecture
 
 ```
-src/hypergumbo/
-├── cli.py              # Entry point, argument parsing
-├── profile.py          # Repository scanning (languages, LOC)
-├── ir.py               # Internal representation (Symbol, Edge, Span)
-├── sketch.py           # Markdown generation with token budgeting
-├── ranking.py          # Graph centrality for symbol importance
-├── analyze/            # 67 language analyzers
-├── linkers/            # 15 cross-language linkers
-├── frameworks/         # 37 YAML pattern definitions
-└── selection/          # Token budget allocation
+packages/
+├── hypergumbo-core/           # CLI, IR, slice, sketch, linkers
+│   └── src/hypergumbo_core/
+│       ├── cli.py             # Entry point
+│       ├── ir.py              # Symbol, Edge, Span
+│       ├── sketch.py          # Token-budgeted Markdown
+│       ├── slice.py           # Subgraph extraction
+│       ├── linkers/           # 15 cross-language linkers
+│       └── frameworks/        # 37 YAML patterns
+├── hypergumbo-lang-mainstream/  # Python, JS, Java, Go, Rust, etc.
+├── hypergumbo-lang-common/      # Haskell, Elixir, GraphQL, etc.
+├── hypergumbo-lang-extended1/   # Zig, Solidity, Agda, etc.
+└── hypergumbo/                  # Meta-package (installs all above)
 ```
 
 Key design choices:
@@ -172,8 +175,11 @@ cd hypergumbo
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .[dev]
 ./scripts/install-hooks
-pytest -n auto --cov=src --cov-fail-under=100  # parallel (~2 min)
+source .venv/bin/activate  # reload to enable pytest alias
+pytest                      # runs smart-test (affected tests only)
 ```
+
+After `install-hooks`, `pytest` is aliased to `./scripts/smart-test`, which uses hypergumbo's own call graph to run only tests affected by your changes. Use `pytest --full` or `command pytest` for the complete suite.
 
 100% test coverage required. All agent instructions live in [AGENTS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/AGENTS.md). Vendor-specific files (`CLAUDE.md`, `GEMINI.md`, etc.) are thin adapters that import the canonical source.
 

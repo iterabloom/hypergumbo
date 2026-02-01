@@ -32,6 +32,7 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 
 if TYPE_CHECKING:
@@ -54,7 +55,7 @@ def _make_stable_id(path: Path, repo_root: Path, name: str, kind: str) -> str:
 
 def find_smithy_files(repo_root: Path) -> list[Path]:
     """Find all Smithy files in the repository."""
-    return sorted(repo_root.glob("**/*.smithy"))
+    return sorted(find_files(repo_root, ["*.smithy"]))
 
 
 def is_smithy_tree_sitter_available() -> bool:

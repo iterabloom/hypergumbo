@@ -162,7 +162,9 @@ jobs:
           pip install --upgrade pip
           # Install from packages if available, otherwise legacy
           if [ -d "packages/hypergumbo-core" ]; then
-            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo[dev]"
+            # Install test deps directly - NEVER use meta-package (it pulls from PyPI)
+            pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
+            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo
           else
             pip install -e .[dev]
           fi
@@ -178,6 +180,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -188,7 +192,9 @@ jobs:
           pip install --upgrade pip
           # Install from packages if available, otherwise legacy
           if [ -d "packages/hypergumbo-core" ]; then
-            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo[dev]"
+            # Install test deps directly - NEVER use meta-package (it pulls from PyPI)
+            pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
+            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo
           else
             pip install -e .[dev]
           fi
@@ -205,35 +211,133 @@ jobs:
             echo "sentence-transformers not installed, embedding tests will be skipped"
             echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
           fi
-      - name: Validate manifest (if present)
+      - name: Validate test manifest (smart test selection)
         id: manifest
         run: |
+          # Smart test selection: contributor commits .ci/affected-tests.txt
+          # CI validates it with cheap sanity checks (no hypergumbo installation)
+          # See ADR-0010 for design rationale
           MANIFEST=".ci/affected-tests.txt"
-          if [ -f "$MANIFEST" ]; then
-            echo "Manifest found: $MANIFEST"
 
-            # Count tests per module for sanity check
-            CORE_TESTS=$(grep -c "hypergumbo-core/tests" "$MANIFEST" 2>/dev/null || echo 0)
-            MAINSTREAM_TESTS=$(grep -c "hypergumbo-lang-mainstream/tests" "$MANIFEST" 2>/dev/null || echo 0)
-            COMMON_TESTS=$(grep -c "hypergumbo-lang-common/tests" "$MANIFEST" 2>/dev/null || echo 0)
-            EXTENDED_TESTS=$(grep -c "hypergumbo-lang-extended1/tests" "$MANIFEST" 2>/dev/null || echo 0)
-            TOTAL_TESTS=$((CORE_TESTS + MAINSTREAM_TESTS + COMMON_TESTS + EXTENDED_TESTS))
+          # For PRs, validate the committed manifest
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
 
-            echo "Manifest tests: core=$CORE_TESTS mainstream=$MAINSTREAM_TESTS common=$COMMON_TESTS extended=$EXTENDED_TESTS total=$TOTAL_TESTS"
+            echo "=== Changed files (BASE=$BASE HEAD=$HEAD) ==="
+            git diff --name-only "$BASE" "$HEAD" | head -20
 
-            # Sanity check: if total is suspiciously low, fall back to full suite
-            if [ "$TOTAL_TESTS" -lt 10 ]; then
-              echo "⚠️ Manifest has only $TOTAL_TESTS tests - falling back to full suite"
+            # Check if core infrastructure changed (requires full suite regardless)
+            CORE_CHANGED=false
+            for core_file in sketch.py slice.py cli.py ir.py all_analyzers.py base.py registry.py; do
+              if git diff --name-only "$BASE" "$HEAD" | grep -qE "$core_file$"; then
+                CORE_CHANGED=true
+                echo "✓ Core file changed: $core_file - will run full suite"
+                break
+              fi
+            done
+
+            if [ "$CORE_CHANGED" = "true" ]; then
+              echo "❌ Core infrastructure changed - manifest must include comprehensive tests"
+              echo ""
+              echo "When changing core files (sketch.py, slice.py, etc.), smart-test"
+              echo "should generate a full-suite manifest. Run locally:"
+              echo "  ./scripts/smart-test --manifest"
+              echo ""
+              echo "If smart-test falls back to full suite, that's expected for core changes."
+              # For bootstrap: allow if manifest exists and has full suite marker
+              if [ -f ".ci/affected-tests.txt" ] && grep -q "^# Full test suite required" ".ci/affected-tests.txt"; then
+                echo "✓ Found full-suite manifest (bootstrap mode)"
+                echo "skip_tests=true" >> "$GITHUB_OUTPUT"
+                echo "bootstrap_mode=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              echo ""
+              echo "During bootstrap (before stable hypergumbo has --files):"
+              echo "PRs touching core files require manual merge."
+              exit 1
+            fi
+
+            # Check if manifest exists (contributor ran scripts/smart-test --manifest locally)
+            if [ ! -f "$MANIFEST" ]; then
+              echo "❌ No manifest committed"
+              echo ""
+              echo "Smart test selection requires a manifest. Run locally:"
+              echo "  ./scripts/smart-test --manifest"
+              echo "  git add .ci/affected-tests.txt"
+              echo "  git commit --amend"
+              echo ""
+              echo "See ADR-0010 for details."
+              exit 1
+            fi
+
+            echo "=== Validating committed manifest ==="
+            head -10 "$MANIFEST"
+
+            # Check if manifest indicates full suite is required (bootstrap case)
+            # This happens when smart-test couldn't run proper slice (no stable hypergumbo with --files)
+            if grep -q "^# Full test suite required" "$MANIFEST"; then
+              echo "⚠️ Bootstrap mode: stable hypergumbo lacks --files flag"
+              echo ""
+              echo "Smart-test fell back to full suite because:"
+              echo "  - Stable hypergumbo on PyPI doesn't have 'slice --files' yet"
+              echo "  - This is expected during the bootstrap period"
+              echo ""
+              echo "Options:"
+              echo "  1. Manually merge this PR (tests will run in full-suite.yml after merge)"
+              echo "  2. Wait for hypergumbo with --files to be published to PyPI"
+              echo ""
+              echo "Skipping CI tests - full-suite.yml will validate after merge."
+              echo "skip_tests=true" >> "$GITHUB_OUTPUT"
+              echo "bootstrap_mode=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            # Cheap sanity check: verify manifest has reasonable coverage for changed modules
+            # This prevents gaming (e.g., committing empty manifest to skip tests)
+            CHANGED_MODULES=$(git diff --name-only "$BASE" "$HEAD" | grep "^packages/" | cut -d/ -f2 | sort -u || true)
+
+            SANITY_OK=true
+            for mod in $CHANGED_MODULES; do
+              case $mod in
+                hypergumbo-core)
+                  MIN_TESTS=20 ;;
+                hypergumbo-lang-*)
+                  MIN_TESTS=10 ;;
+                hypergumbo)
+                  # Meta-package has no tests of its own
+                  MIN_TESTS=0 ;;
+                *)
+                  MIN_TESTS=5 ;;
+              esac
+
+              # Count tests that mention this module (very cheap heuristic)
+              # Matches paths like packages/hypergumbo-core/tests/test_*.py
+              ACTUAL=$(grep -c "packages/$mod/tests/" "$MANIFEST" 2>/dev/null || echo 0)
+
+              if [ "$ACTUAL" -lt "$MIN_TESTS" ]; then
+                echo "⚠️ Manifest has $ACTUAL tests for $mod, expected ≥$MIN_TESTS"
+                SANITY_OK=false
+              else
+                echo "✓ $mod: $ACTUAL tests (≥$MIN_TESTS required)"
+              fi
+            done
+
+            if [ "$SANITY_OK" = "false" ]; then
+              echo "⚠️ Manifest sanity check failed - falling back to full suite"
               echo "use_manifest=false" >> "$GITHUB_OUTPUT"
             else
-              echo "✅ Manifest validated ($TOTAL_TESTS tests)"
+              TOTAL_TESTS=$(grep -c "^packages/" "$MANIFEST" 2>/dev/null || echo 0)
+              echo "✅ Manifest validated ($TOTAL_TESTS test files)"
               echo "use_manifest=true" >> "$GITHUB_OUTPUT"
             fi
           else
-            echo "No manifest found, running full suite"
-            echo "use_manifest=false" >> "$GITHUB_OUTPUT"
+            # Push events skip pytest in ci.yml - full-suite.yml handles that
+            echo "Push event - skipping pytest (full-suite.yml handles comprehensive validation)"
+            echo "skip_tests=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Run tests with coverage
+        if: steps.manifest.outputs.skip_tests != 'true'
         run: |
           COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src"
 
@@ -241,58 +345,38 @@ jobs:
           python --version
 
           echo "=== Installed packages ==="
-          pip list | grep -E "hypergumbo|pytest|tree-sitter"
+          pip list | grep -E "hypergumbo|pytest|tree-sitter" | head -20 || true
 
-          echo "=== Test directory structure ==="
-          # Use || true to avoid SIGPIPE exit code when head closes early
-          ls -la packages/*/tests/ | head -20 || true
-
-          echo "=== Running full test suite ==="
-          # Run without explicit test path - pytest will auto-discover from packages/*/tests/
-          if [ -d "packages/hypergumbo-core" ]; then
-            pytest -n 2 --tb=short $COV_PATHS --cov-report=term 2>&1 | tee coverage-output.txt
+          MANIFEST=".ci/affected-tests.txt"
+          if [ -f "$MANIFEST" ] && [ "${{ steps.manifest.outputs.use_manifest }}" = "true" ]; then
+            echo "=== Running affected tests only (smart test selection) ==="
+            # Filter out comment lines (starting with #) from manifest
+            AFFECTED_TESTS=$(grep -v '^#' "$MANIFEST" | grep -v '^$' | tr '\n' ' ')
+            echo "Running: pytest $AFFECTED_TESTS"
+            pytest -n 2 --tb=short $COV_PATHS --cov-report=term $AFFECTED_TESTS 2>&1 | tee coverage-output.txt
           else
-            # Legacy structure
-            pytest -n 2 --tb=short --cov=src --cov-report=term 2>&1 | tee coverage-output.txt
+            echo "❌ No valid manifest - cannot run tests"
+            echo ""
+            echo "Fast-CI requires a manifest with targeted tests."
+            echo "Full suite runs in full-suite.yml after merge, not here."
+            exit 1
           fi
-      - name: Update coverage badge
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main')
+
+      - name: Bootstrap mode notice
+        if: steps.manifest.outputs.bootstrap_mode == 'true'
         run: |
-          # Extract coverage percentage from pytest output
-          COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
-          if [ -z "$COV" ]; then
-            echo "Could not extract coverage percentage"
-            exit 0  # Don't fail the build
-          fi
-
-          # Determine badge color based on coverage
-          if [ "$COV" -ge 90 ]; then
-            COLOR="brightgreen"
-          elif [ "$COV" -ge 70 ]; then
-            COLOR="yellow"
-          else
-            COLOR="red"
-          fi
-
-          # Create shields.io endpoint JSON in temp location
-          echo "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"${COV}%\",\"color\":\"${COLOR}\"}" > /tmp/coverage.json
-
-          # Configure git
-          git config user.name "CI Bot"
-          git config user.email "ci@iterabloom.com"
-
-          # Fetch badges branch or create orphan
-          git fetch origin badges:badges 2>/dev/null || true
-          git checkout badges 2>/dev/null || git checkout --orphan badges
-
-          # Clean branch and add only coverage.json
-          git rm -rf . 2>/dev/null || true
-          cp /tmp/coverage.json coverage.json
-
-          # Commit and push
-          git add coverage.json
-          git commit -m "Update coverage badge: ${COV}%" || echo "No changes to commit"
-          git push origin badges --force || echo "Push failed - may need write permissions"
+          echo "╔════════════════════════════════════════════════════════════╗"
+          echo "║  BOOTSTRAP MODE - Tests skipped in fast-CI                 ║"
+          echo "╚════════════════════════════════════════════════════════════╝"
+          echo ""
+          echo "This PR can be manually merged. After merge, full-suite.yml"
+          echo "will run comprehensive validation."
+          echo ""
+          echo "To enable smart test selection, publish hypergumbo with"
+          echo "'slice --files' to PyPI, then contributors can generate"
+          echo "targeted manifests."
+      # Coverage badge is updated by full-suite.yml, not here
+      # (ci.yml skips pytest on push events)
 
   # Final gate job - ensures workflow completes even when jobs are skipped
   # This fixes Forgejo Actions bug where skipped jobs leave workflow in "running" state

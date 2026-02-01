@@ -35,6 +35,7 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 
 if TYPE_CHECKING:
@@ -78,7 +79,7 @@ def find_sparql_files(repo_root: Path) -> list[Path]:
     """Find all SPARQL files in the repository."""
     files: list[Path] = []
     for pattern in ["**/*.sparql", "**/*.rq"]:
-        files.extend(repo_root.glob(pattern))
+        files.extend(find_files(repo_root, [pattern]))
     return sorted(files)
 
 

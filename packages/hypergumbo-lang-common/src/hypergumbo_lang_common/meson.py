@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator, Optional, TYPE_CHECKING
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 
 if TYPE_CHECKING:
@@ -60,15 +61,15 @@ def is_meson_tree_sitter_available() -> bool:
 def find_meson_files(root: Path) -> Iterator[Path]:
     """Find all Meson build files in the given directory."""
     # Standard meson.build files
-    for path in root.rglob("meson.build"):
+    for path in find_files(root, ["meson.build"]):
         if path.is_file():
             yield path
     # meson_options.txt files
-    for path in root.rglob("meson_options.txt"):
+    for path in find_files(root, ["meson_options.txt"]):
         if path.is_file():
             yield path
     # meson.options files (newer format)
-    for path in root.rglob("meson.options"):
+    for path in find_files(root, ["meson.options"]):
         if path.is_file():
             yield path
 

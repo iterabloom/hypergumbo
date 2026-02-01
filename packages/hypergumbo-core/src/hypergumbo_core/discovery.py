@@ -31,6 +31,7 @@ DEFAULT_EXCLUDES = [
     ".nox",
     ".cache",
     "*.egg-info",
+    ".terraform",  # Terraform providers and modules cache
     # Coverage and test reports
     "htmlcov",  # Python (pytest-cov)
     "coverage",  # Generic (Ruby, JS)

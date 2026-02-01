@@ -63,7 +63,8 @@ def get_hypergumbo_version() -> str:
     ensuring we get the repo version rather than a potentially different
     installed version.
     """
-    pyproject_path = REPO_ROOT / "pyproject.toml"
+    # Read from meta-package pyproject.toml (source of truth for version)
+    pyproject_path = REPO_ROOT / "packages" / "hypergumbo" / "pyproject.toml"
     if not pyproject_path.exists():
         return "unknown"
 
@@ -98,10 +99,15 @@ def run_command(args: list[str], description: str) -> subprocess.CompletedProces
     Raises:
         SystemExit: If command fails
     """
-    # Set PYTHONPATH to include src/ for module imports
+    # Set PYTHONPATH to include package src/ directories for module imports
     env = os.environ.copy()
-    src_path = str(REPO_ROOT / "src")
-    env["PYTHONPATH"] = src_path + os.pathsep + env.get("PYTHONPATH", "")
+    package_paths = [
+        str(REPO_ROOT / "packages" / "hypergumbo-core" / "src"),
+        str(REPO_ROOT / "packages" / "hypergumbo-lang-mainstream" / "src"),
+        str(REPO_ROOT / "packages" / "hypergumbo-lang-common" / "src"),
+        str(REPO_ROOT / "packages" / "hypergumbo-lang-extended1" / "src"),
+    ]
+    env["PYTHONPATH"] = os.pathsep.join(package_paths) + os.pathsep + env.get("PYTHONPATH", "")
 
     result = subprocess.run(
         args,
@@ -125,8 +131,8 @@ def run_command(args: list[str], description: str) -> subprocess.CompletedProces
 def run_hypergumbo_sketch() -> str:
     """Run hypergumbo sketch on the entire repo."""
     result = run_command(
-        [sys.executable, "-m", "hypergumbo", "sketch", str(REPO_ROOT),
-         "-t", "4000"],
+        [sys.executable, "-m", "hypergumbo_core", "sketch", str(REPO_ROOT),
+         "-t", "8000"],
         "hypergumbo sketch",
     )
     return result.stdout
@@ -265,8 +271,10 @@ def run_hypergumbo_analysis() -> dict:
     if output_file.exists():
         output_file.unlink()
 
+    # Analyze all package src directories
+    packages_dir = REPO_ROOT / "packages"
     run_command(
-        [sys.executable, "-m", "hypergumbo", "run", str(REPO_ROOT / "src"),
+        [sys.executable, "-m", "hypergumbo_core", "run", str(packages_dir),
          "--out", str(output_file), "--first-party-only"],
         "hypergumbo run",
     )
@@ -296,7 +304,6 @@ def extract_module_docstring(file_path: Path) -> str | None:
 
 def categorize_modules() -> dict[str, list[tuple[str, str | None]]]:
     """Categorize modules into logical groups with docstrings."""
-    src_root = REPO_ROOT / "src" / "hypergumbo"
     categories: dict[str, list[tuple[str, str | None]]] = {
         "Core": [],
         "Analyzers": [],
@@ -304,32 +311,44 @@ def categorize_modules() -> dict[str, list[tuple[str, str | None]]]:
         "CLI & I/O": [],
     }
 
-    for py_file in sorted(src_root.rglob("*.py")):
-        # Skip private modules except __init__.py and __main__.py
-        if py_file.name.startswith("_") and py_file.name not in {"__init__.py", "__main__.py"}:
+    # Scan all package src directories
+    package_roots = [
+        ("hypergumbo_core", REPO_ROOT / "packages" / "hypergumbo-core" / "src" / "hypergumbo_core"),
+        ("hypergumbo_lang_mainstream", REPO_ROOT / "packages" / "hypergumbo-lang-mainstream" / "src" / "hypergumbo_lang_mainstream"),
+        ("hypergumbo_lang_common", REPO_ROOT / "packages" / "hypergumbo-lang-common" / "src" / "hypergumbo_lang_common"),
+        ("hypergumbo_lang_extended1", REPO_ROOT / "packages" / "hypergumbo-lang-extended1" / "src" / "hypergumbo_lang_extended1"),
+    ]
+
+    for package_name, src_root in package_roots:
+        if not src_root.exists():
             continue
 
-        rel_path = py_file.relative_to(src_root)
-        parts = list(rel_path.parts)
-        if parts[-1] == "__init__.py":
-            continue  # Skip __init__ files in listing
+        for py_file in sorted(src_root.rglob("*.py")):
+            # Skip private modules except __init__.py and __main__.py
+            if py_file.name.startswith("_") and py_file.name not in {"__init__.py", "__main__.py"}:
+                continue
 
-        # Use with_suffix to properly remove only the .py extension
-        # (avoids bug where analyze/py.py became "analyze" via .replace(".py", ""))
-        module_path = rel_path.with_suffix("")
-        module_name = ".".join(module_path.parts)
-        docstring = extract_module_docstring(py_file)
+            rel_path = py_file.relative_to(src_root)
+            parts = list(rel_path.parts)
+            if parts[-1] == "__init__.py":
+                continue  # Skip __init__ files in listing
 
-        # Use parts[0] check to avoid false positives from files containing
-        # "analyze" or "linkers" elsewhere in their path
-        if parts and parts[0] == "analyze":
-            categories["Analyzers"].append((module_name, docstring))
-        elif parts and parts[0] == "linkers":
-            categories["Linkers"].append((module_name, docstring))
-        elif module_path.name in {"cli", "export", "schema", "plan", "sketch", "__main__"}:
-            categories["CLI & I/O"].append((module_name, docstring))
-        else:
-            categories["Core"].append((module_name, docstring))
+            # Use with_suffix to properly remove only the .py extension
+            # (avoids bug where analyze/py.py became "analyze" via .replace(".py", ""))
+            module_path = rel_path.with_suffix("")
+            module_name = f"{package_name}.{'.'.join(module_path.parts)}"
+            docstring = extract_module_docstring(py_file)
+
+            # Use parts[0] check to avoid false positives from files containing
+            # "analyze" or "linkers" elsewhere in their path
+            if parts and parts[0] == "analyze":
+                categories["Analyzers"].append((module_name, docstring))
+            elif parts and parts[0] == "linkers":
+                categories["Linkers"].append((module_name, docstring))
+            elif module_path.name in {"cli", "export", "schema", "plan", "sketch", "__main__"}:
+                categories["CLI & I/O"].append((module_name, docstring))
+            else:
+                categories["Core"].append((module_name, docstring))
 
     return categories
 
@@ -379,7 +398,7 @@ def get_edge_type_distribution(analysis: dict) -> dict[str, int]:
 
 def count_linkers() -> int:
     """Count the number of linker modules (excluding __init__ and registry)."""
-    linkers_dir = REPO_ROOT / "src" / "hypergumbo" / "linkers"
+    linkers_dir = REPO_ROOT / "packages" / "hypergumbo-core" / "src" / "hypergumbo_core" / "linkers"
     if not linkers_dir.exists():
         return 0
     count = 0
@@ -451,9 +470,9 @@ def generate_architecture_md() -> str:
         "",
         "## Sketch (hypergumbo on hypergumbo)",
         "",
-        "```markdown",
+        "````markdown",
         sketch.strip(),
-        "```",
+        "````",
         "",
         "## Data Flow (ADR-0003)",
         "",
@@ -585,19 +604,22 @@ def generate_architecture_md() -> str:
         "",
         "## Adding a New Analyzer",
         "",
-        "1. Create `src/hypergumbo/analyze/<language>.py`",
+        "1. Create analyzer in the appropriate lang package:",
+        "   - Mainstream: `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/<language>.py`",
+        "   - Common: `packages/hypergumbo-lang-common/src/hypergumbo_lang_common/<language>.py`",
+        "   - Extended1: `packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/<language>.py`",
         "2. Implement `analyze(root: Path) -> AnalysisResult`",
         "3. Return symbols and edges following IR conventions",
-        "4. Add tests in `tests/test_<language>_analyzer.py`",
-        "5. Register in `catalog.py` if needed",
+        "4. Add tests in the package's `tests/` directory",
+        "5. Register in the package's `__init__.py` ANALYZER_SPECS",
         "",
         "## Adding a New Linker",
         "",
-        "1. Create `src/hypergumbo/linkers/<name>.py`",
+        "1. Create `packages/hypergumbo-core/src/hypergumbo_core/linkers/<name>.py`",
         "2. Implement `link_<name>(root: Path) -> LinkResult`",
         "3. Match patterns across existing symbols",
         "4. Create cross-language edges",
-        "5. Add tests in `tests/test_<name>_linker.py`",
+        "5. Add tests in `packages/hypergumbo-core/tests/test_<name>_linker.py`",
         "",
         "## Pattern System Architecture (ADR-0003)",
         "",
@@ -665,9 +687,9 @@ def generate_architecture_md() -> str:
         "### Adding a New Pattern",
         "",
         "**Framework pattern** (loaded when framework detected):",
-        "1. Create `src/hypergumbo/frameworks/<framework>.yaml`",
+        "1. Create `packages/hypergumbo-core/src/hypergumbo_core/frameworks/<framework>.yaml`",
         "2. Add `linkers:` section to enable relevant linkers",
-        "3. Add tests in `tests/test_framework_patterns.py`",
+        "3. Add tests in `packages/hypergumbo-core/tests/test_framework_patterns.py`",
         "",
         "**Convention pattern** (always loaded):",
         "1. Edit existing convention file or create new one",

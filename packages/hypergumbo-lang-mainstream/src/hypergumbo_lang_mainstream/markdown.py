@@ -37,6 +37,7 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 
 if TYPE_CHECKING:
@@ -78,8 +79,8 @@ def is_markdown_tree_sitter_available() -> bool:
 
 def find_markdown_files(repo_root: Path) -> list[Path]:
     """Find all markdown files in the repository."""
-    files = list(repo_root.glob("**/*.md"))
-    files.extend(repo_root.glob("**/*.markdown"))
+    files = list(find_files(repo_root, ["*.md"]))
+    files.extend(find_files(repo_root, ["*.markdown"]))
     return sorted(set(files))
 
 

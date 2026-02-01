@@ -524,22 +524,28 @@ def compute_symbol_importance_density(
     density_scores: Dict[str, float] = {}
 
     for file_path, symbols in by_file.items():
-        # Resolve absolute path
+        # Resolve absolute path for LOC computation
         path_obj = Path(file_path)
         if not path_obj.is_absolute():
             abs_path = repo_root / file_path
+            rel_path = file_path
         else:
             abs_path = path_obj
+            # Normalize to relative path for consistent key format
+            try:
+                rel_path = str(abs_path.relative_to(repo_root))
+            except ValueError:
+                rel_path = file_path  # Fallback if not under repo_root
 
         loc = compute_file_loc(abs_path)
 
         if loc < min_loc:
-            density_scores[file_path] = 0.0
+            density_scores[rel_path] = 0.0
             continue
 
         # Sum raw in-degree of all symbols in file
         total_in_degree = sum(in_degree.get(s.id, 0) for s in symbols)
-        density_scores[file_path] = total_in_degree / loc
+        density_scores[rel_path] = total_in_degree / loc
 
     return density_scores
 

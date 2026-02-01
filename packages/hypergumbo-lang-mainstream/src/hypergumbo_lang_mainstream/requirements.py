@@ -36,6 +36,7 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 
 if TYPE_CHECKING:
@@ -87,8 +88,8 @@ def find_requirements_files(repo_root: Path) -> list[Path]:
         "reqs/*.txt",
     ]
     for pattern in patterns:
-        files.extend(repo_root.glob(pattern))
-        files.extend(repo_root.glob(f"**/{pattern}"))
+        files.extend(find_files(repo_root, [pattern], max_files=1))
+        files.extend(find_files(repo_root, [pattern]))
     # Deduplicate and sort
     return sorted(set(files))
 

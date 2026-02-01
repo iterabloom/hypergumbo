@@ -8,7 +8,7 @@ the core of modern software development stacks.
 """
 from hypergumbo_core.analyze.all_analyzers import AnalyzerSpec
 
-__version__ = "2.0.0"
+__version__ = "2.0.2"
 
 # Analyzer specifications for mainstream languages
 # These are registered via entry_points in pyproject.toml

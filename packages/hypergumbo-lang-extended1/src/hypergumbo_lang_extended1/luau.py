@@ -28,6 +28,7 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 
 if TYPE_CHECKING:
@@ -86,8 +87,8 @@ def _make_stable_id(path: Path, repo_root: Path, name: str, kind: str) -> str:
 
 def find_luau_files(repo_root: Path) -> list[Path]:
     """Find all Luau files in the repository."""
-    luau_files = list(repo_root.glob("**/*.luau"))
-    lua_files = list(repo_root.glob("**/*.lua"))
+    luau_files = list(find_files(repo_root, ["*.luau"]))
+    lua_files = list(find_files(repo_root, ["*.lua"]))
     return sorted(luau_files + lua_files)
 
 

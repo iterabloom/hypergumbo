@@ -32,6 +32,7 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Span, Symbol
 
 if TYPE_CHECKING:
@@ -71,21 +72,17 @@ def is_ini_tree_sitter_available() -> bool:
 
 
 def find_ini_files(repo_root: Path) -> list[Path]:
-    """Find all INI configuration files in the repository."""
-    files: list[Path] = []
-    # Standard INI files
-    files.extend(repo_root.glob("**/*.ini"))
-    # Config files that use INI format
-    files.extend(repo_root.glob("**/*.cfg"))
-    files.extend(repo_root.glob("**/*.conf"))
-    # Common INI-format files
-    files.extend(repo_root.glob("**/setup.cfg"))
-    files.extend(repo_root.glob("**/tox.ini"))
-    files.extend(repo_root.glob("**/.editorconfig"))
-    files.extend(repo_root.glob("**/.flake8"))
-    files.extend(repo_root.glob("**/.pylintrc"))
-    files.extend(repo_root.glob("**/pytest.ini"))
-    return sorted(set(files))
+    """Find all INI configuration files in the repository, excluding vendor dirs."""
+    # Standard INI files and common INI-format files
+    patterns = [
+        "*.ini",
+        "*.cfg",
+        "*.conf",
+        ".editorconfig",
+        ".flake8",
+        ".pylintrc",
+    ]
+    return sorted(set(find_files(repo_root, patterns)))
 
 
 def _get_node_text(node: "tree_sitter.Node") -> str:

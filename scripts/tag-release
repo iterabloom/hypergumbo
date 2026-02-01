@@ -119,17 +119,42 @@ echo ""
 echo "━━━ Step 2: Verify version ━━━"
 # ─────────────────────────────────────────────────────────────
 
-PYPROJECT_VERSION=$(grep -E '^version\s*=' pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
-
-if [[ "$PYPROJECT_VERSION" != "$VERSION" ]]; then
-    echo -e "${RED}Error: Version mismatch!${NC}"
-    echo "  Expected (from argument): $VERSION"
-    echo "  Found in pyproject.toml:  $PYPROJECT_VERSION"
-    echo ""
-    echo "Make sure the release PR was merged correctly."
-    exit 1
+# Check version in packages (modular structure) or root (legacy)
+if [[ -d "packages/hypergumbo-core" ]]; then
+    # Modular structure - check all package versions
+    CORE_VERSION=$(grep -E '^version\s*=' packages/hypergumbo-core/pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+    if [[ "$CORE_VERSION" != "$VERSION" ]]; then
+        echo -e "${RED}Error: Version mismatch!${NC}"
+        echo "  Expected (from argument): $VERSION"
+        echo "  Found in hypergumbo-core:  $CORE_VERSION"
+        echo ""
+        echo "Make sure the release PR was merged correctly."
+        exit 1
+    fi
+    # Verify all packages have the same version
+    for pkg in packages/*/pyproject.toml; do
+        PKG_VERSION=$(grep -E '^version\s*=' "$pkg" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+        if [[ "$PKG_VERSION" != "$VERSION" ]]; then
+            echo -e "${RED}Error: Package version mismatch in $pkg${NC}"
+            echo "  Expected: $VERSION"
+            echo "  Found:    $PKG_VERSION"
+            exit 1
+        fi
+    done
+    echo -e "${GREEN}✓${NC} All package versions match: $VERSION"
+else
+    # Legacy single-package structure
+    PYPROJECT_VERSION=$(grep -E '^version\s*=' pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+    if [[ "$PYPROJECT_VERSION" != "$VERSION" ]]; then
+        echo -e "${RED}Error: Version mismatch!${NC}"
+        echo "  Expected (from argument): $VERSION"
+        echo "  Found in pyproject.toml:  $PYPROJECT_VERSION"
+        echo ""
+        echo "Make sure the release PR was merged correctly."
+        exit 1
+    fi
+    echo -e "${GREEN}✓${NC} Version matches: $VERSION"
 fi
-echo -e "${GREEN}✓${NC} Version matches: $VERSION"
 
 # Check CHANGELOG has the version entry
 if ! grep -q "## \[$VERSION\]" CHANGELOG.md; then

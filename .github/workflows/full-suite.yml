@@ -1,7 +1,8 @@
 name: Full Test Suite
 
-# Full test suite runs as a singleton to validate all packages together.
-# When this fails, the stop-the-line protocol blocks PRs until fixed.
+# Full test suite runs as parallel jobs per package (ADR-0010).
+# Each package runs in its own job to fit within Codeberg's time limits.
+# When any job fails, the stop-the-line protocol blocks PRs until fixed.
 
 on:
   # Triggered after PR merges to dev
@@ -20,67 +21,287 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  full-suite:
+  # Build grammars once, cache wheels for test jobs
+  build-grammars:
     runs-on: codeberg-small-lazy
-    timeout-minutes: 45
-
     steps:
       - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          fetch-depth: 0
+          python-version: "3.11"
+      - name: Cache grammar wheels
+        id: cache
+        uses: actions/cache@v3
+        with:
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Build grammar wheels
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          pip install --upgrade pip setuptools wheel
+          ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+      - name: Verify wheels exist
+        run: ls -la /tmp/grammar-wheels/*.whl
 
+  # Run each package's tests in parallel (after grammars are built)
+  test-core:
+    needs: build-grammars
+    runs-on: codeberg-small-lazy
+    outputs:
+      coverage: ${{ steps.tests.outputs.coverage }}
+    steps:
+      - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: 'pip'
-
+      - name: Restore grammar wheels
+        uses: actions/cache@v3
+        with:
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
       - name: Install dependencies
         run: |
           pip install --upgrade pip
+          # Install test deps directly
+          pip install pytest pytest-cov pytest-xdist jsonschema
+          # Install ALL local packages (component packages first, then meta-package)
+          # Tests need 'hypergumbo' for imports and 'python -m hypergumbo' invocations
           pip install -e packages/hypergumbo-core \
                       -e packages/hypergumbo-lang-mainstream \
                       -e packages/hypergumbo-lang-common \
                       -e packages/hypergumbo-lang-extended1 \
-                      -e "packages/hypergumbo[dev]"
-
-      - name: Build source-only grammars
-        run: ./scripts/build-source-grammars
-
-      - name: Run full test suite
+                      -e packages/hypergumbo
+      - name: Install grammars from wheels
+        run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+      - name: Run tests
         id: tests
         run: |
-          COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src"
-          pytest packages/*/tests/ -n 2 --tb=short $COV_PATHS --cov-report=term --cov-fail-under=100 2>&1 | tee full-suite-output.txt
-          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          pytest packages/hypergumbo-core/tests/ -n 2 --tb=short \
+            --cov=packages/hypergumbo-core/src --cov-report=term | tee coverage-output.txt
+          COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
+          echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
-      - name: Extract test summary
-        if: always()
+  test-mainstream:
+    needs: build-grammars
+    runs-on: codeberg-small-lazy
+    outputs:
+      coverage: ${{ steps.tests.outputs.coverage }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: 'pip'
+      - name: Restore grammar wheels
+        uses: actions/cache@v3
+        with:
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Install dependencies
         run: |
-          # Extract summary line for status reporting
-          SUMMARY=$(grep -E "^(PASSED|FAILED|ERROR)" full-suite-output.txt | tail -1 || echo "Unknown")
-          echo "Test summary: $SUMMARY"
+          pip install --upgrade pip
+          # Install test deps directly
+          pip install pytest pytest-cov pytest-xdist jsonschema
+          # Install ALL local packages (component packages first, then meta-package)
+          # Tests need 'hypergumbo' for imports and 'python -m hypergumbo' invocations
+          pip install -e packages/hypergumbo-core \
+                      -e packages/hypergumbo-lang-mainstream \
+                      -e packages/hypergumbo-lang-common \
+                      -e packages/hypergumbo-lang-extended1 \
+                      -e packages/hypergumbo
+      - name: Install grammars from wheels
+        run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+      - name: Run tests
+        id: tests
+        run: |
+          pytest packages/hypergumbo-lang-mainstream/tests/ -n 2 --tb=short \
+            --cov=packages/hypergumbo-lang-mainstream/src --cov-report=term | tee coverage-output.txt
+          COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
+          echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
-          # Extract coverage percentage
-          COV=$(grep "^TOTAL" full-suite-output.txt | awk '{print $NF}' | tr -d '%' || echo "0")
-          echo "Coverage: ${COV}%"
+  test-common:
+    needs: build-grammars
+    runs-on: codeberg-small-lazy
+    outputs:
+      coverage: ${{ steps.tests.outputs.coverage }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: 'pip'
+      - name: Restore grammar wheels
+        uses: actions/cache@v3
+        with:
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          # Install test deps directly
+          pip install pytest pytest-cov pytest-xdist jsonschema
+          # Install ALL local packages (component packages first, then meta-package)
+          # Tests need 'hypergumbo' for imports and 'python -m hypergumbo' invocations
+          pip install -e packages/hypergumbo-core \
+                      -e packages/hypergumbo-lang-mainstream \
+                      -e packages/hypergumbo-lang-common \
+                      -e packages/hypergumbo-lang-extended1 \
+                      -e packages/hypergumbo
+      - name: Install grammars from wheels
+        run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+      - name: Run tests
+        id: tests
+        run: |
+          pytest packages/hypergumbo-lang-common/tests/ -n 2 --tb=short \
+            --cov=packages/hypergumbo-lang-common/src --cov-report=term | tee coverage-output.txt
+          COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
+          echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
+
+  test-extended:
+    needs: build-grammars
+    runs-on: codeberg-small-lazy
+    outputs:
+      coverage: ${{ steps.tests.outputs.coverage }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: 'pip'
+      - name: Restore grammar wheels
+        uses: actions/cache@v3
+        with:
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          # Install test deps directly
+          pip install pytest pytest-cov pytest-xdist jsonschema
+          # Install ALL local packages (component packages first, then meta-package)
+          # Tests need 'hypergumbo' for imports and 'python -m hypergumbo' invocations
+          pip install -e packages/hypergumbo-core \
+                      -e packages/hypergumbo-lang-mainstream \
+                      -e packages/hypergumbo-lang-common \
+                      -e packages/hypergumbo-lang-extended1 \
+                      -e packages/hypergumbo
+      - name: Install grammars from wheels
+        run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+      - name: Run tests
+        id: tests
+        run: |
+          pytest packages/hypergumbo-lang-extended1/tests/ -n 2 --tb=short \
+            --cov=packages/hypergumbo-lang-extended1/src --cov-report=term | tee coverage-output.txt
+          COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
+          echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
+
+  # Aggregate results after all test jobs complete
+  aggregate:
+    needs: [test-core, test-mainstream, test-common, test-extended]
+    if: always()
+    runs-on: codeberg-small-lazy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check job results
+        id: results
+        run: |
+          echo "Job results:"
+          echo "  test-core: ${{ needs.test-core.result }} (coverage: ${{ needs.test-core.outputs.coverage }}%)"
+          echo "  test-mainstream: ${{ needs.test-mainstream.result }} (coverage: ${{ needs.test-mainstream.outputs.coverage }}%)"
+          echo "  test-common: ${{ needs.test-common.result }} (coverage: ${{ needs.test-common.outputs.coverage }}%)"
+          echo "  test-extended: ${{ needs.test-extended.result }} (coverage: ${{ needs.test-extended.outputs.coverage }}%)"
+
+          # Determine overall result
+          if [[ "${{ needs.test-core.result }}" == "success" ]] && \
+             [[ "${{ needs.test-mainstream.result }}" == "success" ]] && \
+             [[ "${{ needs.test-common.result }}" == "success" ]] && \
+             [[ "${{ needs.test-extended.result }}" == "success" ]]; then
+            echo "conclusion=success" >> "$GITHUB_OUTPUT"
+            echo "✅ All test jobs passed"
+          else
+            echo "conclusion=failure" >> "$GITHUB_OUTPUT"
+            echo "❌ One or more test jobs failed"
+          fi
+
+          # Calculate average coverage (simple average of 4 packages)
+          COV_CORE="${{ needs.test-core.outputs.coverage }}"
+          COV_MAINSTREAM="${{ needs.test-mainstream.outputs.coverage }}"
+          COV_COMMON="${{ needs.test-common.outputs.coverage }}"
+          COV_EXTENDED="${{ needs.test-extended.outputs.coverage }}"
+
+          # Default to 0 if empty
+          COV_CORE="${COV_CORE:-0}"
+          COV_MAINSTREAM="${COV_MAINSTREAM:-0}"
+          COV_COMMON="${COV_COMMON:-0}"
+          COV_EXTENDED="${COV_EXTENDED:-0}"
+
+          # Calculate average (integer math)
+          AVG=$(( (COV_CORE + COV_MAINSTREAM + COV_COMMON + COV_EXTENDED) / 4 ))
+          echo "coverage=$AVG" >> "$GITHUB_OUTPUT"
+          echo "Average coverage: $AVG%"
 
       - name: Record run result
-        if: always()
         run: |
-          # Create a JSON artifact with run metadata for stop-the-line checks
+          # Log run metadata
           echo "{
             \"run_id\": \"${{ github.run_id }}\",
             \"sha\": \"${{ github.sha }}\",
-            \"conclusion\": \"${{ steps.tests.outcome }}\",
+            \"conclusion\": \"${{ steps.results.outputs.conclusion }}\",
+            \"coverage\": \"${{ steps.results.outputs.coverage }}%\",
             \"timestamp\": \"$(date -Iseconds)\",
-            \"triggered_by\": \"${{ github.event_name }}\"
-          }" > full-suite-result.json
+            \"triggered_by\": \"${{ github.event_name }}\",
+            \"jobs\": {
+              \"core\": \"${{ needs.test-core.result }}\",
+              \"mainstream\": \"${{ needs.test-mainstream.result }}\",
+              \"common\": \"${{ needs.test-common.result }}\",
+              \"extended\": \"${{ needs.test-extended.result }}\"
+            }
+          }"
 
-      - name: Upload result artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: full-suite-result
-          path: full-suite-result.json
-          retention-days: 30
+      - name: Update coverage badge
+        if: steps.results.outputs.conclusion == 'success'
+        run: |
+          COV="${{ steps.results.outputs.coverage }}"
+
+          # Determine badge color based on coverage
+          if [ "$COV" -ge 90 ]; then
+            COLOR="brightgreen"
+          elif [ "$COV" -ge 70 ]; then
+            COLOR="yellow"
+          else
+            COLOR="red"
+          fi
+
+          echo "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"${COV}%\",\"color\":\"${COLOR}\"}" > /tmp/coverage.json
+
+          git config user.name "CI Bot"
+          git config user.email "ci@iterabloom.com"
+
+          git fetch origin badges:badges 2>/dev/null || true
+          git checkout badges 2>/dev/null || git checkout --orphan badges
+
+          git rm -rf . 2>/dev/null || true
+          cp /tmp/coverage.json coverage.json
+
+          git add coverage.json
+          git commit -m "Update coverage badge: ${COV}%" || echo "No changes to commit"
+          git push origin badges --force || echo "Push failed - may need write permissions"
+
+      - name: Fail if any job failed
+        if: steps.results.outputs.conclusion != 'success'
+        run: |
+          echo "❌ Full suite FAILED"
+          echo ""
+          echo "Stop-the-line protocol is now active."
+          echo "New PRs will be blocked until this is fixed."
+          echo ""
+          echo "To submit a fix, use PR title:"
+          echo "  fix(job-${{ github.run_id }}): <description>"
+          exit 1

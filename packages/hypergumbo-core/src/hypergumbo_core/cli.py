@@ -37,7 +37,7 @@ import os
 import resource
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from rich.console import Console
 from rich.table import Table
@@ -288,11 +288,11 @@ def _generate_sketch_filename(
 
     Examples:
         - sketch.md (no budget)
-        - sketch.4000.md (4000 token budget)
+        - sketch.8000.md (8000 token budget)
         - sketch.16000.md (16000 token budget)
-        - sketch.4000.notests.md (4000 tokens, exclude_tests=True)
-        - sketch.4000.withsource.md (4000 tokens, with_source=True)
-        - sketch.4000.notests.withsource.md (both flags)
+        - sketch.8000.notests.md (8000 tokens, exclude_tests=True)
+        - sketch.8000.withsource.md (8000 tokens, with_source=True)
+        - sketch.8000.notests.withsource.md (both flags)
 
     Args:
         tokens: Token budget (None for no budget).
@@ -341,8 +341,8 @@ def cmd_sketch(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
 
-    # Default to 4000 tokens when -t not specified (unified behavior)
-    max_tokens = args.tokens if args.tokens else 4000
+    # Default to 8000 tokens when -t not specified (unified behavior)
+    max_tokens = args.tokens if args.tokens else 8000
     exclude_tests = getattr(args, "exclude_tests", False)
     first_party_priority = getattr(args, "first_party_priority", True)
     extra_excludes = getattr(args, "extra_excludes", [])
@@ -743,6 +743,140 @@ def _sanitize_filename_part(s: str, max_len: int = 50) -> str:
     return safe[:max_len] if safe else "unnamed"
 
 
+def _handle_files_mode(
+    args: argparse.Namespace,
+    nodes: List[Symbol],
+    edges: List[Edge],
+    repo_root: Path,
+) -> int:
+    """Handle --files mode: find files that depend on changed files.
+
+    This is used for smart test selection. Given a list of changed files,
+    finds all symbols in those files, performs reverse slices to find
+    dependent code, and outputs the list of dependent file paths.
+
+    Args:
+        args: Parsed command-line arguments (needs args.files, args.output)
+        nodes: All symbols from the behavior map
+        edges: All edges from the behavior map
+        repo_root: Repository root path
+
+    Returns:
+        0 on success, 1 on error
+    """
+    from .paths import normalize_path, path_ends_with
+
+    # Read changed files from the input file
+    files_path = Path(args.files)
+    if not files_path.exists():
+        print(f"Error: Files list not found: {args.files}", file=sys.stderr)
+        return 1
+
+    changed_files = [
+        line.strip()
+        for line in files_path.read_text().splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+
+    if not changed_files:
+        print("No changed files in input", file=sys.stderr)
+        return 1
+
+    # Build lookup structures
+    # Map from normalized file path to symbols in that file
+    file_to_symbols: Dict[str, List[Symbol]] = {}
+    for node in nodes:
+        if node.path:
+            norm_path = normalize_path(node.path)
+            if norm_path not in file_to_symbols:
+                file_to_symbols[norm_path] = []
+            file_to_symbols[norm_path].append(node)
+
+    # Find symbols in changed files (using path suffix matching for flexibility)
+    changed_symbols: List[Symbol] = []
+    for changed_file in changed_files:
+        changed_norm = normalize_path(changed_file)
+        # Try exact match first
+        if changed_norm in file_to_symbols:
+            changed_symbols.extend(file_to_symbols[changed_norm])
+            continue
+        # Try suffix match (handles relative vs absolute paths)
+        for file_path, symbols in file_to_symbols.items():
+            if path_ends_with(file_path, changed_norm) or path_ends_with(changed_norm, file_path):
+                changed_symbols.extend(symbols)
+
+    if not changed_symbols:
+        # No symbols found in changed files - output empty result
+        output_lines: List[str] = []
+    else:
+        # Perform reverse slices from changed symbols to find dependents
+        # Use a set to collect unique dependent files
+        dependent_files: Set[str] = set()
+
+        # Build edge index for reverse traversal (target -> sources)
+        reverse_edge_index: Dict[str, List[str]] = {}
+        for edge in edges:
+            if edge.dst not in reverse_edge_index:
+                reverse_edge_index[edge.dst] = []
+            reverse_edge_index[edge.dst].append(edge.src)
+
+        # Build symbol lookup
+        symbol_lookup = {node.id: node for node in nodes}
+
+        # BFS from each changed symbol to find all dependents
+        visited: Set[str] = set()
+        queue = [sym.id for sym in changed_symbols]
+
+        # Also add the changed files themselves
+        for sym in changed_symbols:
+            if sym.path:
+                dependent_files.add(sym.path)
+
+        max_hops = getattr(args, "max_hops", 10)  # Generous default for test selection
+        hop_count = 0
+        current_level = set(queue)
+
+        while current_level and hop_count < max_hops:
+            next_level: Set[str] = set()
+            for node_id in current_level:
+                if node_id in visited:
+                    continue
+                visited.add(node_id)
+
+                # Add this node's file to dependents
+                sym = symbol_lookup.get(node_id)
+                if sym and sym.path:
+                    dependent_files.add(sym.path)
+
+                # Find nodes that call/depend on this node (reverse edges)
+                callers = reverse_edge_index.get(node_id, [])
+                for caller_id in callers:
+                    if caller_id not in visited:
+                        next_level.add(caller_id)
+
+            current_level = next_level
+            hop_count += 1
+
+        output_lines = sorted(dependent_files)
+
+    # Write output
+    output_text = "\n".join(output_lines)
+    if output_text:
+        output_text += "\n"
+
+    if args.output:
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(output_text)
+        print(f"[hypergumbo slice --files] Found {len(output_lines)} dependent files")
+        print(f"  Output: {output_path}")
+    else:
+        # Write to stdout
+        sys.stdout.write(output_text)
+
+    return 0
+
+
 def cmd_slice(args: argparse.Namespace) -> int:
     """Execute the slice command."""
     path_arg = Path(args.path).resolve()
@@ -772,6 +906,11 @@ def cmd_slice(args: argparse.Namespace) -> int:
     # Reconstruct Symbol and Edge objects from the behavior map
     nodes = [_node_from_dict(n) for n in behavior_map.get("nodes", [])]
     edges = [_edge_from_dict(e) for e in behavior_map.get("edges", [])]
+
+    # Handle --files mode: find all files that depend on changed files
+    # Used for smart test selection
+    if getattr(args, "files", None):
+        return _handle_files_mode(args, nodes, edges, repo_root)
 
     # Handle --list-entries: show detected entrypoints and exit
     if args.list_entries:
@@ -2043,8 +2182,8 @@ def build_parser() -> argparse.ArgumentParser:
 Generate codebase summaries for AI assistants and coding agents.
 
 Quick start:
-  hypergumbo .              Generate Markdown sketch (paste into ChatGPT/Claude)
-  hypergumbo . -t 4000      Limit output to ~4000 tokens
+  hypergumbo .              Generate Markdown sketch (~8000 tokens default)
+  hypergumbo . -t 16000     Larger sketch with more detail
   hypergumbo run .          Full JSON analysis for tooling
 
 Workflow:
@@ -2095,9 +2234,9 @@ For help on ALL commands:   hypergumbo --help --all"""
     # hypergumbo [path] [-t tokens] (default sketch mode)
     sketch_epilog = """\
 Examples:
-  hypergumbo sketch .                   # Auto-runs analysis if needed
-  hypergumbo sketch ~/project -t 4000   # 4000-token limit
-  hypergumbo sketch . -t 1000 -x        # Brief overview, no tests
+  hypergumbo sketch .                   # Auto-runs analysis if needed (~8000 tokens)
+  hypergumbo sketch ~/project -t 16000  # Larger sketch with more detail
+  hypergumbo sketch . -t 4000 -x        # Brief overview, no tests
   hypergumbo . -t 8000                  # Shorthand (sketch is default)
 
 Caching:
@@ -2354,16 +2493,19 @@ Examples:
   hypergumbo slice --list-entries            # Show detected entry points
   hypergumbo slice --entry auto              # Auto-detect entry point
   hypergumbo slice --entry main --flat       # Output for external tools
+  hypergumbo slice --files changed.txt       # Find files affected by changes
 
 Output format:
   Default: {schema_version, view, feature: {nodes, edges, ...}}
   --inline: Same as default, but feature includes full node/edge objects
   --flat:   {nodes: [...], edges: [...]} - simple format for external tools
+  --files:  List of dependent file paths (for smart test selection)
 
 Use cases:
   - Understand what code main() depends on (forward slice)
   - Find all callers of a function (reverse slice)
   - Extract a focused subgraph for debugging or review
+  - Smart test selection: find tests affected by changed files
 
 Auto-discovers cached results from 'hypergumbo run', or specify --input."""
 
@@ -2454,6 +2596,21 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         help="Output flat structure with just nodes/edges arrays at top level. "
              "Useful for external tools expecting {nodes: [...], edges: [...]}. "
              "Implies --inline.",
+    )
+    p_slice.add_argument(
+        "--files",
+        default=None,
+        metavar="FILE",
+        help="File containing list of changed paths (one per line). "
+             "Finds all symbols in these files and performs reverse slice to "
+             "identify dependent files. Used for smart test selection.",
+    )
+    p_slice.add_argument(
+        "--output",
+        default=None,
+        metavar="FILE",
+        help="Output file for --files mode (list of dependent file paths). "
+             "If not specified, writes to stdout.",
     )
     p_slice.set_defaults(func=cmd_slice)
 

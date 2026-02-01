@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Optional
 
 from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 
 PASS_ID = "latex"
@@ -394,7 +395,7 @@ def analyze_latex(repo_root: Path) -> LaTeXAnalysisResult:
     latex_patterns = ["**/*.tex", "**/*.sty", "**/*.cls"]
     latex_files: list[Path] = []
     for pattern in latex_patterns:
-        latex_files.extend(repo_root.glob(pattern))
+        latex_files.extend(find_files(repo_root, [pattern]))
 
     # Deduplicate
     latex_files = list(set(latex_files))

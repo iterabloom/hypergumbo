@@ -41,6 +41,7 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 
 if TYPE_CHECKING:
@@ -82,7 +83,7 @@ def is_vue_tree_sitter_available() -> bool:
 
 def find_vue_files(repo_root: Path) -> list[Path]:
     """Find all Vue component files in the repository."""
-    return sorted(repo_root.glob("**/*.vue"))
+    return sorted(find_files(repo_root, ["*.vue"]))
 
 
 def _get_node_text(node: "tree_sitter.Node") -> str:

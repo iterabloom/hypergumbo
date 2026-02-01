@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Implemented
 
 ## Context
 
@@ -135,9 +135,8 @@ CHANGED=$(git diff --name-only $(git merge-base HEAD origin/dev)..HEAD)
 #    Stable version installed separately via: pipx install hypergumbo==X.Y.Z
 STABLE_HYPERGUMBO="$HOME/.local/bin/hypergumbo"
 
-# 3. Reverse-slice from changed files to find affected tests
-# we need to test this command to make sure it behaves the way this code is assuming
-$STABLE_HYPERGUMBO slice --reverse --files "$CHANGED" --output .ci/affected-tests.txt
+# 3. Find files affected by changes (inherently does reverse dependency lookup)
+$STABLE_HYPERGUMBO slice --files "$CHANGED" --output .ci/affected-tests.txt
 
 # 4. Run only affected tests
 pytest $(cat .ci/affected-tests.txt) --cov=src
@@ -159,19 +158,23 @@ fi
 
 ### pytest Alias in venv
 
-To ensure LLMs and developers with muscle memory get smart behavior by default:
+To ensure LLMs and developers with muscle memory get smart behavior by default, `scripts/install-hooks` injects an alias into the venv activate script:
 
 ```bash
-# .venv/bin/pytest (wrapper)
-#!/bin/bash
-if [[ "$1" == "--full" ]]; then
-    exec python -m pytest "${@:2}"
-else
-    exec "$(git rev-parse --show-toplevel)/scripts/smart-test" "$@"
-fi
+# Added to .venv/bin/activate by install-hooks
+alias pytest='./scripts/smart-test'  # smart-test alias
 ```
 
-Alternatively, implement as a pytest plugin that hooks `pytest_collection_modifyitems`.
+After running `./scripts/install-hooks`, developers must re-source the venv to enable the alias:
+
+```bash
+source .venv/bin/activate  # reload to enable pytest alias
+pytest                      # now runs smart-test (affected tests only)
+pytest --full               # runs complete test suite
+command pytest              # bypasses alias, runs real pytest
+```
+
+The `smart-test` script passes through all pytest flags (e.g., `-x`, `-q`, `-n auto`) to pytest, so muscle memory works normally.
 
 ### Bootstrap Safety
 

@@ -31,6 +31,7 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 
 if TYPE_CHECKING:
@@ -98,7 +99,7 @@ def find_jsonnet_files(repo_root: Path) -> list[Path]:
     patterns = ["**/*.jsonnet", "**/*.libsonnet"]
     files = []
     for pattern in patterns:
-        files.extend(repo_root.glob(pattern))
+        files.extend(find_files(repo_root, [pattern]))
     return sorted(set(files))
 
 

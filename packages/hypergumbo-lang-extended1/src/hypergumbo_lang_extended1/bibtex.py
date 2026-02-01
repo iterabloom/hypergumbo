@@ -30,6 +30,7 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Span, Symbol
 
 if TYPE_CHECKING:
@@ -71,8 +72,8 @@ def is_bibtex_tree_sitter_available() -> bool:
 def find_bibtex_files(repo_root: Path) -> list[Path]:
     """Find all BibTeX bibliography files in the repository."""
     files: list[Path] = []
-    files.extend(repo_root.glob("**/*.bib"))
-    files.extend(repo_root.glob("**/*.bibtex"))
+    files.extend(find_files(repo_root, ["*.bib"]))
+    files.extend(find_files(repo_root, ["*.bibtex"]))
     return sorted(set(files))
 
 
