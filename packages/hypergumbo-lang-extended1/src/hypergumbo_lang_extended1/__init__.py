@@ -6,7 +6,7 @@ hardware description languages, and niche domain-specific languages.
 """
 from hypergumbo_core.analyze.all_analyzers import AnalyzerSpec
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 
 # Analyzer specifications for extended languages
 # These are registered via entry_points in pyproject.toml
