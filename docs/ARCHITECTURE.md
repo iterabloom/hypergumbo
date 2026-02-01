@@ -5,7 +5,7 @@
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 3a6e77a4d6c5
+  commit: fd37ee3f3c07
   hypergumbo: 2.0.1
   python: 3.12.3
 -->
@@ -34,7 +34,7 @@ hypergumbo hypergumbo is a local-first CLI that generates behavior maps and sket
 ## Overview
 Python (89%), Markdown (6%), Yaml (4%)
 492 files    (322 non-test + 170 test)
-~185,874 LOC (~96,048 non-test + ~89,826 test)
+~185,880 LOC (~96,054 non-test + ~89,826 test)
 
 ## Structure
 
@@ -119,8 +119,8 @@ LICENSE: AGPL
 
 ## Entry Points
 
-- `hypergumbo` (Python CLI: hypergumbo) — `packages/hypergumbo-core/pyproject.toml`
 - `hypergumbo` (Python CLI: hypergumbo) — `packages/hypergumbo/pyproject.toml`
+- `hypergumbo` (Python CLI: hypergumbo) — `packages/hypergumbo-core/pyproject.toml`
 - `main` (Python main()) — `packages/hypergumbo-core/src/hypergumbo_core/cli.py`
 - `<module:__main__.py>` (Python script (if __name__ == '__main__')) — `packages/hypergumbo-core/src/hypergumbo_core/__main__.py`
 - `<module:__main__.py>` (Python script (if __name__ == '__main__')) — `packages/hypergumbo/src/hypergumbo/__main__.py`
@@ -167,36 +167,36 @@ LICENSE: AGPL
 
 ## Source Files
 
-- `scripts/hypergumbo_diag.py`
-- `scripts/compute_probe_embeddings.py`
-- `packages/hypergumbo-core/tests/test_ipc_linker.py`
-- `packages/hypergumbo-core/tests/test_supply_chain.py`
-- `packages/hypergumbo-core/tests/test_entrypoints.py`
-- `packages/hypergumbo-core/tests/test_compact.py`
-- `packages/hypergumbo-core/tests/test_websocket.py`
+- `packages/hypergumbo-core/src/hypergumbo_core/ir.py`
+- `packages/hypergumbo-core/src/hypergumbo_core/discovery.py`
+- `packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py`
+- `packages/hypergumbo-core/src/hypergumbo_core/framework_patterns.py`
+- `packages/hypergumbo-core/src/hypergumbo_core/paths.py`
+- `packages/hypergumbo-core/src/hypergumbo_core/linkers/registry.py`
+- `packages/hypergumbo-core/src/hypergumbo_core/symbol_resolution.py`
+- `packages/hypergumbo-core/src/hypergumbo_core/analyze/all_analyzers.py`
+- `packages/hypergumbo-core/src/hypergumbo_core/selection/filters.py`
+- `packages/hypergumbo-core/src/hypergumbo_core/limits.py`
+- `packages/hypergumbo-core/src/hypergumbo_core/linkers/message_queue.py`
+- `packages/hypergumbo-core/src/hypergumbo_core/slice.py`
+- `packages/hypergumbo-core/src/hypergumbo_core/selection/token_budget.py`
 - `packages/hypergumbo-core/tests/test_message_queue_linker.py`
-- `packages/hypergumbo-core/tests/test_linker_filtering.py`
-- `packages/hypergumbo-core/tests/test_behavior_map_schema.py`
-- `packages/hypergumbo-core/tests/test_symbol_resolution.py`
-- `packages/hypergumbo-core/tests/test_route_handler_linker.py`
-- `packages/hypergumbo-core/tests/test_sketch_sanity.py`
-- `packages/hypergumbo-core/tests/test_run_behavior_map.py`
-- `packages/hypergumbo-core/tests/test_catalog.py`
-- `packages/hypergumbo-core/tests/test_ir.py`
-- `packages/hypergumbo-core/tests/test_cli_symbols.py`
-- `packages/hypergumbo-core/tests/test_fastapi_patterns.py`
-- `packages/hypergumbo-core/tests/test_dependency_linker.py`
-- `packages/hypergumbo-core/tests/test_datamodels.py`
-- `packages/hypergumbo-core/tests/test_max_tier.py`
-- `packages/hypergumbo-core/tests/test_slice_tier_filter.py`
-- `packages/hypergumbo-core/tests/test_file_excludes.py`
-- `packages/hypergumbo-core/tests/test_graphql_linker.py`
-- `packages/hypergumbo-core/tests/test_selection_token_budget.py`
-- `packages/hypergumbo-core/tests/test_http_linker.py`
-- `packages/hypergumbo-core/tests/test_limits.py`
-- `packages/hypergumbo-core/tests/test_event_sourcing_linker.py`
-- `packages/hypergumbo-core/tests/test_stable_shape_ids.py`
-- `packages/hypergumbo-core/tests/test_profile.py`
+- `packages/hypergumbo-core/src/hypergumbo_core/linkers/websocket.py`
+- `packages/hypergumbo-core/src/hypergumbo_core/supply_chain.py`
+- `packages/hypergumbo-core/src/hypergumbo_core/linkers/event_sourcing.py`
+- `packages/hypergumbo-core/src/hypergumbo_core/user_config.py`
+- `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/ini.py`
+- `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/c.py`
+- `packages/hypergumbo-core/src/hypergumbo_core/linkers/jni.py`
+- `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/gitignore.py`
+- `packages/hypergumbo-core/src/hypergumbo_core/ranking.py`
+- `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/scala.py`
+- `packages/hypergumbo-core/src/hypergumbo_core/catalog.py`
+- `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/bash.py`
+- `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/swift.py`
+- `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/java.py`
+- `packages/hypergumbo-core/src/hypergumbo_core/compact.py`
+- `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/properties.py`
 - ... and 309 more files
 
 ## Key Symbols
@@ -208,7 +208,6 @@ LICENSE: AGPL
 - `Span` (class) ★ — Source code location with line and column info.
 - `AnalysisRun` (class) — Provenance tracking for an analysis pass execution.
 - `Edge.create(cls, src: str, dst: str, edge_type: str, line: int, origin…` (method)
-- `Edge` (class) — A relationship between two symbols (e.g., function calls).
 
 ### `packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py`
 - `iter_tree(root: 'tree_sitter.Node') -> Iterator['tree_sitter.Node']` (function) — Iterate over all nodes in a tree-sitter tree without recursion.
@@ -238,10 +237,10 @@ LICENSE: AGPL
 ### `packages/hypergumbo-core/src/hypergumbo_core/catalog.py`
 - `Pass` (class) — An analysis pass that can be applied to source code.
 
-### `packages/hypergumbo-core/pyproject.toml`
+### `packages/hypergumbo/pyproject.toml`
 - `build-system` (table)
 
-(... and 2606 more symbols across 171 other files)
+(... and 2607 more symbols across 171 other files)
 
 ## Additional Files
 
@@ -341,11 +340,11 @@ if __name__ == "__main__":
 
 
 [hypergumbo sketch] Generated 5
-  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/8e45735a2eb68548/hypergumbo.results.16k.json
-  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/8e45735a2eb68548/hypergumbo.results.4k.json
-  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/8e45735a2eb68548/hypergumbo.results.64k.json
-  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/8e45735a2eb68548/hypergumbo.results.json
-  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/8e45735a2eb68548/sketch.4000.withsource.md
+  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/2938ae7ad953f417/hypergumbo.results.16k.json
+  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/2938ae7ad953f417/hypergumbo.results.4k.json
+  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/2938ae7ad953f417/hypergumbo.results.64k.json
+  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/2938ae7ad953f417/hypergumbo.results.json
+  /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/results/2938ae7ad953f417/sketch.4000.withsource.md
   Output: stdout
   Embeddings cached: /home/jgstern_agent/.cache/hypergumbo/126efff9e65fd2d7/embeddings
 ````
