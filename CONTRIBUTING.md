@@ -106,6 +106,20 @@ SMART_TEST_ACTIVE=1 pytest ...    # Skip smart-test, use real pytest
 ./scripts/install-hooks --repair-shims  # Manual repair
 ```
 
+### Setup for Smart Test Selection
+
+For smart-test to detect affected tests (instead of running the full suite), you need a **stable** hypergumbo installed separately from your dev version:
+
+```bash
+# Install stable hypergumbo via pipx (recommended)
+pipx install hypergumbo
+
+# Or via pip --user (if pipx not available)
+python3 -m pip install --user hypergumbo
+```
+
+This installs the PyPI release to `~/.local/bin/hypergumbo`, which smart-test uses for `slice --files` analysis. The `install-hooks` script will check for this and remind you if it's missing.
+
 ### Running Tests Locally
 
 ```bash
