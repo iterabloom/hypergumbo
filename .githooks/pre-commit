@@ -102,4 +102,20 @@ else
     exit 1
 fi
 
+# Check README sync (meta-package must match root)
+echo -n "  README sync... "
+if [ -f "packages/hypergumbo/README.md" ] && [ -f "README.md" ]; then
+    if diff -q README.md packages/hypergumbo/README.md >/dev/null 2>&1; then
+        echo -e "${GREEN}✓${NC}"
+    else
+        echo -e "${RED}✗${NC}"
+        echo ""
+        echo -e "${RED}Meta-package README differs from root README. Run:${NC}"
+        echo "  cp README.md packages/hypergumbo/README.md"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}skipped (files not found)${NC}"
+fi
+
 echo -e "${GREEN}✅ Pre-commit checks passed${NC}"
