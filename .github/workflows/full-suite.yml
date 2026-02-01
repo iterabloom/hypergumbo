@@ -24,6 +24,8 @@ jobs:
   # Run each package's tests in parallel
   test-core:
     runs-on: codeberg-small-lazy
+    outputs:
+      coverage: ${{ steps.tests.outputs.coverage }}
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -31,6 +33,11 @@ jobs:
         with:
           python-version: "3.11"
           cache: 'pip'
+      - name: Cache built grammars
+        uses: actions/cache@v3
+        with:
+          path: /tmp/ts-grammar-build
+          key: grammars-${{ hashFiles('scripts/build-source-grammars') }}
       - name: Install dependencies
         run: |
           pip install --upgrade pip
@@ -44,17 +51,17 @@ jobs:
       - name: Build source-only grammars
         run: ./scripts/build-source-grammars
       - name: Run tests
+        id: tests
         run: |
           pytest packages/hypergumbo-core/tests/ -n 2 --tb=short \
-            --cov=packages/hypergumbo-core/src --cov-report=xml:coverage-core.xml
-      - name: Upload coverage
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-core
-          path: coverage-core.xml
+            --cov=packages/hypergumbo-core/src --cov-report=term | tee coverage-output.txt
+          COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
+          echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
   test-mainstream:
     runs-on: codeberg-small-lazy
+    outputs:
+      coverage: ${{ steps.tests.outputs.coverage }}
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -62,6 +69,11 @@ jobs:
         with:
           python-version: "3.11"
           cache: 'pip'
+      - name: Cache built grammars
+        uses: actions/cache@v3
+        with:
+          path: /tmp/ts-grammar-build
+          key: grammars-${{ hashFiles('scripts/build-source-grammars') }}
       - name: Install dependencies
         run: |
           pip install --upgrade pip
@@ -75,17 +87,17 @@ jobs:
       - name: Build source-only grammars
         run: ./scripts/build-source-grammars
       - name: Run tests
+        id: tests
         run: |
           pytest packages/hypergumbo-lang-mainstream/tests/ -n 2 --tb=short \
-            --cov=packages/hypergumbo-lang-mainstream/src --cov-report=xml:coverage-mainstream.xml
-      - name: Upload coverage
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-mainstream
-          path: coverage-mainstream.xml
+            --cov=packages/hypergumbo-lang-mainstream/src --cov-report=term | tee coverage-output.txt
+          COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
+          echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
   test-common:
     runs-on: codeberg-small-lazy
+    outputs:
+      coverage: ${{ steps.tests.outputs.coverage }}
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -93,6 +105,11 @@ jobs:
         with:
           python-version: "3.11"
           cache: 'pip'
+      - name: Cache built grammars
+        uses: actions/cache@v3
+        with:
+          path: /tmp/ts-grammar-build
+          key: grammars-${{ hashFiles('scripts/build-source-grammars') }}
       - name: Install dependencies
         run: |
           pip install --upgrade pip
@@ -106,17 +123,17 @@ jobs:
       - name: Build source-only grammars
         run: ./scripts/build-source-grammars
       - name: Run tests
+        id: tests
         run: |
           pytest packages/hypergumbo-lang-common/tests/ -n 2 --tb=short \
-            --cov=packages/hypergumbo-lang-common/src --cov-report=xml:coverage-common.xml
-      - name: Upload coverage
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-common
-          path: coverage-common.xml
+            --cov=packages/hypergumbo-lang-common/src --cov-report=term | tee coverage-output.txt
+          COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
+          echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
   test-extended:
     runs-on: codeberg-small-lazy
+    outputs:
+      coverage: ${{ steps.tests.outputs.coverage }}
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -124,6 +141,11 @@ jobs:
         with:
           python-version: "3.11"
           cache: 'pip'
+      - name: Cache built grammars
+        uses: actions/cache@v3
+        with:
+          path: /tmp/ts-grammar-build
+          key: grammars-${{ hashFiles('scripts/build-source-grammars') }}
       - name: Install dependencies
         run: |
           pip install --upgrade pip
@@ -137,14 +159,12 @@ jobs:
       - name: Build source-only grammars
         run: ./scripts/build-source-grammars
       - name: Run tests
+        id: tests
         run: |
           pytest packages/hypergumbo-lang-extended1/tests/ -n 2 --tb=short \
-            --cov=packages/hypergumbo-lang-extended1/src --cov-report=xml:coverage-extended.xml
-      - name: Upload coverage
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-extended
-          path: coverage-extended.xml
+            --cov=packages/hypergumbo-lang-extended1/src --cov-report=term | tee coverage-output.txt
+          COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
+          echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
   # Aggregate results after all test jobs complete
   aggregate:
@@ -154,36 +174,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install coverage tool
-        run: pip install coverage
-
-      - name: Download all coverage reports
-        uses: actions/download-artifact@v4
-        with:
-          pattern: coverage-*
-          merge-multiple: true
-
-      - name: Combine coverage reports
-        run: |
-          # Convert XML reports to a combined report
-          # Note: coverage combine works with .coverage files, not XML
-          # For simplicity, we'll just check if all jobs passed
-          echo "Coverage reports downloaded:"
-          ls -la coverage-*.xml || echo "No coverage files found"
-
       - name: Check job results
         id: results
         run: |
           echo "Job results:"
-          echo "  test-core: ${{ needs.test-core.result }}"
-          echo "  test-mainstream: ${{ needs.test-mainstream.result }}"
-          echo "  test-common: ${{ needs.test-common.result }}"
-          echo "  test-extended: ${{ needs.test-extended.result }}"
+          echo "  test-core: ${{ needs.test-core.result }} (coverage: ${{ needs.test-core.outputs.coverage }}%)"
+          echo "  test-mainstream: ${{ needs.test-mainstream.result }} (coverage: ${{ needs.test-mainstream.outputs.coverage }}%)"
+          echo "  test-common: ${{ needs.test-common.result }} (coverage: ${{ needs.test-common.outputs.coverage }}%)"
+          echo "  test-extended: ${{ needs.test-extended.result }} (coverage: ${{ needs.test-extended.outputs.coverage }}%)"
 
           # Determine overall result
           if [[ "${{ needs.test-core.result }}" == "success" ]] && \
@@ -197,13 +195,31 @@ jobs:
             echo "❌ One or more test jobs failed"
           fi
 
+          # Calculate average coverage (simple average of 4 packages)
+          COV_CORE="${{ needs.test-core.outputs.coverage }}"
+          COV_MAINSTREAM="${{ needs.test-mainstream.outputs.coverage }}"
+          COV_COMMON="${{ needs.test-common.outputs.coverage }}"
+          COV_EXTENDED="${{ needs.test-extended.outputs.coverage }}"
+
+          # Default to 0 if empty
+          COV_CORE="${COV_CORE:-0}"
+          COV_MAINSTREAM="${COV_MAINSTREAM:-0}"
+          COV_COMMON="${COV_COMMON:-0}"
+          COV_EXTENDED="${COV_EXTENDED:-0}"
+
+          # Calculate average (integer math)
+          AVG=$(( (COV_CORE + COV_MAINSTREAM + COV_COMMON + COV_EXTENDED) / 4 ))
+          echo "coverage=$AVG" >> "$GITHUB_OUTPUT"
+          echo "Average coverage: $AVG%"
+
       - name: Record run result
         run: |
-          # Create a JSON artifact with run metadata for stop-the-line checks
+          # Log run metadata
           echo "{
             \"run_id\": \"${{ github.run_id }}\",
             \"sha\": \"${{ github.sha }}\",
             \"conclusion\": \"${{ steps.results.outputs.conclusion }}\",
+            \"coverage\": \"${{ steps.results.outputs.coverage }}%\",
             \"timestamp\": \"$(date -Iseconds)\",
             \"triggered_by\": \"${{ github.event_name }}\",
             \"jobs\": {
@@ -212,25 +228,23 @@ jobs:
               \"common\": \"${{ needs.test-common.result }}\",
               \"extended\": \"${{ needs.test-extended.result }}\"
             }
-          }" > full-suite-result.json
-          cat full-suite-result.json
-
-      - name: Upload result artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: full-suite-result
-          path: full-suite-result.json
-          retention-days: 30
+          }"
 
       - name: Update coverage badge
         if: steps.results.outputs.conclusion == 'success'
         run: |
-          # For now, just indicate pass/fail
-          # TODO: Aggregate actual coverage percentages from XML reports
-          COLOR="brightgreen"
-          MESSAGE="passing"
+          COV="${{ steps.results.outputs.coverage }}"
 
-          echo "{\"schemaVersion\":1,\"label\":\"tests\",\"message\":\"${MESSAGE}\",\"color\":\"${COLOR}\"}" > /tmp/coverage.json
+          # Determine badge color based on coverage
+          if [ "$COV" -ge 90 ]; then
+            COLOR="brightgreen"
+          elif [ "$COV" -ge 70 ]; then
+            COLOR="yellow"
+          else
+            COLOR="red"
+          fi
+
+          echo "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"${COV}%\",\"color\":\"${COLOR}\"}" > /tmp/coverage.json
 
           git config user.name "CI Bot"
           git config user.email "ci@iterabloom.com"
@@ -242,7 +256,7 @@ jobs:
           cp /tmp/coverage.json coverage.json
 
           git add coverage.json
-          git commit -m "Update badge: tests ${MESSAGE}" || echo "No changes to commit"
+          git commit -m "Update coverage badge: ${COV}%" || echo "No changes to commit"
           git push origin badges --force || echo "Push failed - may need write permissions"
 
       - name: Fail if any job failed
