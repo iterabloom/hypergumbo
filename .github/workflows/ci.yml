@@ -48,31 +48,54 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - name: Check full-suite status
-        env:
-          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
         run: |
-          # Get workflow runs from Forgejo API (not gh api which is GitHub-specific)
-          # Forgejo API: /repos/{owner}/{repo}/actions/runs
+          # Use commit status API (works unauthenticated for public repos)
+          # This is more reliable than the workflow runs API on Forgejo
           API_BASE="https://codeberg.org/api/v1/repos/${{ github.repository }}"
 
-          # Fetch recent workflow runs
-          RUNS_JSON=$(curl -s -H "Authorization: token $FORGEJO_TOKEN" \
-            "$API_BASE/actions/runs?limit=20" 2>/dev/null || echo '{"workflow_runs":[]}')
+          # Get the base branch HEAD SHA (the branch we're merging into)
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          echo "Checking commit status for base branch HEAD: $BASE_SHA"
 
-          # Debug: show what we got
-          echo "API response preview:"
-          echo "$RUNS_JSON" | head -c 500
-          echo ""
+          # Fetch commit status (no auth needed for public repos)
+          STATUS_JSON=$(curl -s "$API_BASE/commits/$BASE_SHA/status" 2>/dev/null || echo '{"state":"unknown","statuses":[]}')
 
-          # Find the most recent "Full Test Suite" workflow run using Python one-liner
-          LATEST_RUN=$(echo "$RUNS_JSON" | python3 -c 'import sys,json; d=json.load(sys.stdin); r=d.get("workflow_runs",[]) if isinstance(d,dict) else d; m=[x for x in r if "full-suite" in str(x.get("workflow_id","")).lower() or "full test suite" in (x.get("display_title","") or x.get("title","")).lower()]; print(f"{m[0].get(\"id\",\"unknown\")}|{m[0].get(\"conclusion\") or m[0].get(\"status\") or \"unknown\"}" if m else "unknown|unknown")' 2>/dev/null || echo "unknown|unknown")
+          # Parse the response to find Full Test Suite failures
+          RESULT=$(echo "$STATUS_JSON" | python3 -c '
+          import json, sys, re
+          try:
+              d = json.load(sys.stdin)
+              statuses = d.get("statuses", [])
 
-          RUN_ID=$(echo "$LATEST_RUN" | cut -d'|' -f1)
-          CONCLUSION=$(echo "$LATEST_RUN" | cut -d'|' -f2)
+              # Find Full Test Suite job statuses
+              full_suite = [s for s in statuses if "Full Test Suite" in s.get("context", "")]
 
-          echo "Latest full-suite run: $RUN_ID (conclusion: $CONCLUSION)"
+              if not full_suite:
+                  print("none|unknown")
+                  sys.exit(0)
 
-          if [[ "$CONCLUSION" == "failure" ]]; then
+              # Check for failures
+              failed = [s for s in full_suite if s.get("status") == "failure"]
+
+              if failed:
+                  # Extract run ID from target_url (e.g., /iterabloom/hypergumbo/actions/runs/1702/jobs/2)
+                  url = failed[0].get("target_url", "")
+                  match = re.search(r"/runs/(\d+)/", url)
+                  run_id = match.group(1) if match else "unknown"
+                  print(f"{run_id}|failure")
+              else:
+                  # All Full Test Suite jobs passed
+                  print("ok|success")
+          except Exception as e:
+              print(f"error|{e}")
+          ' 2>/dev/null || echo "error|parse_failed")
+
+          RUN_ID=$(echo "$RESULT" | cut -d'|' -f1)
+          STATUS=$(echo "$RESULT" | cut -d'|' -f2)
+
+          echo "Full Test Suite status: $STATUS (run: $RUN_ID)"
+
+          if [[ "$STATUS" == "failure" ]]; then
             PR_TITLE="${{ github.event.pull_request.title }}"
             REQUIRED_PREFIX="fix(job-$RUN_ID):"
 
@@ -91,8 +114,8 @@ jobs:
               echo "Current PR title: $PR_TITLE"
               exit 1
             fi
-          elif [[ "$CONCLUSION" == "unknown" ]]; then
-            echo "⚠️ No full-suite runs found - allowing PR (first run scenario)"
+          elif [[ "$STATUS" == "none" ]] || [[ "$STATUS" == "unknown" ]]; then
+            echo "⚠️ No Full Test Suite runs found - allowing PR (first run scenario)"
           else
             echo "✅ Full suite is passing - PR allowed"
           fi
