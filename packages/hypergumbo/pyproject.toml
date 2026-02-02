@@ -23,6 +23,9 @@ dependencies = [
   "hypergumbo-lang-mainstream==2.0.2",
   "hypergumbo-lang-common==2.0.2",
   "hypergumbo-lang-extended1==2.0.2",
+  # Embeddings for full-quality output (elevator pitch, semantic ranking)
+  # Users who want a lighter install can use hypergumbo-core directly
+  "sentence-transformers>=2.2",
 ]
 
 [project.optional-dependencies]
@@ -37,9 +40,8 @@ dev = [
   "yamllint>=1.35",
   "check-jsonschema>=0.29",
 ]
-embeddings = [
-  "sentence-transformers>=2.2",
-]
+# Kept for backwards compatibility - embeddings now included by default
+embeddings = []
 
 [project.scripts]
 hypergumbo = "hypergumbo_core.cli:main"

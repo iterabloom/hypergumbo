@@ -47,12 +47,12 @@ jobs:
         run: |
           pip install --upgrade pip
           # Install modular packages if available, otherwise legacy
+          # Note: Use hypergumbo-core[dev] for test deps, don't use meta-package (pulls PyTorch)
           if [ -d "packages/hypergumbo-core" ]; then
-            pip install -e packages/hypergumbo-core \
+            pip install -e "packages/hypergumbo-core[dev]" \
                         -e packages/hypergumbo-lang-mainstream \
                         -e packages/hypergumbo-lang-common \
-                        -e packages/hypergumbo-lang-extended1 \
-                        -e "packages/hypergumbo[dev]"
+                        -e packages/hypergumbo-lang-extended1
           else
             pip install -e .[dev]
           fi
@@ -111,12 +111,12 @@ jobs:
         run: |
           pip install --upgrade pip
           # Install modular packages if available, otherwise legacy
+          # Note: Use hypergumbo-core[dev] for test deps, don't use meta-package (pulls PyTorch)
           if [ -d "packages/hypergumbo-core" ]; then
-            pip install -e packages/hypergumbo-core \
+            pip install -e "packages/hypergumbo-core[dev]" \
                         -e packages/hypergumbo-lang-mainstream \
                         -e packages/hypergumbo-lang-common \
-                        -e packages/hypergumbo-lang-extended1 \
-                        -e "packages/hypergumbo[dev]"
+                        -e packages/hypergumbo-lang-extended1
           else
             pip install -e .[dev]
           fi
@@ -170,12 +170,12 @@ jobs:
         run: |
           pip install --upgrade pip
           # Install modular packages if available, otherwise legacy
+          # Note: Use hypergumbo-core[dev] for test deps, don't use meta-package (pulls PyTorch)
           if [ -d "packages/hypergumbo-core" ]; then
-            pip install -e packages/hypergumbo-core \
+            pip install -e "packages/hypergumbo-core[dev]" \
                         -e packages/hypergumbo-lang-mainstream \
                         -e packages/hypergumbo-lang-common \
-                        -e packages/hypergumbo-lang-extended1 \
-                        -e "packages/hypergumbo[dev]"
+                        -e packages/hypergumbo-lang-extended1
           else
             pip install -e .[dev]
           fi

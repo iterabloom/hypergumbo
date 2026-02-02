@@ -105,13 +105,11 @@ jobs:
           pip install --upgrade pip
           # Install test deps directly
           pip install pytest pytest-cov pytest-xdist jsonschema
-          # Install ALL local packages (component packages first, then meta-package)
-          # Tests need 'hypergumbo' for imports and 'python -m hypergumbo' invocations
+          # Install component packages only - meta-package pulls PyTorch/CUDA
           pip install -e packages/hypergumbo-core \
                       -e packages/hypergumbo-lang-mainstream \
                       -e packages/hypergumbo-lang-common \
-                      -e packages/hypergumbo-lang-extended1 \
-                      -e packages/hypergumbo
+                      -e packages/hypergumbo-lang-extended1
       - name: Install grammars from wheels
         run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
       - name: Run tests
@@ -145,13 +143,11 @@ jobs:
           pip install --upgrade pip
           # Install test deps directly
           pip install pytest pytest-cov pytest-xdist jsonschema
-          # Install ALL local packages (component packages first, then meta-package)
-          # Tests need 'hypergumbo' for imports and 'python -m hypergumbo' invocations
+          # Install component packages only - meta-package pulls PyTorch/CUDA
           pip install -e packages/hypergumbo-core \
                       -e packages/hypergumbo-lang-mainstream \
                       -e packages/hypergumbo-lang-common \
-                      -e packages/hypergumbo-lang-extended1 \
-                      -e packages/hypergumbo
+                      -e packages/hypergumbo-lang-extended1
       - name: Install grammars from wheels
         run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
       - name: Run tests
@@ -185,13 +181,11 @@ jobs:
           pip install --upgrade pip
           # Install test deps directly
           pip install pytest pytest-cov pytest-xdist jsonschema
-          # Install ALL local packages (component packages first, then meta-package)
-          # Tests need 'hypergumbo' for imports and 'python -m hypergumbo' invocations
+          # Install component packages only - meta-package pulls PyTorch/CUDA
           pip install -e packages/hypergumbo-core \
                       -e packages/hypergumbo-lang-mainstream \
                       -e packages/hypergumbo-lang-common \
-                      -e packages/hypergumbo-lang-extended1 \
-                      -e packages/hypergumbo
+                      -e packages/hypergumbo-lang-extended1
       - name: Install grammars from wheels
         run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
       - name: Run tests
@@ -225,13 +219,11 @@ jobs:
           pip install --upgrade pip
           # Install test deps directly
           pip install pytest pytest-cov pytest-xdist jsonschema
-          # Install ALL local packages (component packages first, then meta-package)
-          # Tests need 'hypergumbo' for imports and 'python -m hypergumbo' invocations
+          # Install component packages only - meta-package pulls PyTorch/CUDA
           pip install -e packages/hypergumbo-core \
                       -e packages/hypergumbo-lang-mainstream \
                       -e packages/hypergumbo-lang-common \
-                      -e packages/hypergumbo-lang-extended1 \
-                      -e packages/hypergumbo
+                      -e packages/hypergumbo-lang-extended1
       - name: Install grammars from wheels
         run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
       - name: Run tests
