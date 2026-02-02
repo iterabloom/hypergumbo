@@ -18,6 +18,8 @@ Version Note
 
 These versions are independent. The schema version only changes when the output
 format has breaking changes, while the tool version changes with any release.
+
+See ADR-0010 for the modular package architecture.
 """
 __all__ = ["__version__"]
 __version__ = "2.0.2"
