@@ -23,57 +23,70 @@ Output:
 ```bash
 # hypergumbo
 
-Two Outputs **Sketch** (`hypergumbo .`) — Token-budgeted Markdown sized for LLM context windows. Ranks symbols by graph centrality (★ = most connected). **Behavior map** (`hypergumbo run`) — Full JSON with all symbols, edges, and provenance tracking. Use this for programmatic analysis.
+hypergumbo hypergumbo is a local-first CLI that generates behavior maps and sketches from source code. Helps developers and LLMs quickly understand a codebase. > Requires Python 3.10+. Intel Mac users: Some tree-sitter packages lack x86_64 wheels.
 
 ## Overview
-Python (91%), Markdown (6%), Yaml (2%)
-335 files    (201 non-test + 134 test)
-~130,574 LOC (~66,411 non-test + ~64,163 test)
+Python (88%), Markdown (6%), Yaml (4%)
+495 files    (321 non-test + 174 test)
+~186,506 LOC (~96,384 non-test + ~90,122 test)
 
 ## Structure
 
 ` ` `
 hypergumbo/
-├── .github
-│   └── workflows
-│       ├── release-mirror.yml
-│       └── [and 2 other items]
+├── .agent
+│   ├── stop_reflect.md
+│   └── [and 3 other items]
+├── .githooks
+│   ├── commit-msg
+│   └── [and 7 other items]
 ├── docs
-│   ├── hypergumbo-spec.md
-│   └── [and 20 other items]
+│   ├── future
+│   │   └── registry-factory-vision.md
+│   └── [and 23 other items]
+├── packages
+│   ├── hypergumbo
+│   │   ├── pyproject.toml
+│   │   └── [and 2 other items]
+│   ├── hypergumbo-core
+│   │   ├── src
+│   │   │   └── hypergumbo_core
+│   │   │       ├── cli.py
+│   │   │       ├── ir.py
+│   │   │       └── [and 27 other items]
+│   │   ├── tests
+│   │   │   ├── test_framework_patterns.py
+│   │   │   └── [and 63 other items]
+│   │   ├── pyproject.toml
+│   │   └── [and 1 other items]
+│   └── [and 3 other items]
 ├── scripts
-│   ├── auto-pr
-│   └── [and 16 other items]
-├── src
-│   └── hypergumbo
-│       ├── ir.py
-│       └── [and 29 other items]
-├── tests
-│   ├── test_sketch.py
-│   └── [and 133 other items]
-├── package.json
+│   ├── hypergumbo_diag.py
+│   └── [and 24 other items]
+├── .gitignore
+├── ALLOWED_WEBSITES.md
+├── README.md
+├── conftest.py
 ├── pyproject.toml
-└── [and 20 other items]
+└── [and 18 other items]
 ` ` `
 
 ## Frameworks
 
-- openai
 - pytest
-- pytorch
 - transformers
 
 ## Tests
 
-135 test files · pytest, unittest
+174 test files · pytest, unittest
 
-*~92% estimated coverage (1329/1442 functions called by tests)*
+*~90% estimated coverage (1960/2179 functions called by tests)*
 
 ## Configuration
 [...]
 ```
 
-**[See full example output](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/example-output.md)** | **[With --with-source](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/example-output-with-source.md)**
+**[See full example output](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/example-output.md)**
 
 Use `-t` to control the token budget:
 ```bash
