@@ -47,8 +47,9 @@ No weak shit. If you don't know, say you don't know. If you haven't checked, say
 
 ## Required Checks
 - **100% Coverage:** No code may be committed without full test coverage. Verify with:
-  - **Fast (parallel):** `pytest -n auto --cov=src --cov-fail-under=100` (~2 min)
-  - **Debug (sequential):** `pytest --cov=src --cov-fail-under=100` (~5 min)
+  - **Fast (parallel):** `pytest -n auto --cov-fail-under=100`
+  - **Debug (sequential):** `pytest --cov-fail-under=100`
+  - Coverage paths are configured in `pyproject.toml` and `scripts/smart-test`
 - **Property Tests:** Tests verify invariants (valid IDs, confidence ranges, schema compliance) rather than exact "golden" output. We can't know a priori what the correct analysis is for complex repos.
 - **Linting:** Ensure code adheres to PEP 8.
 - **Module Docstrings:** Each `.py` file should have a substantive module docstring explaining *how it works* and *why*, not just *what* it exports. Capture implementation rationale that would otherwise be lost.
@@ -65,42 +66,44 @@ No weak shit. If you don't know, say you don't know. If you haven't checked, say
      `git config --global user.name "Your Name" && git config --global user.email "you@example.com"`
   3. Once configured, all commits must use `git commit -s` to satisfy the DCO.
 
-### Finding Uncovered Lines
+### Running Tests (smart-test)
 
-When coverage is below 100%, use `./scripts/find-uncovered` to efficiently locate uncovered lines:
+**IMPORTANT:** Always use `pytest` (aliased to `smart-test`) for running tests. Do NOT bypass it with:
+- `command pytest`
+- `python -m pytest`
+- `.venv/bin/pytest`
+- `SMART_TEST_ACTIVE=1 pytest`
 
+These escape hatches exist for debugging but waste tokens by producing ~4000 lines of raw output.
+
+**smart-test provides:**
+1. **Compact summary** - Only shows test result, failures, and coverage gaps (~20 lines vs ~4000)
+2. **Full log saved** - Complete output in `.ci/pytest-output.log` for debugging
+3. **Affected test selection** - Runs only tests that depend on changed files (when stable hypergumbo is installed)
+
+**Usage:**
 ```bash
-# Full run: runs tests once, saves output, shows uncovered lines
-./scripts/find-uncovered
-
-# Query saved data without re-running tests (~2-3 min saved)
-./scripts/find-uncovered --report
-
-# Output as file:line format (easy to navigate to)
-./scripts/find-uncovered --lines
-
-# Show actual code for each uncovered line
-./scripts/find-uncovered --context
-
-# Filter for specific files
-./scripts/find-uncovered --lines cli
-./scripts/find-uncovered --context analyze/
+pytest                      # Compact summary (default)
+pytest --raw                # Stream full output (rare, for debugging)
+pytest --full               # Run all tests, not just affected
+pytest --verbose            # Show test selection reasoning
 ```
 
-The script saves coverage data to `coverage-report.txt`, allowing multiple queries without re-running the full test suite. This is especially useful when iteratively fixing coverage gaps.
+**The compact summary shows:**
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ ================ 5770 passed, 98 warnings in 317.89s =================
 
-**Key features:**
-- `--lines` outputs `file:line` format for easy navigation with Read tool
-- `--context` shows actual code snippets for each uncovered line
-- Both modes auto-run tests if no coverage data exists
-- Warns if coverage data is stale (source files modified since last run)
-- Renamed from `.coverage.txt` to visible `coverage-report.txt`
+COVERAGE:
+packages/.../cli.py      1378      7    99%   805-807, 811, 844, 876, 914
+packages/.../bash.py      191      1    99%   78
+TOTAL                   33003     10    99%
+FAIL Required test coverage of 100% not reached. Total coverage: 99.97%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Full output: .ci/pytest-output.log
+```
 
-**Workflow for fixing coverage:**
-1. Run `./scripts/find-uncovered` once (~2 min with xdist, ~5 min without)
-2. Use `--lines` or `--context` to locate uncovered code
-3. Add `# pragma: no cover` to defensive/unreachable code paths
-4. Run `pytest -n auto --cov=src --cov-fail-under=100` to verify
+The Missing column shows exact line numbers to fix. **Do NOT re-run tests** just to find missing lines.
 
 ## Pre-Work Checklist
 Run these checks before starting any new feature or task:
@@ -131,7 +134,7 @@ Run these checks before every commit:
 git config user.name && git config user.email
 
 # 2. Run tests with coverage (must be 100%)
-pytest -n auto --cov=src --cov-fail-under=100  # parallel (~2 min)
+pytest -n auto --cov-fail-under=100
 
 # 3. If feature status changed: Update CHANGELOG.md. Update emoji indicators in `docs/hypergumbo-spec.md`.
 
@@ -386,7 +389,7 @@ def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
 ## Architecture & Context
 - **Goal:** Local-first CLI that profiles a repo and emits an agent-friendly "behavior map".
 - **Stack:** Python 3.10+, standard library preferred where possible.
-- **Core:** `src/hypergumbo` contains the logic. `cli.py` is the entry point.
+- **Core:** `packages/hypergumbo-core/src/hypergumbo_core/` contains the CLI, IR, sketch, slice, and linkers. Language analyzers are in the `hypergumbo-lang-*` packages.
 - **Specs:** See `docs/hypergumbo-spec.md` and `CHANGELOG.md` for the design contract and implementation state and progress.
 - **ADRs:** See `docs/adr/` for architectural decisions. Key ADRs:
   - ADR-0001: Portable agent instructions (this file as canonical source)
@@ -466,4 +469,4 @@ See ADR-0009 for design rationale.
 - Propose changes via PR with rationale.
 - Prefer minimal, additive changes.
 
-<!-- CANARY: agents-policy-v2026-01-30.0 -->
+<!-- CANARY: agents-policy-v2026-02-01.0 -->
