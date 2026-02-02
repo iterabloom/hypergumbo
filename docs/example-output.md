@@ -8,7 +8,7 @@ Collecting hypergumbo-core==2.0.2 (from hypergumbo)
   Downloading hypergumbo_core-2.0.2-py3-none-any.whl.metadata (2.2 kB)
 ```
 
-\[...takes ~ 1 minute; bunch of log messages omitted for brevity...\]
+[...takes ~ 1 minute; bunch of log messages omitted for brevity...]
 
 ```
 Successfully installed hypergumbo-2.0.2 hypergumbo-core-2.0.2 hypergumbo-lang-common-2.0.2 hypergumbo-lang-extended1-2.0.2 hypergumbo-lang-mainstream-2.0.2 tree-sitter-0.25.2 tree-sitter-agda-1.3.3 tree-sitter-bash-0.25.1 tree-sitter-c-0.24.1 tree-sitter-c-sharp-0.23.1 tree-sitter-cmake-0.7.2.post1 tree-sitter-commonlisp-0.4.1 tree-sitter-cpp-0.23.4 tree-sitter-css-0.25.0 tree-sitter-cuda-0.21.1 tree-sitter-dockerfile-0.2.0 tree-sitter-embedded-template-0.25.0 tree-sitter-fortran-0.5.1 tree-sitter-glsl-0.2.0 tree-sitter-go-0.25.0 tree-sitter-graphql-0.1.0 tree-sitter-groovy-0.1.2 tree-sitter-haskell-0.23.1 tree-sitter-hcl-1.2.0 tree-sitter-html-0.23.2 tree-sitter-java-0.23.5 tree-sitter-javascript-0.25.0 tree-sitter-json-0.24.8 tree-sitter-julia-0.23.1 tree-sitter-kotlin-1.1.0 tree-sitter-language-pack-0.13.0 tree-sitter-llvm-1.1.0 tree-sitter-lua-0.4.1 tree-sitter-make-1.1.1 tree-sitter-nix-0.1.0 tree-sitter-objc-3.0.2 tree-sitter-ocaml-0.24.2 tree-sitter-odin-1.3.0 tree-sitter-php-0.24.1 tree-sitter-robot-1.1.2 tree-sitter-ruby-0.23.1 tree-sitter-rust-0.24.0 tree-sitter-scala-0.24.0 tree-sitter-solidity-1.2.13 tree-sitter-sql-0.3.11 tree-sitter-swift-0.0.1 tree-sitter-toml-0.7.0 tree-sitter-typescript-0.23.2 tree-sitter-verilog-1.0.3 tree-sitter-vhdl-1.3.1 tree-sitter-xml-0.7.0 tree-sitter-yaml-0.7.2 tree-sitter-zig-1.1.2
@@ -23,7 +23,7 @@ Building tree-sitter grammars from source...
 Build directory: /tmp/ts-grammar-build
 ```
 
-\[...takes ~ 1 minute; bunch of log messages omitted for brevity...\]
+[...takes ~ 1 minute; bunch of log messages omitted for brevity...]
 
 ```
 Verifying installation...
@@ -44,7 +44,7 @@ Resolving deltas: 100% (6141/6141), done.
 2026-02-02 00:20:11.404734: I external/local_xla/xla/tsl/cuda/cudart_stub.cc:32] Could not find cuda drivers on your machine, GPU will not be used.
 ```
 
-\[...takes ~ 6.5 minutes; harmless CUDA library conflict messages omitted for brevity...\]
+[...takes ~ 6.5 minutes; harmless CUDA library conflict messages omitted for brevity...]
 
 ```
 [100%] Complete in 371.8s            ETA 2s      
