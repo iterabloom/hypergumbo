@@ -194,6 +194,24 @@ pytest                      # runs smart-test (affected tests only)
 
 After `install-hooks`, `pytest` is aliased to `./scripts/smart-test`, which uses hypergumbo's own call graph to run only tests affected by your changes. Use `pytest --full` or `command pytest` for the complete suite.
 
+### Smart Test Selection
+
+When you run `install-hooks`, you may see:
+
+```
+⚠️  No stable hypergumbo found
+   smart-test will fall back to running full test suite
+```
+
+This means smart-test can't compute affected tests, so it runs everything (~10 min). To enable fast test selection (~30 sec for small changes), install a stable hypergumbo release **outside** your dev venv:
+
+```bash
+pipx install hypergumbo          # recommended
+# or: python3 -m pip install --user hypergumbo
+```
+
+This is a bootstrap safety measure: we use a known-good release to analyze the code under development, avoiding the "testing hypergumbo with itself" paradox. See [ADR-0010](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/adr/0010-modular-packages-and-smart-testing.md) for details.
+
 100% test coverage required. All agent instructions live in [AGENTS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/AGENTS.md). Vendor-specific files (`CLAUDE.md`, `GEMINI.md`, etc.) are thin adapters that import the canonical source.
 
 ## Links
