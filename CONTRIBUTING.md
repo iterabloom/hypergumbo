@@ -10,7 +10,62 @@ Use `git commit -s` to add this automatically.
 
 We use **Safe Trunk Based Development**. Direct pushes to `main` are blocked.
 
-### Option 1: The Automated Agent Way (Recommended)
+### External Contributors (Fork Workflow)
+
+If you don't have write access to the repo, use the fork-based workflow:
+
+```bash
+# 1. Fork the repo on Codeberg to your account
+
+# 2. Clone YOUR fork (not upstream)
+git clone https://codeberg.org/YOUR-USER/hypergumbo.git
+cd hypergumbo
+
+# 3. Add upstream remote
+git remote add upstream https://codeberg.org/iterabloom/hypergumbo.git
+
+# 4. Set credentials (in .env or exported)
+export FORGEJO_USER=your-username
+export FORGEJO_TOKEN=your-token
+```
+
+Then for each contribution:
+
+```bash
+# Sync with upstream
+git fetch upstream
+git checkout dev
+git merge upstream/dev
+
+# Create feature branch
+git checkout -b yourname/feat/description
+
+# Make changes, commit with sign-off
+git commit -s -m "feat: description"
+
+# Create PR to upstream
+./scripts/contribute
+```
+
+The `contribute` script pushes to your fork and creates a PR to upstream. Unlike `auto-pr`, it does **not** auto-merge—you'll need to wait for maintainer review.
+
+| Aspect | Maintainer (`auto-pr`) | Contributor (`contribute`) |
+|--------|------------------------|---------------------------|
+| Push target | Upstream directly | Your fork |
+| PR creation | refs/for/dev/branch | Fork → upstream/dev PR |
+| CI polling | Waits and auto-merges | Exits after PR creation |
+| Merge | Automatic on CI pass | Requires maintainer approval |
+
+After your PR is merged, sync your fork:
+
+```bash
+git checkout dev
+git fetch upstream
+git merge upstream/dev
+git push origin dev
+```
+
+### Maintainers: The Automated Way (Recommended)
 We provide a script that handles pushing, waiting for CI, and merging automatically.
 
 ```bash
@@ -19,7 +74,7 @@ We provide a script that handles pushing, waiting for CI, and merging automatica
 
 See [auto-pr Documentation](#auto-pr-documentation) below for details.
 
-### Option 2: The Manual "Pure Git" Way
+### Maintainers: The Manual "Pure Git" Way
 If you prefer manual control without installing CLI tools like `tea`:
 
 1. **Commit changes** to a feature branch.
@@ -108,7 +163,14 @@ SMART_TEST_ACTIVE=1 pytest ...    # Skip smart-test, use real pytest
 
 ### Setup for Smart Test Selection
 
-For smart-test to detect affected tests (instead of running the full suite), you need a **stable** hypergumbo installed separately from your dev version:
+When you run `install-hooks`, you may see:
+
+```
+⚠️  No stable hypergumbo found
+   smart-test will fall back to running full test suite
+```
+
+This means smart-test can't compute affected tests, so it runs everything (~10 min). To enable fast test selection (~30 sec for small changes), install a stable hypergumbo release **outside** your dev venv:
 
 ```bash
 # Install stable hypergumbo via pipx (recommended)
@@ -118,7 +180,9 @@ pipx install hypergumbo
 python3 -m pip install --user hypergumbo
 ```
 
-This installs the PyPI release to `~/.local/bin/hypergumbo`, which smart-test uses for `slice --files` analysis. The `install-hooks` script will check for this and remind you if it's missing.
+This installs the PyPI release to `~/.local/bin/hypergumbo`, which smart-test uses for `slice --files` analysis.
+
+**Why a separate install?** This is a bootstrap safety measure: we use a known-good release to analyze the code under development, avoiding the "testing hypergumbo with itself" paradox. See [ADR-0010](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/adr/0010-modular-packages-and-smart-testing.md) for design rationale.
 
 ### Running Tests Locally
 
