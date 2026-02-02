@@ -48,19 +48,54 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - name: Check full-suite status
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          # Get the most recent full-suite workflow run on dev
-          WORKFLOW_RUNS=$(gh api repos/${{ github.repository }}/actions/workflows/full-suite.yml/runs?per_page=1 2>/dev/null || echo '{"workflow_runs":[]}')
+          # Use commit status API (works unauthenticated for public repos)
+          # This is more reliable than the workflow runs API on Forgejo
+          API_BASE="https://codeberg.org/api/v1/repos/${{ github.repository }}"
 
-          # Extract conclusion from latest run
-          CONCLUSION=$(echo "$WORKFLOW_RUNS" | jq -r '.workflow_runs[0].conclusion // "unknown"')
-          RUN_ID=$(echo "$WORKFLOW_RUNS" | jq -r '.workflow_runs[0].id // "unknown"')
+          # Get the base branch HEAD SHA (the branch we're merging into)
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          echo "Checking commit status for base branch HEAD: $BASE_SHA"
 
-          echo "Latest full-suite run: $RUN_ID (conclusion: $CONCLUSION)"
+          # Fetch commit status (no auth needed for public repos)
+          STATUS_JSON=$(curl -s "$API_BASE/commits/$BASE_SHA/status" 2>/dev/null || echo '{"state":"unknown","statuses":[]}')
 
-          if [[ "$CONCLUSION" == "failure" ]]; then
+          # Parse the response to find Full Test Suite failures
+          RESULT=$(echo "$STATUS_JSON" | python3 -c '
+          import json, sys, re
+          try:
+              d = json.load(sys.stdin)
+              statuses = d.get("statuses", [])
+
+              # Find Full Test Suite job statuses
+              full_suite = [s for s in statuses if "Full Test Suite" in s.get("context", "")]
+
+              if not full_suite:
+                  print("none|unknown")
+                  sys.exit(0)
+
+              # Check for failures
+              failed = [s for s in full_suite if s.get("status") == "failure"]
+
+              if failed:
+                  # Extract run ID from target_url (e.g., /iterabloom/hypergumbo/actions/runs/1702/jobs/2)
+                  url = failed[0].get("target_url", "")
+                  match = re.search(r"/runs/(\d+)/", url)
+                  run_id = match.group(1) if match else "unknown"
+                  print(f"{run_id}|failure")
+              else:
+                  # All Full Test Suite jobs passed
+                  print("ok|success")
+          except Exception as e:
+              print(f"error|{e}")
+          ' 2>/dev/null || echo "error|parse_failed")
+
+          RUN_ID=$(echo "$RESULT" | cut -d'|' -f1)
+          STATUS=$(echo "$RESULT" | cut -d'|' -f2)
+
+          echo "Full Test Suite status: $STATUS (run: $RUN_ID)"
+
+          if [[ "$STATUS" == "failure" ]]; then
             PR_TITLE="${{ github.event.pull_request.title }}"
             REQUIRED_PREFIX="fix(job-$RUN_ID):"
 
@@ -79,8 +114,8 @@ jobs:
               echo "Current PR title: $PR_TITLE"
               exit 1
             fi
-          elif [[ "$CONCLUSION" == "unknown" ]]; then
-            echo "⚠️ No full-suite runs found - allowing PR (first run scenario)"
+          elif [[ "$STATUS" == "none" ]] || [[ "$STATUS" == "unknown" ]]; then
+            echo "⚠️ No Full Test Suite runs found - allowing PR (first run scenario)"
           else
             echo "✅ Full suite is passing - PR allowed"
           fi
