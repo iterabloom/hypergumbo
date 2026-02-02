@@ -16,7 +16,7 @@ Successfully installed hypergumbo-2.0.2 hypergumbo-core-2.0.2 hypergumbo-lang-co
 /content# hypergumbo build-grammars
 ```
 
-\[above `hypergumbo build-grammars` step is only necessary if your repos of interest might contain Lean 4 or Wolfram Language\]
+[above `hypergumbo build-grammars` step is only necessary if your repos of interest might contain Lean 4 or Wolfram Language]
 
 ```
 Building tree-sitter grammars from source...
