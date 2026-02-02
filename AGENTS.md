@@ -193,6 +193,13 @@ git commit -s -m "feat: description"
     tip=$(./scripts/auto-pr status | grep "Queue tip" | awk '{print $3}')
     git checkout -b author/feat/next-change "$tip"
     ```
+- **If `auto-pr` exits unexpectedly:**
+  1. Check status: `./scripts/ci-debug status`
+  2. If CI is pending: wait and re-check
+  3. If CI passed: re-run `./scripts/auto-pr` (it will find the PR and merge)
+  4. If it queues as vPR: run `./scripts/auto-pr flush`
+
+  Do NOT manually poll CI with bash loops, call the Forgejo API via curl, or write custom merge logic. The scripts handle retries, polling, and merging. Overengineering wastes tokens and introduces bugs.
 - **Fixing Build:** If `dev` breaks, **revert first**, then fix.
 - **Fast Feedback:** During development, run only relevant tests (e.g., `pytest tests/test_cli.py`) to move fast.
 
