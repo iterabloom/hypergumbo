@@ -42,9 +42,6 @@ embeddings = [
   "sentence-transformers>=2.2",
 ]
 
-[project.scripts]
-hypergumbo = "hypergumbo_core.cli:main"
-
 [project.entry-points."hypergumbo.analyzers"]
 # Core analyzers are registered here (none for core package)
 # Language packages will add their own entry points
