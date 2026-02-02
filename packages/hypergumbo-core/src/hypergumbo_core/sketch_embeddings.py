@@ -513,6 +513,55 @@ def _is_readme_line_filterable(line: str) -> bool:
     return False
 
 
+def _dedupe_repeated_prefix(text: str, max_phrase_len: int = 10) -> str:
+    """Remove repeated word sequences at the start of text.
+
+    When README headers get merged with content, we can end up with:
+    "hypergumbo hypergumbo is a local-first CLI..."
+
+    This function detects and removes such repetitions for phrase lengths
+    1 through max_phrase_len.
+
+    Examples:
+        "foo foo foo bar" → "foo bar"
+        "foo bar foo bar baz" → "foo bar baz"
+        "a b c a b c d" → "a b c d"
+
+    Args:
+        text: The text to deduplicate.
+        max_phrase_len: Maximum phrase length to check (1 to this value).
+
+    Returns:
+        Text with repeated prefixes collapsed to single occurrence.
+    """
+    if not text:
+        return text
+
+    words = text.split()
+    if len(words) < 2:
+        return text
+
+    # Check for repeated prefixes of length 1, 2, ..., max_phrase_len
+    for phrase_len in range(1, min(max_phrase_len + 1, len(words) // 2 + 1)):
+        phrase = words[:phrase_len]
+        # Count how many times this phrase repeats consecutively at the start
+        repeat_count = 1
+        pos = phrase_len
+        while pos + phrase_len <= len(words):
+            if words[pos:pos + phrase_len] == phrase:
+                repeat_count += 1
+                pos += phrase_len
+            else:
+                break
+
+        if repeat_count > 1:
+            # Found repetition - remove all but one occurrence
+            remaining = words[pos:]
+            return " ".join(phrase + remaining)
+
+    return text
+
+
 class ReadmeExtractionDebug:
     """Debug info from README description extraction."""
 
@@ -822,6 +871,10 @@ def extract_readme_description_embedding(
         header_match = re.match(r"^(#+\s+\S+\s*#+\s*|#+\s+)", description)
         if header_match:
             description = description[header_match.end():].lstrip()
+
+    # Deduplicate repeated word sequences at the start (e.g., "foo foo bar" → "foo bar")
+    # This handles cases where the header title gets duplicated with the opening text
+    description = _dedupe_repeated_prefix(description)
 
     final_description = description if description else None
 

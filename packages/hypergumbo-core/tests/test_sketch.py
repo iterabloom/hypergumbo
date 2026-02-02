@@ -1297,6 +1297,66 @@ class TestReadmeLineFilterable:
         assert _is_readme_line_filterable("> This is a regular quote") is False
 
 
+class TestDedupeRepeatedPrefix:
+    """Tests for _dedupe_repeated_prefix helper."""
+
+    def test_single_word_repetition(self) -> None:
+        """Single word repeated gets collapsed."""
+        from hypergumbo_core.sketch_embeddings import _dedupe_repeated_prefix
+        assert _dedupe_repeated_prefix("foo foo bar") == "foo bar"
+        assert _dedupe_repeated_prefix("foo foo foo bar") == "foo bar"
+        assert _dedupe_repeated_prefix("hypergumbo hypergumbo is a CLI") == "hypergumbo is a CLI"
+
+    def test_two_word_repetition(self) -> None:
+        """Two-word phrase repeated gets collapsed."""
+        from hypergumbo_core.sketch_embeddings import _dedupe_repeated_prefix
+        assert _dedupe_repeated_prefix("foo bar foo bar baz") == "foo bar baz"
+        assert _dedupe_repeated_prefix("foo bar foo bar foo bar baz") == "foo bar baz"
+
+    def test_three_word_repetition(self) -> None:
+        """Three-word phrase repeated gets collapsed."""
+        from hypergumbo_core.sketch_embeddings import _dedupe_repeated_prefix
+        assert _dedupe_repeated_prefix("a b c a b c d") == "a b c d"
+        assert _dedupe_repeated_prefix("a b c a b c a b c d") == "a b c d"
+
+    def test_no_repetition(self) -> None:
+        """Text without repetition is unchanged."""
+        from hypergumbo_core.sketch_embeddings import _dedupe_repeated_prefix
+        assert _dedupe_repeated_prefix("foo bar baz") == "foo bar baz"
+        assert _dedupe_repeated_prefix("hypergumbo is a CLI") == "hypergumbo is a CLI"
+
+    def test_empty_and_short_text(self) -> None:
+        """Empty and single-word text is unchanged."""
+        from hypergumbo_core.sketch_embeddings import _dedupe_repeated_prefix
+        assert _dedupe_repeated_prefix("") == ""
+        assert _dedupe_repeated_prefix("foo") == "foo"
+
+    def test_entire_text_is_repetition(self) -> None:
+        """If entire text is repeated phrase, collapse to single occurrence."""
+        from hypergumbo_core.sketch_embeddings import _dedupe_repeated_prefix
+        assert _dedupe_repeated_prefix("foo foo") == "foo"
+        assert _dedupe_repeated_prefix("foo foo foo") == "foo"
+        assert _dedupe_repeated_prefix("a b a b") == "a b"
+
+    def test_longer_phrase_repetition(self) -> None:
+        """Longer phrases (up to 10 words) are handled."""
+        from hypergumbo_core.sketch_embeddings import _dedupe_repeated_prefix
+        phrase = "one two three four five"
+        text = f"{phrase} {phrase} remaining"
+        assert _dedupe_repeated_prefix(text) == f"{phrase} remaining"
+
+    def test_max_phrase_len_respected(self) -> None:
+        """Repetitions beyond max_phrase_len are not detected."""
+        from hypergumbo_core.sketch_embeddings import _dedupe_repeated_prefix
+        # 11-word phrase repeated should not be detected with default max=10
+        long_phrase = "a b c d e f g h i j k"  # 11 words
+        text = f"{long_phrase} {long_phrase} end"
+        # Should be unchanged since we only check up to 10-word phrases
+        assert _dedupe_repeated_prefix(text) == text
+        # But with higher max, it would be detected
+        assert _dedupe_repeated_prefix(text, max_phrase_len=11) == f"{long_phrase} end"
+
+
 class TestCollectSourceFiles:
     """Tests for source file collection."""
 
