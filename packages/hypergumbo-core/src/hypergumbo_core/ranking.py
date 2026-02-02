@@ -534,7 +534,7 @@ def compute_symbol_importance_density(
             # Normalize to relative path for consistent key format
             try:
                 rel_path = str(abs_path.relative_to(repo_root))
-            except ValueError:
+            except ValueError:  # pragma: no cover
                 rel_path = file_path  # Fallback if not under repo_root
 
         loc = compute_file_loc(abs_path)
