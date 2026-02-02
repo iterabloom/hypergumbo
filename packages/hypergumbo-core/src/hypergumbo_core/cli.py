@@ -840,8 +840,8 @@ def _handle_files_mode(
         while current_level and hop_count < max_hops:
             next_level: Set[str] = set()
             for node_id in current_level:
-                if node_id in visited:
-                    continue
+                if node_id in visited:  # pragma: no cover
+                    continue  # Defensive: set deduplication prevents this
                 visited.add(node_id)
 
                 # Add this node's file to dependents

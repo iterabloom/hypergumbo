@@ -451,6 +451,24 @@ class TestBashShebangHandling:
 
         assert len(files) == 4
 
+    def test_excludes_shebanged_files_in_excluded_directories(self, tmp_path: Path) -> None:
+        """Excludes shebanged files in directories like node_modules."""
+        from hypergumbo_lang_mainstream.bash import find_bash_files
+
+        # Valid shebanged file at root
+        (tmp_path / "run-script").write_text("#!/bin/bash\necho hello")
+
+        # Shebanged file in excluded directory (node_modules)
+        node_modules = tmp_path / "node_modules"
+        node_modules.mkdir()
+        (node_modules / "some-bin").write_text("#!/bin/bash\necho excluded")
+
+        files = list(find_bash_files(tmp_path))
+
+        # Should only find the root script, not the one in node_modules
+        assert len(files) == 1
+        assert files[0].name == "run-script"
+
 
 class TestBashSignatureExtraction:
     """Tests for Bash function signature extraction."""

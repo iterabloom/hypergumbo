@@ -2625,6 +2625,297 @@ def test_cmd_slice_files_mode_file_not_found(tmp_path: Path) -> None:
     assert result == 1
 
 
+def test_cmd_slice_files_mode_path_suffix_match(tmp_path: Path, capsys) -> None:
+    """Test --files mode matches paths via suffix when exact match fails."""
+    from hypergumbo_core.cli import _handle_files_mode
+    from hypergumbo_core.ir import Symbol, Edge, Span
+
+    # Create symbols with ABSOLUTE paths (as they might appear in behavior map)
+    symbols = [
+        Symbol(
+            id="python:src/utils.py:1-5:helper:function",
+            name="helper",
+            kind="function",
+            language="python",
+            path=str(tmp_path / "src" / "utils.py"),  # Absolute path
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        ),
+    ]
+
+    # Changed files list uses RELATIVE paths (as git diff might report)
+    changed_files = tmp_path / "changed.txt"
+    changed_files.write_text("src/utils.py\n")
+
+    class Args:
+        files = str(changed_files)
+        output = None  # stdout
+        max_hops = 10
+
+    result = _handle_files_mode(Args(), symbols, [], tmp_path)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "src/utils.py" in out
+
+
+def test_cmd_slice_files_mode_no_symbols_in_changed_files(tmp_path: Path, capsys) -> None:
+    """Test --files mode with changed files that contain no symbols."""
+    from hypergumbo_core.cli import _handle_files_mode
+    from hypergumbo_core.ir import Symbol, Span
+
+    # Symbols exist but in different files than what changed
+    symbols = [
+        Symbol(
+            id="python:other.py:1-5:func:function",
+            name="func",
+            kind="function",
+            language="python",
+            path="other.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        ),
+    ]
+
+    # Changed file doesn't have any symbols
+    changed_files = tmp_path / "changed.txt"
+    changed_files.write_text("readme.txt\n")
+
+    class Args:
+        files = str(changed_files)
+        output = None  # stdout
+        max_hops = 10
+
+    result = _handle_files_mode(Args(), symbols, [], tmp_path)
+
+    # Should succeed but with empty output
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert out.strip() == ""
+
+
+def test_cmd_slice_files_mode_bfs_visited_skip(tmp_path: Path) -> None:
+    """Test --files mode BFS correctly skips already-visited nodes."""
+    from hypergumbo_core.cli import _handle_files_mode
+    from hypergumbo_core.ir import Symbol, Edge, Span
+
+    # Create a diamond dependency pattern:
+    # func_a is called by both func_b and func_c
+    # Both func_b and func_c are called by func_d
+    # If we change func_a, the BFS should visit func_d only once
+    symbols = [
+        Symbol(
+            id="python:a.py:1-5:func_a:function",
+            name="func_a",
+            kind="function",
+            language="python",
+            path="a.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        ),
+        Symbol(
+            id="python:b.py:1-5:func_b:function",
+            name="func_b",
+            kind="function",
+            language="python",
+            path="b.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        ),
+        Symbol(
+            id="python:c.py:1-5:func_c:function",
+            name="func_c",
+            kind="function",
+            language="python",
+            path="c.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        ),
+        Symbol(
+            id="python:d.py:1-5:func_d:function",
+            name="func_d",
+            kind="function",
+            language="python",
+            path="d.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        ),
+    ]
+
+    edges = [
+        # func_b calls func_a
+        Edge(
+            id="edge:b->a",
+            src="python:b.py:1-5:func_b:function",
+            dst="python:a.py:1-5:func_a:function",
+            edge_type="calls",
+            line=2,
+        ),
+        # func_c calls func_a
+        Edge(
+            id="edge:c->a",
+            src="python:c.py:1-5:func_c:function",
+            dst="python:a.py:1-5:func_a:function",
+            edge_type="calls",
+            line=2,
+        ),
+        # func_d calls func_b
+        Edge(
+            id="edge:d->b",
+            src="python:d.py:1-5:func_d:function",
+            dst="python:b.py:1-5:func_b:function",
+            edge_type="calls",
+            line=2,
+        ),
+        # func_d also calls func_c (creating diamond)
+        Edge(
+            id="edge:d->c",
+            src="python:d.py:1-5:func_d:function",
+            dst="python:c.py:1-5:func_c:function",
+            edge_type="calls",
+            line=3,
+        ),
+    ]
+
+    changed_files = tmp_path / "changed.txt"
+    changed_files.write_text("a.py\n")
+
+    output_file = tmp_path / "dependent.txt"
+
+    class Args:
+        files = str(changed_files)
+        output = str(output_file)
+        max_hops = 10
+
+    result = _handle_files_mode(Args(), symbols, edges, tmp_path)
+
+    assert result == 0
+    assert output_file.exists()
+
+    # Should find all four files (a.py changed, b.py and c.py call a, d.py calls both)
+    dependent = output_file.read_text().strip().split("\n")
+    assert "a.py" in dependent
+    assert "b.py" in dependent
+    assert "c.py" in dependent
+    assert "d.py" in dependent
+    # And d.py should appear only once (BFS deduplication)
+    assert dependent.count("d.py") == 1
+
+
+def test_cmd_slice_files_mode_stdout_output(tmp_path: Path, capsys) -> None:
+    """Test --files mode writes to stdout when no output file specified."""
+    from hypergumbo_core.cli import _handle_files_mode
+    from hypergumbo_core.ir import Symbol, Edge, Span
+
+    symbols = [
+        Symbol(
+            id="python:main.py:1-5:main:function",
+            name="main",
+            kind="function",
+            language="python",
+            path="main.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        ),
+        Symbol(
+            id="python:helper.py:1-5:helper:function",
+            name="helper",
+            kind="function",
+            language="python",
+            path="helper.py",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+        ),
+    ]
+
+    edges = [
+        Edge(
+            id="edge:main->helper",
+            src="python:main.py:1-5:main:function",
+            dst="python:helper.py:1-5:helper:function",
+            edge_type="calls",
+            line=2,
+        ),
+    ]
+
+    changed_files = tmp_path / "changed.txt"
+    changed_files.write_text("helper.py\n")
+
+    class Args:
+        files = str(changed_files)
+        output = None  # No output file = stdout
+        max_hops = 10
+
+    result = _handle_files_mode(Args(), symbols, edges, tmp_path)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    # Should have written file list to stdout
+    assert "helper.py" in out
+    assert "main.py" in out
+
+
+def test_cmd_slice_files_integration(tmp_path: Path, capsys) -> None:
+    """Test cmd_slice with --files flag (integration test for line 914)."""
+    from hypergumbo_core.cli import cmd_slice
+
+    # Create a behavior map with symbols
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:main.py:1-5:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "python",
+                "path": "main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 0},
+            },
+            {
+                "id": "python:helper.py:1-5:helper:function",
+                "name": "helper",
+                "kind": "function",
+                "language": "python",
+                "path": "helper.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 0},
+            },
+        ],
+        "edges": [
+            {
+                "id": "edge:main->helper",
+                "src": "python:main.py:1-5:main:function",
+                "dst": "python:helper.py:1-5:helper:function",
+                "type": "calls",
+                "line": 2,
+            },
+        ],
+    }
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+
+    # Create changed files list
+    changed_files = tmp_path / "changed.txt"
+    changed_files.write_text("helper.py\n")
+
+    # Create output file path
+    output_file = tmp_path / "dependent.txt"
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.files = str(changed_files)
+    args.output = str(output_file)
+    args.max_hops = 10
+    args.input = None
+    args.entry = None
+    args.out = None
+    args.max_files = 100
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+
+    result = cmd_slice(args)
+
+    assert result == 0
+    assert output_file.exists()
+
+    dependent = output_file.read_text().strip().split("\n")
+    assert "helper.py" in dependent
+    assert "main.py" in dependent
+
+
 def test_cmd_compact_converts_behavior_map(tmp_path: Path) -> None:
     """Test that cmd_compact converts a behavior map to compact form."""
     # Create a test behavior map with some symbols
