@@ -198,6 +198,19 @@ else
 fi
 
 # -----------------------------
+# Warn if hypergumbo in venv is missing or shadowed
+# -----------------------------
+if venv_dir=$(detect_venv); then
+  VENV_HG="$repo_root/$venv_dir/bin/hypergumbo"
+  if [[ ! -x "$VENV_HG" ]]; then
+    echo ""
+    echo "⚠️  No hypergumbo CLI found in $venv_dir/bin/"
+    echo "   Dev commands will use the system/pipx version instead of your source checkout."
+    echo "   Run: ./scripts/dev-install"
+  fi
+fi
+
+# -----------------------------
 # Check for stable hypergumbo (for smart-test)
 # -----------------------------
 # smart-test needs a stable hypergumbo release (not the dev version) to
