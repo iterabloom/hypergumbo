@@ -112,11 +112,25 @@ jobs:
                       -e packages/hypergumbo-lang-extended1
       - name: Install grammars from wheels
         run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+      - name: Check for sentence-transformers
+        run: |
+          if python -c "import sentence_transformers" 2>/dev/null; then
+            echo "sentence-transformers available"
+            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "sentence-transformers not installed, using no-embeddings coverage config"
+            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
       - name: Run tests
         id: tests
         run: |
+          COV_CONFIG=""
+          if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
+            COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
+          fi
+
           pytest packages/hypergumbo-core/tests/ -n 2 --tb=short \
-            --cov=packages/hypergumbo-core/src --cov-report=term | tee coverage-output.txt
+            --cov=packages/hypergumbo-core/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
