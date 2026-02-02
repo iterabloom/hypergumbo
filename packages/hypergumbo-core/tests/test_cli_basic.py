@@ -1,11 +1,15 @@
 import logging
 import pytest
 
-from hypergumbo import __version__
 from hypergumbo_core.cli import build_parser, main
 
 
 def test_version_flag_prints_version_and_exits(capsys):
+    """Test that --version prints the hypergumbo meta-package version."""
+    hypergumbo = pytest.importorskip(
+        "hypergumbo", reason="requires hypergumbo meta-package"
+    )
+
     parser = build_parser()
 
     with pytest.raises(SystemExit) as exc:
@@ -14,7 +18,7 @@ def test_version_flag_prints_version_and_exits(capsys):
     assert exc.value.code == 0
 
     out, err = capsys.readouterr()
-    assert __version__ in out
+    assert hypergumbo.__version__ in out
     assert "hypergumbo" in out
 
 
@@ -43,4 +47,3 @@ def test_debug_flag_configures_logging(tmp_path, monkeypatch):
     # Verify basicConfig was called with DEBUG level
     assert len(config_calls) == 1
     assert config_calls[0]["level"] == logging.DEBUG
-

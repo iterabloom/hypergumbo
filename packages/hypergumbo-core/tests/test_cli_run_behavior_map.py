@@ -18,6 +18,20 @@ def _has_sentence_transformers() -> bool:
         return False
 
 
+def _has_hypergumbo_meta() -> bool:
+    """Check if hypergumbo meta-package is installed."""
+    try:
+        import hypergumbo
+        del hypergumbo
+        return True
+    except ImportError:
+        return False
+
+
+@pytest.mark.skipif(
+    not _has_hypergumbo_meta(),
+    reason="requires hypergumbo meta-package"
+)
 def test_cli_run_creates_behavior_map(tmp_path: Path) -> None:
     """Test that CLI run command creates a valid behavior map."""
     # Create a small demo project instead of analyzing the full hypergumbo repo
@@ -51,6 +65,10 @@ def test_cli_run_creates_behavior_map(tmp_path: Path) -> None:
     assert "python" in data["profile"]["languages"]
 
 
+@pytest.mark.skipif(
+    not _has_hypergumbo_meta(),
+    reason="requires hypergumbo meta-package"
+)
 def test_cli_run_with_max_files(tmp_path: Path) -> None:
     """Test that --max-files option limits files analyzed per language."""
     # Create a mini project with multiple Python files
@@ -122,6 +140,10 @@ def test_run_behavior_map_returns_budget_files(tmp_path: Path) -> None:
     assert budget_16k.exists()
 
 
+@pytest.mark.skipif(
+    not _has_hypergumbo_meta(),
+    reason="requires hypergumbo meta-package"
+)
 def test_cli_run_prints_artifact_summary(tmp_path: Path) -> None:
     """Test that cli run command prints artifact summary."""
     # Create a simple Python file
@@ -146,6 +168,10 @@ def test_cli_run_prints_artifact_summary(tmp_path: Path) -> None:
     assert str(out_path) in result.stdout
 
 
+@pytest.mark.skipif(
+    not _has_hypergumbo_meta(),
+    reason="requires hypergumbo meta-package"
+)
 def test_cli_run_prints_budget_files_in_summary(tmp_path: Path) -> None:
     """Test that cli run prints budget files in artifact summary."""
     # Create a simple Python file
