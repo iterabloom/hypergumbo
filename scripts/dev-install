@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Dev install for hypergumbo monorepo.
+# Installs all sub-packages editable so changes are reflected immediately.
+
+if [[ -z "${VIRTUAL_ENV:-}" ]]; then
+  echo "ERROR: No active virtualenv detected."
+  echo "Run: python3 -m venv .venv && source .venv/bin/activate"
+  exit 1
+fi
+
+python -m pip install -U pip
+
+python -m pip install \
+  -e "packages/hypergumbo-core[dev]" \
+  -e packages/hypergumbo-lang-mainstream \
+  -e packages/hypergumbo-lang-common \
+  -e packages/hypergumbo-lang-extended1 \
+  -e packages/hypergumbo
+
+hash -r
+
+echo ""
+echo "✅ Dev install complete"
+echo "   hypergumbo => $(command -v hypergumbo)"
+hypergumbo --version
