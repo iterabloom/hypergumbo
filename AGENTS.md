@@ -50,6 +50,8 @@ No weak shit. If you don't know, say you don't know. If you haven't checked, say
   - **Fast (parallel):** `pytest -n auto --cov-fail-under=100`
   - **Debug (sequential):** `pytest --cov-fail-under=100`
   - Coverage paths are configured in `pyproject.toml` and `scripts/smart-test`
+  - **No excuses:** If coverage drops below 100%, it is YOUR responsibility to fix it—even if you didn't cause it. "Not my fault" is not an acceptable response. Any coverage gap you encounter is technical debt that must be addressed before proceeding. Investigate the cause, fix it, and move on. This prevents debt accumulation.
+  - **Embedding-dependent code:** When `sentence-transformers` isn't available, `smart-test` automatically uses `.coveragerc.no-embeddings` which excludes embedding-only code paths. This is expected. But in a properly configured dev environment (`./scripts/dev-install`), embeddings SHOULD be available.
 - **Property Tests:** Tests verify invariants (valid IDs, confidence ranges, schema compliance) rather than exact "golden" output. We can't know a priori what the correct analysis is for complex repos.
 - **Linting:** Ensure code adheres to PEP 8.
 - **Module Docstrings:** Each `.py` file should have a substantive module docstring explaining *how it works* and *why*, not just *what* it exports. Capture implementation rationale that would otherwise be lost.

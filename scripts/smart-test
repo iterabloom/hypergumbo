@@ -77,6 +77,15 @@ COV_PATHS=(
     "--cov=packages/hypergumbo-lang-extended1/src"
 )
 
+# Detect if sentence-transformers is available
+# If not, use reduced coverage config that excludes embedding-dependent code
+if python3 -c "import sentence_transformers" 2>/dev/null; then
+    EMBEDDINGS_AVAILABLE=true
+else
+    EMBEDDINGS_AVAILABLE=false
+    COV_PATHS+=("--cov-config=.coveragerc.no-embeddings")
+fi
+
 log() {
     if [[ "$VERBOSE" == "true" ]]; then
         echo "[smart-test] $*" >&2
