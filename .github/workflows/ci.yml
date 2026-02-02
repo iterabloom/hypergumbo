@@ -49,7 +49,7 @@ jobs:
     steps:
       - name: Check full-suite status
         env:
-          FORGEJO_TOKEN: ${{ github.token }}
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
         run: |
           # Get workflow runs from Forgejo API (not gh api which is GitHub-specific)
           # Forgejo API: /repos/{owner}/{repo}/actions/runs
