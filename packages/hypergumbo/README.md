@@ -186,7 +186,7 @@ Key design choices:
 git clone https://codeberg.org/iterabloom/hypergumbo.git
 cd hypergumbo
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e .[dev]
+./scripts/dev-install
 ./scripts/install-hooks
 source .venv/bin/activate  # reload to enable pytest alias
 pytest                      # runs smart-test (affected tests only)
