@@ -91,6 +91,7 @@ from .framework_patterns import (
     get_frameworks_dir,
     resolve_deferred_symbol_refs,
 )
+from .partial_install_warnings import check_partial_install_warnings
 
 
 def _log_memory(label: str) -> None:  # pragma: no cover
@@ -3186,6 +3187,11 @@ def run_behavior_map(
             analysis_runs.append(linker_result.run.to_dict())
         all_symbols.extend(linker_result.symbols)
         all_edges.extend(linker_result.edges)
+
+    # Check for partial installation issues (ADR-0010 Item 8)
+    # Emit warnings for: unanalyzed files, partial linker requirements
+    check_partial_install_warnings(profile, linker_ctx, emit_warnings=True)
+
     del linker_ctx, captured_symbols  # Free linker data structures
 
     # Deduplicate edges by ID (linkers may create duplicate edges)
