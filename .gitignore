@@ -41,3 +41,4 @@ package-lock.json
 
 # Hypergumbo cache
 .hypergumbo_cache/
+.ci/pytest-output.log

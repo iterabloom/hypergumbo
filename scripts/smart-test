@@ -9,9 +9,13 @@
 #   - Core infrastructure files changed (sketch.py, slice.py, etc.)
 #   - No changes detected (runs all tests as sanity check)
 #
+# OUTPUT: By default, shows only a compact summary (test result + coverage gaps).
+# Full pytest output is saved to .ci/pytest-output.log for debugging.
+#
 # Usage:
-#   ./scripts/smart-test              # Run affected tests, generate manifest
+#   ./scripts/smart-test              # Run affected tests, show compact summary
 #   ./scripts/smart-test --full       # Run all tests
+#   ./scripts/smart-test --raw        # Stream full pytest output (no summary)
 #   ./scripts/smart-test --verbose    # Show selection reasoning
 #   ./scripts/smart-test --manifest   # Generate manifest only (no test run)
 #   ./scripts/smart-test --background # Kick off full suite in background
@@ -35,6 +39,7 @@ FULL_RUN=false
 VERBOSE=false
 MANIFEST_ONLY=false
 BACKGROUND=false
+RAW_OUTPUT=false
 PYTEST_ARGS=()
 
 for arg in "$@"; do
@@ -43,10 +48,14 @@ for arg in "$@"; do
         --verbose) VERBOSE=true ;;
         --manifest) MANIFEST_ONLY=true ;;
         --background) BACKGROUND=true ;;
+        --raw) RAW_OUTPUT=true ;;
         -*) PYTEST_ARGS+=("$arg") ;;
         *) PYTEST_ARGS+=("$arg") ;;
     esac
 done
+
+# Output file for full pytest log
+PYTEST_LOG="$REPO_ROOT/.ci/pytest-output.log"
 
 # Files that trigger full test suite when changed
 # These are core infrastructure that affects test selection itself
@@ -74,6 +83,106 @@ log() {
     fi
 }
 
+# Summarize pytest output to show only what matters:
+# - Test result (passed/failed count)
+# - Failed tests with tracebacks
+# - Coverage gaps (files with < 100%)
+# - Coverage total
+summarize_pytest_output() {
+    local logfile="$1"
+    local exit_code="$2"
+
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    # Extract and show the result line (e.g., "=== 5770 passed, 79 warnings in 275.79s ===")
+    local result_line
+    result_line=$(grep -E "^=+ .*(passed|failed|error).* =+$" "$logfile" | tail -1)
+    if [[ -n "$result_line" ]]; then
+        if [[ "$exit_code" -eq 0 ]]; then
+            echo "✅ $result_line"
+        else
+            echo "❌ $result_line"
+        fi
+    fi
+
+    # Show failed tests (if any)
+    local failures
+    failures=$(grep -E "^FAILED " "$logfile" || true)
+    if [[ -n "$failures" ]]; then
+        echo ""
+        echo "FAILED TESTS:"
+        echo "$failures"
+        echo ""
+        # Show short tracebacks for failures
+        # Extract from "FAILURES" section to next "=" line
+        sed -n '/^=* FAILURES =*/,/^=.*=$/p' "$logfile" | head -100
+    fi
+
+    # Show coverage gaps (files with missing lines)
+    echo ""
+    echo "COVERAGE:"
+    # Match lines like: packages/.../file.py    191      1    99%   78
+    # Where there's a non-zero miss count (column 2 after filename)
+    local coverage_gaps
+    coverage_gaps=$(grep -E "^packages/.*\s+[0-9]+\s+[1-9][0-9]*\s+[0-9]+%\s+[0-9]" "$logfile" || true)
+    if [[ -n "$coverage_gaps" ]]; then
+        echo "$coverage_gaps"
+    else
+        echo "  (all files at 100%)"
+    fi
+
+    # Show TOTAL line
+    local total_line
+    total_line=$(grep "^TOTAL" "$logfile" || true)
+    if [[ -n "$total_line" ]]; then
+        echo "$total_line"
+    fi
+
+    # Show coverage pass/fail
+    local cov_result
+    cov_result=$(grep -E "(Required test coverage|FAIL Required)" "$logfile" || true)
+    if [[ -n "$cov_result" ]]; then
+        echo "$cov_result"
+    fi
+
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Full output: $logfile"
+    echo ""
+}
+
+# Run pytest and show summary (or raw output if --raw)
+run_pytest() {
+    local test_targets="$1"
+    shift
+    local extra_args=("$@")
+
+    mkdir -p "$MANIFEST_DIR"
+
+    if [[ "$RAW_OUTPUT" == "true" ]]; then
+        # Stream output directly (old behavior)
+        # shellcheck disable=SC2086
+        exec pytest $test_targets "${COV_PATHS[@]}" "${extra_args[@]}"
+    else
+        # Capture output, then summarize
+        echo "Running tests... (output saved to $PYTEST_LOG)"
+        # shellcheck disable=SC2086
+        # Use || true to prevent set -e from exiting on test failure
+        pytest $test_targets "${COV_PATHS[@]}" "${extra_args[@]}" > "$PYTEST_LOG" 2>&1 || true
+        local exit_code=${PIPESTATUS[0]}
+        # Re-check exit code from log file if PIPESTATUS doesn't work
+        if grep -q "FAIL Required test coverage" "$PYTEST_LOG"; then
+            exit_code=1
+        elif grep -qE "^FAILED " "$PYTEST_LOG"; then
+            exit_code=1
+        elif grep -qE "[0-9]+ passed" "$PYTEST_LOG" && ! grep -q "failed" "$PYTEST_LOG"; then
+            exit_code=0
+        fi
+        summarize_pytest_output "$PYTEST_LOG" "$exit_code"
+        return $exit_code
+    fi
+}
+
 run_full_suite() {
     local reason="${1:-}"
     if [[ -n "$reason" ]]; then
@@ -91,7 +200,8 @@ run_full_suite() {
         exit 0
     fi
 
-    exec pytest packages/*/tests/ -n 2 "${COV_PATHS[@]}" "${PYTEST_ARGS[@]}"
+    run_pytest "packages/*/tests/" -n 2 "${PYTEST_ARGS[@]}"
+    exit $?
 }
 
 kick_off_background_suite() {
@@ -221,5 +331,5 @@ fi
 
 # Run only affected tests
 echo "Running $TEST_COUNT affected test files (use --full for complete suite)"
-# shellcheck disable=SC2086
-exec pytest $AFFECTED_TESTS "${COV_PATHS[@]}" "${PYTEST_ARGS[@]}"
+run_pytest "$AFFECTED_TESTS" "${PYTEST_ARGS[@]}"
+exit $?

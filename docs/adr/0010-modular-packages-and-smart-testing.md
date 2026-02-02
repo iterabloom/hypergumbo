@@ -275,17 +275,16 @@ feat: new thing (notwithstanding job-12345)
 job-12345 is not my problem
 ```
 
-### Integration with find-uncovered
+### Reading Coverage Output
 
-The existing `scripts/find-uncovered` complements smart testing:
-```bash
-# After smart-test runs subset
-./scripts/find-uncovered --lines
-
-# Shows uncovered lines, but only in files you changed
-# (uncovered lines in unchanged files are expected - you didn't run those tests)
+When coverage fails, missing lines appear in the pytest output in this format:
 ```
-During implementation we should experiment with `find-uncovered`, including runtime benchmarking and behavior in a stale cache scenario, to be sure it behaves the way we want it to behave/ assume it will behave.
+packages/.../file.py    191      1    99%   78
+                        ^^^      ^    ^^^   ^^
+                        stmts  miss  cover  MISSING LINES
+```
+
+The final column shows missing line numbers (e.g., `78` or `162-170, 180`). No separate tool is needed - just read the pytest output carefully, focusing on the coverage table at the end.
 
 ### Cross-Module Interaction Safety
 
