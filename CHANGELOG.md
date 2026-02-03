@@ -21,6 +21,16 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   - **F#**: giraffe, saturn, suave (via `.fsproj` files)
 - **Framework YAML patterns**: Added pattern files for R Shiny, R Plumber, Lua OpenResty/Lapis, C++ Qt, Erlang Cowboy, and F# Giraffe/Saturn. These enable symbol enrichment (route detection, handler classification) once frameworks are detected.
 - **Test framework patterns for 16 additional languages**: Extended `test-frameworks.yaml` to detect test functions in Elixir (ExUnit), Scala (ScalaTest/MUnit/Specs2), Dart (test package), Clojure (clojure.test), Haskell (HSpec/Tasty/QuickCheck), Erlang (EUnit/Common Test), F# (Expecto/NUnit/xUnit), Ruby (RSpec - was missing despite being mentioned), Julia (Test stdlib), OCaml (OUnit/Alcotest), Lua (busted/luaunit), R (testthat), Nim (unittest), Zig (built-in), D (unittest), and Groovy (Spock/JUnit).
+- **Framework detection for 9 more languages**: Extended dependency-file scanning for languages that had test-framework patterns but no application-framework detection:
+  - **Kotlin**: Ktor, Exposed, Koin, Kodein (via `build.gradle.kts`)
+  - **C#**: ASP.NET Core, Blazor, Entity Framework, SignalR (via `*.csproj`)
+  - **Dart**: Shelf, Aqueduct, Angel, Dart Frog, Serverpod (via `pubspec.yaml`)
+  - **Julia**: Genie, Oxygen, HTTP.jl, Mux (via `Project.toml`)
+  - **OCaml**: Dream, Opium, Cohttp, Eliom (via `dune-project`, `*.opam`)
+  - **Nim**: Jester, Prologue, Karax, Mummy (via `*.nimble`)
+  - **Zig**: zap, http.zig, zig-network (via `build.zig.zon`)
+  - **D**: vibe.d, Hunt, DiamondMVC (via `dub.json`, `dub.sdl`)
+  - **Groovy**: Grails, Ratpack, Micronaut (via `build.gradle`)
 - **Secret scanning with gitleaks**: `hypergumbo sketch` now scans output for potential secrets before displaying it. This helps prevent accidentally pasting credentials into LLM chat windows. Install gitleaks with `hypergumbo install-gitleaks`. Scans run by default (opt-out with `--no-secret-scan`). Always warns that scanning is best-effort, not exhaustive.
 - **Scoped coverage for smart-test (ADR-0011)**: smart-test now uses the `last-green-sha` marker from CI as the baseline for comparison, and enforces 100% coverage only for changed source files (not the entire codebase). This enables fast feedback (~45 tests in <1s vs 5700+ tests) while still enforcing coverage for your changes.
 - **Per-package coverage check script**: Added `scripts/check-package-coverage` to verify each package achieves 100% coverage when tested in isolation (mimicking CI). Catches cross-package coverage dependencies before pushing.
