@@ -322,7 +322,10 @@ jobs:
               esac
 
               # Count tests that mention this module
-              ACTUAL=$(grep -c "packages/$mod/tests/" "$MANIFEST" 2>/dev/null || echo 0)
+              # Note: grep -c exits 1 when no matches (even though it outputs "0")
+              # Using || true prevents the fallback from appending another "0"
+              ACTUAL=$(grep -c "packages/$mod/tests/" "$MANIFEST" 2>/dev/null || true)
+              ACTUAL=${ACTUAL:-0}
 
               if [ "$ACTUAL" -lt "$MIN_TESTS" ]; then
                 echo "⚠️ Manifest has $ACTUAL tests for $mod, expected ≥$MIN_TESTS"

@@ -330,11 +330,6 @@ if [[ "$BACKGROUND" == "true" ]]; then
     exit 0
 fi
 
-# Handle --full flag
-if [[ "$FULL_RUN" == "true" ]]; then
-    run_full_suite "explicit --full flag"
-fi
-
 # Check for stable hypergumbo installation
 # IMPORTANT: Use stable release, not the version under test (bootstrap safety)
 STABLE_HG=""
@@ -369,6 +364,11 @@ UNSTAGED_CHANGES=$(git diff --name-only 2>/dev/null || echo "")
 
 # Combine and deduplicate
 CHANGED_FILES=$(printf "%s\n%s\n%s" "$COMMITTED_CHANGES" "$STAGED_CHANGES" "$UNSTAGED_CHANGES" | sort -u | grep -v '^$' || echo "")
+
+# Handle --full flag (now that CHANGED_FILES is computed for manifest)
+if [[ "$FULL_RUN" == "true" ]]; then
+    run_full_suite "explicit --full flag" "$CHANGED_FILES"
+fi
 
 if [[ -z "$CHANGED_FILES" ]]; then
     run_full_suite "no changed files detected"
