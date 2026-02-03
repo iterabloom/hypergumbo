@@ -1580,3 +1580,180 @@ def test_detects_clojure_pedestal_framework_from_project_clj(tmp_path: Path) -> 
 
     data = json.loads(out_path.read_text())
     assert "pedestal" in data["profile"]["frameworks"]
+
+
+# R framework detection tests
+
+
+def test_detects_r_shiny_framework(tmp_path: Path) -> None:
+    """Should detect Shiny from DESCRIPTION file."""
+    (tmp_path / "app.R").write_text("library(shiny)\nshinyApp(ui, server)\n")
+    (tmp_path / "DESCRIPTION").write_text("""Package: myapp
+Title: My Shiny App
+Version: 0.1.0
+Imports:
+    shiny,
+    dplyr
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "shiny" in data["profile"]["frameworks"]
+
+
+def test_detects_r_plumber_framework(tmp_path: Path) -> None:
+    """Should detect Plumber from DESCRIPTION file."""
+    (tmp_path / "api.R").write_text("#* @get /hello\nfunction() 'Hello'\n")
+    (tmp_path / "DESCRIPTION").write_text("""Package: myapi
+Title: My API
+Version: 0.1.0
+Imports:
+    plumber
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "plumber" in data["profile"]["frameworks"]
+
+
+# Lua framework detection tests
+
+
+def test_detects_lua_openresty_framework(tmp_path: Path) -> None:
+    """Should detect OpenResty from rockspec or nginx.conf."""
+    (tmp_path / "app.lua").write_text("ngx.say('Hello')\n")
+    (tmp_path / "nginx.conf").write_text("""
+http {
+    server {
+        location / {
+            content_by_lua_block {
+                ngx.say("Hello from OpenResty")
+            }
+        }
+    }
+}
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "openresty" in data["profile"]["frameworks"]
+
+
+def test_detects_lua_lapis_framework(tmp_path: Path) -> None:
+    """Should detect Lapis from rockspec file."""
+    (tmp_path / "app.lua").write_text("local lapis = require('lapis')\n")
+    (tmp_path / "myapp-1.0-1.rockspec").write_text("""package = "myapp"
+version = "1.0-1"
+dependencies = {
+    "lua >= 5.1",
+    "lapis"
+}
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "lapis" in data["profile"]["frameworks"]
+
+
+# C++ framework detection tests
+
+
+def test_detects_cpp_qt_framework_from_cmake(tmp_path: Path) -> None:
+    """Should detect Qt from CMakeLists.txt."""
+    (tmp_path / "main.cpp").write_text("#include <QApplication>\nint main() {}\n")
+    (tmp_path / "CMakeLists.txt").write_text("""cmake_minimum_required(VERSION 3.16)
+project(myapp)
+find_package(Qt6 REQUIRED COMPONENTS Widgets)
+add_executable(myapp main.cpp)
+target_link_libraries(myapp Qt6::Widgets)
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "qt" in data["profile"]["frameworks"]
+
+
+def test_detects_cpp_qt_framework_from_pro(tmp_path: Path) -> None:
+    """Should detect Qt from .pro (qmake) file."""
+    (tmp_path / "main.cpp").write_text("#include <QApplication>\nint main() {}\n")
+    (tmp_path / "myapp.pro").write_text("""QT += widgets
+SOURCES += main.cpp
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "qt" in data["profile"]["frameworks"]
+
+
+# Erlang framework detection tests
+
+
+def test_detects_erlang_cowboy_framework(tmp_path: Path) -> None:
+    """Should detect Cowboy from rebar.config."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "myapp.erl").write_text("-module(myapp).\n")
+    (tmp_path / "rebar.config").write_text("""{deps, [
+    {cowboy, "2.10.0"}
+]}.
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "cowboy" in data["profile"]["frameworks"]
+
+
+# F# framework detection tests
+
+
+def test_detects_fsharp_giraffe_framework(tmp_path: Path) -> None:
+    """Should detect Giraffe from .fsproj file."""
+    (tmp_path / "Program.fs").write_text("open Giraffe\n[<EntryPoint>]\nlet main _ = 0\n")
+    (tmp_path / "myapp.fsproj").write_text("""<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Giraffe" Version="6.0.0" />
+  </ItemGroup>
+</Project>
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "giraffe" in data["profile"]["frameworks"]
+
+
+def test_detects_fsharp_saturn_framework(tmp_path: Path) -> None:
+    """Should detect Saturn from .fsproj file."""
+    (tmp_path / "Program.fs").write_text("open Saturn\n[<EntryPoint>]\nlet main _ = 0\n")
+    (tmp_path / "myapp.fsproj").write_text("""<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Saturn" Version="0.16.1" />
+  </ItemGroup>
+</Project>
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "saturn" in data["profile"]["frameworks"]

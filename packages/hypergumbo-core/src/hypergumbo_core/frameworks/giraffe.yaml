@@ -1,0 +1,88 @@
+# Giraffe framework patterns (ADR-0003 v1.1.x)
+#
+# Giraffe is a functional F# web framework built on ASP.NET Core.
+# Uses HttpHandler composition with the >=> (fish) operator.
+# Emphasizes functional programming patterns and type safety.
+
+id: giraffe
+language: fsharp
+
+patterns:
+  # HttpHandler composition (>=> operator)
+  - concept: handler
+    usage:
+      kind: "^call$"
+      name: "^>=>$"
+
+  # Route functions
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(route|routef|routeCi|routeCif)$"
+
+  # HTTP method handlers
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)$"
+
+  # Subroute grouping
+  - concept: route_group
+    usage:
+      kind: "^call$"
+      name: "^subRoute$"
+
+  # choose - try multiple handlers
+  - concept: router
+    usage:
+      kind: "^call$"
+      name: "^choose$"
+
+  # Response helpers
+  - concept: response
+    usage:
+      kind: "^call$"
+      name: "^(json|text|htmlString|htmlView|htmlFile|redirectTo)$"
+
+  # Request binding
+  - concept: request
+    usage:
+      kind: "^call$"
+      name: "^(bindJson|bindXml|bindForm|bindQueryString|bindModel)$"
+
+  # Authentication/Authorization
+  - concept: auth
+    usage:
+      kind: "^call$"
+      name: "^(requiresAuthentication|requiresRole|requiresRoleOf)$"
+
+  # Middleware
+  - concept: middleware
+    usage:
+      kind: "^call$"
+      name: "^(setStatusCode|setHttpHeader|setBody|setBodyFromString)$"
+
+  # Error handling
+  - concept: error_handler
+    usage:
+      kind: "^call$"
+      name: "^(handleContext|warbler|clearResponse)$"
+
+  # Saturn compatibility (Saturn builds on Giraffe)
+  - concept: application
+    usage:
+      kind: "^call$"
+      name: "^application$"
+
+  - concept: router
+    usage:
+      kind: "^call$"
+      name: "^(router|scope|forward)$"
+
+  - concept: controller
+    usage:
+      kind: "^call$"
+      name: "^controller$"
+
+linkers:
+  - http

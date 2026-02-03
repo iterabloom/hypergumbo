@@ -367,6 +367,36 @@ CLOJURE_FRAMEWORKS = {
     "pedestal": ["pedestal", "io.pedestal"],
 }
 
+# R framework detection patterns (from DESCRIPTION file)
+R_FRAMEWORKS = {
+    "shiny": ["shiny"],
+    "plumber": ["plumber"],
+}
+
+# Lua framework detection patterns (from *.rockspec or special files)
+LUA_FRAMEWORKS = {
+    "openresty": ["openresty", "resty", "ngx"],
+    "lapis": ["lapis"],
+    "love2d": ["love"],
+}
+
+# C++ framework detection patterns (from CMakeLists.txt, *.pro, vcpkg.json)
+CPP_FRAMEWORKS = {
+    "qt": ["qt5", "qt6", "qtcore", "qtwidgets", "qtgui", "qmake", "qt +=", "qt+="],
+}
+
+# Erlang framework detection patterns (from rebar.config)
+ERLANG_FRAMEWORKS = {
+    "cowboy": ["cowboy"],
+}
+
+# F# framework detection patterns (from *.fsproj)
+FSHARP_FRAMEWORKS = {
+    "giraffe": ["giraffe"],
+    "saturn": ["saturn"],
+    "suave": ["suave"],
+}
+
 # Map languages to their framework dictionaries
 LANGUAGE_FRAMEWORKS: dict[str, dict[str, list[str]]] = {
     "python": PYTHON_FRAMEWORKS,
@@ -384,6 +414,11 @@ LANGUAGE_FRAMEWORKS: dict[str, dict[str, list[str]]] = {
     "elixir": ELIXIR_FRAMEWORKS,
     "haskell": HASKELL_FRAMEWORKS,
     "clojure": CLOJURE_FRAMEWORKS,
+    "r": R_FRAMEWORKS,
+    "lua": LUA_FRAMEWORKS,
+    "cpp": CPP_FRAMEWORKS,
+    "erlang": ERLANG_FRAMEWORKS,
+    "fsharp": FSHARP_FRAMEWORKS,
 }
 
 
@@ -986,6 +1021,144 @@ def _detect_clojure_frameworks(repo_root: Path) -> list[str]:
     return detected
 
 
+def _detect_r_frameworks(repo_root: Path) -> list[str]:
+    """Detect R frameworks from DESCRIPTION file.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    The DESCRIPTION file contains Imports and Depends fields listing packages.
+    """
+    detected = []
+
+    # Read all DESCRIPTION files (R package manifest)
+    content = _read_all_manifest_files(repo_root, "DESCRIPTION")
+
+    for framework, patterns in R_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_lua_frameworks(repo_root: Path) -> list[str]:
+    """Detect Lua frameworks from *.rockspec files or special markers.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Also checks for OpenResty-specific files (nginx.conf with lua directives).
+    """
+    detected = []
+
+    # Read all rockspec files
+    rockspec_content = ""
+    for depth in range(4):
+        pattern = "/".join(["*"] * depth) + "/*.rockspec" if depth > 0 else "*.rockspec"
+        for rockspec_file in repo_root.glob(pattern):
+            try:
+                rockspec_content += rockspec_file.read_text(errors="ignore").lower() + "\n"
+            except (OSError, IOError):  # pragma: no cover
+                pass
+
+    # Also check for OpenResty markers in nginx.conf
+    nginx_content = _read_all_manifest_files(repo_root, "nginx.conf")
+
+    combined_content = rockspec_content + nginx_content
+
+    for framework, patterns in LUA_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in combined_content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_cpp_frameworks(repo_root: Path) -> list[str]:
+    """Detect C++ frameworks from CMakeLists.txt, *.pro, or vcpkg.json.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Qt is detected via find_package(Qt*), QT += modules, or vcpkg dependencies.
+    """
+    detected = []
+
+    # Read CMakeLists.txt files
+    cmake_content = _read_all_manifest_files(repo_root, "CMakeLists.txt")
+
+    # Read .pro files (qmake)
+    pro_content = ""
+    for depth in range(4):
+        pattern = "/".join(["*"] * depth) + "/*.pro" if depth > 0 else "*.pro"
+        for pro_file in repo_root.glob(pattern):
+            try:
+                pro_content += pro_file.read_text(errors="ignore").lower() + "\n"
+            except (OSError, IOError):  # pragma: no cover
+                pass
+
+    # Read vcpkg.json
+    vcpkg_content = _read_all_manifest_files(repo_root, "vcpkg.json")
+
+    combined_content = cmake_content + pro_content + vcpkg_content
+
+    for framework, patterns in CPP_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in combined_content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_erlang_frameworks(repo_root: Path) -> list[str]:
+    """Detect Erlang frameworks from rebar.config or erlang.mk.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    """
+    detected = []
+
+    # Read rebar.config files
+    rebar_content = _read_all_manifest_files(repo_root, "rebar.config")
+
+    # Read erlang.mk files
+    erlangmk_content = _read_all_manifest_files(repo_root, "erlang.mk")
+
+    combined_content = rebar_content + erlangmk_content
+
+    for framework, patterns in ERLANG_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in combined_content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_fsharp_frameworks(repo_root: Path) -> list[str]:
+    """Detect F# frameworks from *.fsproj files.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    F# projects use .fsproj (MSBuild) with PackageReference elements.
+    """
+    detected = []
+
+    # Read all .fsproj files
+    fsproj_content = ""
+    for depth in range(4):
+        pattern = "/".join(["*"] * depth) + "/*.fsproj" if depth > 0 else "*.fsproj"
+        for fsproj_file in repo_root.glob(pattern):
+            try:
+                fsproj_content += fsproj_file.read_text(errors="ignore").lower() + "\n"
+            except (OSError, IOError):  # pragma: no cover
+                pass
+
+    for framework, patterns in FSHARP_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in fsproj_content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
 def _detect_solidity_frameworks(repo_root: Path) -> list[str]:
     """Detect Solidity frameworks from config files.
 
@@ -1033,6 +1206,11 @@ def _detect_frameworks(repo_root: Path) -> list[str]:
     frameworks.extend(_detect_elixir_frameworks(repo_root))
     frameworks.extend(_detect_haskell_frameworks(repo_root))
     frameworks.extend(_detect_clojure_frameworks(repo_root))
+    frameworks.extend(_detect_r_frameworks(repo_root))
+    frameworks.extend(_detect_lua_frameworks(repo_root))
+    frameworks.extend(_detect_cpp_frameworks(repo_root))
+    frameworks.extend(_detect_erlang_frameworks(repo_root))
+    frameworks.extend(_detect_fsharp_frameworks(repo_root))
     return frameworks
 
 
