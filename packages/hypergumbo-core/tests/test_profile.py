@@ -1757,3 +1757,324 @@ def test_detects_fsharp_saturn_framework(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
     assert "saturn" in data["profile"]["frameworks"]
+
+
+# Kotlin-specific framework detection tests
+
+
+def test_detects_kotlin_ktor_from_gradle_kts(tmp_path: Path) -> None:
+    """Should detect Ktor from build.gradle.kts."""
+    (tmp_path / "Application.kt").write_text("fun main() {}\n")
+    (tmp_path / "build.gradle.kts").write_text("""dependencies {
+    implementation("io.ktor:ktor-server-core:2.3.0")
+    implementation("io.ktor:ktor-server-netty:2.3.0")
+}""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "ktor" in data["profile"]["frameworks"]
+
+
+def test_detects_kotlin_exposed_framework(tmp_path: Path) -> None:
+    """Should detect Exposed ORM from build.gradle.kts."""
+    (tmp_path / "Database.kt").write_text("import org.jetbrains.exposed.sql.*\n")
+    (tmp_path / "build.gradle.kts").write_text("""dependencies {
+    implementation("org.jetbrains.exposed:exposed-core:0.44.0")
+    implementation("org.jetbrains.exposed:exposed-dao:0.44.0")
+}""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "exposed" in data["profile"]["frameworks"]
+
+
+# C# framework detection tests
+
+
+def test_detects_csharp_aspnetcore_framework(tmp_path: Path) -> None:
+    """Should detect ASP.NET Core from .csproj file."""
+    (tmp_path / "Program.cs").write_text("using Microsoft.AspNetCore;\n")
+    (tmp_path / "myapp.csproj").write_text("""<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.0" />
+  </ItemGroup>
+</Project>
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "aspnetcore" in data["profile"]["frameworks"]
+
+
+def test_detects_csharp_blazor_framework(tmp_path: Path) -> None:
+    """Should detect Blazor from .csproj file."""
+    (tmp_path / "App.razor").write_text("<Router AppAssembly=\"@typeof(App).Assembly\"/>\n")
+    (tmp_path / "myapp.csproj").write_text("""<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="8.0.0" />
+  </ItemGroup>
+</Project>
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "blazor" in data["profile"]["frameworks"]
+
+
+# Dart web framework detection tests
+
+
+def test_detects_dart_shelf_framework(tmp_path: Path) -> None:
+    """Should detect Shelf from pubspec.yaml."""
+    (tmp_path / "bin" / "server.dart").parent.mkdir(parents=True)
+    (tmp_path / "bin" / "server.dart").write_text("import 'package:shelf/shelf.dart';\n")
+    (tmp_path / "pubspec.yaml").write_text("""name: myserver
+dependencies:
+  shelf: ^1.4.0
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "shelf" in data["profile"]["frameworks"]
+
+
+def test_detects_dart_serverpod_framework(tmp_path: Path) -> None:
+    """Should detect Serverpod from pubspec.yaml."""
+    (tmp_path / "lib" / "server.dart").parent.mkdir(parents=True)
+    (tmp_path / "lib" / "server.dart").write_text("import 'package:serverpod/serverpod.dart';\n")
+    (tmp_path / "pubspec.yaml").write_text("""name: myserver
+dependencies:
+  serverpod: ^1.2.0
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "serverpod" in data["profile"]["frameworks"]
+
+
+# Julia framework detection tests
+
+
+def test_detects_julia_genie_framework(tmp_path: Path) -> None:
+    """Should detect Genie from Project.toml."""
+    (tmp_path / "src" / "app.jl").parent.mkdir(parents=True)
+    (tmp_path / "src" / "app.jl").write_text("using Genie\n")
+    (tmp_path / "Project.toml").write_text("""name = "MyApp"
+[deps]
+Genie = "c43c736e-a2d1-11e8-161f-af95117fbd1e"
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "genie" in data["profile"]["frameworks"]
+
+
+def test_detects_julia_oxygen_framework(tmp_path: Path) -> None:
+    """Should detect Oxygen from Project.toml."""
+    (tmp_path / "src" / "app.jl").parent.mkdir(parents=True)
+    (tmp_path / "src" / "app.jl").write_text("using Oxygen\n")
+    (tmp_path / "Project.toml").write_text("""name = "MyApp"
+[deps]
+Oxygen = "c43c736e-a2d1-11e8-161f-af95117fbd1e"
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "oxygen" in data["profile"]["frameworks"]
+
+
+# OCaml framework detection tests
+
+
+def test_detects_ocaml_dream_framework(tmp_path: Path) -> None:
+    """Should detect Dream from dune-project or .opam file."""
+    (tmp_path / "main.ml").write_text("let () = Dream.run @@ Dream.router []\n")
+    (tmp_path / "myapp.opam").write_text("""opam-version: "2.0"
+depends: [
+  "dream" {>= "1.0.0"}
+]
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "dream" in data["profile"]["frameworks"]
+
+
+def test_detects_ocaml_cohttp_framework(tmp_path: Path) -> None:
+    """Should detect Cohttp from dune-project."""
+    (tmp_path / "main.ml").write_text("open Cohttp_lwt_unix\n")
+    (tmp_path / "dune-project").write_text("""(lang dune 3.0)
+(name myapp)
+(package (depends cohttp-lwt-unix))
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "cohttp" in data["profile"]["frameworks"]
+
+
+# Nim framework detection tests
+
+
+def test_detects_nim_jester_framework(tmp_path: Path) -> None:
+    """Should detect Jester from .nimble file."""
+    (tmp_path / "src" / "app.nim").parent.mkdir(parents=True)
+    (tmp_path / "src" / "app.nim").write_text("import jester\n")
+    (tmp_path / "myapp.nimble").write_text("""version = "0.1.0"
+requires "jester >= 0.5.0"
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "jester" in data["profile"]["frameworks"]
+
+
+def test_detects_nim_prologue_framework(tmp_path: Path) -> None:
+    """Should detect Prologue from .nimble file."""
+    (tmp_path / "src" / "app.nim").parent.mkdir(parents=True)
+    (tmp_path / "src" / "app.nim").write_text("import prologue\n")
+    (tmp_path / "myapp.nimble").write_text("""version = "0.1.0"
+requires "prologue >= 0.6.0"
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "prologue" in data["profile"]["frameworks"]
+
+
+# Zig framework detection tests
+
+
+def test_detects_zig_zap_framework(tmp_path: Path) -> None:
+    """Should detect zap from build.zig.zon."""
+    (tmp_path / "src" / "main.zig").parent.mkdir(parents=True)
+    (tmp_path / "src" / "main.zig").write_text("const zap = @import(\"zap\");\n")
+    (tmp_path / "build.zig.zon").write_text(""".{
+    .name = "myapp",
+    .dependencies = .{
+        .zap = .{
+            .url = "https://github.com/zigzap/zap/archive/refs/tags/v0.0.1.tar.gz",
+        },
+    },
+}
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "zap" in data["profile"]["frameworks"]
+
+
+# D framework detection tests
+
+
+def test_detects_d_vibed_framework(tmp_path: Path) -> None:
+    """Should detect vibe.d from dub.json."""
+    (tmp_path / "source" / "app.d").parent.mkdir(parents=True)
+    (tmp_path / "source" / "app.d").write_text("import vibe.d;\n")
+    (tmp_path / "dub.json").write_text("""{
+    "name": "myapp",
+    "dependencies": {
+        "vibe-d": "~>0.9.0"
+    }
+}
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "vibe-d" in data["profile"]["frameworks"]
+
+
+def test_detects_d_hunt_framework(tmp_path: Path) -> None:
+    """Should detect Hunt from dub.sdl."""
+    (tmp_path / "source" / "app.d").parent.mkdir(parents=True)
+    (tmp_path / "source" / "app.d").write_text("import hunt.framework;\n")
+    (tmp_path / "dub.sdl").write_text("""name "myapp"
+dependency "hunt-framework" version="~>3.0.0"
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "hunt" in data["profile"]["frameworks"]
+
+
+# Groovy framework detection tests
+
+
+def test_detects_groovy_grails_framework(tmp_path: Path) -> None:
+    """Should detect Grails from build.gradle."""
+    (tmp_path / "grails-app" / "controllers").mkdir(parents=True)
+    (tmp_path / "grails-app" / "controllers" / "HomeController.groovy").write_text(
+        "class HomeController {}\n"
+    )
+    (tmp_path / "build.gradle").write_text("""plugins {
+    id "org.grails.grails-web" version "5.3.0"
+}
+
+dependencies {
+    implementation 'org.grails:grails-core'
+}
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "grails" in data["profile"]["frameworks"]
+
+
+def test_detects_groovy_ratpack_framework(tmp_path: Path) -> None:
+    """Should detect Ratpack from build.gradle."""
+    (tmp_path / "src" / "main" / "groovy").mkdir(parents=True)
+    (tmp_path / "src" / "main" / "groovy" / "App.groovy").write_text(
+        "import ratpack.groovy.Groovy\n"
+    )
+    (tmp_path / "build.gradle").write_text("""plugins {
+    id 'io.ratpack.ratpack-groovy' version '1.9.0'
+}
+
+dependencies {
+    implementation 'io.ratpack:ratpack-core'
+}
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "ratpack" in data["profile"]["frameworks"]

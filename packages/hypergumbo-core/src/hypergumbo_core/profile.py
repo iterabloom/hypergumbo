@@ -397,6 +397,79 @@ FSHARP_FRAMEWORKS = {
     "suave": ["suave"],
 }
 
+# Kotlin framework detection patterns (from build.gradle.kts)
+# Separate from JAVA_FRAMEWORKS because Ktor is Kotlin-specific
+KOTLIN_FRAMEWORKS = {
+    "ktor": ["ktor-server", "io.ktor"],
+    "exposed": ["exposed-core", "org.jetbrains.exposed"],
+    "koin": ["koin-core", "io.insert-koin"],
+    "kodein": ["kodein-di", "org.kodein.di"],
+}
+
+# C# framework detection patterns (from *.csproj)
+CSHARP_FRAMEWORKS = {
+    "aspnetcore": ["microsoft.aspnetcore", "asp.net core"],
+    "blazor": ["microsoft.aspnetcore.components", "blazor"],
+    "minimal-apis": ["microsoft.aspnetcore.openapi"],
+    "entityframework": ["microsoft.entityframeworkcore", "entityframework"],
+    "signalr": ["microsoft.aspnetcore.signalr"],
+}
+
+# Dart web framework detection patterns (from pubspec.yaml)
+# Flutter is detected separately via SDK check
+DART_FRAMEWORKS = {
+    "shelf": ["shelf:"],
+    "aqueduct": ["aqueduct:"],
+    "angel": ["angel_framework:"],
+    "dart_frog": ["dart_frog:"],
+    "serverpod": ["serverpod:"],
+}
+
+# Julia framework detection patterns (from Project.toml)
+JULIA_FRAMEWORKS = {
+    "genie": ["genie"],
+    "oxygen": ["oxygen"],
+    "http": ["http"],
+    "mux": ["mux"],
+}
+
+# OCaml framework detection patterns (from dune-project, *.opam)
+OCAML_FRAMEWORKS = {
+    "dream": ["dream"],
+    "opium": ["opium"],
+    "cohttp": ["cohttp"],
+    "eliom": ["eliom"],
+}
+
+# Nim framework detection patterns (from *.nimble)
+NIM_FRAMEWORKS = {
+    "jester": ["jester"],
+    "prologue": ["prologue"],
+    "karax": ["karax"],
+    "mummy": ["mummy"],
+}
+
+# Zig framework detection patterns (from build.zig.zon, build.zig)
+ZIG_FRAMEWORKS = {
+    "zap": ["zap"],
+    "http.zig": ["httpz", "http.zig"],
+    "zig-network": ["network"],
+}
+
+# D framework detection patterns (from dub.json, dub.sdl)
+D_FRAMEWORKS = {
+    "vibe-d": ["vibe-d", "vibe.d"],
+    "hunt": ["hunt-framework", "hunt"],
+    "diamondmvc": ["diamond"],
+}
+
+# Groovy framework detection patterns (from build.gradle)
+GROOVY_FRAMEWORKS = {
+    "grails": ["grails-core", "org.grails"],
+    "ratpack": ["ratpack-core", "io.ratpack"],
+    "micronaut-groovy": ["micronaut-runtime-groovy"],
+}
+
 # Map languages to their framework dictionaries
 LANGUAGE_FRAMEWORKS: dict[str, dict[str, list[str]]] = {
     "python": PYTHON_FRAMEWORKS,
@@ -406,7 +479,7 @@ LANGUAGE_FRAMEWORKS: dict[str, dict[str, list[str]]] = {
     "go": GO_FRAMEWORKS,
     "php": PHP_FRAMEWORKS,
     "java": JAVA_FRAMEWORKS,
-    "kotlin": JAVA_FRAMEWORKS,  # Kotlin uses same frameworks as Java
+    "kotlin": KOTLIN_FRAMEWORKS,
     "swift": SWIFT_FRAMEWORKS,
     "scala": SCALA_FRAMEWORKS,
     "solidity": SOLIDITY_FRAMEWORKS,
@@ -419,6 +492,14 @@ LANGUAGE_FRAMEWORKS: dict[str, dict[str, list[str]]] = {
     "cpp": CPP_FRAMEWORKS,
     "erlang": ERLANG_FRAMEWORKS,
     "fsharp": FSHARP_FRAMEWORKS,
+    "csharp": CSHARP_FRAMEWORKS,
+    "dart": DART_FRAMEWORKS,
+    "julia": JULIA_FRAMEWORKS,
+    "ocaml": OCAML_FRAMEWORKS,
+    "nim": NIM_FRAMEWORKS,
+    "zig": ZIG_FRAMEWORKS,
+    "d": D_FRAMEWORKS,
+    "groovy": GROOVY_FRAMEWORKS,
 }
 
 
@@ -1159,6 +1240,220 @@ def _detect_fsharp_frameworks(repo_root: Path) -> list[str]:
     return detected
 
 
+def _detect_kotlin_frameworks(repo_root: Path) -> list[str]:
+    """Detect Kotlin-specific frameworks from build.gradle.kts or build.gradle.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Note: Java frameworks (Spring, etc.) are detected by _detect_java_frameworks.
+    This function detects Kotlin-specific frameworks like Ktor.
+    """
+    detected = []
+
+    # Read build.gradle.kts and build.gradle files
+    content = ""
+    for gradle_file in ["build.gradle.kts", "build.gradle"]:
+        content += _read_all_manifest_files(repo_root, gradle_file)
+
+    for framework, patterns in KOTLIN_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_csharp_frameworks(repo_root: Path) -> list[str]:
+    """Detect C# frameworks from *.csproj files.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    C# projects use .csproj (MSBuild) with PackageReference elements.
+    """
+    detected = []
+
+    # Read all .csproj files
+    csproj_content = ""
+    for depth in range(4):
+        pattern = "/".join(["*"] * depth) + "/*.csproj" if depth > 0 else "*.csproj"
+        for csproj_file in repo_root.glob(pattern):
+            try:
+                csproj_content += csproj_file.read_text(errors="ignore").lower() + "\n"
+            except (OSError, IOError):  # pragma: no cover
+                pass
+
+    for framework, patterns in CSHARP_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in csproj_content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_dart_web_frameworks(repo_root: Path) -> list[str]:
+    """Detect Dart web frameworks (non-Flutter) from pubspec.yaml.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Note: Flutter is detected separately in _detect_dart_frameworks.
+    This function detects server-side Dart frameworks like Shelf.
+    """
+    detected = []
+
+    # Read all pubspec.yaml files
+    content = _read_all_manifest_files(repo_root, "pubspec.yaml")
+
+    for framework, patterns in DART_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_julia_frameworks(repo_root: Path) -> list[str]:
+    """Detect Julia frameworks from Project.toml.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Julia projects use Project.toml for dependencies.
+    """
+    detected = []
+
+    # Read Project.toml files
+    content = _read_all_manifest_files(repo_root, "Project.toml")
+
+    for framework, patterns in JULIA_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_ocaml_frameworks(repo_root: Path) -> list[str]:
+    """Detect OCaml frameworks from dune-project or *.opam files.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    OCaml projects use dune-project (dune build system) or .opam files.
+    """
+    detected = []
+
+    # Read dune-project files
+    dune_content = _read_all_manifest_files(repo_root, "dune-project")
+
+    # Read all .opam files
+    opam_content = ""
+    for depth in range(4):
+        pattern = "/".join(["*"] * depth) + "/*.opam" if depth > 0 else "*.opam"
+        for opam_file in repo_root.glob(pattern):
+            try:
+                opam_content += opam_file.read_text(errors="ignore").lower() + "\n"
+            except (OSError, IOError):  # pragma: no cover
+                pass
+
+    combined_content = dune_content + opam_content
+
+    for framework, patterns in OCAML_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in combined_content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_nim_frameworks(repo_root: Path) -> list[str]:
+    """Detect Nim frameworks from *.nimble files.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Nim projects use .nimble files for package management.
+    """
+    detected = []
+
+    # Read all .nimble files
+    nimble_content = ""
+    for depth in range(4):
+        pattern = "/".join(["*"] * depth) + "/*.nimble" if depth > 0 else "*.nimble"
+        for nimble_file in repo_root.glob(pattern):
+            try:
+                nimble_content += nimble_file.read_text(errors="ignore").lower() + "\n"
+            except (OSError, IOError):  # pragma: no cover
+                pass
+
+    for framework, patterns in NIM_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in nimble_content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_zig_frameworks(repo_root: Path) -> list[str]:
+    """Detect Zig frameworks from build.zig.zon or build.zig.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Zig projects use build.zig.zon (package manifest) or build.zig (build script).
+    """
+    detected = []
+
+    # Read build.zig.zon and build.zig files
+    zon_content = _read_all_manifest_files(repo_root, "build.zig.zon")
+    build_content = _read_all_manifest_files(repo_root, "build.zig")
+    combined_content = zon_content + build_content
+
+    for framework, patterns in ZIG_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in combined_content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_d_frameworks(repo_root: Path) -> list[str]:
+    """Detect D frameworks from dub.json or dub.sdl.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    D projects use dub.json or dub.sdl for package management.
+    """
+    detected = []
+
+    # Read dub.json and dub.sdl files
+    dub_json_content = _read_all_manifest_files(repo_root, "dub.json")
+    dub_sdl_content = _read_all_manifest_files(repo_root, "dub.sdl")
+    combined_content = dub_json_content + dub_sdl_content
+
+    for framework, patterns in D_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in combined_content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_groovy_frameworks(repo_root: Path) -> list[str]:
+    """Detect Groovy frameworks from build.gradle.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Groovy frameworks like Grails and Ratpack use Gradle for builds.
+    """
+    detected = []
+
+    # Read build.gradle files
+    content = _read_all_manifest_files(repo_root, "build.gradle")
+
+    for framework, patterns in GROOVY_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
 def _detect_solidity_frameworks(repo_root: Path) -> list[str]:
     """Detect Solidity frameworks from config files.
 
@@ -1211,6 +1506,15 @@ def _detect_frameworks(repo_root: Path) -> list[str]:
     frameworks.extend(_detect_cpp_frameworks(repo_root))
     frameworks.extend(_detect_erlang_frameworks(repo_root))
     frameworks.extend(_detect_fsharp_frameworks(repo_root))
+    frameworks.extend(_detect_kotlin_frameworks(repo_root))
+    frameworks.extend(_detect_csharp_frameworks(repo_root))
+    frameworks.extend(_detect_dart_web_frameworks(repo_root))
+    frameworks.extend(_detect_julia_frameworks(repo_root))
+    frameworks.extend(_detect_ocaml_frameworks(repo_root))
+    frameworks.extend(_detect_nim_frameworks(repo_root))
+    frameworks.extend(_detect_zig_frameworks(repo_root))
+    frameworks.extend(_detect_d_frameworks(repo_root))
+    frameworks.extend(_detect_groovy_frameworks(repo_root))
     return frameworks
 
 
