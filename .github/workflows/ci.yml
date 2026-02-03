@@ -449,10 +449,31 @@ jobs:
             done
             # Suppress terminal report - we'll show targeted coverage below
             COV_PATHS="$COV_PATHS --cov-report="
+            # Use no-embeddings config since sentence-transformers isn't installed in CI
+            COV_PATHS="$COV_PATHS --cov-config=.coveragerc.no-embeddings"
           else
             # No source files changed - skip coverage
             COV_PATHS=""
           fi
+
+          # Filter out embedding files from coverage check (they require sentence-transformers)
+          # These are excluded by .coveragerc.no-embeddings but we also skip the explicit check
+          EMBEDDING_FILES="sketch_embeddings.py _embedding_data.py"
+          COVERABLE_SOURCE_FILES=""
+          for f in $CHANGED_SOURCE_FILES; do
+            IS_EMBEDDING=false
+            for ef in $EMBEDDING_FILES; do
+              if echo "$f" | grep -qE "/$ef$"; then
+                IS_EMBEDDING=true
+                echo "  (skipping embedding file from coverage check: $f)"
+                break
+              fi
+            done
+            if [ "$IS_EMBEDDING" = "false" ]; then
+              COVERABLE_SOURCE_FILES="$COVERABLE_SOURCE_FILES $f"
+            fi
+          done
+          COVERABLE_SOURCE_FILES=$(echo "$COVERABLE_SOURCE_FILES" | xargs)  # trim whitespace
 
           echo ""
           echo "=== Python version ==="
@@ -478,13 +499,14 @@ jobs:
           TEST_EXIT=$?
 
           # Check 100% coverage for changed source files only
-          if [ $TEST_EXIT -eq 0 ] && [ -n "$CHANGED_SOURCE_FILES" ]; then
+          # (COVERABLE_SOURCE_FILES excludes embedding files that require sentence-transformers)
+          if [ $TEST_EXIT -eq 0 ] && [ -n "$COVERABLE_SOURCE_FILES" ]; then
             echo ""
             echo "=== Checking 100% coverage for changed source files ==="
 
             # Filter out deleted files (they won't exist and can't have coverage)
             EXISTING_FILES=""
-            for f in $CHANGED_SOURCE_FILES; do
+            for f in $COVERABLE_SOURCE_FILES; do
               if [ -f "$f" ]; then
                 EXISTING_FILES="$EXISTING_FILES $f"
               else
