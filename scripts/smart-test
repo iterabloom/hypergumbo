@@ -358,13 +358,17 @@ log "Using stable hypergumbo: $STABLE_HG"
 BASE_BRANCH="${BASE_BRANCH:-origin/dev}"
 BASELINE=$(get_baseline "$BASE_BRANCH")
 
-# Get changes: both committed (BASELINE..HEAD) and staged (--cached)
-# This ensures we detect changes even before committing
+# Get changes from all sources:
+# 1. Committed: changes between BASELINE and HEAD
+# 2. Staged: changes in the index (git add'd but not committed)
+# 3. Unstaged: modified files in working directory (not yet git add'd)
+# This ensures we detect changes regardless of when pytest runs in the workflow
 COMMITTED_CHANGES=$(git diff --name-only "$BASELINE"..HEAD 2>/dev/null || echo "")
 STAGED_CHANGES=$(git diff --name-only --cached 2>/dev/null || echo "")
+UNSTAGED_CHANGES=$(git diff --name-only 2>/dev/null || echo "")
 
 # Combine and deduplicate
-CHANGED_FILES=$(printf "%s\n%s" "$COMMITTED_CHANGES" "$STAGED_CHANGES" | sort -u | grep -v '^$' || echo "")
+CHANGED_FILES=$(printf "%s\n%s\n%s" "$COMMITTED_CHANGES" "$STAGED_CHANGES" "$UNSTAGED_CHANGES" | sort -u | grep -v '^$' || echo "")
 
 if [[ -z "$CHANGED_FILES" ]]; then
     run_full_suite "no changed files detected"

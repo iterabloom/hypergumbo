@@ -286,7 +286,10 @@ jobs:
             fi
 
             echo "=== Validating committed manifest ==="
-            head -10 "$MANIFEST"
+            # Show header only (not the test list, which is long and confusing when truncated)
+            grep "^#" "$MANIFEST" | head -10
+            TEST_COUNT=$(grep -c "^packages/" "$MANIFEST" || echo 0)
+            echo "# (manifest lists $TEST_COUNT test files)"
 
             # If core infrastructure changed, manifest should indicate full suite
             if [ "$CORE_CHANGED" = "true" ]; then
