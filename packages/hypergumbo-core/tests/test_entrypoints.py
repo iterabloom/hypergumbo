@@ -1258,6 +1258,30 @@ class TestSemanticEntryDetection:
         assert ctrl_eps[0].confidence == 0.70  # Naming heuristic
         assert "Controller (by name)" in ctrl_eps[0].label
 
+    def test_service_by_name_not_treated_as_entrypoint(self) -> None:
+        """Classes ending in 'Service' are tracked but not made entrypoints (covers entrypoints.py:480).
+
+        Services are potential business logic entry points but we explicitly skip them
+        for now to avoid over-detecting entrypoints in codebases with many service classes.
+        """
+        sym = Symbol(
+            id="java:UserService.java:1-50:UserService:class",
+            name="UserService",
+            kind="class",
+            path="src/UserService.java",
+            language="java",
+            span=Span(1, 50, 0, 0),
+            meta={"concepts": [
+                {"concept": "service_by_name", "framework": "naming-conventions"},
+            ]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Service classes should NOT create any entrypoints
+        assert len(entrypoints) == 0
+
     def test_symbol_with_empty_concepts_skipped(self) -> None:
         """Symbols with meta but empty concepts list are skipped."""
         sym = Symbol(

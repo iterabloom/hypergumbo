@@ -249,6 +249,22 @@ class TestIsGrammarAvailable:
 
         assert result is False
 
+    def test_returns_false_when_tree_sitter_unavailable(self) -> None:
+        """Should return False when tree_sitter itself is not installed (covers base.py:186)."""
+        from unittest.mock import patch
+
+        original_find_spec = __import__("importlib.util").util.find_spec
+
+        def mock_find_spec(name: str) -> object | None:
+            if name == "tree_sitter":
+                return None
+            return original_find_spec(name)
+
+        with patch("importlib.util.find_spec", side_effect=mock_find_spec):
+            result = is_grammar_available("tree_sitter_go")
+
+        assert result is False
+
 
 class TestAnalysisResult:
     """Tests for AnalysisResult dataclass."""

@@ -1404,6 +1404,45 @@ def test_src_layout_reexport_resolution(tmp_path: Path) -> None:
         f"Call edge should point to real helper {helper_id}, got {call_dsts}"
 
 
+def test_src_dir_without_packages_not_detected_as_layout(tmp_path: Path) -> None:
+    """When src/ exists but has no package dirs, it's not src/ layout (covers py.py:977).
+
+    If src/ exists but contains no directories with __init__.py,
+    _find_src_layout should return None and analysis continues normally.
+    """
+    # Create src/ directory with just files, no packages
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "utils.py").write_text(
+        "def utility():\n"
+        "    return 'util'\n"
+    )
+    # Create a subdirectory WITHOUT __init__.py
+    subdir = src / "subdir"
+    subdir.mkdir()
+    (subdir / "helper.py").write_text(
+        "def helper():\n"
+        "    return 'help'\n"
+    )
+
+    # Create main.py at project root
+    main_file = tmp_path / "main.py"
+    main_file.write_text(
+        "def main():\n"
+        "    return 'main'\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    # Should detect functions (analysis proceeds despite src/ not being a layout)
+    functions = [n for n in data["nodes"] if n["kind"] == "function"]
+    func_names = {f["name"] for f in functions}
+    assert "main" in func_names, "main function should be detected"
+
+
 def test_src_as_package_not_detected_as_layout(tmp_path: Path) -> None:
     """When src/ has __init__.py, it's a package, not src/ layout.
 
@@ -2686,6 +2725,32 @@ class TestDecoratorMetadata:
         decorators = func["meta"]["decorators"]
         assert decorators[0]["args"] == []
         assert decorators[0]["kwargs"] == {"response_model": "dict"}
+
+    def test_attribute_decorator_without_call(self, tmp_path: Path) -> None:
+        """Decorator like @module.attribute without parentheses (covers py.py:211,810)."""
+        py_file = tmp_path / "main.py"
+        py_file.write_text(
+            "import functools\n"
+            "\n"
+            "@functools.cache\n"
+            "def expensive_func(x):\n"
+            "    return x * 2\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        functions = [n for n in data["nodes"] if n["kind"] == "function"]
+        func = next(f for f in functions if f["name"] == "expensive_func")
+
+        assert "meta" in func
+        assert "decorators" in func["meta"]
+        decorators = func["meta"]["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "functools.cache"
+        assert decorators[0]["args"] == []
+        assert decorators[0]["kwargs"] == {}
 
     def test_multiple_decorators(self, tmp_path: Path) -> None:
         """Multiple decorators should all be captured in order."""

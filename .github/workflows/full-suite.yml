@@ -324,10 +324,14 @@ jobs:
             }
           }"
 
-      - name: Update coverage badge
+      - name: Update coverage badge and marker
         if: needs.changes.outputs.code == 'true' && steps.results.outputs.conclusion == 'success'
         run: |
           COV="${{ steps.results.outputs.coverage }}"
+          COV_CORE="${{ needs.test-core.outputs.coverage }}"
+          COV_MAINSTREAM="${{ needs.test-mainstream.outputs.coverage }}"
+          COV_COMMON="${{ needs.test-common.outputs.coverage }}"
+          COV_EXTENDED="${{ needs.test-extended.outputs.coverage }}"
 
           # Determine badge color based on coverage
           if [ "$COV" -ge 90 ]; then
@@ -340,6 +344,17 @@ jobs:
 
           echo "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"${COV}%\",\"color\":\"${COLOR}\"}" > /tmp/coverage.json
 
+          # Check if all packages have 100% coverage
+          ALL_100="false"
+          if [ "$COV_CORE" = "100" ] && [ "$COV_MAINSTREAM" = "100" ] && \
+             [ "$COV_COMMON" = "100" ] && [ "$COV_EXTENDED" = "100" ]; then
+            ALL_100="true"
+            echo "All packages at 100% coverage - updating last-green-sha marker"
+            echo "${{ github.sha }}" > /tmp/last-green-sha.txt
+          else
+            echo "Not all packages at 100%: core=$COV_CORE, mainstream=$COV_MAINSTREAM, common=$COV_COMMON, extended=$COV_EXTENDED"
+          fi
+
           git config user.name "CI Bot"
           git config user.email "ci@iterabloom.com"
 
@@ -348,8 +363,14 @@ jobs:
 
           git rm -rf . 2>/dev/null || true
           cp /tmp/coverage.json coverage.json
+          if [ "$ALL_100" = "true" ]; then
+            cp /tmp/last-green-sha.txt last-green-sha.txt
+          fi
 
           git add coverage.json
+          if [ "$ALL_100" = "true" ]; then
+            git add last-green-sha.txt
+          fi
           git commit -m "Update coverage badge: ${COV}%" || echo "No changes to commit"
           git push origin badges --force || echo "Push failed - may need write permissions"
 
