@@ -208,9 +208,34 @@ jobs:
       - name: Verify ARCHITECTURE.md is up-to-date
         run: ./scripts/generate-architecture --check
 
-  pytest:
+  # Build grammars once, cache wheels for pytest job (saves ~1 minute)
+  build-grammars:
     needs: [changes, stop-the-line]
     if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure'
+    runs-on: codeberg-small-lazy
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Cache grammar wheels
+        id: cache
+        uses: actions/cache@v3
+        with:
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Build grammar wheels
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          pip install --upgrade pip setuptools wheel
+          ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+      - name: Verify wheels exist
+        run: ls -la /tmp/grammar-wheels/*.whl || echo "No wheels (cache hit expected)"
+
+  pytest:
+    needs: [changes, stop-the-line, build-grammars]
+    if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure' && needs.build-grammars.result != 'failure'
     runs-on: codeberg-small-lazy
     timeout-minutes: 30
     steps:
@@ -233,8 +258,13 @@ jobs:
           else
             pip install -e .[dev]
           fi
-      - name: Build source-only grammars
-        run: ./scripts/build-source-grammars
+      - name: Restore grammar wheels
+        uses: actions/cache@v3
+        with:
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Install grammars from wheels
+        run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
       - name: Check for sentence-transformers
         run: |
           # Don't try to install - just check if it's already available.
@@ -539,7 +569,7 @@ jobs:
   # Final gate job - ensures workflow completes even when jobs are skipped
   # This fixes Forgejo Actions bug where skipped jobs leave workflow in "running" state
   ci-complete:
-    needs: [changes, stop-the-line, lint, audit, verify-generated, pytest, dco]
+    needs: [changes, stop-the-line, lint, audit, verify-generated, build-grammars, pytest, dco]
     if: always()
     runs-on: codeberg-small-lazy
     steps:
@@ -551,6 +581,7 @@ jobs:
           echo "  lint: ${{ needs.lint.result }}"
           echo "  audit: ${{ needs.audit.result }}"
           echo "  verify-generated: ${{ needs.verify-generated.result }}"
+          echo "  build-grammars: ${{ needs.build-grammars.result }}"
           echo "  pytest: ${{ needs.pytest.result }}"
           echo "  dco: ${{ needs.dco.result }}"
 

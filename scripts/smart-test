@@ -62,6 +62,27 @@ for arg in "$@"; do
     esac
 done
 
+# Auto-add -n auto for parallel execution unless:
+# 1. Already specified (-n is in PYTEST_ARGS)
+# 2. Running inside a container (where CPU detection may be unreliable)
+is_in_container() {
+    [[ -f /.dockerenv ]] || [[ -f /run/.containerenv ]] || grep -qE '(docker|lxc|containerd)' /proc/1/cgroup 2>/dev/null
+}
+
+HAS_N_FLAG=false
+for arg in "${PYTEST_ARGS[@]}"; do
+    if [[ "$arg" == "-n" ]] || [[ "$arg" == -n* ]]; then
+        HAS_N_FLAG=true
+        break
+    fi
+done
+
+if [[ "$HAS_N_FLAG" == "false" ]] && ! is_in_container; then
+    # Note: log function not defined yet, use conditional echo
+    [[ "$VERBOSE" == "true" ]] && echo "[smart-test] Auto-adding -n auto for parallel execution (not in container)" >&2
+    PYTEST_ARGS+=("-n" "auto")
+fi
+
 # Output file for full pytest log
 PYTEST_LOG="$REPO_ROOT/.ci/pytest-output.log"
 
