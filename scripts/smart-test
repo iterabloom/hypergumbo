@@ -262,8 +262,16 @@ run_pytest() {
 
 run_full_suite() {
     local reason="${1:-}"
+    local changed_files="${2:-}"  # Optional: changed files to include in manifest
+
     if [[ -n "$reason" ]]; then
         log "Running full test suite: $reason"
+    fi
+
+    # Extract source files from changed files (if provided)
+    local source_files=""
+    if [[ -n "$changed_files" ]]; then
+        source_files=$(echo "$changed_files" | grep -E '^packages/.*/src/.*\.py$' || echo "")
     fi
 
     # Write manifest indicating full suite (with section markers for CI compatibility)
@@ -275,7 +283,9 @@ run_full_suite() {
         echo "# Reason: $reason"
         echo "#"
         echo "# === CHANGED_SOURCE_FILES ==="
-        # No changed source files for full suite scenario
+        if [[ -n "$source_files" ]]; then
+            echo "$source_files"
+        fi
         echo "# === SELECTED_TESTS ==="
         find packages/*/tests -name 'test_*.py' -type f | sort
     } > "$MANIFEST_FILE"
@@ -347,7 +357,14 @@ log "Using stable hypergumbo: $STABLE_HG"
 # Get baseline commit (last-green-sha or merge-base fallback)
 BASE_BRANCH="${BASE_BRANCH:-origin/dev}"
 BASELINE=$(get_baseline "$BASE_BRANCH")
-CHANGED_FILES=$(git diff --name-only "$BASELINE"..HEAD 2>/dev/null || echo "")
+
+# Get changes: both committed (BASELINE..HEAD) and staged (--cached)
+# This ensures we detect changes even before committing
+COMMITTED_CHANGES=$(git diff --name-only "$BASELINE"..HEAD 2>/dev/null || echo "")
+STAGED_CHANGES=$(git diff --name-only --cached 2>/dev/null || echo "")
+
+# Combine and deduplicate
+CHANGED_FILES=$(printf "%s\n%s" "$COMMITTED_CHANGES" "$STAGED_CHANGES" | sort -u | grep -v '^$' || echo "")
 
 if [[ -z "$CHANGED_FILES" ]]; then
     run_full_suite "no changed files detected"
@@ -361,7 +378,7 @@ fi
 # Check if any core infra files changed
 for core_file in "${CORE_INFRA_FILES[@]}"; do
     if echo "$CHANGED_FILES" | grep -qF "$core_file"; then
-        run_full_suite "core infrastructure changed: $core_file"
+        run_full_suite "core infrastructure changed: $core_file" "$CHANGED_FILES"
     fi
 done
 
@@ -376,14 +393,14 @@ SLICE_OUTPUT=$(mktemp)
 trap "rm -f $CHANGED_FILE_LIST $SLICE_OUTPUT" EXIT
 
 if ! $STABLE_HG slice --files "$CHANGED_FILE_LIST" --output "$SLICE_OUTPUT" 2>/dev/null; then
-    run_full_suite "slice command failed"
+    run_full_suite "slice command failed" "$CHANGED_FILES"
 fi
 
 # Filter to only test files in package directories
 AFFECTED_TESTS=$(grep -E 'packages/.*/tests/test_.*\.py$' "$SLICE_OUTPUT" 2>/dev/null | sort -u || echo "")
 
 if [[ -z "$AFFECTED_TESTS" ]]; then
-    run_full_suite "no test files in slice result"
+    run_full_suite "no test files in slice result" "$CHANGED_FILES"
 fi
 
 # Count affected tests

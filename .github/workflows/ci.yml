@@ -290,7 +290,7 @@ jobs:
 
             # If core infrastructure changed, manifest should indicate full suite
             if [ "$CORE_CHANGED" = "true" ]; then
-              if grep -q "^# Full test suite required" "$MANIFEST"; then
+              if grep -q "^# Mode: full-suite" "$MANIFEST"; then
                 echo "✓ Core changed, manifest indicates full suite - good"
               else
                 echo "⚠️ Core infrastructure changed but manifest doesn't indicate full suite"
@@ -383,7 +383,14 @@ jobs:
 
           if [ -n "$MISSING" ]; then
             echo "⚠️ Manifest missing source files from PR diff:$MISSING"
-            echo "Regenerate manifest: ./scripts/smart-test --manifest"
+            echo ""
+            echo "This typically happens when pytest was run before staging changes."
+            echo "The manifest was generated without seeing the staged files."
+            echo ""
+            echo "To fix: stage changes first, then run pytest"
+            echo "  git add <files>"
+            echo "  pytest  # regenerates manifest with correct file list"
+            echo "  git commit"
             echo ""
             echo "Continuing with PR diff files for coverage check..."
             CHANGED_SOURCE_FILES="$ACTUAL_SOURCE_FILES"
