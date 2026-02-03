@@ -368,6 +368,26 @@ jobs:
           MANIFEST_MODE=$(grep '^# Mode:' "$MANIFEST" | cut -d: -f2 | tr -d ' ' || echo "unknown")
           echo "Manifest mode: $MANIFEST_MODE"
 
+          # Reject full-suite manifests - CI has 5-minute limit, can't run all tests
+          # Full suite validation happens in full-suite.yml after merge
+          if [ "$MANIFEST_MODE" = "full-suite" ]; then
+            REASON=$(grep '^# Reason:' "$MANIFEST" | cut -d: -f2- | sed 's/^ *//' || echo "unknown")
+            echo ""
+            echo "❌ Fast-CI cannot run full-suite manifests"
+            echo "   Manifest mode: full-suite"
+            echo "   Reason: $REASON"
+            echo ""
+            echo "CI has a 5-minute time limit. Full test suite runs after merge via full-suite.yml."
+            echo ""
+            echo "To fix, regenerate the manifest with targeted tests:"
+            echo "  pytest              # runs affected tests, updates targeted manifest"
+            echo "  git add .ci/affected-tests.txt"
+            echo "  git commit --amend"
+            echo ""
+            echo "Note: 'pytest --full' runs all tests locally but still writes a targeted manifest."
+            exit 1
+          fi
+
           # Read changed source files from manifest (between markers)
           CHANGED_SOURCE_FILES=$(sed -n '/^# === CHANGED_SOURCE_FILES ===/,/^# === SELECTED_TESTS ===/p' "$MANIFEST" | grep -v '^#' | grep -v '^$' || echo "")
 

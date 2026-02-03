@@ -365,11 +365,9 @@ UNSTAGED_CHANGES=$(git diff --name-only 2>/dev/null || echo "")
 # Combine and deduplicate
 CHANGED_FILES=$(printf "%s\n%s\n%s" "$COMMITTED_CHANGES" "$STAGED_CHANGES" "$UNSTAGED_CHANGES" | sort -u | grep -v '^$' || echo "")
 
-# Handle --full flag (now that CHANGED_FILES is computed for manifest)
-if [[ "$FULL_RUN" == "true" ]]; then
-    run_full_suite "explicit --full flag" "$CHANGED_FILES"
-fi
-
+# If no changes detected, run full suite
+# (This also writes a full-suite manifest, which CI will reject - that's intentional
+# as it signals something is wrong with the baseline/change detection)
 if [[ -z "$CHANGED_FILES" ]]; then
     run_full_suite "no changed files detected"
 fi
@@ -444,6 +442,15 @@ if [[ "$MANIFEST_ONLY" == "true" ]]; then
     echo "Manifest written to $MANIFEST_FILE ($TEST_COUNT test files)"
     cat "$MANIFEST_FILE"
     exit 0
+fi
+
+# Handle --full flag: run all tests locally, but manifest already written above is targeted
+# This is for local testing when you want to verify the full suite passes
+if [[ "$FULL_RUN" == "true" ]]; then
+    log "Running full test suite locally (--full flag)"
+    echo "Running full test suite (manifest written with $TEST_COUNT targeted tests for CI)"
+    run_pytest "packages/*/tests/" -n 2 "${PYTEST_ARGS[@]}"
+    exit $?
 fi
 
 # Build scoped coverage for affected source files only
