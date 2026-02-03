@@ -272,27 +272,6 @@ jobs:
               fi
             done
 
-            if [ "$CORE_CHANGED" = "true" ]; then
-              echo "❌ Core infrastructure changed - manifest must include comprehensive tests"
-              echo ""
-              echo "When changing core files (sketch.py, slice.py, etc.), smart-test"
-              echo "should generate a full-suite manifest. Run locally:"
-              echo "  ./scripts/smart-test --manifest"
-              echo ""
-              echo "If smart-test falls back to full suite, that's expected for core changes."
-              # For bootstrap: allow if manifest exists and has full suite marker
-              if [ -f ".ci/affected-tests.txt" ] && grep -q "^# Full test suite required" ".ci/affected-tests.txt"; then
-                echo "✓ Found full-suite manifest (bootstrap mode)"
-                echo "skip_tests=true" >> "$GITHUB_OUTPUT"
-                echo "bootstrap_mode=true" >> "$GITHUB_OUTPUT"
-                exit 0
-              fi
-              echo ""
-              echo "During bootstrap (before stable hypergumbo has --files):"
-              echo "PRs touching core files require manual merge."
-              exit 1
-            fi
-
             # Check if manifest exists (contributor ran scripts/smart-test --manifest locally)
             if [ ! -f "$MANIFEST" ]; then
               echo "❌ No manifest committed"
@@ -309,23 +288,15 @@ jobs:
             echo "=== Validating committed manifest ==="
             head -10 "$MANIFEST"
 
-            # Check if manifest indicates full suite is required (bootstrap case)
-            # This happens when smart-test couldn't run proper slice (no stable hypergumbo with --files)
-            if grep -q "^# Full test suite required" "$MANIFEST"; then
-              echo "⚠️ Bootstrap mode: stable hypergumbo lacks --files flag"
-              echo ""
-              echo "Smart-test fell back to full suite because:"
-              echo "  - Stable hypergumbo on PyPI doesn't have 'slice --files' yet"
-              echo "  - This is expected during the bootstrap period"
-              echo ""
-              echo "Options:"
-              echo "  1. Manually merge this PR (tests will run in full-suite.yml after merge)"
-              echo "  2. Wait for hypergumbo with --files to be published to PyPI"
-              echo ""
-              echo "Skipping CI tests - full-suite.yml will validate after merge."
-              echo "skip_tests=true" >> "$GITHUB_OUTPUT"
-              echo "bootstrap_mode=true" >> "$GITHUB_OUTPUT"
-              exit 0
+            # If core infrastructure changed, manifest should indicate full suite
+            if [ "$CORE_CHANGED" = "true" ]; then
+              if grep -q "^# Full test suite required" "$MANIFEST"; then
+                echo "✓ Core changed, manifest indicates full suite - good"
+              else
+                echo "⚠️ Core infrastructure changed but manifest doesn't indicate full suite"
+                echo "   smart-test should have generated a full-suite manifest"
+                echo "   Regenerate with: ./scripts/smart-test --manifest"
+              fi
             fi
 
             # Cheap sanity check: verify manifest has reasonable coverage for changed modules
@@ -374,22 +345,9 @@ jobs:
       - name: Run tests with coverage
         if: steps.manifest.outputs.skip_tests != 'true'
         run: |
-          COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src"
-
-          echo "=== Python version ==="
-          python --version
-
-          echo "=== Installed packages ==="
-          pip list | grep -E "hypergumbo|pytest|tree-sitter" | head -20 || true
-
           MANIFEST=".ci/affected-tests.txt"
-          if [ -f "$MANIFEST" ] && [ "${{ steps.manifest.outputs.use_manifest }}" = "true" ]; then
-            echo "=== Running affected tests only (smart test selection) ==="
-            # Filter out comment lines (starting with #) from manifest
-            AFFECTED_TESTS=$(grep -v '^#' "$MANIFEST" | grep -v '^$' | tr '\n' ' ')
-            echo "Running: pytest $AFFECTED_TESTS"
-            pytest -n 2 --tb=short $COV_PATHS --cov-report=term $AFFECTED_TESTS 2>&1 | tee coverage-output.txt
-          else
+
+          if [ ! -f "$MANIFEST" ] || [ "${{ steps.manifest.outputs.use_manifest }}" != "true" ]; then
             echo "❌ No valid manifest - cannot run tests"
             echo ""
             echo "Fast-CI requires a manifest with targeted tests."
@@ -397,19 +355,85 @@ jobs:
             exit 1
           fi
 
-      - name: Bootstrap mode notice
-        if: steps.manifest.outputs.bootstrap_mode == 'true'
-        run: |
-          echo "╔════════════════════════════════════════════════════════════╗"
-          echo "║  BOOTSTRAP MODE - Tests skipped in fast-CI                 ║"
-          echo "╚════════════════════════════════════════════════════════════╝"
+          # Read changed source files from manifest (between markers)
+          CHANGED_SOURCE_FILES=$(sed -n '/^# === CHANGED_SOURCE_FILES ===/,/^# === AFFECTED_TESTS ===/p' "$MANIFEST" | grep -v '^#' | grep -v '^$' || echo "")
+
+          # Sanity check: verify manifest's changed source files match actual PR diff
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          ACTUAL_SOURCE_FILES=$(git diff --name-only "$BASE" "$HEAD" | grep -E '^packages/.*/src/.*\.py$' | sort || echo "")
+          MANIFEST_SOURCE_FILES=$(echo "$CHANGED_SOURCE_FILES" | sort || echo "")
+
+          echo "=== Sanity check: changed source files ==="
+          echo "From manifest: $(echo "$MANIFEST_SOURCE_FILES" | wc -w) files"
+          echo "From PR diff:  $(echo "$ACTUAL_SOURCE_FILES" | wc -w) files"
+
+          # Check that manifest includes all files from PR diff
+          # (manifest may include more if baseline differs, but should not miss any)
+          MISSING=""
+          for f in $ACTUAL_SOURCE_FILES; do
+            if ! echo "$MANIFEST_SOURCE_FILES" | grep -qF "$f"; then
+              MISSING="$MISSING $f"
+            fi
+          done
+
+          if [ -n "$MISSING" ]; then
+            echo "⚠️ Manifest missing source files from PR diff:$MISSING"
+            echo "Regenerate manifest: ./scripts/smart-test --manifest"
+            echo ""
+            echo "Continuing with PR diff files for coverage check..."
+            CHANGED_SOURCE_FILES="$ACTUAL_SOURCE_FILES"
+          else
+            echo "✓ Manifest includes all changed source files"
+          fi
+
+          # Build coverage paths for affected packages only
+          if [ -n "$CHANGED_SOURCE_FILES" ]; then
+            PKG_DIRS=$(echo "$CHANGED_SOURCE_FILES" | sed 's|^\(packages/[^/]*/src\)/.*|\1|' | sort -u)
+            COV_PATHS=""
+            for pkg in $PKG_DIRS; do
+              COV_PATHS="$COV_PATHS --cov=$pkg"
+            done
+            # Suppress terminal report - we'll show targeted coverage below
+            COV_PATHS="$COV_PATHS --cov-report="
+          else
+            # No source files changed - skip coverage
+            COV_PATHS=""
+          fi
+
           echo ""
-          echo "This PR can be manually merged. After merge, full-suite.yml"
-          echo "will run comprehensive validation."
+          echo "=== Python version ==="
+          python --version
+
+          echo "=== Installed packages ==="
+          pip list | grep -E "hypergumbo|pytest|tree-sitter" | head -20 || true
+
           echo ""
-          echo "To enable smart test selection, publish hypergumbo with"
-          echo "'slice --files' to PyPI, then contributors can generate"
-          echo "targeted manifests."
+          echo "=== Running affected tests only (smart test selection) ==="
+          # Read affected tests from manifest (after AFFECTED_TESTS marker)
+          AFFECTED_TESTS=$(sed -n '/^# === AFFECTED_TESTS ===/,$p' "$MANIFEST" | grep -v '^#' | grep -v '^$' | tr '\n' ' ')
+          echo "Running: pytest $AFFECTED_TESTS"
+          pytest -n 2 --tb=short $COV_PATHS $AFFECTED_TESTS
+          TEST_EXIT=$?
+
+          # Check 100% coverage for changed source files only
+          if [ $TEST_EXIT -eq 0 ] && [ -n "$CHANGED_SOURCE_FILES" ]; then
+            echo ""
+            echo "=== Checking 100% coverage for changed source files ==="
+            INCLUDE_PATTERN=$(echo "$CHANGED_SOURCE_FILES" | tr '\n' ',' | sed 's/,$//')
+
+            if ! coverage report --include="$INCLUDE_PATTERN" --fail-under=100; then
+              echo ""
+              echo "❌ Changed source files are not at 100% coverage:"
+              coverage report --include="$INCLUDE_PATTERN" --show-missing
+              exit 1
+            else
+              echo "✅ All changed source files are at 100% coverage"
+            fi
+          fi
+
+          exit $TEST_EXIT
+
       # Coverage badge is updated by full-suite.yml, not here
       # (ci.yml skips pytest on push events)
 

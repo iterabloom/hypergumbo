@@ -9,6 +9,21 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Added
+
+- **Scoped coverage for smart-test (ADR-0011)**: smart-test now uses the `last-green-sha` marker from CI as the baseline for comparison, and enforces 100% coverage only for changed source files (not the entire codebase). This enables fast feedback (~45 tests in <1s vs 5700+ tests) while still enforcing coverage for your changes.
+- **Per-package coverage check script**: Added `scripts/check-package-coverage` to verify each package achieves 100% coverage when tested in isolation (mimicking CI). Catches cross-package coverage dependencies before pushing.
+- **Test placement guidelines**: Added documentation in AGENTS.md explaining why tests must be in the same package as the code they cover, and why subprocess tests don't contribute to pytest-cov coverage.
+
+### Changed
+
+- **CI manifest includes changed source files**: The `.ci/affected-tests.txt` manifest now includes a `CHANGED_SOURCE_FILES` section, enabling CI to perform scoped coverage checks without recomputing changed files.
+- **Consistent coverage config in full-suite.yml**: All four test jobs (core, mainstream, common, extended) now check for sentence-transformers and use `.coveragerc.no-embeddings` when unavailable. Previously only test-core did this.
+
+### Removed
+
+- **Bootstrap mode in CI**: Removed obsolete bootstrap mode code paths from ci.yml. The stable hypergumbo release now includes `slice --files`, so smart-test can always generate proper manifests.
+
 ## [2.0.2] - 2026-02-01
 
 ### Changed
