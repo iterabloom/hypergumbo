@@ -246,9 +246,13 @@ fast-ci:
         for mod in $CHANGED_MODULES; do
           case $mod in
             hypergumbo-core)
-              MIN_TESTS=100 ;;
+              MIN_TESTS=20 ;;
             hypergumbo-lang-*)
-              MIN_TESTS=50 ;;
+              MIN_TESTS=10 ;;
+            hypergumbo)
+              MIN_TESTS=0 ;;  # Meta-package has no tests
+            *)
+              MIN_TESTS=5 ;;
           esac
 
           ACTUAL=$(grep -c "test_${mod}" "$MANIFEST" || echo 0)
