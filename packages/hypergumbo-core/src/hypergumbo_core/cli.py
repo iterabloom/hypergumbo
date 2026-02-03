@@ -12,6 +12,7 @@ The CLI uses argparse with subcommands for different operations:
 - **slice**: Extract subgraph from an entry point
 - **catalog**: List available analysis passes
 - **build-grammars**: Build Lean/Wolfram tree-sitter grammars from source
+- **install-gitleaks**: Install gitleaks for secret scanning
 
 When no subcommand is given, sketch mode is assumed. This makes the
 common case (`hypergumbo .`) as simple as possible.
@@ -86,6 +87,13 @@ from .compact import (
     DEFAULT_TIERS,
 )
 from .build_grammars import build_all_grammars, check_grammar_availability
+from .gitleaks import (
+    is_gitleaks_available,
+    install_gitleaks,
+    scan_content,
+    format_secret_warning,
+    get_install_nag,
+)
 from .framework_patterns import (
     enrich_symbols,
     get_frameworks_dir,
@@ -452,6 +460,23 @@ def cmd_sketch(args: argparse.Namespace) -> int:
         with_source=with_source,
         stats_out=stats,
     )
+
+    # Secret scanning (opt-out with --no-secret-scan)
+    no_secret_scan = getattr(args, "no_secret_scan", False)
+    if not no_secret_scan:
+        if is_gitleaks_available():
+            findings = scan_content(sketch)
+            if findings:
+                print(format_secret_warning(findings), file=sys.stderr)
+            else:
+                # Always remind that this is best-effort
+                print(
+                    "\u2139\ufe0f  Secret scan complete (best-effort, not exhaustive).",
+                    file=sys.stderr,
+                )
+        else:
+            print(get_install_nag(), file=sys.stderr)
+
     print(sketch)
 
     # Generate 4x and 16x budget sketches for comparison table
@@ -1756,6 +1781,24 @@ def cmd_build_grammars(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_install_gitleaks(args: argparse.Namespace) -> int:
+    """Install gitleaks for secret scanning."""
+    if args.check:
+        # Just check availability
+        available = is_gitleaks_available()
+        symbol = "\u2713" if available else "\u2717"
+        print(f"gitleaks: {symbol} {'installed' if available else 'not installed'}")
+
+        if not available:
+            print("\nRun 'hypergumbo install-gitleaks' to install.")
+            return 1
+        return 0
+
+    # Install gitleaks
+    success = install_gitleaks(quiet=args.quiet)
+    return 0 if success else 1
+
+
 def cmd_symbols(args: argparse.Namespace) -> int:
     """Display symbol catalog with connectivity information.
 
@@ -2364,6 +2407,12 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         dest="with_source",
         help="Omit source file contents from sketch output",
     )
+    p_sketch.add_argument(
+        "--no-secret-scan",
+        action="store_true",
+        dest="no_secret_scan",
+        help="Skip secret scanning (not recommended)",
+    )
     p_sketch.set_defaults(func=cmd_sketch, first_party_priority=True, language_proportional=True)
 
     # hypergumbo run
@@ -2789,6 +2838,23 @@ The output begins with passes suggested for your current directory."""
         help="Suppress output",
     )
     p_build.set_defaults(func=cmd_build_grammars)
+
+    # hypergumbo install-gitleaks
+    p_gitleaks = sub.add_parser(
+        "install-gitleaks",
+        help="Install gitleaks for secret scanning",
+    )
+    p_gitleaks.add_argument(
+        "--check",
+        action="store_true",
+        help="Check if gitleaks is installed without installing",
+    )
+    p_gitleaks.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_gitleaks.set_defaults(func=cmd_install_gitleaks)
 
     # hypergumbo test-coverage
     test_coverage_epilog = """\
@@ -3475,7 +3541,7 @@ def main(argv=None) -> int:
         print_all_help(parser)
         return 0
 
-    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "sketch", "build-grammars", "test-coverage", "symbols", "compact"}
+    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "sketch", "build-grammars", "install-gitleaks", "test-coverage", "symbols", "compact"}
 
     # If no args, or first arg is not a subcommand (and not a flag), use sketch mode
     if not argv or (argv[0] not in subcommands and not argv[0].startswith("-")):
