@@ -11,6 +11,21 @@
 # - Kotlin: @Test annotation
 # - Swift: XCTest (test* methods)
 # - PHP: PHPUnit (test*)
+# - Elixir: ExUnit (test blocks)
+# - Scala: ScalaTest, MUnit, Specs2
+# - Dart: test package (test/group functions)
+# - Clojure: clojure.test (deftest)
+# - Haskell: HSpec, Tasty
+# - Erlang: EUnit, Common Test
+# - F#: Expecto, NUnit, xUnit
+# - Julia: Test stdlib (@test, @testset)
+# - OCaml: OUnit, Alcotest
+# - Lua: busted, luaunit
+# - R: testthat
+# - Nim: unittest
+# - Zig: built-in test blocks
+# - D: built-in unittest
+# - Groovy: Spock, JUnit
 #
 # These patterns identify test code which is useful for:
 # - Filtering test files from production code slices
@@ -97,6 +112,18 @@ patterns:
     symbol_kind: "^method$"
     language: "^ruby$"
 
+  # RSpec: it/specify blocks (extracted as methods)
+  - concept: test_function
+    symbol_name: "^(it|specify)$"
+    symbol_kind: "^(function|method)$"
+    language: "^ruby$"
+
+  # RSpec: describe/context blocks
+  - concept: test_suite
+    symbol_name: "^(describe|context)$"
+    symbol_kind: "^(function|method)$"
+    language: "^ruby$"
+
   # ====== Rust ======
   # Rust #[test] attribute
   - concept: test_function
@@ -167,5 +194,281 @@ patterns:
     symbol_name: "^(TEST_CASE|SCENARIO)$"
     symbol_kind: "^function$"
     language: "^(cpp|c)$"
+
+  # ====== Elixir ======
+  # ExUnit: test "..." do blocks (extracted as functions named "test ...")
+  - concept: test_function
+    symbol_name: "^test "
+    symbol_kind: "^function$"
+    language: "^elixir$"
+
+  # ExUnit: setup/setup_all callbacks
+  - concept: test_lifecycle
+    symbol_name: "^(setup|setup_all)$"
+    symbol_kind: "^function$"
+    language: "^elixir$"
+
+  # ExUnit: describe blocks
+  - concept: test_suite
+    symbol_name: "^describe "
+    symbol_kind: "^function$"
+    language: "^elixir$"
+
+  # ====== Scala ======
+  # ScalaTest: test functions (often named with "test" or "should")
+  - concept: test_function
+    symbol_name: "^test"
+    symbol_kind: "^(function|method)$"
+    language: "^scala$"
+
+  # ScalaTest/Specs2: @Test annotation
+  - concept: test_function
+    decorator: "^Test$"
+    language: "^scala$"
+
+  # MUnit: test() calls create functions
+  - concept: test_function
+    symbol_name: "^test$"
+    symbol_kind: "^(function|method)$"
+    language: "^scala$"
+
+  # ====== Dart ======
+  # Dart test package: test() function calls
+  - concept: test_function
+    symbol_name: "^test$"
+    symbol_kind: "^function$"
+    language: "^dart$"
+
+  # Dart test package: group() for test suites
+  - concept: test_suite
+    symbol_name: "^group$"
+    symbol_kind: "^function$"
+    language: "^dart$"
+
+  # Dart: setUp/tearDown lifecycle
+  - concept: test_lifecycle
+    symbol_name: "^(setUp|tearDown)(All)?$"
+    symbol_kind: "^function$"
+    language: "^dart$"
+
+  # ====== Clojure ======
+  # clojure.test: deftest macro creates test functions
+  - concept: test_function
+    symbol_name: "^test-"
+    symbol_kind: "^function$"
+    language: "^clojure$"
+
+  # clojure.test: deftest (captured as macro call)
+  - concept: test_function
+    symbol_name: "^deftest$"
+    symbol_kind: "^(function|macro)$"
+    language: "^clojure$"
+
+  # ====== Haskell ======
+  # HSpec: spec/describe/it functions
+  - concept: test_function
+    symbol_name: "^(spec|it)$"
+    symbol_kind: "^function$"
+    language: "^haskell$"
+
+  - concept: test_suite
+    symbol_name: "^describe$"
+    symbol_kind: "^function$"
+    language: "^haskell$"
+
+  # Tasty: testCase, testGroup, testProperty
+  - concept: test_function
+    symbol_name: "^test(Case|Property)$"
+    symbol_kind: "^function$"
+    language: "^haskell$"
+
+  - concept: test_suite
+    symbol_name: "^testGroup$"
+    symbol_kind: "^function$"
+    language: "^haskell$"
+
+  # QuickCheck: prop_* naming convention
+  - concept: test_function
+    symbol_name: "^prop_"
+    symbol_kind: "^function$"
+    language: "^haskell$"
+
+  # ====== Erlang ======
+  # EUnit: *_test functions
+  - concept: test_function
+    symbol_name: "_test$"
+    symbol_kind: "^function$"
+    language: "^erlang$"
+
+  # EUnit: *_test_ generators
+  - concept: test_function
+    symbol_name: "_test_$"
+    symbol_kind: "^function$"
+    language: "^erlang$"
+
+  # Common Test: test case functions (often prefixed with test_ or tc_)
+  - concept: test_function
+    symbol_name: "^(test_|tc_)"
+    symbol_kind: "^function$"
+    language: "^erlang$"
+
+  # Common Test: init_per_*/end_per_* lifecycle
+  - concept: test_lifecycle
+    symbol_name: "^(init_per_|end_per_)"
+    symbol_kind: "^function$"
+    language: "^erlang$"
+
+  # ====== F# ======
+  # Expecto: testCase, testList
+  - concept: test_function
+    symbol_name: "^testCase$"
+    symbol_kind: "^function$"
+    language: "^fsharp$"
+
+  - concept: test_suite
+    symbol_name: "^testList$"
+    symbol_kind: "^function$"
+    language: "^fsharp$"
+
+  # NUnit/xUnit: [<Test>], [<Fact>], [<Theory>] attributes
+  - concept: test_function
+    decorator: "^(Test|Fact|Theory)$"
+    language: "^fsharp$"
+
+  # Expecto: testProperty for property-based testing
+  - concept: test_function
+    symbol_name: "^testProperty$"
+    symbol_kind: "^function$"
+    language: "^fsharp$"
+
+  # ====== Julia ======
+  # Test stdlib: @test macro (functions containing test assertions)
+  - concept: test_function
+    symbol_name: "^test_"
+    symbol_kind: "^function$"
+    language: "^julia$"
+
+  # Test stdlib: @testset blocks
+  - concept: test_suite
+    symbol_name: "^@testset$"
+    symbol_kind: "^(function|macro)$"
+    language: "^julia$"
+
+  # ====== OCaml ======
+  # OUnit/Alcotest: test_* functions
+  - concept: test_function
+    symbol_name: "^test_"
+    symbol_kind: "^function$"
+    language: "^ocaml$"
+
+  # OUnit: suite naming
+  - concept: test_suite
+    symbol_name: "^suite$"
+    symbol_kind: "^function$"
+    language: "^ocaml$"
+
+  # ====== Lua ======
+  # busted: describe/it/pending blocks
+  - concept: test_function
+    symbol_name: "^(it|pending)$"
+    symbol_kind: "^function$"
+    language: "^lua$"
+
+  - concept: test_suite
+    symbol_name: "^describe$"
+    symbol_kind: "^function$"
+    language: "^lua$"
+
+  # luaunit: test* functions
+  - concept: test_function
+    symbol_name: "^test"
+    symbol_kind: "^function$"
+    language: "^lua$"
+
+  # busted: setup/teardown
+  - concept: test_lifecycle
+    symbol_name: "^(setup|teardown|before_each|after_each)$"
+    symbol_kind: "^function$"
+    language: "^lua$"
+
+  # ====== R ======
+  # testthat: test_that() calls
+  - concept: test_function
+    symbol_name: "^test_that$"
+    symbol_kind: "^function$"
+    language: "^r$"
+
+  # testthat: describe/it for BDD style
+  - concept: test_function
+    symbol_name: "^it$"
+    symbol_kind: "^function$"
+    language: "^r$"
+
+  - concept: test_suite
+    symbol_name: "^describe$"
+    symbol_kind: "^function$"
+    language: "^r$"
+
+  # testthat: setup/teardown
+  - concept: test_lifecycle
+    symbol_name: "^(setup|teardown)$"
+    symbol_kind: "^function$"
+    language: "^r$"
+
+  # ====== Nim ======
+  # unittest: test "..." blocks
+  - concept: test_function
+    symbol_name: "^test$"
+    symbol_kind: "^(function|template)$"
+    language: "^nim$"
+
+  # unittest: suite blocks
+  - concept: test_suite
+    symbol_name: "^suite$"
+    symbol_kind: "^(function|template)$"
+    language: "^nim$"
+
+  # unittest: setup/teardown
+  - concept: test_lifecycle
+    symbol_name: "^(setup|teardown)$"
+    symbol_kind: "^(function|template)$"
+    language: "^nim$"
+
+  # ====== Zig ======
+  # Zig: test "..." blocks (extracted as test functions)
+  - concept: test_function
+    symbol_name: "^test "
+    symbol_kind: "^function$"
+    language: "^zig$"
+
+  # ====== D ======
+  # D: unittest blocks
+  - concept: test_function
+    symbol_name: "^unittest$"
+    symbol_kind: "^function$"
+    language: "^d$"
+
+  # D: @("test") UDA pattern
+  - concept: test_function
+    decorator: "^test$"
+    language: "^d$"
+
+  # ====== Groovy ======
+  # Spock: feature methods (def "should ..."())
+  - concept: test_function
+    symbol_name: "^(should|def) "
+    symbol_kind: "^method$"
+    language: "^groovy$"
+
+  # JUnit: @Test annotation
+  - concept: test_function
+    decorator: "^Test$"
+    language: "^groovy$"
+
+  # Spock: setup/cleanup lifecycle
+  - concept: test_lifecycle
+    symbol_name: "^(setup|cleanup|setupSpec|cleanupSpec)$"
+    symbol_kind: "^method$"
+    language: "^groovy$"
 
 linkers: []
