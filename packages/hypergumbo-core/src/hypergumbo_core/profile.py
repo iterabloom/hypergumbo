@@ -355,6 +355,18 @@ SOLIDITY_FRAMEWORKS = {
     "hardhat": ["hardhat.config.js", "hardhat.config.ts"],
 }
 
+# Haskell framework detection patterns (from *.cabal, stack.yaml, package.yaml)
+HASKELL_FRAMEWORKS = {
+    "servant": ["servant", "servant-server"],
+    "scotty": ["scotty"],
+}
+
+# Clojure framework detection patterns (from deps.edn, project.clj)
+CLOJURE_FRAMEWORKS = {
+    "ring-compojure": ["ring", "compojure", "ring/ring-core"],
+    "pedestal": ["pedestal", "io.pedestal"],
+}
+
 # Map languages to their framework dictionaries
 LANGUAGE_FRAMEWORKS: dict[str, dict[str, list[str]]] = {
     "python": PYTHON_FRAMEWORKS,
@@ -370,6 +382,8 @@ LANGUAGE_FRAMEWORKS: dict[str, dict[str, list[str]]] = {
     "solidity": SOLIDITY_FRAMEWORKS,
     "ruby": RUBY_FRAMEWORKS,
     "elixir": ELIXIR_FRAMEWORKS,
+    "haskell": HASKELL_FRAMEWORKS,
+    "clojure": CLOJURE_FRAMEWORKS,
 }
 
 
@@ -911,6 +925,67 @@ def _detect_elixir_frameworks(repo_root: Path) -> list[str]:
     return detected
 
 
+def _detect_haskell_frameworks(repo_root: Path) -> list[str]:
+    """Detect Haskell frameworks from *.cabal, stack.yaml, or package.yaml.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Checks:
+    - *.cabal files for build-depends
+    - stack.yaml for extra-deps
+    - package.yaml (hpack) for dependencies
+    """
+    detected = []
+
+    # Read all cabal files
+    cabal_content = ""
+    for depth in range(4):  # 0, 1, 2, 3 levels deep
+        pattern = "/".join(["*"] * depth) + "/*.cabal" if depth > 0 else "*.cabal"
+        for cabal_file in repo_root.glob(pattern):
+            try:
+                cabal_content += cabal_file.read_text(errors="ignore").lower() + "\n"
+            except (OSError, IOError):  # pragma: no cover
+                pass
+
+    # Read stack.yaml and package.yaml files
+    yaml_content = ""
+    for filename in ("stack.yaml", "package.yaml"):
+        yaml_content += _read_all_manifest_files(repo_root, filename)
+
+    combined_content = cabal_content + yaml_content
+
+    for framework, patterns in HASKELL_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in combined_content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
+def _detect_clojure_frameworks(repo_root: Path) -> list[str]:
+    """Detect Clojure frameworks from deps.edn or project.clj.
+
+    Scans recursively up to 3 levels deep to find manifests in subdirectories.
+    Checks:
+    - deps.edn for dependencies (tools.deps/CLI)
+    - project.clj for dependencies (Leiningen)
+    """
+    detected = []
+
+    # Read deps.edn and project.clj files
+    deps_content = _read_all_manifest_files(repo_root, "deps.edn")
+    project_content = _read_all_manifest_files(repo_root, "project.clj")
+    combined_content = deps_content + project_content
+
+    for framework, patterns in CLOJURE_FRAMEWORKS.items():
+        for pattern in patterns:
+            if pattern.lower() in combined_content:
+                detected.append(framework)
+                break
+
+    return detected
+
+
 def _detect_solidity_frameworks(repo_root: Path) -> list[str]:
     """Detect Solidity frameworks from config files.
 
@@ -956,6 +1031,8 @@ def _detect_frameworks(repo_root: Path) -> list[str]:
     frameworks.extend(_detect_solidity_frameworks(repo_root))
     frameworks.extend(_detect_ruby_frameworks(repo_root))
     frameworks.extend(_detect_elixir_frameworks(repo_root))
+    frameworks.extend(_detect_haskell_frameworks(repo_root))
+    frameworks.extend(_detect_clojure_frameworks(repo_root))
     return frameworks
 
 

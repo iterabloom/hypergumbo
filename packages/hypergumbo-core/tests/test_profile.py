@@ -1489,3 +1489,94 @@ dependencies:
 
     data = json.loads(out_path.read_text())
     assert "flutter" in data["profile"]["frameworks"]
+
+
+# Haskell framework detection tests
+
+
+def test_detects_haskell_servant_framework_from_cabal(tmp_path: Path) -> None:
+    """Should detect Servant from *.cabal file."""
+    (tmp_path / "Main.hs").write_text("main = putStrLn \"Hello\"\n")
+    (tmp_path / "myapp.cabal").write_text("""name: myapp
+version: 0.1.0.0
+build-depends:
+    base >=4.7 && <5,
+    servant-server,
+    warp
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "servant" in data["profile"]["frameworks"]
+
+
+def test_detects_haskell_scotty_framework_from_stack_yaml(tmp_path: Path) -> None:
+    """Should detect Scotty from stack.yaml."""
+    (tmp_path / "Main.hs").write_text("main = putStrLn \"Hello\"\n")
+    (tmp_path / "stack.yaml").write_text("""resolver: lts-21.0
+packages:
+  - .
+extra-deps:
+  - scotty-0.12.1
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "scotty" in data["profile"]["frameworks"]
+
+
+def test_detects_haskell_servant_from_package_yaml(tmp_path: Path) -> None:
+    """Should detect Servant from package.yaml (hpack)."""
+    (tmp_path / "Main.hs").write_text("main = putStrLn \"Hello\"\n")
+    (tmp_path / "package.yaml").write_text("""name: myapp
+dependencies:
+  - base >= 4.7 && < 5
+  - servant
+  - servant-server
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "servant" in data["profile"]["frameworks"]
+
+
+# Clojure framework detection tests
+
+
+def test_detects_clojure_ring_framework_from_deps_edn(tmp_path: Path) -> None:
+    """Should detect Ring/Compojure from deps.edn."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "core.clj").write_text("(ns myapp.core)\n")
+    (tmp_path / "deps.edn").write_text("""{:deps
+ {ring/ring-core {:mvn/version "1.10.0"}
+  compojure/compojure {:mvn/version "1.7.0"}}}
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "ring-compojure" in data["profile"]["frameworks"]
+
+
+def test_detects_clojure_pedestal_framework_from_project_clj(tmp_path: Path) -> None:
+    """Should detect Pedestal from project.clj (Leiningen)."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "core.clj").write_text("(ns myapp.core)\n")
+    (tmp_path / "project.clj").write_text("""(defproject myapp "0.1.0"
+  :dependencies [[org.clojure/clojure "1.11.1"]
+                 [io.pedestal/pedestal.service "0.6.0"]
+                 [io.pedestal/pedestal.route "0.6.0"]])
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "pedestal" in data["profile"]["frameworks"]
