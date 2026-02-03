@@ -52,6 +52,12 @@ No weak shit. If you don't know, say you don't know. If you haven't checked, say
   - Coverage paths are configured in `pyproject.toml` and `scripts/smart-test`
   - **No excuses:** If coverage drops below 100%, it is YOUR responsibility to fix it—even if you didn't cause it. "Not my fault" is not an acceptable response. Any coverage gap you encounter is technical debt that must be addressed before proceeding. Investigate the cause, fix it, and move on. This prevents debt accumulation.
   - **Embedding-dependent code:** When `sentence-transformers` isn't available, `smart-test` automatically uses `.coveragerc.no-embeddings` which excludes embedding-only code paths. This is expected. But in a properly configured dev environment (`./scripts/dev-install`), embeddings SHOULD be available.
+  - **Per-package isolation:** CI tests each package in isolation. Local combined runs can mask coverage gaps. Before pushing, run `./scripts/check-package-coverage` to verify each package achieves 100% independently.
+- **Test Placement Guidelines:** Tests must be in the same package as the code they cover.
+  - **Why:** CI runs each package's tests in isolation. A test in `hypergumbo-core` that exercises code in `hypergumbo-lang-mainstream` won't contribute to mainstream's coverage in CI.
+  - **Rule:** If your test file imports from `hypergumbo_lang_foo`, the test belongs in `packages/hypergumbo-lang-foo/tests/`.
+  - **Subprocess tests don't contribute to coverage:** Tests that invoke `subprocess.run([sys.executable, "-m", "hypergumbo", ...])` won't contribute to pytest-cov coverage. Call functions directly when possible. Use subprocess tests only for true integration testing (verifying CLI args, exit codes, etc.), not for coverage.
+  - **Verify before pushing:** Run `./scripts/check-package-coverage` to catch cross-package coverage issues locally.
 - **Property Tests:** Tests verify invariants (valid IDs, confidence ranges, schema compliance) rather than exact "golden" output. We can't know a priori what the correct analysis is for complex repos.
 - **Linting:** Ensure code adheres to PEP 8.
 - **Module Docstrings:** Each `.py` file should have a substantive module docstring explaining *how it works* and *why*, not just *what* it exports. Capture implementation rationale that would otherwise be lost.

@@ -1,0 +1,113 @@
+#!/bin/bash
+# check-package-coverage: Verify each package achieves 100% coverage in isolation
+#
+# This script mimics CI's per-package test isolation. It catches issues where:
+# 1. Tests in package A cover code in package B (cross-package coverage)
+# 2. Tests use subprocess (which doesn't contribute to pytest-cov coverage)
+#
+# Run this BEFORE pushing to ensure CI won't report coverage gaps.
+#
+# Usage:
+#   ./scripts/check-package-coverage           # Check all packages
+#   ./scripts/check-package-coverage core      # Check only hypergumbo-core
+#   ./scripts/check-package-coverage --quick   # Skip extended1 (faster)
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$REPO_ROOT"
+
+# Package definitions: name -> (test_dir, src_dir)
+declare -A PACKAGES=(
+    ["core"]="packages/hypergumbo-core/tests packages/hypergumbo-core/src"
+    ["mainstream"]="packages/hypergumbo-lang-mainstream/tests packages/hypergumbo-lang-mainstream/src"
+    ["common"]="packages/hypergumbo-lang-common/tests packages/hypergumbo-lang-common/src"
+    ["extended"]="packages/hypergumbo-lang-extended1/tests packages/hypergumbo-lang-extended1/src"
+)
+
+# Parse args
+QUICK=false
+TARGETS=()
+for arg in "$@"; do
+    case $arg in
+        --quick) QUICK=true ;;
+        core|mainstream|common|extended) TARGETS+=("$arg") ;;
+        *) echo "Unknown argument: $arg"; exit 1 ;;
+    esac
+done
+
+# Default to all packages
+if [[ ${#TARGETS[@]} -eq 0 ]]; then
+    TARGETS=("core" "mainstream" "common" "extended")
+fi
+
+# Skip extended in quick mode
+if [[ "$QUICK" == "true" ]]; then
+    TARGETS=("${TARGETS[@]/extended/}")
+    # Remove empty elements
+    TARGETS=("${TARGETS[@]}")
+fi
+
+echo "Checking per-package coverage (mimics CI isolation)"
+echo "===================================================="
+echo ""
+
+FAILED=()
+PASSED=()
+
+for pkg in "${TARGETS[@]}"; do
+    [[ -z "$pkg" ]] && continue
+
+    IFS=' ' read -r test_dir src_dir <<< "${PACKAGES[$pkg]}"
+
+    echo "[$pkg] Testing $test_dir with coverage for $src_dir..."
+
+    # Detect coverage config
+    COV_CONFIG=""
+    if ! python3 -c "import sentence_transformers" 2>/dev/null; then
+        COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
+    fi
+
+    # Run pytest with coverage for just this package
+    if SMART_TEST_ACTIVE=1 pytest "$test_dir" \
+        --cov="$src_dir" $COV_CONFIG \
+        --cov-fail-under=100 \
+        --cov-report=term-missing:skip-covered \
+        -q --tb=no 2>&1 | tee "/tmp/pkg-cov-$pkg.log"; then
+        echo "[$pkg] ✅ PASSED"
+        PASSED+=("$pkg")
+    else
+        echo "[$pkg] ❌ FAILED"
+        FAILED+=("$pkg")
+        # Show the coverage gaps
+        echo ""
+        echo "Coverage gaps for $pkg:"
+        grep -E "^packages/.*\s+[0-9]+\s+[1-9][0-9]*\s+[0-9]+%" "/tmp/pkg-cov-$pkg.log" || true
+        echo ""
+    fi
+    echo ""
+done
+
+echo "===================================================="
+echo "Results:"
+echo "  Passed: ${PASSED[*]:-none}"
+echo "  Failed: ${FAILED[*]:-none}"
+
+if [[ ${#FAILED[@]} -gt 0 ]]; then
+    echo ""
+    echo "❌ Some packages have coverage gaps when tested in isolation."
+    echo ""
+    echo "This happens when:"
+    echo "  1. A test in package A covers code in package B"
+    echo "     Fix: Move/copy the test to package B's test directory"
+    echo ""
+    echo "  2. A test uses subprocess.run() to invoke the CLI"
+    echo "     Fix: Call the function directly (subprocess doesn't contribute to coverage)"
+    echo ""
+    echo "See AGENTS.md 'Test Placement Guidelines' for details."
+    exit 1
+else
+    echo ""
+    echo "✅ All packages achieve 100% coverage in isolation."
+    exit 0
+fi
