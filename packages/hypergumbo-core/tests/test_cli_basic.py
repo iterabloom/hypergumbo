@@ -1,4 +1,6 @@
 import logging
+import sys
+
 import pytest
 
 from hypergumbo_core.cli import build_parser, main
@@ -47,3 +49,21 @@ def test_debug_flag_configures_logging(tmp_path, monkeypatch):
     # Verify basicConfig was called with DEBUG level
     assert len(config_calls) == 1
     assert config_calls[0]["level"] == logging.DEBUG
+
+
+def test_main_uses_sys_argv_when_argv_not_provided(tmp_path, monkeypatch):
+    """main() uses sys.argv[1:] when argv parameter is None (covers cli.py:3471).
+
+    This tests the CLI entry point code path where main() is called without
+    an explicit argv argument, causing it to read from sys.argv.
+    """
+    # Create a minimal repo
+    (tmp_path / "test.py").write_text("x = 1")
+
+    # Set sys.argv to simulate CLI invocation
+    monkeypatch.setattr(sys, "argv", ["hypergumbo", "sketch", str(tmp_path), "-t", "100"])
+
+    # Call main() without argv - it should use sys.argv[1:]
+    result = main()  # No argv parameter
+
+    assert result == 0
