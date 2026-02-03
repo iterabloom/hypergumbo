@@ -2294,6 +2294,20 @@ Add optional integration tests that validate end-to-end behavior:
 * Run only on explicit request (`pytest -m integration`)
 * Catch environment-specific issues
 
+### CI Infrastructure Improvements (Nice-to-Have)
+
+The current CI system is solid (see ADR-0010, ADR-0011) but has some potential improvements:
+
+| Improvement | Current State | Benefit |
+|-------------|---------------|---------|
+| **DRY refactor full-suite.yml** | 4 near-identical `test-*` jobs copy-pasted | Use matrix strategy or composite action to reduce duplication |
+| **Job-to-job artifact sharing** | Each test job restores grammar wheels from cache separately | Use `actions/upload-artifact`/`download-artifact` for faster sharing |
+| **Parallel pytest in ci.yml** | All selected tests run in single job | For large changes affecting multiple packages, could split by package |
+| **Test count reporting** | ci.yml doesn't report how many tests ran | Add count to output for validating smart-test selection |
+| **Matrix strategy for packages** | Manual job per package | `matrix: { package: [core, mainstream, common, extended] }` |
+
+These are all quality-of-life improvements. The current system works correctly and provides fast feedback.
+
 ## Appendix C: Planned Language/DSL Support
 
 Languages and DSLs identified as gaps from industry analysis.
