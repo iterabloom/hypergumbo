@@ -355,8 +355,12 @@ jobs:
             exit 1
           fi
 
+          # Read mode from manifest (targeted or full-suite)
+          MANIFEST_MODE=$(grep '^# Mode:' "$MANIFEST" | cut -d: -f2 | tr -d ' ' || echo "unknown")
+          echo "Manifest mode: $MANIFEST_MODE"
+
           # Read changed source files from manifest (between markers)
-          CHANGED_SOURCE_FILES=$(sed -n '/^# === CHANGED_SOURCE_FILES ===/,/^# === AFFECTED_TESTS ===/p' "$MANIFEST" | grep -v '^#' | grep -v '^$' || echo "")
+          CHANGED_SOURCE_FILES=$(sed -n '/^# === CHANGED_SOURCE_FILES ===/,/^# === SELECTED_TESTS ===/p' "$MANIFEST" | grep -v '^#' | grep -v '^$' || echo "")
 
           # Sanity check: verify manifest's changed source files match actual PR diff
           BASE="${{ github.event.pull_request.base.sha }}"
@@ -409,11 +413,19 @@ jobs:
           pip list | grep -E "hypergumbo|pytest|tree-sitter" | head -20 || true
 
           echo ""
-          echo "=== Running affected tests only (smart test selection) ==="
-          # Read affected tests from manifest (after AFFECTED_TESTS marker)
-          AFFECTED_TESTS=$(sed -n '/^# === AFFECTED_TESTS ===/,$p' "$MANIFEST" | grep -v '^#' | grep -v '^$' | tr '\n' ' ')
-          echo "Running: pytest $AFFECTED_TESTS"
-          pytest -n 2 --tb=short $COV_PATHS $AFFECTED_TESTS
+          # Read selected tests from manifest (after SELECTED_TESTS marker)
+          SELECTED_TESTS=$(sed -n '/^# === SELECTED_TESTS ===/,$p' "$MANIFEST" | grep -v '^#' | grep -v '^$' | tr '\n' ' ')
+          TEST_COUNT=$(echo "$SELECTED_TESTS" | wc -w)
+
+          if [ "$MANIFEST_MODE" = "full-suite" ]; then
+            REASON=$(grep '^# Reason:' "$MANIFEST" | cut -d: -f2- | sed 's/^ *//' || echo "unknown")
+            echo "=== Running full test suite ($REASON) ==="
+          else
+            echo "=== Running $TEST_COUNT selected tests (smart test selection) ==="
+          fi
+
+          echo "Running: pytest ($TEST_COUNT test files)"
+          pytest -n 2 --tb=short $COV_PATHS $SELECTED_TESTS
           TEST_EXIT=$?
 
           # Check 100% coverage for changed source files only

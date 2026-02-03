@@ -18,6 +18,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ### Changed
 
 - **CI manifest includes changed source files**: The `.ci/affected-tests.txt` manifest now includes a `CHANGED_SOURCE_FILES` section, enabling CI to perform scoped coverage checks without recomputing changed files.
+- **Manifest terminology: "affected" → "selected"**: The manifest now uses `SELECTED_TESTS` instead of `AFFECTED_TESTS`, and includes a `Mode:` field (`targeted` or `full-suite`) so CI can display appropriate messaging. "Selected tests" accurately describes what the manifest contains regardless of whether it's a targeted subset or the full suite.
 - **Consistent coverage config in full-suite.yml**: All four test jobs (core, mainstream, common, extended) now check for sentence-transformers and use `.coveragerc.no-embeddings` when unavailable. Previously only test-core did this.
 
 ### Removed
