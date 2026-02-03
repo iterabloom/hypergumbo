@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -25,6 +26,50 @@ if TYPE_CHECKING:
 
 # Model name constant
 _EMBEDDING_MODEL = "microsoft/unixcoder-base"
+
+# Regex pattern for IPv6 CIDR (contains :: and /prefix, e.g., fd00:200::/40)
+_IPV6_CIDR_PATTERN = re.compile(r"[0-9a-fA-F:]*::[0-9a-fA-F:]*/\d+")
+
+
+def _sanitize_no_proxy_for_httpx() -> tuple[str | None, str | None]:
+    """Temporarily remove IPv6 CIDR entries from NO_PROXY for httpx compatibility.
+
+    httpx has a bug where IPv6 CIDR notation (e.g., fd00:200::/40) in NO_PROXY
+    causes InvalidURL errors during Client initialization. This function removes
+    such entries temporarily and returns the original values for restoration.
+
+    Returns:
+        Tuple of (original NO_PROXY, original no_proxy) for restoration.
+    """
+    old_values: tuple[str | None, str | None] = (
+        os.environ.get("NO_PROXY"),
+        os.environ.get("no_proxy"),
+    )
+
+    for var in ("NO_PROXY", "no_proxy"):
+        value = os.environ.get(var)
+        if value:
+            # Filter out IPv6 CIDR entries
+            entries = [e.strip() for e in value.split(",")]
+            filtered = [e for e in entries if not _IPV6_CIDR_PATTERN.match(e)]
+            if len(filtered) < len(entries):
+                os.environ[var] = ",".join(filtered)
+
+    return old_values
+
+
+def _restore_no_proxy(old_values: tuple[str | None, str | None]) -> None:
+    """Restore NO_PROXY environment variables to their original values."""
+    old_no_proxy, old_no_proxy_lower = old_values
+    if old_no_proxy is not None:
+        os.environ["NO_PROXY"] = old_no_proxy
+    elif "NO_PROXY" in os.environ:
+        del os.environ["NO_PROXY"]
+
+    if old_no_proxy_lower is not None:
+        os.environ["no_proxy"] = old_no_proxy_lower
+    elif "no_proxy" in os.environ:
+        del os.environ["no_proxy"]
 
 
 def _load_embedding_model():
@@ -36,6 +81,10 @@ def _load_embedding_model():
 
     The warning is suppressed by setting log level BEFORE importing/loading,
     and by capturing any stdout output during initialization.
+
+    Note:
+        Temporarily sanitizes NO_PROXY to work around httpx bug with IPv6 CIDR
+        notation (e.g., fd00:200::/40) which causes InvalidURL parsing errors.
     """
     # Suppress warnings BEFORE importing to catch all submodule loggers
     logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
@@ -45,6 +94,9 @@ def _load_embedding_model():
     import sys
     import io
 
+    # Work around httpx bug with IPv6 CIDR in NO_PROXY
+    old_no_proxy = _sanitize_no_proxy_for_httpx()
+
     # Capture any stdout during model loading (library prints to stdout)
     old_stdout = sys.stdout
     sys.stdout = io.StringIO()
@@ -52,6 +104,7 @@ def _load_embedding_model():
         model = SentenceTransformer(_EMBEDDING_MODEL)
     finally:
         sys.stdout = old_stdout
+        _restore_no_proxy(old_no_proxy)
     return model
 
 # Probe patterns for embedding-based config extraction
@@ -1430,6 +1483,10 @@ def _load_modernbert_model():
 
     Returns:
         SentenceTransformer model configured for 256-dim output.
+
+    Note:
+        Temporarily sanitizes NO_PROXY to work around httpx bug with IPv6 CIDR
+        notation (e.g., fd00:200::/40) which causes InvalidURL parsing errors.
     """
     # Suppress warnings BEFORE importing to catch all submodule loggers
     logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
@@ -1438,6 +1495,9 @@ def _load_modernbert_model():
     from sentence_transformers import SentenceTransformer
     import sys
     import io
+
+    # Work around httpx bug with IPv6 CIDR in NO_PROXY
+    old_no_proxy = _sanitize_no_proxy_for_httpx()
 
     # Capture any stdout during model loading (library prints to stdout)
     old_stdout = sys.stdout
@@ -1449,6 +1509,7 @@ def _load_modernbert_model():
         )
     finally:
         sys.stdout = old_stdout
+        _restore_no_proxy(old_no_proxy)
     return model
 
 

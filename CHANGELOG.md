@@ -38,12 +38,17 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Changed
 
+- **Pinned all dependencies using compatible release operator**: All dependencies in pyproject.toml files now use `~=X.Y.Z` (compatible release) instead of `>=X.Y`. This allows patch updates while preventing unexpected minor/major version changes that could introduce breaking changes (like the huggingface_hub 0.x → 1.x httpx migration).
 - **CI manifest includes changed source files**: The `.ci/affected-tests.txt` manifest now includes a `CHANGED_SOURCE_FILES` section, enabling CI to perform scoped coverage checks without recomputing changed files.
 - **Manifest terminology: "affected" → "selected"**: The manifest now uses `SELECTED_TESTS` instead of `AFFECTED_TESTS`, and includes a `Mode:` field (`targeted` or `full-suite`) so CI can display appropriate messaging. "Selected tests" accurately describes what the manifest contains regardless of whether it's a targeted subset or the full suite.
 - **Consistent coverage config in full-suite.yml**: All four test jobs (core, mainstream, common, extended) now check for sentence-transformers and use `.coveragerc.no-embeddings` when unavailable. Previously only test-core did this.
 - **smart-test detects all change sources**: Now detects committed, staged, AND unstaged changes. Previously only detected committed changes, causing stale manifests when pytest ran before staging.
 - **Infrastructure-only PRs skip pytest**: PRs that only change shell scripts, YAML, or config files (no Python source) now skip pytest entirely in `ci.yml`. Full suite still runs via `full-suite.yml` after merge.
 - **Clearer CI manifest display**: CI now shows just the manifest header (Mode, Reason) and a count, not a truncated list of test files that looked confusing ("3 files → 171 tests").
+
+### Fixed
+
+- **httpx IPv6 CIDR proxy bug workaround**: Fixed embedding model loading failures when `NO_PROXY` environment variable contains IPv6 CIDR notation (e.g., `fd00:200::/40`). httpx 0.25+ has a bug where IPv6 CIDR in NO_PROXY causes `InvalidURL: Invalid port` errors. The workaround temporarily sanitizes NO_PROXY during model initialization.
 
 ### Removed
 
