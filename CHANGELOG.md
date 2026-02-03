@@ -11,6 +11,15 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
+- **Framework detection for 7 additional languages**: Extended dependency-file scanning to detect frameworks in languages that previously only had YAML patterns:
+  - **Haskell**: servant, scotty (via `.cabal` files)
+  - **Clojure**: ring-compojure, pedestal (via `deps.edn`, `project.clj`)
+  - **R**: shiny, plumber (via `DESCRIPTION` files)
+  - **Lua**: openresty, lapis, love2d (via `.rockspec` files)
+  - **C++**: qt (via `CMakeLists.txt`, `.pro` files)
+  - **Erlang**: cowboy (via `rebar.config`)
+  - **F#**: giraffe, saturn, suave (via `.fsproj` files)
+- **Framework YAML patterns**: Added pattern files for R Shiny, R Plumber, Lua OpenResty/Lapis, C++ Qt, Erlang Cowboy, and F# Giraffe/Saturn. These enable symbol enrichment (route detection, handler classification) once frameworks are detected.
 - **Secret scanning with gitleaks**: `hypergumbo sketch` now scans output for potential secrets before displaying it. This helps prevent accidentally pasting credentials into LLM chat windows. Install gitleaks with `hypergumbo install-gitleaks`. Scans run by default (opt-out with `--no-secret-scan`). Always warns that scanning is best-effort, not exhaustive.
 - **Scoped coverage for smart-test (ADR-0011)**: smart-test now uses the `last-green-sha` marker from CI as the baseline for comparison, and enforces 100% coverage only for changed source files (not the entire codebase). This enables fast feedback (~45 tests in <1s vs 5700+ tests) while still enforcing coverage for your changes.
 - **Per-package coverage check script**: Added `scripts/check-package-coverage` to verify each package achieves 100% coverage when tested in isolation (mimicking CI). Catches cross-package coverage dependencies before pushing.
