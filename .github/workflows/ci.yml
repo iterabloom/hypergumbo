@@ -456,15 +456,31 @@ jobs:
           if [ $TEST_EXIT -eq 0 ] && [ -n "$CHANGED_SOURCE_FILES" ]; then
             echo ""
             echo "=== Checking 100% coverage for changed source files ==="
-            INCLUDE_PATTERN=$(echo "$CHANGED_SOURCE_FILES" | tr '\n' ',' | sed 's/,$//')
 
-            if ! coverage report --include="$INCLUDE_PATTERN" --fail-under=100; then
-              echo ""
-              echo "❌ Changed source files are not at 100% coverage:"
-              coverage report --include="$INCLUDE_PATTERN" --show-missing
-              exit 1
+            # Filter out deleted files (they won't exist and can't have coverage)
+            EXISTING_FILES=""
+            for f in $CHANGED_SOURCE_FILES; do
+              if [ -f "$f" ]; then
+                EXISTING_FILES="$EXISTING_FILES $f"
+              else
+                echo "  (skipping deleted file: $f)"
+              fi
+            done
+            EXISTING_FILES=$(echo "$EXISTING_FILES" | xargs)  # trim whitespace
+
+            if [ -z "$EXISTING_FILES" ]; then
+              echo "✅ All changed files were deleted - no coverage check needed"
             else
-              echo "✅ All changed source files are at 100% coverage"
+              INCLUDE_PATTERN=$(echo "$EXISTING_FILES" | tr ' ' ',' | sed 's/,$//')
+
+              if ! coverage report --include="$INCLUDE_PATTERN" --fail-under=100; then
+                echo ""
+                echo "❌ Changed source files are not at 100% coverage:"
+                coverage report --include="$INCLUDE_PATTERN" --show-missing
+                exit 1
+              else
+                echo "✅ All changed source files are at 100% coverage"
+              fi
             fi
           fi
 
