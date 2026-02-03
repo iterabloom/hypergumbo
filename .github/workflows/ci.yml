@@ -302,38 +302,41 @@ jobs:
               fi
             fi
 
-            # Cheap sanity check: verify manifest has reasonable coverage for changed modules
+            # Sanity check: verify manifest has at least some tests for changed modules
             # This prevents gaming (e.g., committing empty manifest to skip tests)
+            # We use a low minimum (1 test file) because:
+            # - Deleting files legitimately reduces test count
+            # - smart-test is trusted to generate correct manifests
+            # - Coverage check will catch missing coverage anyway
             CHANGED_MODULES=$(git diff --name-only "$BASE" "$HEAD" | grep "^packages/" | cut -d/ -f2 | sort -u || true)
 
             SANITY_OK=true
             for mod in $CHANGED_MODULES; do
               case $mod in
-                hypergumbo-core)
-                  MIN_TESTS=20 ;;
-                hypergumbo-lang-*)
-                  MIN_TESTS=10 ;;
                 hypergumbo)
                   # Meta-package has no tests of its own
                   MIN_TESTS=0 ;;
                 *)
-                  MIN_TESTS=5 ;;
+                  # At least 1 test file for any changed module
+                  MIN_TESTS=1 ;;
               esac
 
-              # Count tests that mention this module (very cheap heuristic)
-              # Matches paths like packages/hypergumbo-core/tests/test_*.py
+              # Count tests that mention this module
               ACTUAL=$(grep -c "packages/$mod/tests/" "$MANIFEST" 2>/dev/null || echo 0)
 
               if [ "$ACTUAL" -lt "$MIN_TESTS" ]; then
                 echo "⚠️ Manifest has $ACTUAL tests for $mod, expected ≥$MIN_TESTS"
                 SANITY_OK=false
               else
-                echo "✓ $mod: $ACTUAL tests (≥$MIN_TESTS required)"
+                echo "✓ $mod: $ACTUAL tests"
               fi
             done
 
             if [ "$SANITY_OK" = "false" ]; then
-              echo "⚠️ Manifest sanity check failed - falling back to full suite"
+              echo "⚠️ Manifest sanity check failed"
+              echo "   This usually means smart-test wasn't run after changes."
+              echo "   Run: pytest  (regenerates manifest)"
+              echo "   Then: git add .ci/affected-tests.txt && git commit --amend"
               echo "use_manifest=false" >> "$GITHUB_OUTPUT"
             else
               TOTAL_TESTS=$(grep -c "^packages/" "$MANIFEST" 2>/dev/null || echo 0)
