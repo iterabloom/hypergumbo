@@ -399,7 +399,9 @@ if ! $STABLE_HG slice --files "$CHANGED_FILE_LIST" --output "$SLICE_OUTPUT" 2>/d
 fi
 
 # Filter to only test files in package directories
-AFFECTED_TESTS=$(grep -E 'packages/.*/tests/test_.*\.py$' "$SLICE_OUTPUT" 2>/dev/null | sort -u || echo "")
+# Convert absolute paths to relative (slice may output absolute paths)
+AFFECTED_TESTS=$(grep -E 'packages/.*/tests/test_.*\.py$' "$SLICE_OUTPUT" 2>/dev/null | \
+    sed "s|^$REPO_ROOT/||" | sort -u || echo "")
 
 if [[ -z "$AFFECTED_TESTS" ]]; then
     run_full_suite "no test files in slice result" "$CHANGED_FILES"

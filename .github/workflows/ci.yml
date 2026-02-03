@@ -308,7 +308,9 @@ jobs:
             # - Deleting files legitimately reduces test count
             # - smart-test is trusted to generate correct manifests
             # - Coverage check will catch missing coverage anyway
-            CHANGED_MODULES=$(git diff --name-only "$BASE" "$HEAD" | grep "^packages/" | cut -d/ -f2 | sort -u || true)
+            # NOTE: Only check modules with changed SOURCE files (*.py in src/), not all changed files
+            # Config files (pyproject.toml, etc.) don't require tests
+            CHANGED_MODULES=$(git diff --name-only "$BASE" "$HEAD" | grep -E "^packages/.*/src/.*\.py$" | cut -d/ -f2 | sort -u || true)
 
             SANITY_OK=true
             for mod in $CHANGED_MODULES; do
