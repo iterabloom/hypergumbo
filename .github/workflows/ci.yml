@@ -375,6 +375,17 @@ jobs:
           echo "From manifest: $(echo "$MANIFEST_SOURCE_FILES" | wc -w) files"
           echo "From PR diff:  $(echo "$ACTUAL_SOURCE_FILES" | wc -w) files"
 
+          # If no Python source files changed, skip tests entirely
+          # This handles PRs that only change shell scripts, YAML, docs, etc.
+          # Full suite runs in full-suite.yml after merge to catch any issues
+          if [ -z "$ACTUAL_SOURCE_FILES" ] && [ -z "$MANIFEST_SOURCE_FILES" ]; then
+            echo ""
+            echo "✅ No Python source files changed - skipping pytest"
+            echo "   Changes are to infrastructure/config files only."
+            echo "   Full suite will run via full-suite.yml after merge."
+            exit 0
+          fi
+
           # Check that manifest includes all files from PR diff
           # (manifest may include more if baseline differs, but should not miss any)
           MISSING=""
