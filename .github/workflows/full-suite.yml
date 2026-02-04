@@ -56,8 +56,9 @@ jobs:
             echo "Docs-only changes - skipping expensive jobs"
           fi
 
-  # Build grammars once, cache wheels for test jobs
-  build-grammars:
+  # Prep job: build grammars AND install pip deps, cache both
+  # This saves ~60s per test job by doing expensive installs once
+  prep:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: codeberg-small-lazy
@@ -67,23 +68,43 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      # Cache grammar wheels
       - name: Cache grammar wheels
-        id: cache
+        id: grammar-cache
         uses: actions/cache@v3
         with:
           path: /tmp/grammar-wheels
           key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
       - name: Build grammar wheels
-        if: steps.cache.outputs.cache-hit != 'true'
+        if: steps.grammar-cache.outputs.cache-hit != 'true'
         run: |
           pip install --upgrade pip setuptools wheel
           ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
       - name: Verify wheels exist
-        run: ls -la /tmp/grammar-wheels/*.whl
+        run: ls -la /tmp/grammar-wheels/*.whl || echo "No wheels (will build in test jobs)"
 
-  # Run each package's tests in parallel (after grammars are built)
+      # Cache pip packages (site-packages) keyed by pyproject.toml files
+      - name: Cache pip packages
+        id: pip-cache
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/lib/python3.11/site-packages
+          key: pip-packages-${{ hashFiles('packages/*/pyproject.toml') }}
+      - name: Install pip dependencies
+        if: steps.pip-cache.outputs.cache-hit != 'true'
+        run: |
+          pip install --upgrade pip
+          pip install pytest pytest-cov pytest-xdist jsonschema
+          pip install -e packages/hypergumbo-core \
+                      -e packages/hypergumbo-lang-mainstream \
+                      -e packages/hypergumbo-lang-common \
+                      -e packages/hypergumbo-lang-extended1
+          ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+
+  # Run each package's tests in parallel (after prep is done)
   test-core:
-    needs: [changes, build-grammars]
+    needs: [changes, prep]
     if: needs.changes.outputs.code == 'true'
     runs-on: codeberg-small-lazy
     outputs:
@@ -94,24 +115,32 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: 'pip'
+
+      # Restore grammar wheels
       - name: Restore grammar wheels
         uses: actions/cache@v3
         with:
           path: /tmp/grammar-wheels
           key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+
+      # Restore pip packages
+      - name: Restore pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/lib/python3.11/site-packages
+          key: pip-packages-${{ hashFiles('packages/*/pyproject.toml') }}
+
+      # Quick install (mostly no-ops if cache hit, handles editable installs)
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          # Install test deps directly
           pip install pytest pytest-cov pytest-xdist jsonschema
-          # Install component packages only - meta-package pulls PyTorch/CUDA
           pip install -e packages/hypergumbo-core \
                       -e packages/hypergumbo-lang-mainstream \
                       -e packages/hypergumbo-lang-common \
                       -e packages/hypergumbo-lang-extended1
-      - name: Install grammars from wheels
-        run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+          ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+
       - name: Check for sentence-transformers
         run: |
           if python -c "import sentence_transformers" 2>/dev/null; then
@@ -135,7 +164,7 @@ jobs:
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
   test-mainstream:
-    needs: [changes, build-grammars]
+    needs: [changes, prep]
     if: needs.changes.outputs.code == 'true'
     runs-on: codeberg-small-lazy
     outputs:
@@ -146,24 +175,25 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: 'pip'
       - name: Restore grammar wheels
         uses: actions/cache@v3
         with:
           path: /tmp/grammar-wheels
           key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Restore pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/lib/python3.11/site-packages
+          key: pip-packages-${{ hashFiles('packages/*/pyproject.toml') }}
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          # Install test deps directly
           pip install pytest pytest-cov pytest-xdist jsonschema
-          # Install component packages only - meta-package pulls PyTorch/CUDA
           pip install -e packages/hypergumbo-core \
                       -e packages/hypergumbo-lang-mainstream \
                       -e packages/hypergumbo-lang-common \
                       -e packages/hypergumbo-lang-extended1
-      - name: Install grammars from wheels
-        run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+          ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
       - name: Check for sentence-transformers
         run: |
           if python -c "import sentence_transformers" 2>/dev/null; then
@@ -187,7 +217,7 @@ jobs:
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
   test-common:
-    needs: [changes, build-grammars]
+    needs: [changes, prep]
     if: needs.changes.outputs.code == 'true'
     runs-on: codeberg-small-lazy
     outputs:
@@ -198,24 +228,25 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: 'pip'
       - name: Restore grammar wheels
         uses: actions/cache@v3
         with:
           path: /tmp/grammar-wheels
           key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Restore pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/lib/python3.11/site-packages
+          key: pip-packages-${{ hashFiles('packages/*/pyproject.toml') }}
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          # Install test deps directly
           pip install pytest pytest-cov pytest-xdist jsonschema
-          # Install component packages only - meta-package pulls PyTorch/CUDA
           pip install -e packages/hypergumbo-core \
                       -e packages/hypergumbo-lang-mainstream \
                       -e packages/hypergumbo-lang-common \
                       -e packages/hypergumbo-lang-extended1
-      - name: Install grammars from wheels
-        run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+          ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
       - name: Check for sentence-transformers
         run: |
           if python -c "import sentence_transformers" 2>/dev/null; then
@@ -239,7 +270,7 @@ jobs:
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
   test-extended:
-    needs: [changes, build-grammars]
+    needs: [changes, prep]
     if: needs.changes.outputs.code == 'true'
     runs-on: codeberg-small-lazy
     outputs:
@@ -250,24 +281,25 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: 'pip'
       - name: Restore grammar wheels
         uses: actions/cache@v3
         with:
           path: /tmp/grammar-wheels
           key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Restore pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/lib/python3.11/site-packages
+          key: pip-packages-${{ hashFiles('packages/*/pyproject.toml') }}
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          # Install test deps directly
           pip install pytest pytest-cov pytest-xdist jsonschema
-          # Install component packages only - meta-package pulls PyTorch/CUDA
           pip install -e packages/hypergumbo-core \
                       -e packages/hypergumbo-lang-mainstream \
                       -e packages/hypergumbo-lang-common \
                       -e packages/hypergumbo-lang-extended1
-      - name: Install grammars from wheels
-        run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+          ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
       - name: Check for sentence-transformers
         run: |
           if python -c "import sentence_transformers" 2>/dev/null; then
