@@ -36,6 +36,7 @@ import json
 import math
 import os
 import resource
+import subprocess  # nosec B404 - subprocess needed for pip commands
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
@@ -90,6 +91,7 @@ from .build_grammars import build_all_grammars, check_grammar_availability
 from .gitleaks import (
     is_gitleaks_available,
     install_gitleaks,
+    uninstall_gitleaks,
     scan_content,
     format_secret_warning,
     get_install_nag,
@@ -1799,6 +1801,248 @@ def cmd_install_gitleaks(args: argparse.Namespace) -> int:
     return 0 if success else 1
 
 
+def cmd_uninstall_gitleaks(args: argparse.Namespace) -> int:
+    """Uninstall gitleaks secret scanner."""
+    success = uninstall_gitleaks(quiet=args.quiet)
+    return 0 if success else 1
+
+
+def _is_embeddings_available() -> bool:
+    """Check if sentence-transformers is available."""
+    try:
+        import sentence_transformers  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
+def _get_embeddings_version() -> str:
+    """Get the installed sentence-transformers version."""
+    try:
+        import sentence_transformers
+
+        return sentence_transformers.__version__
+    except (ImportError, AttributeError):  # pragma: no cover
+        return "unknown"  # pragma: no cover
+
+
+def cmd_install_embeddings(args: argparse.Namespace) -> int:
+    """Install embedding dependencies (sentence-transformers).
+
+    This enables:
+    - Semantic code ranking
+    - Elevator pitch generation
+    - Config extraction with semantic filtering
+
+    Note: This pulls in PyTorch (~2GB download).
+    """
+    if args.check:
+        available = _is_embeddings_available()
+        symbol = "\u2713" if available else "\u2717"
+        status = "installed" if available else "not installed"
+        print(f"embeddings: {symbol} {status}")
+        if available:
+            print(f"  sentence-transformers {_get_embeddings_version()}")
+        else:
+            print("\nRun 'hypergumbo install-embeddings' to install.")
+            return 1
+        return 0
+
+    if _is_embeddings_available():
+        if not args.quiet:
+            print(f"Embeddings already installed (sentence-transformers {_get_embeddings_version()})")
+        return 0
+
+    if not args.quiet:
+        print("Installing embedding dependencies...")
+        print("Note: This pulls in PyTorch (~2GB download)")
+        print()
+
+    # Install via pip subprocess
+    try:
+        cmd = [sys.executable, "-m", "pip", "install", "sentence-transformers~=5.2.2"]
+        if args.quiet:
+            cmd.append("-q")
+        result = subprocess.run(cmd, check=False)  # noqa: S603 # nosec B603
+        if result.returncode != 0:
+            print("Error: pip install failed", file=sys.stderr)
+            return 1
+    except (subprocess.SubprocessError, OSError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if not args.quiet:
+        print()
+        print("Embedding features are now available:")
+        print("  - hypergumbo sketch --elevator-pitch")
+        print("  - Semantic code ranking")
+        print("  - Config extraction with semantic filtering")
+
+    return 0
+
+
+def cmd_uninstall_embeddings(args: argparse.Namespace) -> int:
+    """Uninstall embedding dependencies (sentence-transformers)."""
+    if not _is_embeddings_available():
+        if not args.quiet:
+            print("Embeddings not installed. Nothing to do.")
+        return 0
+
+    if not args.quiet:
+        print("Uninstalling sentence-transformers...")
+
+    try:
+        cmd = [sys.executable, "-m", "pip", "uninstall", "-y", "sentence-transformers"]
+        if args.quiet:
+            cmd.append("-q")
+        result = subprocess.run(cmd, check=False)  # noqa: S603 # nosec B603
+        if result.returncode != 0:
+            print("Error: pip uninstall failed", file=sys.stderr)
+            return 1
+    except (subprocess.SubprocessError, OSError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if args.all:
+        if not args.quiet:
+            print("Removing PyTorch...")
+        for pkg in ["torch", "torchvision", "torchaudio"]:
+            try:
+                subprocess.run(  # noqa: S603 # nosec B603
+                    [sys.executable, "-m", "pip", "uninstall", "-y", pkg],
+                    capture_output=True,
+                    check=False,
+                )
+            except (subprocess.SubprocessError, OSError):
+                pass  # Ignore errors for packages that may not be installed
+
+    if not args.quiet:
+        print()
+        print("Embeddings uninstalled.")
+        print("hypergumbo will continue to work without embedding features.")
+
+    return 0
+
+
+def cmd_add_extras(args: argparse.Namespace) -> int:
+    """Install all optional extras (grammars, gitleaks, embeddings).
+
+    Skips components that are already installed, showing a message for each.
+    """
+    exit_code = 0
+
+    # 1. Build grammars
+    if not args.quiet:
+        print("=== Grammars ===")
+    status = check_grammar_availability()
+    all_grammars_available = all(status.values())
+
+    if all_grammars_available:
+        if not args.quiet:
+            print("All grammars already built. Skipping.")
+    else:
+        results = build_all_grammars(quiet=args.quiet)
+        if not all(results.values()):
+            failed = [name for name, ok in results.items() if not ok]
+            print(f"Warning: Failed to build grammars: {', '.join(failed)}", file=sys.stderr)
+            exit_code = 1
+
+    if not args.quiet:
+        print()
+
+    # 2. Install gitleaks
+    if not args.quiet:
+        print("=== Gitleaks ===")
+    if is_gitleaks_available():
+        if not args.quiet:
+            print("gitleaks already installed. Skipping.")
+    else:
+        success = install_gitleaks(quiet=args.quiet)
+        if not success:
+            exit_code = 1
+
+    if not args.quiet:
+        print()
+
+    # 3. Install embeddings
+    if not args.quiet:
+        print("=== Embeddings ===")
+    if _is_embeddings_available():
+        if not args.quiet:
+            print(f"Embeddings already installed (sentence-transformers {_get_embeddings_version()}). Skipping.")
+    else:
+        if not args.quiet:
+            print("Installing embeddings...")
+            print("Note: This pulls in PyTorch (~2GB download)")
+            print()
+        try:
+            cmd = [sys.executable, "-m", "pip", "install", "sentence-transformers~=5.2.2"]
+            if args.quiet:
+                cmd.append("-q")
+            result = subprocess.run(cmd, check=False)  # noqa: S603 # nosec B603
+            if result.returncode != 0:
+                print("Warning: Failed to install embeddings", file=sys.stderr)
+                exit_code = 1
+        except (subprocess.SubprocessError, OSError) as e:
+            print(f"Warning: Failed to install embeddings: {e}", file=sys.stderr)
+            exit_code = 1
+
+    if not args.quiet:
+        print()
+        print("=== Summary ===")
+        print("All extras installed. Run 'hypergumbo remove-extras' to uninstall.")
+
+    return exit_code
+
+
+def cmd_remove_extras(args: argparse.Namespace) -> int:
+    """Uninstall optional extras (gitleaks, embeddings).
+
+    Note: Grammars are not removed as they're just shared libraries.
+    """
+    exit_code = 0
+
+    # 1. Uninstall gitleaks
+    if not args.quiet:
+        print("=== Gitleaks ===")
+    success = uninstall_gitleaks(quiet=args.quiet)
+    if not success:
+        exit_code = 1
+
+    if not args.quiet:
+        print()
+
+    # 2. Uninstall embeddings
+    if not args.quiet:
+        print("=== Embeddings ===")
+    if not _is_embeddings_available():
+        if not args.quiet:
+            print("Embeddings not installed. Skipping.")
+    else:
+        if not args.quiet:
+            print("Uninstalling sentence-transformers...")
+        try:
+            cmd = [sys.executable, "-m", "pip", "uninstall", "-y", "sentence-transformers"]
+            if args.quiet:
+                cmd.append("-q")
+            result = subprocess.run(cmd, check=False)  # noqa: S603 # nosec B603
+            if result.returncode != 0:
+                print("Warning: Failed to uninstall embeddings", file=sys.stderr)
+                exit_code = 1
+        except (subprocess.SubprocessError, OSError) as e:
+            print(f"Warning: Failed to uninstall embeddings: {e}", file=sys.stderr)
+            exit_code = 1
+
+    if not args.quiet:
+        print()
+        print("=== Summary ===")
+        print("Extras removed. hypergumbo will continue to work with core features.")
+        print("Run 'hypergumbo add-extras' to reinstall.")
+
+    return exit_code
+
+
 def cmd_symbols(args: argparse.Namespace) -> int:
     """Display symbol catalog with connectivity information.
 
@@ -2856,6 +3100,76 @@ The output begins with passes suggested for your current directory."""
     )
     p_gitleaks.set_defaults(func=cmd_install_gitleaks)
 
+    # hypergumbo uninstall-gitleaks
+    p_uninstall_gitleaks = sub.add_parser(
+        "uninstall-gitleaks",
+        help="Uninstall gitleaks secret scanner",
+    )
+    p_uninstall_gitleaks.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_uninstall_gitleaks.set_defaults(func=cmd_uninstall_gitleaks)
+
+    # hypergumbo install-embeddings
+    p_install_embeddings = sub.add_parser(
+        "install-embeddings",
+        help="Install embedding dependencies (sentence-transformers)",
+    )
+    p_install_embeddings.add_argument(
+        "--check",
+        action="store_true",
+        help="Check if embeddings are installed without installing",
+    )
+    p_install_embeddings.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_install_embeddings.set_defaults(func=cmd_install_embeddings)
+
+    # hypergumbo uninstall-embeddings
+    p_uninstall_embeddings = sub.add_parser(
+        "uninstall-embeddings",
+        help="Uninstall embedding dependencies",
+    )
+    p_uninstall_embeddings.add_argument(
+        "--all",
+        action="store_true",
+        help="Also remove PyTorch (~2GB)",
+    )
+    p_uninstall_embeddings.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_uninstall_embeddings.set_defaults(func=cmd_uninstall_embeddings)
+
+    # hypergumbo add-extras
+    p_add_extras = sub.add_parser(
+        "add-extras",
+        help="Install all optional extras (grammars, gitleaks, embeddings)",
+    )
+    p_add_extras.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_add_extras.set_defaults(func=cmd_add_extras)
+
+    # hypergumbo remove-extras
+    p_remove_extras = sub.add_parser(
+        "remove-extras",
+        help="Uninstall optional extras (gitleaks, embeddings)",
+    )
+    p_remove_extras.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_remove_extras.set_defaults(func=cmd_remove_extras)
+
     # hypergumbo test-coverage
     test_coverage_epilog = """\
 Examples:
@@ -3541,7 +3855,7 @@ def main(argv=None) -> int:
         print_all_help(parser)
         return 0
 
-    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "sketch", "build-grammars", "install-gitleaks", "test-coverage", "symbols", "compact"}
+    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "install-embeddings", "uninstall-embeddings", "add-extras", "remove-extras", "test-coverage", "symbols", "compact"}
 
     # If no args, or first arg is not a subcommand (and not a flag), use sketch mode
     if not argv or (argv[0] not in subcommands and not argv[0].startswith("-")):

@@ -33,6 +33,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   - **Groovy**: Grails, Ratpack, Micronaut (via `build.gradle`)
 - **Secret scanning with gitleaks**: `hypergumbo sketch` now scans output for potential secrets before displaying it. This helps prevent accidentally pasting credentials into LLM chat windows. Install gitleaks with `hypergumbo install-gitleaks`. Scans run by default (opt-out with `--no-secret-scan`). Always warns that scanning is best-effort, not exhaustive.
 - **Embeddings install/uninstall scripts**: Added `scripts/install-embeddings` and `scripts/uninstall-embeddings` to manage the optional embedding dependencies. Use `--check` to verify installation status, `--model` to pre-download models, and `--all`/`--cache` to clean up PyTorch and model cache.
+- **CLI extras management commands**: Added CLI subcommands for managing optional dependencies:
+  - `hypergumbo add-extras` - Install all optional extras (grammars, gitleaks, embeddings), skipping already-installed components
+  - `hypergumbo remove-extras` - Uninstall gitleaks and embeddings
+  - `hypergumbo install-embeddings` - Install embedding dependencies (sentence-transformers)
+  - `hypergumbo uninstall-embeddings` - Remove embedding dependencies (with `--all` to also remove PyTorch)
+  - `hypergumbo uninstall-gitleaks` - Remove gitleaks binary
 - **Scoped coverage for smart-test (ADR-0011)**: smart-test now uses the `last-green-sha` marker from CI as the baseline for comparison, and enforces 100% coverage only for changed source files (not the entire codebase). This enables fast feedback (~45 tests in <1s vs 5700+ tests) while still enforcing coverage for your changes.
 - **Per-package coverage check script**: Added `scripts/check-package-coverage` to verify each package achieves 100% coverage when tested in isolation (mimicking CI). Catches cross-package coverage dependencies before pushing.
 - **Test placement guidelines**: Added documentation in AGENTS.md explaining why tests must be in the same package as the code they cover, and why subprocess tests don't contribute to pytest-cov coverage.
