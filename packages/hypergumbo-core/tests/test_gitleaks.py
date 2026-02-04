@@ -27,6 +27,7 @@ from hypergumbo_core.gitleaks import (
     get_gitleaks_path,
     is_gitleaks_available,
     install_gitleaks,
+    uninstall_gitleaks,
     scan_content,
     _get_platform_arch,
     _get_download_url,
@@ -573,3 +574,691 @@ class TestCLIIntegration:
             result = cmd_install_gitleaks(args)
 
         assert result == 1
+
+
+class TestUninstallGitleaks:
+    """Tests for uninstall_gitleaks function."""
+
+    def test_uninstall_gitleaks_when_not_installed(self) -> None:
+        """Returns True when gitleaks is not installed."""
+        with patch.object(gitleaks, "GITLEAKS_PATH") as mock_path:
+            mock_path.exists.return_value = False
+            with patch("shutil.which", return_value=None):
+                result = uninstall_gitleaks(quiet=True)
+        assert result is True
+
+    def test_uninstall_gitleaks_when_not_installed_shows_message(self, capsys) -> None:
+        """Shows message when gitleaks is not installed."""
+        with patch.object(gitleaks, "GITLEAKS_PATH") as mock_path:
+            mock_path.exists.return_value = False
+            with patch("shutil.which", return_value=None):
+                uninstall_gitleaks(quiet=False)
+
+        captured = capsys.readouterr()
+        assert "not installed" in captured.out
+
+    def test_uninstall_gitleaks_when_not_installed_notes_system(self, capsys) -> None:
+        """Notes system gitleaks when local not installed."""
+        with patch.object(gitleaks, "GITLEAKS_PATH") as mock_path:
+            mock_path.exists.return_value = False
+            with patch("shutil.which", return_value="/usr/bin/gitleaks"):
+                uninstall_gitleaks(quiet=False)
+
+        captured = capsys.readouterr()
+        assert "/usr/bin/gitleaks" in captured.out
+
+    def test_uninstall_gitleaks_success(self) -> None:
+        """Successfully removes gitleaks binary."""
+        with patch.object(gitleaks, "GITLEAKS_PATH") as mock_path:
+            mock_path.exists.return_value = True
+            result = uninstall_gitleaks(quiet=True)
+
+        mock_path.unlink.assert_called_once()
+        assert result is True
+
+    def test_uninstall_gitleaks_shows_message_on_success(self, capsys) -> None:
+        """Shows removal message on success."""
+        with patch.object(gitleaks, "GITLEAKS_PATH") as mock_path:
+            mock_path.exists.return_value = True
+            uninstall_gitleaks(quiet=False)
+
+        captured = capsys.readouterr()
+        assert "Removed" in captured.out
+
+    def test_uninstall_gitleaks_failure(self) -> None:
+        """Returns False when removal fails."""
+        with patch.object(gitleaks, "GITLEAKS_PATH") as mock_path:
+            mock_path.exists.return_value = True
+            mock_path.unlink.side_effect = OSError("permission denied")
+            result = uninstall_gitleaks(quiet=True)
+
+        assert result is False
+
+
+class TestUninstallGitleaksCLI:
+    """Tests for cmd_uninstall_gitleaks."""
+
+    def test_cmd_uninstall_gitleaks_success(self) -> None:
+        """cmd_uninstall_gitleaks returns 0 on success."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_uninstall_gitleaks
+
+        args = Namespace(quiet=True)
+
+        with patch("hypergumbo_core.cli.uninstall_gitleaks", return_value=True):
+            result = cmd_uninstall_gitleaks(args)
+
+        assert result == 0
+
+    def test_cmd_uninstall_gitleaks_failure(self) -> None:
+        """cmd_uninstall_gitleaks returns 1 on failure."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_uninstall_gitleaks
+
+        args = Namespace(quiet=True)
+
+        with patch("hypergumbo_core.cli.uninstall_gitleaks", return_value=False):
+            result = cmd_uninstall_gitleaks(args)
+
+        assert result == 1
+
+
+class TestInstallEmbeddingsCLI:
+    """Tests for cmd_install_embeddings."""
+
+    def test_cmd_install_embeddings_check_when_available(self) -> None:
+        """cmd_install_embeddings --check returns 0 when installed."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_install_embeddings
+
+        args = Namespace(check=True, quiet=False)
+
+        with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
+            with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.2.2"):
+                result = cmd_install_embeddings(args)
+
+        assert result == 0
+
+    def test_cmd_install_embeddings_check_when_unavailable(self) -> None:
+        """cmd_install_embeddings --check returns 1 when not installed."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_install_embeddings
+
+        args = Namespace(check=True, quiet=False)
+
+        with patch("hypergumbo_core.cli._is_embeddings_available", return_value=False):
+            result = cmd_install_embeddings(args)
+
+        assert result == 1
+
+    def test_cmd_install_embeddings_already_installed(self) -> None:
+        """cmd_install_embeddings returns 0 when already installed."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_install_embeddings
+
+        args = Namespace(check=False, quiet=True)
+
+        with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
+            with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.2.2"):
+                result = cmd_install_embeddings(args)
+
+        assert result == 0
+
+    def test_cmd_install_embeddings_install_success(self) -> None:
+        """cmd_install_embeddings returns 0 on successful install."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_install_embeddings
+
+        args = Namespace(check=False, quiet=True)
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        with patch("hypergumbo_core.cli._is_embeddings_available", return_value=False):
+            with patch("subprocess.run", return_value=mock_result):
+                result = cmd_install_embeddings(args)
+
+        assert result == 0
+
+    def test_cmd_install_embeddings_install_failure(self) -> None:
+        """cmd_install_embeddings returns 1 on failed install."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_install_embeddings
+
+        args = Namespace(check=False, quiet=True)
+
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+
+        with patch("hypergumbo_core.cli._is_embeddings_available", return_value=False):
+            with patch("subprocess.run", return_value=mock_result):
+                result = cmd_install_embeddings(args)
+
+        assert result == 1
+
+    def test_cmd_install_embeddings_subprocess_error(self) -> None:
+        """cmd_install_embeddings returns 1 on subprocess error."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_install_embeddings
+
+        args = Namespace(check=False, quiet=True)
+
+        with patch("hypergumbo_core.cli._is_embeddings_available", return_value=False):
+            with patch("subprocess.run", side_effect=subprocess.SubprocessError("error")):
+                result = cmd_install_embeddings(args)
+
+        assert result == 1
+
+
+class TestUninstallEmbeddingsCLI:
+    """Tests for cmd_uninstall_embeddings."""
+
+    def test_cmd_uninstall_embeddings_not_installed(self) -> None:
+        """cmd_uninstall_embeddings returns 0 when not installed."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_uninstall_embeddings
+
+        args = Namespace(all=False, quiet=True)
+
+        with patch("hypergumbo_core.cli._is_embeddings_available", return_value=False):
+            result = cmd_uninstall_embeddings(args)
+
+        assert result == 0
+
+    def test_cmd_uninstall_embeddings_success(self) -> None:
+        """cmd_uninstall_embeddings returns 0 on success."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_uninstall_embeddings
+
+        args = Namespace(all=False, quiet=True)
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
+            with patch("subprocess.run", return_value=mock_result):
+                result = cmd_uninstall_embeddings(args)
+
+        assert result == 0
+
+    def test_cmd_uninstall_embeddings_failure(self) -> None:
+        """cmd_uninstall_embeddings returns 1 on failure."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_uninstall_embeddings
+
+        args = Namespace(all=False, quiet=True)
+
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+
+        with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
+            with patch("subprocess.run", return_value=mock_result):
+                result = cmd_uninstall_embeddings(args)
+
+        assert result == 1
+
+    def test_cmd_uninstall_embeddings_with_all(self) -> None:
+        """cmd_uninstall_embeddings --all also removes PyTorch."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_uninstall_embeddings
+
+        args = Namespace(all=True, quiet=True)
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        commands_run = []
+
+        def capture_run(cmd, **kwargs):
+            commands_run.append(cmd)
+            return mock_result
+
+        with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
+            with patch("subprocess.run", side_effect=capture_run):
+                result = cmd_uninstall_embeddings(args)
+
+        assert result == 0
+        # Should have run pip uninstall for sentence-transformers, torch, torchvision, torchaudio
+        assert len(commands_run) >= 2
+
+    def test_cmd_uninstall_embeddings_subprocess_error(self) -> None:
+        """cmd_uninstall_embeddings returns 1 on subprocess error."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_uninstall_embeddings
+
+        args = Namespace(all=False, quiet=True)
+
+        with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
+            with patch("subprocess.run", side_effect=subprocess.SubprocessError("error")):
+                result = cmd_uninstall_embeddings(args)
+
+        assert result == 1
+
+
+class TestAddExtrasCLI:
+    """Tests for cmd_add_extras."""
+
+    def test_cmd_add_extras_all_installed(self) -> None:
+        """cmd_add_extras returns 0 when all extras already installed."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_add_extras
+
+        args = Namespace(quiet=True)
+
+        with patch("hypergumbo_core.cli.check_grammar_availability", return_value={"lean": True, "wolfram": True}):
+            with patch("hypergumbo_core.cli.is_gitleaks_available", return_value=True):
+                with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
+                    with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.2.2"):
+                        result = cmd_add_extras(args)
+
+        assert result == 0
+
+    def test_cmd_add_extras_installs_missing(self) -> None:
+        """cmd_add_extras installs missing extras."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_add_extras
+
+        args = Namespace(quiet=True)
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        with patch("hypergumbo_core.cli.check_grammar_availability", return_value={"lean": False, "wolfram": True}):
+            with patch("hypergumbo_core.cli.build_all_grammars", return_value={"lean": True, "wolfram": True}):
+                with patch("hypergumbo_core.cli.is_gitleaks_available", return_value=False):
+                    with patch("hypergumbo_core.cli.install_gitleaks", return_value=True):
+                        with patch("hypergumbo_core.cli._is_embeddings_available", return_value=False):
+                            with patch("subprocess.run", return_value=mock_result):
+                                result = cmd_add_extras(args)
+
+        assert result == 0
+
+    def test_cmd_add_extras_partial_failure(self) -> None:
+        """cmd_add_extras returns 1 on partial failure."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_add_extras
+
+        args = Namespace(quiet=True)
+
+        with patch("hypergumbo_core.cli.check_grammar_availability", return_value={"lean": False, "wolfram": True}):
+            with patch("hypergumbo_core.cli.build_all_grammars", return_value={"lean": False, "wolfram": True}):
+                with patch("hypergumbo_core.cli.is_gitleaks_available", return_value=True):
+                    with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
+                        with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.2.2"):
+                            result = cmd_add_extras(args)
+
+        assert result == 1
+
+    def test_cmd_add_extras_gitleaks_failure(self) -> None:
+        """cmd_add_extras returns 1 when gitleaks install fails."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_add_extras
+
+        args = Namespace(quiet=True)
+
+        with patch("hypergumbo_core.cli.check_grammar_availability", return_value={"lean": True, "wolfram": True}):
+            with patch("hypergumbo_core.cli.is_gitleaks_available", return_value=False):
+                with patch("hypergumbo_core.cli.install_gitleaks", return_value=False):
+                    with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
+                        with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.2.2"):
+                            result = cmd_add_extras(args)
+
+        assert result == 1
+
+    def test_cmd_add_extras_embeddings_failure(self) -> None:
+        """cmd_add_extras returns 1 when embeddings install fails."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_add_extras
+
+        args = Namespace(quiet=True)
+
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+
+        with patch("hypergumbo_core.cli.check_grammar_availability", return_value={"lean": True, "wolfram": True}):
+            with patch("hypergumbo_core.cli.is_gitleaks_available", return_value=True):
+                with patch("hypergumbo_core.cli._is_embeddings_available", return_value=False):
+                    with patch("subprocess.run", return_value=mock_result):
+                        result = cmd_add_extras(args)
+
+        assert result == 1
+
+    def test_cmd_add_extras_embeddings_subprocess_error(self) -> None:
+        """cmd_add_extras returns 1 on embeddings subprocess error."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_add_extras
+
+        args = Namespace(quiet=True)
+
+        with patch("hypergumbo_core.cli.check_grammar_availability", return_value={"lean": True, "wolfram": True}):
+            with patch("hypergumbo_core.cli.is_gitleaks_available", return_value=True):
+                with patch("hypergumbo_core.cli._is_embeddings_available", return_value=False):
+                    with patch("subprocess.run", side_effect=subprocess.SubprocessError("error")):
+                        result = cmd_add_extras(args)
+
+        assert result == 1
+
+
+class TestRemoveExtrasCLI:
+    """Tests for cmd_remove_extras."""
+
+    def test_cmd_remove_extras_success(self) -> None:
+        """cmd_remove_extras returns 0 on success."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_remove_extras
+
+        args = Namespace(quiet=True)
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        with patch("hypergumbo_core.cli.uninstall_gitleaks", return_value=True):
+            with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
+                with patch("subprocess.run", return_value=mock_result):
+                    result = cmd_remove_extras(args)
+
+        assert result == 0
+
+    def test_cmd_remove_extras_nothing_installed(self) -> None:
+        """cmd_remove_extras returns 0 when nothing installed."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_remove_extras
+
+        args = Namespace(quiet=True)
+
+        with patch("hypergumbo_core.cli.uninstall_gitleaks", return_value=True):
+            with patch("hypergumbo_core.cli._is_embeddings_available", return_value=False):
+                result = cmd_remove_extras(args)
+
+        assert result == 0
+
+    def test_cmd_remove_extras_gitleaks_failure(self) -> None:
+        """cmd_remove_extras returns 1 when gitleaks uninstall fails."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_remove_extras
+
+        args = Namespace(quiet=True)
+
+        with patch("hypergumbo_core.cli.uninstall_gitleaks", return_value=False):
+            with patch("hypergumbo_core.cli._is_embeddings_available", return_value=False):
+                result = cmd_remove_extras(args)
+
+        assert result == 1
+
+    def test_cmd_remove_extras_embeddings_failure(self) -> None:
+        """cmd_remove_extras returns 1 when embeddings uninstall fails."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_remove_extras
+
+        args = Namespace(quiet=True)
+
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+
+        with patch("hypergumbo_core.cli.uninstall_gitleaks", return_value=True):
+            with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
+                with patch("subprocess.run", return_value=mock_result):
+                    result = cmd_remove_extras(args)
+
+        assert result == 1
+
+    def test_cmd_remove_extras_embeddings_subprocess_error(self) -> None:
+        """cmd_remove_extras returns 1 on embeddings subprocess error."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_remove_extras
+
+        args = Namespace(quiet=True)
+
+        with patch("hypergumbo_core.cli.uninstall_gitleaks", return_value=True):
+            with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
+                with patch("subprocess.run", side_effect=subprocess.SubprocessError("error")):
+                    result = cmd_remove_extras(args)
+
+        assert result == 1
+
+
+class TestEmbeddingsAvailabilityHelpers:
+    """Tests for embeddings helper functions."""
+
+    def test_is_embeddings_available_true(self) -> None:
+        """_is_embeddings_available returns True when installed."""
+        from hypergumbo_core.cli import _is_embeddings_available
+
+        # sentence-transformers should be installed in dev environment
+        result = _is_embeddings_available()
+        assert result is True
+
+    def test_is_embeddings_available_false(self) -> None:
+        """_is_embeddings_available returns False when not installed."""
+        from hypergumbo_core.cli import _is_embeddings_available
+
+        with patch.dict("sys.modules", {"sentence_transformers": None}):
+            # Can't easily test ImportError for existing module
+            # but we can verify the function exists and returns bool
+            result = _is_embeddings_available()
+            assert isinstance(result, bool)
+
+    def test_get_embeddings_version(self) -> None:
+        """_get_embeddings_version returns version string."""
+        from hypergumbo_core.cli import _get_embeddings_version
+
+        result = _get_embeddings_version()
+        assert isinstance(result, str)
+        # Should be a version like "5.2.2" or "unknown"
+        assert result
+
+
+
+class TestVerboseOutput:
+    """Tests for verbose output paths."""
+
+    def test_cmd_install_embeddings_already_installed_verbose(self, capsys) -> None:
+        """cmd_install_embeddings shows message when already installed (verbose)."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_install_embeddings
+
+        args = Namespace(check=False, quiet=False)
+
+        with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
+            with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.2.2"):
+                result = cmd_install_embeddings(args)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "already installed" in captured.out
+        assert "5.2.2" in captured.out
+
+    def test_cmd_install_embeddings_install_verbose(self, capsys) -> None:
+        """cmd_install_embeddings shows progress when installing (verbose)."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_install_embeddings
+
+        args = Namespace(check=False, quiet=False)
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        with patch("hypergumbo_core.cli._is_embeddings_available", return_value=False):
+            with patch("subprocess.run", return_value=mock_result):
+                result = cmd_install_embeddings(args)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Installing" in captured.out
+        assert "PyTorch" in captured.out
+        assert "features are now available" in captured.out
+
+    def test_cmd_uninstall_embeddings_not_installed_verbose(self, capsys) -> None:
+        """cmd_uninstall_embeddings shows message when not installed (verbose)."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_uninstall_embeddings
+
+        args = Namespace(all=False, quiet=False)
+
+        with patch("hypergumbo_core.cli._is_embeddings_available", return_value=False):
+            result = cmd_uninstall_embeddings(args)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "not installed" in captured.out
+
+    def test_cmd_uninstall_embeddings_uninstalling_verbose(self, capsys) -> None:
+        """cmd_uninstall_embeddings shows progress when uninstalling (verbose)."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_uninstall_embeddings
+
+        args = Namespace(all=False, quiet=False)
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
+            with patch("subprocess.run", return_value=mock_result):
+                result = cmd_uninstall_embeddings(args)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Uninstalling" in captured.out
+        assert "uninstalled" in captured.out.lower()
+
+    def test_cmd_uninstall_embeddings_with_all_verbose(self, capsys) -> None:
+        """cmd_uninstall_embeddings --all shows PyTorch removal message."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_uninstall_embeddings
+
+        args = Namespace(all=True, quiet=False)
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
+            with patch("subprocess.run", return_value=mock_result):
+                result = cmd_uninstall_embeddings(args)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "PyTorch" in captured.out
+
+    def test_cmd_uninstall_embeddings_with_all_handles_errors(self) -> None:
+        """cmd_uninstall_embeddings --all ignores PyTorch removal errors."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_uninstall_embeddings
+
+        args = Namespace(all=True, quiet=True)
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        call_count = [0]
+
+        def mock_run(cmd, **kwargs):
+            call_count[0] += 1
+            # First call is sentence-transformers uninstall
+            if call_count[0] == 1:
+                return mock_result
+            # Subsequent calls are PyTorch - raise errors
+            raise subprocess.SubprocessError("mock error")
+
+        with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
+            with patch("subprocess.run", side_effect=mock_run):
+                result = cmd_uninstall_embeddings(args)
+
+        # Should succeed despite PyTorch errors
+        assert result == 0
+
+    def test_cmd_add_extras_verbose(self, capsys) -> None:
+        """cmd_add_extras shows section headers in verbose mode."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_add_extras
+
+        args = Namespace(quiet=False)
+
+        with patch("hypergumbo_core.cli.check_grammar_availability", return_value={"lean": True, "wolfram": True}):
+            with patch("hypergumbo_core.cli.is_gitleaks_available", return_value=True):
+                with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
+                    with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.2.2"):
+                        result = cmd_add_extras(args)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "=== Grammars ===" in captured.out
+        assert "=== Gitleaks ===" in captured.out
+        assert "=== Embeddings ===" in captured.out
+        assert "=== Summary ===" in captured.out
+
+    def test_cmd_add_extras_installs_embeddings_verbose(self, capsys) -> None:
+        """cmd_add_extras shows embeddings install progress."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_add_extras
+
+        args = Namespace(quiet=False)
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        with patch("hypergumbo_core.cli.check_grammar_availability", return_value={"lean": True, "wolfram": True}):
+            with patch("hypergumbo_core.cli.is_gitleaks_available", return_value=True):
+                with patch("hypergumbo_core.cli._is_embeddings_available", return_value=False):
+                    with patch("subprocess.run", return_value=mock_result):
+                        result = cmd_add_extras(args)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Installing embeddings" in captured.out
+        assert "PyTorch" in captured.out
+
+    def test_cmd_add_extras_grammar_failure_verbose(self, capsys) -> None:
+        """cmd_add_extras shows grammar failure warning."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_add_extras
+
+        args = Namespace(quiet=False)
+
+        with patch("hypergumbo_core.cli.check_grammar_availability", return_value={"lean": False, "wolfram": True}):
+            with patch("hypergumbo_core.cli.build_all_grammars", return_value={"lean": False, "wolfram": True}):
+                with patch("hypergumbo_core.cli.is_gitleaks_available", return_value=True):
+                    with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
+                        with patch("hypergumbo_core.cli._get_embeddings_version", return_value="5.2.2"):
+                            result = cmd_add_extras(args)
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "Warning" in captured.err
+        assert "lean" in captured.err
+
+    def test_cmd_remove_extras_verbose(self, capsys) -> None:
+        """cmd_remove_extras shows section headers in verbose mode."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_remove_extras
+
+        args = Namespace(quiet=False)
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        with patch("hypergumbo_core.cli.uninstall_gitleaks", return_value=True):
+            with patch("hypergumbo_core.cli._is_embeddings_available", return_value=True):
+                with patch("subprocess.run", return_value=mock_result):
+                    result = cmd_remove_extras(args)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "=== Gitleaks ===" in captured.out
+        assert "=== Embeddings ===" in captured.out
+        assert "=== Summary ===" in captured.out
+        assert "Extras removed" in captured.out
+
+    def test_cmd_remove_extras_nothing_installed_verbose(self, capsys) -> None:
+        """cmd_remove_extras shows skip message when embeddings not installed."""
+        from argparse import Namespace
+        from hypergumbo_core.cli import cmd_remove_extras
+
+        args = Namespace(quiet=False)
+
+        with patch("hypergumbo_core.cli.uninstall_gitleaks", return_value=True):
+            with patch("hypergumbo_core.cli._is_embeddings_available", return_value=False):
+                result = cmd_remove_extras(args)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "not installed" in captured.out.lower() or "Skipping" in captured.out

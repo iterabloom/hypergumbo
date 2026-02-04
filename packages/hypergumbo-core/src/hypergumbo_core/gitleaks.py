@@ -313,3 +313,30 @@ def get_install_nag() -> str:
         "\u2139\ufe0f  Secret scanning unavailable. "
         "Run 'hypergumbo install-gitleaks' for safer sharing."
     )
+
+
+def uninstall_gitleaks(quiet: bool = False) -> bool:
+    """Remove gitleaks binary installed by hypergumbo.
+
+    Args:
+        quiet: Suppress progress messages
+
+    Returns:
+        True if uninstall succeeded (or wasn't needed), False otherwise
+    """
+    if not GITLEAKS_PATH.exists():
+        if not quiet:
+            print("gitleaks is not installed by hypergumbo.")
+            system_path = shutil.which("gitleaks")
+            if system_path:
+                print(f"  Note: System gitleaks found at {system_path}")
+        return True
+
+    try:
+        GITLEAKS_PATH.unlink()
+        if not quiet:
+            print(f"Removed gitleaks from {GITLEAKS_PATH}")
+        return True
+    except OSError as e:
+        print(f"Error removing gitleaks: {e}", file=sys.stderr)
+        return False
