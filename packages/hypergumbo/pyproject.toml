@@ -23,9 +23,6 @@ dependencies = [
   "hypergumbo-lang-mainstream==2.0.2",
   "hypergumbo-lang-common==2.0.2",
   "hypergumbo-lang-extended1==2.0.2",
-  # Embeddings for full-quality output (elevator pitch, semantic ranking)
-  # Users who want a lighter install can use hypergumbo-core directly
-  "sentence-transformers~=5.2.2",
 ]
 
 [project.optional-dependencies]
@@ -40,8 +37,12 @@ dev = [
   "yamllint~=1.38.0",
   "check-jsonschema~=0.36.1",
 ]
-# Kept for backwards compatibility - embeddings now included by default
-embeddings = []
+# Embeddings for full-quality output (elevator pitch, semantic ranking)
+# Pulls in sentence-transformers which requires PyTorch (~2GB)
+# Install with: pip install hypergumbo[embeddings] or ./scripts/install-embeddings
+embeddings = [
+  "sentence-transformers~=5.2.2",
+]
 
 [project.scripts]
 hypergumbo = "hypergumbo_core.cli:main"
