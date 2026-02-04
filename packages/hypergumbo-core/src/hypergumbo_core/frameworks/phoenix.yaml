@@ -34,6 +34,11 @@ patterns:
       method: "literal:RESOURCES"
 
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
+  # Keep symbol_kind pattern for backwards compatibility with route symbols
+  # created directly by the Elixir analyzer (v1.0.x convention)
+  - concept: route
+    symbol_kind: "^route$"
+
   # Controllers - use Phoenix.Controller or MyAppWeb :controller
   - concept: controller
     decorator: "^use Phoenix\\.Controller$"

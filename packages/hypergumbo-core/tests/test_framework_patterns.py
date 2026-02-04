@@ -4058,6 +4058,37 @@ class TestPhoenixPatterns:
         assert results[0]["concept"] == "middleware"
         assert results[0]["matched_decorator"] == "use Plug.Builder"
 
+    def test_phoenix_route_symbol_kind_pattern(self) -> None:
+        """Phoenix route symbols (kind=route) match route pattern via symbol_kind.
+
+        The Elixir analyzer creates route symbols with kind="route" directly.
+        This pattern ensures these get the "route" concept for entrypoint detection.
+        """
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("phoenix")
+
+        assert pattern_def is not None, "Phoenix patterns YAML should exist"
+
+        # Elixir route symbol created by analyzer
+        symbol = Symbol(
+            id="elixir:router.ex:10-10:GET /users:route",
+            name="GET /users",
+            kind="route",
+            language="elixir",
+            path="lib/my_app_web/router.ex",
+            span=Span(10, 10, 0, 50),
+            meta={
+                "http_method": "GET",
+                "route_path": "/users",
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["matched_symbol_kind"] == "route"
+
     def test_phoenix_enrich_symbols_integration(self) -> None:
         """Phoenix patterns enrich symbols with concept metadata."""
         clear_pattern_cache()
