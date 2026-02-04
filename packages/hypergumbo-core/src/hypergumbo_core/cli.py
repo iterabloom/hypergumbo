@@ -104,6 +104,155 @@ from .framework_patterns import (
 from .partial_install_warnings import check_partial_install_warnings
 
 
+# =============================================================================
+# Custom Help Formatter for Grouped Subcommands
+# =============================================================================
+
+
+class GroupedSubcommandHelpFormatter(argparse.RawDescriptionHelpFormatter):
+    """Help formatter that groups subcommands with visual separators.
+
+    Subcommands can be assigned to groups by setting a 'group' attribute on the
+    subparser's _ChoicesPseudoAction. Groups are displayed in order by their
+    'group_order' attribute, with a visual separator between groups.
+
+    Example:
+        sub = parser.add_subparsers()
+        p = sub.add_parser('sketch', help='...')
+        _set_subparser_group(sub, 'sketch', 'core', 0)
+    """
+
+    def _format_action(self, action: argparse.Action) -> str:
+        """Format an action, with special handling for subparsers."""
+        # Only customize subparser actions
+        if not isinstance(action, argparse._SubParsersAction):
+            return super()._format_action(action)
+
+        # Get all subactions (the individual subcommands)
+        subactions = list(action._get_subactions())
+
+        # Group subactions by their 'group' attribute
+        groups: Dict[str, Dict[str, Any]] = {}
+        for subaction in subactions:
+            group_name = getattr(subaction, "group", "default")
+            group_order = getattr(subaction, "group_order", 999)
+            suborder = getattr(subaction, "suborder", 0)
+            if group_name not in groups:
+                groups[group_name] = {"order": group_order, "actions": []}
+            groups[group_name]["actions"].append((suborder, subaction))
+
+        # Sort actions within each group by suborder
+        for info in groups.values():
+            info["actions"].sort(key=lambda x: x[0])
+            info["actions"] = [action for _, action in info["actions"]]
+
+        # Sort groups by (order, name)
+        sorted_groups = sorted(groups.items(), key=lambda x: (x[1]["order"], x[0]))
+
+        # Build the formatted output
+        parts = []
+
+        # Calculate max width for alignment
+        max_length = 0
+        for _, info in sorted_groups:
+            for subaction in info["actions"]:
+                invocation = self._format_action_invocation(subaction)
+                max_length = max(max_length, len(invocation))
+
+        # Add some padding
+        action_width = max_length + 2
+
+        for idx, (_, info) in enumerate(sorted_groups):
+            # Add separator between groups (not before first group)
+            if idx > 0:
+                separator = " " * self._current_indent
+                separator += "-" * action_width
+                separator += "  "
+                separator += "-" * 26
+                parts.append(separator + "\n")
+
+            # Format each subaction in this group
+            for subaction in info["actions"]:
+                parts.append(self._format_subaction(subaction, action_width))
+
+        return "".join(parts)
+
+    def _format_subaction(self, action: argparse.Action, action_width: int) -> str:
+        """Format a single subcommand action."""
+        # Get the command name
+        invocation = self._format_action_invocation(action)
+
+        # Get help text
+        help_text = action.help or ""
+
+        # Build the line with proper indentation and alignment
+        indent = " " * self._current_indent
+        # Pad invocation to action_width for alignment
+        padded_invocation = invocation.ljust(action_width)
+
+        return f"{indent}{padded_invocation}{help_text}\n"
+
+
+def _set_subparser_group(
+    subparsers: argparse._SubParsersAction,
+    name: str,
+    group: str,
+    group_order: int,
+    suborder: int = 0,
+) -> None:
+    """Set the group for a subparser by name.
+
+    Args:
+        subparsers: The _SubParsersAction from add_subparsers()
+        name: The name of the subparser (e.g., 'sketch')
+        group: The group name (e.g., 'core', 'extras')
+        group_order: Sort order for the group (lower = earlier)
+        suborder: Sort order within the group (lower = earlier, default 0)
+    """
+    # Find the _ChoicesPseudoAction for this subparser
+    for choice_action in subparsers._choices_actions:
+        if choice_action.dest == name:
+            choice_action.group = group
+            choice_action.group_order = group_order
+            choice_action.suborder = suborder
+            return
+    # If we get here, the subparser wasn't found (shouldn't happen)
+    raise ValueError(f"Subparser '{name}' not found")  # pragma: no cover
+
+
+def _get_subparsers_by_group(
+    subparsers_action: argparse._SubParsersAction,
+) -> List[tuple]:
+    """Get subparser names ordered by group.
+
+    Returns:
+        List of (name, subparser, group, is_new_group) tuples ordered by
+        (group_order, suborder) within each group.
+    """
+    # Build list with group info
+    items = []
+    for choice_action in subparsers_action._choices_actions:
+        name = choice_action.dest
+        group = getattr(choice_action, "group", "default")
+        order = getattr(choice_action, "group_order", 999)
+        suborder = getattr(choice_action, "suborder", 0)
+        subparser = subparsers_action.choices.get(name)
+        if subparser:
+            items.append((order, group, suborder, name, subparser))
+
+    # Sort by (group_order, group, suborder)
+    items.sort(key=lambda x: (x[0], x[1], x[2]))
+
+    # Return just (name, subparser) pairs with group info for separators
+    result = []
+    prev_group = None
+    for _order, group, _suborder, name, subparser in items:
+        result.append((name, subparser, group, group != prev_group))
+        prev_group = group
+
+    return result
+
+
 def _log_memory(label: str) -> None:  # pragma: no cover
     """Log current memory usage if HG_MEMORY_DEBUG is set.
 
@@ -1812,9 +1961,9 @@ def _is_embeddings_available() -> bool:
     try:
         import sentence_transformers  # noqa: F401
 
-        return True
-    except ImportError:
-        return False
+        return True  # pragma: no cover
+    except ImportError:  # pragma: no cover
+        return False  # pragma: no cover
 
 
 def _get_embeddings_version() -> str:
@@ -1822,7 +1971,7 @@ def _get_embeddings_version() -> str:
     try:
         import sentence_transformers
 
-        return sentence_transformers.__version__
+        return sentence_transformers.__version__  # pragma: no cover
     except (ImportError, AttributeError):  # pragma: no cover
         return "unknown"  # pragma: no cover
 
@@ -2503,7 +2652,7 @@ For help on ALL commands:   hypergumbo --help --all"""
         prog="hypergumbo",
         description=main_description,
         epilog=main_epilog,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        formatter_class=GroupedSubcommandHelpFormatter,
     )
     p.add_argument(
         "--version",
@@ -3359,6 +3508,28 @@ without re-running the full analysis."""
     )
     p_compact.set_defaults(func=cmd_compact)
 
+    # Assign subcommands to groups for help formatting
+    # Core analysis commands (group_order=0) - ordered by suborder
+    core_cmds = ["sketch", "run", "slice", "search", "routes", "explain",
+                 "catalog", "test-coverage", "symbols", "compact"]
+    for i, cmd in enumerate(core_cmds):
+        _set_subparser_group(sub, cmd, "core", 0, suborder=i)
+
+    # Extras/installation commands (group_order=1) - ordered by suborder
+    extras_cmds = ["add-extras", "remove-extras", "build-grammars",
+                   "install-gitleaks", "uninstall-gitleaks",
+                   "install-embeddings", "uninstall-embeddings"]
+    for i, cmd in enumerate(extras_cmds):
+        _set_subparser_group(sub, cmd, "extras", 1, suborder=i)
+
+    # Set custom metavar to control the order in usage line
+    sub.metavar = (
+        "{sketch,run,slice,search,routes,explain,catalog,test-coverage,"
+        "symbols,compact,add-extras,remove-extras,build-grammars,"
+        "install-gitleaks,uninstall-gitleaks,install-embeddings,"
+        "uninstall-embeddings}"
+    )
+
     return p
 
 
@@ -3833,8 +4004,23 @@ def print_all_help(parser: argparse.ArgumentParser) -> None:
     if subparsers_action is None:
         return  # pragma: no cover
 
-    # Print help for each subcommand
-    for name, subparser in sorted(subparsers_action.choices.items()):
+    # Group labels for display
+    group_labels = {
+        "core": "CORE ANALYSIS COMMANDS",
+        "extras": "INSTALLATION & MAINTENANCE COMMANDS",
+    }
+
+    # Print help for each subcommand, ordered by group
+    for name, subparser, group, is_new_group in _get_subparsers_by_group(
+        subparsers_action
+    ):
+        # Print group header when entering a new group
+        if is_new_group:
+            label = group_labels.get(group, group.upper())
+            print(f"\n{'=' * 78}")
+            print(f"  {label}")
+            print("=" * 78)
+
         print(f"\n{'─' * 78}")
         print(f"  hypergumbo {name}")
         print("─" * 78)

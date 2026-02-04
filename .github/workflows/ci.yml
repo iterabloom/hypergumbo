@@ -270,6 +270,11 @@ jobs:
           fi
       - name: Add venv to PATH
         run: echo "${{ github.workspace }}/.venv/bin" >> $GITHUB_PATH
+      - name: Fix pytest wrapper
+        run: |
+          # pip install pytest overwrites .venv/bin/pytest with its entry point.
+          # This repairs it to use smart-test, avoiding re-exec overhead in conftest.py
+          ./scripts/install-hooks --repair-shims
       - name: Restore grammar wheels
         uses: actions/cache@v3
         with:
