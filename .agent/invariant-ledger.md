@@ -247,6 +247,53 @@ type, AND location).
 - **Regression tests:**
   - `tests/test_route_handler_linker.py::TestDjangoViewNameLinking` (4 tests)
 
+## INV-011: 100% Branch Coverage
+- **Statement:** All code paths must be exercised by tests, verified by pytest-cov `--cov-branch`
+- **Status:** ❌ UNFIXED (98% - ~1700 missing branch partials)
+- **Root cause:** Branch coverage was not tracked; only line coverage was required.
+  Many conditional branches (early returns, error paths, None checks, exception handlers)
+  are executed but only one branch direction is tested.
+- **Fix:** Infrastructure complete:
+  - `scripts/smart-test` now uses `--cov-branch` flag
+  - `pyproject.toml` configured to collect `BRANCHES_*.py` test files
+  - First file created: `BRANCHES_test_python_ast_analysis.py`
+- **Remaining work:** Create BRANCHES_*.py test files to cover missing branches.
+  Files with most missing partials (as of 2026-02-04):
+  - `js_ts.py`: 67 missing
+  - `php.py`: 42 missing
+  - `py.py`: 37 missing (was 39, improved by 2)
+  - `csharp.py`: 34 missing
+  - `rust.py`: 31 missing
+  - `java.py`: 29 missing
+  - `ruby.py`: 26 missing
+- **Strategy:**
+  - Testable edge cases: Write tests for reachable branches (dict edge cases, unusual decorator forms, etc.)
+  - Defensive code: Mark truly unreachable guards with `# pragma: no cover`
+  - Focus on branches that affect correctness
+- **Regression tests:**
+  - All tests must pass with `pytest --cov-branch --cov-fail-under=100`
+
+---
+
+## META-004: Testing Discipline
+> "Tests must exercise all code paths to verify correctness and prevent regressions."
+
+- **Status:** 98%
+- **Notes:**
+  - Line coverage: 100% ✅
+  - Branch coverage: 98% (1761 missing partials) ❌
+  - Infrastructure in place for systematic improvement (BRANCHES_*.py files)
+  - Target: 100% branch coverage
+
+**Unified by:**
+- INV-011 (100% branch coverage requirement)
+
+**Implication:** Defensive code paths (error handlers, None checks, early returns)
+must be tested explicitly. Untested branches may harbor bugs or become stale.
+Branch coverage tests go in `BRANCHES_*.py` files for separate CI management.
+
+---
+
 ## INV-XXX: Template for New Invariants
 - **Statement:** [What must always be true]
 - **Status:** [UNFIXED | PARTIALLY ADDRESSED | FIXED | TBD]
