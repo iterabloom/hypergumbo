@@ -1020,23 +1020,23 @@ class TestRemoveExtrasCLI:
 class TestEmbeddingsAvailabilityHelpers:
     """Tests for embeddings helper functions."""
 
-    def test_is_embeddings_available_true(self) -> None:
-        """_is_embeddings_available returns True when installed."""
+    def test_is_embeddings_available_returns_bool(self) -> None:
+        """_is_embeddings_available returns a boolean based on package availability."""
         from hypergumbo_core.cli import _is_embeddings_available
 
-        # sentence-transformers should be installed in dev environment
+        # Function should return bool (True if installed, False if not)
         result = _is_embeddings_available()
-        assert result is True
+        assert isinstance(result, bool)
 
-    def test_is_embeddings_available_false(self) -> None:
-        """_is_embeddings_available returns False when not installed."""
-        from hypergumbo_core.cli import _is_embeddings_available
+        # Verify it matches actual package availability
+        try:
+            import sentence_transformers
 
-        with patch.dict("sys.modules", {"sentence_transformers": None}):
-            # Can't easily test ImportError for existing module
-            # but we can verify the function exists and returns bool
-            result = _is_embeddings_available()
-            assert isinstance(result, bool)
+            expected = True
+        except ImportError:
+            expected = False
+
+        assert result == expected
 
     def test_get_embeddings_version(self) -> None:
         """_get_embeddings_version returns version string."""
