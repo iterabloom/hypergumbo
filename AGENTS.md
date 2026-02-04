@@ -67,7 +67,6 @@ No weak shit. If you don't know, say you don't know. If you haven't checked, say
   3. **Scope expansion:** Check same-language-different-construct, different-language-same-pattern, different-pipeline-stage
   4. **Distinguish fix from workaround:** Does your change bypass a problematic code path, or fix/remove it?
   5. **If workaround:** Document in `.agent/invariant-ledger.md` with Status: ❌ UNFIXED, then fix the root cause
-  6. **Known unfixed root cause:** The `symbol_ref` gate at `framework_patterns.py:992-993` — see ADR-0008
 - **Signing & Identity:**
   1. Check `git config user.name` and `git config user.email` **before** creating any commit.
   2. If they are blank, **STOP**. You are **strictly forbidden** from generating, inferring, or guessing an identity. You must ask the user to run:
