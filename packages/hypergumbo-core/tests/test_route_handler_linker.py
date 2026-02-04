@@ -711,3 +711,147 @@ class TestLinkerEntryPoint:
 
         assert len(result.edges) == 1
         assert result.run is not None
+
+
+class TestDjangoViewNameLinking:
+    """Tests for Django route-handler linking via view_name metadata."""
+
+    def test_django_view_name_simple_linking(self) -> None:
+        """Django routes with view_name get linked to view functions."""
+        route = Symbol(
+            id="python:/app/urls.py:10-10:GET /users/:route",
+            name="GET /users/",
+            kind="route",
+            language="python",
+            path="/app/urls.py",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
+            meta={
+                "http_method": "GET",
+                "route_path": "/users/",
+                "view_name": "list_users",
+            },
+            origin="python-v1",
+            origin_run_id="test-run",
+        )
+
+        handler = Symbol(
+            id="python:/app/views.py:20-30:list_users:function",
+            name="list_users",
+            kind="function",
+            language="python",
+            path="/app/views.py",
+            span=Span(start_line=20, end_line=30, start_col=0, end_col=5),
+            origin="python-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == route.id
+        assert edge.dst == handler.id
+        assert edge.edge_type == "routes_to"
+        assert edge.meta.get("view_name") == "list_users"
+
+    def test_django_view_name_class_based_view(self) -> None:
+        """Django routes with CBV view_name get linked to view classes."""
+        route = Symbol(
+            id="python:/app/urls.py:15-15:GET /api/users/:route",
+            name="GET /api/users/",
+            kind="route",
+            language="python",
+            path="/app/urls.py",
+            span=Span(start_line=15, end_line=15, start_col=0, end_col=60),
+            meta={
+                "http_method": "GET",
+                "route_path": "/api/users/",
+                "view_name": "UserListView",
+            },
+            origin="python-v1",
+            origin_run_id="test-run",
+        )
+
+        # CBV class
+        handler = Symbol(
+            id="python:/app/views.py:50-70:UserListView:class",
+            name="UserListView",
+            kind="class",
+            language="python",
+            path="/app/views.py",
+            span=Span(start_line=50, end_line=70, start_col=0, end_col=5),
+            origin="python-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.dst == handler.id
+
+    def test_django_view_name_module_qualified(self) -> None:
+        """Django routes with module.view_name pattern."""
+        route = Symbol(
+            id="python:/app/urls.py:20-20:GET /accounts/:route",
+            name="GET /accounts/",
+            kind="route",
+            language="python",
+            path="/app/urls.py",
+            span=Span(start_line=20, end_line=20, start_col=0, end_col=50),
+            meta={
+                "http_method": "GET",
+                "view_name": "accounts.views.list_accounts",
+            },
+            origin="python-v1",
+            origin_run_id="test-run",
+        )
+
+        # Function with simple name (should match last segment)
+        handler = Symbol(
+            id="python:/app/accounts/views.py:10-20:list_accounts:function",
+            name="list_accounts",
+            kind="function",
+            language="python",
+            path="/app/accounts/views.py",
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=5),
+            origin="python-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+
+    def test_django_view_name_no_match(self) -> None:
+        """Django routes without matching view don't create edges."""
+        route = Symbol(
+            id="python:/app/urls.py:10-10:GET /users/:route",
+            name="GET /users/",
+            kind="route",
+            language="python",
+            path="/app/urls.py",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
+            meta={
+                "http_method": "GET",
+                "view_name": "nonexistent_view",
+            },
+            origin="python-v1",
+            origin_run_id="test-run",
+        )
+
+        # Handler with different name
+        handler = Symbol(
+            id="python:/app/views.py:20-30:some_other_view:function",
+            name="some_other_view",
+            kind="function",
+            language="python",
+            path="/app/views.py",
+            span=Span(start_line=20, end_line=30, start_col=0, end_col=5),
+            origin="python-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 0

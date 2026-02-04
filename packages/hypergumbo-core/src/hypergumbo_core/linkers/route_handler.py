@@ -11,6 +11,7 @@ How It Works
    - Phoenix: controller = "UserController", action = "index" → UserController.index
    - Laravel: controller_action = "UserController@index"
    - Express/JS: handler_ref = "userController.list" → list function
+   - Django: view_name = "list_users" or "accounts.views.list_users"
 3. Resolve handler reference to actual method/function symbols
 4. Create routes_to edges linking routes to handlers
 
@@ -27,6 +28,7 @@ Supported Frameworks
 - Elixir/Phoenix: controller + action fields
 - PHP/Laravel: controller_action = "Controller@action"
 - JS/TS Express: handler_ref = "module.function"
+- Python/Django: view_name = "view_function" or "module.view_function"
 """
 
 from __future__ import annotations
@@ -225,6 +227,48 @@ def _resolve_express_handler(
     return None  # pragma: no cover - defensive: no match found
 
 
+def _resolve_django_handler(
+    view_name: str, symbol_by_name: dict[str, Symbol]
+) -> Symbol | None:
+    """Resolve Django view_name to a handler symbol.
+
+    Django URL patterns reference views by name, which can be:
+    - Simple function name: "list_users"
+    - Class-based view: "UserListView"
+    - Module-qualified: "accounts.views.list_accounts"
+
+    Args:
+        view_name: View name from URL pattern metadata
+        symbol_by_name: Lookup table of symbols by name
+
+    Returns:
+        Matching Symbol or None
+    """
+
+    def is_handler(sym: Symbol) -> bool:
+        """Check if symbol is a potential Django handler (function or class)."""
+        return sym.kind in ("function", "method", "class")
+
+    # Try exact match first
+    if view_name in symbol_by_name:
+        sym = symbol_by_name[view_name]
+        if is_handler(sym):
+            return sym
+
+    # Extract function/class name from module-qualified reference
+    if "." in view_name:
+        parts = view_name.split(".")
+        simple_name = parts[-1]  # Last part is the view function/class name
+
+        # Try just the simple name
+        if simple_name in symbol_by_name:
+            sym = symbol_by_name[simple_name]
+            if is_handler(sym):
+                return sym
+
+    return None
+
+
 def _extract_handler_ref(route: Symbol) -> dict[str, str] | None:
     """Extract handler reference info from route metadata.
 
@@ -254,7 +298,9 @@ def _extract_handler_ref(route: Symbol) -> dict[str, str] | None:
     if meta.get("handler_ref"):
         return {"type": "express", "handler_ref": meta["handler_ref"]}
 
-    # Django: view_name (handled separately via deferred resolution)
+    # Django: view_name field (e.g., "list_users" or "accounts.views.list_accounts")
+    if meta.get("view_name"):
+        return {"type": "django", "view_name": meta["view_name"]}
 
     return None
 
@@ -308,6 +354,10 @@ def link_routes_to_handlers(
         elif handler_ref["type"] == "express":
             handler = _resolve_express_handler(
                 handler_ref["handler_ref"], symbol_by_name
+            )
+        elif handler_ref["type"] == "django":
+            handler = _resolve_django_handler(
+                handler_ref["view_name"], symbol_by_name
             )
 
         if handler:
