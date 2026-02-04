@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# Install embedding dependencies for hypergumbo.
+#
+# Embeddings enable:
+# - Semantic code ranking
+# - Elevator pitch generation
+# - Config file extraction with semantic filtering
+#
+# This pulls in sentence-transformers which requires PyTorch (~2GB download).
+# By keeping embeddings optional, the base install stays lightweight.
+#
+# Usage:
+#   ./scripts/install-embeddings           # Install embeddings support
+#   ./scripts/install-embeddings --check   # Check if embeddings are available
+#   ./scripts/install-embeddings --model   # Also pre-download the default model
+#
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+
+CHECK_ONLY=false
+PRELOAD_MODEL=false
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --check)
+            CHECK_ONLY=true
+            shift
+            ;;
+        --model)
+            PRELOAD_MODEL=true
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 [--check] [--model]"
+            echo ""
+            echo "Options:"
+            echo "  --check   Check if embeddings are installed (exit 0 if yes, 1 if no)"
+            echo "  --model   Also pre-download the default embedding model"
+            echo ""
+            echo "Without options, installs sentence-transformers and dependencies."
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Check if embeddings are available
+check_embeddings() {
+    if python3 -c "import sentence_transformers" 2>/dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+if [[ "$CHECK_ONLY" == "true" ]]; then
+    if check_embeddings; then
+        echo "✅ Embeddings available"
+        python3 -c "import sentence_transformers; print(f'   sentence-transformers {sentence_transformers.__version__}')"
+        exit 0
+    else
+        echo "❌ Embeddings not installed"
+        echo "   Run: ./scripts/install-embeddings"
+        exit 1
+    fi
+fi
+
+echo "=== Installing embedding dependencies ==="
+echo ""
+
+# Check if already installed
+if check_embeddings; then
+    echo "✅ sentence-transformers already installed"
+    python3 -c "import sentence_transformers; print(f'   Version: {sentence_transformers.__version__}')"
+else
+    echo "Installing sentence-transformers..."
+    echo "Note: This pulls in PyTorch (~2GB download)"
+    echo ""
+
+    # Try to install via the extras if hypergumbo is installed
+    if pip show hypergumbo >/dev/null 2>&1; then
+        pip install "hypergumbo[embeddings]"
+    elif pip show hypergumbo-core >/dev/null 2>&1; then
+        pip install "hypergumbo-core[embeddings]"
+    else
+        # Direct install
+        pip install "sentence-transformers~=5.2.2"
+    fi
+
+    echo ""
+    echo "✅ sentence-transformers installed"
+fi
+
+# Optionally pre-download the model
+if [[ "$PRELOAD_MODEL" == "true" ]]; then
+    echo ""
+    echo "=== Pre-downloading embedding model ==="
+    echo "This caches the model to avoid first-run delay."
+    echo ""
+
+    python3 << 'PYEOF'
+import os
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+from sentence_transformers import SentenceTransformer
+
+# Default model used by hypergumbo
+MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+
+print(f"Downloading model: {MODEL_NAME}")
+model = SentenceTransformer(MODEL_NAME)
+print(f"✅ Model cached at: {model._model_card_vars.get('model_name_or_path', '~/.cache/huggingface')}")
+PYEOF
+fi
+
+echo ""
+echo "=== Embeddings ready ==="
+echo ""
+echo "Embedding features are now available:"
+echo "  - hypergumbo sketch --elevator-pitch"
+echo "  - Semantic code ranking"
+echo "  - Config extraction with semantic filtering"
+echo ""
+echo "To remove embeddings: ./scripts/uninstall-embeddings"

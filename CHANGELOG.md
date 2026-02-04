@@ -32,12 +32,14 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   - **D**: vibe.d, Hunt, DiamondMVC (via `dub.json`, `dub.sdl`)
   - **Groovy**: Grails, Ratpack, Micronaut (via `build.gradle`)
 - **Secret scanning with gitleaks**: `hypergumbo sketch` now scans output for potential secrets before displaying it. This helps prevent accidentally pasting credentials into LLM chat windows. Install gitleaks with `hypergumbo install-gitleaks`. Scans run by default (opt-out with `--no-secret-scan`). Always warns that scanning is best-effort, not exhaustive.
+- **Embeddings install/uninstall scripts**: Added `scripts/install-embeddings` and `scripts/uninstall-embeddings` to manage the optional embedding dependencies. Use `--check` to verify installation status, `--model` to pre-download models, and `--all`/`--cache` to clean up PyTorch and model cache.
 - **Scoped coverage for smart-test (ADR-0011)**: smart-test now uses the `last-green-sha` marker from CI as the baseline for comparison, and enforces 100% coverage only for changed source files (not the entire codebase). This enables fast feedback (~45 tests in <1s vs 5700+ tests) while still enforcing coverage for your changes.
 - **Per-package coverage check script**: Added `scripts/check-package-coverage` to verify each package achieves 100% coverage when tested in isolation (mimicking CI). Catches cross-package coverage dependencies before pushing.
 - **Test placement guidelines**: Added documentation in AGENTS.md explaining why tests must be in the same package as the code they cover, and why subprocess tests don't contribute to pytest-cov coverage.
 
 ### Changed
 
+- **Embeddings now optional by default**: sentence-transformers (and PyTorch ~2GB) are no longer installed by default. This makes the base install much lighter. To enable embeddings: `pip install hypergumbo[embeddings]` or `./scripts/install-embeddings`. hypergumbo works fine without embeddings (graceful degradation).
 - **Pinned all dependencies using compatible release operator**: All dependencies in pyproject.toml files now use `~=X.Y.Z` (compatible release) instead of `>=X.Y`. This allows patch updates while preventing unexpected minor/major version changes that could introduce breaking changes (like the huggingface_hub 0.x → 1.x httpx migration).
 - **CI manifest includes changed source files**: The `.ci/affected-tests.txt` manifest now includes a `CHANGED_SOURCE_FILES` section, enabling CI to perform scoped coverage checks without recomputing changed files.
 - **Manifest terminology: "affected" → "selected"**: The manifest now uses `SELECTED_TESTS` instead of `AFFECTED_TESTS`, and includes a `Mode:` field (`targeted` or `full-suite`) so CI can display appropriate messaging. "Selected tests" accurately describes what the manifest contains regardless of whether it's a targeted subset or the full suite.
