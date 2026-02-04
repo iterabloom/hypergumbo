@@ -1148,6 +1148,152 @@ fn routes() {
                 break
 
 
+class TestImplTargetExtraction:
+    """Tests for impl target type name extraction.
+
+    When extracting method names from impl blocks, we need to extract just
+    the base type identifier, not the full type text which may include
+    references (&), lifetimes ('a), or generic parameters (<T>).
+
+    For example:
+    - impl<'a, M: Matcher> Deref for &'a M  -> type field is `&'a M`, base is `M`
+    - impl<'a, M, W> PreludeWriter<'a, M, W> -> type field is `PreludeWriter<'a, M, W>`, base is `PreludeWriter`
+    - impl User -> type field is `User`, base is `User`
+    """
+
+    def test_impl_for_reference_type_extracts_base_name(self, tmp_path: Path) -> None:
+        """impl for reference types like &'a M should use base type M, not &'a M."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+trait Matcher {
+    fn line_terminator(&self) -> u8;
+}
+
+impl<'a, M: Matcher> Matcher for &'a M {
+    fn line_terminator(&self) -> u8 {
+        (*self).line_terminator()
+    }
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        # Find the method in the impl block
+        methods = [s for s in result.symbols if s.kind == "method"]
+        # Method name should be "M::line_terminator", not "&'a M::line_terminator"
+        method_names = [s.name for s in methods]
+        assert any("M::line_terminator" in name for name in method_names), \
+            f"Expected method name with 'M::line_terminator', got {method_names}"
+        # Should NOT have the malformed name with & or '
+        assert not any(name.startswith("&") or "'" in name.split("::")[0] for name in method_names), \
+            f"Method name should not start with & or contain lifetime: {method_names}"
+
+    def test_impl_for_generic_type_extracts_base_name(self, tmp_path: Path) -> None:
+        """impl for generic types like Foo<'a, T> should use base type Foo, not full type."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+struct Writer<'a, M, W> {
+    matcher: &'a M,
+    writer: W,
+}
+
+impl<'a, M, W> Writer<'a, M, W> {
+    fn write_output(&self) {
+        // implementation
+    }
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        method_names = [s.name for s in methods]
+        # Should be "Writer::write_output", not "Writer<'a, M, W>::write_output"
+        assert any("Writer::write_output" in name for name in method_names), \
+            f"Expected 'Writer::write_output', got {method_names}"
+        # Should NOT have generic params in method name
+        assert not any("<" in name for name in method_names), \
+            f"Method name should not contain generic params: {method_names}"
+
+    def test_impl_for_simple_type_unchanged(self, tmp_path: Path) -> None:
+        """impl for simple types like User should remain unchanged."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+struct User {
+    name: String,
+}
+
+impl User {
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        method_names = [s.name for s in methods]
+        # Should be "User::get_name"
+        assert any("User::get_name" in name for name in method_names), \
+            f"Expected 'User::get_name', got {method_names}"
+
+    def test_impl_for_scoped_type(self, tmp_path: Path) -> None:
+        """impl for scoped types like crate::Foo should keep full path."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+mod inner {
+    pub struct Nested;
+}
+
+impl crate::inner::Nested {
+    fn method(&self) {}
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        method_names = [s.name for s in methods]
+        # Should preserve the scoped type path
+        assert len(method_names) >= 1, f"Expected at least one method, got {method_names}"
+        # The name should include "Nested" or the scoped path
+        assert any("Nested" in name or "inner" in name for name in method_names), \
+            f"Expected scoped type in method name, got {method_names}"
+
+    def test_impl_for_array_type(self, tmp_path: Path) -> None:
+        """impl for unusual types like array types should not crash."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        # Test the fallback case for "other type nodes"
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+trait MyTrait {
+    fn len(&self) -> usize;
+}
+
+impl MyTrait for [u8; 4] {
+    fn len(&self) -> usize {
+        4
+    }
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        # Should not crash, method should be extractable
+        methods = [s for s in result.symbols if s.kind == "method"]
+        assert len(methods) >= 1, "Should extract at least one method from array impl"
+
+
 class TestRustClosureCallAttribution:
     """Tests for call edge attribution inside Rust closures.
 

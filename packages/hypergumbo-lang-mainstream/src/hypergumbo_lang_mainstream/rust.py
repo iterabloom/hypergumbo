@@ -175,6 +175,52 @@ def _extract_rust_signature(
     return sig
 
 
+def _extract_base_type_name(type_node: "tree_sitter.Node", source: bytes) -> str:
+    """Extract the base type identifier from a type node.
+
+    Rust type nodes can be complex:
+    - type_identifier: simple type like "User" -> return "User"
+    - generic_type: "Writer<'a, M, W>" -> extract base type "Writer"
+    - reference_type: "&'a M" -> recursively extract inner type "M"
+    - scoped_type_identifier: "std::vec::Vec" -> return full path
+
+    Args:
+        type_node: A tree-sitter type node.
+        source: Source bytes for extracting text.
+
+    Returns:
+        The base type identifier string.
+    """
+    if type_node.type == "type_identifier":
+        # Simple type like User
+        return _node_text(type_node, source)
+
+    if type_node.type == "generic_type":
+        # Generic type like Writer<'a, M, W>
+        # The 'type' field contains the base type identifier
+        base_type = _find_child_by_field(type_node, "type")
+        if base_type:
+            return _extract_base_type_name(base_type, source)
+        # Fallback: return full text
+        return _node_text(type_node, source)  # pragma: no cover
+
+    if type_node.type == "reference_type":
+        # Reference type like &'a M
+        # The 'type' field contains the inner type
+        inner_type = _find_child_by_field(type_node, "type")
+        if inner_type:
+            return _extract_base_type_name(inner_type, source)
+        # Fallback: return full text
+        return _node_text(type_node, source)  # pragma: no cover
+
+    if type_node.type == "scoped_type_identifier":
+        # Qualified type like std::vec::Vec - keep full path
+        return _node_text(type_node, source)
+
+    # Other type nodes - return as-is
+    return _node_text(type_node, source)
+
+
 def _get_impl_target(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Walk up the tree to find the enclosing impl block's target type.
 
@@ -190,7 +236,7 @@ def _get_impl_target(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
         if current.type == "impl_item":
             type_node = _find_child_by_field(current, "type")
             if type_node:
-                return _node_text(type_node, source)
+                return _extract_base_type_name(type_node, source)
         current = current.parent
     return None
 
