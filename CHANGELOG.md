@@ -56,6 +56,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Ruby hash rocket route syntax**: Fixed Rails route extraction for the `"path" => "controller#action"` syntax (hash rocket shorthand). Previously only `to: "controller#action"` was recognized. This enables route-handler linking for routes defined with the shorthand syntax (e.g., `post "persist" => "sessions#persist"`). Also added `match` to HTTP_METHODS for routes using the `match` DSL method.
 - **httpx IPv6 CIDR proxy bug workaround**: Fixed embedding model loading failures when `NO_PROXY` environment variable contains IPv6 CIDR notation (e.g., `fd00:200::/40`). httpx 0.25+ has a bug where IPv6 CIDR in NO_PROXY causes `InvalidURL: Invalid port` errors. The workaround temporarily sanitizes NO_PROXY during model initialization.
 
 ### Removed

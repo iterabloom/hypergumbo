@@ -47,7 +47,7 @@ PASS_ID = "ruby-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
 
 # HTTP methods for Rails/Sinatra route detection (used by UsageContext extraction)
-HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
+HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "match"}
 
 
 def find_ruby_files(repo_root: Path) -> Iterator[Path]:
@@ -340,11 +340,28 @@ def _extract_rails_routes(
             elif arg.type == "simple_symbol" and method_name in ("resources", "resource"):
                 route_path = _node_text(arg, source).strip(":")
                 break
+            # Handle "path" => "controller#action" syntax (pair with string key)
+            elif arg.type == "pair" and method_name in HTTP_METHODS:
+                # Extract key (path) and value (controller#action) from pair
+                pair_children = list(arg.children)
+                if len(pair_children) >= 2:
+                    key_node = pair_children[0]
+                    val_node = pair_children[-1]  # Last child is value
+                    if key_node.type == "string":
+                        key_content = _find_child_by_type(key_node, "string_content")
+                        if key_content:
+                            route_path = _node_text(key_content, source)
+                    if val_node.type == "string":
+                        val_content = _find_child_by_type(val_node, "string_content")
+                        if val_content:
+                            controller_action = _node_text(val_content, source)
+                if route_path:
+                    break
 
         if not route_path:  # pragma: no cover
             continue
 
-        # Try to extract controller#action from 'to:' option
+        # Try to extract controller#action from 'to:' option (e.g., match "path", to: "ctrl#act")
         for arg in args_node.children:
             if arg.type == "pair":
                 for pair_child in arg.children:

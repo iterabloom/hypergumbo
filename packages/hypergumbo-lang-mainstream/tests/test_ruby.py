@@ -1066,6 +1066,43 @@ end
         assert route_symbol is not None
         assert route_symbol.meta["controller_action"] == "pages#home"
 
+    def test_route_hash_rocket_syntax(self, tmp_path: Path) -> None:
+        """Route symbols extract controller_action from hash rocket syntax.
+
+        Rails supports both:
+          get '/path', to: 'ctrl#action'  (explicit to: option)
+          get '/path' => 'ctrl#action'    (hash rocket shorthand)
+
+        This test verifies the hash rocket syntax is properly parsed.
+        """
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  post "persist" => "sessions#persist"
+  get "login" => "sessions#new"
+  delete "logout" => "sessions#destroy"
+  match "login/reset" => "sessions#begin_password_reset", via: [:get, :post]
+end
+""")
+        result = analyze_ruby(tmp_path)
+
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 4
+
+        # Check each route has correct controller_action
+        # Verify all routes have controller_action metadata
+        for route in route_symbols:
+            assert "controller_action" in route.meta, f"Missing controller_action for {route.name}"
+            assert "#" in route.meta["controller_action"], f"Invalid controller_action: {route.meta['controller_action']}"
+
+        # Check specific routes
+        by_action = {s.meta["controller_action"]: s for s in route_symbols}
+        assert "sessions#persist" in by_action
+        assert "sessions#new" in by_action
+        assert "sessions#destroy" in by_action
+        assert "sessions#begin_password_reset" in by_action
+
 
 class TestRubyBlockCallAttribution:
     """Tests for call edge attribution inside Ruby blocks.
