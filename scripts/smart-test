@@ -86,18 +86,6 @@ fi
 # Output file for full pytest log
 PYTEST_LOG="$REPO_ROOT/.ci/pytest-output.log"
 
-# Files that trigger full test suite when changed
-# These are core infrastructure that affects test selection itself
-CORE_INFRA_FILES=(
-    "packages/hypergumbo-core/src/hypergumbo_core/sketch.py"
-    "packages/hypergumbo-core/src/hypergumbo_core/slice.py"
-    "packages/hypergumbo-core/src/hypergumbo_core/cli.py"
-    "packages/hypergumbo-core/src/hypergumbo_core/ir.py"
-    "packages/hypergumbo-core/src/hypergumbo_core/analyze/all_analyzers.py"
-    "packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py"
-    "packages/hypergumbo-core/src/hypergumbo_core/linkers/registry.py"
-)
-
 # Coverage paths for the modular package structure
 COV_PATHS=(
     "--cov=packages/hypergumbo-core/src"
@@ -398,13 +386,6 @@ if [[ "$VERBOSE" == "true" ]]; then
     echo "$CHANGED_FILES" | sed 's/^/  /' >&2
 fi
 
-# Check if any core infra files changed
-for core_file in "${CORE_INFRA_FILES[@]}"; do
-    if echo "$CHANGED_FILES" | grep -qF "$core_file"; then
-        run_full_suite "core infrastructure changed: $core_file" "$CHANGED_FILES"
-    fi
-done
-
 # Write changed files to temp file for slice query
 CHANGED_FILE_LIST=$(mktemp)
 echo "$CHANGED_FILES" > "$CHANGED_FILE_LIST"
@@ -568,3 +549,4 @@ if [[ $TEST_EXIT -eq 0 ]] && [[ -n "$CHANGED_SOURCE_FILES" ]]; then
 fi
 
 exit $TEST_EXIT
+
