@@ -144,6 +144,7 @@ high-level, their status is expressed as a percentage indicating confidence they
 - INV-006 (resources macro → route symbols with controller_action)
 - INV-008 (base_classes → extends/implements edges for Python/JS/TS)
 - INV-009 (base_classes → extends/implements edges for Ruby/Kotlin)
+- INV-010 (Django view_name → routes_to edges)
 
 **Implication:** When an analyzer stores relationship information in metadata (view_name,
 controller_action, etc.), there should be a corresponding linker or enrichment phase that
@@ -232,6 +233,19 @@ type, AND location).
 - **Regression tests:**
   - `tests/test_ruby.py::TestRubyInheritanceEdges` (5 tests)
   - `tests/test_kotlin.py::TestKotlinInheritanceEdges` (6 tests)
+
+## INV-010: Django Route-Handler Linking
+- **Statement:** Django routes with view_name metadata must create `routes_to` edges to their handler functions
+- **Status:** ✅ FIXED
+- **Root cause:** Route-handler linker (`linkers/route_handler.py`) only supported Rails, Laravel, Phoenix, and Express
+  frameworks. Django routes with `view_name` metadata were not linked to their handlers.
+- **Fix:** Added `_resolve_django_handler()` function that resolves view_name to handler symbols:
+  - Simple names: `view_name="list_users"` → function
+  - CBV: `view_name="UserListView"` → class
+  - Module-qualified: `view_name="accounts.views.list_accounts"` → last segment
+- **Impact:** Feature bakeoff showed 884 orphan routes in Django. These can now be linked.
+- **Regression tests:**
+  - `tests/test_route_handler_linker.py::TestDjangoViewNameLinking` (4 tests)
 
 ## INV-XXX: Template for New Invariants
 - **Statement:** [What must always be true]
