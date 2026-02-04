@@ -3,6 +3,8 @@
 # This file provides pytest, ruff, bandit, and coverage configuration
 
 [tool.pytest.ini_options]
+# Include BRANCHES_*.py files for branch coverage tests (default is test_*.py and *_test.py)
+python_files = ["test_*.py", "*_test.py", "BRANCHES_*.py"]
 # Filter expected warnings from tests
 filterwarnings = [
     # tree-sitter unavailability in fallback tests

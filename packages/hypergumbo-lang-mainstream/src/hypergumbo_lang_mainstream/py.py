@@ -510,6 +510,18 @@ def _extract_django_url_patterns(tree: ast.Module) -> list[tuple[int, int, str, 
             elif isinstance(second_arg, ast.Name):
                 # user_list -> "user_list"
                 view_name = second_arg.id
+            elif isinstance(second_arg, ast.Call):
+                # views.LoginView.as_view() -> "LoginView"
+                # TemplateView.as_view(template_name='...') -> "TemplateView"
+                call_func = second_arg.func
+                if isinstance(call_func, ast.Attribute) and call_func.attr == "as_view":
+                    # Extract the class name from the as_view() call
+                    if isinstance(call_func.value, ast.Attribute):
+                        # views.LoginView.as_view() -> LoginView
+                        view_name = call_func.value.attr
+                    elif isinstance(call_func.value, ast.Name):
+                        # LoginView.as_view() -> LoginView
+                        view_name = call_func.value.id
 
         patterns.append((
             node.lineno,
@@ -584,6 +596,23 @@ def _extract_django_usage_contexts(
                 # Try to resolve to a local symbol
                 if view_name in symbol_by_name:
                     view_ref = symbol_by_name[view_name].id
+            elif isinstance(second_arg, ast.Call):
+                # views.LoginView.as_view() -> "LoginView"
+                # TemplateView.as_view(template_name='...') -> "TemplateView"
+                call_func = second_arg.func
+                if isinstance(call_func, ast.Attribute) and call_func.attr == "as_view":
+                    # Extract the class name from the as_view() call
+                    if isinstance(call_func.value, ast.Attribute):
+                        # views.LoginView.as_view() -> LoginView
+                        view_name = call_func.value.attr
+                        # Try to resolve to a local symbol (class)
+                        if view_name in symbol_by_name:
+                            view_ref = symbol_by_name[view_name].id
+                    elif isinstance(call_func.value, ast.Name):
+                        # LoginView.as_view() -> LoginView
+                        view_name = call_func.value.id
+                        if view_name in symbol_by_name:
+                            view_ref = symbol_by_name[view_name].id
 
         # Build metadata with args info
         args_values = []

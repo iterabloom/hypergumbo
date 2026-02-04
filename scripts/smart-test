@@ -87,11 +87,14 @@ fi
 PYTEST_LOG="$REPO_ROOT/.ci/pytest-output.log"
 
 # Coverage paths for the modular package structure
+# --cov-branch enables branch coverage tracking (stricter than line coverage)
+# This helps catch untested code paths (if/else branches, loop conditions, etc.)
 COV_PATHS=(
     "--cov=packages/hypergumbo-core/src"
     "--cov=packages/hypergumbo-lang-mainstream/src"
     "--cov=packages/hypergumbo-lang-common/src"
     "--cov=packages/hypergumbo-lang-extended1/src"
+    "--cov-branch"
 )
 
 # Detect if sentence-transformers is available
@@ -296,7 +299,8 @@ run_full_suite() {
             echo "$source_files"
         fi
         echo "# === SELECTED_TESTS ==="
-        find packages/*/tests -name 'test_*.py' -type f | sort
+        # Include both test_*.py and BRANCHES_test_*.py (branch coverage tests)
+        find packages/*/tests \( -name 'test_*.py' -o -name 'BRANCHES_test_*.py' \) -type f | sort
     } > "$MANIFEST_FILE"
 
     if [[ "$MANIFEST_ONLY" == "true" ]]; then
@@ -402,7 +406,8 @@ fi
 
 # Filter to only test files in package directories
 # Convert absolute paths to relative (slice may output absolute paths)
-AFFECTED_TESTS=$(grep -E 'packages/.*/tests/test_.*\.py$' "$SLICE_OUTPUT" 2>/dev/null | \
+# Matches test_*.py and BRANCHES_test_*.py (for branch coverage tests)
+AFFECTED_TESTS=$(grep -E 'packages/.*/tests/(test_|BRANCHES_test_).*\.py$' "$SLICE_OUTPUT" 2>/dev/null | \
     sed "s|^$REPO_ROOT/||" | sort -u || echo "")
 
 # Check if any Python source files changed

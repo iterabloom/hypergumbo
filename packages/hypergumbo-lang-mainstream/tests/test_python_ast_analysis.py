@@ -1170,6 +1170,54 @@ def test_django_path_with_direct_function_reference(tmp_path: Path) -> None:
     assert routes[0].get("meta", {}).get("view_name") == "my_view"
 
 
+def test_django_path_with_cbv_as_view(tmp_path: Path) -> None:
+    """Django path() with class-based view .as_view() should extract view name."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from django.contrib.auth import views\n"
+        "\n"
+        "urlpatterns = [\n"
+        "    path('login/', views.LoginView.as_view(), name='login'),\n"
+        "    path('logout/', views.LogoutView.as_view(), name='logout'),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 2
+
+    view_names = [r.get("meta", {}).get("view_name") for r in routes]
+    assert "LoginView" in view_names
+    assert "LogoutView" in view_names
+
+
+def test_django_path_with_local_cbv_as_view(tmp_path: Path) -> None:
+    """Django path() with local CBV using .as_view() should extract view name."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from django.views.generic import TemplateView\n"
+        "\n"
+        "urlpatterns = [\n"
+        "    path('about/', TemplateView.as_view(template_name='about.html')),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 1
+    assert routes[0].get("meta", {}).get("view_name") == "TemplateView"
+
+
 # NOTE: Router prefix combination tests were removed.
 # Router prefix functionality is now handled by FRAMEWORK_PATTERNS phase.
 # See test_framework_patterns.py for pattern matching tests.
