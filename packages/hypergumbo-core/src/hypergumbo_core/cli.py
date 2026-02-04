@@ -1956,6 +1956,144 @@ def cmd_uninstall_gitleaks(args: argparse.Namespace) -> int:
     return 0 if success else 1
 
 
+def _get_cache_base() -> Path:
+    """Get the hypergumbo cache base directory.
+
+    Uses the same XDG-compliant path as sketch_embeddings.
+    """
+    from .sketch_embeddings import _get_xdg_cache_base
+
+    return _get_xdg_cache_base()
+
+
+def _format_size(size_bytes: int) -> str:
+    """Format bytes into human-readable size."""
+    for unit in ["B", "KB", "MB", "GB"]:
+        if size_bytes < 1024:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024
+    return f"{size_bytes:.1f} TB"  # pragma: no cover - TB-scale caches extremely rare
+
+
+def _get_dir_size(path: Path) -> int:
+    """Get total size of a directory in bytes."""
+    total = 0
+    try:
+        for entry in path.rglob("*"):
+            if entry.is_file():
+                try:
+                    total += entry.stat().st_size
+                except (OSError, PermissionError):  # pragma: no cover
+                    pass  # pragma: no cover
+    except (OSError, PermissionError):  # pragma: no cover
+        pass  # pragma: no cover
+    return total
+
+
+def cmd_cache_status(args: argparse.Namespace) -> int:
+    """Show cache status and statistics.
+
+    Reports:
+    - Number of cached repo entries
+    - Total cache size
+    - Cache location
+    """
+    import time
+
+    cache_dir = _get_cache_base()
+
+    if args.quiet:
+        return 0
+
+    if not cache_dir.exists():
+        print(f"Cache directory: {cache_dir}")
+        print("Status: empty (directory does not exist)")
+        print("0 entries, 0 B")
+        return 0
+
+    # Count entries and compute size
+    entries = [d for d in cache_dir.iterdir() if d.is_dir()]
+    entry_count = len(entries)
+    total_size = _get_dir_size(cache_dir)
+
+    # Find oldest and newest entries
+    if entries:
+        mtimes = [(d, d.stat().st_mtime) for d in entries]
+        oldest = min(mtimes, key=lambda x: x[1])
+        newest = max(mtimes, key=lambda x: x[1])
+        now = time.time()
+        oldest_age = int((now - oldest[1]) / 86400)  # days
+        newest_age = int((now - newest[1]) / 86400)
+    else:
+        oldest_age = newest_age = 0
+
+    print(f"Cache directory: {cache_dir}")
+    print(f"Entries: {entry_count}")
+    print(f"Total size: {_format_size(total_size)}")
+    if entries:
+        print(f"Age range: {newest_age}-{oldest_age} days")
+
+    return 0
+
+
+def cmd_cache_clear(args: argparse.Namespace) -> int:
+    """Clear the hypergumbo cache.
+
+    Options:
+    - --older-than N: Only remove entries older than N days
+    - --dry-run: Show what would be deleted without deleting
+    """
+    import shutil
+    import time
+
+    cache_dir = _get_cache_base()
+
+    if not cache_dir.exists():
+        if not args.quiet:
+            print(f"Cache directory does not exist: {cache_dir}")
+        return 0
+
+    entries = [d for d in cache_dir.iterdir() if d.is_dir()]
+    if not entries:
+        if not args.quiet:
+            print("Cache is already empty.")
+        return 0
+
+    # Filter by age if --older-than is specified
+    if args.older_than is not None:
+        cutoff = time.time() - (args.older_than * 24 * 60 * 60)
+        entries = [d for d in entries if d.stat().st_mtime < cutoff]
+
+    if not entries:
+        if not args.quiet:
+            print(f"No entries older than {args.older_than} days found.")
+        return 0
+
+    total_size = sum(_get_dir_size(e) for e in entries)
+
+    if args.dry_run:
+        if not args.quiet:
+            print(f"Would delete {len(entries)} entries ({_format_size(total_size)})")
+            for entry in entries:
+                print(f"  {entry.name}")
+        return 0
+
+    # Delete entries
+    deleted_count = 0
+    for entry in entries:
+        try:
+            shutil.rmtree(entry)
+            deleted_count += 1
+        except (OSError, PermissionError) as e:  # pragma: no cover
+            if not args.quiet:  # pragma: no cover
+                print(f"Warning: Could not delete {entry}: {e}")  # pragma: no cover
+
+    if not args.quiet:
+        print(f"Deleted {deleted_count} entries ({_format_size(total_size)})")
+
+    return 0
+
+
 def _is_embeddings_available() -> bool:
     """Check if sentence-transformers is available."""
     try:
@@ -3261,6 +3399,52 @@ The output begins with passes suggested for your current directory."""
     )
     p_uninstall_gitleaks.set_defaults(func=cmd_uninstall_gitleaks)
 
+    # hypergumbo cache-status
+    p_cache_status = sub.add_parser(
+        "cache-status",
+        help="Show cache status and statistics",
+    )
+    p_cache_status.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_cache_status.set_defaults(func=cmd_cache_status)
+
+    # hypergumbo cache-clear
+    cache_clear_epilog = """\
+Examples:
+  hypergumbo cache-clear                  # Clear entire cache
+  hypergumbo cache-clear --older-than 7   # Clear entries older than 7 days
+  hypergumbo cache-clear --dry-run        # Preview what would be deleted
+
+The cache stores analysis results and embeddings for each repository.
+Clearing it forces re-analysis on next run (slower but ensures fresh results)."""
+
+    p_cache_clear = sub.add_parser(
+        "cache-clear",
+        help="Clear the hypergumbo cache",
+        epilog=cache_clear_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_cache_clear.add_argument(
+        "--older-than",
+        type=int,
+        metavar="DAYS",
+        help="Only remove entries older than N days",
+    )
+    p_cache_clear.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be deleted without deleting",
+    )
+    p_cache_clear.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress output",
+    )
+    p_cache_clear.set_defaults(func=cmd_cache_clear)
+
     # hypergumbo install-embeddings
     p_install_embeddings = sub.add_parser(
         "install-embeddings",
@@ -4041,7 +4225,7 @@ def main(argv=None) -> int:
         print_all_help(parser)
         return 0
 
-    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "install-embeddings", "uninstall-embeddings", "add-extras", "remove-extras", "test-coverage", "symbols", "compact"}
+    subcommands = {"run", "slice", "search", "routes", "explain", "catalog", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "add-extras", "remove-extras", "test-coverage", "symbols", "compact"}
 
     # If no args, or first arg is not a subcommand (and not a flag), use sketch mode
     if not argv or (argv[0] not in subcommands and not argv[0].startswith("-")):
