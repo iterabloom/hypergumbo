@@ -272,7 +272,9 @@ type, AND location).
   - `swift.py`: BRANCHES_test_swift.py (24 tests)
   - `cpp.py`: BRANCHES_test_cpp.py (26 tests)
   - `c.py`: BRANCHES_test_c.py (25 tests)
+  - `elixir.py`: BRANCHES_test_elixir.py (20 tests) [hypergumbo-lang-common]
   Remaining high-priority mainstream analyzers: none (all 13 covered)
+  Common analyzers started: 1 (elixir)
 - **Strategy:**
   - Testable edge cases: Write tests for reachable branches (dict edge cases, unusual decorator forms, etc.)
   - Defensive code: Mark truly unreachable guards with `# pragma: no cover`
@@ -303,7 +305,8 @@ type, AND location).
     - `BRANCHES_test_swift.py` (24 tests)
     - `BRANCHES_test_cpp.py` (26 tests)
     - `BRANCHES_test_c.py` (25 tests)
-  - Total: 261 branch coverage tests across 13 analyzers
+    - `BRANCHES_test_elixir.py` (20 tests) [common]
+  - Total: 281 branch coverage tests across 14 analyzers
   - Target: 100% branch coverage
 
 **Unified by:**
