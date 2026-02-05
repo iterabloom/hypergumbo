@@ -266,8 +266,10 @@ type, AND location).
   - `java.py`: BRANCHES_test_java.py (12 tests)
   - `csharp.py`: BRANCHES_test_csharp.py (22 tests)
   - `ruby.py`: BRANCHES_test_ruby.py (22 tests)
+  - `kotlin.py`: BRANCHES_test_kotlin.py (20 tests)
+  - `go.py`: BRANCHES_test_go.py (38 tests)
   Remaining high-priority analyzers:
-  - `kotlin.py`, `scala.py`, `go.py`, `swift.py`, `cpp.py`, `c.py`
+  - `scala.py`, `swift.py`, `cpp.py`, `c.py`
 - **Strategy:**
   - Testable edge cases: Write tests for reachable branches (dict edge cases, unusual decorator forms, etc.)
   - Defensive code: Mark truly unreachable guards with `# pragma: no cover`
@@ -280,11 +282,11 @@ type, AND location).
 ## META-004: Testing Discipline
 > "Tests must exercise all code paths to verify correctness and prevent regressions."
 
-- **Status:** 98%
+- **Status:** 97%
 - **Notes:**
   - Line coverage: 100% ✅
-  - Branch coverage: 98% (~1700 missing partials)
-  - BRANCHES test files created (7 mainstream analyzers):
+  - Branch coverage: 97% (~1600 missing partials)
+  - BRANCHES test files created (9 mainstream analyzers):
     - `BRANCHES_test_python_ast_analysis.py` (12 tests)
     - `BRANCHES_test_js_ts.py` (10 tests)
     - `BRANCHES_test_php.py` (12 tests)
@@ -292,7 +294,9 @@ type, AND location).
     - `BRANCHES_test_java.py` (12 tests)
     - `BRANCHES_test_csharp.py` (22 tests)
     - `BRANCHES_test_ruby.py` (22 tests)
-  - Total: 101 branch coverage tests across 7 analyzers
+    - `BRANCHES_test_kotlin.py` (20 tests)
+    - `BRANCHES_test_go.py` (38 tests)
+  - Total: 159 branch coverage tests across 9 analyzers
   - Target: 100% branch coverage
 
 **Unified by:**
