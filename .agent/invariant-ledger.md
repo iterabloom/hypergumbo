@@ -289,8 +289,11 @@ type, AND location).
   - `fortran.py`: BRANCHES_test_fortran.py (17 tests) [hypergumbo-lang-common]
   - `cuda.py`: BRANCHES_test_cuda.py (21 tests) [hypergumbo-lang-common]
   - `commonlisp.py`: BRANCHES_test_commonlisp.py (25 tests) [hypergumbo-lang-common]
+  - `astro.py`: BRANCHES_test_astro.py (24 tests) [hypergumbo-lang-common]
+  - `latex.py`: BRANCHES_test_latex.py (24 tests) [hypergumbo-lang-common]
+  - `nix.py`: BRANCHES_test_nix.py (23 tests) [hypergumbo-lang-common]
   Remaining high-priority mainstream analyzers: none (all 13 covered)
-  Common analyzers started: 17 (18 remaining in hypergumbo-lang-common)
+  Common analyzers started: 20 (15 remaining in hypergumbo-lang-common)
 - **Strategy:**
   - Testable edge cases: Write tests for reachable branches (dict edge cases, unusual decorator forms, etc.)
   - Defensive code: Mark truly unreachable guards with `# pragma: no cover`
@@ -338,7 +341,10 @@ type, AND location).
     - `BRANCHES_test_fortran.py` (17 tests) [common]
     - `BRANCHES_test_cuda.py` (21 tests) [common]
     - `BRANCHES_test_commonlisp.py` (25 tests) [common]
-  - Total: 611 branch coverage tests across 30 analyzers
+    - `BRANCHES_test_astro.py` (24 tests) [common]
+    - `BRANCHES_test_latex.py` (24 tests) [common]
+    - `BRANCHES_test_nix.py` (23 tests) [common]
+  - Total: 682 branch coverage tests across 33 analyzers
   - Target: 100% branch coverage
 
 **Unified by:**
