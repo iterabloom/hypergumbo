@@ -256,16 +256,18 @@ type, AND location).
 - **Fix:** Infrastructure complete:
   - `scripts/smart-test` now uses `--cov-branch` flag
   - `pyproject.toml` configured to collect `BRANCHES_*.py` test files
-  - First file created: `BRANCHES_test_python_ast_analysis.py`
-- **Remaining work:** Create BRANCHES_*.py test files to cover missing branches.
-  Files with most missing partials (as of 2026-02-04):
-  - `js_ts.py`: 67 missing
-  - `php.py`: 42 missing
-  - `py.py`: 37 missing (was 39, improved by 2)
-  - `csharp.py`: 34 missing
-  - `rust.py`: 31 missing
-  - `java.py`: 29 missing
-  - `ruby.py`: 26 missing
+  - BRANCHES test files created for 7 analyzers
+- **Remaining work:** Create BRANCHES_*.py test files to cover remaining analyzers.
+  Completed (as of 2026-02-04):
+  - `py.py`: BRANCHES_test_python_ast_analysis.py (12 tests)
+  - `js_ts.py`: BRANCHES_test_js_ts.py (10 tests)
+  - `php.py`: BRANCHES_test_php.py (12 tests)
+  - `rust.py`: BRANCHES_test_rust.py (11 tests)
+  - `java.py`: BRANCHES_test_java.py (12 tests)
+  - `csharp.py`: BRANCHES_test_csharp.py (22 tests)
+  - `ruby.py`: BRANCHES_test_ruby.py (22 tests)
+  Remaining high-priority analyzers:
+  - `kotlin.py`, `scala.py`, `go.py`, `swift.py`, `cpp.py`, `c.py`
 - **Strategy:**
   - Testable edge cases: Write tests for reachable branches (dict edge cases, unusual decorator forms, etc.)
   - Defensive code: Mark truly unreachable guards with `# pragma: no cover`
@@ -282,10 +284,15 @@ type, AND location).
 - **Notes:**
   - Line coverage: 100% ✅
   - Branch coverage: 98% (~1700 missing partials)
-  - BRANCHES test files created:
-    - `BRANCHES_test_python_ast_analysis.py` (12 tests, py.py: 39→36 partials)
+  - BRANCHES test files created (7 mainstream analyzers):
+    - `BRANCHES_test_python_ast_analysis.py` (12 tests)
     - `BRANCHES_test_js_ts.py` (10 tests)
     - `BRANCHES_test_php.py` (12 tests)
+    - `BRANCHES_test_rust.py` (11 tests)
+    - `BRANCHES_test_java.py` (12 tests)
+    - `BRANCHES_test_csharp.py` (22 tests)
+    - `BRANCHES_test_ruby.py` (22 tests)
+  - Total: 101 branch coverage tests across 7 analyzers
   - Target: 100% branch coverage
 
 **Unified by:**
