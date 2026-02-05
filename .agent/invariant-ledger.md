@@ -281,8 +281,11 @@ type, AND location).
 - **Status:** 98%
 - **Notes:**
   - Line coverage: 100% ✅
-  - Branch coverage: 98% (1761 missing partials) ❌
-  - Infrastructure in place for systematic improvement (BRANCHES_*.py files)
+  - Branch coverage: 98% (~1700 missing partials)
+  - BRANCHES test files created:
+    - `BRANCHES_test_python_ast_analysis.py` (12 tests, py.py: 39→36 partials)
+    - `BRANCHES_test_js_ts.py` (10 tests)
+    - `BRANCHES_test_php.py` (12 tests)
   - Target: 100% branch coverage
 
 **Unified by:**
