@@ -118,4 +118,28 @@ else
     echo -e "${YELLOW}skipped (files not found)${NC}"
 fi
 
+# Check affected-tests.txt manifest mode (must not be full-suite for CI)
+echo -n "  Test manifest... "
+MANIFEST=".ci/affected-tests.txt"
+if [ -f "$MANIFEST" ]; then
+    # Check if manifest is being staged for commit
+    if git diff --cached --name-only | grep -q "^\.ci/affected-tests\.txt$"; then
+        # Check if it's full-suite mode (CI has 5-minute timeout, can't handle full-suite)
+        if grep -q "^# Mode: full-suite" "$MANIFEST"; then
+            echo -e "${RED}✗${NC}"
+            echo ""
+            echo -e "${RED}Manifest is full-suite mode, which will fail CI (5-minute timeout).${NC}"
+            echo -e "${RED}Re-run tests without --full flag to generate a targeted manifest:${NC}"
+            echo "  pytest  # without --full"
+            exit 1
+        else
+            echo -e "${GREEN}✓${NC}"
+        fi
+    else
+        echo -e "${YELLOW}skipped (not staged)${NC}"
+    fi
+else
+    echo -e "${YELLOW}skipped (no manifest)${NC}"
+fi
+
 echo -e "${GREEN}✅ Pre-commit checks passed${NC}"
