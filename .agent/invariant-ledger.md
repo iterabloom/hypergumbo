@@ -273,8 +273,18 @@ type, AND location).
   - `cpp.py`: BRANCHES_test_cpp.py (26 tests)
   - `c.py`: BRANCHES_test_c.py (25 tests)
   - `elixir.py`: BRANCHES_test_elixir.py (20 tests) [hypergumbo-lang-common]
+  - `dart.py`: BRANCHES_test_dart.py (28 tests) [hypergumbo-lang-common]
+  - `graphql.py`: BRANCHES_test_graphql.py (14 tests) [hypergumbo-lang-common]
+  - `hcl.py`: BRANCHES_test_hcl.py (27 tests) [hypergumbo-lang-common]
+  - `julia.py`: BRANCHES_test_julia.py (30 tests) [hypergumbo-lang-common]
+  - `proto.py`: BRANCHES_test_proto.py (22 tests) [hypergumbo-lang-common]
+  - `ocaml.py`: BRANCHES_test_ocaml.py (21 tests) [hypergumbo-lang-common]
+  - `fsharp.py`: BRANCHES_test_fsharp.py (21 tests) [hypergumbo-lang-common]
+  - `clojure.py`: BRANCHES_test_clojure.py (23 tests) [hypergumbo-lang-common]
+  - `erlang.py`: BRANCHES_test_erlang.py (17 tests) [hypergumbo-lang-common]
+  - `haskell.py`: BRANCHES_test_haskell.py (18 tests) [hypergumbo-lang-common]
   Remaining high-priority mainstream analyzers: none (all 13 covered)
-  Common analyzers started: 1 (elixir)
+  Common analyzers started: 11 (24 remaining in hypergumbo-lang-common)
 - **Strategy:**
   - Testable edge cases: Write tests for reachable branches (dict edge cases, unusual decorator forms, etc.)
   - Defensive code: Mark truly unreachable guards with `# pragma: no cover`
@@ -291,7 +301,7 @@ type, AND location).
 - **Notes:**
   - Line coverage: 100% ✅
   - Branch coverage: 98% (~1500 missing partials)
-  - BRANCHES test files created (13 mainstream analyzers + 8 common):
+  - BRANCHES test files created (13 mainstream analyzers + 11 common):
     - `BRANCHES_test_python_ast_analysis.py` (12 tests)
     - `BRANCHES_test_js_ts.py` (10 tests)
     - `BRANCHES_test_php.py` (12 tests)
@@ -313,7 +323,10 @@ type, AND location).
     - `BRANCHES_test_proto.py` (22 tests) [common]
     - `BRANCHES_test_ocaml.py` (21 tests) [common]
     - `BRANCHES_test_fsharp.py` (21 tests) [common]
-  - Total: 444 branch coverage tests across 21 analyzers
+    - `BRANCHES_test_clojure.py` (23 tests) [common]
+    - `BRANCHES_test_erlang.py` (17 tests) [common]
+    - `BRANCHES_test_haskell.py` (18 tests) [common]
+  - Total: 502 branch coverage tests across 24 analyzers
   - Target: 100% branch coverage
 
 **Unified by:**
