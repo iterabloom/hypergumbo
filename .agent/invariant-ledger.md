@@ -283,8 +283,11 @@ type, AND location).
   - `clojure.py`: BRANCHES_test_clojure.py (23 tests) [hypergumbo-lang-common]
   - `erlang.py`: BRANCHES_test_erlang.py (17 tests) [hypergumbo-lang-common]
   - `haskell.py`: BRANCHES_test_haskell.py (18 tests) [hypergumbo-lang-common]
+  - `elm.py`: BRANCHES_test_elm.py (16 tests) [hypergumbo-lang-common]
+  - `scheme.py`: BRANCHES_test_scheme.py (14 tests) [hypergumbo-lang-common]
+  - `racket.py`: BRANCHES_test_racket.py (16 tests) [hypergumbo-lang-common]
   Remaining high-priority mainstream analyzers: none (all 13 covered)
-  Common analyzers started: 11 (24 remaining in hypergumbo-lang-common)
+  Common analyzers started: 14 (21 remaining in hypergumbo-lang-common)
 - **Strategy:**
   - Testable edge cases: Write tests for reachable branches (dict edge cases, unusual decorator forms, etc.)
   - Defensive code: Mark truly unreachable guards with `# pragma: no cover`
@@ -326,7 +329,10 @@ type, AND location).
     - `BRANCHES_test_clojure.py` (23 tests) [common]
     - `BRANCHES_test_erlang.py` (17 tests) [common]
     - `BRANCHES_test_haskell.py` (18 tests) [common]
-  - Total: 502 branch coverage tests across 24 analyzers
+    - `BRANCHES_test_elm.py` (16 tests) [common]
+    - `BRANCHES_test_scheme.py` (14 tests) [common]
+    - `BRANCHES_test_racket.py` (16 tests) [common]
+  - Total: 548 branch coverage tests across 27 analyzers
   - Target: 100% branch coverage
 
 **Unified by:**
