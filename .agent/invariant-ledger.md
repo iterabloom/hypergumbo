@@ -292,8 +292,11 @@ type, AND location).
   - `astro.py`: BRANCHES_test_astro.py (24 tests) [hypergumbo-lang-common]
   - `latex.py`: BRANCHES_test_latex.py (24 tests) [hypergumbo-lang-common]
   - `nix.py`: BRANCHES_test_nix.py (23 tests) [hypergumbo-lang-common]
+  - `glsl.py`: BRANCHES_test_glsl.py (22 tests) [hypergumbo-lang-common]
+  - `hlsl.py`: BRANCHES_test_hlsl.py (22 tests) [hypergumbo-lang-common]
+  - `matlab.py`: BRANCHES_test_matlab.py (21 tests) [hypergumbo-lang-common]
   Remaining high-priority mainstream analyzers: none (all 13 covered)
-  Common analyzers started: 20 (15 remaining in hypergumbo-lang-common)
+  Common analyzers started: 23 (12 remaining in hypergumbo-lang-common)
 - **Strategy:**
   - Testable edge cases: Write tests for reachable branches (dict edge cases, unusual decorator forms, etc.)
   - Defensive code: Mark truly unreachable guards with `# pragma: no cover`
@@ -344,7 +347,10 @@ type, AND location).
     - `BRANCHES_test_astro.py` (24 tests) [common]
     - `BRANCHES_test_latex.py` (24 tests) [common]
     - `BRANCHES_test_nix.py` (23 tests) [common]
-  - Total: 682 branch coverage tests across 33 analyzers
+    - `BRANCHES_test_glsl.py` (22 tests) [common]
+    - `BRANCHES_test_hlsl.py` (22 tests) [common]
+    - `BRANCHES_test_matlab.py` (21 tests) [common]
+  - Total: 747 branch coverage tests across 36 analyzers
   - Target: 100% branch coverage
 
 **Unified by:**
