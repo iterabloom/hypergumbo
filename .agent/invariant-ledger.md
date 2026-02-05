@@ -287,11 +287,11 @@ type, AND location).
 ## META-004: Testing Discipline
 > "Tests must exercise all code paths to verify correctness and prevent regressions."
 
-- **Status:** 97%
+- **Status:** 98%
 - **Notes:**
   - Line coverage: 100% ✅
-  - Branch coverage: 97% (~1600 missing partials)
-  - BRANCHES test files created (13 mainstream analyzers + 3 common):
+  - Branch coverage: 98% (~1500 missing partials)
+  - BRANCHES test files created (13 mainstream analyzers + 6 common):
     - `BRANCHES_test_python_ast_analysis.py` (12 tests)
     - `BRANCHES_test_js_ts.py` (10 tests)
     - `BRANCHES_test_php.py` (12 tests)
@@ -308,7 +308,10 @@ type, AND location).
     - `BRANCHES_test_elixir.py` (20 tests) [common]
     - `BRANCHES_test_dart.py` (28 tests) [common]
     - `BRANCHES_test_graphql.py` (14 tests) [common]
-  - Total: 323 branch coverage tests across 16 analyzers
+    - `BRANCHES_test_hcl.py` (27 tests) [common]
+    - `BRANCHES_test_julia.py` (30 tests) [common]
+    - `BRANCHES_test_proto.py` (22 tests) [common]
+  - Total: 402 branch coverage tests across 19 analyzers
   - Target: 100% branch coverage
 
 **Unified by:**
