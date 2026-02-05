@@ -37,10 +37,21 @@ jobs:
           base="${{ github.event.before }}"
           head="${{ github.sha }}"
 
-          # Handle initial push (no previous commit)
-          if [ "$base" = "0000000000000000000000000000000000000000" ]; then
+          # Handle initial push (no previous commit) or empty/invalid base
+          # github.event.before can be:
+          # - All zeros: first push to branch
+          # - Empty: some merge scenarios
+          # - Invalid: ref no longer exists
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
             echo "code=true" >> "$GITHUB_OUTPUT"
-            echo "Initial push - running full suite"
+            echo "Initial push or empty base - running full suite"
+            exit 0
+          fi
+
+          # Verify base commit exists (handles invalid/missing refs)
+          if ! git cat-file -e "$base" 2>/dev/null; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "Base commit $base not found - running full suite"
             exit 0
           fi
 

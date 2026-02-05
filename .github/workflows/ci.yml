@@ -29,6 +29,24 @@ jobs:
             head="${{ github.sha }}"
           fi
 
+          # Handle initial push or empty/invalid base
+          # github.event.before can be:
+          # - All zeros: first push to branch
+          # - Empty: some merge scenarios
+          # - Invalid: ref no longer exists
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "Initial push or empty base - assuming code changes"
+            exit 0
+          fi
+
+          # Verify base commit exists (handles invalid/missing refs)
+          if ! git cat-file -e "$base" 2>/dev/null; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "Base commit $base not found - assuming code changes"
+            exit 0
+          fi
+
           # Check if any non-doc files changed
           # Docs: *.md, docs/**, LICENSE, .gitignore, etc.
           CODE_PATTERNS='\.py$|\.yaml$|\.yml$|\.json$|\.toml$|pyproject\.toml|scripts/|\.github/workflows/'
