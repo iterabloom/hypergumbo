@@ -291,7 +291,7 @@ type, AND location).
 - **Notes:**
   - Line coverage: 100% ✅
   - Branch coverage: 98% (~1500 missing partials)
-  - BRANCHES test files created (13 mainstream analyzers + 6 common):
+  - BRANCHES test files created (13 mainstream analyzers + 8 common):
     - `BRANCHES_test_python_ast_analysis.py` (12 tests)
     - `BRANCHES_test_js_ts.py` (10 tests)
     - `BRANCHES_test_php.py` (12 tests)
@@ -311,7 +311,9 @@ type, AND location).
     - `BRANCHES_test_hcl.py` (27 tests) [common]
     - `BRANCHES_test_julia.py` (30 tests) [common]
     - `BRANCHES_test_proto.py` (22 tests) [common]
-  - Total: 402 branch coverage tests across 19 analyzers
+    - `BRANCHES_test_ocaml.py` (21 tests) [common]
+    - `BRANCHES_test_fsharp.py` (21 tests) [common]
+  - Total: 444 branch coverage tests across 21 analyzers
   - Target: 100% branch coverage
 
 **Unified by:**
