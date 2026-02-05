@@ -271,8 +271,8 @@ type, AND location).
   - `scala.py`: BRANCHES_test_scala.py (27 tests)
   - `swift.py`: BRANCHES_test_swift.py (24 tests)
   - `cpp.py`: BRANCHES_test_cpp.py (26 tests)
-  Remaining high-priority analyzers:
-  - `c.py`
+  - `c.py`: BRANCHES_test_c.py (25 tests)
+  Remaining high-priority mainstream analyzers: none (all 13 covered)
 - **Strategy:**
   - Testable edge cases: Write tests for reachable branches (dict edge cases, unusual decorator forms, etc.)
   - Defensive code: Mark truly unreachable guards with `# pragma: no cover`
@@ -289,7 +289,7 @@ type, AND location).
 - **Notes:**
   - Line coverage: 100% ✅
   - Branch coverage: 97% (~1600 missing partials)
-  - BRANCHES test files created (11 mainstream analyzers):
+  - BRANCHES test files created (13 mainstream analyzers):
     - `BRANCHES_test_python_ast_analysis.py` (12 tests)
     - `BRANCHES_test_js_ts.py` (10 tests)
     - `BRANCHES_test_php.py` (12 tests)
@@ -302,7 +302,8 @@ type, AND location).
     - `BRANCHES_test_scala.py` (27 tests)
     - `BRANCHES_test_swift.py` (24 tests)
     - `BRANCHES_test_cpp.py` (26 tests)
-  - Total: 236 branch coverage tests across 12 analyzers
+    - `BRANCHES_test_c.py` (25 tests)
+  - Total: 261 branch coverage tests across 13 analyzers
   - Target: 100% branch coverage
 
 **Unified by:**
