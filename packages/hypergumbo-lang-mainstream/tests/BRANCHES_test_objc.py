@@ -244,3 +244,54 @@ class TestAnalysisRun:
 """)
         result = analyze_objc(tmp_path)
         assert result.run is not None
+
+
+class TestTreeSitterUnavailable:
+    """Branch coverage for tree-sitter unavailability."""
+
+    def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
+        """Test analysis is skipped when tree-sitter unavailable."""
+        import hypergumbo_lang_mainstream.objc as objc_module
+        from unittest.mock import patch
+        import pytest
+
+        with patch.object(objc_module, "is_objc_tree_sitter_available", return_value=False):
+            with pytest.warns(UserWarning, match="Objective-C analysis skipped"):
+                result = objc_module.analyze_objc(tmp_path)
+        assert result.skipped is True
+        assert "tree-sitter-objc" in result.skip_reason
+
+
+class TestClassMethods:
+    """Branch coverage for class method extraction."""
+
+    def test_class_method(self, tmp_path: Path) -> None:
+        """Test + class method extraction."""
+        make_objc_file(tmp_path, "Factory.h", """
+@interface Factory : NSObject
++ (instancetype)sharedInstance;
+@end
+""")
+        result = analyze_objc(tmp_path)
+        methods = [s for s in result.symbols if s.kind == "method"]
+        # Should extract class method
+        assert len(methods) >= 1
+
+
+class TestProtocolConformance:
+    """Branch coverage for protocol conformance."""
+
+    def test_class_with_protocols(self, tmp_path: Path) -> None:
+        """Test class conforming to protocols."""
+        make_objc_file(tmp_path, "ViewController.h", """
+@protocol MyDelegate
+@end
+
+@interface ViewController : UIViewController <UITableViewDelegate, MyDelegate>
+@end
+""")
+        result = analyze_objc(tmp_path)
+        classes = [s for s in result.symbols if s.kind == "class"]
+
+        vc = next((c for c in classes if c.name == "ViewController"), None)
+        assert vc is not None
