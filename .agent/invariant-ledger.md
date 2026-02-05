@@ -270,8 +270,9 @@ type, AND location).
   - `go.py`: BRANCHES_test_go.py (38 tests)
   - `scala.py`: BRANCHES_test_scala.py (27 tests)
   - `swift.py`: BRANCHES_test_swift.py (24 tests)
+  - `cpp.py`: BRANCHES_test_cpp.py (26 tests)
   Remaining high-priority analyzers:
-  - `cpp.py`, `c.py`
+  - `c.py`
 - **Strategy:**
   - Testable edge cases: Write tests for reachable branches (dict edge cases, unusual decorator forms, etc.)
   - Defensive code: Mark truly unreachable guards with `# pragma: no cover`
@@ -300,7 +301,8 @@ type, AND location).
     - `BRANCHES_test_go.py` (38 tests)
     - `BRANCHES_test_scala.py` (27 tests)
     - `BRANCHES_test_swift.py` (24 tests)
-  - Total: 210 branch coverage tests across 11 analyzers
+    - `BRANCHES_test_cpp.py` (26 tests)
+  - Total: 236 branch coverage tests across 12 analyzers
   - Target: 100% branch coverage
 
 **Unified by:**
