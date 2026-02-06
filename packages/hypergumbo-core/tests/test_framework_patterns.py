@@ -1498,6 +1498,59 @@ class TestFlaskPatterns:
         assert route_concept["path"] == "/users"
         assert route_concept["framework"] == "flask"
 
+    def test_flask_signal_handler_pattern(self) -> None:
+        """Flask signal handler @request_started.connect matches signal_handler."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:app.py:1:on_request_started:function",
+            name="on_request_started",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "request_started.connect", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "signal_handler"
+        assert results[0]["matched_decorator"] == "request_started.connect"
+
+    def test_flask_template_rendered_signal(self) -> None:
+        """Flask template_rendered signal matches signal_handler."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:app.py:1:log_template:function",
+            name="log_template",
+            kind="function",
+            language="python",
+            path="app.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "template_rendered.connect", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "signal_handler"
+
 
 class TestBottlePatterns:
     """Tests for Bottle framework pattern matching."""
