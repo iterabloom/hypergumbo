@@ -1630,14 +1630,117 @@ def _extract_edges(
 
         return param_types
 
+    def _resolve_decorator_target(
+        decorator: ast.expr,
+    ) -> Symbol | None:
+        """Resolve the target of a decorator expression to a Symbol.
+
+        Handles:
+        - @decorator -> decorator function
+        - @decorator(args) -> decorator function
+        - @module.decorator -> module.decorator function
+        - @app.get("/path") -> app.get method
+        """
+        # For Call decorators, extract the actual function being called
+        # @decorator(args) or @app.get("/path")
+        if isinstance(decorator, ast.Call):
+            decorator = decorator.func
+
+        # Simple name: @decorator or @dataclass
+        if isinstance(decorator, ast.Name):
+            name = decorator.id
+            # Check local symbols
+            symbol = local_symbols.get(name)
+            if symbol:
+                return symbol
+            # Check imports (with suffix matching)
+            if name in imports:
+                module_name, original_name = imports[name]
+                return _lookup_symbol_by_module(
+                    global_symbols, module_name, original_name, resolver=resolver
+                )
+
+        # Attribute: @module.decorator or @app.get
+        elif isinstance(decorator, ast.Attribute):
+            if isinstance(decorator.value, ast.Name):
+                receiver_name = decorator.value.id
+                attr_name = decorator.attr
+
+                # Check if receiver is a local class (e.g., @Registry.register)
+                # Methods are stored with short name as key, so look up attr_name
+                # and verify it's a method of the receiver class
+                symbol = local_symbols.get(attr_name)
+                if symbol and symbol.name == f"{receiver_name}.{attr_name}":
+                    return symbol
+
+                # Check if receiver is an imported module (with suffix matching)
+                if receiver_name in module_imports:
+                    module_name = module_imports[receiver_name]
+                    return _lookup_symbol_by_module(
+                        global_symbols, module_name, attr_name, resolver=resolver
+                    )
+
+        return None
+
+    def _process_decorators(
+        decorated_symbol: Symbol,
+        decorator_list: list[ast.expr],
+    ) -> None:
+        """Create decorated_by edges for each decorator on a symbol."""
+        for decorator in decorator_list:
+            decorator_symbol = _resolve_decorator_target(decorator)
+
+            # Get the line number from the decorator itself
+            line = getattr(decorator, "lineno", 0)
+
+            if decorator_symbol:
+                edges.append(Edge.create(
+                    src=decorated_symbol.id,
+                    dst=decorator_symbol.id,
+                    edge_type="decorated_by",
+                    line=line,
+                    evidence_type="ast_decorator",
+                    confidence=0.95,
+                ))
+            else:
+                # Emit unresolved edge for decorators we can't resolve
+                # This helps track framework decorators like @app.get
+                if isinstance(decorator, ast.Call):
+                    dec_func = decorator.func
+                else:
+                    dec_func = decorator
+
+                if isinstance(dec_func, ast.Attribute) and isinstance(
+                    dec_func.value, ast.Name
+                ):
+                    receiver_name = dec_func.value.id
+                    attr_name = dec_func.attr
+                    dst_id = f"python:unresolved:0-0:{receiver_name}.{attr_name}:unresolved"
+                    edges.append(Edge.create(
+                        src=decorated_symbol.id,
+                        dst=dst_id,
+                        edge_type="decorated_by",
+                        line=line,
+                        evidence_type="ast_decorator_unresolved",
+                        confidence=0.50,
+                    ))
+
     # Process functions (including async functions)
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             caller_symbol = local_symbols.get(node.name)
             if caller_symbol:
+                # Process decorators on the function
+                _process_decorators(caller_symbol, node.decorator_list)
                 # Extract types from parameter annotations
                 param_types = _extract_param_types(node)
                 process_code_block(node.body, caller_symbol, param_types)
+
+        # Process class decorators
+        elif isinstance(node, ast.ClassDef):
+            class_symbol = local_symbols.get(node.name)
+            if class_symbol:
+                _process_decorators(class_symbol, node.decorator_list)
 
     # Process module-level code for <module> pseudo-nodes
     module_symbol = local_symbols.get("<module>")

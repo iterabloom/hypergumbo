@@ -463,21 +463,30 @@ Branch coverage tests go in `BRANCHES_*.py` files for separate CI management.
 ---
 
 ## INV-012: Python Decorator Edge Detection
-- **Statement:** Decorator applications should create "decorates" edges in the call graph
-- **Status:** TBD (Quality Improvement - Not a Bug)
-- **Root cause:** Python analyzer extracts decorator information as metadata (`meta.decorators`)
-  but does not create edges between the decorator and the decorated function.
-  This means `@app.get("/users")` results in:
+- **Statement:** Decorator applications should create "decorated_by" edges in the call graph
+- **Status:** FIXED
+- **Root cause:** Python analyzer extracted decorator information as metadata (`meta.decorators`)
+  but did not create edges between the decorator and the decorated function.
+  This meant `@app.get("/users")` resulted in:
   - ✅ Metadata on the function: `decorators: [{name: "app.get", args: ["/users"]}]`
   - ❌ No edge from `app` or `app.get` to the decorated function
-  - Result: FastAPI's HTTP method decorators show 0 in-degree in symbols.txt
+  - Result: FastAPI's HTTP method decorators showed 0 in-degree in symbols.txt
 - **Discovery:** bakeoff-features-reflect assessment on FastAPI (2026-02-06)
   - "FastAPI.get/post/put etc. not in high-connectivity symbols (0 in-degree)"
   - Decorator registration pattern not visible in call graph
-- **Proposed fix:** In `py.py:_extract_edges()`, process `decorator_list` on functions/classes:
-  1. For each decorator (Name, Attribute, or Call), resolve the callee
-  2. Create a "decorates" edge from the decorator to the decorated symbol
-  3. For `@decorator(args)` forms, also create a "calls" edge to the decorator
+- **Fix:** Added `_resolve_decorator_target()` and `_process_decorators()` functions in
+  `py.py:_extract_edges()` that:
+  1. Process `decorator_list` on functions/classes during AST walk
+  2. Resolve decorator callees (Name, Attribute, Call forms)
+  3. Create "decorated_by" edges from decorated symbol to decorator
+  4. Handle unresolved decorators with unresolved edges (0.5 confidence)
+  Supported patterns:
+  - Simple: `@decorator` → resolved to local or imported function
+  - With args: `@decorator(args)` → extracts function from Call
+  - Method: `@ClassName.method` → resolved via local_symbols short name lookup
+  - Stacked: Multiple decorators create multiple edges
+- **Regression tests:**
+  - `test_decorator_edges.py::TestDecoratorEdges` (6 tests)
 - **Trade-offs:**
   - Pros: Decorators become visible in call graph, better centrality ranking
   - Cons: May create noisy edges for common decorators like `@staticmethod`, `@property`
