@@ -7631,6 +7631,48 @@ class TestMainFunctionPatterns:
         assert concepts[0]["concept"] == "main_function"
         assert concepts[0]["framework"] == "main-functions"
 
+    def test_enrich_symbols_with_gleam_main_function(self) -> None:
+        """enrich_symbols enriches Gleam main function with main_function concept."""
+        symbol = Symbol(
+            id="gleam:main.gleam:1-10:main:function",
+            name="main",
+            kind="function",
+            language="gleam",
+            path="main.gleam",
+            span=Span(1, 10, 0, 100),
+            meta={},
+        )
+
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "main_function"
+        assert concepts[0]["framework"] == "main-functions"
+
+    def test_enrich_symbols_with_haxe_main_function(self) -> None:
+        """enrich_symbols enriches Haxe main function with main_function concept."""
+        symbol = Symbol(
+            id="haxe:Main.hx:1-10:main:function",
+            name="main",
+            kind="function",
+            language="haxe",
+            path="Main.hx",
+            span=Span(1, 10, 0, 100),
+            meta={},
+        )
+
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "main_function"
+        assert concepts[0]["framework"] == "main-functions"
+
     def test_symbol_name_only_pattern(self) -> None:
         """Pattern with only symbol_name (no symbol_kind or language) matches."""
         pattern = Pattern(

@@ -114,4 +114,16 @@ patterns:
     symbol_kind: "^function$"
     language: "^odin$"
 
+  # Gleam: pub fn main() - functional language for BEAM VM
+  - concept: main_function
+    symbol_name: "^main$"
+    symbol_kind: "^function$"
+    language: "^gleam$"
+
+  # Haxe: static function main() - cross-platform language
+  - concept: main_function
+    symbol_name: "^main$"
+    symbol_kind: "^function$"
+    language: "^haxe$"
+
 linkers: []
