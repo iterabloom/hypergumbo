@@ -1060,6 +1060,80 @@ def _extract_edges(
     return edges
 
 
+def _extract_annotation_edges(
+    symbols: list[Symbol],
+    global_symbols: dict[str, Symbol],
+    run: AnalysisRun,
+) -> list[Edge]:
+    """Extract decorated_by edges from annotation metadata.
+
+    For each symbol (class, interface, method) with decorators metadata,
+    creates decorated_by edges to annotation types that exist in the
+    analyzed codebase. This enables visibility of annotation patterns
+    like Spring's @Service, @Controller, @GetMapping, etc.
+
+    Args:
+        symbols: All extracted symbols
+        global_symbols: Map of name -> Symbol for annotation lookup
+        run: Current analysis run for provenance
+
+    Returns:
+        List of decorated_by edges for annotation relationships
+    """
+    edges: list[Edge] = []
+
+    for sym in symbols:
+        if sym.meta is None:
+            continue
+
+        decorators = sym.meta.get("decorators")
+        if not decorators or not isinstance(decorators, list):
+            continue
+
+        for decorator in decorators:
+            if not isinstance(decorator, dict):  # pragma: no cover
+                continue
+
+            dec_name = decorator.get("name")
+            if not dec_name or not isinstance(dec_name, str):  # pragma: no cover
+                continue
+
+            # Try to resolve the annotation to a symbol
+            annotation_sym = global_symbols.get(dec_name)
+
+            line = sym.span.start_line if sym.span else 0
+
+            if annotation_sym:
+                edge = Edge.create(
+                    src=sym.id,
+                    dst=annotation_sym.id,
+                    edge_type="decorated_by",
+                    line=line,
+                    confidence=0.95,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ast_annotation",
+                )
+                edges.append(edge)
+            else:
+                # Emit unresolved edge for annotations we can't resolve
+                # This helps track framework annotations like @Service
+                dst_id = f"java:unresolved:0-0:{dec_name}:unresolved"
+                edge = Edge.create(
+                    src=sym.id,
+                    dst=dst_id,
+                    edge_type="decorated_by",
+                    line=line,
+                    confidence=0.50,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ast_annotation_unresolved",
+                )
+                edges.append(edge)
+
+    return edges
+
+
 def _analyze_java_file(
     file_path: Path,
     run: AnalysisRun,
@@ -1167,6 +1241,10 @@ def analyze_java(repo_root: Path) -> JavaAnalysisResult:
             global_symbols, class_symbols, pf.imports or {}
         )
         all_edges.extend(edges)
+
+    # Extract annotation edges (INV-012: decorators metadata -> decorated_by edges)
+    annotation_edges = _extract_annotation_edges(all_symbols, global_symbols, run)
+    all_edges.extend(annotation_edges)
 
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped
