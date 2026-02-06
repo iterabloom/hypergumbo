@@ -971,6 +971,84 @@ def _extract_edges_from_file(
     return edges
 
 
+def _extract_attribute_edges(
+    symbols: list[Symbol],
+    global_symbols: dict[str, Symbol],
+    run: AnalysisRun,
+) -> list[Edge]:
+    """Extract decorated_by edges from C# attribute metadata.
+
+    For each symbol (class, interface, method) with annotations metadata,
+    creates decorated_by edges to attribute types that exist in the
+    analyzed codebase. This enables visibility of attribute patterns
+    like ASP.NET Core's [ApiController], [HttpGet], [Service], etc.
+
+    Args:
+        symbols: All extracted symbols
+        global_symbols: Map of name -> Symbol for attribute lookup
+        run: Current analysis run for provenance
+
+    Returns:
+        List of decorated_by edges for attribute relationships
+    """
+    edges: list[Edge] = []
+
+    for sym in symbols:
+        if sym.meta is None:
+            continue
+
+        # C# uses "annotations" instead of "decorators" for historical reasons
+        annotations = sym.meta.get("annotations")
+        if not annotations or not isinstance(annotations, list):
+            continue
+
+        for annotation in annotations:
+            if not isinstance(annotation, dict):  # pragma: no cover
+                continue
+
+            attr_name = annotation.get("name")
+            if not attr_name or not isinstance(attr_name, str):  # pragma: no cover
+                continue
+
+            # Try to resolve the attribute to a symbol
+            # C# attributes may be referenced with or without "Attribute" suffix
+            attr_sym = global_symbols.get(attr_name)
+            if not attr_sym:
+                attr_sym = global_symbols.get(f"{attr_name}Attribute")
+
+            line = sym.span.start_line if sym.span else 0
+
+            if attr_sym:
+                edge = Edge.create(
+                    src=sym.id,
+                    dst=attr_sym.id,
+                    edge_type="decorated_by",
+                    line=line,
+                    confidence=0.95,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ast_attribute",
+                )
+                edges.append(edge)
+            else:
+                # Emit unresolved edge for attributes we can't resolve
+                # This helps track framework attributes like [ApiController]
+                dst_id = f"csharp:unresolved:0-0:{attr_name}:unresolved"
+                edge = Edge.create(
+                    src=sym.id,
+                    dst=dst_id,
+                    edge_type="decorated_by",
+                    line=line,
+                    confidence=0.50,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ast_attribute_unresolved",
+                )
+                edges.append(edge)
+
+    return edges
+
+
 def analyze_csharp(repo_root: Path) -> CSharpAnalysisResult:
     """Analyze all C# files in a repository.
 
@@ -1038,6 +1116,10 @@ def analyze_csharp(repo_root: Path) -> CSharpAnalysisResult:
             using_aliases=analysis.using_aliases
         )
         all_edges.extend(edges)
+
+    # Extract attribute edges (INV-012: annotations metadata -> decorated_by edges)
+    attribute_edges = _extract_attribute_edges(all_symbols, global_symbols, run)
+    all_edges.extend(attribute_edges)
 
     run.files_analyzed = len(file_analyses)
     run.files_skipped = files_skipped
