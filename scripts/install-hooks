@@ -111,11 +111,13 @@ hooks_path=".githooks"
 commit_msg_hook="$hooks_path/commit-msg"
 prepare_hook="$hooks_path/prepare-commit-msg"
 pre_commit_hook="$hooks_path/pre-commit"
+pre_push_hook="$hooks_path/pre-push"
 
 [[ -d "$hooks_path" ]]    || die "expected $hooks_path/ directory at repo root"
 [[ -f "$commit_msg_hook" ]] || die "expected hook file $commit_msg_hook"
 [[ -f "$prepare_hook" ]]    || die "expected hook file $prepare_hook"
 [[ -f "$pre_commit_hook" ]] || die "expected hook file $pre_commit_hook"
+[[ -f "$pre_push_hook" ]]   || die "expected hook file $pre_push_hook"
 
 # -----------------------------
 # Dependency checks for commit-msg hook

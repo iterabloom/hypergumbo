@@ -229,8 +229,56 @@ Signed-off-by: Developer <dev@example.com>"
 
 run_test "Scenario 7: unstable (Prefix Preserved)" "$INPUT_7" "$EXPECTED_7"
 
-# 7. Summary
+# 7. Pre-push hook tests
 # ------------------------------------------------------------------------------
+
+PRE_PUSH_HOOK="$SCRIPT_DIR/pre-push"
+
+if [[ -f "$PRE_PUSH_HOOK" ]]; then
+  echo ""
+  echo "========================================================"
+  echo "PRE-PUSH HOOK TESTS"
+  echo "========================================================"
+
+  # Helper: simulate pre-push stdin (local_ref local_sha remote_ref remote_sha)
+  run_pre_push_test() {
+    local test_name="$1"
+    local remote_ref="$2"
+    local expect_block="$3"  # "block" or "allow"
+
+    local stdin_line="refs/heads/test abc123 $remote_ref def456"
+
+    echo "--------------------------------------------------------"
+    echo "TEST: $test_name"
+
+    if echo "$stdin_line" | "$PRE_PUSH_HOOK" "origin" "https://example.com" >/dev/null 2>&1; then
+      if [[ "$expect_block" == "allow" ]]; then
+        echo "  PASS (push allowed as expected)"
+        ((PASS_COUNT++))
+      else
+        echo "  FAIL (push should have been blocked)"
+        ((FAIL_COUNT++))
+      fi
+    else
+      if [[ "$expect_block" == "block" ]]; then
+        echo "  PASS (push blocked as expected)"
+        ((PASS_COUNT++))
+      else
+        echo "  FAIL (push should have been allowed)"
+        ((FAIL_COUNT++))
+      fi
+    fi
+  }
+
+  run_pre_push_test "Pre-push: block push to dev" "refs/heads/dev" "block"
+  run_pre_push_test "Pre-push: block push to main" "refs/heads/main" "block"
+  run_pre_push_test "Pre-push: allow push to feature branch" "refs/heads/jgstern/feat/test" "allow"
+  run_pre_push_test "Pre-push: allow push to refs/for/dev (Forgejo PR)" "refs/for/dev/my-branch" "allow"
+fi
+
+# 8. Summary
+# ------------------------------------------------------------------------------
+echo ""
 echo "========================================================"
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"
 if (( FAIL_COUNT > 0 )); then

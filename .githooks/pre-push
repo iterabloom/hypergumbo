@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Pre-push hook: Prevent accidental pushes to protected branches (dev, main)
+#
+# Git invokes pre-push with the remote name and URL as arguments, and feeds
+# lines of the form:
+#   <local ref> <local sha> <remote ref> <remote sha>
+# on stdin. We check each line's remote ref against a list of protected
+# branch patterns.
+#
+# To bypass this hook (not recommended): git push --no-verify
+
+set -euo pipefail
+
+# Colors for output
+RED='\033[0;31m'
+YELLOW='\033[0;33m'
+NC='\033[0m' # No Color
+
+# Protected branch patterns (bare names, matched against the ref suffix)
+PROTECTED_BRANCHES="main dev"
+
+remote="$1"
+url="$2"
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    # Extract the branch name from the remote ref (e.g., refs/heads/dev -> dev)
+    branch="${remote_ref#refs/heads/}"
+
+    for protected in $PROTECTED_BRANCHES; do
+        if [[ "$branch" == "$protected" ]]; then
+            echo ""
+            echo -e "${RED}========================================================${NC}"
+            echo -e "${RED}  BLOCKED: Direct push to protected branch '$protected'${NC}"
+            echo -e "${RED}========================================================${NC}"
+            echo ""
+            echo -e "${YELLOW}  Protected branches (dev, main) require a PR-based workflow.${NC}"
+            echo ""
+            echo "  Instead, use a feature branch:"
+            echo ""
+            echo "    git checkout -b <author>/feat/<description>"
+            echo "    git push origin HEAD"
+            echo "    ./scripts/auto-pr"
+            echo ""
+            echo "  To bypass (not recommended): git push --no-verify"
+            echo ""
+            exit 1
+        fi
+    done
+done
+
+exit 0

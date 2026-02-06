@@ -162,6 +162,7 @@ git commit -s -m "feat: description"
 
 ## Workflow (Trunk-Based XP)
 - **Primary Goal:** Keep `dev` green and deployable at all times.
+- **NEVER commit directly to `dev` or `main` -- always use a feature branch.** Direct pushes to protected branches are blocked by the pre-push hook. If you find yourself on `dev` with uncommitted work, stash it, create a feature branch, and unstash there.
 - **TDD Protocol:**
   1. **Red:** Write a failing test first.
   2. **Green:** Write minimal code to pass the test.
