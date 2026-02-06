@@ -235,6 +235,48 @@ class TestFileDiscovery:
         assert result.run.files_analyzed >= 1
 
 
+class TestEdgeCases:
+    """Branch coverage for edge cases and malformed input."""
+
+    def test_section_with_empty_braces(self, tmp_path: Path) -> None:
+        """Test section with empty braces - exercises 132->129 branch.
+
+        When _get_curly_group_text returns empty string, we skip symbol creation.
+        """
+        make_latex_file(tmp_path, "empty_section.tex", r"""
+\documentclass{article}
+\begin{document}
+\section{}
+Regular section follows:
+\section{Real Section}
+\end{document}
+""")
+        result = analyze_latex(tmp_path)
+        sections = [s for s in result.symbols if s.kind == "section"]
+        # Should have "Real Section" but not empty one
+        assert any(s.name == "Real Section" for s in sections)
+
+    def test_chapter_various_depths(self, tmp_path: Path) -> None:
+        """Test all section depth types."""
+        make_latex_file(tmp_path, "depths.tex", r"""
+\documentclass{book}
+\begin{document}
+\chapter{Chapter One}
+\section{Section One}
+\subsection{Subsection One}
+\subsubsection{Subsubsection One}
+\paragraph{Paragraph One}
+\subparagraph{Subparagraph One}
+\end{document}
+""")
+        result = analyze_latex(tmp_path)
+        sections = [s for s in result.symbols if s.kind == "section"]
+        names = [s.name for s in sections]
+        assert "Chapter One" in names
+        assert "Paragraph One" in names
+        assert "Subparagraph One" in names
+
+
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
 
