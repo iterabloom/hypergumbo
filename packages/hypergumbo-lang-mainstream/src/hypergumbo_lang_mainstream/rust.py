@@ -899,6 +899,83 @@ def _extract_edges_from_file(
     return edges
 
 
+def _extract_attribute_edges(
+    symbols: list[Symbol],
+    global_symbols: dict[str, Symbol],
+    run: AnalysisRun,
+) -> list[Edge]:
+    """Extract decorated_by edges from Rust attribute metadata.
+
+    Creates edges from symbols to their attributes. For example,
+    #[test] on a function creates a decorated_by edge from the function
+    to the test attribute.
+
+    Args:
+        symbols: All symbols extracted from the codebase.
+        global_symbols: Map of symbol names to Symbol objects for resolution.
+        run: The current analysis run for provenance.
+
+    Returns:
+        List of decorated_by edges.
+    """
+    edges: list[Edge] = []
+
+    for sym in symbols:
+        if sym.meta is None:
+            continue
+
+        annotations = sym.meta.get("annotations")
+        if not annotations or not isinstance(annotations, list):
+            continue
+
+        for annotation in annotations:
+            if not isinstance(annotation, dict):  # pragma: no cover
+                continue
+
+            attr_name = annotation.get("name")
+            if not attr_name or not isinstance(attr_name, str):  # pragma: no cover
+                continue
+
+            # Try to resolve the attribute to a symbol
+            # For qualified names like "actix_web::get", try both full and short name
+            attr_sym = global_symbols.get(attr_name)
+            if not attr_sym and "::" in attr_name:
+                short_name = attr_name.rsplit("::", 1)[-1]
+                attr_sym = global_symbols.get(short_name)
+
+            line = sym.span.start_line if sym.span else 0
+
+            if attr_sym:
+                # Resolved attribute
+                edge = Edge.create(
+                    src=sym.id,
+                    dst=attr_sym.id,
+                    edge_type="decorated_by",
+                    line=line,
+                    confidence=0.95,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ast_attribute",
+                )
+                edges.append(edge)
+            else:
+                # Unresolved attribute - create unresolved edge
+                dst_id = f"rust:unresolved:0-0:{attr_name}:unresolved"
+                edge = Edge.create(
+                    src=sym.id,
+                    dst=dst_id,
+                    edge_type="decorated_by",
+                    line=line,
+                    confidence=0.80,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ast_attribute",
+                )
+                edges.append(edge)
+
+    return edges
+
+
 def analyze_rust(repo_root: Path) -> RustAnalysisResult:
     """Analyze all Rust files in a repository.
 
@@ -978,6 +1055,10 @@ def analyze_rust(repo_root: Path) -> RustAnalysisResult:
             all_usage_contexts.extend(usage_contexts)
         except (OSError, IOError):  # pragma: no cover
             pass  # Skip files that can't be read
+
+    # Extract decorated_by edges from attribute metadata
+    attribute_edges = _extract_attribute_edges(all_symbols, global_symbols, run)
+    all_edges.extend(attribute_edges)
 
     run.files_analyzed = len(file_analyses)
     run.files_skipped = files_skipped
