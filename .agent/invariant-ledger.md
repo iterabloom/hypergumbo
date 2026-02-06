@@ -249,7 +249,7 @@ type, AND location).
 
 ## INV-011: 100% Branch Coverage
 - **Statement:** All code paths must be exercised by tests, verified by pytest-cov `--cov-branch`
-- **Status:** ❌ UNFIXED (97% - 1613 missing branch partials out of 15568 total)
+- **Status:** ⏳ PARTIALLY ADDRESSED (97% - ~1600 missing branch partials)
 - **Root cause:** Branch coverage was not tracked; only line coverage was required.
   Many conditional branches (early returns, error paths, None checks, exception handlers)
   are executed but only one branch direction is tested.
@@ -350,6 +350,8 @@ type, AND location).
   - `wolfram.py`: BRANCHES_test_wolfram.py
   - `zig.py`: BRANCHES_test_zig.py
   Extended1 analyzers completed: 35 (354 tests, all pass)
+  Core package (hypergumbo-core, as of 2026-02-05):
+  - `compact.py`: BRANCHES_test_compact.py (27 tests)
 - **Strategy:**
   - Testable edge cases: Write tests for reachable branches (dict edge cases, unusual decorator forms, etc.)
   - Defensive code: Mark truly unreachable guards with `# pragma: no cover`
@@ -362,10 +364,10 @@ type, AND location).
 ## META-004: Testing Discipline
 > "Tests must exercise all code paths to verify correctness and prevent regressions."
 
-- **Status:** 97%
+- **Status:** 98%
 - **Notes:**
-  - Line coverage: 100% ✅ (33708 statements, 0 missing)
-  - Branch coverage: 97% (15568 branches, 1613 missing partials)
+  - Line coverage: 100% ✅
+  - Branch coverage: 98% (~1500 missing partials)
   - BRANCHES test files created (13 mainstream analyzers + 11 common):
     - `BRANCHES_test_python_ast_analysis.py` (12 tests)
     - `BRANCHES_test_js_ts.py` (10 tests)
