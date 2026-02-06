@@ -84,4 +84,10 @@ patterns:
     symbol_kind: "^function$"
     language: "^dart$"
 
+  # D: main function - systems programming language
+  - concept: main_function
+    symbol_name: "^main$"
+    symbol_kind: "^function$"
+    language: "^d$"
+
 linkers: []

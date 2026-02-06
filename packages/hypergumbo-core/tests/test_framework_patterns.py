@@ -7502,6 +7502,51 @@ class TestMainFunctionPatterns:
         assert concepts[0]["concept"] == "main_function"
         assert concepts[0]["framework"] == "main-functions"
 
+    def test_main_function_pattern_match_d(self) -> None:
+        """Pattern matches D main function."""
+        pattern = Pattern(
+            concept="main_function",
+            symbol_name="^main$",
+            symbol_kind="^function$",
+            language="^d$",
+        )
+        symbol = Symbol(
+            id="d:main.d:5-15:main:function",
+            name="main",
+            kind="function",
+            language="d",
+            path="main.d",
+            span=Span(5, 15, 0, 100),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "main_function"
+        assert result["matched_symbol_name"] == "main"
+        assert result["matched_symbol_kind"] == "function"
+
+    def test_enrich_symbols_with_d_main_function(self) -> None:
+        """enrich_symbols enriches D main function with main_function concept."""
+        symbol = Symbol(
+            id="d:main.d:5-15:main:function",
+            name="main",
+            kind="function",
+            language="d",
+            path="main.d",
+            span=Span(5, 15, 0, 100),
+            meta={},
+        )
+
+        # Use real main-functions patterns (no mock)
+        enriched = enrich_symbols([symbol], set())  # No frameworks detected
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "main_function"
+        assert concepts[0]["framework"] == "main-functions"
+
     def test_symbol_name_only_pattern(self) -> None:
         """Pattern with only symbol_name (no symbol_kind or language) matches."""
         pattern = Pattern(
