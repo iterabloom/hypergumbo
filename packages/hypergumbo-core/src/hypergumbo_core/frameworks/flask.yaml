@@ -79,6 +79,18 @@ patterns:
   - concept: command
     decorator: "^(app|blueprint|bp)\\.cli\\.command$"
 
+  # Jinja2 template filters - @app.template_filter('name')
+  - concept: template_filter
+    decorator: "^(app|blueprint|bp)\\.template_filter$"
+
+  # Jinja2 template globals - @app.template_global('name')
+  - concept: template_global
+    decorator: "^(app|blueprint|bp)\\.template_global$"
+
+  # Jinja2 template tests - @app.template_test('name')
+  - concept: template_test
+    decorator: "^(app|blueprint|bp)\\.template_test$"
+
   # Flask-SocketIO event handlers
   - concept: websocket_handler
     decorator: "^socketio\\.on$"

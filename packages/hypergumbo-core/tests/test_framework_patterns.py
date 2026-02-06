@@ -1389,6 +1389,87 @@ class TestFlaskPatterns:
         assert len(results) == 1
         assert results[0]["concept"] == "model"
 
+    def test_flask_template_filter(self) -> None:
+        """Flask @app.template_filter decorator matches template_filter pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:filters.py:5:reverse:function",
+            name="reverse",
+            kind="function",
+            language="python",
+            path="filters.py",
+            span=Span(5, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.template_filter", "args": ["reverse"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "template_filter"
+        assert results[0]["matched_decorator"] == "app.template_filter"
+
+    def test_flask_template_global(self) -> None:
+        """Flask @app.template_global decorator matches template_global pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:globals.py:10:get_now:function",
+            name="get_now",
+            kind="function",
+            language="python",
+            path="globals.py",
+            span=Span(10, 15, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.template_global", "args": ["now"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "template_global"
+        assert results[0]["matched_decorator"] == "app.template_global"
+
+    def test_flask_template_test(self) -> None:
+        """Flask @app.template_test decorator matches template_test pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:tests.py:5:is_prime:function",
+            name="is_prime",
+            kind="function",
+            language="python",
+            path="tests.py",
+            span=Span(5, 12, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "app.template_test", "args": ["prime"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "template_test"
+        assert results[0]["matched_decorator"] == "app.template_test"
+
     def test_flask_enrich_symbols_integration(self) -> None:
         """Integration test: enrich_symbols adds Flask route concepts."""
         clear_pattern_cache()
