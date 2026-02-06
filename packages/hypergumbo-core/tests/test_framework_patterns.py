@@ -2838,6 +2838,87 @@ class TestDjangoPatterns:
         assert "concepts" in task.meta
         assert any(c["concept"] == "task" for c in task.meta["concepts"])
 
+    def test_django_template_tag_simple_tag(self) -> None:
+        """Django @register.simple_tag decorator matches template_tag pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("django")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:templatetags/my_tags.py:10:current_time:function",
+            name="current_time",
+            kind="function",
+            language="python",
+            path="templatetags/my_tags.py",
+            span=Span(10, 15, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "register.simple_tag", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "template_tag"
+        assert results[0]["matched_decorator"] == "register.simple_tag"
+
+    def test_django_template_tag_inclusion_tag(self) -> None:
+        """Django @register.inclusion_tag decorator matches template_tag pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("django")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:templatetags/my_tags.py:20:show_results:function",
+            name="show_results",
+            kind="function",
+            language="python",
+            path="templatetags/my_tags.py",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "register.inclusion_tag", "args": ["results.html"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "template_tag"
+        assert results[0]["matched_decorator"] == "register.inclusion_tag"
+
+    def test_django_template_filter(self) -> None:
+        """Django @register.filter decorator matches template_filter pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("django")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:templatetags/my_filters.py:5:cut:function",
+            name="cut",
+            kind="function",
+            language="python",
+            path="templatetags/my_filters.py",
+            span=Span(5, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "register.filter", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "template_filter"
+        assert results[0]["matched_decorator"] == "register.filter"
+
 
 class TestExpressPatterns:
     """Tests for Express.js framework pattern matching."""
