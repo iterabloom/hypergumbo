@@ -1,0 +1,45 @@
+# Flask-RESTful framework patterns (ADR-0003)
+#
+# Flask-RESTful is a Flask extension for building REST APIs with Resource classes.
+# Routes are registered via api.add_resource(ResourceClass, '/path').
+
+id: flask-restful
+language: python
+
+patterns:
+  # ==================== USAGE-BASED PATTERNS ====================
+  # Flask-RESTful add_resource - api.add_resource(Resource, '/path')
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(api|rest_api)\\.add_resource$"
+      position: "^args\\[0\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "literal:GET"
+
+  # ==================== DEFINITION-BASED PATTERNS ====================
+  # Flask-RESTful Resource class
+  - concept: api_resource
+    base_class: "^(flask_restful\\.)?Resource$"
+
+  # Flask-RESTful HTTP method handlers (get, post, put, delete, patch)
+  # These are methods on Resource subclasses
+  - concept: route_handler
+    method_name: "^(get|post|put|delete|patch|head|options)$"
+    parent_base_class: "^(flask_restful\\.)?Resource$"
+
+  # Flask-RESTful fields for marshalling
+  - concept: serializer_field
+    base_class: "^fields\\.(String|Integer|Float|Boolean|DateTime|Nested|List|Raw|Url)$"
+
+  # Flask-RESTful reqparse for request parsing
+  - concept: request_parser
+    base_class: "^reqparse\\.RequestParser$"
+
+  # Flask-RESTful abort helper
+  - concept: error_handler
+    decorator: "^abort$"
+
+linkers:
+  - http
