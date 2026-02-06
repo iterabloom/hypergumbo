@@ -521,6 +521,27 @@ Branch coverage tests go in `BRANCHES_*.py` files for separate CI management.
 
 ---
 
+## INV-013: TypeScript Constructor Injection Resolution
+- **Statement:** Method calls on constructor-injected properties (`this.property.method()`) must resolve to the injected type's methods
+- **Status:** ✅ FIXED
+- **Root cause:** JS/TS analyzer handled `this.method()` (direct class methods) but not `this.property.method()`
+  where property is a constructor parameter like `constructor(private catsService: CatsService)`.
+  The analyzer checked `obj_node.type == "this"` but when calling `this.catsService.create()`,
+  obj_node is `this.catsService` (member_expression), not `this`.
+- **Fix:** Added Case 1b in `_extract_edges()` to handle nested member_expression patterns:
+  1. Detect if obj_node is `this.propertyName` (member_expression with `this` and property_identifier)
+  2. Look up propertyName in var_types (populated from constructor parameter type annotations)
+  3. Resolve `TypeName.methodName` using the type from var_types
+  4. Create edge with evidence_type "ast_method_this_property" and 0.90 confidence
+- **Discovery:** Feature bakeoff reflection on NestJS repo (2026-02-06):
+  - Forward slice from CatsController.create had 0 useful nodes
+  - Assessment noted: "misses the actual business logic call to catsService.create()"
+- **Impact:** Forward slices from NestJS/Angular controllers now include service layer calls
+- **Regression tests:**
+  - `test_js_ts.py::TestVariableTypeInference::test_this_property_method_call_nestjs_pattern`
+
+---
+
 ## INV-XXX: Template for New Invariants
 - **Statement:** [What must always be true]
 - **Status:** [UNFIXED | PARTIALLY ADDRESSED | FIXED | TBD]
