@@ -462,6 +462,33 @@ Branch coverage tests go in `BRANCHES_*.py` files for separate CI management.
 
 ---
 
+## INV-012: Python Decorator Edge Detection
+- **Statement:** Decorator applications should create "decorates" edges in the call graph
+- **Status:** TBD (Quality Improvement - Not a Bug)
+- **Root cause:** Python analyzer extracts decorator information as metadata (`meta.decorators`)
+  but does not create edges between the decorator and the decorated function.
+  This means `@app.get("/users")` results in:
+  - ✅ Metadata on the function: `decorators: [{name: "app.get", args: ["/users"]}]`
+  - ❌ No edge from `app` or `app.get` to the decorated function
+  - Result: FastAPI's HTTP method decorators show 0 in-degree in symbols.txt
+- **Discovery:** bakeoff-features-reflect assessment on FastAPI (2026-02-06)
+  - "FastAPI.get/post/put etc. not in high-connectivity symbols (0 in-degree)"
+  - Decorator registration pattern not visible in call graph
+- **Proposed fix:** In `py.py:_extract_edges()`, process `decorator_list` on functions/classes:
+  1. For each decorator (Name, Attribute, or Call), resolve the callee
+  2. Create a "decorates" edge from the decorator to the decorated symbol
+  3. For `@decorator(args)` forms, also create a "calls" edge to the decorator
+- **Trade-offs:**
+  - Pros: Decorators become visible in call graph, better centrality ranking
+  - Cons: May create noisy edges for common decorators like `@staticmethod`, `@property`
+  - Option: Filter by decorator type or add confidence weighting
+- **Related:**
+  - INV-003 (nested decorated function extraction) - prerequisite, already FIXED
+  - ADR-0003 (rich metadata) - decorators already extracted, just need edges
+- **Regression tests:** TBD
+
+---
+
 ## INV-XXX: Template for New Invariants
 - **Statement:** [What must always be true]
 - **Status:** [UNFIXED | PARTIALLY ADDRESSED | FIXED | TBD]
