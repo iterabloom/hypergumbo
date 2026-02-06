@@ -528,8 +528,18 @@ if [[ "$EMBEDDINGS_AVAILABLE" == "false" ]]; then
     COV_PATHS+=("--cov-config=.coveragerc.no-embeddings")
 fi
 
+# Strip --cov-fail-under from PYTEST_ARGS when running scoped mode
+# We'll do our own scoped coverage check below instead of using pytest-cov's
+# total coverage check (which would fail when running only affected tests)
+SCOPED_PYTEST_ARGS=()
+for arg in "${PYTEST_ARGS[@]}"; do
+    if [[ ! "$arg" =~ ^--cov-fail-under ]]; then
+        SCOPED_PYTEST_ARGS+=("$arg")
+    fi
+done
+
 # Run tests and collect coverage (don't enforce threshold yet)
-run_pytest "$AFFECTED_TESTS" "${PYTEST_ARGS[@]}"
+run_pytest "$AFFECTED_TESTS" "${SCOPED_PYTEST_ARGS[@]}"
 TEST_EXIT=$?
 
 # If tests passed, check coverage for just the changed source files
