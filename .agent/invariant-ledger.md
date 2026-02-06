@@ -537,6 +537,10 @@ Branch coverage tests go in `BRANCHES_*.py` files for separate CI management.
   - Forward slice from CatsController.create had 0 useful nodes
   - Assessment noted: "misses the actual business logic call to catsService.create()"
 - **Impact:** Forward slices from NestJS/Angular controllers now include service layer calls
+- **Limitation:** In monorepos with multiple files defining the same class name (e.g., many
+  `CatsService.create` across 11 sample apps in NestJS repo), resolution may fail due to
+  ambiguity in the name resolver. Would need import-aware disambiguation to fully solve.
+  The fix works correctly for single-project repos (tested with isolated test files).
 - **Regression tests:**
   - `test_js_ts.py::TestVariableTypeInference::test_this_property_method_call_nestjs_pattern`
 
