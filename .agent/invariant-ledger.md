@@ -462,10 +462,10 @@ Branch coverage tests go in `BRANCHES_*.py` files for separate CI management.
 
 ---
 
-## INV-012: Python Decorator Edge Detection
+## INV-012: Decorator Edge Detection (Python, TypeScript)
 - **Statement:** Decorator applications should create "decorated_by" edges in the call graph
-- **Status:** FIXED
-- **Root cause:** Python analyzer extracted decorator information as metadata (`meta.decorators`)
+- **Status:** FIXED (Python + TypeScript)
+- **Root cause:** Analyzers extracted decorator information as metadata (`meta.decorators`)
   but did not create edges between the decorator and the decorated function.
   This meant `@app.get("/users")` resulted in:
   - ✅ Metadata on the function: `decorators: [{name: "app.get", args: ["/users"]}]`
@@ -474,7 +474,7 @@ Branch coverage tests go in `BRANCHES_*.py` files for separate CI management.
 - **Discovery:** bakeoff-features-reflect assessment on FastAPI (2026-02-06)
   - "FastAPI.get/post/put etc. not in high-connectivity symbols (0 in-degree)"
   - Decorator registration pattern not visible in call graph
-- **Fix:** Added `_resolve_decorator_target()` and `_process_decorators()` functions in
+- **Fix (Python):** Added `_resolve_decorator_target()` and `_process_decorators()` functions in
   `py.py:_extract_edges()` that:
   1. Process `decorator_list` on functions/classes during AST walk
   2. Resolve decorator callees (Name, Attribute, Call forms)
@@ -485,8 +485,14 @@ Branch coverage tests go in `BRANCHES_*.py` files for separate CI management.
   - With args: `@decorator(args)` → extracts function from Call
   - Method: `@ClassName.method` → resolved via local_symbols short name lookup
   - Stacked: Multiple decorators create multiple edges
+- **Fix (TypeScript):** Added `_extract_decorator_edges()` function in `js_ts.py` that:
+  1. Iterates symbols with `decorators` metadata
+  2. Resolves decorator names to global symbols
+  3. Creates "decorated_by" edges (or unresolved edges for unknown decorators)
+  Enables visibility of NestJS patterns like @Controller, @Injectable, @Get, etc.
 - **Regression tests:**
-  - `test_decorator_edges.py::TestDecoratorEdges` (6 tests)
+  - `test_decorator_edges.py::TestDecoratorEdges` (6 tests - Python)
+  - `test_ts_decorator_edges.py::TestTypeScriptDecoratorEdges` (3 tests - TypeScript)
 - **Trade-offs:**
   - Pros: Decorators become visible in call graph, better centrality ranking
   - Cons: May create noisy edges for common decorators like `@staticmethod`, `@property`

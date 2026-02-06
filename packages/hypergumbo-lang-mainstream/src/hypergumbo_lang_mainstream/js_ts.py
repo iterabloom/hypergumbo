@@ -1325,6 +1325,80 @@ def _extract_inheritance_edges(
     return edges
 
 
+def _extract_decorator_edges(
+    symbols: list[Symbol],
+    global_symbols: dict[str, Symbol],
+    run: AnalysisRun,
+) -> list[Edge]:
+    """Extract decorated_by edges from decorator metadata.
+
+    For each symbol (class, method, function) with decorators metadata,
+    creates decorated_by edges to decorator functions that exist in the
+    analyzed codebase. This enables visibility of decorator patterns
+    like NestJS @Controller, @Injectable, @Get, etc.
+
+    Args:
+        symbols: All extracted symbols
+        global_symbols: Map of name -> Symbol for decorator lookup
+        run: Current analysis run for provenance
+
+    Returns:
+        List of decorated_by edges for decorator relationships
+    """
+    edges: list[Edge] = []
+
+    for sym in symbols:
+        if sym.meta is None:
+            continue
+
+        decorators = sym.meta.get("decorators")
+        if not decorators or not isinstance(decorators, list):
+            continue
+
+        for decorator in decorators:
+            if not isinstance(decorator, dict):  # pragma: no cover
+                continue
+
+            dec_name = decorator.get("name")
+            if not dec_name or not isinstance(dec_name, str):  # pragma: no cover
+                continue
+
+            # Try to resolve the decorator to a symbol
+            decorator_sym = global_symbols.get(dec_name)
+
+            line = sym.span.start_line if sym.span else 0
+
+            if decorator_sym:
+                edge = Edge.create(
+                    src=sym.id,
+                    dst=decorator_sym.id,
+                    edge_type="decorated_by",
+                    line=line,
+                    confidence=0.95,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ast_decorator",
+                )
+                edges.append(edge)
+            else:
+                # Emit unresolved edge for decorators we can't resolve
+                # This helps track framework decorators like @Injectable
+                dst_id = f"typescript:unresolved:0-0:{dec_name}:unresolved"
+                edge = Edge.create(
+                    src=sym.id,
+                    dst=dst_id,
+                    edge_type="decorated_by",
+                    line=line,
+                    confidence=0.50,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ast_decorator_unresolved",
+                )
+                edges.append(edge)
+
+    return edges
+
+
 def _detect_nestjs_decorator(
     node: "tree_sitter.Node", source: bytes
 ) -> tuple[str | None, str | None]:
@@ -2700,6 +2774,10 @@ def analyze_javascript(
     # Extract inheritance edges (META-001: base_classes metadata -> extends/implements edges)
     inheritance_edges = _extract_inheritance_edges(all_symbols, global_classes, run)
     all_edges.extend(inheritance_edges)
+
+    # Extract decorator edges (INV-012: decorators metadata -> decorated_by edges)
+    decorator_edges = _extract_decorator_edges(all_symbols, global_symbols, run)
+    all_edges.extend(decorator_edges)
 
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped
