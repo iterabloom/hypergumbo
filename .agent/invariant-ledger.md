@@ -462,10 +462,10 @@ Branch coverage tests go in `BRANCHES_*.py` files for separate CI management.
 
 ---
 
-## INV-012: Decorator Edge Detection (Python, TypeScript)
-- **Statement:** Decorator applications should create "decorated_by" edges in the call graph
-- **Status:** FIXED (Python + TypeScript)
-- **Root cause:** Analyzers extracted decorator information as metadata (`meta.decorators`)
+## INV-012: Decorator Edge Detection (All Languages with Decorator Metadata)
+- **Statement:** Decorator/annotation applications should create "decorated_by" edges in the call graph
+- **Status:** ✅ FIXED (Python, TypeScript, Java, C#, Rust)
+- **Root cause:** Analyzers extracted decorator information as metadata (`meta.decorators` or `meta.annotations`)
   but did not create edges between the decorator and the decorated function.
   This meant `@app.get("/users")` resulted in:
   - ✅ Metadata on the function: `decorators: [{name: "app.get", args: ["/users"]}]`
@@ -490,9 +490,27 @@ Branch coverage tests go in `BRANCHES_*.py` files for separate CI management.
   2. Resolves decorator names to global symbols
   3. Creates "decorated_by" edges (or unresolved edges for unknown decorators)
   Enables visibility of NestJS patterns like @Controller, @Injectable, @Get, etc.
+- **Fix (Java):** Added `_extract_annotation_edges()` function in `java.py` that:
+  1. Iterates symbols with `annotations` metadata
+  2. Resolves annotation names to global symbols (tries both short and qualified names)
+  3. Creates "decorated_by" edges (or unresolved edges for unknown annotations)
+  Enables visibility of Spring patterns like @Service, @Controller, @GetMapping, etc.
+- **Fix (C#):** Added `_extract_attribute_edges()` function in `csharp.py` that:
+  1. Iterates symbols with `annotations` metadata
+  2. Resolves attribute names to global symbols (handles Attribute suffix convention)
+  3. Creates "decorated_by" edges (or unresolved edges for unknown attributes)
+  Enables visibility of ASP.NET patterns like [HttpGet], [Route], [Authorize], etc.
+- **Fix (Rust):** Added `_extract_attribute_edges()` function in `rust.py` that:
+  1. Iterates symbols with `annotations` metadata
+  2. Resolves attribute names to global symbols (handles qualified paths like actix_web::get)
+  3. Creates "decorated_by" edges for all symbol kinds (functions, structs, enums, traits)
+  Enables visibility of Actix/Axum patterns like #[get("/path")], #[derive(Debug)], etc.
 - **Regression tests:**
   - `test_decorator_edges.py::TestDecoratorEdges` (6 tests - Python)
   - `test_ts_decorator_edges.py::TestTypeScriptDecoratorEdges` (3 tests - TypeScript)
+  - `test_java_annotation_edges.py::TestJavaAnnotationEdges` (3 tests - Java)
+  - `test_csharp_attribute_edges.py::TestCSharpAttributeEdges` (3 tests - C#)
+  - `test_rust_attribute_edges.py::TestRustAttributeEdges` (7 tests - Rust)
 - **Trade-offs:**
   - Pros: Decorators become visible in call graph, better centrality ranking
   - Cons: May create noisy edges for common decorators like `@staticmethod`, `@property`
@@ -500,7 +518,6 @@ Branch coverage tests go in `BRANCHES_*.py` files for separate CI management.
 - **Related:**
   - INV-003 (nested decorated function extraction) - prerequisite, already FIXED
   - ADR-0003 (rich metadata) - decorators already extracted, just need edges
-- **Regression tests:** TBD
 
 ---
 
