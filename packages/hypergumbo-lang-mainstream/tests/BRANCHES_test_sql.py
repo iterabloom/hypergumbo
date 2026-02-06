@@ -229,6 +229,93 @@ CREATE TABLE users (id INT PRIMARY KEY);
         assert result.run.files_analyzed >= 1
 
 
+class TestFunctionSignatureBranches:
+    """Branch coverage for function signature extraction."""
+
+    def test_function_without_params(self, tmp_path: Path) -> None:
+        """Test function with no parameters (empty func_args branch)."""
+        make_sql_file(tmp_path, "functions.sql", """
+CREATE FUNCTION get_current_time()
+RETURNS TIMESTAMP
+AS $$
+    SELECT NOW();
+$$ LANGUAGE SQL;
+""")
+        result = analyze_sql_files(tmp_path)
+        functions = [s for s in result.symbols if s.kind == "function"]
+
+        assert len(functions) >= 1
+        func = next((f for f in functions if f.name == "get_current_time"), None)
+        assert func is not None
+        # Should have empty params in signature
+        assert "()" in func.signature
+
+    def test_function_without_return_type(self, tmp_path: Path) -> None:
+        """Test function without explicit RETURNS clause."""
+        make_sql_file(tmp_path, "functions.sql", """
+CREATE FUNCTION do_nothing()
+AS $$
+    -- Does nothing
+$$ LANGUAGE SQL;
+""")
+        result = analyze_sql_files(tmp_path)
+        functions = [s for s in result.symbols if s.kind == "function"]
+
+        # May or may not extract depending on tree-sitter parsing
+        # The important thing is no crash
+        assert not result.skipped
+
+
+class TestDuplicateForeignKeyRefs:
+    """Branch coverage for duplicate foreign key handling."""
+
+    def test_duplicate_fk_references(self, tmp_path: Path) -> None:
+        """Test table with duplicate foreign key references to same table."""
+        make_sql_file(tmp_path, "schema.sql", """
+CREATE TABLE users (
+    id INT PRIMARY KEY
+);
+
+CREATE TABLE orders (
+    id INT PRIMARY KEY,
+    user_id INT REFERENCES users(id),
+    approver_id INT REFERENCES users(id)
+);
+""")
+        result = analyze_sql_files(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+
+        # Should have references edges (may dedupe to 1 or have 2)
+        assert len(ref_edges) >= 1
+
+
+class TestEdgeExtractionBranches:
+    """Branch coverage for edge extraction code paths."""
+
+    def test_table_without_column_definitions(self, tmp_path: Path) -> None:
+        """Test CREATE TABLE without column definitions."""
+        make_sql_file(tmp_path, "schema.sql", """
+CREATE TABLE empty_table;
+""")
+        result = analyze_sql_files(tmp_path)
+        # Should handle gracefully - may or may not extract
+        assert not result.skipped
+
+    def test_fk_reference_to_nonexistent_table(self, tmp_path: Path) -> None:
+        """Test foreign key to table not in analyzed files."""
+        make_sql_file(tmp_path, "schema.sql", """
+CREATE TABLE orders (
+    id INT PRIMARY KEY,
+    customer_id INT REFERENCES customers(id)
+);
+""")
+        result = analyze_sql_files(tmp_path)
+        # customers table doesn't exist, so no edge should be created
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        # Should have 0 edges since target doesn't exist
+        assert len(ref_edges) == 0
+
+
 class TestComprehensiveSchema:
     """Branch coverage for comprehensive SQL schema."""
 

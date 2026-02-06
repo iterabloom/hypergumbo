@@ -249,7 +249,7 @@ type, AND location).
 
 ## INV-011: 100% Branch Coverage
 - **Statement:** All code paths must be exercised by tests, verified by pytest-cov `--cov-branch`
-- **Status:** ❌ UNFIXED (98% - ~1700 missing branch partials)
+- **Status:** ❌ UNFIXED (97% - 1613 missing branch partials out of 15568 total)
 - **Root cause:** Branch coverage was not tracked; only line coverage was required.
   Many conditional branches (early returns, error paths, None checks, exception handlers)
   are executed but only one branch direction is tested.
@@ -295,7 +295,23 @@ type, AND location).
   - `glsl.py`: BRANCHES_test_glsl.py (22 tests) [hypergumbo-lang-common]
   - `hlsl.py`: BRANCHES_test_hlsl.py (22 tests) [hypergumbo-lang-common]
   - `matlab.py`: BRANCHES_test_matlab.py (21 tests) [hypergumbo-lang-common]
-  Remaining high-priority mainstream analyzers: none (all 13 covered)
+  Mainstream analyzers (hypergumbo-lang-mainstream):
+  - `gitignore.py`: BRANCHES_test_gitignore.py (25 tests)
+  - `groovy.py`: BRANCHES_test_groovy.py (30 tests)
+  - `ini.py`: BRANCHES_test_ini.py (28 tests)
+  - `json_config.py`: BRANCHES_test_json_config.py (24 tests)
+  - `lua.py`: BRANCHES_test_lua.py (22 tests)
+  - `make.py`: BRANCHES_test_make.py (26 tests)
+  - `objc.py`: BRANCHES_test_objc.py (20 tests)
+  - `perl.py`: BRANCHES_test_perl.py (20 tests)
+  - `powershell.py`: BRANCHES_test_powershell.py (18 tests)
+  - `properties.py`: BRANCHES_test_properties.py (14 tests)
+  - `requirements.py`: BRANCHES_test_requirements.py (18 tests)
+  - `sql.py`: BRANCHES_test_sql.py (22 tests)
+  - `toml_config.py`: BRANCHES_test_toml_config.py (24 tests)
+  - `xml_config.py`: BRANCHES_test_xml_config.py (22 tests)
+  - `yaml_ansible.py`: BRANCHES_test_yaml_ansible.py (24 tests)
+  Remaining mainstream analyzers: none (all covered)
   Common analyzers completed: 35 (all analyzers in hypergumbo-lang-common)
 - **Strategy:**
   - Testable edge cases: Write tests for reachable branches (dict edge cases, unusual decorator forms, etc.)
@@ -309,10 +325,10 @@ type, AND location).
 ## META-004: Testing Discipline
 > "Tests must exercise all code paths to verify correctness and prevent regressions."
 
-- **Status:** 98%
+- **Status:** 97%
 - **Notes:**
-  - Line coverage: 100% ✅
-  - Branch coverage: 98% (~1500 missing partials)
+  - Line coverage: 100% ✅ (33708 statements, 0 missing)
+  - Branch coverage: 97% (15568 branches, 1613 missing partials)
   - BRANCHES test files created (13 mainstream analyzers + 11 common):
     - `BRANCHES_test_python_ast_analysis.py` (12 tests)
     - `BRANCHES_test_js_ts.py` (10 tests)
@@ -362,7 +378,22 @@ type, AND location).
     - `BRANCHES_test_thrift.py` (26 tests) [common]
     - `BRANCHES_test_vue.py` (30 tests) [common]
     - `BRANCHES_test_wgsl.py` (28 tests) [common]
-  - Total: 1056 branch coverage tests across 48 analyzers
+    - `BRANCHES_test_gitignore.py` (25 tests) [mainstream]
+    - `BRANCHES_test_groovy.py` (30 tests) [mainstream]
+    - `BRANCHES_test_ini.py` (28 tests) [mainstream]
+    - `BRANCHES_test_json_config.py` (24 tests) [mainstream]
+    - `BRANCHES_test_lua.py` (22 tests) [mainstream]
+    - `BRANCHES_test_make.py` (26 tests) [mainstream]
+    - `BRANCHES_test_objc.py` (20 tests) [mainstream]
+    - `BRANCHES_test_perl.py` (20 tests) [mainstream]
+    - `BRANCHES_test_powershell.py` (18 tests) [mainstream]
+    - `BRANCHES_test_properties.py` (14 tests) [mainstream]
+    - `BRANCHES_test_requirements.py` (18 tests) [mainstream]
+    - `BRANCHES_test_sql.py` (22 tests) [mainstream]
+    - `BRANCHES_test_toml_config.py` (24 tests) [mainstream]
+    - `BRANCHES_test_xml_config.py` (22 tests) [mainstream]
+    - `BRANCHES_test_yaml_ansible.py` (24 tests) [mainstream]
+  - Total: ~1400 branch coverage tests across 63 analyzers
   - Target: 100% branch coverage
 
 **Unified by:**
