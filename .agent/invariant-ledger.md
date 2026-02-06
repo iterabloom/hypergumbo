@@ -249,7 +249,9 @@ type, AND location).
 
 ## INV-011: 100% Branch Coverage
 - **Statement:** All code paths must be exercised by tests, verified by pytest-cov `--cov-branch`
-- **Status:** ⏳ PARTIALLY ADDRESSED (97% - ~1600 missing branch partials)
+- **Status:** ⏳ PARTIALLY ADDRESSED (97% - ~1567 missing branch partials)
+  - Progress: 115 BRANCHES test files, 7729 tests passing
+  - Remaining gaps are mostly `# pragma: no cover` defensive code paths (~1674 markers)
 - **Root cause:** Branch coverage was not tracked; only line coverage was required.
   Many conditional branches (early returns, error paths, None checks, exception handlers)
   are executed but only one branch direction is tested.
@@ -352,6 +354,15 @@ type, AND location).
   Extended1 analyzers completed: 35 (354 tests, all pass)
   Core package (hypergumbo-core, as of 2026-02-05):
   - `compact.py`: BRANCHES_test_compact.py (27 tests)
+  - `slice.py`: BRANCHES_test_slice.py (6 tests)
+  - Core linkers (added 2026-02-05):
+    - `database_query.py`: BRANCHES_test_database_query.py (13 tests)
+    - `graphql.py`: BRANCHES_test_graphql.py (6 tests)
+    - `graphql_resolver.py`: BRANCHES_test_graphql_resolver.py (7 tests)
+    - `http.py`: BRANCHES_test_http.py (8 tests)
+    - `ipc.py`: BRANCHES_test_ipc.py (3 tests)
+    - `openapi.py`: BRANCHES_test_openapi.py (9 tests)
+    - `phoenix_ipc.py`: BRANCHES_test_phoenix_ipc.py (3 tests)
 - **Strategy:**
   - Testable edge cases: Write tests for reachable branches (dict edge cases, unusual decorator forms, etc.)
   - Defensive code: Mark truly unreachable guards with `# pragma: no cover`
@@ -364,10 +375,12 @@ type, AND location).
 ## META-004: Testing Discipline
 > "Tests must exercise all code paths to verify correctness and prevent regressions."
 
-- **Status:** 98%
+- **Status:** 97%
 - **Notes:**
   - Line coverage: 100% ✅
-  - Branch coverage: 98% (~1500 missing partials)
+  - Branch coverage: 97% (~1567 missing branch partials)
+  - 115 BRANCHES test files across all packages
+  - Remaining gaps are mostly `# pragma: no cover` defensive code paths
   - BRANCHES test files created (13 mainstream analyzers + 11 common):
     - `BRANCHES_test_python_ast_analysis.py` (12 tests)
     - `BRANCHES_test_js_ts.py` (10 tests)
