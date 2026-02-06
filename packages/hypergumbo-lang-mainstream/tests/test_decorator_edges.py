@@ -191,3 +191,254 @@ def my_handler():
         edge = decorated_by_edges[0]
         assert "my_handler" in edge.src
         assert "Registry.register" in edge.dst
+
+
+class TestDjangoSignalReceiverEdges:
+    """Test Django signal receiver edge detection.
+
+    When a function is decorated with @receiver(signal, ...), we should create
+    a signal_receiver edge from the signal to the decorated function.
+    """
+
+    def test_receiver_decorator_creates_signal_receiver_edge(
+        self, tmp_path: Path
+    ) -> None:
+        """@receiver(post_save) creates signal_receiver edge from post_save to handler."""
+        code = '''
+# Simulate Django signal imports
+class Signal:
+    pass
+
+post_save = Signal()
+post_delete = Signal()
+
+def receiver(signal, **kwargs):
+    def decorator(func):
+        return func
+    return decorator
+
+@receiver(post_save)
+def my_handler(sender, instance, **kwargs):
+    pass
+'''
+        py_file = tmp_path / "signals.py"
+        py_file.write_text(code)
+
+        result = analyze_python(tmp_path)
+
+        # Find signal_receiver edges
+        signal_edges = [
+            e for e in result.edges
+            if e.edge_type == "signal_receiver"
+        ]
+
+        assert len(signal_edges) >= 1, "Expected signal_receiver edge"
+
+        # The edge should be from post_save to my_handler
+        edge = signal_edges[0]
+        assert "post_save" in edge.src
+        assert "my_handler" in edge.dst
+
+    def test_receiver_with_sender_kwarg(self, tmp_path: Path) -> None:
+        """@receiver(signal, sender=Model) still creates signal_receiver edge."""
+        code = '''
+class Signal:
+    pass
+
+post_save = Signal()
+
+def receiver(signal, **kwargs):
+    def decorator(func):
+        return func
+    return decorator
+
+class User:
+    pass
+
+@receiver(post_save, sender=User)
+def user_saved_handler(sender, instance, **kwargs):
+    pass
+'''
+        py_file = tmp_path / "signals_with_sender.py"
+        py_file.write_text(code)
+
+        result = analyze_python(tmp_path)
+
+        signal_edges = [
+            e for e in result.edges
+            if e.edge_type == "signal_receiver"
+        ]
+
+        assert len(signal_edges) >= 1, "Expected signal_receiver edge"
+        edge = signal_edges[0]
+        assert "post_save" in edge.src
+        assert "user_saved_handler" in edge.dst
+
+    def test_multiple_signals_in_receiver(self, tmp_path: Path) -> None:
+        """@receiver([signal1, signal2]) creates multiple signal_receiver edges."""
+        code = '''
+class Signal:
+    pass
+
+post_save = Signal()
+post_delete = Signal()
+
+def receiver(signals, **kwargs):
+    def decorator(func):
+        return func
+    return decorator
+
+@receiver([post_save, post_delete])
+def multi_signal_handler(sender, instance, **kwargs):
+    pass
+'''
+        py_file = tmp_path / "multi_signals.py"
+        py_file.write_text(code)
+
+        result = analyze_python(tmp_path)
+
+        signal_edges = [
+            e for e in result.edges
+            if e.edge_type == "signal_receiver"
+        ]
+
+        # Should have edges from both signals
+        assert len(signal_edges) >= 2, "Expected two signal_receiver edges"
+
+        signal_srcs = {e.src for e in signal_edges}
+        assert any("post_save" in src for src in signal_srcs)
+        assert any("post_delete" in src for src in signal_srcs)
+
+    def test_receiver_no_args_no_crash(self, tmp_path: Path) -> None:
+        """@receiver() with no args should not crash."""
+        code = '''
+def receiver(*args, **kwargs):
+    def decorator(func):
+        return func
+    return decorator
+
+@receiver()  # No signal argument - should be handled gracefully
+def handler(sender, **kwargs):
+    pass
+'''
+        py_file = tmp_path / "receiver_no_args.py"
+        py_file.write_text(code)
+
+        result = analyze_python(tmp_path)
+
+        # Should not have signal_receiver edges (no signal specified)
+        signal_edges = [
+            e for e in result.edges
+            if e.edge_type == "signal_receiver"
+        ]
+        assert len(signal_edges) == 0
+
+    def test_receiver_via_attribute_access(self, tmp_path: Path) -> None:
+        """@dispatch.receiver(signal) works with attribute access."""
+        code = '''
+class Signal:
+    pass
+
+post_save = Signal()
+
+class dispatch:
+    @staticmethod
+    def receiver(signal):
+        def decorator(func):
+            return func
+        return decorator
+
+@dispatch.receiver(post_save)
+def handler(sender, **kwargs):
+    pass
+'''
+        py_file = tmp_path / "attribute_receiver.py"
+        py_file.write_text(code)
+
+        result = analyze_python(tmp_path)
+
+        signal_edges = [
+            e for e in result.edges
+            if e.edge_type == "signal_receiver"
+        ]
+
+        assert len(signal_edges) >= 1, "Expected signal_receiver edge"
+        edge = signal_edges[0]
+        assert "post_save" in edge.src
+        assert "handler" in edge.dst
+
+    def test_receiver_with_imported_signal(self, tmp_path: Path) -> None:
+        """Signal imported from another module creates signal_receiver edge."""
+        # Create signals module
+        signals_code = '''
+class Signal:
+    pass
+
+post_save = Signal()
+'''
+        signals_file = tmp_path / "signals.py"
+        signals_file.write_text(signals_code)
+
+        # Create handlers module that imports the signal
+        handlers_code = '''
+from signals import post_save
+
+def receiver(signal, **kwargs):
+    def decorator(func):
+        return func
+    return decorator
+
+@receiver(post_save)
+def my_handler(sender, instance, **kwargs):
+    pass
+'''
+        handlers_file = tmp_path / "handlers.py"
+        handlers_file.write_text(handlers_code)
+
+        result = analyze_python(tmp_path)
+
+        signal_edges = [
+            e for e in result.edges
+            if e.edge_type == "signal_receiver"
+        ]
+
+        assert len(signal_edges) >= 1, "Expected signal_receiver edge from imported signal"
+        edge = signal_edges[0]
+        assert "post_save" in edge.src
+        assert "my_handler" in edge.dst
+
+    def test_receiver_with_function_signal_resolved(self, tmp_path: Path) -> None:
+        """Signal that is a function gets properly resolved to a symbol.
+
+        This tests the code path where signal_symbol is found in local_symbols.
+        """
+        code = '''
+# Signal is defined as a function (could be a factory or class-based signal)
+def post_save(*args, **kwargs):
+    pass
+
+def receiver(signal, **kwargs):
+    def decorator(func):
+        return func
+    return decorator
+
+@receiver(post_save)
+def my_handler(sender, **kwargs):
+    pass
+'''
+        py_file = tmp_path / "function_signal.py"
+        py_file.write_text(code)
+
+        result = analyze_python(tmp_path)
+
+        signal_edges = [
+            e for e in result.edges
+            if e.edge_type == "signal_receiver"
+        ]
+
+        assert len(signal_edges) >= 1, "Expected signal_receiver edge"
+        edge = signal_edges[0]
+        # The edge src should reference the post_save function symbol (resolved path)
+        assert "post_save" in edge.src
+        assert "function" in edge.src  # Should be a function symbol, not unresolved
+        assert "my_handler" in edge.dst
