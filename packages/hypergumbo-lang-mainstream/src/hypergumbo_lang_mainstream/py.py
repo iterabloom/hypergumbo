@@ -1725,6 +1725,83 @@ def _extract_edges(
                         confidence=0.50,
                     ))
 
+            # Check for Django signal receiver decorator: @receiver(signal, ...)
+            # Creates signal_receiver edges from signal to handler
+            _process_signal_receiver(decorated_symbol, decorator, line)
+
+    def _process_signal_receiver(
+        decorated_symbol: Symbol,
+        decorator: ast.expr,
+        line: int,
+    ) -> None:
+        """Create signal_receiver edges for Django @receiver decorators.
+
+        When a function is decorated with @receiver(signal) or @receiver([sig1, sig2]),
+        create signal_receiver edges from each signal to the decorated function.
+        """
+        # Must be a call: @receiver(signal, ...)
+        if not isinstance(decorator, ast.Call):
+            return
+
+        # Check if decorator is "receiver"
+        dec_func = decorator.func
+        decorator_name = None
+        if isinstance(dec_func, ast.Name):
+            decorator_name = dec_func.id
+        elif isinstance(dec_func, ast.Attribute):
+            decorator_name = dec_func.attr
+
+        if decorator_name != "receiver":
+            return
+
+        # Extract signals from first argument
+        if not decorator.args:
+            return
+
+        first_arg = decorator.args[0]
+        signal_nodes: list[ast.expr] = []
+
+        # Handle @receiver([signal1, signal2])
+        if isinstance(first_arg, ast.List):
+            signal_nodes = first_arg.elts
+        else:
+            # Single signal: @receiver(post_save)
+            signal_nodes = [first_arg]
+
+        # Create signal_receiver edges for each signal
+        for signal_node in signal_nodes:
+            signal_symbol = None
+
+            if isinstance(signal_node, ast.Name):
+                signal_name = signal_node.id
+                signal_symbol = local_symbols.get(signal_name)
+                if not signal_symbol and signal_name in imports:
+                    module_name, original_name = imports[signal_name]
+                    signal_symbol = _lookup_symbol_by_module(
+                        global_symbols, module_name, original_name, resolver=resolver
+                    )
+
+            if signal_symbol:
+                edges.append(Edge.create(
+                    src=signal_symbol.id,
+                    dst=decorated_symbol.id,
+                    edge_type="signal_receiver",
+                    line=line,
+                    evidence_type="django_signal_receiver",
+                    confidence=0.90,
+                ))
+            elif isinstance(signal_node, ast.Name):
+                # Unresolved signal - emit edge anyway for visibility
+                dst_id = f"python:unresolved:0-0:{signal_node.id}:signal"
+                edges.append(Edge.create(
+                    src=dst_id,
+                    dst=decorated_symbol.id,
+                    edge_type="signal_receiver",
+                    line=line,
+                    evidence_type="django_signal_receiver_unresolved",
+                    confidence=0.50,
+                ))
+
     # Process functions (including async functions)
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
