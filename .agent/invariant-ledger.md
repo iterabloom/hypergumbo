@@ -249,7 +249,7 @@ type, AND location).
 
 ## INV-011: 100% Branch Coverage
 - **Statement:** All code paths must be exercised by tests, verified by pytest-cov `--cov-branch`
-- **Status:** ❌ UNFIXED (97% - 1613 missing branch partials out of 15568 total)
+- **Status:** ⏳ PARTIALLY ADDRESSED (97% - ~1600 missing branch partials)
 - **Root cause:** Branch coverage was not tracked; only line coverage was required.
   Many conditional branches (early returns, error paths, None checks, exception handlers)
   are executed but only one branch direction is tested.
@@ -313,6 +313,45 @@ type, AND location).
   - `yaml_ansible.py`: BRANCHES_test_yaml_ansible.py (24 tests)
   Remaining mainstream analyzers: none (all covered)
   Common analyzers completed: 35 (all analyzers in hypergumbo-lang-common)
+  Extended1 analyzers (hypergumbo-lang-extended1, as of 2026-02-05):
+  - `ada.py`: BRANCHES_test_ada.py
+  - `agda.py`: BRANCHES_test_agda.py
+  - `apex.py`: BRANCHES_test_apex.py
+  - `bibtex.py`: BRANCHES_test_bibtex.py
+  - `bitbake.py`: BRANCHES_test_bitbake.py
+  - `capnp.py`: BRANCHES_test_capnp.py
+  - `cobol.py`: BRANCHES_test_cobol.py
+  - `d_lang.py`: BRANCHES_test_d_lang.py
+  - `fennel.py`: BRANCHES_test_fennel.py
+  - `fish.py`: BRANCHES_test_fish.py
+  - `gdscript.py`: BRANCHES_test_gdscript.py
+  - `gleam.py`: BRANCHES_test_gleam.py
+  - `hack.py`: BRANCHES_test_hack.py
+  - `haxe.py`: BRANCHES_test_haxe.py
+  - `janet.py`: BRANCHES_test_janet.py
+  - `jsonnet.py`: BRANCHES_test_jsonnet.py
+  - `kdl.py`: BRANCHES_test_kdl.py
+  - `lean.py`: BRANCHES_test_lean.py
+  - `llvm_ir.py`: BRANCHES_test_llvm_ir.py
+  - `luau.py`: BRANCHES_test_luau.py
+  - `nim.py`: BRANCHES_test_nim.py
+  - `odin.py`: BRANCHES_test_odin.py
+  - `pascal.py`: BRANCHES_test_pascal.py
+  - `pony.py`: BRANCHES_test_pony.py
+  - `prisma.py`: BRANCHES_test_prisma.py
+  - `smithy.py`: BRANCHES_test_smithy.py
+  - `solidity.py`: BRANCHES_test_solidity.py
+  - `sparql.py`: BRANCHES_test_sparql.py
+  - `tcl.py`: BRANCHES_test_tcl.py
+  - `twig.py`: BRANCHES_test_twig.py
+  - `v_lang.py`: BRANCHES_test_v_lang.py
+  - `verilog.py`: BRANCHES_test_verilog.py
+  - `vhdl.py`: BRANCHES_test_vhdl.py
+  - `wolfram.py`: BRANCHES_test_wolfram.py
+  - `zig.py`: BRANCHES_test_zig.py
+  Extended1 analyzers completed: 35 (354 tests, all pass)
+  Core package (hypergumbo-core, as of 2026-02-05):
+  - `compact.py`: BRANCHES_test_compact.py (27 tests)
 - **Strategy:**
   - Testable edge cases: Write tests for reachable branches (dict edge cases, unusual decorator forms, etc.)
   - Defensive code: Mark truly unreachable guards with `# pragma: no cover`
@@ -325,10 +364,10 @@ type, AND location).
 ## META-004: Testing Discipline
 > "Tests must exercise all code paths to verify correctness and prevent regressions."
 
-- **Status:** 97%
+- **Status:** 98%
 - **Notes:**
-  - Line coverage: 100% ✅ (33708 statements, 0 missing)
-  - Branch coverage: 97% (15568 branches, 1613 missing partials)
+  - Line coverage: 100% ✅
+  - Branch coverage: 98% (~1500 missing partials)
   - BRANCHES test files created (13 mainstream analyzers + 11 common):
     - `BRANCHES_test_python_ast_analysis.py` (12 tests)
     - `BRANCHES_test_js_ts.py` (10 tests)
@@ -378,6 +417,7 @@ type, AND location).
     - `BRANCHES_test_thrift.py` (26 tests) [common]
     - `BRANCHES_test_vue.py` (30 tests) [common]
     - `BRANCHES_test_wgsl.py` (28 tests) [common]
+    - All 35 BRANCHES tests for extended1 package (354 tests total) [extended1]
     - `BRANCHES_test_gitignore.py` (25 tests) [mainstream]
     - `BRANCHES_test_groovy.py` (30 tests) [mainstream]
     - `BRANCHES_test_ini.py` (28 tests) [mainstream]
