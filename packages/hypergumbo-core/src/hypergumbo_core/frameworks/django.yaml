@@ -121,6 +121,14 @@ patterns:
   - concept: task
     decorator: "^(shared_task|task|celery\\.task)$"
 
+  # Django template tags - @register.simple_tag, @register.filter, etc.
+  - concept: template_tag
+    decorator: "^register\\.(simple_tag|inclusion_tag|assignment_tag)$"
+
+  # Django template filters - @register.filter
+  - concept: template_filter
+    decorator: "^register\\.filter$"
+
 linkers:
   - http
   - database_query
