@@ -95,6 +95,38 @@ patterns:
   - concept: websocket_handler
     decorator: "^socketio\\.on$"
 
+  # Flask signals (Blinker-based)
+  # Core Flask signals: request_started, request_finished, etc.
+  - concept: signal_handler
+    decorator: "^request_started\\.connect$"
+
+  - concept: signal_handler
+    decorator: "^request_finished\\.connect$"
+
+  - concept: signal_handler
+    decorator: "^request_tearing_down\\.connect$"
+
+  - concept: signal_handler
+    decorator: "^got_request_exception\\.connect$"
+
+  - concept: signal_handler
+    decorator: "^appcontext_pushed\\.connect$"
+
+  - concept: signal_handler
+    decorator: "^appcontext_popped\\.connect$"
+
+  - concept: signal_handler
+    decorator: "^appcontext_tearing_down\\.connect$"
+
+  - concept: signal_handler
+    decorator: "^before_render_template\\.connect$"
+
+  - concept: signal_handler
+    decorator: "^template_rendered\\.connect$"
+
+  - concept: signal_handler
+    decorator: "^message_flashed\\.connect$"
+
 linkers:
   - http
   - websocket
