@@ -13699,3 +13699,73 @@ class TestScottyPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "error_handler"
+
+
+class TestFlaskRestfulPatterns:
+    """Tests for Flask-RESTful framework pattern matching."""
+
+    def test_flask_restful_resource_class(self) -> None:
+        """Flask-RESTful Resource base class matches api_resource pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask-restful")
+
+        assert pattern_def is not None, "Flask-RESTful patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:resources.py:1:UserResource:class",
+            name="UserResource",
+            kind="class",
+            language="python",
+            path="resources.py",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "base_classes": ["Resource"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "api_resource"
+
+    def test_flask_restful_add_resource_via_usage(self) -> None:
+        """Flask-RESTful api.add_resource matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask-restful")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="api.add_resource",
+            position="args[0]",
+            path="app.py",
+            span=Span(10, 10, 0, 40),
+            symbol_ref="test:resources.py:1:TodoResource:class",
+            metadata={"route_path": "/todos"},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_flask_restful_fields_serializer(self) -> None:
+        """Flask-RESTful fields module matches serializer_field pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("flask-restful")
+
+        symbol = Symbol(
+            id="test:resources.py:5:name_field:other",
+            name="name_field",
+            kind="other",
+            language="python",
+            path="resources.py",
+            span=Span(5, 5, 0, 30),
+            meta={
+                "base_classes": ["fields.String"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "serializer_field"
