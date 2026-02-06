@@ -21,7 +21,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   - **F#**: giraffe, saturn, suave (via `.fsproj` files)
 - **Framework YAML patterns**: Added pattern files for R Shiny, R Plumber, Lua OpenResty/Lapis, C++ Qt, Erlang Cowboy, and F# Giraffe/Saturn. These enable symbol enrichment (route detection, handler classification) once frameworks are detected.
 - **Test framework patterns for 16 additional languages**: Extended `test-frameworks.yaml` to detect test functions in Elixir (ExUnit), Scala (ScalaTest/MUnit/Specs2), Dart (test package), Clojure (clojure.test), Haskell (HSpec/Tasty/QuickCheck), Erlang (EUnit/Common Test), F# (Expecto/NUnit/xUnit), Ruby (RSpec - was missing despite being mentioned), Julia (Test stdlib), OCaml (OUnit/Alcotest), Lua (busted/luaunit), R (testthat), Nim (unittest), Zig (built-in), D (unittest), and Groovy (Spock/JUnit).
-- **D language main function entrypoint detection**: D's `main` function is now detected as a program entrypoint, improving usefulness for D codebases (like dmd compiler).
+- **Main function entrypoint detection for 5 more languages**: D, Nim, Zig, V, and Odin `main` functions are now detected as program entrypoints, improving usefulness for codebases in these systems programming languages.
 - **Framework detection for 9 more languages**: Extended dependency-file scanning for languages that had test-framework patterns but no application-framework detection:
   - **Kotlin**: Ktor, Exposed, Koin, Kodein (via `build.gradle.kts`)
   - **C#**: ASP.NET Core, Blazor, Entity Framework, SignalR (via `*.csproj`)

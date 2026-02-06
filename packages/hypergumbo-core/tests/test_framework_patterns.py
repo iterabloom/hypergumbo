@@ -7547,6 +7547,90 @@ class TestMainFunctionPatterns:
         assert concepts[0]["concept"] == "main_function"
         assert concepts[0]["framework"] == "main-functions"
 
+    def test_enrich_symbols_with_nim_main_function(self) -> None:
+        """enrich_symbols enriches Nim main function with main_function concept."""
+        symbol = Symbol(
+            id="nim:main.nim:1-10:main:function",
+            name="main",
+            kind="function",
+            language="nim",
+            path="main.nim",
+            span=Span(1, 10, 0, 100),
+            meta={},
+        )
+
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "main_function"
+        assert concepts[0]["framework"] == "main-functions"
+
+    def test_enrich_symbols_with_zig_main_function(self) -> None:
+        """enrich_symbols enriches Zig main function with main_function concept."""
+        symbol = Symbol(
+            id="zig:main.zig:1-10:main:function",
+            name="main",
+            kind="function",
+            language="zig",
+            path="main.zig",
+            span=Span(1, 10, 0, 100),
+            meta={},
+        )
+
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "main_function"
+        assert concepts[0]["framework"] == "main-functions"
+
+    def test_enrich_symbols_with_v_main_function(self) -> None:
+        """enrich_symbols enriches V main function with main_function concept."""
+        symbol = Symbol(
+            id="v:main.v:1-10:main:function",
+            name="main",
+            kind="function",
+            language="v",
+            path="main.v",
+            span=Span(1, 10, 0, 100),
+            meta={},
+        )
+
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "main_function"
+        assert concepts[0]["framework"] == "main-functions"
+
+    def test_enrich_symbols_with_odin_main_function(self) -> None:
+        """enrich_symbols enriches Odin main function with main_function concept."""
+        symbol = Symbol(
+            id="odin:main.odin:1-10:main:function",
+            name="main",
+            kind="function",
+            language="odin",
+            path="main.odin",
+            span=Span(1, 10, 0, 100),
+            meta={},
+        )
+
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        assert len(concepts) == 1
+        assert concepts[0]["concept"] == "main_function"
+        assert concepts[0]["framework"] == "main-functions"
+
     def test_symbol_name_only_pattern(self) -> None:
         """Pattern with only symbol_name (no symbol_kind or language) matches."""
         pattern = Pattern(
