@@ -59,7 +59,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Set
 
 from .ir import Symbol, Edge
-from .paths import normalize_path, path_ends_with, is_test_file
+from .paths import normalize_path, path_ends_with, is_test_file, is_utility_file
 from .ranking import compute_centrality, apply_tier_weights, apply_test_weights
 
 
@@ -102,6 +102,7 @@ class SliceQuery:
         max_files: Maximum number of files to include (default: 20).
         min_confidence: Minimum edge confidence to follow (default: 0.0).
         exclude_tests: Whether to exclude test files (default: False).
+        exclude_utility: Whether to exclude utility files (docs, examples, scripts).
         method: Traversal method, currently only "bfs" supported.
         reverse: If True, find callers of the entry point (backward traversal).
                  If False (default), find callees (forward traversal).
@@ -115,6 +116,7 @@ class SliceQuery:
     max_files: int = 20
     min_confidence: float = 0.0
     exclude_tests: bool = False
+    exclude_utility: bool = False
     method: str = "bfs"
     reverse: bool = False
     max_tier: int | None = None
@@ -128,6 +130,7 @@ class SliceQuery:
             "hops": self.max_hops,
             "max_files": self.max_files,
             "exclude_tests": self.exclude_tests,
+            "exclude_utility": self.exclude_utility,
             "reverse": self.reverse,
         }
         if self.max_tier is not None:
@@ -330,6 +333,8 @@ def slice_graph(
     for entry in entry_nodes:
         if query.exclude_tests and is_test_file(entry.path):
             continue
+        if query.exclude_utility and is_utility_file(entry.path):
+            continue
         queue.append((entry.id, 0))
         visited_nodes.add(entry.id)
         files_seen.add(entry.path)
@@ -373,6 +378,10 @@ def slice_graph(
 
             # Filter test files
             if query.exclude_tests and is_test_file(next_node.path):
+                continue
+
+            # Filter utility files (docs, examples, scripts)
+            if query.exclude_utility and is_utility_file(next_node.path):
                 continue
 
             # Check tier limit

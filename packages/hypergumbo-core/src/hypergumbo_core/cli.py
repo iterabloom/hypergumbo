@@ -1181,12 +1181,14 @@ def cmd_slice(args: argparse.Namespace) -> int:
 
     # Build slice query
     max_tier = getattr(args, "max_tier", None)
+    exclude_utility = getattr(args, "exclude_utility", False)
     query = SliceQuery(
         entrypoint=entry,
         max_hops=args.max_hops,
         max_files=args.max_files,
         min_confidence=args.min_confidence,
         exclude_tests=args.exclude_tests,
+        exclude_utility=exclude_utility,
         reverse=args.reverse,
         max_tier=max_tier,
         language=args.language,
@@ -3145,6 +3147,11 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         "--exclude-tests",
         action="store_true",
         help="Exclude test files from the slice",
+    )
+    p_slice.add_argument(
+        "--exclude-utility",
+        action="store_true",
+        help="Exclude utility files (docs, examples, scripts) from the slice",
     )
     p_slice.add_argument(
         "--reverse",

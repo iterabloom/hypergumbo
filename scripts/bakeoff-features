@@ -600,6 +600,7 @@ def cmd_run(args):
             pass
 
         # 3. Forward slices (top entries, up to 5)
+        # Use --exclude-tests and --exclude-utility to focus on production code
         for i, entry in enumerate(entries[:5]):
             safe_name = entry.replace("/", "_").replace(":", "_")[:50]
             print(f"  slice[{entry[:30]}]...", end=" ", flush=True)
@@ -608,6 +609,8 @@ def cmd_run(args):
                 "--input", hg_json,
                 "--entry", entry,
                 "--inline",
+                "--exclude-tests",
+                "--exclude-utility",
                 "--out", os.path.join(repo_out, f"slice.{i}.json"),
             ])
             with open(os.path.join(repo_out, f"slice.{i}.exit"), "w") as f:
@@ -615,6 +618,7 @@ def cmd_run(args):
             print("OK" if rc == 0 else f"FAIL({rc})")
 
         # 4. Reverse slices (top 3 entries)
+        # Use --exclude-tests and --exclude-utility to show production callers only
         for i, entry in enumerate(entries[:3]):
             print(f"  reverse-slice[{entry[:30]}]...", end=" ", flush=True)
             rc, stdout, stderr = run_cmd([
@@ -623,6 +627,8 @@ def cmd_run(args):
                 "--entry", entry,
                 "--reverse",
                 "--inline",
+                "--exclude-tests",
+                "--exclude-utility",
                 "--out", os.path.join(repo_out, f"rslice.{i}.json"),
             ])
             with open(os.path.join(repo_out, f"rslice.{i}.exit"), "w") as f:

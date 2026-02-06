@@ -417,6 +417,33 @@ class TestSliceGraph:
         assert sym_b.id in result.node_ids
         assert sym_test.id not in result.node_ids
 
+    def test_slice_excludes_utility(self) -> None:
+        """Forward slice skips utility files (docs, examples, scripts) when requested."""
+        sym_a = make_symbol("main", path="src/app.py")
+        sym_b = make_symbol("helper", path="src/utils.py")
+        sym_docs = make_symbol("example_handler", path="docs_src/example.py")
+        sym_scripts = make_symbol("deploy", path="scripts/deploy.py")
+
+        edge_to_helper = make_edge(sym_a, sym_b)
+        edge_to_docs = make_edge(sym_a, sym_docs)
+        edge_to_scripts = make_edge(sym_a, sym_scripts)
+
+        nodes = [sym_a, sym_b, sym_docs, sym_scripts]
+        edges = [edge_to_helper, edge_to_docs, edge_to_scripts]
+
+        query = SliceQuery(
+            entrypoint="main",
+            max_hops=3,
+            max_files=20,
+            exclude_utility=True,
+        )
+        result = slice_graph(nodes, edges, query)
+
+        assert sym_a.id in result.node_ids
+        assert sym_b.id in result.node_ids
+        assert sym_docs.id not in result.node_ids
+        assert sym_scripts.id not in result.node_ids
+
     def test_slice_handles_cycles(self) -> None:
         """Slice handles cyclic references without infinite loop."""
         sym_a = make_symbol("a", start_line=1, end_line=2)
@@ -609,6 +636,18 @@ class TestSliceEdgeCases:
         edges: List[Edge] = []
 
         query = SliceQuery(entrypoint="test_main", max_hops=3, exclude_tests=True)
+        result = slice_graph(nodes, edges, query)
+
+        # Entry node should be excluded, so no nodes in result
+        assert len(result.node_ids) == 0
+
+    def test_entry_node_is_utility_file_excluded(self) -> None:
+        """Entry node in utility file is excluded when exclude_utility=True."""
+        sym = make_symbol("example_main", path="docs_src/example.py")
+        nodes = [sym]
+        edges: List[Edge] = []
+
+        query = SliceQuery(entrypoint="example_main", max_hops=3, exclude_utility=True)
         result = slice_graph(nodes, edges, query)
 
         # Entry node should be excluded, so no nodes in result
@@ -907,6 +946,26 @@ class TestReverseSlice:
 
         assert sym_main.id in result.node_ids
         assert sym_test.id not in result.node_ids
+
+    def test_reverse_slice_excludes_utility(self) -> None:
+        """Reverse slice should exclude utility files (docs, examples) when requested."""
+        sym_main = make_symbol("create_item", path="src/app.py")
+        sym_docs = make_symbol("example_call", path="docs_src/example.py")
+        sym_scripts = make_symbol("deploy_call", path="scripts/deploy.py")
+
+        # Both doc and script call main - in reverse, should NOT find them
+        edge_docs = make_edge(sym_docs, sym_main, "calls")
+        edge_scripts = make_edge(sym_scripts, sym_main, "calls")
+
+        nodes = [sym_main, sym_docs, sym_scripts]
+        edges = [edge_docs, edge_scripts]
+
+        query = SliceQuery(entrypoint="create_item", max_hops=3, reverse=True, exclude_utility=True)
+        result = slice_graph(nodes, edges, query)
+
+        assert sym_main.id in result.node_ids
+        assert sym_docs.id not in result.node_ids
+        assert sym_scripts.id not in result.node_ids
 
     def test_reverse_slice_filters_low_confidence(self) -> None:
         """Reverse slice should filter edges below confidence threshold."""
