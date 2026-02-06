@@ -2286,6 +2286,37 @@ def _extract_edges(
                                 edges.append(edge)
                                 edge_added = True
 
+                        # Case 1b: this.property.method() via constructor injection
+                        # Handles NestJS/Angular patterns like this.catsService.create()
+                        # where catsService is a constructor-injected dependency
+                        elif obj_node and obj_node.type == "member_expression":
+                            # Check if it's this.property pattern
+                            this_node = None
+                            property_name = None
+                            for mc in obj_node.children:
+                                if mc.type == "this":
+                                    this_node = mc
+                                elif mc.type == "property_identifier":
+                                    property_name = _node_text(mc, source)
+                            # If we have this.propertyName and propertyName has a known type
+                            if this_node and property_name and property_name in var_types:
+                                type_class_name = var_types[property_name]
+                                full_name = f"{type_class_name}.{method_name}"
+                                lookup_result = resolver.lookup(full_name)
+                                if lookup_result.found and lookup_result.symbol is not None:
+                                    edge = Edge.create(
+                                        src=current_function.id,
+                                        dst=lookup_result.symbol.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1 + line_offset,
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                        evidence_type="ast_method_this_property",
+                                        confidence=0.90 * lookup_result.confidence,
+                                    )
+                                    edges.append(edge)
+                                    edge_added = True
+
                         # Case 2: alias.func() via namespace import
                         elif obj_name and obj_name in namespace_imports:
                             # This is a namespace call: alias.func() or alias.Class()

@@ -3791,6 +3791,109 @@ function process(db: Database, data: string): void {
         assert save_edge.evidence_type == "ast_method_type_inferred"
         assert commit_edge.evidence_type == "ast_method_type_inferred"
 
+    def test_this_property_method_call_nestjs_pattern(self, tmp_path: Path) -> None:
+        """this.property.method() calls via constructor injection should resolve.
+
+        This tests the NestJS/Angular pattern where services are injected via constructor:
+            constructor(private readonly catsService: CatsService) {}
+
+        And then called via:
+            this.catsService.create(data)
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # Service class with methods
+        service_file = tmp_path / "cats.service.ts"
+        service_file.write_text("""
+class CatsService {
+    create(data: any) {
+        return data;
+    }
+
+    findAll() {
+        return [];
+    }
+}
+""")
+
+        # Controller with constructor injection
+        controller_file = tmp_path / "cats.controller.ts"
+        controller_file.write_text("""
+class CatsController {
+    constructor(private readonly catsService: CatsService) {}
+
+    async create(data: any) {
+        return this.catsService.create(data);
+    }
+
+    async findAll() {
+        return this.catsService.findAll();
+    }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        assert result.run is not None
+        assert result.run.files_analyzed == 2
+
+        # Find symbols
+        ctrl_create = next(
+            (s for s in result.symbols if s.name == "CatsController.create"), None
+        )
+        ctrl_find_all = next(
+            (s for s in result.symbols if s.name == "CatsController.findAll"), None
+        )
+        svc_create = next(
+            (s for s in result.symbols if s.name == "CatsService.create"), None
+        )
+        svc_find_all = next(
+            (s for s in result.symbols if s.name == "CatsService.findAll"), None
+        )
+
+        assert ctrl_create is not None, "Expected CatsController.create symbol"
+        assert ctrl_find_all is not None, "Expected CatsController.findAll symbol"
+        assert svc_create is not None, "Expected CatsService.create symbol"
+        assert svc_find_all is not None, "Expected CatsService.findAll symbol"
+
+        # Should have edges from controller methods to service methods
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        create_edge = next(
+            (
+                e
+                for e in call_edges
+                if e.src == ctrl_create.id
+                and e.dst == svc_create.id
+            ),
+            None,
+        )
+        find_all_edge = next(
+            (
+                e
+                for e in call_edges
+                if e.src == ctrl_find_all.id
+                and e.dst == svc_find_all.id
+            ),
+            None,
+        )
+
+        assert create_edge is not None, (
+            "Expected call edge for this.catsService.create() via constructor injection. "
+            f"Edges from ctrl_create: {[e.dst for e in call_edges if e.src == ctrl_create.id]}"
+        )
+        assert find_all_edge is not None, (
+            "Expected call edge for this.catsService.findAll() via constructor injection. "
+            f"Edges from ctrl_find_all: {[e.dst for e in call_edges if e.src == ctrl_find_all.id]}"
+        )
+
+        # Both should use this_property evidence type
+        assert create_edge.evidence_type == "ast_method_this_property"
+        assert find_all_edge.evidence_type == "ast_method_this_property"
+        # Confidence should be 0.90 * resolver confidence (typically 1.0)
+        assert create_edge.confidence == 0.90
+        assert find_all_edge.confidence == 0.90
+
 
 # ============================================================================
 # TypeScript Decorator Metadata Tests (Phase 4)
