@@ -600,7 +600,9 @@ def cmd_run(args):
             pass
 
         # 3. Forward slices (top entries, up to 5)
-        # Use --exclude-tests and --exclude-utility to focus on production code
+        # Use --exclude-tests to focus on production dependencies
+        # Note: Don't use --exclude-utility here - entry points may be in utility
+        # dirs (e.g., docs_src for FastAPI) but their dependencies are still useful
         for i, entry in enumerate(entries[:5]):
             safe_name = entry.replace("/", "_").replace(":", "_")[:50]
             print(f"  slice[{entry[:30]}]...", end=" ", flush=True)
@@ -610,7 +612,6 @@ def cmd_run(args):
                 "--entry", entry,
                 "--inline",
                 "--exclude-tests",
-                "--exclude-utility",
                 "--out", os.path.join(repo_out, f"slice.{i}.json"),
             ])
             with open(os.path.join(repo_out, f"slice.{i}.exit"), "w") as f:
