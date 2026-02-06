@@ -256,7 +256,7 @@ class TestTreeSitterUnavailable:
         import pytest
 
         with patch.object(objc_module, "is_objc_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Objective-C analysis skipped"):
+            with pytest.warns(UserWarning, match="tree-sitter-objc not available"):
                 result = objc_module.analyze_objc(tmp_path)
         assert result.skipped is True
         assert "tree-sitter-objc" in result.skip_reason
