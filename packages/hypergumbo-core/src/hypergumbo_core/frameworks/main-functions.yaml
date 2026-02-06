@@ -90,4 +90,28 @@ patterns:
     symbol_kind: "^function$"
     language: "^d$"
 
+  # Nim: main proc
+  - concept: main_function
+    symbol_name: "^main$"
+    symbol_kind: "^function$"
+    language: "^nim$"
+
+  # Zig: pub fn main() - low-level language
+  - concept: main_function
+    symbol_name: "^main$"
+    symbol_kind: "^function$"
+    language: "^zig$"
+
+  # V: fn main() - modern systems language
+  - concept: main_function
+    symbol_name: "^main$"
+    symbol_kind: "^function$"
+    language: "^v$"
+
+  # Odin: main :: proc() - performance-focused language
+  - concept: main_function
+    symbol_name: "^main$"
+    symbol_kind: "^function$"
+    language: "^odin$"
+
 linkers: []
