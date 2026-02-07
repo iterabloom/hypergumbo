@@ -14156,3 +14156,95 @@ class TestLibraryExportPatterns:
         concepts = enriched[0].meta.get("concepts", [])
         lib_exports = [c for c in concepts if c["concept"] == "library_export"]
         assert len(lib_exports) == 1
+
+    def test_elixir_public_function_matches_library_export(self) -> None:
+        """Elixir public functions (def) match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="elixir:lib/phoenix/socket.ex:10-30:Phoenix.Socket.handle_in:function",
+            name="Phoenix.Socket.handle_in",
+            kind="function",
+            language="elixir",
+            path="lib/phoenix/socket.ex",
+            span=Span(10, 30, 0, 200),
+            meta={},
+            modifiers=[],  # Public: no "private" modifier
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_elixir_private_function_no_library_export(self) -> None:
+        """Elixir private functions (defp) do NOT match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="elixir:lib/phoenix/socket.ex:40-50:Phoenix.Socket.do_handle:function",
+            name="Phoenix.Socket.do_handle",
+            kind="function",
+            language="elixir",
+            path="lib/phoenix/socket.ex",
+            span=Span(40, 50, 0, 100),
+            meta={},
+            modifiers=["private"],  # Private: has "private" modifier
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 0
+
+    def test_modifiers_exclude_pattern_matching(self) -> None:
+        """Pattern with modifiers_exclude rejects symbols with matching modifiers."""
+        clear_pattern_cache()
+
+        pattern = Pattern(
+            concept="test_concept",
+            symbol_kind="function",
+            language="elixir",
+            modifiers_exclude="^private$",
+        )
+
+        # Public function (no modifiers) - should match
+        public_sym = Symbol(
+            id="elixir:lib.ex:1-5:public_fn:function",
+            name="public_fn",
+            kind="function",
+            language="elixir",
+            path="lib.ex",
+            span=Span(1, 5, 0, 50),
+            modifiers=[],
+        )
+        assert pattern.matches(public_sym) is not None
+
+        # Private function - should NOT match
+        private_sym = Symbol(
+            id="elixir:lib.ex:10-15:private_fn:function",
+            name="private_fn",
+            kind="function",
+            language="elixir",
+            path="lib.ex",
+            span=Span(10, 15, 0, 50),
+            modifiers=["private"],
+        )
+        assert pattern.matches(private_sym) is None
+
+        # Function with non-matching modifiers - should match (exercises loop
+        # continuing past non-matching modifier and exiting without rejection)
+        public_annotated_sym = Symbol(
+            id="elixir:lib.ex:20-25:annotated_fn:function",
+            name="annotated_fn",
+            kind="function",
+            language="elixir",
+            path="lib.ex",
+            span=Span(20, 25, 0, 50),
+            modifiers=["public"],
+        )
+        assert pattern.matches(public_annotated_sym) is not None

@@ -554,6 +554,9 @@ def _extract_symbols_from_file(
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
 
+                        # defp = private function
+                        modifiers = ["private"] if target_name == "defp" else []
+
                         symbol = Symbol(
                             id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "function"),
                             name=full_name,
@@ -569,6 +572,7 @@ def _extract_symbols_from_file(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             signature=_extract_elixir_signature(node, source),
+                            modifiers=modifiers,
                         )
                         analysis.symbols.append(symbol)
                         analysis.symbol_by_name[func_name] = symbol  # Store by short name for local calls
@@ -582,6 +586,9 @@ def _extract_symbols_from_file(
 
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
+
+                        # defmacrop = private macro
+                        modifiers = ["private"] if target_name == "defmacrop" else []
 
                         symbol = Symbol(
                             id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "macro"),
@@ -598,6 +605,7 @@ def _extract_symbols_from_file(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             signature=_extract_elixir_signature(node, source),
+                            modifiers=modifiers,
                         )
                         analysis.symbols.append(symbol)
                         analysis.symbol_by_name[macro_name] = symbol

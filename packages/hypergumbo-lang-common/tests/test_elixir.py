@@ -162,6 +162,52 @@ end
         assert "Utils.public_fn" in func_names
         assert "Utils.private_fn" in func_names
 
+    def test_defp_has_private_modifier(self, tmp_path: Path) -> None:
+        """Private functions (defp) should have modifiers=['private']."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        ex_file = tmp_path / "utils.ex"
+        ex_file.write_text("""
+defmodule Utils do
+  def public_fn(x), do: x + 1
+  defp private_fn(x), do: x * 2
+end
+""")
+
+        result = analyze_elixir(tmp_path)
+
+        funcs = {s.name: s for s in result.symbols if s.kind == "function"}
+        assert "Utils.public_fn" in funcs
+        assert "Utils.private_fn" in funcs
+
+        # Public function should NOT have "private" modifier
+        assert "private" not in (funcs["Utils.public_fn"].modifiers or [])
+        # Private function SHOULD have "private" modifier
+        assert "private" in (funcs["Utils.private_fn"].modifiers or [])
+
+    def test_defmacrop_has_private_modifier(self, tmp_path: Path) -> None:
+        """Private macros (defmacrop) should have modifiers=['private']."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        ex_file = tmp_path / "macros.ex"
+        ex_file.write_text("""
+defmodule Macros do
+  defmacro public_macro(expr), do: expr
+  defmacrop private_macro(expr), do: expr
+end
+""")
+
+        result = analyze_elixir(tmp_path)
+
+        macros = {s.name: s for s in result.symbols if s.kind == "macro"}
+        assert "Macros.public_macro" in macros
+        assert "Macros.private_macro" in macros
+
+        # Public macro should NOT have "private" modifier
+        assert "private" not in (macros["Macros.public_macro"].modifiers or [])
+        # Private macro SHOULD have "private" modifier
+        assert "private" in (macros["Macros.private_macro"].modifiers or [])
+
 
 class TestElixirFunctionCalls:
     """Tests for detecting function calls in Elixir."""

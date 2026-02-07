@@ -13,7 +13,7 @@
 # Detection strategies by language:
 # - JS/TS: Match UsageContext records for exports from index files
 # - Go: Match exported (uppercase) functions, types, interfaces, structs
-# - Elixir: Match module definitions (defmodule)
+# - Elixir: Match module definitions (defmodule) and public functions (def, not defp)
 #
 # The entrypoint scoring system (confidence * connectivity boost) ensures
 # the most important/connected exports are prioritized for auto-slicing.
@@ -76,13 +76,22 @@ patterns:
     symbol_kind: "^struct$"
     language: "^go$"
 
-  # === Elixir: Definition-based (modules) ===
+  # === Elixir: Definition-based (modules + public functions) ===
   # Elixir modules (defmodule) are the primary unit of public API.
-  # Test modules are handled by the entrypoint scorer's test-file penalty.
+  # Public functions (def) are the callable API surface.
+  # Private functions (defp) are excluded via modifiers_exclude.
+  # Test modules/functions are handled by the entrypoint scorer's test-file penalty.
 
   # Modules (e.g., Phoenix.Router, Ecto.Query)
   - concept: library_export
     symbol_kind: "^module$"
     language: "^elixir$"
+
+  # Public functions (e.g., Phoenix.Socket.handle_in)
+  # Excludes defp (private) functions via modifiers_exclude.
+  - concept: library_export
+    symbol_kind: "^function$"
+    language: "^elixir$"
+    modifiers_exclude: "^private$"
 
 linkers: []
