@@ -916,12 +916,14 @@ def enrich_symbols(
     # - language-conventions.yaml: CUDA, WGSL, COBOL, LaTeX, Starlark patterns
     # - config-conventions.yaml: NPM, Maven, Cargo dependency patterns
     # - naming-conventions.yaml: Controller, Handler, Service naming heuristics (0.70)
+    # - library-exports.yaml: JS/TS index exports, Go exported symbols, Elixir modules
     for convention_id in (
         "main-functions",
         "test-frameworks",
         "language-conventions",
         "config-conventions",
         "naming-conventions",
+        "library-exports",
     ):
         convention_patterns = load_framework_patterns(convention_id)
         if convention_patterns:

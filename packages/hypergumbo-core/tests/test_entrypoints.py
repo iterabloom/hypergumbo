@@ -1055,6 +1055,54 @@ class TestSemanticEntryDetection:
         lib_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
         assert len(lib_eps) == 1
 
+    def test_go_library_export_entrypoint(self) -> None:
+        """Go exported function with library_export concept becomes LIBRARY_EXPORT."""
+        sym = make_symbol(
+            "New",
+            kind="function",
+            path="gin.go",
+            language="go",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "library_export",
+                        "framework": "library-exports",
+                    }
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        lib_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(lib_eps) == 1
+        assert lib_eps[0].confidence == 0.75
+
+    def test_elixir_module_library_export_entrypoint(self) -> None:
+        """Elixir module with library_export concept becomes LIBRARY_EXPORT."""
+        sym = make_symbol(
+            "Phoenix.Router",
+            kind="module",
+            path="lib/phoenix/router.ex",
+            language="elixir",
+            meta={
+                "concepts": [
+                    {
+                        "concept": "library_export",
+                        "framework": "library-exports",
+                    }
+                ]
+            },
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        lib_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(lib_eps) == 1
+        assert lib_eps[0].confidence == 0.75
+
     def test_npm_bin_entrypoint_detection(self) -> None:
         """npm bin entries (package.json "bin") are detected as CLI entrypoints."""
         # npm_bin concept comes from config-conventions.yaml matching kind="bin"

@@ -1,28 +1,29 @@
 # Library export detection (ADR-0003 v1.3.x)
 #
-# Detects exports from library entry point files (index.ts, index.js, etc.)
-# that define the public API surface of a library.
+# Detects exports that define the public API surface of a library.
 #
 # Libraries differ from applications:
 # - Applications have main() functions, HTTP routes, CLI commands
 # - Libraries have exports that form their public API
 #
-# This pattern matches UsageContext records for exports from index files,
-# marking the exported symbols as library entry points. Confidence is
-# lower than framework routes (0.75 vs 0.95) because:
+# Confidence is lower than framework routes (0.75 vs 0.95) because:
 # - Libraries may have many exports, not all equally important
-# - Index files may re-export internal utilities
-# - The "main" export is often more important than named exports
+# - Not all exports are meaningful entry points
 #
-# Detection strategy:
-# - Match exports from index.ts, index.js, index.mjs, index.cjs, index.jsx, index.tsx
-# - Default exports get slightly higher priority in the label
-# - Named exports are also detected as entry points
+# Detection strategies by language:
+# - JS/TS: Match UsageContext records for exports from index files
+# - Go: Match exported (uppercase) functions, types, interfaces, structs
+# - Elixir: Match module definitions (defmodule)
+#
+# The entrypoint scoring system (confidence * connectivity boost) ensures
+# the most important/connected exports are prioritized for auto-slicing.
 
 id: library-exports
 language: multi
 
 patterns:
+  # === JS/TS: Usage-based (index file exports) ===
+
   # Default exports from index files
   # Usage: export default class Hls { ... }
   # Context: kind="library_export", context_name="export.default"
@@ -44,5 +45,44 @@ patterns:
     extract:
       export_name: "metadata.export_name"
       is_default: "literal:false"
+
+  # === Go: Definition-based (exported symbols) ===
+  # Go convention: exported symbols start with uppercase.
+  # Matches functions, types, interfaces, and structs.
+  # Test files (_test.go) are handled by the entrypoint scorer's
+  # test-file penalty (50% confidence reduction).
+
+  # Exported functions (e.g., New, Default, HandleRequest)
+  - concept: library_export
+    symbol_name: "^[A-Z]"
+    symbol_kind: "^function$"
+    language: "^go$"
+
+  # Exported types (type aliases, named types)
+  - concept: library_export
+    symbol_name: "^[A-Z]"
+    symbol_kind: "^type$"
+    language: "^go$"
+
+  # Exported interfaces (e.g., Handler, Router)
+  - concept: library_export
+    symbol_name: "^[A-Z]"
+    symbol_kind: "^interface$"
+    language: "^go$"
+
+  # Exported structs (e.g., Engine, Context, Config)
+  - concept: library_export
+    symbol_name: "^[A-Z]"
+    symbol_kind: "^struct$"
+    language: "^go$"
+
+  # === Elixir: Definition-based (modules) ===
+  # Elixir modules (defmodule) are the primary unit of public API.
+  # Test modules are handled by the entrypoint scorer's test-file penalty.
+
+  # Modules (e.g., Phoenix.Router, Ecto.Query)
+  - concept: library_export
+    symbol_kind: "^module$"
+    language: "^elixir$"
 
 linkers: []

@@ -13993,3 +13993,166 @@ class TestFlaskRestfulPatterns:
 
         assert len(results) == 1
         assert results[0]["concept"] == "serializer_field"
+
+
+class TestLibraryExportPatterns:
+    """Tests for library-exports.yaml Go/Elixir patterns (DEEP mode)."""
+
+    def test_library_exports_yaml_loads(self) -> None:
+        """library-exports.yaml loads correctly."""
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+        assert pattern_def.id == "library-exports"
+
+    def test_go_exported_function_matches_library_export(self) -> None:
+        """Go exported (uppercase) functions match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="go:gin.go:10-30:New:function",
+            name="New",
+            kind="function",
+            language="go",
+            path="gin.go",
+            span=Span(10, 30, 0, 200),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) >= 1
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_go_unexported_function_no_match(self) -> None:
+        """Go unexported (lowercase) functions do NOT match library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="go:internal.go:5-15:helper:function",
+            name="helper",
+            kind="function",
+            language="go",
+            path="internal.go",
+            span=Span(5, 15, 0, 100),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 0
+
+    def test_go_exported_interface_matches(self) -> None:
+        """Go exported interfaces match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="go:handler.go:1-10:Handler:interface",
+            name="Handler",
+            kind="interface",
+            language="go",
+            path="handler.go",
+            span=Span(1, 10, 0, 80),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_go_exported_struct_matches(self) -> None:
+        """Go exported structs match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="go:engine.go:20-50:Engine:struct",
+            name="Engine",
+            kind="struct",
+            language="go",
+            path="engine.go",
+            span=Span(20, 50, 0, 300),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_elixir_module_matches_library_export(self) -> None:
+        """Elixir modules match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="elixir:lib/phoenix/router.ex:1-100:Phoenix.Router:module",
+            name="Phoenix.Router",
+            kind="module",
+            language="elixir",
+            path="lib/phoenix/router.ex",
+            span=Span(1, 100, 0, 2000),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_python_function_no_match(self) -> None:
+        """Python functions should NOT match Go/Elixir library_export patterns."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="python:utils.py:1-10:Helper:function",
+            name="Helper",
+            kind="function",
+            language="python",
+            path="utils.py",
+            span=Span(1, 10, 0, 50),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 0
+
+    def test_go_library_export_enrichment_without_framework_detection(self) -> None:
+        """Go library exports should be enriched even without framework detection.
+
+        library-exports is loaded as a convention pattern (like main-functions),
+        not gated on framework detection.
+        """
+        clear_pattern_cache()
+
+        symbol = Symbol(
+            id="go:gin.go:10-30:Default:function",
+            name="Default",
+            kind="function",
+            language="go",
+            path="gin.go",
+            span=Span(10, 30, 0, 200),
+            meta={},
+        )
+
+        # Empty detected_frameworks — simulates a Go repo with no web framework
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        concepts = enriched[0].meta.get("concepts", [])
+        lib_exports = [c for c in concepts if c["concept"] == "library_export"]
+        assert len(lib_exports) == 1
