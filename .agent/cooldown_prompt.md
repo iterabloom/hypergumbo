@@ -20,7 +20,7 @@ Improve or create analysis scripts in `~/hypergumbo_lab_notebook/analysis_lib/`:
 - Current toolkit: quality_overview, edge_resolution, language_comparison, entrypoint_analysis, potential_issues, signature_quality, complexity_metrics
 - Ideas: dependency fan-out visualization, framework pattern coverage tracker, cross-language linking accuracy, dead code detection, concept density heatmaps
 - Follow naming convention: `NN_short_name.py`
-- Test new scripts against existing bakeoff artifacts in `/tmp/bakeoff_session/out/`
+- Test new scripts against existing bakeoff artifacts in `~/hypergumbo_lab_notebook/bakeoff_artifacts/`
 
 ## 4. Lab Notebook Documentation
 Record in `~/hypergumbo_lab_notebook/`:

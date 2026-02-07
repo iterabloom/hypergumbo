@@ -32,8 +32,8 @@ The process:
 6. Move to next cohort
 
 Usage:
-    # Initialize a new bakeoff session
-    ./scripts/bakeoff init --pool ~/whole_bunch_of_repos --workdir ~/bakeoff-session
+    # Initialize a new bakeoff session (creates timestamped dir in canonical default)
+    ./scripts/bakeoff init --pool ~/whole_bunch_of_repos
 
     # Select next cohort (5 smallest unused repos)
     ./scripts/bakeoff cohort --count 5
@@ -83,6 +83,7 @@ from typing import Optional
 DEFAULT_COHORT_SIZE = 6
 COMPACT_THRESHOLD_MB = 20
 MAX_REPO_SIZE_MB = 100  # Skip very large repos for fast iteration
+DEFAULT_BAKEOFF_DIR = os.path.expanduser("~/hypergumbo_lab_notebook/bakeoff_artifacts")
 
 # Issue severity levels
 SEVERITY_CRITICAL = "CRITICAL"
@@ -274,14 +275,54 @@ def run_cmd(cmd: list, cwd: str = None, timeout: int = 600) -> tuple:
 # Commands
 # =============================================================================
 
+def resolve_workdir(args_workdir: str = None, env_var: str = "BAKEOFF_WORKDIR") -> str:
+    """Resolve workdir from CLI arg, env var, or canonical default.
+
+    Resolution order: CLI --workdir > env var > canonical default.
+
+    If the resolved directory has no state.json but contains session
+    subdirectories (broad-*/deep-*), returns the most recent one.
+    This makes subsequent commands (cohort, run, diagnose, etc.) work
+    without specifying the full timestamped path.
+    """
+    workdir = args_workdir or os.environ.get(env_var) or DEFAULT_BAKEOFF_DIR
+    workdir = os.path.abspath(os.path.expanduser(workdir))
+
+    # If the workdir itself has state.json, use it directly
+    if os.path.exists(os.path.join(workdir, "state.json")):
+        return workdir
+
+    # Otherwise, look for the most recent session subdirectory
+    if os.path.isdir(workdir):
+        sessions = []
+        for entry in os.scandir(workdir):
+            if entry.is_dir() and (entry.name.startswith("broad-") or entry.name.startswith("deep-")):
+                state_path = os.path.join(entry.path, "state.json")
+                if os.path.exists(state_path):
+                    sessions.append(entry.path)
+        if sessions:
+            sessions.sort()  # Lexicographic sort on timestamps works correctly
+            return sessions[-1]
+
+    return workdir
+
+
 def cmd_init(args):
-    """Initialize a new bakeoff session."""
+    """Initialize a new bakeoff session.
+
+    Creates a timestamped session directory (broad-YYYYMMDD-HHMMSS/) inside
+    the resolved workdir so multiple sessions never collide.
+    """
     pool_path = os.path.abspath(os.path.expanduser(args.pool))
-    workdir = os.path.abspath(os.path.expanduser(args.workdir))
+    base_workdir = resolve_workdir(args.workdir)
 
     if not os.path.isdir(pool_path):
         print(f"Error: Pool directory does not exist: {pool_path}", file=sys.stderr)
         return 1
+
+    # Create timestamped session directory to prevent artifact overwrites
+    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    workdir = os.path.join(base_workdir, f"broad-{timestamp}")
 
     os.makedirs(workdir, exist_ok=True)
     os.makedirs(os.path.join(workdir, "cohorts"), exist_ok=True)
@@ -308,7 +349,8 @@ def cmd_init(args):
 
 def cmd_cohort(args):
     """Select next cohort of repos."""
-    workdir = os.environ.get("BAKEOFF_WORKDIR", args.workdir or ".")
+    workdir = resolve_workdir(args.workdir)
+    print(f"Workdir: {workdir}")
     state = load_state(workdir)
 
     if not state:
@@ -426,7 +468,8 @@ def cmd_cohort(args):
 
 def cmd_run(args):
     """Run hypergumbo on current cohort."""
-    workdir = os.environ.get("BAKEOFF_WORKDIR", args.workdir or ".")
+    workdir = resolve_workdir(args.workdir)
+    print(f"Workdir: {workdir}")
     state = load_state(workdir)
 
     if not state:
@@ -514,7 +557,8 @@ def cmd_run(args):
 
 def cmd_diagnose(args):
     """Diagnose issues from current run."""
-    workdir = os.environ.get("BAKEOFF_WORKDIR", args.workdir or ".")
+    workdir = resolve_workdir(args.workdir)
+    print(f"Workdir: {workdir}")
     state = load_state(workdir)
 
     if not state:
@@ -674,7 +718,8 @@ def cmd_diagnose(args):
 
 def cmd_status(args):
     """Show bakeoff session status."""
-    workdir = os.environ.get("BAKEOFF_WORKDIR", args.workdir or ".")
+    workdir = resolve_workdir(args.workdir)
+    print(f"Workdir: {workdir}")
     state = load_state(workdir)
 
     if not state:
@@ -750,7 +795,8 @@ def cmd_status(args):
 
 def cmd_issues(args):
     """List issues in machine-readable format."""
-    workdir = os.environ.get("BAKEOFF_WORKDIR", args.workdir or ".")
+    workdir = resolve_workdir(args.workdir)
+    print(f"Workdir: {workdir}")
     state = load_state(workdir)
 
     if not state:
@@ -852,7 +898,8 @@ def cmd_loop(args):
 
     Use --max-iterations to limit total cycles. Use --dry-run to see what would happen.
     """
-    workdir = os.environ.get("BAKEOFF_WORKDIR", args.workdir or ".")
+    workdir = resolve_workdir(args.workdir)
+    print(f"Workdir: {workdir}")
     state = load_state(workdir)
 
     if not state:
@@ -1057,7 +1104,7 @@ def main():
     # init
     p_init = subparsers.add_parser("init", help="Initialize bakeoff session")
     p_init.add_argument("--pool", required=True, help="Path to repo pool")
-    p_init.add_argument("--workdir", required=True, help="Working directory for outputs")
+    p_init.add_argument("--workdir", help=f"Working directory for outputs (default: {DEFAULT_BAKEOFF_DIR})")
 
     # cohort
     p_cohort = subparsers.add_parser("cohort", help="Select next cohort")

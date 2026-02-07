@@ -20,8 +20,8 @@ This is a **separate bakeoff loop**, not integrated into `scripts/bakeoff`:
 
 ## Usage
 
-    # Initialize a new feature bakeoff session
-    ./scripts/bakeoff-features init --pool ~/repos --workdir /tmp/feature-bakeoff
+    # Initialize a new feature bakeoff session (creates timestamped dir in canonical default)
+    ./scripts/bakeoff-features init --pool ~/repos
 
     # Select cohort (larger repos than regular bakeoff)
     ./scripts/bakeoff-features cohort --count 4 --min-size 20 --max-size 200
@@ -86,6 +86,7 @@ DEFAULT_COHORT_SIZE = 4
 DEFAULT_MIN_SIZE_MB = 20
 DEFAULT_MAX_SIZE_MB = 200
 MIN_FILE_COUNT = 500  # Minimum files for complexity
+DEFAULT_BAKEOFF_DIR = os.path.expanduser("~/hypergumbo_lab_notebook/bakeoff_artifacts")
 
 # Issue severity levels
 SEVERITY_CRITICAL = "CRITICAL"
@@ -374,14 +375,52 @@ def assess_metric(name: str, value: float) -> tuple:
 # Commands
 # =============================================================================
 
+def resolve_workdir(args_workdir: str = None, env_var: str = "BAKEOFF_FEATURES_WORKDIR") -> str:
+    """Resolve workdir from CLI arg, env var, or canonical default.
+
+    Resolution order: CLI --workdir > env var > canonical default.
+
+    If the resolved directory has no state.json but contains session
+    subdirectories (broad-*/deep-*), returns the most recent one.
+    """
+    workdir = args_workdir or os.environ.get(env_var) or DEFAULT_BAKEOFF_DIR
+    workdir = os.path.abspath(os.path.expanduser(workdir))
+
+    # If the workdir itself has state.json, use it directly
+    if os.path.exists(os.path.join(workdir, "state.json")):
+        return workdir
+
+    # Otherwise, look for the most recent session subdirectory
+    if os.path.isdir(workdir):
+        sessions = []
+        for entry in os.scandir(workdir):
+            if entry.is_dir() and (entry.name.startswith("broad-") or entry.name.startswith("deep-")):
+                state_path = os.path.join(entry.path, "state.json")
+                if os.path.exists(state_path):
+                    sessions.append(entry.path)
+        if sessions:
+            sessions.sort()
+            return sessions[-1]
+
+    return workdir
+
+
 def cmd_init(args):
-    """Initialize a new feature bakeoff session."""
+    """Initialize a new feature bakeoff session.
+
+    Creates a timestamped session directory (deep-YYYYMMDD-HHMMSS/) inside
+    the resolved workdir so multiple sessions never collide.
+    """
     pool_path = os.path.abspath(os.path.expanduser(args.pool))
-    workdir = os.path.abspath(os.path.expanduser(args.workdir))
+    base_workdir = resolve_workdir(args.workdir)
 
     if not os.path.isdir(pool_path):
         print(f"Error: Pool directory does not exist: {pool_path}", file=sys.stderr)
         return 1
+
+    # Create timestamped session directory to prevent artifact overwrites
+    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    workdir = os.path.join(base_workdir, f"deep-{timestamp}")
 
     os.makedirs(workdir, exist_ok=True)
     os.makedirs(os.path.join(workdir, "cohorts"), exist_ok=True)
@@ -408,7 +447,8 @@ def cmd_init(args):
 
 def cmd_cohort(args):
     """Select next cohort of repos (larger, complex repos)."""
-    workdir = os.environ.get("BAKEOFF_FEATURES_WORKDIR", args.workdir or ".")
+    workdir = resolve_workdir(args.workdir)
+    print(f"Workdir: {workdir}")
     state = load_state(workdir)
 
     if not state:
@@ -526,7 +566,8 @@ def cmd_cohort(args):
 
 def cmd_run(args):
     """Run feature battery on current cohort."""
-    workdir = os.environ.get("BAKEOFF_FEATURES_WORKDIR", args.workdir or ".")
+    workdir = resolve_workdir(args.workdir)
+    print(f"Workdir: {workdir}")
     state = load_state(workdir)
 
     if not state:
@@ -687,7 +728,8 @@ def cmd_run(args):
 
 def cmd_diagnose(args):
     """Diagnose issues and generate quality metrics report."""
-    workdir = os.environ.get("BAKEOFF_FEATURES_WORKDIR", args.workdir or ".")
+    workdir = resolve_workdir(args.workdir)
+    print(f"Workdir: {workdir}")
     state = load_state(workdir)
 
     if not state:
@@ -923,7 +965,8 @@ def cmd_diagnose(args):
 
 def cmd_status(args):
     """Show feature bakeoff session status."""
-    workdir = os.environ.get("BAKEOFF_FEATURES_WORKDIR", args.workdir or ".")
+    workdir = resolve_workdir(args.workdir)
+    print(f"Workdir: {workdir}")
     state = load_state(workdir)
 
     if not state:
@@ -998,7 +1041,7 @@ def main():
     # init
     p_init = subparsers.add_parser("init", help="Initialize feature bakeoff session")
     p_init.add_argument("--pool", required=True, help="Path to repo pool")
-    p_init.add_argument("--workdir", required=True, help="Working directory for outputs")
+    p_init.add_argument("--workdir", help=f"Working directory for outputs (default: {DEFAULT_BAKEOFF_DIR})")
 
     # cohort
     p_cohort = subparsers.add_parser("cohort", help="Select next cohort (larger repos)")

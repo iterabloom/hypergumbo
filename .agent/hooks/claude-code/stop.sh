@@ -2,8 +2,9 @@
 # Claude Code Stop hook adapter
 # See ADR-0008 for governance protocol
 #
-# Three-way decision logic:
+# Decision logic:
 # 1. Pending TODOs in ledger → block with pending items listing
+# 1.5. Bakeoff convergence summary → informational (appended to prompt)
 # 2. Cooldown (reflection completed <30 min ago) → block with cooldown prompt
 # 3. Stale reflection → block with full checklist
 
@@ -43,6 +44,43 @@ EOF
   exit 0
 fi
 
+# Path 1.5: Bakeoff convergence summary (informational, appended to prompts)
+BAKEOFF_SUFFIX=""
+BAKEOFF_DIR="$HOME/hypergumbo_lab_notebook/bakeoff_artifacts"
+if [[ -d "$BAKEOFF_DIR" ]]; then
+  # Find most recent session's state.json (broad-* or deep-*)
+  LATEST_STATE=$(find "$BAKEOFF_DIR" -maxdepth 2 -name state.json -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+  if [[ -n "$LATEST_STATE" ]]; then
+    BAKEOFF_SUMMARY=$(python3 -c "
+import json, sys
+try:
+    with open('$LATEST_STATE') as f:
+        state = json.load(f)
+    ch = state.get('convergence_history', [])
+    if not ch:
+        sys.exit(0)
+    latest = ch[-1]
+    crit = latest.get('critical', 0)
+    high = latest.get('high', 0)
+    new = latest.get('new_issues', 0)
+    cohort_num = latest.get('cohort', '?')
+    iteration = latest.get('iteration', '?')
+    if crit == 0 and high == 0 and new == 0:
+        print(f'CONVERGED cohort={cohort_num} iter={iteration}')
+    else:
+        print(f'NEEDS_WORK cohort={cohort_num} iter={iteration} critical={crit} high={high} new={new}')
+except Exception:
+    pass
+" 2>/dev/null || true)
+
+    if [[ "$BAKEOFF_SUMMARY" == CONVERGED* ]]; then
+      BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest bakeoff session is CONVERGED — no critical/high issues. Running another bakeoff on the same cohort would be redundant. Consider: selecting a new cohort, mining existing artifacts, or moving to other work items.'
+    elif [[ "$BAKEOFF_SUMMARY" == NEEDS_WORK* ]]; then
+      BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest bakeoff session has outstanding issues. Consider investigating these before starting new work.'
+    fi
+  fi
+fi
+
 # Path 2: Check cooldown (reflection completed within last 30 minutes)
 STATE_FILE="$REPO_ROOT/.agent/last_stop_check.json"
 # Backward compat: fall back to old filename if new one doesn't exist
@@ -56,7 +94,8 @@ if [[ -f "$STATE_FILE" ]]; then
   ELAPSED_MIN=$(( (NOW_EPOCH - LAST_EPOCH) / 60 ))
 
   if [[ "$ELAPSED_MIN" -lt 30 ]]; then
-    COOLDOWN_PROMPT=$(cat "$REPO_ROOT/.agent/cooldown_prompt.md" | jq -Rs .)
+    COOLDOWN_CONTENT=$(cat "$REPO_ROOT/.agent/cooldown_prompt.md")
+    COOLDOWN_PROMPT=$(printf '%s%s' "$COOLDOWN_CONTENT" "$BAKEOFF_SUFFIX" | jq -Rs .)
     cat <<EOF
 {
   "decision": "block",
@@ -68,7 +107,8 @@ EOF
 fi
 
 # Path 3: Full reflection checklist (stale or no prior reflection)
-REFLECTION_PROMPT=$(cat "$REPO_ROOT/.agent/stop_reflect.md" | jq -Rs .)
+REFLECTION_CONTENT=$(cat "$REPO_ROOT/.agent/stop_reflect.md")
+REFLECTION_PROMPT=$(printf '%s%s' "$REFLECTION_CONTENT" "$BAKEOFF_SUFFIX" | jq -Rs .)
 cat <<EOF
 {
   "decision": "block",

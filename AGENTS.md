@@ -506,8 +506,10 @@ When in DEEP mode, focus on feature quality rather than parse correctness:
 
 DEEP mode scripts:
 ```bash
-# Initialize and run feature bakeoff
-./scripts/bakeoff-features init --pool ~/repos --workdir /tmp/feature-bakeoff
+# Initialize and run feature bakeoff (no --workdir needed — uses canonical default)
+./scripts/bakeoff-features init --pool ~/repos
+# → Creates ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-YYYYMMDD-HHMMSS/
+
 ./scripts/bakeoff-features cohort --count 4 --min-size 20 --max-size 200
 ./scripts/bakeoff-features run
 ./scripts/bakeoff-features diagnose
@@ -518,6 +520,32 @@ DEEP mode scripts:
 ```
 
 See ADR-0009 for design rationale.
+
+### Bakeoff Artifacts
+
+Both `scripts/bakeoff` and `scripts/bakeoff-features` store artifacts in a canonical default location:
+
+```
+~/hypergumbo_lab_notebook/bakeoff_artifacts/
+├── broad-20260206-183000/   # bakeoff session (timestamped)
+│   ├── state.json
+│   ├── cohorts/
+│   ├── out/
+│   └── diag/
+├── deep-20260206-190000/    # bakeoff-features session (timestamped)
+│   ├── state.json
+│   ├── cohorts/
+│   ├── out/
+│   └── diag/
+└── ...
+```
+
+Key design decisions:
+- **`init` creates timestamped session directories** — prior bakeoff artifacts are never overwritten
+- **Subsequent commands auto-discover the latest session** — no need to remember the full path
+- **Every subcommand prints the resolved workdir** — always visible which session is active
+- **Env vars still work for overrides:** `BAKEOFF_WORKDIR` (broad) and `BAKEOFF_FEATURES_WORKDIR` (deep)
+- **Artifacts persist across sessions** — mine them before running new bakeoffs
 
 ## Modifying This Document
 - Propose changes via PR with rationale.
