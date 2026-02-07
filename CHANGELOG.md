@@ -85,6 +85,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **httpx IPv6 CIDR proxy bug workaround**: Fixed embedding model loading failures when `NO_PROXY` environment variable contains IPv6 CIDR notation (e.g., `fd00:200::/40`). httpx 0.25+ has a bug where IPv6 CIDR in NO_PROXY causes `InvalidURL: Invalid port` errors. The workaround temporarily sanitizes NO_PROXY during model initialization.
 - **smart-test scoped mode total coverage**: Fixed smart-test scoped mode incorrectly failing when total project coverage was below 100%. Scoped mode should only enforce coverage on changed files, not the entire codebase.
 - **bakeoff-features forward slice flags**: Removed `--exclude-utility` from forward slices in `bakeoff-features run`. Entry points may reside in utility directories (e.g., `docs_src/` for FastAPI) but their dependencies are still useful for assessment.
+- **Dead code in extract_usage_value "last" transform**: Removed redundant `if " | " in expr:` check inside the "last" transform handler — the outer guard at the top of the pipe processing block already guarantees this condition is true.
 
 ### Removed
 

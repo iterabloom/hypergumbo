@@ -533,15 +533,16 @@ def extract_usage_value(ctx: "UsageContext", expr: str) -> str | None:
                 parts_split = value.split(delim)
                 value = delim.join(parts_split)  # Keep value for next transform
             elif transform == "last":
-                # Assumes previous was split, take last element
-                if " | " in expr:
-                    # Re-parse to find delimiter from previous split
-                    for prev in reversed(parts[:parts.index(transform)]):
-                        if prev.strip().startswith("split:"):
-                            delim = prev.strip()[6:]
-                            parts_split = value.split(delim)
-                            value = parts_split[-1] if parts_split else value
-                            break
+                # Assumes previous was split, take last element.
+                # Re-parse to find delimiter from previous split.
+                # (We're always inside the " | " branch from line 520,
+                # so parts is guaranteed to exist.)
+                for prev in reversed(parts[:parts.index(transform)]):
+                    if prev.strip().startswith("split:"):
+                        delim = prev.strip()[6:]
+                        parts_split = value.split(delim)
+                        value = parts_split[-1] if parts_split else value
+                        break
         return value
 
     # Handle literal values
