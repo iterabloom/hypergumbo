@@ -46,6 +46,26 @@ patterns:
       export_name: "metadata.export_name"
       is_default: "literal:false"
 
+  # === Python: Definition-based (__init__.py public symbols) ===
+  # Python libraries expose their public API through __init__.py files.
+  # Symbols defined/imported in __init__.py are the package's public interface.
+  # Private symbols (prefixed with _) are excluded via symbol_name filter.
+  # Test files are handled by the entrypoint scorer's test-file penalty.
+
+  # Public functions in __init__.py (e.g., create_app, get_application)
+  - concept: library_export
+    symbol_name: "^[^_]"
+    symbol_kind: "^function$"
+    language: "^python$"
+    symbol_path: "__init__\\.py$"
+
+  # Public classes in __init__.py (e.g., FastAPI, Flask, Django)
+  - concept: library_export
+    symbol_name: "^[^_]"
+    symbol_kind: "^class$"
+    language: "^python$"
+    symbol_path: "__init__\\.py$"
+
   # === Go: Definition-based (exported symbols) ===
   # Go convention: exported symbols start with uppercase.
   # Matches functions, types, interfaces, and structs.

@@ -146,6 +146,7 @@ class Pattern:
         parameter_type: Regex pattern to match against parameter types
         symbol_kind: Regex pattern to match against symbol kind field
         modifiers_exclude: Regex pattern to reject symbols with matching modifiers
+        symbol_path: Regex pattern to match against symbol's file path (search, not match)
         extract_path: JSONPath-like expression to extract route path from metadata
         extract_method: How to derive HTTP method (decorator_suffix, kwargs.methods, etc.)
         prefix_from_parent: Concept name to look up on parent class for path prefix
@@ -167,6 +168,7 @@ class Pattern:
     extract_method: str | None = None
     prefix_from_parent: str | None = None
     modifiers_exclude: str | None = None
+    symbol_path: str | None = None
     usage: UsagePatternSpec | None = None
     extract: dict[str, str] | None = None
 
@@ -194,6 +196,9 @@ class Pattern:
         self._modifiers_exclude_re = (
             re.compile(self.modifiers_exclude) if self.modifiers_exclude else None
         )
+        self._symbol_path_re = (
+            re.compile(self.symbol_path) if self.symbol_path else None
+        )
 
     def matches(self, symbol: Symbol) -> dict[str, Any] | None:
         """Check if this pattern matches the given symbol.
@@ -208,6 +213,12 @@ class Pattern:
         # Language filter: if specified, symbol's language must match (AND'd with other conditions)
         if self._language_re:
             if not symbol.language or not self._language_re.match(symbol.language):
+                return None
+
+        # File path filter: if specified, symbol's file path must match
+        # Used for Python __init__.py library export detection
+        if self._symbol_path_re:
+            if not symbol.path or not self._symbol_path_re.search(symbol.path):
                 return None
 
         # Modifiers exclusion filter: reject symbols with any matching modifier
@@ -650,6 +661,7 @@ class FrameworkPatternDef:
                 parameter_type=p.get("parameter_type"),
                 symbol_kind=p.get("symbol_kind"),
                 modifiers_exclude=p.get("modifiers_exclude"),
+                symbol_path=p.get("symbol_path"),
                 extract_path=p.get("extract_path"),
                 extract_method=p.get("extract_method"),
                 prefix_from_parent=p.get("prefix_from_parent"),

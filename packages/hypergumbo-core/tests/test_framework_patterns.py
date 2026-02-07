@@ -14248,3 +14248,134 @@ class TestLibraryExportPatterns:
             modifiers=["public"],
         )
         assert pattern.matches(public_annotated_sym) is not None
+
+    def test_symbol_path_pattern_matching(self) -> None:
+        """Pattern with symbol_path matches against symbol's file path."""
+        pattern = Pattern(
+            concept="library_export",
+            symbol_kind="^(function|class)$",
+            language="^python$",
+            symbol_path="__init__\\.py$",
+        )
+
+        # Symbol in __init__.py - should match
+        init_sym = Symbol(
+            id="python:fastapi/__init__.py:1-5:FastAPI:class",
+            name="FastAPI",
+            kind="class",
+            language="python",
+            path="fastapi/__init__.py",
+            span=Span(1, 5, 0, 50),
+        )
+        assert pattern.matches(init_sym) is not None
+
+        # Symbol NOT in __init__.py - should NOT match
+        other_sym = Symbol(
+            id="python:fastapi/routing.py:1-5:APIRoute:class",
+            name="APIRoute",
+            kind="class",
+            language="python",
+            path="fastapi/routing.py",
+            span=Span(1, 5, 0, 50),
+        )
+        assert pattern.matches(other_sym) is None
+
+    def test_symbol_path_ands_with_other_filters(self) -> None:
+        """symbol_path filter AND's with language, symbol_kind, etc."""
+        pattern = Pattern(
+            concept="library_export",
+            symbol_kind="^function$",
+            language="^python$",
+            symbol_path="__init__\\.py$",
+        )
+
+        # Class in __init__.py - doesn't match (wrong kind)
+        cls_sym = Symbol(
+            id="python:pkg/__init__.py:1-5:MyClass:class",
+            name="MyClass",
+            kind="class",
+            language="python",
+            path="pkg/__init__.py",
+            span=Span(1, 5, 0, 50),
+        )
+        assert pattern.matches(cls_sym) is None
+
+    def test_python_init_function_matches_library_export(self) -> None:
+        """Python functions in __init__.py match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="python:mylib/__init__.py:1-5:create_app:function",
+            name="create_app",
+            kind="function",
+            language="python",
+            path="mylib/__init__.py",
+            span=Span(1, 5, 0, 50),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_python_init_class_matches_library_export(self) -> None:
+        """Python classes in __init__.py match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="python:fastapi/__init__.py:1-50:FastAPI:class",
+            name="FastAPI",
+            kind="class",
+            language="python",
+            path="fastapi/__init__.py",
+            span=Span(1, 50, 0, 50),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_python_non_init_not_library_export(self) -> None:
+        """Python symbols NOT in __init__.py should not match library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="python:fastapi/routing.py:1-50:APIRoute:class",
+            name="APIRoute",
+            kind="class",
+            language="python",
+            path="fastapi/routing.py",
+            span=Span(1, 50, 0, 50),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 0
+
+    def test_python_private_not_library_export(self) -> None:
+        """Python private symbols (underscore prefix) in __init__.py should NOT match."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="python:pkg/__init__.py:1-5:_internal_helper:function",
+            name="_internal_helper",
+            kind="function",
+            language="python",
+            path="pkg/__init__.py",
+            span=Span(1, 5, 0, 50),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 0
