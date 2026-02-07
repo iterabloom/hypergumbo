@@ -171,8 +171,8 @@ git log --show-signature -1  # Should show "Good signature"
 ### Version Consistency
 
 Before releasing, ensure version is consistent across:
-- `pyproject.toml` (`version = "X.Y.Z"`)
-- `src/hypergumbo/__init__.py` (`__version__ = "X.Y.Z"`)
+- `packages/hypergumbo/pyproject.toml` (`version = "X.Y.Z"`)
+- `packages/hypergumbo-core/src/hypergumbo_core/__init__.py` (`__version__ = "X.Y.Z"`)
 - Git tag (`vX.Y.Z`)
 
 The `prepare-release` script handles this automatically.

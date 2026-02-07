@@ -4,22 +4,22 @@ This document lists web and application frameworks that hypergumbo can analyze o
 
 ## Currently Supported (with YAML patterns)
 
-See `src/hypergumbo/frameworks/*.yaml` for the full list. Currently ~49 patterns including:
+See `packages/hypergumbo-core/src/hypergumbo_core/frameworks/*.yaml` for the full list. Currently 82 framework patterns + 5 convention patterns = 87 total YAML files.
 
 ### Python
-- Django, Flask, FastAPI, Tornado, Aiohttp, Starlette, Celery, Pyramid, Bottle, Flask-Appbuilder, Sanic, Quart, Falcon
+- Django, Flask, FastAPI, Tornado, Aiohttp, Celery, Pyramid, Bottle, Flask-Appbuilder, Flask-RESTful, Sanic, Quart, Falcon, Litestar, Masonite
 
 ### JavaScript/Node.js
-- Express, Fastify, Koa, Hapi, NestJS, Next.js, Electron
+- Express, Fastify, Koa, Hapi, NestJS, Next.js, Nuxt, Remix, SvelteKit, AdonisJS, Feathers, Restify, Electron, Nex
 
 ### Ruby
-- Rails, Sinatra, Grape
+- Rails, Sinatra, Grape, Hanami, Roda, Padrino
 
 ### Java/Kotlin/Scala
-- Spring Boot, Micronaut, Ktor, Play, Akka HTTP, JAX-RS (Jersey)
+- Spring Boot, Micronaut, Quarkus, Ktor, Http4k, Play, Akka HTTP, Scalatra, http4s, JAX-RS (Jersey), Javalin, Vert.x
 
 ### PHP
-- Laravel, Slim
+- Laravel, Slim, Symfony, CodeIgniter, Yii, CakePHP, Laminas, FuelPHP, Lumen
 
 ### Go
 - go-web (covers Gin, Echo, Fiber, Chi, Gorilla Mux, etc.)
@@ -27,14 +27,32 @@ See `src/hypergumbo/frameworks/*.yaml` for the full list. Currently ~49 patterns
 ### Rust
 - rust-web (covers Actix-web, Axum, Rocket, etc.)
 
-### Elixir
-- Phoenix, Plug, Nex
+### Elixir/Erlang
+- Phoenix, Plug, Cowboy
 
 ### Swift
 - Vapor
 
-### .NET
-- ASP.NET Core
+### .NET/F#
+- ASP.NET Core, Giraffe
+
+### Haskell
+- Servant, Scotty
+
+### Clojure
+- Ring/Compojure, Pedestal
+
+### R
+- Shiny, Plumber
+
+### Lua
+- OpenResty
+
+### C++
+- Qt
+
+### Cross-language
+- CLI patterns (Python, Go, JS, Ruby, Rust), GraphQL, Library Exports
 
 ---
 
@@ -335,9 +353,9 @@ A framework warrants a dedicated YAML pattern when it:
 ## Contributing New Framework Patterns
 
 To add support for a new framework:
-1. Create `src/hypergumbo/frameworks/<framework>.yaml`
+1. Create `packages/hypergumbo-core/src/hypergumbo_core/frameworks/<framework>.yaml`
 2. Define patterns for routes, handlers, models, etc.
-3. Add tests in `tests/test_framework_patterns.py`
+3. Add tests in `packages/hypergumbo-core/tests/test_framework_patterns.py`
 4. Update `CHANGELOG.md`
 
 See existing YAML patterns for examples.

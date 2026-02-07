@@ -95,11 +95,11 @@ This document tracks domain-specific languages and file formats that could benef
 
 | Grammar | Files | Status | Notes |
 |---------|-------|--------|-------|
-| GDScript | `.gd` | 📦 On PyPI | Godot scripting, `tree-sitter-gdscript` |
+| GDScript | `.gd` | ✅ Already in hypergumbo | Godot scripting |
 | Godot Shaders | `.gdshader` | 🆕 | Godot shader language |
 | Godot Resources | `.tres`, `.tscn` | 🆕 | Godot scene/resource format |
 | Lua (Roblox) | `.lua` | ✅ Already in hypergumbo | Roblox uses Luau variant |
-| Luau | `.luau` | 🆕 | Roblox's typed Lua |
+| Luau | `.luau` | ✅ Already in hypergumbo | Roblox's typed Lua |
 | UnrealScript | `.uc` | 🆕 | Unreal Engine (legacy) |
 | Blueprints | `.uasset` | 🆕 | Unreal visual scripting (binary) |
 | Unity ShaderLab | `.shader` | 🆕 | Unity shader language |
@@ -218,7 +218,7 @@ This document tracks domain-specific languages and file formats that could benef
 | Dockerfile | `Dockerfile` | ✅ Already in hypergumbo | Container definitions |
 | Kubernetes | `.yaml` | ✅ Already in hypergumbo | K8s manifests (YAML) |
 | Ansible | `.yaml` | ✅ Already in hypergumbo | Automation playbooks |
-| Puppet | `.pp` | 🆕 | Configuration management |
+| Puppet | `.pp` | ✅ Already in hypergumbo | Configuration management |
 | Chef | `.rb` | ✅ Already in hypergumbo | Ruby-based config |
 | Salt | `.sls` | 🆕 | YAML-based config |
 | Pulumi | `.ts`, `.py` | ✅ Already in hypergumbo | IaC in general-purpose langs |
@@ -230,9 +230,9 @@ This document tracks domain-specific languages and file formats that could benef
 | LaTeX | `.tex` | ✅ Already in hypergumbo | Scientific documents |
 | Typst | `.typ` | 📦 On PyPI | Modern LaTeX alternative |
 | AsciiDoc | `.adoc` | 🆕 | Technical documentation |
-| reStructuredText | `.rst` | 🆕 | Python documentation |
+| reStructuredText | `.rst` | ✅ Already in hypergumbo | Python documentation |
 | Org Mode | `.org` | 🆕 | Emacs outliner/notes |
-| Markdown | `.md` | 🆕 | Would detect frontmatter, links |
+| Markdown | `.md` | ✅ Already in hypergumbo | Frontmatter, links, headings |
 | Jupyter | `.ipynb` | 🆕 | Notebook cell structure (JSON) |
 | Quarto | `.qmd` | 🆕 | Scientific publishing |
 | R Markdown | `.Rmd` | 🆕 | R + Markdown |
@@ -247,7 +247,7 @@ This document tracks domain-specific languages and file formats that could benef
 | Roc | `.roc` | 🆕 | Fast functional language |
 | Unison | `.u` | 🆕 | Content-addressed code |
 | Koka | `.kk` | 🆕 | Effect-typed language |
-| Gleam | `.gleam` | 📦 On PyPI | Type-safe BEAM language |
+| Gleam | `.gleam` | ✅ Already in hypergumbo | Type-safe BEAM language |
 | Pkl | `.pkl` | 🆕 | Apple's configuration language |
 
 ---
@@ -288,4 +288,4 @@ Smaller communities but unique value:
 - Python-based tools (Mesa, ASE, OpenMM) already work via Python analyzer; could add framework-specific pattern detection
 - Binary formats (FBX, Blueprints) are not candidates for tree-sitter
 
-*Last updated: 2025-12-28*
+*Last updated: 2026-02-06*

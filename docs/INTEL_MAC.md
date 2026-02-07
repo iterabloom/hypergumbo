@@ -2,7 +2,7 @@
 
 Some tree-sitter grammar packages lack pre-built wheels for Intel Macs (x86_64 Darwin), causing installation failures. This guide provides a Docker-based workaround that mimics `pipx` behavior.
 
-**Limitation:** Lean and Wolfram analyzers require building grammars from source inside the container, which this setup does not support. All other 49 analyzers work.
+**Limitation:** Lean and Wolfram analyzers require building grammars from source inside the container, which this setup does not support. All other 102 analyzers work.
 
 ## How It Works
 
@@ -18,19 +18,19 @@ mkdir -p ~/.local/share/hypergumbo-docker
 cat > ~/.local/share/hypergumbo-docker/Dockerfile <<'EOF'
 FROM python:3.11 AS builder
 RUN pip install -U pip wheel
-RUN pip wheel --wheel-dir /wheels "hypergumbo==0.6.0"
+RUN pip wheel --wheel-dir /wheels "hypergumbo==2.0.2"
 
 FROM python:3.11-slim
 COPY --from=builder /wheels /wheels
 RUN pip install -U pip \
- && pip install --no-index --find-links=/wheels "hypergumbo==0.6.0" \
+ && pip install --no-index --find-links=/wheels "hypergumbo==2.0.2" \
  && rm -rf /wheels
 WORKDIR /work
 ENTRYPOINT ["hypergumbo"]
 CMD ["--help"]
 EOF
 
-docker build -t hypergumbo:0.6.0 ~/.local/share/hypergumbo-docker
+docker build -t hypergumbo:2.0.2 ~/.local/share/hypergumbo-docker
 ```
 
 ### 2. Create the PATH shim
@@ -42,7 +42,7 @@ cat > ~/.local/bin/hypergumbo <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
-IMAGE="${HYPERGUMBO_IMAGE:-hypergumbo:0.6.0}"
+IMAGE="${HYPERGUMBO_IMAGE:-hypergumbo:2.0.2}"
 
 # Allocate a TTY only if we're in one
 TTY=()
@@ -104,10 +104,10 @@ hypergumbo /Users/you/some/repo -t 500
 
 ### Write-enabled mode
 
-By default, the repo is mounted read-only. For commands that write (like `hypergumbo init`):
+By default, the repo is mounted read-only. For commands that write output files:
 
 ```bash
-HYPERGUMBO_DOCKER_RO=0 hypergumbo init
+HYPERGUMBO_DOCKER_RO=0 hypergumbo run --out results.json
 ```
 
 ### Upgrading
@@ -124,7 +124,7 @@ docker build -t hypergumbo:X.Y.Z ~/.local/share/hypergumbo-docker
 
 ```bash
 rm -f ~/.local/bin/hypergumbo
-docker rmi -f hypergumbo:0.6.0 2>/dev/null || true
+docker rmi -f hypergumbo:2.0.2 2>/dev/null || true
 rm -rf ~/.local/share/hypergumbo-docker ~/.cache/hypergumbo-docker ~/.config/hypergumbo-docker
 ```
 
