@@ -1,6 +1,6 @@
 # Cross-Language Linkers
 
-Hypergumbo includes 18 linkers that connect symbols across language boundaries. Linkers run automatically during `hypergumbo run` after all language analyzers complete.
+Hypergumbo includes 19 linkers that connect symbols across language boundaries. Linkers run automatically during `hypergumbo run` after all language analyzers complete.
 
 ## Linker Table
 
@@ -21,6 +21,7 @@ Hypergumbo includes 18 linkers that connect symbols across language boundaries. 
 | Event Sourcing | EventEmitter, Django signals, Spring events |
 | Dependency | Manifest dependencies (Cargo.toml, pyproject.toml) → code imports |
 | Subprocess | `subprocess.run()` → CLI command handlers (Click, Typer, argparse) |
+| Containment | Class/interface symbols → method/getter/setter symbols (`contains` edges) |
 | Inheritance | `base_classes` metadata → `extends`/`implements` edges across all languages |
 | Route Handler | Route symbols → handler functions (Rails, Phoenix, Laravel, Express, Django) |
 | Type Hierarchy | Interface/abstract methods → concrete implementations (`dispatches_to` edges) |

@@ -715,7 +715,7 @@ Source Files
 │                          LINKERS                                │
 │  Cross-language edge creation                                   │
 │  Match via meta.concepts (route paths, gRPC services, etc.)     │
-│  18 linkers: HTTP, gRPC, GraphQL, WebSocket, IPC, JNI, etc.     │
+│  19 linkers: HTTP, gRPC, GraphQL, WebSocket, IPC, JNI, etc.     │
 └─────────────────────────────────────────────────────────────────┘
                           │
                           ▼

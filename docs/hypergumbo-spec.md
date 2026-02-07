@@ -330,7 +330,7 @@ class AnalysisPass(Protocol):
         ...
 ```
 
-See §4 "Supported stacks" for the full list of 104 language analyzers, 18 cross-language linkers, and 87 pattern files (5 convention + 82 framework). Detailed reference: [LANGUAGES.md](LANGUAGES.md), [LINKERS.md](LINKERS.md).
+See §4 "Supported stacks" for the full list of 104 language analyzers, 19 cross-language linkers, and 87 pattern files (5 convention + 82 framework). Detailed reference: [LANGUAGES.md](LANGUAGES.md), [LINKERS.md](LINKERS.md).
 
 ## 6) Output: "Repo Behavior Map" JSON (v0.1)
 

@@ -423,11 +423,14 @@ def test_run_detects_method_calls_on_self(tmp_path: Path) -> None:
     assert len(data["nodes"]) == 3
 
     # Should detect run -> helper via self.helper()
-    assert len(data["edges"]) == 1
-    edge = data["edges"][0]
-    assert edge["type"] == "calls"
-    assert "run" in edge["src"]
-    assert "helper" in edge["dst"]
+    call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+    assert len(call_edges) == 1
+    assert "run" in call_edges[0]["src"]
+    assert "helper" in call_edges[0]["dst"]
+
+    # Should also have contains edges from Service to its methods
+    contains_edges = [e for e in data["edges"] if e["type"] == "contains"]
+    assert len(contains_edges) == 2
 
 
 def test_run_detects_class_instantiation(tmp_path: Path) -> None:

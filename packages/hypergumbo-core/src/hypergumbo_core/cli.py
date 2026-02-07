@@ -49,6 +49,7 @@ from .analyze.all_analyzers import run_all_analyzers
 from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
 from .linkers.registry import LinkerContext, run_all_linkers
 # Import linker modules to trigger @register_linker decoration (side effect imports)
+import hypergumbo_core.linkers.containment as _containment_linker  # noqa: F401
 import hypergumbo_core.linkers.database_query as _database_query_linker  # noqa: F401
 import hypergumbo_core.linkers.dependency as _dependency_linker  # noqa: F401
 import hypergumbo_core.linkers.event_sourcing as _event_sourcing_linker  # noqa: F401
