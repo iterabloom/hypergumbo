@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ------------------------------------------------------------------
+# list-my-prs: List open PRs for this repository
+#
+# Usage:
+#   list-my-prs              List all open PRs (default)
+#   list-my-prs --all        Include closed/merged PRs
+#   list-my-prs --closed     Show only closed PRs
+#   list-my-prs --help       Show help
+#
+# Exit codes:
+#   0 = success
+#   1 = failure (auth error, API error)
+# ------------------------------------------------------------------
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=lib/forgejo-api.sh
+source "$SCRIPT_DIR/lib/forgejo-api.sh"
+
+load_env
+detect_api_base
+
+# ------------------------------------------------------------------
+# Parse arguments
+# ------------------------------------------------------------------
+STATE="open"
+
+usage() {
+	echo "Usage: list-my-prs [options]"
+	echo ""
+	echo "Options:"
+	echo "  --all       Show all PRs (open, closed, merged)"
+	echo "  --closed    Show only closed/merged PRs"
+	echo "  --help      Show this help"
+	echo ""
+	echo "Examples:"
+	echo "  list-my-prs              # open PRs only"
+	echo "  list-my-prs --all        # everything"
+	echo "  list-my-prs --closed     # closed/merged only"
+}
+
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--all)
+		STATE=""
+		shift
+		;;
+	--closed)
+		STATE="closed"
+		shift
+		;;
+	--help | -h)
+		usage
+		exit 0
+		;;
+	*)
+		echo "Unknown option: $1"
+		usage
+		exit 1
+		;;
+	esac
+done
+
+# ------------------------------------------------------------------
+# Validate credentials
+# ------------------------------------------------------------------
+TOKEN="${FORGEJO_TOKEN:-}"
+if [[ -z "$TOKEN" ]]; then
+	echo "Error: FORGEJO_TOKEN not set. Source .env or set FORGEJO_TOKEN."
+	exit 1
+fi
+
+# ------------------------------------------------------------------
+# Fetch PRs
+# ------------------------------------------------------------------
+QUERY="sort=recentupdate&limit=50"
+if [[ -n "$STATE" ]]; then
+	QUERY="state=$STATE&$QUERY"
+fi
+
+if ! api_get "$API_BASE/pulls?$QUERY"; then
+	echo "❌ Failed to fetch PRs (HTTP $API_HTTP_CODE)"
+	exit 1
+fi
+
+# ------------------------------------------------------------------
+# Format output
+# ------------------------------------------------------------------
+python3 -c "
+import sys, json
+
+try:
+    data = json.load(sys.stdin)
+except (json.JSONDecodeError, Exception) as e:
+    print(f'❌ Failed to parse API response: {e}', file=sys.stderr)
+    sys.exit(1)
+
+if not data:
+    print('No PRs found.')
+    sys.exit(0)
+
+for pr in data:
+    num = pr.get('number', '?')
+    title = pr.get('title', '(no title)')
+    state = pr.get('state', '?')
+    merged = pr.get('merged', False)
+    branch = pr.get('head', {}).get('ref', '?')
+    base = pr.get('base', {}).get('ref', '?')
+    user = pr.get('user', {}).get('login', '?')
+    updated = pr.get('updated_at', '')[:10]
+
+    if merged:
+        icon = '🟣'
+        label = 'merged'
+    elif state == 'open':
+        icon = '🟢'
+        label = 'open'
+    else:
+        icon = '⚫'
+        label = 'closed'
+
+    print(f'{icon} #{num:<5} {label:<8} {branch} → {base}')
+    print(f'         {title}')
+    print(f'         by {user}  updated {updated}')
+    print()
+" <<< "$API_RESPONSE"

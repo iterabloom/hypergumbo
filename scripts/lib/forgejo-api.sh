@@ -2,7 +2,7 @@
 # ------------------------------------------------------------------
 # forgejo-api.sh: Shared library for Forgejo/Gitea API interactions
 #
-# Sourceable by auto-pr, ci-debug, contribute, and merge-pr.
+# Sourceable by auto-pr, ci-debug, contribute, list-my-prs, and merge-pr.
 # Provides: environment loading, API calls with JSON safety,
 # CI polling with timeout, PR search, and merge helpers.
 #
