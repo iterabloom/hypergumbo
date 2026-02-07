@@ -45,27 +45,25 @@ These entries are enforced by the stop hook — they become candidate next actio
 
 ## 5. Decision
 - If root cause is unfixed (even partially) and analogous issues might exist: **DO NOT STOP** — fix the root cause or investigate further
-- If root cause is fixed or truly isolated: document in invariant ledger, then consider the best next action from a big-picture software quality perspective. Strongly consider activating the bakeoff loop or mining existing artifacts.
+- If root cause is fixed or truly isolated: document in invariant ledger, then decide your next action.
 
-## 6. Artifact Analysis
-Prefer mining existing artifacts over running new bakeoffs — large repos take significant time and there are likely enough artifacts already.
+**Next action selection (in priority order):**
+1. **Implementation-ready insights:** Check the lab notebook (`ls -t ~/hypergumbo_lab_notebook/*.md | head -5`) for recent entries that identify concrete code changes. If found, implement them (TDD).
+2. **DEEP/BROAD priority queue:** Check `AGENTS.md` for the next item in the current mode's priority queue.
+3. **Bakeoff or artifact analysis:** Only if 1-2 yielded nothing actionable.
 
-Analysis toolkit (use any combination, all are peers):
-- `./scripts/bakeoff-reflect <path> --cycle N` — qualitative "needs work" vs "doing something special" insights; asks diverse open-ended questions that change each run
+**When you write `notes` in Section 8:** Be specific and implementation-oriented. Not "investigate slice quality" but "add Go library-export patterns to frameworks/library-exports.yaml — Go exported functions in non-internal packages should be detected as LIBRARY_EXPORT entrypoints." The notes field is injected into the cooldown prompt, so future-you will act on exactly what you write.
+
+## 6. Artifact Analysis (If Needed)
+Use analysis when you need data to inform an implementation decision, not as a destination in itself. Every analysis session should end with a concrete "what to implement" conclusion written into either the lab notebook or `last_stop_check.json` notes.
+
+Analysis toolkit (see `~/hypergumbo_lab_notebook/analysis_lib/README.md` for current inventory):
+- `./scripts/bakeoff-reflect <path> --cycle N` — qualitative assessment
 - `scripts/hypergumbo_diag.py` — comprehensive diagnostic report
 - `scripts/analyze-artifacts` — catalog, summary, routes, concepts, edges, gaps
-- `~/hypergumbo_lab_notebook/analysis_lib/` — reusable analysis scripts:
-  - `01_quality_overview.py` — edge density, call coverage, concepts
-  - `02_edge_resolution.py` — cross-file vs same-file vs stdlib
-  - `03_language_comparison.py` — compare analyzers across languages
-  - `04_entrypoint_analysis.py` — entrypoint quality
-  - `05_potential_issues.py` — detect common problems
-  - `06_signature_quality.py` — function signature completeness
-  - `07_complexity_metrics.py` — cyclomatic complexity distribution
-- Add new analysis scripts to `analysis_lib/` as needed (naming: `NN_short_name.py`)
+- `~/hypergumbo_lab_notebook/analysis_lib/` — 18+ reusable analysis scripts (run `ls ~/hypergumbo_lab_notebook/analysis_lib/[0-9]*.py` for current list)
 
-Look for patterns: gaps in detection, edge types, cross-language linking, concept coverage.
-If analysis reveals concerns, investigate the root cause before stopping.
+If analysis reveals concerns, investigate the root cause and implement the fix before stopping.
 
 ## 7. Design Quality Meta-Reflection
 Consider the last few changes made:
@@ -108,9 +106,9 @@ state = {
     'last_pr_state': last_pr_state,
     'pending_todos': pending_todos,
     'unfixed_invariants': unfixed,
-    'notes': ''  # Agent fills in: 1-2 sentences about what to do next
+    'notes': ''  # Agent fills in: specific implementation task(s) for cooldown to act on. Be concrete: "add X pattern to Y file" not "investigate X"
 }
 pathlib.Path('.agent/last_stop_check.json').write_text(json.dumps(state, indent=2) + '\n')
   "
   ```
-  **Important:** Before running, update `last_pr` and `notes` in the script with actual values (the PR number you just merged and a short description of next steps).
+  **Important:** Before running, update `last_pr` and `notes` in the script with actual values. The `notes` field is critical — it gets injected into the cooldown prompt so the next cycle knows what to implement. Write specific, actionable implementation tasks, not vague observations.

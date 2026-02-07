@@ -95,7 +95,15 @@ if [[ -f "$STATE_FILE" ]]; then
 
   if [[ "$ELAPSED_MIN" -lt 30 ]]; then
     COOLDOWN_CONTENT=$(cat "$REPO_ROOT/.agent/cooldown_prompt.md")
-    COOLDOWN_PROMPT=$(printf '%s%s' "$COOLDOWN_CONTENT" "$BAKEOFF_SUFFIX" | jq -Rs .)
+
+    # Inject last reflection notes so cooldown knows what to implement
+    NOTES=$(jq -r '.notes // ""' "$STATE_FILE" 2>/dev/null || true)
+    NOTES_SECTION=""
+    if [[ -n "$NOTES" ]]; then
+      NOTES_SECTION=$(printf '\n\n---\n## LAST REFLECTION NOTES\n%s\n---' "$NOTES")
+    fi
+
+    COOLDOWN_PROMPT=$(printf '%s%s%s' "$COOLDOWN_CONTENT" "$NOTES_SECTION" "$BAKEOFF_SUFFIX" | jq -Rs .)
     cat <<EOF
 {
   "decision": "block",
