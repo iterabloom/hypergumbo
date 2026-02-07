@@ -13,12 +13,13 @@
 # ------------------------------------------------------------------
 set -euo pipefail
 
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo ".")"
-if [[ -f "$REPO_ROOT/.env" ]]; then
-  set -o allexport
-  source "$REPO_ROOT/.env"
-  set +o allexport
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=lib/forgejo-api.sh
+source "$SCRIPT_DIR/lib/forgejo-api.sh"
+
+load_env
+detect_api_base
 
 TOKEN="${FORGEJO_TOKEN:-}"
 if [[ -z "$TOKEN" ]]; then
@@ -26,53 +27,45 @@ if [[ -z "$TOKEN" ]]; then
   exit 1
 fi
 
-REMOTE_URL="$(git remote get-url origin)"
-REPO_SLUG="$(echo "$REMOTE_URL" | sed 's/\.git$//' | awk -F'[:/]' '{print $(NF-1)"/"$NF}')"
-
-# Auto-detect forge host from remote URL
-if [[ -n "${FORGEJO_API_BASE:-}" ]]; then
-  API_BASE="$FORGEJO_API_BASE/repos/$REPO_SLUG"
-elif [[ "$REMOTE_URL" == *"codeberg.org"* ]]; then
-  API_BASE="https://codeberg.org/api/v1/repos/$REPO_SLUG"
-elif [[ "$REMOTE_URL" == *"gitea"* ]] || [[ "$REMOTE_URL" == *"forgejo"* ]]; then
-  # Extract host from URL (supports both https:// and git@ formats)
-  HOST=$(echo "$REMOTE_URL" | sed -E 's|.*[@/]([^:/]+)[:/].*|\1|')
-  API_BASE="https://$HOST/api/v1/repos/$REPO_SLUG"
-else
-  # Default to Codeberg for this project
-  API_BASE="https://codeberg.org/api/v1/repos/$REPO_SLUG"
-fi
-
 usage() {
   echo "Usage: $0 [command]"
   echo ""
   echo "Commands:"
-  echo "  runs           List recent workflow runs (default)"
-  echo "  status [sha]   Get status for a specific commit (default: HEAD)"
-  echo "  analyze-deps   Check tree-sitter packages vs pyproject.toml"
+  echo "  runs              List recent workflow runs (default)"
+  echo "  status [sha]      Get status for a specific commit (default: HEAD)"
+  echo "  pr-status <num>   Show PR state, merged status, HEAD SHA"
+  echo "  analyze-deps      Check tree-sitter packages vs pyproject.toml"
   echo ""
   echo "Examples:"
-  echo "  $0 runs           # Show last 10 runs"
-  echo "  $0 status         # Show status for current commit"
-  echo "  $0 analyze-deps   # Find missing tree-sitter dependencies"
+  echo "  $0 runs              # Show last 10 runs"
+  echo "  $0 status            # Show status for current commit"
+  echo "  $0 pr-status 42      # Show PR #42 details"
+  echo "  $0 analyze-deps      # Find missing tree-sitter dependencies"
 }
 
 cmd_runs() {
   echo "Recent CI runs for $REPO_SLUG:"
   echo "---"
-  curl -sS --max-time 30 -H "Authorization: token $TOKEN" \
-    "$API_BASE/actions/runs?limit=300" | \
-    python3 -c "
+
+  if ! api_get "$API_BASE/actions/runs?limit=300"; then
+    echo "❌ Failed to fetch runs (HTTP $API_HTTP_CODE)"
+    exit 1
+  fi
+
+  echo "$API_RESPONSE" | python3 -c "
 import sys, json
-data = json.load(sys.stdin)
-runs = data.get('workflow_runs', [])
-for r in runs[-15:]:
-    sha = r.get('commit_sha', '')[:8]
-    status = r.get('status')
-    ref = r.get('prettyref', 'N/A')
-    id = r.get('id')
-    marker = '✅' if status == 'success' else '❌' if status == 'failure' else '⏳'
-    print(f'{marker} {id}: {status:10} {ref:15} @ {sha}')
+try:
+    data = json.load(sys.stdin)
+    runs = data.get('workflow_runs', [])
+    for r in runs[-15:]:
+        sha = r.get('commit_sha', '')[:8]
+        status = r.get('status')
+        ref = r.get('prettyref', 'N/A')
+        id = r.get('id')
+        marker = '✅' if status == 'success' else '❌' if status == 'failure' else '⏳'
+        print(f'{marker} {id}: {status:10} {ref:15} @ {sha}')
+except (json.JSONDecodeError, KeyError, TypeError) as e:
+    print(f'Error parsing response: {e}')
 "
 }
 
@@ -80,22 +73,72 @@ cmd_status() {
   local sha="${1:-$(git rev-parse HEAD)}"
   local short_sha="${sha:0:8}"
   echo "CI status for commit $short_sha:"
-  curl -sS --max-time 15 -H "Authorization: token $TOKEN" \
-    "$API_BASE/commits/$sha/status" | \
-    python3 -c "
+
+  if ! api_get "$API_BASE/commits/$sha/status"; then
+    echo "❌ Failed to fetch status (HTTP $API_HTTP_CODE)"
+    exit 1
+  fi
+
+  echo "$API_RESPONSE" | python3 -c "
 import sys, json
-data = json.load(sys.stdin)
-state = data.get('state', 'unknown')
-statuses = data.get('statuses', [])
-print(f'Overall: {state}')
-if statuses:
-    print('Jobs:')
-    for s in statuses:
-        ctx = s.get('context', 'unknown')
-        st = s.get('state', s.get('status', 'unknown'))
-        marker = '✅' if st == 'success' else '❌' if st in ['failure', 'error'] else '⏳'
-        print(f'  {marker} {ctx}: {st}')
+try:
+    data = json.load(sys.stdin)
+    state = data.get('state', 'unknown')
+    statuses = data.get('statuses', [])
+    print(f'Overall: {state}')
+    if statuses:
+        print('Jobs:')
+        for s in statuses:
+            ctx = s.get('context', 'unknown')
+            st = s.get('state', s.get('status', 'unknown'))
+            marker = '✅' if st == 'success' else '❌' if st in ['failure', 'error'] else '⏳'
+            print(f'  {marker} {ctx}: {st}')
+except (json.JSONDecodeError, KeyError, TypeError) as e:
+    print(f'Error parsing response: {e}')
 "
+}
+
+cmd_pr_status() {
+  local pr_num="${1:-}"
+  if [[ -z "$pr_num" ]]; then
+    echo "Error: PR number is required"
+    echo "Usage: $0 pr-status <number>"
+    exit 1
+  fi
+
+  echo "PR #$pr_num status:"
+
+  if ! api_get "$API_BASE/pulls/$pr_num"; then
+    echo "❌ Failed to fetch PR #$pr_num (HTTP $API_HTTP_CODE)"
+    exit 1
+  fi
+
+  local state merged title head_sha head_branch base_branch
+  state=$(echo "$API_RESPONSE" | json_field "state")
+  merged=$(echo "$API_RESPONSE" | json_field "merged")
+  title=$(echo "$API_RESPONSE" | json_field "title")
+  head_sha=$(echo "$API_RESPONSE" | json_field "head.sha")
+  head_branch=$(echo "$API_RESPONSE" | json_field "head.ref")
+  base_branch=$(echo "$API_RESPONSE" | json_field "base.ref")
+
+  echo "  Title:   $title"
+  echo "  State:   $state"
+  echo "  Merged:  $merged"
+  echo "  Branch:  $head_branch → $base_branch"
+  echo "  HEAD:    ${head_sha:0:12}"
+
+  # Also show CI status for the PR's head commit
+  if [[ -n "$head_sha" ]]; then
+    echo ""
+    echo "CI status for HEAD ($head_sha):"
+    if api_get "$API_BASE/commits/$head_sha/status"; then
+      local ci_state
+      ci_state=$(echo "$API_RESPONSE" | json_field "state")
+      echo "  Overall: $ci_state"
+    else
+      echo "  ⚠️  Could not fetch CI status"
+    fi
+  fi
 }
 
 cmd_analyze_deps() {
@@ -131,6 +174,9 @@ case "${1:-runs}" in
     ;;
   status)
     cmd_status "${2:-}"
+    ;;
+  pr-status)
+    cmd_pr_status "${2:-}"
     ;;
   analyze-deps)
     cmd_analyze_deps

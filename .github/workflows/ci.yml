@@ -609,6 +609,7 @@ jobs:
     needs: [changes, stop-the-line, lint, audit, verify-generated, build-grammars, pytest, dco]
     if: always()
     runs-on: codeberg-small-lazy
+    timeout-minutes: 5
     steps:
       - name: Check job results
         run: |

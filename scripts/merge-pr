@@ -1,0 +1,224 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ------------------------------------------------------------------
+# merge-pr: Focused recovery script for merging existing PRs
+#
+# Usage:
+#   merge-pr <PR_NUMBER>                    Merge immediately (verify CI first)
+#   merge-pr <PR_NUMBER> --wait-for-ci      Poll CI then merge
+#   merge-pr <PR_NUMBER> --squash           Squash merge
+#   merge-pr <PR_NUMBER> --timeout 1800     Custom CI wait timeout (seconds)
+#
+# Exit codes:
+#   0 = success (merged, or already merged)
+#   1 = failure (CI failed, merge rejected, auth error)
+#   2 = timeout (CI still pending after deadline)
+#
+# This script does NOT create PR_PENDING — it only cleans it up.
+# Idempotent: if PR is already merged, prints "already merged", exits 0.
+# ------------------------------------------------------------------
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=lib/forgejo-api.sh
+source "$SCRIPT_DIR/lib/forgejo-api.sh"
+
+load_env
+detect_api_base
+
+# ------------------------------------------------------------------
+# Parse arguments
+# ------------------------------------------------------------------
+PR_NUM=""
+WAIT_FOR_CI=false
+FORCE_SQUASH=false
+CUSTOM_TIMEOUT=""
+
+usage() {
+	echo "Usage: merge-pr <PR_NUMBER> [options]"
+	echo ""
+	echo "Options:"
+	echo "  --wait-for-ci   Poll CI status before merging (uses poll_ci)"
+	echo "  --squash        Force squash merge (discouraged)"
+	echo "  --timeout SECS  Custom CI polling timeout (default: 2400s)"
+	echo "  --help          Show this help"
+	echo ""
+	echo "Exit codes:"
+	echo "  0 = Success (merged or already merged)"
+	echo "  1 = Failure (CI failed, merge rejected, auth error)"
+	echo "  2 = Timeout (CI still pending after deadline)"
+}
+
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--wait-for-ci)
+		WAIT_FOR_CI=true
+		shift
+		;;
+	--squash)
+		FORCE_SQUASH=true
+		shift
+		;;
+	--timeout)
+		CUSTOM_TIMEOUT="$2"
+		shift 2
+		;;
+	--help | -h)
+		usage
+		exit 0
+		;;
+	*)
+		if [[ -z "$PR_NUM" ]] && [[ "$1" =~ ^[0-9]+$ ]]; then
+			PR_NUM="$1"
+		else
+			echo "Unknown option: $1"
+			usage
+			exit 1
+		fi
+		shift
+		;;
+	esac
+done
+
+if [[ -z "$PR_NUM" ]]; then
+	echo "Error: PR number is required"
+	echo ""
+	usage
+	exit 1
+fi
+
+# ------------------------------------------------------------------
+# Validate credentials
+# ------------------------------------------------------------------
+TOKEN="${FORGEJO_TOKEN:-}"
+if [[ -z "$TOKEN" ]]; then
+	echo "Error: FORGEJO_TOKEN not set. Source .env or set FORGEJO_TOKEN."
+	exit 1
+fi
+
+# ------------------------------------------------------------------
+# Fetch PR details
+# ------------------------------------------------------------------
+echo "🔍 Fetching PR #$PR_NUM..."
+
+if ! api_get "$API_BASE/pulls/$PR_NUM"; then
+	echo "❌ Failed to fetch PR #$PR_NUM (HTTP $API_HTTP_CODE)"
+	if [[ -n "$API_RESPONSE" ]]; then
+		echo "Response: $API_RESPONSE"
+	fi
+	exit 1
+fi
+
+PR_STATE=$(echo "$API_RESPONSE" | json_field "state")
+PR_MERGED=$(echo "$API_RESPONSE" | json_field "merged")
+PR_TITLE=$(echo "$API_RESPONSE" | json_field "title")
+PR_BODY=$(echo "$API_RESPONSE" | json_field "body")
+HEAD_SHA=$(echo "$API_RESPONSE" | json_field "head.sha")
+HEAD_BRANCH=$(echo "$API_RESPONSE" | json_field "head.ref")
+BASE_BRANCH=$(echo "$API_RESPONSE" | json_field "base.ref")
+
+echo "   Title:  $PR_TITLE"
+echo "   State:  $PR_STATE"
+echo "   Branch: $HEAD_BRANCH → $BASE_BRANCH"
+echo "   HEAD:   ${HEAD_SHA:0:7}"
+
+# ------------------------------------------------------------------
+# Idempotency: already merged
+# ------------------------------------------------------------------
+if [[ "$PR_MERGED" == "True" || "$PR_MERGED" == "true" ]]; then
+	echo ""
+	echo "✅ PR #$PR_NUM is already merged"
+	rm -f "$REPO_ROOT/.git/PR_PENDING"
+	exit 0
+fi
+
+# ------------------------------------------------------------------
+# Validate PR is open
+# ------------------------------------------------------------------
+if [[ "$PR_STATE" != "open" ]]; then
+	echo ""
+	echo "❌ PR #$PR_NUM is not open (state: $PR_STATE)"
+	exit 1
+fi
+
+# ------------------------------------------------------------------
+# Optionally wait for CI
+# ------------------------------------------------------------------
+if [[ "$WAIT_FOR_CI" == "true" ]]; then
+	echo ""
+	echo "⏳ Polling CI Status..."
+
+	if [[ -n "$CUSTOM_TIMEOUT" ]]; then
+		export CI_TIMEOUT_SECONDS="$CUSTOM_TIMEOUT"
+	fi
+
+	poll_result=0
+	poll_ci "$HEAD_SHA" || poll_result=$?
+
+	if [[ $poll_result -eq 1 ]]; then
+		exit 1
+	elif [[ $poll_result -eq 2 ]]; then
+		exit 2
+	fi
+else
+	# Verify CI has already passed (don't merge without CI)
+	echo ""
+	echo "🔍 Checking CI status..."
+
+	if api_get "$API_BASE/commits/$HEAD_SHA/status"; then
+		ci_state=$(echo "$API_RESPONSE" | json_field "state")
+		if [[ "$ci_state" == "success" ]]; then
+			echo "✅ CI passed"
+		elif [[ "$ci_state" == "failure" || "$ci_state" == "error" ]]; then
+			echo "❌ CI has failed — refusing to merge"
+			echo "   Use --wait-for-ci to poll, or fix CI first"
+			exit 1
+		elif [[ "$ci_state" == "pending" ]]; then
+			echo "⚠️  CI is still pending — refusing to merge"
+			echo "   Use --wait-for-ci to poll until CI completes"
+			exit 1
+		else
+			echo "⚠️  CI state: $ci_state — proceeding with caution"
+		fi
+	else
+		echo "⚠️  Could not fetch CI status (HTTP $API_HTTP_CODE) — proceeding with caution"
+	fi
+fi
+
+# ------------------------------------------------------------------
+# Merge
+# ------------------------------------------------------------------
+echo ""
+echo "🔀 Merging PR #$PR_NUM..."
+
+squash_flag="false"
+if [[ "$FORCE_SQUASH" == "true" ]]; then
+	squash_flag="--squash"
+fi
+
+if ! do_merge "$PR_NUM" "$PR_TITLE" "$PR_BODY" "$HEAD_SHA" "$squash_flag"; then
+	echo ""
+	echo "Recovery: fix the issue and retry:"
+	echo "  ./scripts/merge-pr $PR_NUM"
+	exit 1
+fi
+
+# ------------------------------------------------------------------
+# Cleanup
+# ------------------------------------------------------------------
+echo ""
+echo "🧹 Cleaning up..."
+
+rm -f "$REPO_ROOT/.git/PR_PENDING"
+
+# Try to update local branch
+if git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
+	git checkout "$BASE_BRANCH" 2>/dev/null || true
+	git pull origin "$BASE_BRANCH" 2>/dev/null || true
+	git branch -d "$HEAD_BRANCH" 2>/dev/null || true
+fi
+
+echo ""
+echo "✅ PR #$PR_NUM merged successfully!"
+echo "🔗 https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
