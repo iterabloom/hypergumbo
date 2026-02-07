@@ -1,6 +1,6 @@
 # Cross-Language Linkers
 
-Hypergumbo includes 15 linkers that connect symbols across language boundaries. Linkers run automatically during `hypergumbo run` after all language analyzers complete.
+Hypergumbo includes 18 linkers that connect symbols across language boundaries. Linkers run automatically during `hypergumbo run` after all language analyzers complete.
 
 ## Linker Table
 
@@ -21,6 +21,9 @@ Hypergumbo includes 15 linkers that connect symbols across language boundaries. 
 | Event Sourcing | EventEmitter, Django signals, Spring events |
 | Dependency | Manifest dependencies (Cargo.toml, pyproject.toml) → code imports |
 | Subprocess | `subprocess.run()` → CLI command handlers (Click, Typer, argparse) |
+| Inheritance | `base_classes` metadata → `extends`/`implements` edges across all languages |
+| Route Handler | Route symbols → handler functions (Rails, Phoenix, Laravel, Express, Django) |
+| Type Hierarchy | Interface/abstract methods → concrete implementations (`dispatches_to` edges) |
 
 ## How Linkers Work
 
@@ -47,13 +50,13 @@ Without linkers, you'd see isolated subgraphs per language. Linkers reveal the a
 
 ## Adding a New Linker
 
-See `src/hypergumbo/linkers/` for examples. Linkers register via decorator:
+See `packages/hypergumbo-core/src/hypergumbo_core/linkers/` for examples. Linkers register via decorator:
 
 ```python
-from hypergumbo.linkers.registry import register_linker
+from hypergumbo_core.linkers.registry import register_linker, LinkerContext, LinkerResult
 
-@register_linker("myprotocol")
-def link_myprotocol(symbols: list[Symbol], edges: list[Edge]) -> list[Edge]:
+@register_linker("myprotocol", priority=50)
+def link_myprotocol(ctx: LinkerContext) -> LinkerResult:
     # Find cross-language patterns, return new edges
     ...
 ```
