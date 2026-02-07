@@ -44,6 +44,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Per-package coverage check script**: Added `scripts/check-package-coverage` to verify each package achieves 100% coverage when tested in isolation (mimicking CI). Catches cross-package coverage dependencies before pushing.
 - **Test placement guidelines**: Added documentation in AGENTS.md explaining why tests must be in the same package as the code they cover, and why subprocess tests don't contribute to pytest-cov coverage.
 - **Cache management CLI commands**: Added `hypergumbo cache-status` and `hypergumbo cache-clear` for managing the analysis cache (~/.cache/hypergumbo/). Use `cache-status` to see entry count and total size. Use `cache-clear` with `--older-than N` to remove entries older than N days, or `--dry-run` to preview deletions.
+- **Decorator/annotation edge detection (INV-012)**: Decorator and annotation applications now create `decorated_by` edges in the call graph, making decorator-based registration patterns (e.g., `@app.get("/users")`, `@Injectable`, `@GetMapping`) visible in centrality rankings and slices. Supported in 5 languages: Python (decorators), TypeScript (decorators), Java (annotations), C# (attributes), and Rust (attributes).
+- **Django template tag and filter patterns**: Added YAML patterns for Django `@register.simple_tag`, `@register.inclusion_tag`, and `@register.filter` decorators. Enriches template customization points with `template_tag` and `template_filter` concepts.
+- **Flask Jinja2 template patterns**: Added YAML patterns for Flask/Jinja2 template customizations: `@app.template_filter`, `@app.template_global`, and `@app.template_test`. Mirrors Django template patterns for consistent detection across Python web frameworks.
+- **Django signal receiver edge detection**: Functions decorated with `@receiver(signal)` now create `signal_receiver` edges from the signal to the handler function, making Django's signal dispatch visible in the call graph. Supports single signals, multiple signals (`@receiver([sig1, sig2])`), and sender kwargs.
+- **Flask-RESTful framework support**: Added dedicated `flask-restful.yaml` patterns for `api.add_resource()` route registration, `Resource` base class detection, `fields.*` serializer types, and `reqparse.RequestParser` request parsing.
+- **Flask Blinker signal pattern detection**: Added patterns for Flask's Blinker-based signals (`request_started`, `request_finished`, `got_request_exception`, template rendering signals, app context signals, `message_flashed`). Detects `@signal.connect` handlers and enriches them with the `signal_handler` concept.
 
 ### Changed
 
@@ -56,6 +62,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **smart-test detects all change sources**: Now detects committed, staged, AND unstaged changes. Previously only detected committed changes, causing stale manifests when pytest ran before staging.
 - **Infrastructure-only PRs skip pytest**: PRs that only change shell scripts, YAML, or config files (no Python source) now skip pytest entirely in `ci.yml`. Full suite still runs via `full-suite.yml` after merge.
 - **Clearer CI manifest display**: CI now shows just the manifest header (Mode, Reason) and a count, not a truncated list of test files that looked confusing ("3 files → 171 tests").
+- **Three-way stop hook logic**: Replaced unconditional stop-hook blocking with three-way decision logic: (1) pending `**TODO**` markers in the invariant ledger block with a listing of items, (2) reflection completed within 30 minutes triggers a cooldown prompt instead of the full checklist, (3) stale reflection triggers the full checklist. Eliminates the Sisyphean re-firing pattern that consumed 30-55% of autonomous session transcript output.
+- **Shared Forgejo API library (`scripts/lib/forgejo-api.sh`)**: Extracted duplicated API/JSON/env logic from `auto-pr`, `ci-debug`, and `contribute` into a shared library. Adds safe JSON parsing that handles HTML error pages gracefully, CI polling with a 40-minute timeout (`--timeout` flag), PR deduplication before creation, `PR_PENDING` cleanup trap on unexpected exit, and `ci-complete` job 5-minute timeout to prevent indefinite pending state.
+- **`merge-pr` recovery script**: New `scripts/merge-pr` script for merging existing PRs with optional `--wait-for-ci` polling. Provides a focused recovery path when `auto-pr`'s merge step fails but the PR already exists.
+- **Post-compaction state recovery**: Added enriched `.agent/last_stop_check.json` that captures branch, last PR number/state, pending TODOs, unfixed invariants, and free-text notes. Agents can read this file after context compaction to recover awareness of in-progress work without re-running verification commands.
+- **Pre-push hook for protected branches**: Added `.githooks/pre-push` hook that blocks direct pushes to `dev` and `main` locally, before the remote rejects them. Allows feature branches and `refs/for/dev/` PR refs. Saves time from accidental protected-branch push failures.
 
 ### Fixed
 
@@ -148,6 +159,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **TypeScript constructor injection resolution (INV-013)**: Fixed `this.property.method()` calls not being resolved when the property is a constructor-injected dependency (e.g., NestJS `constructor(private catsService: CatsService)`). The analyzer now looks up the property's type from constructor parameter annotations and resolves the method against that type. Forward slices from NestJS/Angular controllers now include service layer calls.
 - **Linker duplicate edge elimination**: Added edge deduplication after linkers run. The event-sourcing linker could create duplicate edges when matching publisher-subscriber pairs. Example: killbill repo went from 25494 edges (472 duplicates) to 25022 unique edges.
 
 ## [1.3.1] - 2026-01-29
