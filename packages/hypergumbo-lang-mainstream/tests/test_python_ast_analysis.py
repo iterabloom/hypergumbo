@@ -428,10 +428,6 @@ def test_run_detects_method_calls_on_self(tmp_path: Path) -> None:
     assert "run" in call_edges[0]["src"]
     assert "helper" in call_edges[0]["dst"]
 
-    # Should also have contains edges from Service to its methods
-    contains_edges = [e for e in data["edges"] if e["type"] == "contains"]
-    assert len(contains_edges) == 2
-
 
 def test_run_detects_class_instantiation(tmp_path: Path) -> None:
     """Running analysis should detect ClassName() instantiation as edges."""

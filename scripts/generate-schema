@@ -373,13 +373,16 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                 "description": "Relationship type",
                 "enum": [
                     "calls", "imports", "instantiates", "extends", "implements",
-                    "references", "depends_on", "links", "sources",
+                    "contains", "dispatches_to", "uses",
+                    "references", "depends_on", "depends_on_manifest",
+                    "links", "sources", "routes_to",
                     "script_src", "base_image", "kernel_launch",
                     "native_bridge", "message_send", "message_receive",
                     "websocket_message", "websocket_connection",
                     "grpc_calls", "http_calls", "graphql_calls",
                     "message_queue", "query_references", "event_publishes",
-                    "resolver_implements", "resolver_for_type"
+                    "resolver_implements", "resolver_for_type",
+                    "openapi_implements", "subprocess_calls"
                 ]
             },
             "line": {
