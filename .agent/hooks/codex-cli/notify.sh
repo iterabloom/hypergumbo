@@ -35,15 +35,51 @@ fi
 MODE=$(cat "$REPO_ROOT/AUTONOMOUS_MODE.txt" 2>/dev/null | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
 if [[ -n "$MODE" && "$MODE" != "OFF" && "$MODE" != "FALSE" ]]; then
   if [[ -f "$REPO_ROOT/.agent/LOOP" ]]; then
-    # Output the full reflection prompt to stderr
-    # Even though Codex can't auto-continue, this gets the words into context
-    cat >&2 <<'EOF'
+    # --- Three-way notification logic ---
+
+    # Path 1: Surface pending TODO items
+    TODO_COUNT=$(grep -c '^\s*- \*\*TODO\*\*' "$REPO_ROOT/.agent/invariant-ledger.md" 2>/dev/null || echo 0)
+    if [[ "$TODO_COUNT" -gt 0 ]]; then
+      cat >&2 <<BANNER
+════════════════════════════════════════════════════════════════════
+  AUTONOMOUS MODE: $TODO_COUNT PENDING SCOPE EXPANSION TODO(s)
+  (If Codex CLI does not auto-continue, review and manually proceed)
+════════════════════════════════════════════════════════════════════
+
+BANNER
+      grep '^\s*- \*\*TODO\*\*' "$REPO_ROOT/.agent/invariant-ledger.md" 2>/dev/null >&2
+      exit 0
+    fi
+
+    # Path 2: Cooldown notification
+    STATE_FILE="$REPO_ROOT/.agent/stop_hook_state.json"
+    if [[ -f "$STATE_FILE" ]]; then
+      LAST_TS=$(jq -r '.last_completed_utc // "1970-01-01T00:00:00Z"' "$STATE_FILE" 2>/dev/null || echo "1970-01-01T00:00:00Z")
+      LAST_EPOCH=$(date -d "$LAST_TS" +%s 2>/dev/null || echo 0)
+      NOW_EPOCH=$(date +%s)
+      ELAPSED_MIN=$(( (NOW_EPOCH - LAST_EPOCH) / 60 ))
+
+      if [[ "$ELAPSED_MIN" -lt 30 ]]; then
+        cat >&2 <<BANNER
+════════════════════════════════════════════════════════════════════
+  AUTONOMOUS MODE ACTIVE - COOLDOWN (reflection completed ${ELAPSED_MIN}m ago)
+  (If Codex CLI does not auto-continue, review and manually proceed)
+════════════════════════════════════════════════════════════════════
+
+BANNER
+        cat "$REPO_ROOT/.agent/cooldown_prompt.md" >&2
+        exit 0
+      fi
+    fi
+
+    # Path 3: Full reflection prompt
+    cat >&2 <<'BANNER'
 ════════════════════════════════════════════════════════════════════
   AUTONOMOUS MODE ACTIVE - REFLECTION REQUIRED BEFORE STOPPING
   (If Codex CLI does not auto-continue, review and manually proceed)
 ════════════════════════════════════════════════════════════════════
 
-EOF
+BANNER
     cat "$REPO_ROOT/.agent/stop_reflect.md" >&2
   fi
 fi

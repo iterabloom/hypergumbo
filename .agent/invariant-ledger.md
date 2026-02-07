@@ -15,6 +15,7 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
   - `test_js_ts.py::TestCallbackCallAttribution`
   - `test_kotlin.py::TestKotlinLambdaCallAttribution` (4 tests)
   - Manual verification for Scala (2026-01-25)
+- **Pending Generalizations:** None
 
 ## INV-002: Usage-to-Concept Flow
 - **Statement:** Usage patterns extracted by analyzers become concepts on nodes
@@ -40,6 +41,7 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
   - `test_framework_patterns.py::TestResolveDeferredSymbolRefs` (17 tests covering
     exact match, suffix match, path hint, ambiguous, multiple metadata keys)
   - `test_framework_patterns.py::TestEnrichSymbolsWithUsageContexts::test_inv002_fallback_resolution_by_view_name`
+- **Pending Generalizations:** None
 
 ## INV-003: Python Nested Decorated Function Extraction
 - **Statement:** Decorated nested functions must be extracted for framework pattern matching
@@ -66,6 +68,7 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
   - Issue was Python-specific due to the `col_offset` heuristic
 - **Regression tests:**
   - `test_python_ast_analysis.py::TestNestedFunctionExtraction` (4 tests)
+- **Pending Generalizations:** None
 
 ## INV-004: Route-to-Handler Edge Completeness
 - **Statement:** Routes should have edges to their handler functions when handler info is available
@@ -87,6 +90,7 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
 - **Regression tests:**
   - `tests/test_route_handler_linker.py::TestRouteHandlerLinker` (13 tests)
   - `tests/test_route_handler_linker.py::TestLinkerEntryPoint` (2 tests)
+- **Pending Generalizations:** None
 
 ## INV-005: Edge ID Uniqueness
 - **Statement:** Edge IDs must be unique because they serve as primary keys for edge lookup
@@ -98,6 +102,7 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
   The `edge_key` field remains unchanged (excludes line) for deduplication across passes.
 - **Regression tests:**
   - `tests/test_ir.py::test_edge_id_unique_per_line`
+- **Pending Generalizations:** None
 
 ## INV-006: Rails Resource Route Handler Resolution
 - **Statement:** Rails resource routes should have handler metadata for route-handler linking
@@ -116,6 +121,7 @@ See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.
   - `tests/test_ruby.py::TestRailsUsageContext::test_rails_resource_singular`
   - `tests/test_ruby.py::TestRailsRouteSymbols::test_route_symbols_for_resources_macro`
   - `tests/test_ruby.py::TestRailsRouteSymbols::test_route_symbols_for_resource_singular`
+- **Pending Generalizations:** None
 
 ---
 
@@ -150,6 +156,8 @@ high-level, their status is expressed as a percentage indicating confidence they
 controller_action, etc.), there should be a corresponding linker or enrichment phase that
 converts that metadata into edges or concepts. Metadata alone is not traversable.
 
+- **Pending Generalizations:** None
+
 ### META-002: Extraction Completeness
 > "Symbols that exist in source code must be extracted for analysis."
 
@@ -173,6 +181,8 @@ converts that metadata into edges or concepts. Metadata alone is not traversable
 **Implication:** Special cases (nested functions, lambdas, callbacks) should not silently
 skip symbol extraction. If code can be called, it must be extractable.
 
+- **Pending Generalizations:** None
+
 ### META-003: Data Integrity
 > "Graph elements must have valid, unique identifiers for reliable lookup."
 
@@ -185,6 +195,8 @@ skip symbol extraction. If code can be called, it must be extractable.
 
 **Implication:** ID generation must include all disambiguating information (source, target,
 type, AND location).
+
+- **Pending Generalizations:** None
 
 ---
 
@@ -201,6 +213,7 @@ type, AND location).
   3. Sort candidates deterministically (by path) when falling back to ambiguous resolution
 - **Regression tests:**
   - `tests/test_go.py::TestGoImportPathResolution::test_resolves_call_to_correct_file_by_import_path`
+- **Pending Generalizations:** None
 
 ## INV-008: Base Classes Metadata to Extends Edges
 - **Statement:** Class symbols with `base_classes` metadata must create `extends` or `implements`
@@ -217,6 +230,7 @@ type, AND location).
 - **Regression tests:**
   - `tests/test_python_ast_analysis.py::TestPythonInheritanceEdges` (4 tests)
   - `tests/test_js_ts.py::TestJsTsInheritanceEdges` (4 tests)
+- **Pending Generalizations:** None
 
 ## INV-009: Ruby/Kotlin Base Classes Metadata to Extends Edges
 - **Statement:** Ruby and Kotlin class symbols with inheritance must create `extends` or `implements`
@@ -233,6 +247,7 @@ type, AND location).
 - **Regression tests:**
   - `tests/test_ruby.py::TestRubyInheritanceEdges` (5 tests)
   - `tests/test_kotlin.py::TestKotlinInheritanceEdges` (6 tests)
+- **Pending Generalizations:** None
 
 ## INV-010: Django Route-Handler Linking
 - **Statement:** Django routes with view_name metadata must create `routes_to` edges to their handler functions
@@ -246,6 +261,7 @@ type, AND location).
 - **Impact:** Feature bakeoff showed 884 orphan routes in Django. These can now be linked.
 - **Regression tests:**
   - `tests/test_route_handler_linker.py::TestDjangoViewNameLinking` (4 tests)
+- **Pending Generalizations:** None
 
 ## INV-011: 100% Branch Coverage
 - **Statement:** All code paths must be exercised by tests, verified by pytest-cov `--cov-branch`
@@ -371,6 +387,7 @@ type, AND location).
   - Focus on branches that affect correctness
 - **Regression tests:**
   - All tests must pass with `pytest --cov-branch --cov-fail-under=100`
+- **Pending Generalizations:** None
 
 ---
 
@@ -460,6 +477,8 @@ type, AND location).
 must be tested explicitly. Untested branches may harbor bugs or become stale.
 Branch coverage tests go in `BRANCHES_*.py` files for separate CI management.
 
+- **Pending Generalizations:** None
+
 ---
 
 ## INV-012: Decorator Edge Detection (All Languages with Decorator Metadata)
@@ -518,6 +537,7 @@ Branch coverage tests go in `BRANCHES_*.py` files for separate CI management.
 - **Related:**
   - INV-003 (nested decorated function extraction) - prerequisite, already FIXED
   - ADR-0003 (rich metadata) - decorators already extracted, just need edges
+- **Pending Generalizations:** None
 
 ---
 
@@ -543,6 +563,7 @@ Branch coverage tests go in `BRANCHES_*.py` files for separate CI management.
   The fix works correctly for single-project repos (tested with isolated test files).
 - **Regression tests:**
   - `test_js_ts.py::TestVariableTypeInference::test_this_property_method_call_nestjs_pattern`
+- **Pending Generalizations:** None
 
 ---
 
@@ -553,6 +574,7 @@ Branch coverage tests go in `BRANCHES_*.py` files for separate CI management.
 - **Fix:** [What was done]
 - **Limitation:** [What's still broken]
 - **Regression tests:** [Test names]
+- **Pending Generalizations:** None or entries with markers: `**TODO**`, `**DONE**`, `**DEFERRED**`
 
 ## META-00X: Template for New Meta-Invariants
 > "[Broad principle statement]"
@@ -565,3 +587,4 @@ Branch coverage tests go in `BRANCHES_*.py` files for separate CI management.
 
 **Implication:** [What this means for development practices]
 - **Regression tests:** [Test names]
+- **Pending Generalizations:** None or entries with markers: `**TODO**`, `**DONE**`, `**DEFERRED**`
