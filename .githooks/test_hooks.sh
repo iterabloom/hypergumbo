@@ -276,7 +276,132 @@ if [[ -f "$PRE_PUSH_HOOK" ]]; then
   run_pre_push_test "Pre-push: allow push to refs/for/dev (Forgejo PR)" "refs/for/dev/my-branch" "allow"
 fi
 
-# 8. Summary
+# 8. Stop hook state file tests
+# ------------------------------------------------------------------------------
+
+echo ""
+echo "========================================================"
+echo "STOP HOOK STATE FILE TESTS"
+echo "========================================================"
+
+# Find the Claude Code stop hook (canonical adapter for testing)
+STOP_HOOK="$SCRIPT_DIR/../.agent/hooks/claude-code/stop.sh"
+
+if [[ -f "$STOP_HOOK" ]]; then
+  # Setup: create a minimal repo-like structure in the sandbox
+  STOP_TEST_DIR="$(mktemp -d -t hypergumbo-stop-test.XXXXXX)"
+  stop_cleanup() {
+    rm -rf "$STOP_TEST_DIR"
+  }
+  # Chain cleanup (original cleanup trap is for TEST_DIR)
+
+  mkdir -p "$STOP_TEST_DIR/.agent/hooks/claude-code"
+  mkdir -p "$STOP_TEST_DIR/.agent"
+
+  # Enable autonomous mode and loop sentinel
+  echo "BROAD" > "$STOP_TEST_DIR/AUTONOMOUS_MODE.txt"
+  touch "$STOP_TEST_DIR/.agent/LOOP"
+
+  # Empty invariant ledger (no TODOs — skip Path 1)
+  echo "" > "$STOP_TEST_DIR/.agent/invariant-ledger.md"
+
+  # Provide stop_reflect.md and cooldown_prompt.md
+  echo "Reflect here" > "$STOP_TEST_DIR/.agent/stop_reflect.md"
+  echo "Cooldown here" > "$STOP_TEST_DIR/.agent/cooldown_prompt.md"
+
+  # Copy the hook and patch REPO_ROOT to our sandbox
+  # We can't easily patch the hook, so we'll create a wrapper that sets REPO_ROOT
+  cat > "$STOP_TEST_DIR/run_stop_hook.sh" <<'WRAPPER'
+#!/bin/bash
+set -euo pipefail
+export REPO_ROOT="$1"
+# Source the hook logic inline by rewriting SCRIPT_DIR
+SCRIPT_DIR="$REPO_ROOT/.agent/hooks/claude-code"
+# We need to re-derive REPO_ROOT from the hook's perspective.
+# The hook uses: REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+# So we need the hook at the right relative path.
+exec "$REPO_ROOT/.agent/hooks/claude-code/stop.sh"
+WRAPPER
+  chmod +x "$STOP_TEST_DIR/run_stop_hook.sh"
+
+  # Copy the real hook — it will derive REPO_ROOT from its own location
+  cp "$STOP_HOOK" "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh"
+  chmod +x "$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh"
+
+  # SCENARIO 8a: New filename (last_stop_check.json) with recent timestamp → cooldown
+  echo "--------------------------------------------------------"
+  echo "TEST: Scenario 8a: Stop hook reads last_stop_check.json (cooldown)"
+  RECENT_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  printf '{"last_completed_utc": "%s"}\n' "$RECENT_TS" > "$STOP_TEST_DIR/.agent/last_stop_check.json"
+  # Remove old file to ensure it's reading the new one
+  rm -f "$STOP_TEST_DIR/.agent/stop_hook_state.json"
+
+  OUTPUT=$("$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
+  if echo "$OUTPUT" | grep -q '"decision": "block"' && echo "$OUTPUT" | grep -q "Cooldown"; then
+    echo "  ✅ PASS (cooldown triggered from last_stop_check.json)"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL (expected cooldown block from last_stop_check.json)"
+    echo "  Output: $OUTPUT"
+    ((FAIL_COUNT++))
+  fi
+
+  # SCENARIO 8b: Backward compat — only stop_hook_state.json exists → cooldown
+  echo "--------------------------------------------------------"
+  echo "TEST: Scenario 8b: Stop hook falls back to stop_hook_state.json (backward compat)"
+  rm -f "$STOP_TEST_DIR/.agent/last_stop_check.json"
+  printf '{"last_completed_utc": "%s"}\n' "$RECENT_TS" > "$STOP_TEST_DIR/.agent/stop_hook_state.json"
+
+  OUTPUT=$("$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
+  if echo "$OUTPUT" | grep -q '"decision": "block"' && echo "$OUTPUT" | grep -q "Cooldown"; then
+    echo "  ✅ PASS (cooldown triggered from stop_hook_state.json fallback)"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL (expected cooldown block from stop_hook_state.json fallback)"
+    echo "  Output: $OUTPUT"
+    ((FAIL_COUNT++))
+  fi
+
+  # SCENARIO 8c: Neither file exists → full reflection (Path 3)
+  echo "--------------------------------------------------------"
+  echo "TEST: Scenario 8c: No state file → full reflection checklist"
+  rm -f "$STOP_TEST_DIR/.agent/last_stop_check.json"
+  rm -f "$STOP_TEST_DIR/.agent/stop_hook_state.json"
+
+  OUTPUT=$("$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
+  if echo "$OUTPUT" | grep -q '"decision": "block"' && echo "$OUTPUT" | grep -q "Reflect here"; then
+    echo "  ✅ PASS (full reflection triggered when no state file)"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL (expected full reflection when no state file)"
+    echo "  Output: $OUTPUT"
+    ((FAIL_COUNT++))
+  fi
+
+  # SCENARIO 8d: New file takes priority over old file
+  echo "--------------------------------------------------------"
+  echo "TEST: Scenario 8d: last_stop_check.json takes priority over stop_hook_state.json"
+  # New file: recent timestamp → cooldown
+  printf '{"last_completed_utc": "%s"}\n' "$RECENT_TS" > "$STOP_TEST_DIR/.agent/last_stop_check.json"
+  # Old file: epoch timestamp → would be stale (Path 3) if read
+  printf '{"last_completed_utc": "1970-01-01T00:00:00Z"}\n' > "$STOP_TEST_DIR/.agent/stop_hook_state.json"
+
+  OUTPUT=$("$STOP_TEST_DIR/.agent/hooks/claude-code/stop.sh" 2>&1)
+  if echo "$OUTPUT" | grep -q '"decision": "block"' && echo "$OUTPUT" | grep -q "Cooldown"; then
+    echo "  ✅ PASS (new file takes priority — cooldown from last_stop_check.json)"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL (expected cooldown from last_stop_check.json, not stale fallback)"
+    echo "  Output: $OUTPUT"
+    ((FAIL_COUNT++))
+  fi
+
+  rm -rf "$STOP_TEST_DIR"
+else
+  echo "⚠️  Skipping stop hook tests: $STOP_HOOK not found"
+fi
+
+# 9. Summary
 # ------------------------------------------------------------------------------
 echo ""
 echo "========================================================"
