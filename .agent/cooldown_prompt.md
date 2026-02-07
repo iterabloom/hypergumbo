@@ -10,7 +10,7 @@ Think about the last few hours of work:
 - Did any tools, scripts, or workflows create unnecessary friction?
 
 ## 2. Human-Gated File Ideas
-If the retrospective suggests improvements to governance files (`.agent/`, `AGENTS.md`, `.githooks/`, `scripts/auto-pr`, `scripts/contribute`, `scripts/ci-debug`, `CODEOWNERS`):
+If the retrospective suggests improvements to governance files (`.agent/`, `AGENTS.md`, `.githooks/`, `scripts/auto-pr`, `scripts/merge-pr`, `scripts/contribute`, `scripts/ci-debug`, `scripts/lib/forgejo-api.sh`, `CODEOWNERS`):
 - Document the idea in `~/hypergumbo_lab_notebook/` with rationale and proposed changes
 - Do NOT attempt to modify these files during cooldown — move on to the next section
 - Tag the entry with `[GOVERNANCE-IDEA]` so it's findable later

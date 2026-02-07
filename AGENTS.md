@@ -147,6 +147,17 @@ cat CHANGELOG.md
 git checkout -b <author>/feat/<short-name>
 ```
 
+## Post-Compaction State Recovery
+When context has been compressed, you may have lost awareness of in-progress work.
+
+**Recover state:**
+```bash
+cat .agent/last_stop_check.json 2>/dev/null
+```
+This file records: current branch (should be `dev` after a clean merge), last PR number/state, pending TODOs, and free-text notes about what to do next. Use it to orient yourself before starting new work.
+
+**smart-test reminder:** Always use `pytest` (aliased to `smart-test`) for running tests. NEVER use `python -m pytest`, `.venv/bin/pytest`, or `command pytest` — these bypass smart-test and produce ~4000 lines of raw output instead of the compact ~20-line summary.
+
 ## Pre-Commit Checklist
 Run these checks before every commit:
 ```bash

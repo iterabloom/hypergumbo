@@ -78,7 +78,39 @@ Consider the last few changes made:
 - Run `git status` — are there uncommitted changes?
 - If yes: commit with sign-off (`git commit -s`) and run `./scripts/auto-pr` to push
 - If `auto-pr` is blocked (PR_PENDING exists or remote unavailable), note the state and continue
-- Record reflection completion:
+- Record reflection completion with recovery state:
   ```bash
-  printf '{"last_completed_utc": "%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .agent/stop_hook_state.json
+  python3 -c "
+import json, subprocess, datetime, pathlib
+
+branch = subprocess.check_output(['git', 'branch', '--show-current'], text=True).strip()
+
+# Determine last PR state
+pr_pending = pathlib.Path('.git/PR_PENDING')
+if pr_pending.exists():
+    last_pr = int(pr_pending.read_text().strip().split()[-1]) if pr_pending.read_text().strip() else 0
+    last_pr_state = 'pending'
+else:
+    last_pr = 0       # Agent fills in the PR number that just merged, or 0
+    last_pr_state = 'none'
+
+# Count pending work items from invariant ledger
+ledger = pathlib.Path('.agent/invariant-ledger.md')
+ledger_text = ledger.read_text() if ledger.exists() else ''
+import re
+pending_todos = len(re.findall(r'^\s*- \*\*TODO\*\*', ledger_text, re.MULTILINE))
+unfixed = len(re.findall(r'^\s*- \*\*Status:\*\* (UNFIXED|PARTIALLY ADDRESSED|TBD)', ledger_text, re.MULTILINE))
+
+state = {
+    'last_completed_utc': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'branch': branch,
+    'last_pr': last_pr,
+    'last_pr_state': last_pr_state,
+    'pending_todos': pending_todos,
+    'unfixed_invariants': unfixed,
+    'notes': ''  # Agent fills in: 1-2 sentences about what to do next
+}
+pathlib.Path('.agent/last_stop_check.json').write_text(json.dumps(state, indent=2) + '\n')
+  "
   ```
+  **Important:** Before running, update `last_pr` and `notes` in the script with actual values (the PR number you just merged and a short description of next steps).

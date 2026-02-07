@@ -44,7 +44,11 @@ EOF
 fi
 
 # Path 2: Check cooldown (reflection completed within last 30 minutes)
-STATE_FILE="$REPO_ROOT/.agent/stop_hook_state.json"
+STATE_FILE="$REPO_ROOT/.agent/last_stop_check.json"
+# Backward compat: fall back to old filename if new one doesn't exist
+if [[ ! -f "$STATE_FILE" && -f "$REPO_ROOT/.agent/stop_hook_state.json" ]]; then
+  STATE_FILE="$REPO_ROOT/.agent/stop_hook_state.json"
+fi
 if [[ -f "$STATE_FILE" ]]; then
   LAST_TS=$(jq -r '.last_completed_utc // "1970-01-01T00:00:00Z"' "$STATE_FILE" 2>/dev/null || echo "1970-01-01T00:00:00Z")
   LAST_EPOCH=$(date -d "$LAST_TS" +%s 2>/dev/null || echo 0)
