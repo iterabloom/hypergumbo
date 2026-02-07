@@ -27,6 +27,8 @@ slice.json
 **/.cursor/state/
 **/*-session/
 AUTONOMOUS_MODE.txt
+.agent/LOOP
+.agent/disabled.LOOP
 
 # Coverage
 .coverage
