@@ -265,18 +265,25 @@ type, AND location).
 
 ## INV-011: 100% Branch Coverage
 - **Statement:** All code paths must be exercised by tests, verified by pytest-cov `--cov-branch`
-- **Status:** ⏳ PRACTICALLY COMPLETE (97% - 1566 missing branch partials)
-  - Progress: 115+ BRANCHES test files, 7731 tests passing
-  - Remaining gaps are `# pragma: no cover` defensive code paths (1674 markers)
-  - The ~1566 missing branches align with ~1674 pragma markers = intentionally excluded
-  - Further improvement yields diminishing returns (<1 branch per PR)
+- **Status:** ❌ UNFIXED (97% - ~1576 missing branch partials)
+  - Progress: 115+ BRANCHES test files, 7806 tests passing
+  - CORRECTION (2026-02-07): Previous claim that "1566 missing branches align with
+    1674 pragma markers" was wrong. `# pragma: no cover` excludes the tagged line
+    from BOTH statement and branch coverage. If the partials were on pragma-tagged
+    lines, they would NOT appear as uncovered. The ~1576 branch partials are on
+    lines WITHOUT pragmas — they are genuinely untested branch paths (e.g., for-loops
+    where the "0 iterations" path was never tested, if-conditions that always take
+    one branch).
+  - CI does NOT enforce branch coverage: ci.yml line 565 runs pytest without
+    `--cov-branch`. Only local smart-test adds `--cov-branch`. This gap means
+    branch regressions go undetected in CI.
 - **Root cause:** Branch coverage was not tracked; only line coverage was required.
   Many conditional branches (early returns, error paths, None checks, exception handlers)
   are executed but only one branch direction is tested.
-- **Fix:** Infrastructure complete:
-  - `scripts/smart-test` now uses `--cov-branch` flag
-  - `pyproject.toml` configured to collect `BRANCHES_*.py` test files
-  - BRANCHES test files created for 7 analyzers
+- **Fix:** Infrastructure partially complete:
+  - `scripts/smart-test` now uses `--cov-branch` flag (local only)
+  - CI does NOT use `--cov-branch` (gap)
+  - BRANCHES test files created for many analyzers but branch partials remain
 - **Remaining work:** Create BRANCHES_*.py test files to cover remaining analyzers.
   Completed (as of 2026-02-04):
   - `py.py`: BRANCHES_test_python_ast_analysis.py (12 tests)
@@ -387,21 +394,26 @@ type, AND location).
   - Focus on branches that affect correctness
 - **Regression tests:**
   - All tests must pass with `pytest --cov-branch --cov-fail-under=100`
-- **Pending Generalizations:** None
+- **Pending Generalizations:**
+  - **TODO** Target: Add `--cov-branch` to CI pytest command (ci.yml line 565) so branch coverage is enforced in CI, not just locally (est. low complexity, value: high — prevents branch regressions from merging)
+  - **TODO** Target: Audit branch partials in core modules (framework_patterns.py: 9 remaining, entrypoints.py: 1, sketch.py: 67, cli.py: 38) and either write tests or properly mark genuinely unreachable branches (est. medium complexity per module, value: high — fulfills the stated invariant)
 
 ---
 
 ## META-004: Testing Discipline
 > "Tests must exercise all code paths to verify correctness and prevent regressions."
 
-- **Status:** 97% (PRACTICALLY COMPLETE)
+- **Status:** 97% (INCOMPLETE — branch coverage not enforced in CI)
 - **Notes:**
-  - Line coverage: 100% ✅
-  - Branch coverage: 97% (1566 missing branch partials)
-  - 115+ BRANCHES test files, 7731 tests passing
-  - Remaining 1566 gaps align with 1674 `# pragma: no cover` markers
-  - These are intentionally excluded defensive code paths (error handlers, unreachable guards)
-  - Further work yields <1 branch per PR - diminishing returns
+  - Line coverage: 100% ✅ (enforced in CI)
+  - Branch coverage: ~97% (~1576 missing branch partials)
+  - 115+ BRANCHES test files, 7806 tests passing
+  - CORRECTION (2026-02-07): The 1576 branch partials are NOT on pragma-tagged
+    lines. They are genuinely untested code paths (loop empty-iteration, if-else
+    alternate branches). The previous claim of alignment with pragma markers was
+    incorrect.
+  - CI enforcement gap: ci.yml does not pass `--cov-branch` to pytest. Only local
+    smart-test enforces branch coverage. This means branch regressions can merge. - diminishing returns
   - BRANCHES test files created (13 mainstream analyzers + 11 common):
     - `BRANCHES_test_python_ast_analysis.py` (12 tests)
     - `BRANCHES_test_js_ts.py` (10 tests)
