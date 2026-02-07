@@ -11,6 +11,7 @@ Philosophy:
 - Qualitative assessments, not just metrics
 - "Needs work" vs "doing something special" framing
 - Designed to surface non-obvious patterns through varied questioning angles
+- Journal stratum forces review of lab notebook entries and longitudinal analysis
 
 What "doing something special" means:
 - Genuinely valuable insights other tools miss (cross-file resolution, framework patterns)
@@ -242,6 +243,33 @@ REFLECTION_QUESTIONS = [
     "Are we building a microscope when users need a telescope (or vice versa)?",
 ]
 
+# Questions that induce review of lab notebook entries and longitudinal analysis.
+# Each run picks 1 from this stratum IN ADDITION to the 3 from the main pool.
+# The goal: force the reflect cycle to connect current findings to prior observations,
+# surface recurring themes, and detect regressions or improvements over time.
+JOURNAL_QUESTIONS = [
+    # --- Reviewing recent entries ---
+    "Review the most recent lab notebook entry. What finding from that session is most relevant to this cohort's results?",
+    "Look at the last 3 notebook entries. Is there a concern that keeps showing up? If so, has it gotten better or worse?",
+    "What hypothesis from a previous notebook entry could this cohort's data confirm or refute?",
+    "Find the most recent 'Hypotheses' section in the lab notebook. Which hypothesis has the most evidence for or against it now?",
+    "Read the last notebook's 'Key Findings' section. Do any of those findings contradict what you see in this cohort?",
+
+    # --- Longitudinal patterns ---
+    "Compare this cohort's edge density distribution to any prior cohort documented in the notebook. Is the trend improving?",
+    "Has the set of 'inactive linkers' (linkers producing 0 edges) changed across notebook entries? Which ones came alive?",
+    "Look at resolution rates across notebook sessions. Is there a language whose resolution rate is consistently low?",
+    "Across all documented bakeoff sessions, which concern type (NO_CALL_EDGES, LOW_RESOLUTION, etc.) appears most often?",
+    "Review concept coverage trends in the notebook. Are we enriching more symbols over time, or has coverage plateaued?",
+
+    # --- Connecting experiments to outcomes ---
+    "What code change documented in the CHANGELOG most recently should have affected this cohort's results? Did it?",
+    "Is there an analysis script (08-14) whose output on this cohort would directly test a notebook hypothesis?",
+    "What experiment or fix from a prior session was supposed to improve results for repos like these? Verify it did.",
+    "Look at the 'Process Retrospective' from the last notebook entry. Are you following or ignoring its advice?",
+    "What question from a prior reflect cycle went unanswered? Can this cohort's data answer it now?",
+]
+
 
 def generate_reflection(analyses: list[dict], cycle: int) -> str:
     """Generate a qualitative reflection on the cohort."""
@@ -298,9 +326,15 @@ def generate_reflection(analyses: list[dict], cycle: int) -> str:
     # Add open-ended questions for next cycle
     lines.append("## Questions for This Cycle")
     lines.append("")
-    # Pick 3 random questions from the full pool
+    # Pick 3 random questions from the main pool
     for q in random.sample(REFLECTION_QUESTIONS, min(3, len(REFLECTION_QUESTIONS))):
         lines.append(f"- {q}")
+    lines.append("")
+
+    # Pick 1 random question from the journal stratum
+    lines.append("## Journal Review Question")
+    lines.append("")
+    lines.append(f"- {random.choice(JOURNAL_QUESTIONS)}")
     lines.append("")
 
     lines.append("---")
