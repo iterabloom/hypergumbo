@@ -50,6 +50,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Django signal receiver edge detection**: Functions decorated with `@receiver(signal)` now create `signal_receiver` edges from the signal to the handler function, making Django's signal dispatch visible in the call graph. Supports single signals, multiple signals (`@receiver([sig1, sig2])`), and sender kwargs.
 - **Flask-RESTful framework support**: Added dedicated `flask-restful.yaml` patterns for `api.add_resource()` route registration, `Resource` base class detection, `fields.*` serializer types, and `reqparse.RequestParser` request parsing.
 - **Flask Blinker signal pattern detection**: Added patterns for Flask's Blinker-based signals (`request_started`, `request_finished`, `got_request_exception`, template rendering signals, app context signals, `message_flashed`). Detects `@signal.connect` handlers and enriches them with the `signal_handler` concept.
+- **`list-my-prs` convenience script**: Added `scripts/list-my-prs` to list open PRs authored by the current user. Useful for checking PR status after context compaction.
 
 ### Changed
 
@@ -67,6 +68,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`merge-pr` recovery script**: New `scripts/merge-pr` script for merging existing PRs with optional `--wait-for-ci` polling. Provides a focused recovery path when `auto-pr`'s merge step fails but the PR already exists.
 - **Post-compaction state recovery**: Added enriched `.agent/last_stop_check.json` that captures branch, last PR number/state, pending TODOs, unfixed invariants, and free-text notes. Agents can read this file after context compaction to recover awareness of in-progress work without re-running verification commands.
 - **Pre-push hook for protected branches**: Added `.githooks/pre-push` hook that blocks direct pushes to `dev` and `main` locally, before the remote rejects them. Allows feature branches and `refs/for/dev/` PR refs. Saves time from accidental protected-branch push failures.
+- **Bakeoff convergence recognition + stable artifact paths**: Bakeoff scripts (`bakeoff`, `bakeoff-features`, `bakeoff-features-reflect`) now default to `~/hypergumbo_lab_notebook/bakeoff_artifacts/` instead of `.` (cwd). `init` creates timestamped session directories (`broad-YYYYMMDD-HHMMSS/`, `deep-YYYYMMDD-HHMMSS/`) so prior artifacts are never overwritten. Subsequent commands auto-discover the latest session. The stop hook now appends bakeoff convergence status (CONVERGED or NEEDS_WORK) to the reflection/cooldown prompt, preventing redundant bakeoff re-runs.
 
 ### Fixed
 
@@ -76,6 +78,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Phoenix route entrypoint detection**: Phoenix/Elixir route symbols created by the analyzer (kind="route") were not being detected as entrypoints because they lacked the "route" concept needed for entrypoint detection. Added `symbol_kind: "^route$"` pattern to phoenix.yaml to enrich route symbols with the "route" concept, matching the existing pattern in rails.yaml and laravel.yaml.
 - **Ruby hash rocket route syntax**: Fixed Rails route extraction for the `"path" => "controller#action"` syntax (hash rocket shorthand). Previously only `to: "controller#action"` was recognized. This enables route-handler linking for routes defined with the shorthand syntax (e.g., `post "persist" => "sessions#persist"`). Also added `match` to HTTP_METHODS for routes using the `match` DSL method.
 - **httpx IPv6 CIDR proxy bug workaround**: Fixed embedding model loading failures when `NO_PROXY` environment variable contains IPv6 CIDR notation (e.g., `fd00:200::/40`). httpx 0.25+ has a bug where IPv6 CIDR in NO_PROXY causes `InvalidURL: Invalid port` errors. The workaround temporarily sanitizes NO_PROXY during model initialization.
+- **smart-test scoped mode total coverage**: Fixed smart-test scoped mode incorrectly failing when total project coverage was below 100%. Scoped mode should only enforce coverage on changed files, not the entire codebase.
+- **bakeoff-features forward slice flags**: Removed `--exclude-utility` from forward slices in `bakeoff-features run`. Entry points may reside in utility directories (e.g., `docs_src/` for FastAPI) but their dependencies are still useful for assessment.
 
 ### Removed
 
