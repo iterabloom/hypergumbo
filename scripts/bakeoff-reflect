@@ -6,10 +6,11 @@ This script asks open-ended qualitative questions about hypergumbo's performance
 Run it REPEATEDLY - the value is in the variation of insights across cycles.
 
 Philosophy:
-- Same question, different answers each time = exploring the problem space
+- Diverse ways of asking related questions each time improves the robustness
+  and flexibility of hypergumbo
 - Qualitative assessments, not just metrics
 - "Needs work" vs "doing something special" framing
-- Designed to surface non-obvious patterns
+- Designed to surface non-obvious patterns through varied questioning angles
 
 What "doing something special" means:
 - Genuinely valuable insights other tools miss (cross-file resolution, framework patterns)
@@ -142,13 +143,113 @@ def analyze_repo(repo_name: str, hg: dict) -> dict:
     return analysis
 
 
+# 70+ open-ended questions organized by theme but phrased diversely.
+# Each run picks 3 at random. The diversity of phrasing ensures different
+# angles of inquiry surface across cycles, improving hypergumbo's robustness.
+REFLECTION_QUESTIONS = [
+    # --- Missing patterns ---
+    "What patterns in the source code are we systematically missing?",
+    "If a junior developer looked at this output, what obvious connections would they expect to see?",
+    "Which function call patterns are invisible to the current analyzers?",
+    "Are there idioms in this language that produce calls the AST walk doesn't capture?",
+    "What would a grep for 'TODO' or 'FIXME' in the source reveal that the call graph misses?",
+    "If you traced execution manually from main(), where does the call graph diverge from reality?",
+    "What string-based dispatch patterns (registry lookups, event names, URL routing) are we blind to?",
+    "Which decorator or annotation patterns create implicit relationships we don't model?",
+    "Are there factory or builder patterns that produce objects whose method calls we can't resolve?",
+    "What configuration-driven behavior (YAML/JSON/env vars) creates edges we'll never see in code?",
+
+    # --- Edge types ---
+    "Are there edge types we should be detecting but aren't?",
+    "What relationship between two symbols would most surprise a developer to learn about?",
+    "If we added a 'depends_on_config' edge type, which repos would light up?",
+    "What edges exist in the developer's mental model that are absent from ours?",
+    "Could we detect 'tested_by' edges from test files to production code? How valuable would that be?",
+    "Are 'implements' edges between interfaces and concrete classes consistently captured?",
+    "What pub/sub or event-driven edges exist that we model as disconnected components?",
+    "Would 'co-changes' edges (files that change together in git history) add value?",
+    "Are there data-flow edges (variable assignment chains) worth modeling beyond call edges?",
+    "What cross-boundary edges (API calls, IPC, message queues) are we missing entirely?",
+
+    # --- Language performance ---
+    "Which languages have unexpectedly low or high performance?",
+    "For each language in this cohort, what's the ratio of symbols extracted to lines of code?",
+    "Which language's analyzer produces the richest metadata per symbol?",
+    "Are there languages where the call graph is suspiciously sparse relative to code complexity?",
+    "Which language handles nested/anonymous functions best? Which handles them worst?",
+    "If we compared Python and Ruby analysis quality side by side, who wins and why?",
+    "Is there a language where resolution rate drops dramatically for larger files?",
+    "Which language's import resolution is weakest? What specific import patterns break it?",
+    "How does Go's package-based resolution compare to Java's class-based resolution in practice?",
+    "Are there languages where our framework detection is strong but basic call resolution is weak?",
+
+    # --- User needs ---
+    "What would a user WANT to see in the behavior map that's missing?",
+    "If a developer asked 'what happens when I call this endpoint?', could we answer from the graph?",
+    "What question would a new team member ask that our output can't answer?",
+    "If you were onboarding onto this codebase, what would the behavior map need to show you?",
+    "What's the most common developer task (debug, refactor, add feature) and does our output help?",
+    "Would a user care more about call depth or call breadth? Do we optimize for the right one?",
+    "If we ranked functions by 'how risky is it to change this?', would our centrality match intuition?",
+    "What's the gap between what symbols.txt shows and what a developer needs for a code review?",
+    "Could our output help with 'what's the blast radius of changing this function?'",
+    "If a security auditor used our output, what attack surfaces would they miss?",
+
+    # --- Over-engineering ---
+    "Are we over-engineering some detections while missing simpler ones?",
+    "Which of our edge types has the worst signal-to-noise ratio?",
+    "Is there a detection that's technically impressive but practically useless?",
+    "Are we spending analyzer time on patterns that appear in <1% of real repos?",
+    "What's the simplest possible improvement that would help the most repos?",
+    "If we could only keep 3 edge types, which 3 would maximize usefulness?",
+    "Are we detecting framework patterns for frameworks nobody actually uses?",
+    "Is our metadata schema too rich? Would a simpler schema serve users better?",
+    "Are there places where 'good enough' resolution would be more useful than perfect resolution?",
+    "What would we delete from the output if we had to cut it in half?",
+
+    # --- Cross-language ---
+    "What cross-language patterns exist that we're not linking?",
+    "In a polyglot repo, what's the most important boundary to get right?",
+    "How would a Python service calling a Go microservice appear in our output?",
+    "If TypeScript frontend calls a Ruby backend API, do we model that connection?",
+    "What FFI (Foreign Function Interface) patterns create cross-language edges?",
+    "Are there shared data models (protobuf, GraphQL, OpenAPI) that should unify symbols across languages?",
+    "In a monorepo with JS frontend and Python backend, what's the glue we're missing?",
+    "How well do our linkers handle the case where language A generates code that language B consumes?",
+    "What cross-language test patterns (e.g., Python integration tests for a Rust library) should we detect?",
+    "If two languages share a database, how should that shared dependency appear?",
+
+    # --- Cohort variation ---
+    "How would the analysis change if we ran on a different cohort?",
+    "Which repo in this cohort is most 'typical' of real-world code? Which is least?",
+    "Are our metrics biased by the repo sizes in this cohort?",
+    "If we analyzed only repos with >100 files, would our concerns change?",
+    "What kind of repo would maximally stress our analyzers? Have we tested one like that?",
+    "Is there a repo archetype (CLI tool, web app, library, microservice) we haven't tested?",
+    "Would our analysis look different on a Fortune 500 enterprise monorepo vs an OSS library?",
+    "Are there repos where our analysis is actively misleading rather than just incomplete?",
+    "What's the smallest repo where our analysis adds genuine value over just reading the code?",
+    "If we ran on the top 10 GitHub repos by stars, what would embarrass us?",
+
+    # --- Provocative / speculative ---
+    "What would a competing tool do better with the same AST information?",
+    "If we had access to runtime traces, what would change most dramatically?",
+    "What's the biggest lie our call graph tells about this codebase?",
+    "If we showed this output to the repo maintainer, what would they correct first?",
+    "What assumption baked into our IR is most likely to be wrong for unusual codebases?",
+    "Is there a repo where ZERO edges would be more honest than what we currently produce?",
+    "What would break if we doubled the number of symbols we extract?",
+    "Are we building a microscope when users need a telescope (or vice versa)?",
+]
+
+
 def generate_reflection(analyses: list[dict], cycle: int) -> str:
     """Generate a qualitative reflection on the cohort."""
     lines = []
     lines.append(f"# Bakeoff Reflection - Cycle {cycle}")
-    lines.append(f"")
-    lines.append(f"*What is hypergumbo doing well? Where does it need work?*")
-    lines.append(f"")
+    lines.append("")
+    lines.append("*What is hypergumbo doing well? Where does it need work?*")
+    lines.append("")
 
     # Aggregate concerns and strengths
     all_concerns = []
@@ -195,24 +296,15 @@ def generate_reflection(analyses: list[dict], cycle: int) -> str:
             lines.append("")
 
     # Add open-ended questions for next cycle
-    lines.append("## Questions for Next Cycle")
+    lines.append("## Questions for This Cycle")
     lines.append("")
-    questions = [
-        "What patterns in the source code are we systematically missing?",
-        "Are there edge types we should be detecting but aren't?",
-        "Which languages have unexpectedly low/high performance?",
-        "What would a user WANT to see in the behavior map that's missing?",
-        "Are we over-engineering some detections while missing simpler ones?",
-        "What cross-language patterns exist that we're not linking?",
-        "How would the analysis change if we ran on a different cohort?",
-    ]
-    # Pick 3 random questions to keep it fresh
-    for q in random.sample(questions, min(3, len(questions))):
+    # Pick 3 random questions from the full pool
+    for q in random.sample(REFLECTION_QUESTIONS, min(3, len(REFLECTION_QUESTIONS))):
         lines.append(f"- {q}")
     lines.append("")
 
     lines.append("---")
-    lines.append("*Run this script again after making changes. Different insights will emerge.*")
+    lines.append("*Run this script again. Different questions surface different insights.*")
 
     return "\n".join(lines)
 

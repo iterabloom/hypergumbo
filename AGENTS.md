@@ -15,6 +15,7 @@
   - NEVER output a "summary" or "status report" as a final action
   - Before ANY stopping point: check todo list - if items remain, continue
   - Before ANY stopping point: check `.agent/invariant-ledger.md` for unfixed or partially-addressed root causes related to your work
+  - Before ANY stopping point: check for `**TODO**` pending generalizations in `.agent/invariant-ledger.md` — these are first-class work items that must be addressed or explicitly deferred
   - Before ANY stopping point: complete the reflection protocol in `.agent/stop_reflect.md`
   - After completing a major milestone: immediately start next item from priority queue
   - Follow the below section titled "Autonomous Development Mode Stipulations"
@@ -67,6 +68,12 @@ No weak shit. If you don't know, say you don't know. If you haven't checked, say
   3. **Scope expansion:** Check same-language-different-construct, different-language-same-pattern, different-pipeline-stage
   4. **Distinguish fix from workaround:** Does your change bypass a problematic code path, or fix/remove it?
   5. **If workaround:** Document in `.agent/invariant-ledger.md` with Status: ❌ UNFIXED, then fix the root cause
+- **Scope Expansion Commitment Protocol:** When a structural fix identifies analogous issues in other languages, constructs, or pipeline stages:
+  1. **Write immediately:** Add `**TODO**` entries to the invariant ledger under the relevant invariant's `Pending Generalizations` field. Format: `- **TODO** Target: description (est. complexity, value: relative-to-original)`
+  2. **First-class work item:** `**TODO**` entries are enforced by the stop hook — they surface as candidate next actions when the agent tries to stop
+  3. **Act or defer:** Either fix the TODO or explicitly change it to `**DEFERRED**` with justification (e.g., "blocked on X", "requires grammar not available")
+  4. **Track to completion:** When done, change `**TODO**` to `**DONE**` with PR reference
+  5. **Hook enforcement:** The stop hook counts `**TODO**` markers in the ledger. If any exist, the hook blocks with a listing of pending items as candidate next actions
 - **Signing & Identity:**
   1. Check `git config user.name` and `git config user.email` **before** creating any commit.
   2. If they are blank, **STOP**. You are **strictly forbidden** from generating, inferring, or guessing an identity. You must ask the user to run:
@@ -155,6 +162,10 @@ pytest -n auto --cov-fail-under=100
 cat .agent/invariant-ledger.md 2>/dev/null | grep -E '^- \*\*Status:\*\* (UNFIXED|PARTIALLY ADDRESSED|TBD|[0-9]+%)' | grep -v '100%' || true
 # If any items show, read the full ledger for context
 # If your change relates to an UNFIXED or PARTIALLY ADDRESSED invariant, fix the root cause, not a workaround
+
+# 4b. Check for pending scope expansion TODOs
+grep -c '^\s*- \*\*TODO\*\*' .agent/invariant-ledger.md 2>/dev/null || echo 0
+# If count > 0, address them or explicitly DEFER with justification before committing
 
 # 5. Commit with sign-off
 git commit -s -m "feat: description"
@@ -454,6 +465,7 @@ Use DEEP mode when:
 
 ### BROAD Mode Priority Queue:
 1. **Actionable invariants** in `.agent/invariant-ledger.md`:
+   - Pending Generalizations: any `**TODO**` markers (scope expansion work from the Commitment Protocol)
    - Meta-invariants: Any status below 100% (even 99%) (the percentages are extremely cursory and vibes-based and will mislead if taken at face value)
    - Regular: Status: UNFIXED or PARTIALLY ADDRESSED
 2. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
@@ -462,6 +474,7 @@ Use DEEP mode when:
 ### DEEP Mode Priority Queue:
 When in DEEP mode, focus on feature quality rather than parse correctness:
 1. **Actionable invariants** in `.agent/invariant-ledger.md`:
+   - Pending Generalizations: any `**TODO**` markers (scope expansion work from the Commitment Protocol)
    - Meta-invariants: Any status below 100% (even 99%)
    - Regular: Status: UNFIXED or PARTIALLY ADDRESSED
 2. **Slice quality:** Does forward slice capture actual dependencies?

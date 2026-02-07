@@ -1,15 +1,16 @@
 # Stop Reflection Protocol
 
-Before stopping, complete this checklist:
+Before stopping, work through each section. Do not skip sections.
 
 ## 1. Current State
-- [ ] What CRITICAL/HIGH signals remain from last bakeoff run?
-- [ ] What was the last change made?
+State what CRITICAL/HIGH signals remain from the last bakeoff run.
+State what the last change was and why it was made.
 
 ## 2. Invariant Check
-For each remaining signal (for the last change made), state the violated invariant:
+For each remaining signal, state the violated invariant:
 > "In this system, X must always be true because Y depends on it."
-Also check the file:
+
+Check the ledger:
 ```bash
 cat .agent/invariant-ledger.md 2>/dev/null | grep -E '^- \*\*Status:\*\* (UNFIXED|PARTIALLY ADDRESSED|TBD|[0-9]+%)' | grep -v '100%' || true
 ```
@@ -19,60 +20,65 @@ This catches:
 
 If items show, read the full ledger for context and Notes fields.
 
+Also check for pending generalizations:
+```bash
+grep -c '^\s*- \*\*TODO\*\*' .agent/invariant-ledger.md 2>/dev/null || echo 0
+```
+If any `**TODO**` items exist, they are first-class work items — address them or explicitly defer with justification.
+
 ## 3. Structural vs Workaround
 For the last change made:
-- [ ] Does it bypass a problematic code path, or fix/remove that path?
-- [ ] If bypass: what is the root cause, and when will it be fixed?
+- Does it bypass a problematic code path, or fix/remove that path?
+- If bypass: what is the root cause, and when will it be fixed?
 
 ## 4. Scope Expansion
-- [ ] Same language, different construct?
-- [ ] Different language, same pattern?
-- [ ] Different pipeline stage?
+Check for structural analogues of the last fix:
+- Same language, different construct?
+- Different language, same pattern?
+- Different pipeline stage?
+
+If analogues exist, write `**TODO**` entries to the invariant ledger under the relevant invariant's `Pending Generalizations` field immediately. Use the format:
+```
+- **TODO** Target: description (est. complexity, value: relative-to-original)
+```
+These entries are enforced by the stop hook — they become candidate next actions.
 
 ## 5. Decision
-- [ ] If root cause unfixed (even partially) and analogous issues might exist: **DO NOT STOP** — fix the root cause or investigate further
-- [ ] If root cause fixed or truly isolated: document in invariant ledger (`.agent/invariant-ledger.md`), then take a step back and think about the best thing to do from a big-picture software quality perspective. Strongly consider activating or reactivating the bakeoff loop using `scripts/bakeoff`, `scripts/bakeoff-reflect`, and `scripts/hypergumbo_diag.py` (as detailed in Parts 2 & 3 of `docs/governance-case-critiques.md`).
+- If root cause is unfixed (even partially) and analogous issues might exist: **DO NOT STOP** — fix the root cause or investigate further
+- If root cause is fixed or truly isolated: document in invariant ledger, then consider the best next action from a big-picture software quality perspective. Strongly consider activating the bakeoff loop or mining existing artifacts.
 
 ## 6. Artifact Analysis
-- [ ] **IMPORTANT:** Prefer mining existing artifacts over running new bakeoffs — large repos take significant time and there are likely enough artifacts already
-- [ ] Run qualitative reflection first:
-  ```bash
-  ./scripts/bakeoff-reflect /tmp/bakeoff_session/out/cohort-001/iter-001 --cycle N
-  ```
-  - This generates "needs work" vs "doing something special" insights
-  - Run it REPEATEDLY with different cohorts — value is in the variation
-  - It surfaces concerns (NO_CALL_EDGES, LOW_RESOLUTION, LOW_CROSS_FILE)
-  - It highlights strengths (STRONG_CROSS_FILE, RICH_EDGE_TYPES, HIGH_RESOLUTION)
-  - It asks open-ended questions that change each run to explore the problem space
-- [ ] For deeper quantitative analysis, use:
-  - `scripts/hypergumbo_diag.py` — comprehensive diagnostic report
-  - `scripts/analyze-artifacts` — catalog, summary, routes, concepts, edges, gaps
-  - `~/hypergumbo_lab_notebook/analysis_lib/` — reusable analysis scripts:
-    - `01_quality_overview.py` — edge density, call coverage, concepts
-    - `02_edge_resolution.py` — cross-file vs same-file vs stdlib
-    - `03_language_comparison.py` — compare analyzers across languages
-    - `04_entrypoint_analysis.py` — entrypoint quality
-    - `05_potential_issues.py` — detect common problems
-    - `06_signature_quality.py` — function signature completeness
-    - `07_complexity_metrics.py` — cyclomatic complexity distribution
-- [ ] Add new analysis scripts to `analysis_lib/` as needed (follow naming: `NN_short_name.py`)
-- [ ] Look for patterns: gaps in detection, edge types, cross-language linking, concept coverage
-- [ ] If analysis reveals concerns, investigate the root cause before stopping
+Prefer mining existing artifacts over running new bakeoffs — large repos take significant time and there are likely enough artifacts already.
+
+Analysis toolkit (use any combination, all are peers):
+- `./scripts/bakeoff-reflect <path> --cycle N` — qualitative "needs work" vs "doing something special" insights; asks diverse open-ended questions that change each run
+- `scripts/hypergumbo_diag.py` — comprehensive diagnostic report
+- `scripts/analyze-artifacts` — catalog, summary, routes, concepts, edges, gaps
+- `~/hypergumbo_lab_notebook/analysis_lib/` — reusable analysis scripts:
+  - `01_quality_overview.py` — edge density, call coverage, concepts
+  - `02_edge_resolution.py` — cross-file vs same-file vs stdlib
+  - `03_language_comparison.py` — compare analyzers across languages
+  - `04_entrypoint_analysis.py` — entrypoint quality
+  - `05_potential_issues.py` — detect common problems
+  - `06_signature_quality.py` — function signature completeness
+  - `07_complexity_metrics.py` — cyclomatic complexity distribution
+- Add new analysis scripts to `analysis_lib/` as needed (naming: `NN_short_name.py`)
+
+Look for patterns: gaps in detection, edge types, cross-language linking, concept coverage.
+If analysis reveals concerns, investigate the root cause before stopping.
 
 ## 7. Design Quality Meta-Reflection
 Consider the last few changes made:
 
-- [ ] **Hardcoded vs YAML:** Is there anything hardcoded in Python that would be more appropriate as a YAML config?
-  - Framework patterns should live in `src/hypergumbo/frameworks/*.yaml`, not hardcoded in analyzers
-  - Language conventions (main functions, entrypoints) should be declarative where possible
-  - If you added a new pattern check, could it be expressed as YAML instead?
+- **Hardcoded vs YAML:** Is there anything hardcoded in Python that would be more appropriate as a YAML config? Framework patterns should live in `src/hypergumbo/frameworks/*.yaml`. Language conventions should be declarative where possible. If you added a new pattern check, could it be expressed as YAML instead?
 
-- [ ] **Invariant Consolidation:** Are there any invariants in the ledger that should be combined into a single, more principled/general invariant?
-  - Look for invariants that share a common root cause
-  - Look for invariants that could be expressed as a single more abstract principle
-  - Example: Multiple "missing edge" invariants might generalize to "every metadata reference must become a traversable edge"
+- **Invariant Consolidation:** Are there any invariants in the ledger that should be combined into a single, more principled/general invariant? Look for invariants that share a root cause or could be expressed as a single more abstract principle.
 
-## 8. Commit Check
-- [ ] Run `git status` — are there uncommitted changes?
-- [ ] If yes: commit with sign-off (`git commit -s`) and run `./scripts/auto-pr` to push
-- [ ] If `auto-pr` is blocked (PR_PENDING exists or remote unavailable), note the state and continue
+## 8. Commit and Timestamp
+- Run `git status` — are there uncommitted changes?
+- If yes: commit with sign-off (`git commit -s`) and run `./scripts/auto-pr` to push
+- If `auto-pr` is blocked (PR_PENDING exists or remote unavailable), note the state and continue
+- Record reflection completion:
+  ```bash
+  printf '{"last_completed_utc": "%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .agent/stop_hook_state.json
+  ```
