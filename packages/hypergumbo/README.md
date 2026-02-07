@@ -136,9 +136,9 @@ See `hypergumbo --help` for all options.
 
 ## What It Understands
 
-- **67 language analyzers**: Python, JS/TS, Java, Rust, Go, C/C++, and many more ([full list](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LANGUAGES.md))
-- **15 cross-language linkers**: JNI, HTTP, WebSocket, gRPC, GraphQL, message queues ([full list](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LINKERS.md))
-- **37 framework patterns**: FastAPI, Django, Rails, Spring Boot, Phoenix, Express, etc.
+- **104 language analyzers**: Python, JS/TS, Java, Rust, Go, C/C++, and many more ([full list](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LANGUAGES.md))
+- **18 cross-language linkers**: JNI, HTTP, WebSocket, gRPC, GraphQL, message queues ([full list](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LINKERS.md))
+- **82 framework patterns**: FastAPI, Django, Rails, Spring Boot, Phoenix, Express, etc.
 
 ## How It Works
 
@@ -156,7 +156,7 @@ All analyzers produce the same IR types:
 - **Edge**: A relationship between symbols (calls, imports, extends, implements)
 - **Span**: Source location (file, line, column)
 
-This uniform IR is what allows 67 language analyzers and 15 cross-language linkers to work together coherently.
+This uniform IR is what allows 104 language analyzers and 18 cross-language linkers to work together coherently.
 
 ## Architecture
 
@@ -168,8 +168,8 @@ packages/
 │       ├── ir.py              # Symbol, Edge, Span
 │       ├── sketch.py          # Token-budgeted Markdown
 │       ├── slice.py           # Subgraph extraction
-│       ├── linkers/           # 15 cross-language linkers
-│       └── frameworks/        # 37 YAML patterns
+│       ├── linkers/           # 18 cross-language linkers
+│       └── frameworks/        # 82 framework + 5 convention YAML patterns
 ├── hypergumbo-lang-mainstream/  # Python, JS, Java, Go, Rust, etc.
 ├── hypergumbo-lang-common/      # Haskell, Elixir, GraphQL, etc.
 ├── hypergumbo-lang-extended1/   # Zig, Solidity, Agda, etc.
@@ -202,8 +202,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for PR workflow (including fork-based wor
 
 - [docs/USE-CASES.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/USE-CASES.md) — Practical workflows and examples
 - [CHANGELOG.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/CHANGELOG.md) — Implementation history
-- [docs/LANGUAGES.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LANGUAGES.md) — All 67 supported languages
-- [docs/LINKERS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LINKERS.md) — All 15 cross-language linkers
+- [docs/LANGUAGES.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LANGUAGES.md) — All 104 supported languages
+- [docs/LINKERS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/LINKERS.md) — All 18 cross-language linkers
 - [docs/hypergumbo-spec.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/hypergumbo-spec.md) — Detailed specification
 - [docs/CITATIONS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/CITATIONS.md) — Paper citations for embedding models
 - [docs/CACHE.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/CACHE.md) — Caching architecture

@@ -44,7 +44,7 @@ A local-first CLI that profiles a repo and emits a **repo behavior map** (versio
 ## 3) User experience (CLI)
 
 ### Install
-* `pipx install hypergumbo` (primary, includes all 67 language analyzers)
+* `pipx install hypergumbo` (primary, includes all 104 language analyzers)
 * `pip install hypergumbo` (secondary)
 * `pip install hypergumbo[embeddings]` (optional embedding-based config extraction)
 
@@ -122,7 +122,7 @@ Cold Spots (untested - need coverage)
 
 ## 4) Supported stacks
 
-Hypergumbo supports 67 languages via tree-sitter grammars. All are included in the base package.
+Hypergumbo supports 104 languages via tree-sitter grammars. All are included in the base package.
 
 **Primary languages (full symbol/edge extraction):**
 * 🟩 **Python** (AST-based, full call edges)
@@ -330,7 +330,7 @@ class AnalysisPass(Protocol):
         ...
 ```
 
-See §4 "Supported stacks" for the full list of 67 language analyzers, 15 cross-language linkers, and 41 pattern files (4 convention + 37 framework). Detailed reference: [LANGUAGES.md](LANGUAGES.md), [LINKERS.md](LINKERS.md).
+See §4 "Supported stacks" for the full list of 104 language analyzers, 18 cross-language linkers, and 87 pattern files (5 convention + 82 framework). Detailed reference: [LANGUAGES.md](LANGUAGES.md), [LINKERS.md](LINKERS.md).
 
 ## 6) Output: "Repo Behavior Map" JSON (v0.1)
 
@@ -1354,7 +1354,7 @@ ANALYZERS (pure language, no framework knowledge)
   → Capture symbols + rich metadata (decorators, base classes, parameters)
   → Capture UsageContext for call-based patterns (route registrations, etc.)
 
-PATTERN SYSTEM (41 YAML files: 4 convention + 37 framework)
+PATTERN SYSTEM (87 YAML files: 5 convention + 82 framework)
   → Match patterns against symbol metadata and usage contexts
   → Enrich symbols with concept metadata (route, task, model, etc.)
 
@@ -1406,7 +1406,7 @@ The pattern system has two categories:
 - `config-conventions.yaml`: NPM/Maven/Cargo dependencies, Android components, TypeScript references
 - `library-exports.yaml`: Library entry point detection via exports from index files (JS/TS)
 
-**Framework patterns (37 files):** Loaded only when the framework is detected in profile. See `src/hypergumbo/frameworks/` for full list.
+**Framework patterns (82 files):** Loaded only when the framework is detected in profile. See `src/hypergumbo/frameworks/` for full list.
 
 ### Pattern Types
 
@@ -2064,7 +2064,7 @@ See [Registry & Factory Vision](future/registry-factory-vision.md) for speculati
 
 #### Frontends (parsers / symbolizers)
 
-* 🟩 **tree-sitter** for universal syntax (Spec A, 67 languages)
+* 🟩 **tree-sitter** for universal syntax (Spec A, 104 languages)
 * 🟪 **Language-native engines** (optional, high-fidelity):
   * **TypeScript**: `tsserver` (type checker + language service)
   * **Python**: `pyright` or `mypy` (type inference)

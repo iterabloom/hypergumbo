@@ -1,6 +1,6 @@
 # Supported Languages
 
-Hypergumbo includes 67 language analyzers. Each analyzer detects symbols (functions, classes, methods, interfaces) and edges (calls, imports, instantiates, extends, implements).
+Hypergumbo includes 104 language analyzers. Each analyzer detects symbols (functions, classes, methods, interfaces) and edges (calls, imports, instantiates, extends, implements).
 
 ## Language Table
 

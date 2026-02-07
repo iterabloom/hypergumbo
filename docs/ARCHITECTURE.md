@@ -705,7 +705,7 @@ Source Files
 │  └─────────────────────────────────────────────────────────┘    │
 │  ┌─────────────────────────────────────────────────────────┐    │
 │  │  Framework Patterns (loaded when framework detected):   │    │
-│  │  - 37 framework YAML files (fastapi, django, etc.)      │    │
+│  │  - 82 framework YAML files (fastapi, django, etc.)      │    │
 │  └─────────────────────────────────────────────────────────┘    │
 │  Output: Symbols enriched with meta.concepts                    │
 └─────────────────────────────────────────────────────────────────┘
@@ -991,7 +991,7 @@ Source Files
 │  - config-conventions   │  NPM/Maven/Cargo dependencies
 │                         │
 │  Framework patterns:    │  Loaded when framework detected:
-│  - fastapi, django, etc │  37 framework YAML files
+│  - fastapi, django, etc │  82 framework YAML files
 └─────────────────────────┘
      │
      ▼
@@ -1004,7 +1004,7 @@ Source Files
 ### Key Components
 
 - **`framework_patterns.py`**: Loads and applies YAML pattern files
-- **`frameworks/*.yaml`**: 41 pattern files (4 convention + 37 framework)
+- **`frameworks/*.yaml`**: 87 pattern files (5 convention + 82 framework)
 - **`meta.concepts`**: List of matched concepts (single source of truth)
 - **`meta.decorators`/`meta.annotations`**: Raw metadata for pattern matching
 

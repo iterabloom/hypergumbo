@@ -204,9 +204,9 @@ Commands:
 - [x] Create `scripts/bakeoff-features-reflect` for LLM-driven assessment
 - [x] Define quality metric thresholds
 - [x] Document recommended larger repos for testing
-- [ ] Extend `scripts/loop-toggle` for multiple modes
-- [ ] Update AGENTS.md with deep bakeoff in priority queue
-- [ ] Verify end-to-end flow with real repos
+- [x] Extend `scripts/loop-toggle` for multiple modes
+- [x] Update AGENTS.md with deep bakeoff in priority queue
+- [x] Verify end-to-end flow with real repos
 
 ## References
 
