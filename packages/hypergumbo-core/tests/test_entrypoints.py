@@ -1959,3 +1959,141 @@ class TestEntrypointRankingPenalties:
         assert entrypoints[0].symbol_id == prod_route.id
         assert entrypoints[1].symbol_id == test_main.id
         assert entrypoints[2].symbol_id == vendor_route.id
+
+
+class TestConnectivityFallback:
+    """Tests for centrality-based entrypoint fallback (DEEP mode).
+
+    When no concept-based entrypoints are found (no routes, no main(), etc.),
+    the system falls back to selecting the most-connected callable symbols.
+    """
+
+    def test_fallback_activates_when_no_concepts(self) -> None:
+        """Connectivity fallback activates when no concept-based entrypoints exist."""
+        # Symbols with no concept metadata
+        func_a = make_symbol("processData", kind="function", path="lib.rs",
+                             language="rust", start_line=1, end_line=10)
+        func_b = make_symbol("helper", kind="function", path="lib.rs",
+                             language="rust", start_line=20, end_line=30)
+        func_c = make_symbol("run", kind="function", path="lib.rs",
+                             language="rust", start_line=40, end_line=50)
+
+        # processData calls helper and run; it's the most connected
+        edges = [
+            Edge.create(src=func_a.id, dst=func_b.id, edge_type="calls", line=1),
+            Edge.create(src=func_a.id, dst=func_c.id, edge_type="calls", line=2),
+            Edge.create(src=func_c.id, dst=func_b.id, edge_type="calls", line=3),
+        ]
+
+        entrypoints = detect_entrypoints([func_a, func_b, func_c], edges)
+
+        assert len(entrypoints) > 0
+        # The most-connected function should be ranked first
+        assert entrypoints[0].symbol_id == func_a.id
+        assert entrypoints[0].kind == EntrypointKind.CONNECTIVITY_BASED
+
+    def test_fallback_does_not_activate_with_concepts(self) -> None:
+        """No fallback when concept-based entrypoints exist."""
+        func_main = make_symbol(
+            "main", kind="function", path="main.py", language="python",
+            meta={"concepts": [{"concept": "main_function", "framework": "main-functions"}]},
+        )
+        func_helper = make_symbol(
+            "helper", kind="function", path="lib.py", language="python",
+            start_line=10, end_line=20,
+        )
+        # helper has more connections but main has concept metadata
+        edges = [
+            Edge.create(src=func_helper.id, dst=func_main.id, edge_type="calls", line=1),
+        ]
+
+        entrypoints = detect_entrypoints([func_main, func_helper], edges)
+
+        # Should have main_function, no connectivity_based
+        kinds = {ep.kind for ep in entrypoints}
+        assert EntrypointKind.MAIN_FUNCTION in kinds
+        assert EntrypointKind.CONNECTIVITY_BASED not in kinds
+
+    def test_fallback_confidence_lower_than_concepts(self) -> None:
+        """Connectivity-based entrypoints have lower confidence than concept-based.
+
+        The connectivity boost is intentionally skipped for fallback entrypoints
+        to avoid double-counting (out-degree is already used for selection).
+        Base confidence is 0.50, which stays below any concept-based entrypoint.
+        """
+        func = make_symbol("process", kind="function", path="lib.rs",
+                           language="rust", start_line=1, end_line=10)
+        edges = [
+            Edge.create(src=func.id, dst="other:1", edge_type="calls", line=1),
+            Edge.create(src=func.id, dst="other:2", edge_type="calls", line=2),
+        ]
+
+        entrypoints = detect_entrypoints([func], edges)
+
+        assert len(entrypoints) > 0
+        for ep in entrypoints:
+            if ep.kind == EntrypointKind.CONNECTIVITY_BASED:
+                # Base 0.50, no connectivity boost (double-count prevention)
+                assert ep.confidence == 0.50
+
+    def test_fallback_limits_to_top_n(self) -> None:
+        """Fallback selects at most a bounded number of entrypoints."""
+        # Create many disconnected functions
+        symbols = []
+        edges = []
+        for i in range(20):
+            sym = make_symbol(f"func_{i}", kind="function", path="lib.rs",
+                              language="rust", start_line=i * 10, end_line=i * 10 + 5)
+            symbols.append(sym)
+            # Each function calls the next one
+            if i > 0:
+                edges.append(Edge.create(src=sym.id, dst=symbols[i - 1].id, edge_type="calls", line=i))
+
+        entrypoints = detect_entrypoints(symbols, edges)
+
+        # Should be bounded (not all 20 functions)
+        assert len(entrypoints) <= 10
+
+    def test_fallback_excludes_non_callables(self) -> None:
+        """Fallback only considers callable symbols (functions, methods)."""
+        # A struct with edges but non-callable
+        struct_sym = make_symbol("Config", kind="struct", path="lib.rs",
+                                language="rust", start_line=1, end_line=10)
+        func_sym = make_symbol("init", kind="function", path="lib.rs",
+                               language="rust", start_line=20, end_line=30)
+
+        # Both have outgoing edges
+        edges = [
+            Edge.create(src=struct_sym.id, dst="other:1", edge_type="extends", line=1),
+            Edge.create(src=func_sym.id, dst="other:2", edge_type="calls", line=1),
+        ]
+
+        entrypoints = detect_entrypoints([struct_sym, func_sym], edges)
+
+        # Only the function should be an entrypoint
+        assert len(entrypoints) >= 1
+        ep_ids = {ep.symbol_id for ep in entrypoints}
+        assert func_sym.id in ep_ids
+
+    def test_fallback_penalizes_test_files(self) -> None:
+        """Connectivity fallback applies same test-file penalty."""
+        test_func = make_symbol("TestProcess", kind="function",
+                                path="lib_test.go", language="go",
+                                start_line=1, end_line=10)
+        prod_func = make_symbol("Process", kind="function",
+                                path="lib.go", language="go",
+                                start_line=20, end_line=30)
+
+        # Both have equal connectivity
+        edges = [
+            Edge.create(src=test_func.id, dst="other:1", edge_type="calls", line=1),
+            Edge.create(src=prod_func.id, dst="other:2", edge_type="calls", line=1),
+        ]
+
+        entrypoints = detect_entrypoints([test_func, prod_func], edges)
+
+        # Production function should rank higher
+        if len(entrypoints) >= 2:
+            prod_ep = next(ep for ep in entrypoints if ep.symbol_id == prod_func.id)
+            test_ep = next(ep for ep in entrypoints if ep.symbol_id == test_func.id)
+            assert prod_ep.confidence > test_ep.confidence

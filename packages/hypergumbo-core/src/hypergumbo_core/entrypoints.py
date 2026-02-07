@@ -33,11 +33,20 @@ Confidence Scores
 -----------------
 - 0.95: All semantic detection (based on actual pattern matching)
 
-Connectivity Boost:
+Connectivity Boost (concept-based only):
 - Entrypoints with outgoing edges get a confidence boost (up to +0.25)
 - Boost formula: min(0.25, log(1 + out_edges) / 10)
 - This ranks "interesting" entrypoints higher (those that call many functions)
 - Entrypoints are sorted by final confidence (highest first)
+- CONNECTIVITY_BASED fallback entrypoints skip the boost to avoid double-counting
+
+Connectivity-Based Fallback:
+- When no concept-based entrypoints are found, the system falls back to
+  selecting the most-connected callable symbols (functions, methods, constructors)
+- Base confidence: 0.50 (below all concept-based entrypoints)
+- At most 5 fallback entrypoints are selected, ranked by out-degree
+- This ensures --entry auto never hard-fails, even for repos with no
+  matching YAML patterns (e.g., Rust libraries without pub tracking)
 """
 from __future__ import annotations
 
@@ -96,6 +105,8 @@ class EntrypointKind(Enum):
     SCHEDULED_TASK = "scheduled_task"  # Cron/scheduled job
     # Library entry points (exported API)
     LIBRARY_EXPORT = "library_export"  # Exported function/class (library entry)
+    # Connectivity-based fallback (no patterns matched)
+    CONNECTIVITY_BASED = "connectivity_based"  # High-connectivity callable
 
 
 @dataclass
@@ -482,6 +493,61 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
     return entrypoints
 
 
+_CALLABLE_KINDS = frozenset({"function", "method", "constructor"})
+_MAX_CONNECTIVITY_ENTRYPOINTS = 5
+
+
+def _connectivity_fallback(
+    nodes: List[Symbol],
+    edges: List[Edge],
+) -> List[Entrypoint]:
+    """Select entrypoints based on outgoing edge count when no patterns match.
+
+    This is a last-resort fallback for repos where no YAML patterns produce
+    entrypoints (e.g., Rust libraries without visibility tracking, or repos
+    in languages without any framework/convention patterns).
+
+    Only callable symbols (functions, methods, constructors) are considered.
+    Confidence is set to 0.50, lower than any concept-based entrypoint, so
+    these never outrank pattern-detected entries in mixed scenarios.
+
+    Returns at most _MAX_CONNECTIVITY_ENTRYPOINTS entries, sorted by
+    descending out-degree.
+    """
+    # Count outgoing edges per symbol
+    outgoing: dict[str, int] = defaultdict(int)
+    for edge in edges:
+        outgoing[edge.src] += 1
+
+    # Filter to callable symbols with at least one outgoing edge
+    candidates: list[tuple[Symbol, int]] = []
+    for node in nodes:
+        if node.kind not in _CALLABLE_KINDS:
+            continue
+        out_count = outgoing.get(node.id, 0)
+        if out_count > 0:
+            candidates.append((node, out_count))
+
+    if not candidates:
+        return []
+
+    # Sort by out-degree descending, take top N
+    candidates.sort(key=lambda x: x[1], reverse=True)
+    top = candidates[:_MAX_CONNECTIVITY_ENTRYPOINTS]
+
+    entrypoints: List[Entrypoint] = []
+    for sym, _out_count in top:
+        lang = sym.language or "unknown"
+        entrypoints.append(Entrypoint(
+            symbol_id=sym.id,
+            kind=EntrypointKind.CONNECTIVITY_BASED,
+            confidence=0.50,
+            label=f"High-connectivity {lang} {sym.kind}: {sym.name}",
+        ))
+
+    return entrypoints
+
+
 def detect_entrypoints(
     nodes: List[Symbol],
     edges: List[Edge],
@@ -526,6 +592,13 @@ def detect_entrypoints(
             seen_ids.add(ep.symbol_id)
             unique_entrypoints.append(ep)
 
+    # Connectivity-based fallback: when no concept-based entrypoints found,
+    # select the most-connected callable symbols as pseudo-entrypoints.
+    # This ensures --entry auto never hard-fails, even for repos with no
+    # matching YAML patterns (e.g., Rust libraries without pub tracking).
+    if not unique_entrypoints:
+        unique_entrypoints = _connectivity_fallback(nodes, edges)
+
     # Build lookup from symbol_id to Symbol for penalty calculations
     symbol_lookup: dict[str, Symbol] = {node.id: node for node in nodes}
 
@@ -557,6 +630,11 @@ def detect_entrypoints(
         outgoing_counts[edge.src] += 1
 
     for ep in unique_entrypoints:
+        # Skip connectivity boost for CONNECTIVITY_BASED entrypoints:
+        # their selection already incorporates out-degree ranking, so
+        # boosting again would double-count connectivity.
+        if ep.kind == EntrypointKind.CONNECTIVITY_BASED:
+            continue
         out_edges = outgoing_counts.get(ep.symbol_id, 0)
         if out_edges > 0:
             # Logarithmic boost: diminishing returns for very high counts
