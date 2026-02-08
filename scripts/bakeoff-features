@@ -688,7 +688,10 @@ def cmd_run(args):
             print("OK" if rc == 0 else f"FAIL({rc})")
 
         # 4. Reverse slices (top 3 entries)
-        # Use --exclude-tests and --exclude-utility to show production callers only
+        # Do NOT use --exclude-tests/--exclude-utility here.  For library repos,
+        # callers live in tests/examples — excluding them yields empty slices
+        # (e.g., rslice for FastAPI class returned 0 edges).  For application
+        # repos, test callers are still useful for quality assessment.
         for i, entry in enumerate(entries[:3]):
             print(f"  reverse-slice[{entry[:30]}]...", end=" ", flush=True)
             rc, stdout, stderr = run_cmd([
@@ -697,8 +700,6 @@ def cmd_run(args):
                 "--entry", entry,
                 "--reverse",
                 "--inline",
-                "--exclude-tests",
-                "--exclude-utility",
                 "--max-hops", "10",
                 "--max-files", "100",
                 "--out", os.path.join(repo_out, f"rslice.{i}.json"),
