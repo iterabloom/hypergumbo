@@ -3,7 +3,7 @@
 # See ADR-0008 for governance protocol
 #
 # Decision logic:
-# 1. Pending TODOs in ledger → block with pending items listing
+# 1. Pending TODOs (hard/soft, from ledger + work_items.md) → block (subject to circuit breaker)
 # 1.5. Bakeoff convergence summary → informational (appended to prompt)
 # 2. Cooldown (reflection completed <30 min ago) → block with cooldown prompt
 # 3. Stale reflection → block with full checklist
@@ -28,98 +28,28 @@ if [[ ! -f "$REPO_ROOT/.agent/LOOP" ]]; then
   exit 0
 fi
 
-# --- Three-way decision logic ---
+# --- Shared logic (sets TOTAL_HARD, TOTAL_SOFT, TOTAL_TODOS, CIRCUIT_BREAKER_TRIPPED, etc.) ---
+source "$SCRIPT_DIR/../_shared/stop_logic.sh"
 
-# Path 1: Check for pending TODO items in invariant ledger
-TODO_COUNT=$(grep -c '^\s*- \*\*TODO\*\*' "$REPO_ROOT/.agent/invariant-ledger.md" 2>/dev/null || echo 0)
-if [[ "$TODO_COUNT" -gt 0 ]]; then
-  TODO_ITEMS=$(grep '^\s*- \*\*TODO\*\*' "$REPO_ROOT/.agent/invariant-ledger.md" 2>/dev/null | head -20)
-  REASON=$(printf 'AUTONOMOUS MODE: %d pending scope expansion TODO(s) in invariant ledger. Address these before stopping:\n\n%s\n\nThese are first-class work items from the Scope Expansion Commitment Protocol. Fix them, or explicitly DEFER with justification in the ledger.' "$TODO_COUNT" "$TODO_ITEMS" | jq -Rs .)
-  cat <<EOF
-{
-  "decision": "block",
-  "reason": $REASON
-}
-EOF
+# --- Path 1: TODOs exist (both flavors block, subject to circuit breaker) ---
+if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "false" ]]; then
+  REASON=$(printf 'AUTONOMOUS MODE: %d TODO(s) block stopping (%d hard, %d soft). Read %s for details.' "$TOTAL_TODOS" "$TOTAL_HARD" "$TOTAL_SOFT" "$GUIDANCE_FILE" | jq -Rs .)
+  echo "{\"decision\":\"block\",\"reason\":$REASON}"
+  exit 0
+fi
+if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "true" ]]; then
+  REASON=$(printf 'CIRCUIT BREAKER: No progress on %d TODO(s) across %d stop events. Stopping approved. Persist stalled items to last_stop_check.json. Read %s for details.' "$TOTAL_TODOS" "$HASH_THRESHOLD" "$GUIDANCE_FILE" | jq -Rs .)
+  echo "{\"decision\":\"approve\",\"reason\":$REASON}"
   exit 0
 fi
 
-# Path 1.5: Bakeoff convergence summary (informational, appended to prompts)
-BAKEOFF_SUFFIX=""
-BAKEOFF_DIR="$HOME/hypergumbo_lab_notebook/bakeoff_artifacts"
-if [[ -d "$BAKEOFF_DIR" ]]; then
-  # Find most recent session's state.json (broad-* or deep-*)
-  LATEST_STATE=$(find "$BAKEOFF_DIR" -maxdepth 2 -name state.json -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
-  if [[ -n "$LATEST_STATE" ]]; then
-    BAKEOFF_SUMMARY=$(python3 -c "
-import json, sys
-try:
-    with open('$LATEST_STATE') as f:
-        state = json.load(f)
-    ch = state.get('convergence_history', [])
-    if not ch:
-        sys.exit(0)
-    latest = ch[-1]
-    crit = latest.get('critical', 0)
-    high = latest.get('high', 0)
-    new = latest.get('new_issues', 0)
-    cohort_num = latest.get('cohort', '?')
-    iteration = latest.get('iteration', '?')
-    if crit == 0 and high == 0 and new == 0:
-        print(f'CONVERGED cohort={cohort_num} iter={iteration}')
-    else:
-        print(f'NEEDS_WORK cohort={cohort_num} iter={iteration} critical={crit} high={high} new={new}')
-except Exception:
-    pass
-" 2>/dev/null || true)
-
-    if [[ "$BAKEOFF_SUMMARY" == CONVERGED* ]]; then
-      BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest bakeoff session is CONVERGED — no critical/high issues. Running another bakeoff on the same cohort would be redundant. Consider: selecting a new cohort, mining existing artifacts, or moving to other work items.'
-    elif [[ "$BAKEOFF_SUMMARY" == NEEDS_WORK* ]]; then
-      BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest bakeoff session has outstanding issues. Consider investigating these before starting new work.'
-    fi
-  fi
+# --- Path 2: Cooldown (reflection completed within last 30 minutes) ---
+if [[ "$ELAPSED_MIN" -lt 30 ]]; then
+  COOLDOWN_PROMPT=$(printf '%s%s%s' "$COOLDOWN_CONTENT" "$COOLDOWN_NOTES_SECTION" "$BAKEOFF_SUFFIX" | jq -Rs .)
+  echo "{\"decision\":\"block\",\"reason\":$COOLDOWN_PROMPT}"
+  exit 0
 fi
 
-# Path 2: Check cooldown (reflection completed within last 30 minutes)
-STATE_FILE="$REPO_ROOT/.agent/last_stop_check.json"
-# Backward compat: fall back to old filename if new one doesn't exist
-if [[ ! -f "$STATE_FILE" && -f "$REPO_ROOT/.agent/stop_hook_state.json" ]]; then
-  STATE_FILE="$REPO_ROOT/.agent/stop_hook_state.json"
-fi
-if [[ -f "$STATE_FILE" ]]; then
-  LAST_TS=$(jq -r '.last_completed_utc // "1970-01-01T00:00:00Z"' "$STATE_FILE" 2>/dev/null || echo "1970-01-01T00:00:00Z")
-  LAST_EPOCH=$(date -d "$LAST_TS" +%s 2>/dev/null || echo 0)
-  NOW_EPOCH=$(date +%s)
-  ELAPSED_MIN=$(( (NOW_EPOCH - LAST_EPOCH) / 60 ))
-
-  if [[ "$ELAPSED_MIN" -lt 30 ]]; then
-    COOLDOWN_CONTENT=$(cat "$REPO_ROOT/.agent/cooldown_prompt.md")
-
-    # Inject last reflection notes so cooldown knows what to implement
-    NOTES=$(jq -r '.notes // ""' "$STATE_FILE" 2>/dev/null || true)
-    NOTES_SECTION=""
-    if [[ -n "$NOTES" ]]; then
-      NOTES_SECTION=$(printf '\n\n---\n## LAST REFLECTION NOTES\n%s\n---' "$NOTES")
-    fi
-
-    COOLDOWN_PROMPT=$(printf '%s%s%s' "$COOLDOWN_CONTENT" "$NOTES_SECTION" "$BAKEOFF_SUFFIX" | jq -Rs .)
-    cat <<EOF
-{
-  "decision": "block",
-  "reason": $COOLDOWN_PROMPT
-}
-EOF
-    exit 0
-  fi
-fi
-
-# Path 3: Full reflection checklist (stale or no prior reflection)
-REFLECTION_CONTENT=$(cat "$REPO_ROOT/.agent/stop_reflect.md")
+# --- Path 3: Full reflection checklist (stale or no prior reflection) ---
 REFLECTION_PROMPT=$(printf '%s%s' "$REFLECTION_CONTENT" "$BAKEOFF_SUFFIX" | jq -Rs .)
-cat <<EOF
-{
-  "decision": "block",
-  "reason": $REFLECTION_PROMPT
-}
-EOF
+echo "{\"decision\":\"block\",\"reason\":$REFLECTION_PROMPT}"

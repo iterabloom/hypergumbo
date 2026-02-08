@@ -33,57 +33,58 @@ fi
 # TRUE, BROAD, and DEEP all enable autonomous behavior
 # OFF and FALSE both mean disabled (see scripts/loop-toggle)
 MODE=$(cat "$REPO_ROOT/AUTONOMOUS_MODE.txt" 2>/dev/null | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
-if [[ -n "$MODE" && "$MODE" != "OFF" && "$MODE" != "FALSE" ]]; then
-  if [[ -f "$REPO_ROOT/.agent/LOOP" ]]; then
-    # --- Three-way notification logic ---
+if [[ -z "$MODE" || "$MODE" == "OFF" || "$MODE" == "FALSE" ]]; then
+  exit 0
+fi
+if [[ ! -f "$REPO_ROOT/.agent/LOOP" ]]; then
+  exit 0
+fi
 
-    # Path 1: Surface pending TODO items
-    TODO_COUNT=$(grep -c '^\s*- \*\*TODO\*\*' "$REPO_ROOT/.agent/invariant-ledger.md" 2>/dev/null || echo 0)
-    if [[ "$TODO_COUNT" -gt 0 ]]; then
-      cat >&2 <<BANNER
-════════════════════════════════════════════════════════════════════
-  AUTONOMOUS MODE: $TODO_COUNT PENDING SCOPE EXPANSION TODO(s)
+# --- Shared logic (sets TOTAL_HARD, TOTAL_SOFT, TOTAL_TODOS, CIRCUIT_BREAKER_TRIPPED, etc.) ---
+source "$SCRIPT_DIR/../_shared/stop_logic.sh"
+
+# --- Path 1: Surface pending TODO items ---
+if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "false" ]]; then
+  cat >&2 <<BANNER
+================================================================
+  AUTONOMOUS MODE: $TOTAL_TODOS PENDING TODO(s) ($TOTAL_HARD hard, $TOTAL_SOFT soft)
+  Read $GUIDANCE_FILE for details.
   (If Codex CLI does not auto-continue, review and manually proceed)
-════════════════════════════════════════════════════════════════════
+================================================================
 
 BANNER
-      grep '^\s*- \*\*TODO\*\*' "$REPO_ROOT/.agent/invariant-ledger.md" 2>/dev/null >&2
-      exit 0
-    fi
+  exit 0
+fi
+if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "true" ]]; then
+  cat >&2 <<BANNER
+================================================================
+  CIRCUIT BREAKER: No progress on $TOTAL_TODOS TODO(s) across $HASH_THRESHOLD stop events.
+  Stopping approved. Read $GUIDANCE_FILE for details.
+================================================================
 
-    # Path 2: Cooldown notification
-    STATE_FILE="$REPO_ROOT/.agent/last_stop_check.json"
-    # Backward compat: fall back to old filename if new one doesn't exist
-    if [[ ! -f "$STATE_FILE" && -f "$REPO_ROOT/.agent/stop_hook_state.json" ]]; then
-      STATE_FILE="$REPO_ROOT/.agent/stop_hook_state.json"
-    fi
-    if [[ -f "$STATE_FILE" ]]; then
-      LAST_TS=$(jq -r '.last_completed_utc // "1970-01-01T00:00:00Z"' "$STATE_FILE" 2>/dev/null || echo "1970-01-01T00:00:00Z")
-      LAST_EPOCH=$(date -d "$LAST_TS" +%s 2>/dev/null || echo 0)
-      NOW_EPOCH=$(date +%s)
-      ELAPSED_MIN=$(( (NOW_EPOCH - LAST_EPOCH) / 60 ))
+BANNER
+  exit 0
+fi
 
-      if [[ "$ELAPSED_MIN" -lt 30 ]]; then
-        cat >&2 <<BANNER
-════════════════════════════════════════════════════════════════════
+# --- Path 2: Cooldown notification ---
+if [[ "$ELAPSED_MIN" -lt 30 ]]; then
+  cat >&2 <<BANNER
+================================================================
   AUTONOMOUS MODE ACTIVE - COOLDOWN (reflection completed ${ELAPSED_MIN}m ago)
   (If Codex CLI does not auto-continue, review and manually proceed)
-════════════════════════════════════════════════════════════════════
+================================================================
 
 BANNER
-        cat "$REPO_ROOT/.agent/cooldown_prompt.md" >&2
-        exit 0
-      fi
-    fi
+  cat "$REPO_ROOT/.agent/cooldown_prompt.md" >&2
+  exit 0
+fi
 
-    # Path 3: Full reflection prompt
-    cat >&2 <<'BANNER'
-════════════════════════════════════════════════════════════════════
+# --- Path 3: Full reflection prompt ---
+cat >&2 <<'BANNER'
+================================================================
   AUTONOMOUS MODE ACTIVE - REFLECTION REQUIRED BEFORE STOPPING
   (If Codex CLI does not auto-continue, review and manually proceed)
-════════════════════════════════════════════════════════════════════
+================================================================
 
 BANNER
-    cat "$REPO_ROOT/.agent/stop_reflect.md" >&2
-  fi
-fi
+cat "$REPO_ROOT/.agent/stop_reflect.md" >&2

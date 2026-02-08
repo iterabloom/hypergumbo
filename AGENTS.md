@@ -15,11 +15,13 @@
   - NEVER output a "summary" or "status report" as a final action
   - Before ANY stopping point: check todo list - if items remain, continue
   - Before ANY stopping point: check `.agent/invariant-ledger.md` for unfixed or partially-addressed root causes related to your work
-  - Before ANY stopping point: check for `**TODO**` pending generalizations in `.agent/invariant-ledger.md` — these are first-class work items that must be addressed or explicitly deferred
+  - Before ANY stopping point: check for `**TODO!**` and `**TODO**` items in both `.agent/invariant-ledger.md` and `~/hypergumbo_lab_notebook/guidance_log/work_items.md`. Both flavors block stopping. The difference is agent behavior: `**TODO!**` means investigate deeply, assume structural; `**TODO**` means address or defer freely.
   - Before ANY stopping point: complete the reflection protocol in `.agent/stop_reflect.md`
   - After completing a major milestone: immediately start next item from priority queue
   - Follow the below section titled "Autonomous Development Mode Stipulations"
   - "Profoundly stuck" means: all priority queue items attempted, all tests failing, no clear path forward, AND no unfixed root causes you could address
+  - **Circuit breaker:** The stop hook approves stopping after 5 identical stop events with no progress (prevents death spirals). If the circuit breaker fires, persist stalled items to `last_stop_check.json` notes so they survive context compaction.
+  - **Lazy-load guidance:** When TODOs block stopping, full details are written to `~/hypergumbo_lab_notebook/guidance_log/stop_guidance_MMDDYYYY_HHMM.md`. The hook response is a short pointer, not the full content — read the file for details.
   - To reiterate: If AUTONOMOUS_MODE.txt contains TRUE, BROAD, or DEEP, you are authorized for indefinite continuous work according to the below section titled "Autonomous Development Mode Stipulations".
   - Use `./scripts/loop-toggle` to manage autonomous mode:
     - `./scripts/loop-toggle off` - Disable autonomous mode
@@ -69,11 +71,14 @@ No weak shit. If you don't know, say you don't know. If you haven't checked, say
   4. **Distinguish fix from workaround:** Does your change bypass a problematic code path, or fix/remove it?
   5. **If workaround:** Document in `.agent/invariant-ledger.md` with Status: ❌ UNFIXED, then fix the root cause
 - **Scope Expansion Commitment Protocol:** When a structural fix identifies analogous issues in other languages, constructs, or pipeline stages:
-  1. **Write immediately:** Add `**TODO**` entries to the invariant ledger under the relevant invariant's `Pending Generalizations` field. Format: `- **TODO** Target: description (est. complexity, value: relative-to-original)`
-  2. **First-class work item:** `**TODO**` entries are enforced by the stop hook — they surface as candidate next actions when the agent tries to stop
+  1. **Write immediately:** Add entries using the appropriate flavor:
+     - `**TODO!**` — invariant violations, defects, anything potentially structural. **When in doubt, use this.** The circuit breaker prevents death spirals, so err on the side of taking things seriously.
+     - `**TODO**` — clearly non-defect backlog (CI config, test coverage, nice-to-haves).
+     Both markers can go in the invariant ledger (`Pending Generalizations` field) or in `~/hypergumbo_lab_notebook/guidance_log/work_items.md` (for things that don't fit an invariant entry).
+  2. **First-class work item:** Both `**TODO!**` and `**TODO**` entries are enforced by the stop hook — they block stopping (subject to circuit breaker) and surface as candidate next actions
   3. **Act or defer:** Either fix the TODO or explicitly change it to `**DEFERRED**` with justification (e.g., "blocked on X", "requires grammar not available")
-  4. **Track to completion:** When done, change `**TODO**` to `**DONE**` with PR reference
-  5. **Hook enforcement:** The stop hook counts `**TODO**` markers in the ledger. If any exist, the hook blocks with a listing of pending items as candidate next actions
+  4. **Track to completion:** When done, change `**TODO**`/`**TODO!**` to `**DONE**` with PR reference
+  5. **Hook enforcement:** The stop hook counts both `**TODO!**` and `**TODO**` markers in both the invariant ledger and `work_items.md`. Both block stopping, subject to circuit breaker (5 identical firings with no progress → approve)
 - **Signing & Identity:**
   1. Check `git config user.name` and `git config user.email` **before** creating any commit.
   2. If they are blank, **STOP**. You are **strictly forbidden** from generating, inferring, or guessing an identity. You must ask the user to run:
@@ -154,7 +159,14 @@ When context has been compressed, you may have lost awareness of in-progress wor
 ```bash
 cat .agent/last_stop_check.json 2>/dev/null
 ```
-This file records: current branch (should be `dev` after a clean merge), last PR number/state, pending TODOs, and free-text notes about what to do next. Use it to orient yourself before starting new work.
+This file records: current branch (should be `dev` after a clean merge), last PR number/state, pending TODOs (hard/soft), and free-text notes about what to do next. Use it to orient yourself before starting new work.
+
+If the JSON contains a `guidance_file` field, read that file for the most recent stop hook guidance (TODO details, circuit breaker status).
+
+Also check for pending work items:
+```bash
+cat ~/hypergumbo_lab_notebook/guidance_log/work_items.md 2>/dev/null | grep '^\s*- \*\*TODO'
+```
 
 **smart-test reminder:** Always use `pytest` (aliased to `smart-test`) for running tests. NEVER use `python -m pytest`, `.venv/bin/pytest`, or `command pytest` — these bypass smart-test and produce ~4000 lines of raw output instead of the compact ~20-line summary.
 
@@ -174,8 +186,9 @@ cat .agent/invariant-ledger.md 2>/dev/null | grep -E '^- \*\*Status:\*\* (UNFIXE
 # If any items show, read the full ledger for context
 # If your change relates to an UNFIXED or PARTIALLY ADDRESSED invariant, fix the root cause, not a workaround
 
-# 4b. Check for pending scope expansion TODOs
-grep -c '^\s*- \*\*TODO\*\*' .agent/invariant-ledger.md 2>/dev/null || echo 0
+# 4b. Check for pending scope expansion TODOs (both files, both flavors)
+grep -c '^\s*- \*\*TODO!\*\*' .agent/invariant-ledger.md ~/hypergumbo_lab_notebook/guidance_log/work_items.md 2>/dev/null || echo 0
+grep -c '^\s*- \*\*TODO\*\*[^!]' .agent/invariant-ledger.md ~/hypergumbo_lab_notebook/guidance_log/work_items.md 2>/dev/null || echo 0
 # If count > 0, address them or explicitly DEFER with justification before committing
 
 # 5. Commit with sign-off
@@ -485,7 +498,7 @@ Use DEEP mode when:
 
 ### BROAD Mode Priority Queue:
 1. **Actionable invariants** in `.agent/invariant-ledger.md`:
-   - Pending Generalizations: any `**TODO**` markers (scope expansion work from the Commitment Protocol)
+   - Pending Generalizations: any `**TODO!**` or `**TODO**` markers in ledger or `work_items.md` (scope expansion work from the Commitment Protocol)
    - Meta-invariants: Any status below 100% (even 99%) (the percentages are extremely cursory and vibes-based and will mislead if taken at face value)
    - Regular: Status: UNFIXED or PARTIALLY ADDRESSED
 2. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
@@ -494,7 +507,7 @@ Use DEEP mode when:
 ### DEEP Mode Priority Queue:
 When in DEEP mode, focus on feature quality rather than parse correctness:
 1. **Actionable invariants** in `.agent/invariant-ledger.md`:
-   - Pending Generalizations: any `**TODO**` markers (scope expansion work from the Commitment Protocol)
+   - Pending Generalizations: any `**TODO!**` or `**TODO**` markers in ledger or `work_items.md` (scope expansion work from the Commitment Protocol)
    - Meta-invariants: Any status below 100% (even 99%)
    - Regular: Status: UNFIXED or PARTIALLY ADDRESSED
 2. **Slice quality:** Does forward slice capture actual dependencies?

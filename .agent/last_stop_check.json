@@ -1,10 +1,9 @@
 {
-  "last_completed_utc": "2026-02-07T08:05:20Z",
+  "last_completed_utc": "2026-02-07T09:30:00Z",
   "branch": "dev",
-  "last_pr": 907,
+  "last_pr": 910,
   "last_pr_state": "merged",
   "pending_todos": 0,
   "unfixed_invariants": 0,
-  "active_artifact_session": "adhoc-20260207-024401",
-  "notes": "DEEP mode analysis session. Fixed analysis lib infrastructure (lab-run, _common.py, scripts 08-12, primary language detection). Investigated route-handler linking (decorator vs router-file patterns) and slice quality (libraries get empty slices \u2014 missing Go/Elixir library-export patterns). Governance proposals in ~/hypergumbo_lab_notebook/governance_proposals_20260207.md. Next: add Go/Elixir library-export YAML patterns, or centrality-based entrypoint fallback, or run DEEP bakeoff."
+  "notes": "Completed: PR#910 added connectivity-based entrypoint fallback \u2014 when no YAML patterns match, selects top-5 most-connected callable symbols as pseudo-entrypoints (confidence 0.50). Connectivity boost skipped to avoid double-counting. Next: run DEEP bakeoff with new patterns (library-exports + connectivity fallback) to validate slice quality improvement on library repos. Or add Rust library-export patterns (blocked: analyzer lacks pub/private visibility metadata). Or investigate other DEEP mode priority items."
 }

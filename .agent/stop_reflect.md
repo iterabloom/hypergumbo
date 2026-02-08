@@ -20,11 +20,17 @@ This catches:
 
 If items show, read the full ledger for context and Notes fields.
 
-Also check for pending generalizations:
+Also check for pending work items (both files, both flavors):
 ```bash
-grep -c '^\s*- \*\*TODO\*\*' .agent/invariant-ledger.md 2>/dev/null || echo 0
+# Hard TODOs (invariant/defect — investigate deeply):
+grep -c '^\s*- \*\*TODO!\*\*' .agent/invariant-ledger.md 2>/dev/null || echo 0
+grep -c '^\s*- \*\*TODO!\*\*' ~/hypergumbo_lab_notebook/guidance_log/work_items.md 2>/dev/null || echo 0
+
+# Soft TODOs (backlog — address or defer freely):
+grep -c '^\s*- \*\*TODO\*\*[^!]' .agent/invariant-ledger.md 2>/dev/null || echo 0
+grep -c '^\s*- \*\*TODO\*\*[^!]' ~/hypergumbo_lab_notebook/guidance_log/work_items.md 2>/dev/null || echo 0
 ```
-If any `**TODO**` items exist, they are first-class work items — address them or explicitly defer with justification.
+Both `**TODO!**` and `**TODO**` items block stopping (subject to circuit breaker). `**TODO!**` = investigate deeply, assume structural. `**TODO**` = address or defer freely.
 
 ## 3. Structural vs Workaround
 For the last change made:
@@ -37,11 +43,14 @@ Check for structural analogues of the last fix:
 - Different language, same pattern?
 - Different pipeline stage?
 
-If analogues exist, write `**TODO**` entries to the invariant ledger under the relevant invariant's `Pending Generalizations` field immediately. Use the format:
+If analogues exist, write TODO entries immediately. Use the appropriate flavor:
 ```
-- **TODO** Target: description (est. complexity, value: relative-to-original)
+- **TODO!** Target: description (invariant/defect, est. complexity, value: ...)
+- **TODO** Target: description (backlog, est. complexity, value: ...)
 ```
-These entries are enforced by the stop hook — they become candidate next actions.
+Use `**TODO!**` for invariant violations, defects, and anything that might be structural. Use `**TODO**` for clearly non-defect backlog. **When in doubt, use `**TODO!**`** — the circuit breaker prevents death spirals, so err on the side of taking things seriously.
+
+Place entries in the invariant ledger (under `Pending Generalizations`) for invariant-related work, or in `~/hypergumbo_lab_notebook/guidance_log/work_items.md` for things that don't fit an invariant entry. Both files are checked by the stop hook.
 
 ## 5. Decision
 - If root cause is unfixed (even partially) and analogous issues might exist: **DO NOT STOP** — fix the root cause or investigate further
@@ -92,22 +101,43 @@ else:
     last_pr = 0       # Agent fills in the PR number that just merged, or 0
     last_pr_state = 'none'
 
-# Count pending work items from invariant ledger
+# Count pending work items from invariant ledger + work_items.md
 ledger = pathlib.Path('.agent/invariant-ledger.md')
 ledger_text = ledger.read_text() if ledger.exists() else ''
+work_items = pathlib.Path.home() / 'hypergumbo_lab_notebook' / 'guidance_log' / 'work_items.md'
+work_text = work_items.read_text() if work_items.exists() else ''
 import re
-pending_todos = len(re.findall(r'^\s*- \*\*TODO\*\*', ledger_text, re.MULTILINE))
+pending_hard_todos = (
+    len(re.findall(r'^\s*- \*\*TODO!\*\*', ledger_text, re.MULTILINE))
+    + len(re.findall(r'^\s*- \*\*TODO!\*\*', work_text, re.MULTILINE))
+)
+pending_soft_todos = (
+    len(re.findall(r'^\s*- \*\*TODO\*\*[^!]', ledger_text, re.MULTILINE))
+    + len(re.findall(r'^\s*- \*\*TODO\*\*[^!]', work_text, re.MULTILINE))
+)
 unfixed = len(re.findall(r'^\s*- \*\*Status:\*\* (UNFIXED|PARTIALLY ADDRESSED|TBD)', ledger_text, re.MULTILINE))
+
+# Preserve guidance_file from previous stop hook run if present
+existing_state = {}
+state_path = pathlib.Path('.agent/last_stop_check.json')
+if state_path.exists():
+    try:
+        existing_state = json.loads(state_path.read_text())
+    except Exception:
+        pass
 
 state = {
     'last_completed_utc': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
     'branch': branch,
     'last_pr': last_pr,
     'last_pr_state': last_pr_state,
-    'pending_todos': pending_todos,
+    'pending_hard_todos': pending_hard_todos,
+    'pending_soft_todos': pending_soft_todos,
     'unfixed_invariants': unfixed,
-    'notes': ''  # Agent fills in: specific implementation task(s) for cooldown to act on. Be concrete: "add X pattern to Y file" not "investigate X"
+    'notes': '',  # Agent fills in: specific implementation task(s) for cooldown to act on. Be concrete: "add X pattern to Y file" not "investigate X"
 }
+if 'guidance_file' in existing_state:
+    state['guidance_file'] = existing_state['guidance_file']
 pathlib.Path('.agent/last_stop_check.json').write_text(json.dumps(state, indent=2) + '\n')
   "
   ```

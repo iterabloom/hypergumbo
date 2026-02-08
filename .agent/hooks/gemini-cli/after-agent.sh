@@ -7,8 +7,8 @@
 # To inject a continuation prompt, use decision: "deny" with reason field.
 # Ref: https://geminicli.com/docs/hooks/reference/
 #
-# Three-way decision logic:
-# 1. Pending TODOs in ledger → deny with pending items listing
+# Decision logic:
+# 1. Pending TODOs (hard/soft, from ledger + work_items.md) → deny (subject to circuit breaker)
 # 2. Cooldown (reflection completed <30 min ago) → deny with cooldown prompt
 # 3. Stale reflection → deny with full checklist
 
@@ -43,51 +43,28 @@ if [[ "$STOP_HOOK_ACTIVE" == "true" ]]; then
   exit 0
 fi
 
-# --- Three-way decision logic ---
+# --- Shared logic (sets TOTAL_HARD, TOTAL_SOFT, TOTAL_TODOS, CIRCUIT_BREAKER_TRIPPED, etc.) ---
+source "$SCRIPT_DIR/../_shared/stop_logic.sh"
 
-# Path 1: Check for pending TODO items in invariant ledger
-TODO_COUNT=$(grep -c '^\s*- \*\*TODO\*\*' "$REPO_ROOT/.agent/invariant-ledger.md" 2>/dev/null || echo 0)
-if [[ "$TODO_COUNT" -gt 0 ]]; then
-  TODO_ITEMS=$(grep '^\s*- \*\*TODO\*\*' "$REPO_ROOT/.agent/invariant-ledger.md" 2>/dev/null | head -20)
-  REASON=$(printf 'AUTONOMOUS MODE: %d pending scope expansion TODO(s) in invariant ledger. Address these before stopping:\n\n%s\n\nThese are first-class work items from the Scope Expansion Commitment Protocol. Fix them, or explicitly DEFER with justification in the ledger.' "$TODO_COUNT" "$TODO_ITEMS" | jq -Rs .)
-  cat <<EOF
-{
-  "decision": "deny",
-  "reason": $REASON
-}
-EOF
+# --- Path 1: TODOs exist (both flavors block, subject to circuit breaker) ---
+if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "false" ]]; then
+  REASON=$(printf 'AUTONOMOUS MODE: %d TODO(s) block stopping (%d hard, %d soft). Read %s for details.' "$TOTAL_TODOS" "$TOTAL_HARD" "$TOTAL_SOFT" "$GUIDANCE_FILE" | jq -Rs .)
+  echo "{\"decision\":\"deny\",\"reason\":$REASON}"
+  exit 0
+fi
+if [[ "$TOTAL_TODOS" -gt 0 && "$CIRCUIT_BREAKER_TRIPPED" == "true" ]]; then
+  REASON=$(printf 'CIRCUIT BREAKER: No progress on %d TODO(s) across %d stop events. Stopping approved.' "$TOTAL_TODOS" "$HASH_THRESHOLD" | jq -Rs .)
+  echo "{\"decision\":\"allow\",\"reason\":$REASON}"
   exit 0
 fi
 
-# Path 2: Check cooldown (reflection completed within last 30 minutes)
-STATE_FILE="$REPO_ROOT/.agent/last_stop_check.json"
-# Backward compat: fall back to old filename if new one doesn't exist
-if [[ ! -f "$STATE_FILE" && -f "$REPO_ROOT/.agent/stop_hook_state.json" ]]; then
-  STATE_FILE="$REPO_ROOT/.agent/stop_hook_state.json"
-fi
-if [[ -f "$STATE_FILE" ]]; then
-  LAST_TS=$(jq -r '.last_completed_utc // "1970-01-01T00:00:00Z"' "$STATE_FILE" 2>/dev/null || echo "1970-01-01T00:00:00Z")
-  LAST_EPOCH=$(date -d "$LAST_TS" +%s 2>/dev/null || echo 0)
-  NOW_EPOCH=$(date +%s)
-  ELAPSED_MIN=$(( (NOW_EPOCH - LAST_EPOCH) / 60 ))
-
-  if [[ "$ELAPSED_MIN" -lt 30 ]]; then
-    COOLDOWN_PROMPT=$(cat "$REPO_ROOT/.agent/cooldown_prompt.md" | jq -Rs .)
-    cat <<EOF
-{
-  "decision": "deny",
-  "reason": $COOLDOWN_PROMPT
-}
-EOF
-    exit 0
-  fi
+# --- Path 2: Cooldown (reflection completed within last 30 minutes) ---
+if [[ "$ELAPSED_MIN" -lt 30 ]]; then
+  COOLDOWN_PROMPT=$(printf '%s%s%s' "$COOLDOWN_CONTENT" "$COOLDOWN_NOTES_SECTION" "$BAKEOFF_SUFFIX" | jq -Rs .)
+  echo "{\"decision\":\"deny\",\"reason\":$COOLDOWN_PROMPT}"
+  exit 0
 fi
 
-# Path 3: Full reflection checklist (stale or no prior reflection)
-REFLECTION_PROMPT=$(cat "$REPO_ROOT/.agent/stop_reflect.md" | jq -Rs .)
-cat <<EOF
-{
-  "decision": "deny",
-  "reason": $REFLECTION_PROMPT
-}
-EOF
+# --- Path 3: Full reflection checklist (stale or no prior reflection) ---
+REFLECTION_PROMPT=$(printf '%s%s' "$REFLECTION_CONTENT" "$BAKEOFF_SUFFIX" | jq -Rs .)
+echo "{\"decision\":\"deny\",\"reason\":$REFLECTION_PROMPT}"

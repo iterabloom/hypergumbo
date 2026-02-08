@@ -394,9 +394,7 @@ type, AND location).
   - Focus on branches that affect correctness
 - **Regression tests:**
   - All tests must pass with `pytest --cov-branch --cov-fail-under=100`
-- **Pending Generalizations:**
-  - **TODO** Target: Add `--cov-branch` to CI pytest command (ci.yml line 565) so branch coverage is enforced in CI, not just locally (est. low complexity, value: high — prevents branch regressions from merging)
-  - **TODO** Target: Audit branch partials in core modules (framework_patterns.py: 9 remaining, entrypoints.py: 1, sketch.py: 67, cli.py: 38) and either write tests or properly mark genuinely unreachable branches (est. medium complexity per module, value: high — fulfills the stated invariant)
+- **Pending Generalizations:** None (migrated to `~/hypergumbo_lab_notebook/guidance_log/work_items.md` as soft TODOs — these are CI/testing improvements, not structural defects)
 
 ---
 
@@ -586,7 +584,11 @@ Branch coverage tests go in `BRANCHES_*.py` files for separate CI management.
 - **Fix:** [What was done]
 - **Limitation:** [What's still broken]
 - **Regression tests:** [Test names]
-- **Pending Generalizations:** None or entries with markers: `**TODO**`, `**DONE**`, `**DEFERRED**`
+- **Pending Generalizations:** None, or entries with markers:
+  - `**TODO!**` — invariant/defect work, or anything potentially structural (blocks stopping; when in doubt, use this)
+  - `**TODO**` — clearly non-defect backlog (blocks stopping, but agent may defer freely)
+  - `**DONE**` with PR reference
+  - `**DEFERRED**` with justification
 
 ## META-00X: Template for New Meta-Invariants
 > "[Broad principle statement]"
@@ -599,4 +601,8 @@ Branch coverage tests go in `BRANCHES_*.py` files for separate CI management.
 
 **Implication:** [What this means for development practices]
 - **Regression tests:** [Test names]
-- **Pending Generalizations:** None or entries with markers: `**TODO**`, `**DONE**`, `**DEFERRED**`
+- **Pending Generalizations:** None, or entries with markers:
+  - `**TODO!**` — invariant/defect work, or anything potentially structural (blocks stopping; when in doubt, use this)
+  - `**TODO**` — clearly non-defect backlog (blocks stopping, but agent may defer freely)
+  - `**DONE**` with PR reference
+  - `**DEFERRED**` with justification
