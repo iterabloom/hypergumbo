@@ -2991,7 +2991,7 @@ Cache location:
         default=None,
         dest="max_tier",
         help="Filter output by supply chain tier (1=first-party, 2=+internal, "
-             "3=+external, 4=all). Default: no filtering.",
+             "3=+external, 4=+derived). Default: 3 (excludes derived/minified).",
     )
     p_run.add_argument(
         "--first-party-only",
@@ -3952,11 +3952,14 @@ def run_behavior_map(
     show_progress("Classifying symbols", 60)
     _classify_symbols(all_symbols, repo_root, package_roots)
 
-    # Apply max_tier filtering if specified
-    if max_tier is not None:
+    # Apply tier filtering: always exclude DERIVED (tier 4) unless --max-tier 4.
+    # DERIVED files are minified/bundled/generated artifacts whose symbols distort
+    # centrality rankings and inflate edge counts via false-positive name collisions.
+    effective_tier = max_tier if max_tier is not None else 3
+    if effective_tier < 4:
         # Filter symbols by tier
         filtered_symbols = [
-            s for s in all_symbols if s.supply_chain_tier <= max_tier
+            s for s in all_symbols if s.supply_chain_tier <= effective_tier
         ]
         filtered_symbol_ids = {s.id for s in filtered_symbols}
 
@@ -3979,7 +3982,7 @@ def run_behavior_map(
 
         all_symbols = filtered_symbols
         all_edges = filtered_edges
-        limits.max_tier_applied = max_tier
+        limits.max_tier_applied = effective_tier
 
     # Rank symbols by importance (centrality + tier weighting) for output ordering
     show_progress("Ranking symbols", 65)

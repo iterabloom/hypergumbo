@@ -1,10 +1,11 @@
 """Tests for --max-tier CLI flag.
 
 Tests for filtering analysis scope by supply chain tier:
+- Default (no flag): Excludes derived/minified (tier 4)
 - --max-tier 1: First-party only
 - --max-tier 2: First-party + internal deps (examples, workspaces)
-- --max-tier 3: All except derived artifacts
-- --max-tier 4: All (default, no filtering)
+- --max-tier 3: All except derived artifacts (same as default)
+- --max-tier 4: All including derived/minified
 """
 
 import json
@@ -100,15 +101,28 @@ module.exports = { chunk };
 
         return tmp_path
 
-    def test_no_max_tier_includes_all(self, mixed_tier_repo: Path, tmp_path: Path):
-        """Without --max-tier, all tiers are included."""
+    def test_default_excludes_derived(self, mixed_tier_repo: Path, tmp_path: Path):
+        """Without --max-tier, derived (tier 4) is excluded by default."""
         out_path = tmp_path / "results.json"
         run_behavior_map(mixed_tier_repo, out_path, include_sketch_precomputed=False)
 
         data = json.loads(out_path.read_text())
         nodes = data["nodes"]
 
-        # Should have nodes from multiple tiers
+        # Should have nodes from tiers 1-3 but NOT tier 4
+        for node in nodes:
+            tier = node.get("supply_chain", {}).get("tier", 1)
+            assert tier <= 3, f"Found tier {tier} node: {node['name']}"
+
+    def test_max_tier_4_includes_all(self, mixed_tier_repo: Path, tmp_path: Path):
+        """--max-tier 4 includes all tiers including derived."""
+        out_path = tmp_path / "results.json"
+        run_behavior_map(mixed_tier_repo, out_path, max_tier=4, include_sketch_precomputed=False)
+
+        data = json.loads(out_path.read_text())
+        nodes = data["nodes"]
+
+        # Should have nodes from multiple tiers including tier 4
         tiers = {n.get("supply_chain", {}).get("tier", 1) for n in nodes}
         assert len(tiers) > 1  # Has nodes from multiple tiers
 
