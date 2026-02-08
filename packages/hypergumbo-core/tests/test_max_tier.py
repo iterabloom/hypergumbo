@@ -419,3 +419,69 @@ class TestDocKindFiltering:
         assert "section" in kinds, (
             "With include_docs=True, section nodes should be present"
         )
+
+
+class TestCssNoiseFiltering:
+    """Test default exclusion of CSS structural node kinds.
+
+    CSS selector kinds (class_selector, id_selector, rule_set, property,
+    media, keyframes, font_face, variable) are degree-0 noise that add
+    no architectural insight. They are excluded by default alongside
+    documentation/config kinds.
+    """
+
+    @pytest.fixture()
+    def repo_with_css(self, tmp_path: Path) -> Path:
+        """Create a repo with both code and CSS files."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        # Python code file (generates function nodes)
+        (repo / "app.py").write_text(
+            "def main():\n"
+            "    pass\n"
+        )
+        # CSS file (generates class_selector, id_selector, etc.)
+        (repo / "styles.css").write_text(
+            ".button {\n"
+            "    color: blue;\n"
+            "}\n"
+            "\n"
+            "#header {\n"
+            "    font-size: 16px;\n"
+            "}\n"
+        )
+        return repo
+
+    def test_default_excludes_css_selector_kinds(
+        self, repo_with_css: Path, tmp_path: Path
+    ) -> None:
+        """By default, CSS selector kinds are excluded."""
+        out_path = tmp_path / "results.json"
+        run_behavior_map(
+            repo_with_css, out_path, include_sketch_precomputed=False
+        )
+        data = json.loads(out_path.read_text())
+        css_noise_kinds = {
+            "class_selector", "id_selector", "rule_set",
+            "property", "media", "keyframes", "font_face",
+        }
+        for node in data["nodes"]:
+            assert node["kind"] not in css_noise_kinds, (
+                f"CSS kind '{node['kind']}' should be excluded by default: "
+                f"{node['name']}"
+            )
+
+    def test_include_docs_includes_css_kinds(
+        self, repo_with_css: Path, tmp_path: Path
+    ) -> None:
+        """include_docs=True also includes CSS structural kinds."""
+        out_path = tmp_path / "results.json"
+        run_behavior_map(
+            repo_with_css, out_path, include_docs=True,
+            include_sketch_precomputed=False,
+        )
+        data = json.loads(out_path.read_text())
+        kinds = {n["kind"] for n in data["nodes"]}
+        assert "class_selector" in kinds, (
+            "With include_docs=True, CSS class_selector nodes should be present"
+        )

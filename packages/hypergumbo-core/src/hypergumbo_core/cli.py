@@ -3007,8 +3007,9 @@ Cache location:
         action="store_true",
         default=False,
         dest="include_docs",
-        help="Include documentation/config nodes (markdown sections, TOML tables, "
-             "INI settings) in output. By default these are excluded to reduce noise.",
+        help="Include documentation/config/CSS-structural nodes (markdown sections, "
+             "TOML tables, CSS selectors) in output. By default these are excluded "
+             "to reduce noise.",
     )
     p_run.add_argument(
         "--max-files",
@@ -3828,10 +3829,11 @@ def run_behavior_map(
             - "none": Skip framework detection
             - "all": Check all frameworks for detected languages
             - "fastapi,celery": Only check specified frameworks
-        include_docs: If True, include documentation/config node kinds (section,
-            table, table_array, code_block, link, paragraph, label, heading,
-            setting, config) in output. Default False excludes them to reduce
-            noise from markdown docs, TOML/INI config, and LaTeX sections.
+        include_docs: If True, include non-code node kinds in output. Default
+            False excludes documentation (section, heading, paragraph, etc.),
+            config (setting, config, table), and CSS structural nodes
+            (class_selector, id_selector, rule_set, property, media, keyframes,
+            font_face) to reduce degree-0 noise.
         include_sketch_precomputed: If True (default), pre-extract config_info,
             vocabulary, and readme_description for fast sketch generation.
             Set False to skip this (avoids loading embedding model).
@@ -4006,20 +4008,25 @@ def run_behavior_map(
         all_edges = filtered_edges
         limits.max_tier_applied = effective_tier
 
-    # Exclude documentation/config node kinds by default.  These nodes
-    # (markdown sections, TOML tables, INI settings, LaTeX labels, etc.)
-    # are typically degree-0 and add noise without architectural insight.
+    # Exclude non-code node kinds by default.  Documentation/config nodes
+    # (markdown sections, TOML tables, INI settings) and CSS structural
+    # nodes (selectors, properties, media queries) are typically degree-0
+    # and add noise without architectural insight.
     if not include_docs:
-        _DOC_KINDS = frozenset({
+        _NOISE_KINDS = frozenset({
+            # Documentation / config
             "section", "table", "table_array", "code_block",
             "link", "paragraph", "label", "heading",
             "setting", "config",
+            # CSS structural (degree-0 in behavior maps)
+            "class_selector", "id_selector", "rule_set",
+            "property", "media", "keyframes", "font_face",
         })
-        doc_ids = {s.id for s in all_symbols if s.kind in _DOC_KINDS}
-        all_symbols = [s for s in all_symbols if s.kind not in _DOC_KINDS]
+        noise_ids = {s.id for s in all_symbols if s.kind in _NOISE_KINDS}
+        all_symbols = [s for s in all_symbols if s.kind not in _NOISE_KINDS]
         all_edges = [
             e for e in all_edges
-            if e.src not in doc_ids and e.dst not in doc_ids
+            if e.src not in noise_ids and e.dst not in noise_ids
         ]
 
     # Rank symbols by importance (centrality + tier weighting) for output ordering
