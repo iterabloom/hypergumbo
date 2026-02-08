@@ -43,8 +43,9 @@ PASS_ID = "containment-linker-v1"
 # Symbol kinds that can be "contained" by a class/interface
 CONTAINABLE_KINDS = frozenset({"method", "getter", "setter"})
 
-# Symbol kinds that can "contain" other symbols
-CONTAINER_KINDS = frozenset({"class", "interface"})
+# Symbol kinds that can "contain" other symbols.
+# Includes struct/trait/enum for Rust (and Go/C/Zig structs).
+CONTAINER_KINDS = frozenset({"class", "interface", "struct", "trait", "enum"})
 
 # Separators used in method names, ordered by specificity
 # Ruby `#` and Rust `::` are checked before `.` to avoid

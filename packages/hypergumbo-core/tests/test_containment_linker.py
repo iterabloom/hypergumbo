@@ -354,3 +354,87 @@ class TestContainmentLinker:
         result = link_containment(ctx)
 
         assert result.edges[0].confidence == 1.0
+
+    def test_struct_contains_method(self) -> None:
+        """Struct symbols (Rust, Go, C) should contain their methods."""
+        struct = _sym(
+            "rust:lib.rs:1-10:Searcher:struct",
+            "Searcher",
+            "struct",
+            language="rust",
+            path="lib.rs",
+        )
+        method = _sym(
+            "rust:lib.rs:3-5:Searcher::search:method",
+            "Searcher::search",
+            "method",
+            language="rust",
+            path="lib.rs",
+            start=3,
+            end=5,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[struct, method],
+            edges=[],
+        )
+        result = link_containment(ctx)
+        assert len(result.edges) == 1
+        assert result.edges[0].src == struct.id
+        assert result.edges[0].dst == method.id
+
+    def test_trait_contains_method(self) -> None:
+        """Trait symbols (Rust) should contain their methods."""
+        trait = _sym(
+            "rust:lib.rs:1-10:Display:trait",
+            "Display",
+            "trait",
+            language="rust",
+            path="lib.rs",
+        )
+        method = _sym(
+            "rust:lib.rs:3-5:Display::fmt:method",
+            "Display::fmt",
+            "method",
+            language="rust",
+            path="lib.rs",
+            start=3,
+            end=5,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[trait, method],
+            edges=[],
+        )
+        result = link_containment(ctx)
+        assert len(result.edges) == 1
+        assert result.edges[0].src == trait.id
+        assert result.edges[0].dst == method.id
+
+    def test_enum_contains_method(self) -> None:
+        """Enum symbols with methods should contain them (Rust enums)."""
+        enum = _sym(
+            "rust:lib.rs:1-10:Color:enum",
+            "Color",
+            "enum",
+            language="rust",
+            path="lib.rs",
+        )
+        method = _sym(
+            "rust:lib.rs:3-5:Color::is_warm:method",
+            "Color::is_warm",
+            "method",
+            language="rust",
+            path="lib.rs",
+            start=3,
+            end=5,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[enum, method],
+            edges=[],
+        )
+        result = link_containment(ctx)
+        assert len(result.edges) == 1
+        assert result.edges[0].src == enum.id
+        assert result.edges[0].dst == method.id
