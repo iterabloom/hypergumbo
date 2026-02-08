@@ -97,6 +97,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **smart-test scoped mode total coverage**: Fixed smart-test scoped mode incorrectly failing when total project coverage was below 100%. Scoped mode should only enforce coverage on changed files, not the entire codebase.
 - **bakeoff-features forward slice flags**: Removed `--exclude-utility` from forward slices in `bakeoff-features run`. Entry points may reside in utility directories (e.g., `docs_src/` for FastAPI) but their dependencies are still useful for assessment.
 - **bakeoff-features test-entry filtering**: Entrypoints in test/spec directories are now filtered out before slicing with `--exclude-tests`. Previously, test-file entrypoints among the top 5 yielded empty slices (the entry itself was excluded). Affected FastAPI (4/5 empty slices) and DMD (5/5 empty).
+- **Dangling edge dst after tier filtering**: When `--max-tier` filters out nodes (e.g., tier-4 derived/minified), edges whose `dst` pointed to removed nodes remained in the output, creating dangling references. In Metabase this produced ~115K dangling edge endpoints. Now edges are also filtered when their `dst` references a node that was explicitly removed by tier filtering. Edges with unresolved external references (never in the node set) are preserved.
 - **Dead code in extract_usage_value "last" transform**: Removed redundant `if " | " in expr:` check inside the "last" transform handler — the outer guard at the top of the pipe processing block already guarantees this condition is true.
 
 ### Removed
