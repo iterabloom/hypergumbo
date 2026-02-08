@@ -78,6 +78,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Updated stale documentation counts**: Corrected analyzer (67→104), linker (15→18), framework pattern (37→82), and convention pattern (4→5) counts across README, spec, LANGUAGES.md, ARCHITECTURE.md, generate-architecture, governance case critiques, and ADR-0009 checklist. History files left as-is.
 - **Pre-push hook for protected branches**: Added `.githooks/pre-push` hook that blocks direct pushes to `dev` and `main` locally, before the remote rejects them. Allows feature branches and `refs/for/dev/` PR refs. Saves time from accidental protected-branch push failures.
 - **Bakeoff convergence recognition + stable artifact paths**: Bakeoff scripts (`bakeoff`, `bakeoff-features`, `bakeoff-features-reflect`) now default to `~/hypergumbo_lab_notebook/bakeoff_artifacts/` instead of `.` (cwd). `init` creates timestamped session directories (`broad-YYYYMMDD-HHMMSS/`, `deep-YYYYMMDD-HHMMSS/`) so prior artifacts are never overwritten. Subsequent commands auto-discover the latest session. The stop hook now appends bakeoff convergence status (CONVERGED or NEEDS_WORK) to the reflection/cooldown prompt, preventing redundant bakeoff re-runs.
+- **Parallel `check-package-coverage`**: Packages now run in parallel by default (background processes with isolated coverage files). Wall-clock time is bottlenecked by the slowest package instead of the sum of all four. Use `--serial` to restore sequential execution for debugging.
 
 ### Fixed
 

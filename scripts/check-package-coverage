@@ -7,10 +7,14 @@
 #
 # Run this BEFORE pushing to ensure CI won't report coverage gaps.
 #
+# By default, packages run in parallel (background processes). Use --serial
+# to run sequentially (useful for debugging interleaved output).
+#
 # Usage:
-#   ./scripts/check-package-coverage           # Check all packages
+#   ./scripts/check-package-coverage           # Check all packages (parallel)
 #   ./scripts/check-package-coverage core      # Check only hypergumbo-core
 #   ./scripts/check-package-coverage --quick   # Skip extended1 (faster)
+#   ./scripts/check-package-coverage --serial  # Run sequentially (old behavior)
 
 set -euo pipefail
 
@@ -27,10 +31,12 @@ declare -A PACKAGES=(
 
 # Parse args
 QUICK=false
+SERIAL=false
 TARGETS=()
 for arg in "$@"; do
     case $arg in
         --quick) QUICK=true ;;
+        --serial) SERIAL=true ;;
         core|mainstream|common|extended) TARGETS+=("$arg") ;;
         *) echo "Unknown argument: $arg"; exit 1 ;;
     esac
@@ -48,46 +54,90 @@ if [[ "$QUICK" == "true" ]]; then
     TARGETS=("${TARGETS[@]}")
 fi
 
+# Detect coverage config once (not per-package)
+COV_CONFIG=""
+if ! python3 -c "import sentence_transformers" 2>/dev/null; then
+    COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
+fi
+
+# Run a single package's tests with coverage. Exits 0 on success, 1 on failure.
+# Output goes to /tmp/pkg-cov-$pkg.log.
+run_package() {
+    local pkg="$1"
+    IFS=' ' read -r test_dir src_dir <<< "${PACKAGES[$pkg]}"
+
+    # Each parallel run needs its own .coverage file to avoid collisions
+    local cov_file="/tmp/pkg-cov-$pkg.coverage"
+
+    SMART_TEST_ACTIVE=1 COVERAGE_FILE="$cov_file" pytest "$test_dir" \
+        --cov="$src_dir" $COV_CONFIG \
+        --cov-fail-under=100 \
+        --cov-report=term-missing:skip-covered \
+        -q --tb=no 2>&1 > "/tmp/pkg-cov-$pkg.log"
+}
+
+MODE="parallel"
+if [[ "$SERIAL" == "true" ]] || [[ ${#TARGETS[@]} -le 1 ]]; then
+    MODE="serial"
+fi
+
 echo "Checking per-package coverage (mimics CI isolation)"
 echo "===================================================="
+echo "Mode: $MODE (${#TARGETS[@]} packages: ${TARGETS[*]})"
 echo ""
 
 FAILED=()
 PASSED=()
 
-for pkg in "${TARGETS[@]}"; do
-    [[ -z "$pkg" ]] && continue
+if [[ "$MODE" == "serial" ]]; then
+    for pkg in "${TARGETS[@]}"; do
+        [[ -z "$pkg" ]] && continue
+        IFS=' ' read -r test_dir src_dir <<< "${PACKAGES[$pkg]}"
+        echo "[$pkg] Testing $test_dir with coverage for $src_dir..."
 
-    IFS=' ' read -r test_dir src_dir <<< "${PACKAGES[$pkg]}"
-
-    echo "[$pkg] Testing $test_dir with coverage for $src_dir..."
-
-    # Detect coverage config
-    COV_CONFIG=""
-    if ! python3 -c "import sentence_transformers" 2>/dev/null; then
-        COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
-    fi
-
-    # Run pytest with coverage for just this package
-    if SMART_TEST_ACTIVE=1 pytest "$test_dir" \
-        --cov="$src_dir" $COV_CONFIG \
-        --cov-fail-under=100 \
-        --cov-report=term-missing:skip-covered \
-        -q --tb=no 2>&1 | tee "/tmp/pkg-cov-$pkg.log"; then
-        echo "[$pkg] ✅ PASSED"
-        PASSED+=("$pkg")
-    else
-        echo "[$pkg] ❌ FAILED"
-        FAILED+=("$pkg")
-        # Show the coverage gaps
+        if run_package "$pkg"; then
+            echo "[$pkg] ✅ PASSED"
+            PASSED+=("$pkg")
+        else
+            echo "[$pkg] ❌ FAILED"
+            FAILED+=("$pkg")
+            echo ""
+            echo "Coverage gaps for $pkg:"
+            grep -E "^packages/.*\s+[0-9]+\s+[1-9][0-9]*\s+[0-9]+%" "/tmp/pkg-cov-$pkg.log" || true
+            echo ""
+        fi
         echo ""
-        echo "Coverage gaps for $pkg:"
-        grep -E "^packages/.*\s+[0-9]+\s+[1-9][0-9]*\s+[0-9]+%" "/tmp/pkg-cov-$pkg.log" || true
-        echo ""
-    fi
+    done
+else
+    # Parallel mode: launch all packages as background processes
+    declare -A PIDS=()
+    for pkg in "${TARGETS[@]}"; do
+        [[ -z "$pkg" ]] && continue
+        IFS=' ' read -r test_dir src_dir <<< "${PACKAGES[$pkg]}"
+        echo "[$pkg] Starting (background)..."
+        run_package "$pkg" &
+        PIDS[$pkg]=$!
+    done
+
     echo ""
-done
+    echo "Waiting for ${#PIDS[@]} packages..."
+    echo ""
 
+    # Collect results in target order
+    for pkg in "${TARGETS[@]}"; do
+        [[ -z "$pkg" ]] && continue
+        pid="${PIDS[$pkg]}"
+        if wait "$pid"; then
+            echo "[$pkg] ✅ PASSED"
+            PASSED+=("$pkg")
+        else
+            echo "[$pkg] ❌ FAILED"
+            FAILED+=("$pkg")
+        fi
+    done
+fi
+
+echo ""
 echo "===================================================="
 echo "Results:"
 echo "  Passed: ${PASSED[*]:-none}"
@@ -95,6 +145,11 @@ echo "  Failed: ${FAILED[*]:-none}"
 
 if [[ ${#FAILED[@]} -gt 0 ]]; then
     echo ""
+    for pkg in "${FAILED[@]}"; do
+        echo "Coverage gaps for $pkg:"
+        grep -E "^packages/.*\s+[0-9]+\s+[1-9][0-9]*\s+[0-9]+%" "/tmp/pkg-cov-$pkg.log" || true
+        echo ""
+    done
     echo "❌ Some packages have coverage gaps when tested in isolation."
     echo ""
     echo "This happens when:"
