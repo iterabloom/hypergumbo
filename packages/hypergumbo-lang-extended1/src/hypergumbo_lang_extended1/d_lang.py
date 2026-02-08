@@ -3,7 +3,8 @@
 Detects:
 - Module declarations
 - Import statements
-- Function definitions
+- Function definitions (top-level)
+- Method definitions (inside struct/class/interface, qualified names)
 - Struct definitions
 - Class definitions
 - Interface definitions
@@ -19,8 +20,11 @@ How It Works
 3. Parse all .d and .di files
 4. Extract module declarations
 5. Extract function definitions with signatures
-6. Extract struct, class, and interface definitions
-7. Track import statements as edges
+6. For functions inside struct/class/interface: extract as ``method``
+   with qualified name (e.g., ``Searcher.search``) so the containment
+   linker can create ``contains`` edges from parent to method
+7. Extract struct, class, and interface definitions
+8. Track import statements as edges
 
 Why This Design
 ---------------
@@ -28,6 +32,7 @@ Why This Design
 - Uses tree-sitter-language-pack for D grammar
 - D is used for systems programming as a modern C++ alternative
 - Supports both source (.d) and interface (.di) files
+- Methods use qualified names to enable containment linking
 """
 from __future__ import annotations
 
@@ -175,8 +180,32 @@ def _process_import_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> 
     )
 
 
+_CONTAINER_NODE_TYPES = frozenset({
+    "struct_declaration", "class_declaration", "interface_declaration",
+})
+
+
+def _find_parent_container(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Walk up to find the enclosing struct/class/interface name."""
+    current = node.parent
+    while current is not None:
+        if current.type in _CONTAINER_NODE_TYPES:
+            name_node = _find_child_by_type(current, "identifier")
+            if name_node:
+                return _node_text(name_node, source)
+        current = current.parent
+    return None
+
+
 def _process_function_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
-    """Process a function declaration."""
+    """Process a function declaration.
+
+    If the function is inside a struct, class, or interface, it is
+    extracted as a method with a qualified name (e.g., ``Searcher.search``).
+    Top-level functions keep ``kind="function"``.
+    """
     name_node = _find_child_by_type(node, "identifier")
     if not name_node:
         return  # pragma: no cover - defensive
@@ -187,7 +216,13 @@ def _process_function_declaration(ctx: _FileContext, node: "tree_sitter.Node") -
     params = _find_child_by_type(node, "parameters")
     signature = _node_text(params, ctx.source) if params else "()"
 
-    ctx.symbols.append(_make_symbol(ctx, node, func_name, "function", signature=signature))
+    # Check if function is inside a container (struct/class/interface)
+    parent_name = _find_parent_container(node, ctx.source)
+    if parent_name:
+        qualified_name = f"{parent_name}.{func_name}"
+        ctx.symbols.append(_make_symbol(ctx, node, qualified_name, "method", signature=signature))
+    else:
+        ctx.symbols.append(_make_symbol(ctx, node, func_name, "function", signature=signature))
 
 
 def _process_struct_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
@@ -225,16 +260,28 @@ def _find_enclosing_function_d(
     source: bytes,
     local_symbols: dict[str, Symbol],
 ) -> Optional[Symbol]:
-    """Find the enclosing function Symbol by walking up parents."""
+    """Find the enclosing function Symbol by walking up parents.
+
+    For methods inside structs/classes/interfaces, the local_symbols map
+    uses qualified names (e.g., ``Searcher.search``), so we build the
+    qualified name when the enclosing function is inside a container.
+    """
     current = node.parent
     while current is not None:
         if current.type == "function_declaration":
             name_node = _find_child_by_type(current, "identifier")
             if name_node:
                 name = _node_text(name_node, source)
+                # Try bare name first (top-level function)
                 sym = local_symbols.get(name)
                 if sym:
                     return sym
+                # Try qualified name (method inside container)
+                parent_name = _find_parent_container(current, source)
+                if parent_name:
+                    sym = local_symbols.get(f"{parent_name}.{name}")
+                    if sym:
+                        return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -387,9 +434,9 @@ def analyze_d(repo_root: Path) -> DAnalysisResult:
 
     # Pass 2: Extract edges (imports + calls)
     for rel_path, source, tree, file_stable_id, import_aliases in parsed_files:
-        # Build local symbol map for this file (functions only)
+        # Build local symbol map for this file (functions and methods)
         local_symbols = {s.name: s for s in symbols
-                         if s.path == rel_path and s.kind == "function"}
+                         if s.path == rel_path and s.kind in ("function", "method")}
 
         ctx = _FileContext(
             source=source,

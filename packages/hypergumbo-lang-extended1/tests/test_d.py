@@ -295,6 +295,90 @@ void hello() {}
         assert result.run.files_analyzed >= 1
 
 
+class TestDMethodExtraction:
+    """Tests for D method extraction from struct/class/interface bodies."""
+
+    def test_struct_method_extracted_as_method(self, temp_repo: Path) -> None:
+        """Functions inside structs should be extracted as methods with qualified names."""
+        (temp_repo / "types.d").write_text('''
+module types;
+
+struct Searcher {
+    void search() {}
+    int count() { return 42; }
+}
+
+void standalone() {}
+''')
+
+        result = analyze_d(temp_repo)
+
+        methods = {s.name: s for s in result.symbols if s.kind == "method"}
+        assert "Searcher.search" in methods
+        assert "Searcher.count" in methods
+
+        # standalone should remain a function, not a method
+        funcs = {s.name for s in result.symbols if s.kind == "function"}
+        assert "standalone" in funcs
+
+    def test_class_method_extracted_as_method(self, temp_repo: Path) -> None:
+        """Functions inside classes should be extracted as methods with qualified names."""
+        (temp_repo / "animal.d").write_text('''
+module animal;
+
+class Animal {
+    void speak() {}
+    void move(int x, int y) {}
+}
+''')
+
+        result = analyze_d(temp_repo)
+
+        methods = {s.name: s for s in result.symbols if s.kind == "method"}
+        assert "Animal.speak" in methods
+        assert "Animal.move" in methods
+
+    def test_interface_method_extracted_as_method(self, temp_repo: Path) -> None:
+        """Functions inside interfaces should be extracted as methods with qualified names."""
+        (temp_repo / "drawable.d").write_text('''
+module drawable;
+
+interface Drawable {
+    void draw();
+}
+''')
+
+        result = analyze_d(temp_repo)
+
+        methods = {s.name: s for s in result.symbols if s.kind == "method"}
+        assert "Drawable.draw" in methods
+
+    def test_method_call_edge_from_method(self, temp_repo: Path) -> None:
+        """Call edges from methods should have method as caller."""
+        (temp_repo / "worker.d").write_text('''
+module worker;
+
+void helper() {}
+
+struct Worker {
+    void doWork() {
+        helper();
+    }
+}
+''')
+
+        result = analyze_d(temp_repo)
+
+        # doWork should be a method
+        methods = {s.name: s for s in result.symbols if s.kind == "method"}
+        assert "Worker.doWork" in methods
+
+        # Should have call edge from Worker.doWork to helper
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        method_calls = [e for e in call_edges if "Worker.doWork" in e.src]
+        assert len(method_calls) >= 1
+
+
 class TestDImportAliases:
     """Tests for import alias extraction and qualified call resolution."""
 
