@@ -855,3 +855,197 @@ class TestDjangoViewNameLinking:
         result = link_routes_to_handlers([route, handler], [])
 
         assert len(result.edges) == 0
+
+
+class TestGoRouteHandlerLinking:
+    """Tests for Go/Gin route-handler linking via handler_name metadata."""
+
+    def test_go_gin_simple_handler_linking(self) -> None:
+        """Go/Gin routes with handler_name metadata get linked to handler functions."""
+        route = Symbol(
+            id="go:/app/main.go:10-10:listUsers:route",
+            name="listUsers",
+            kind="route",
+            language="go",
+            path="/app/main.go",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
+            meta={
+                "http_method": "GET",
+                "route_path": "/users",
+                "handler_name": "listUsers",
+            },
+            origin="go-v1",
+            origin_run_id="test-run",
+        )
+
+        handler = Symbol(
+            id="go:/app/main.go:20-30:listUsers:function",
+            name="listUsers",
+            kind="function",
+            language="go",
+            path="/app/main.go",
+            span=Span(start_line=20, end_line=30, start_col=0, end_col=1),
+            origin="go-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == route.id
+        assert edge.dst == handler.id
+        assert edge.edge_type == "routes_to"
+        assert edge.meta["handler_name"] == "listUsers"
+
+    def test_go_gin_qualified_handler_linking(self) -> None:
+        """Go routes with package-qualified handler names get linked."""
+        route = Symbol(
+            id="go:/app/main.go:15-15:handlers.GetAPI:route",
+            name="handlers.GetAPI",
+            kind="route",
+            language="go",
+            path="/app/main.go",
+            span=Span(start_line=15, end_line=15, start_col=0, end_col=50),
+            meta={
+                "http_method": "GET",
+                "route_path": "/api",
+                "handler_name": "handlers.GetAPI",
+            },
+            origin="go-v1",
+            origin_run_id="test-run",
+        )
+
+        handler = Symbol(
+            id="go:/app/handlers/api.go:5-15:GetAPI:function",
+            name="GetAPI",
+            kind="function",
+            language="go",
+            path="/app/handlers/api.go",
+            span=Span(start_line=5, end_line=15, start_col=0, end_col=1),
+            origin="go-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.dst == handler.id
+
+    def test_go_gin_multiple_routes_linking(self) -> None:
+        """Multiple Go routes linking to different handlers."""
+        route1 = Symbol(
+            id="go:/app/main.go:10-10:listUsers:route",
+            name="listUsers",
+            kind="route",
+            language="go",
+            path="/app/main.go",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
+            meta={
+                "http_method": "GET",
+                "route_path": "/users",
+                "handler_name": "listUsers",
+            },
+            origin="go-v1",
+            origin_run_id="test-run",
+        )
+
+        route2 = Symbol(
+            id="go:/app/main.go:11-11:createUser:route",
+            name="createUser",
+            kind="route",
+            language="go",
+            path="/app/main.go",
+            span=Span(start_line=11, end_line=11, start_col=0, end_col=50),
+            meta={
+                "http_method": "POST",
+                "route_path": "/users",
+                "handler_name": "createUser",
+            },
+            origin="go-v1",
+            origin_run_id="test-run",
+        )
+
+        handler1 = Symbol(
+            id="go:/app/main.go:20-30:listUsers:function",
+            name="listUsers",
+            kind="function",
+            language="go",
+            path="/app/main.go",
+            span=Span(start_line=20, end_line=30, start_col=0, end_col=1),
+            origin="go-v1",
+            origin_run_id="test-run",
+        )
+
+        handler2 = Symbol(
+            id="go:/app/main.go:35-45:createUser:function",
+            name="createUser",
+            kind="function",
+            language="go",
+            path="/app/main.go",
+            span=Span(start_line=35, end_line=45, start_col=0, end_col=1),
+            origin="go-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route1, route2, handler1, handler2], [])
+
+        assert len(result.edges) == 2
+
+    def test_go_gin_qualified_handler_suffix_match(self) -> None:
+        """Go handler found via suffix match when simple name lookup fails."""
+        route = Symbol(
+            id="go:/app/main.go:15-15:controllers.GetUsers:route",
+            name="controllers.GetUsers",
+            kind="route",
+            language="go",
+            path="/app/main.go",
+            span=Span(start_line=15, end_line=15, start_col=0, end_col=50),
+            meta={
+                "http_method": "GET",
+                "route_path": "/users",
+                "handler_name": "controllers.GetUsers",
+            },
+            origin="go-v1",
+            origin_run_id="test-run",
+        )
+
+        # Handler has a different qualified name that ends with .GetUsers
+        handler = Symbol(
+            id="go:/app/internal/controllers/users.go:5-15:internal/controllers.GetUsers:function",
+            name="internal/controllers.GetUsers",
+            kind="function",
+            language="go",
+            path="/app/internal/controllers/users.go",
+            span=Span(start_line=5, end_line=15, start_col=0, end_col=1),
+            origin="go-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == handler.id
+
+    def test_go_handler_no_match(self) -> None:
+        """Go routes with handler_name that doesn't match any function."""
+        route = Symbol(
+            id="go:/app/main.go:10-10:missingHandler:route",
+            name="missingHandler",
+            kind="route",
+            language="go",
+            path="/app/main.go",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
+            meta={
+                "http_method": "GET",
+                "route_path": "/test",
+                "handler_name": "missingHandler",
+            },
+            origin="go-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route], [])
+
+        assert len(result.edges) == 0

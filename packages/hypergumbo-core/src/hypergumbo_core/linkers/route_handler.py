@@ -12,6 +12,7 @@ How It Works
    - Laravel: controller_action = "UserController@index"
    - Express/JS: handler_ref = "userController.list" → list function
    - Django: view_name = "list_users" or "accounts.views.list_users"
+   - Go/Gin: handler_name = "listUsers" or "handlers.GetAPI"
 3. Resolve handler reference to actual method/function symbols
 4. Create routes_to edges linking routes to handlers
 
@@ -29,6 +30,7 @@ Supported Frameworks
 - PHP/Laravel: controller_action = "Controller@action"
 - JS/TS Express: handler_ref = "module.function"
 - Python/Django: view_name = "view_function" or "module.view_function"
+- Go/Gin/Echo/Fiber/Chi: handler_name = "functionName" or "pkg.FunctionName"
 """
 
 from __future__ import annotations
@@ -269,6 +271,51 @@ def _resolve_django_handler(
     return None
 
 
+def _resolve_go_handler(
+    handler_name: str, symbol_by_name: dict[str, Symbol]
+) -> Symbol | None:
+    """Resolve Go handler function name to a handler symbol.
+
+    Go web frameworks (Gin, Echo, Fiber, Chi) pass handler functions directly
+    as arguments to route registration calls. The handler can be:
+    - Simple identifier: "listUsers"
+    - Package-qualified: "handlers.GetAPI"
+
+    Args:
+        handler_name: Handler function name from route metadata
+        symbol_by_name: Lookup table of symbols by name
+
+    Returns:
+        Matching Symbol or None (excludes route symbols to avoid self-reference)
+    """
+
+    def is_handler(sym: Symbol) -> bool:
+        """Check if symbol is a potential handler (not a route itself)."""
+        return sym.kind in ("function", "method")
+
+    # Try exact match first
+    if handler_name in symbol_by_name:
+        sym = symbol_by_name[handler_name]
+        if is_handler(sym):
+            return sym
+
+    # For qualified names like "handlers.GetAPI", try the last segment
+    if "." in handler_name:
+        func_name = handler_name.rsplit(".", 1)[-1]
+
+        if func_name in symbol_by_name:
+            sym = symbol_by_name[func_name]
+            if is_handler(sym):
+                return sym
+
+        # Try suffix match across all symbols
+        for name, sym in symbol_by_name.items():
+            if name.endswith(f".{func_name}") and is_handler(sym):
+                return sym
+
+    return None
+
+
 def _extract_handler_ref(route: Symbol) -> dict[str, str] | None:
     """Extract handler reference info from route metadata.
 
@@ -301,6 +348,10 @@ def _extract_handler_ref(route: Symbol) -> dict[str, str] | None:
     # Django: view_name field (e.g., "list_users" or "accounts.views.list_accounts")
     if meta.get("view_name"):
         return {"type": "django", "view_name": meta["view_name"]}
+
+    # Go (Gin/Echo/Fiber/Chi): handler_name field (e.g., "listUsers" or "handlers.GetAPI")
+    if meta.get("handler_name"):
+        return {"type": "go", "handler_name": meta["handler_name"]}
 
     return None
 
@@ -358,6 +409,10 @@ def link_routes_to_handlers(
         elif handler_ref["type"] == "django":
             handler = _resolve_django_handler(
                 handler_ref["view_name"], symbol_by_name
+            )
+        elif handler_ref["type"] == "go":
+            handler = _resolve_go_handler(
+                handler_ref["handler_name"], symbol_by_name
             )
 
         if handler:

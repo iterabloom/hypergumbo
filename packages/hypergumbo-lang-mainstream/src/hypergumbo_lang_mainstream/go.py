@@ -623,6 +623,7 @@ def _extract_go_routes(
                                     meta={
                                         "route_path": route_path,
                                         "http_method": normalized_method,
+                                        "handler_name": handler_name,
                                     },
                                 )
                                 routes.append(route_sym)
