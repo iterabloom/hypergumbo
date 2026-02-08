@@ -3007,9 +3007,9 @@ Cache location:
         action="store_true",
         default=False,
         dest="include_docs",
-        help="Include documentation/config/CSS-structural nodes (markdown sections, "
-             "TOML tables, CSS selectors) in output. By default these are excluded "
-             "to reduce noise.",
+        help="Include documentation/config/CSS/metadata nodes (markdown sections, "
+             "TOML tables, CSS selectors, .gitignore patterns, npm scripts, pip "
+             "requirements) in output. By default these are excluded to reduce noise.",
     )
     p_run.add_argument(
         "--max-files",
@@ -4009,9 +4009,10 @@ def run_behavior_map(
         limits.max_tier_applied = effective_tier
 
     # Exclude non-code node kinds by default.  Documentation/config nodes
-    # (markdown sections, TOML tables, INI settings) and CSS structural
-    # nodes (selectors, properties, media queries) are typically degree-0
-    # and add noise without architectural insight.
+    # (markdown sections, TOML tables, INI settings), CSS structural nodes
+    # (selectors, properties, media queries), and config-metadata nodes
+    # (.gitignore patterns, npm scripts) are typically degree-0 and add
+    # noise without architectural insight.
     if not include_docs:
         _NOISE_KINDS = frozenset({
             # Documentation / config
@@ -4021,6 +4022,10 @@ def run_behavior_map(
             # CSS structural (degree-0 in behavior maps)
             "class_selector", "id_selector", "rule_set",
             "property", "media", "keyframes", "font_face",
+            # Config metadata (degree-0 across all tested repos)
+            "pattern",      # .gitignore entries
+            "script",       # npm scripts / pyproject.toml entry points
+            "requirement",  # pip requirements.txt entries
         })
         noise_ids = {s.id for s in all_symbols if s.kind in _NOISE_KINDS}
         all_symbols = [s for s in all_symbols if s.kind not in _NOISE_KINDS]

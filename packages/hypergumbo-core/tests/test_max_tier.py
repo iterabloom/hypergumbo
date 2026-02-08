@@ -485,3 +485,79 @@ class TestCssNoiseFiltering:
         assert "class_selector" in kinds, (
             "With include_docs=True, CSS class_selector nodes should be present"
         )
+
+
+class TestConfigNoiseFiltering:
+    """Test default exclusion of config-metadata node kinds.
+
+    Kinds like 'pattern' (.gitignore entries), 'script' (npm scripts,
+    pyproject.toml entry points), and 'requirement' (pip requirements.txt
+    entries) are configuration metadata with no call graph edges. They are
+    consistently degree-0 orphans across all tested repos and add noise
+    without architectural insight.
+    """
+
+    @pytest.fixture()
+    def repo_with_config_noise(self, tmp_path: Path) -> Path:
+        """Create a repo with code, .gitignore, package.json, and requirements.txt."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        # Python code file (generates function nodes)
+        (repo / "app.py").write_text(
+            "def main():\n"
+            "    pass\n"
+        )
+        # .gitignore file (generates pattern nodes)
+        (repo / ".gitignore").write_text(
+            "node_modules/\n"
+            "*.pyc\n"
+            "__pycache__/\n"
+        )
+        # package.json with scripts (generates script nodes)
+        (repo / "package.json").write_text(
+            '{\n'
+            '  "name": "test-project",\n'
+            '  "scripts": {\n'
+            '    "test": "jest",\n'
+            '    "build": "webpack"\n'
+            '  }\n'
+            '}\n'
+        )
+        # requirements.txt (generates requirement nodes)
+        (repo / "requirements.txt").write_text(
+            "flask>=2.0\n"
+            "requests\n"
+        )
+        return repo
+
+    def test_default_excludes_config_metadata_kinds(
+        self, repo_with_config_noise: Path, tmp_path: Path
+    ) -> None:
+        """By default, pattern, script, and requirement kinds are excluded."""
+        out_path = tmp_path / "results.json"
+        run_behavior_map(
+            repo_with_config_noise, out_path, include_sketch_precomputed=False
+        )
+        data = json.loads(out_path.read_text())
+        config_noise_kinds = {"pattern", "script", "requirement"}
+        for node in data["nodes"]:
+            assert node["kind"] not in config_noise_kinds, (
+                f"Config kind '{node['kind']}' should be excluded by default: "
+                f"{node['name']}"
+            )
+
+    def test_include_docs_includes_config_metadata_kinds(
+        self, repo_with_config_noise: Path, tmp_path: Path
+    ) -> None:
+        """include_docs=True also includes config-metadata kinds."""
+        out_path = tmp_path / "results.json"
+        run_behavior_map(
+            repo_with_config_noise, out_path, include_docs=True,
+            include_sketch_precomputed=False,
+        )
+        data = json.loads(out_path.read_text())
+        kinds = {n["kind"] for n in data["nodes"]}
+        # At least one of the config-metadata kinds should be present
+        assert kinds & {"pattern", "script", "requirement"}, (
+            "With include_docs=True, pattern/script/requirement nodes should be present"
+        )
