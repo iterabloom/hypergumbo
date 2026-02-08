@@ -369,13 +369,21 @@ def link_routes_to_handlers(
     Returns:
         RouteHandlerResult with new edges and run info
     """
-    # Build symbol lookup by name
+    # Build symbol lookup by name, preferring handler-kind symbols over routes.
+    # In Go/JS/Django, route symbols often share the same name as their handler
+    # function. A naive overwrite would shadow the function with the route,
+    # causing the resolver to fail (routes aren't functions/methods).
     symbol_by_name: dict[str, Symbol] = {}
     for s in symbols:
-        symbol_by_name[s.name] = s
+        existing = symbol_by_name.get(s.name)
+        if existing is None or existing.kind == "route":
+            symbol_by_name[s.name] = s
         # Also index by qualified name if available
         if s.meta and s.meta.get("qualified_name"):
-            symbol_by_name[s.meta["qualified_name"]] = s
+            qn = s.meta["qualified_name"]
+            existing_qn = symbol_by_name.get(qn)
+            if existing_qn is None or existing_qn.kind == "route":
+                symbol_by_name[qn] = s
 
     # Find route symbols
     routes = [s for s in symbols if s.kind == "route"]

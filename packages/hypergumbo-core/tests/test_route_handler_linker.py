@@ -1028,6 +1028,136 @@ class TestGoRouteHandlerLinking:
         assert len(result.edges) == 1
         assert result.edges[0].dst == handler.id
 
+    def test_go_handler_same_name_as_route_symbol(self) -> None:
+        """Go handler is found even when route symbol has the same name.
+
+        In real-world Go analysis, route symbols are created with the same name
+        as their handler function (e.g., both named "ArticleCreate"). The route
+        symbol is typically added to the symbol list after the function symbol.
+        The linker must not let the route symbol shadow the function in the
+        lookup dict.
+        """
+        # Handler function comes FIRST in the symbol list (as in real analysis)
+        handler = Symbol(
+            id="go:/app/routers.go:50-60:ArticleCreate:function",
+            name="ArticleCreate",
+            kind="function",
+            language="go",
+            path="/app/routers.go",
+            span=Span(start_line=50, end_line=60, start_col=0, end_col=1),
+            origin="go-v1",
+            origin_run_id="test-run",
+        )
+
+        # Route symbol comes AFTER, shadows the function in a naive dict
+        route = Symbol(
+            id="go:/app/routers.go:30-30:ArticleCreate:route",
+            name="ArticleCreate",
+            kind="route",
+            language="go",
+            path="/app/routers.go",
+            span=Span(start_line=30, end_line=30, start_col=0, end_col=50),
+            meta={
+                "http_method": "POST",
+                "route_path": "/articles",
+                "handler_name": "ArticleCreate",
+            },
+            origin="go-v1",
+            origin_run_id="test-run",
+        )
+
+        # The critical ordering: handler first, then route (real-world ordering)
+        result = link_routes_to_handlers([handler, route], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == route.id
+        assert edge.dst == handler.id
+        assert edge.edge_type == "routes_to"
+
+    def test_express_handler_same_name_as_route_symbol(self) -> None:
+        """Express handler is found even when route symbol has the same name.
+
+        In Express/JS analysis, when a named handler function is used, the
+        route symbol gets the handler's name. The resolver must still find
+        the function, not the route.
+        """
+        handler = Symbol(
+            id="javascript:/app/routes.js:20-30:getUsers:function",
+            name="getUsers",
+            kind="function",
+            language="javascript",
+            path="/app/routes.js",
+            span=Span(start_line=20, end_line=30, start_col=0, end_col=1),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+        route = Symbol(
+            id="javascript:/app/routes.js:10-10:getUsers:route",
+            name="getUsers",
+            kind="route",
+            language="javascript",
+            path="/app/routes.js",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
+            meta={
+                "http_method": "GET",
+                "route_path": "/users",
+                "handler_ref": "getUsers",
+            },
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([handler, route], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == route.id
+        assert edge.dst == handler.id
+
+    def test_django_handler_same_name_as_route_symbol(self) -> None:
+        """Django handler is found even when route symbol has a matching name.
+
+        When Django URL patterns use view function names, the linker must
+        resolve to the function, not a route symbol that might share the name.
+        """
+        handler = Symbol(
+            id="python:/app/views.py:20-30:list_users:function",
+            name="list_users",
+            kind="function",
+            language="python",
+            path="/app/views.py",
+            span=Span(start_line=20, end_line=30, start_col=0, end_col=5),
+            origin="python-v1",
+            origin_run_id="test-run",
+        )
+
+        # Django route name includes "django:" prefix so it won't match,
+        # but test the scenario where a route might share the view name
+        route = Symbol(
+            id="python:/app/urls.py:10-10:list_users:route",
+            name="list_users",
+            kind="route",
+            language="python",
+            path="/app/urls.py",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
+            meta={
+                "http_method": "GET",
+                "route_path": "/users/",
+                "view_name": "list_users",
+            },
+            origin="python-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([handler, route], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == route.id
+        assert edge.dst == handler.id
+
     def test_go_handler_no_match(self) -> None:
         """Go routes with handler_name that doesn't match any function."""
         route = Symbol(
