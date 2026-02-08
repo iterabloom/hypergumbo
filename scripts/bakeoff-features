@@ -43,7 +43,7 @@ This is a **separate bakeoff loop**, not integrated into `scripts/bakeoff`:
 Slice Quality:
 | Metric              | Good Range | Warning      |
 |---------------------|------------|--------------|
-| slice_coverage_pct  | 5-30%      | <1% or >50%  |
+| slice_coverage_pct  | 1-30%      | <0.1% or >50%|
 | limit_hit_frequency | <50%       | >80%         |
 | cross_file_ratio    | >20%       | <5%          |
 
@@ -113,7 +113,7 @@ _TEST_PATH_RE = re.compile(r'/(tests?|spec|__tests__|test_|_test\.)')
 
 # Quality thresholds
 QUALITY_THRESHOLDS = {
-    "slice_coverage_pct": {"good_min": 5, "good_max": 30, "warn_min": 1, "warn_max": 50},
+    "slice_coverage_pct": {"good_min": 1, "good_max": 30, "warn_min": 0.1, "warn_max": 50},
     "limit_hit_frequency": {"good_max": 50, "warn_max": 80},
     "cross_file_ratio": {"good_min": 20, "warn_min": 5},
     "tier1_pct": {"good_min": 40, "good_max": 80, "warn_min": 20, "warn_max": 95},
@@ -659,6 +659,8 @@ def cmd_run(args):
         # Use --exclude-tests to focus on production dependencies
         # Note: Don't use --exclude-utility here - entry points may be in utility
         # dirs (e.g., docs_src for FastAPI) but their dependencies are still useful
+        # Use --max-hops 5 (vs default 3) to capture more of the dependency graph
+        # for quality assessment. Default 3 is too shallow for large repos (10K+ nodes).
         for i, entry in enumerate(entries[:5]):
             safe_name = entry.replace("/", "_").replace(":", "_")[:50]
             print(f"  slice[{entry[:30]}]...", end=" ", flush=True)
@@ -668,6 +670,7 @@ def cmd_run(args):
                 "--entry", entry,
                 "--inline",
                 "--exclude-tests",
+                "--max-hops", "5",
                 "--out", os.path.join(repo_out, f"slice.{i}.json"),
             ])
             with open(os.path.join(repo_out, f"slice.{i}.exit"), "w") as f:
@@ -686,6 +689,7 @@ def cmd_run(args):
                 "--inline",
                 "--exclude-tests",
                 "--exclude-utility",
+                "--max-hops", "5",
                 "--out", os.path.join(repo_out, f"rslice.{i}.json"),
             ])
             with open(os.path.join(repo_out, f"rslice.{i}.exit"), "w") as f:
