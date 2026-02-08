@@ -57,7 +57,7 @@ Graph:
 | Metric          | Good Range | Warning        |
 |-----------------|------------|----------------|
 | centrality_gini | 0.3-0.7    | <0.1 or >0.9   |
-| orphan_rate     | <20%       | >40%           |
+| orphan_rate     | <20%       | >40%           | (code nodes only)
 
 Environment:
     BAKEOFF_FEATURES_WORKDIR: Override workdir location
@@ -93,6 +93,18 @@ SEVERITY_CRITICAL = "CRITICAL"
 SEVERITY_HIGH = "HIGH"
 SEVERITY_MEDIUM = "MEDIUM"
 SEVERITY_LOW = "LOW"
+
+# Node kinds that represent code symbols (for orphan rate calculation).
+# Excludes documentation (section, link, code_block), CSS (class_selector, rule_set),
+# and build config (dependency, devDependency, tsconfig, requirement, etc.).
+_CODE_NODE_KINDS = frozenset({
+    "function", "method", "class", "module", "struct", "interface", "type",
+    "enum", "trait", "constructor", "getter", "setter", "variable",
+    "route", "export", "service", "scalar", "directive",
+    "event_subscriber", "event_publisher", "websocket_endpoint",
+    "http_client", "mq_subscriber", "mq_publisher", "rpc",
+    "subprocess_call", "graphql_resolver", "db_query",
+})
 
 # Quality thresholds
 QUALITY_THRESHOLDS = {
@@ -787,14 +799,18 @@ def cmd_diagnose(args):
         metrics.total_edges = len(edges)
         metrics.entrypoint_count = len(entrypoints)
 
-        # Compute orphan rate (nodes with no edges)
-        node_ids = {n.get("id") for n in nodes}
+        # Compute orphan rate (code nodes with no edges).
+        # Only counts code-relevant node kinds (functions, methods, classes, etc.)
+        # to avoid inflating the metric with documentation/CSS/config nodes.
+        code_nodes = [n for n in nodes if n.get("kind") in _CODE_NODE_KINDS]
+        code_node_ids = {n.get("id") for n in code_nodes}
         connected_nodes = set()
         for e in edges:
             connected_nodes.add(e.get("src"))
             connected_nodes.add(e.get("dst"))
-        metrics.orphan_count = len(node_ids - connected_nodes)
-        metrics.orphan_rate = (metrics.orphan_count / len(nodes) * 100) if nodes else 0
+        orphan_code_ids = code_node_ids - connected_nodes
+        metrics.orphan_count = len(orphan_code_ids)
+        metrics.orphan_rate = (metrics.orphan_count / len(code_nodes) * 100) if code_nodes else 0
 
         # Compute in/out degree distribution
         in_degree = {}

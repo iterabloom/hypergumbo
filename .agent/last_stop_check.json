@@ -1,10 +1,10 @@
 {
-  "last_completed_utc": "2026-02-08T07:06:22Z",
+  "last_completed_utc": "2026-02-08T07:30:00Z",
   "branch": "dev",
-  "last_pr": 919,
+  "last_pr": 920,
   "last_pr_state": "merged",
   "pending_hard_todos": 0,
-  "pending_soft_todos": 0,
+  "pending_soft_todos": 1,
   "unfixed_invariants": 0,
-  "notes": "Completed: PR#918 Go route-handler linking (Gin/Echo/Fiber/Chi handler_name metadata + _resolve_go_handler). PR#919 Go HTTP client detection (http.Get/Post/Head, NewRequest, NewRequestWithContext + _scan_go_file + entry point tests). DEEP priorities: run bakeoff to validate Go improvements on gin repo (was 37 routes 0% linking, should now link). Next: investigate Spring Boot concept density (2.1% in bakeoff \u2014 spring-boot.yaml patterns may not match spring-petclinic symbols). Or implement C/C++ interop linker for header-inclusion/extern-C cross-language edges."
+  "notes": "Completed: PR#920 fix route-handler linking when route and handler share same name (Go/JS/Django). Validated on gin-realworld: 0/20 -> 20/20 (100%). Previous: PR#918 Go handler_name metadata, PR#919 Go HTTP client detection. Soft TODO: research check-package-coverage performance (user-requested, in work_items.md). DEEP priorities: investigate entrypoint selection quality (connectivity-based fallback favors noisy functions), assess slice quality on real-world repos."
 }
