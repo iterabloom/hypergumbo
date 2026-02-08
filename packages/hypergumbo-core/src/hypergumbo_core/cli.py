@@ -778,6 +778,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     budgets = getattr(args, "budgets", None)
     extra_excludes = getattr(args, "extra_excludes", [])
     frameworks = getattr(args, "frameworks", None)
+    include_docs = getattr(args, "include_docs", False)
     show_progress = getattr(args, "progress", True)
 
     generated_files = run_behavior_map(
@@ -791,6 +792,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         budgets=budgets,
         extra_excludes=extra_excludes,
         frameworks=frameworks,
+        include_docs=include_docs,
         progress=show_progress,
     )
 
@@ -3001,6 +3003,14 @@ Cache location:
         help="Only include first-party code (shortcut for --max-tier 1)",
     )
     p_run.add_argument(
+        "--include-docs",
+        action="store_true",
+        default=False,
+        dest="include_docs",
+        help="Include documentation/config nodes (markdown sections, TOML tables, "
+             "INI settings) in output. By default these are excluded to reduce noise.",
+    )
+    p_run.add_argument(
         "--max-files",
         type=int,
         default=None,
@@ -3785,6 +3795,7 @@ def run_behavior_map(
     budgets: str | None = None,
     extra_excludes: list[str] | None = None,
     frameworks: str | None = None,
+    include_docs: bool = False,
     include_sketch_precomputed: bool = True,
     progress: bool = True,
 ) -> list[Path]:
@@ -3817,6 +3828,10 @@ def run_behavior_map(
             - "none": Skip framework detection
             - "all": Check all frameworks for detected languages
             - "fastapi,celery": Only check specified frameworks
+        include_docs: If True, include documentation/config node kinds (section,
+            table, table_array, code_block, link, paragraph, label, heading,
+            setting, config) in output. Default False excludes them to reduce
+            noise from markdown docs, TOML/INI config, and LaTeX sections.
         include_sketch_precomputed: If True (default), pre-extract config_info,
             vocabulary, and readme_description for fast sketch generation.
             Set False to skip this (avoids loading embedding model).
@@ -3990,6 +4005,22 @@ def run_behavior_map(
         all_symbols = filtered_symbols
         all_edges = filtered_edges
         limits.max_tier_applied = effective_tier
+
+    # Exclude documentation/config node kinds by default.  These nodes
+    # (markdown sections, TOML tables, INI settings, LaTeX labels, etc.)
+    # are typically degree-0 and add noise without architectural insight.
+    if not include_docs:
+        _DOC_KINDS = frozenset({
+            "section", "table", "table_array", "code_block",
+            "link", "paragraph", "label", "heading",
+            "setting", "config",
+        })
+        doc_ids = {s.id for s in all_symbols if s.kind in _DOC_KINDS}
+        all_symbols = [s for s in all_symbols if s.kind not in _DOC_KINDS]
+        all_edges = [
+            e for e in all_edges
+            if e.src not in doc_ids and e.dst not in doc_ids
+        ]
 
     # Rank symbols by importance (centrality + tier weighting) for output ordering
     show_progress("Ranking symbols", 65)

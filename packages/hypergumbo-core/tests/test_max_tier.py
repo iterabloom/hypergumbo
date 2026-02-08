@@ -353,3 +353,69 @@ class TestMaxTierLimitsReporting:
 
         # Should indicate tier filtering was applied
         assert limits.get("max_tier_applied") == 1
+
+
+class TestDocKindFiltering:
+    """Test default exclusion of documentation/config node kinds.
+
+    Non-code kinds (section, table, table_array, code_block, link, paragraph,
+    label, heading, setting, config) are excluded by default to reduce noise.
+    Use include_docs=True to include them.
+    """
+
+    @pytest.fixture()
+    def repo_with_docs(self, tmp_path: Path) -> Path:
+        """Create a repo with both code and documentation files."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        # Python code file (generates function nodes)
+        (repo / "app.py").write_text(
+            "def main():\n"
+            "    pass\n"
+        )
+        # Markdown doc file (generates section nodes)
+        (repo / "README.md").write_text(
+            "# Getting Started\n"
+            "\n"
+            "## Installation\n"
+            "\n"
+            "Run `pip install app`.\n"
+            "\n"
+            "## Usage\n"
+            "\n"
+            "Call `main()`.\n"
+        )
+        return repo
+
+    def test_default_excludes_doc_kinds(
+        self, repo_with_docs: Path, tmp_path: Path
+    ) -> None:
+        """By default, documentation kinds (section, etc.) are excluded."""
+        out_path = tmp_path / "results.json"
+        run_behavior_map(
+            repo_with_docs, out_path, include_sketch_precomputed=False
+        )
+        data = json.loads(out_path.read_text())
+        doc_kinds = {"section", "table", "table_array", "code_block",
+                     "link", "paragraph", "label", "heading",
+                     "setting", "config"}
+        for node in data["nodes"]:
+            assert node["kind"] not in doc_kinds, (
+                f"Doc kind '{node['kind']}' should be excluded by default: "
+                f"{node['name']}"
+            )
+
+    def test_include_docs_includes_doc_kinds(
+        self, repo_with_docs: Path, tmp_path: Path
+    ) -> None:
+        """include_docs=True includes documentation kinds."""
+        out_path = tmp_path / "results.json"
+        run_behavior_map(
+            repo_with_docs, out_path, include_docs=True,
+            include_sketch_precomputed=False,
+        )
+        data = json.loads(out_path.read_text())
+        kinds = {n["kind"] for n in data["nodes"]}
+        assert "section" in kinds, (
+            "With include_docs=True, section nodes should be present"
+        )
