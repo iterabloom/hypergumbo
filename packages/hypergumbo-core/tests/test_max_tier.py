@@ -172,22 +172,101 @@ module.exports = { chunk };
             assert tier <= 3, f"Found tier {tier} node: {node['name']}"
 
     def test_filtered_edges_removed(self, mixed_tier_repo: Path, tmp_path: Path):
-        """Edges referencing filtered nodes should be removed."""
+        """Edges with src referencing filtered nodes should be removed."""
+        # Get all node IDs before filtering
+        out_all = tmp_path / "all.json"
+        run_behavior_map(
+            mixed_tier_repo, out_all, max_tier=4, include_sketch_precomputed=False
+        )
+        all_node_ids = {
+            n["id"] for n in json.loads(out_all.read_text())["nodes"]
+        }
+
         out_path = tmp_path / "results.json"
-        run_behavior_map(mixed_tier_repo, out_path, max_tier=1, include_sketch_precomputed=False)
+        run_behavior_map(
+            mixed_tier_repo, out_path, max_tier=1, include_sketch_precomputed=False
+        )
 
         data = json.loads(out_path.read_text())
-        nodes = data["nodes"]
-        edges = data["edges"]
+        node_ids = {n["id"] for n in data["nodes"]}
+        removed_ids = all_node_ids - node_ids
 
-        node_ids = {n["id"] for n in nodes}
-
-        # All edge endpoints should reference existing nodes
-        for edge in edges:
+        for edge in data["edges"]:
+            # src must be a kept node or file-level ref
             assert edge["src"] in node_ids or edge["src"].endswith(
-                ".py"
-            ), f"Edge src {edge['src']} references filtered node"
-            # dst might reference external modules or filtered symbols
+                ":file"
+            ) or ":file:" in edge["src"], (
+                f"Edge src {edge['src']} references filtered node"
+            )
+            # dst must not reference a node that was explicitly removed
+            assert edge["dst"] not in removed_ids, (
+                f"Edge dst {edge['dst']} references filtered node"
+            )
+
+    def test_cross_tier_edges_filtered_on_dst(self, tmp_path: Path):
+        """Edges whose dst references a tier-filtered node must be removed.
+
+        When a first-party function calls a function in a derived (tier 4)
+        file, both nodes exist pre-filter. After filtering to tier <= 3,
+        the tier-4 node is removed. Edges pointing to it must also be removed;
+        otherwise they create dangling references in the output.
+        """
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        src = repo / "src"
+        src.mkdir()
+        # First-party code that calls a function with same name as one in dist/
+        (src / "app.js").write_text(
+            "const utils = require('../dist/utils');\n"
+            "\n"
+            "function main() {\n"
+            "  return utils.format('hello');\n"
+            "}\n"
+            "\n"
+            "module.exports = { main };\n"
+        )
+
+        # Tier 4: derived/minified code that defines the same function
+        dist = repo / "dist"
+        dist.mkdir()
+        (dist / "utils.js").write_text(
+            "function format(s){return s.trim()}\n"
+            "module.exports={format:format};\n"
+        )
+
+        # Get all edges before filtering (max_tier=4)
+        out_all = tmp_path / "all.json"
+        run_behavior_map(
+            repo, out_all, max_tier=4, include_sketch_precomputed=False
+        )
+        data_all = json.loads(out_all.read_text())
+        all_node_ids = {n["id"] for n in data_all["nodes"]}
+        tier4_ids = {
+            n["id"]
+            for n in data_all["nodes"]
+            if n.get("supply_chain", {}).get("tier", 1) == 4
+        }
+
+        # Now filter to tier <= 3 (default)
+        out_path = tmp_path / "filtered.json"
+        run_behavior_map(
+            repo, out_path, include_sketch_precomputed=False
+        )
+
+        data = json.loads(out_path.read_text())
+        filtered_node_ids = {n["id"] for n in data["nodes"]}
+
+        # No tier-4 nodes should be in filtered output
+        assert not (filtered_node_ids & tier4_ids), (
+            "Tier-4 nodes should be filtered out"
+        )
+
+        # No edge should point to a removed node
+        removed_ids = all_node_ids - filtered_node_ids
+        for edge in data["edges"]:
+            assert edge["dst"] not in removed_ids, (
+                f"Edge dst {edge['dst']} references a tier-filtered node"
+            )
 
     def test_metrics_reflect_filtered_data(
         self, mixed_tier_repo: Path, tmp_path: Path

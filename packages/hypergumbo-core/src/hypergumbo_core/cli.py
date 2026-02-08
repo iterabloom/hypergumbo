@@ -3963,9 +3963,12 @@ def run_behavior_map(
         ]
         filtered_symbol_ids = {s.id for s in filtered_symbols}
 
-        # Filter edges: src must be in filtered symbols OR be a file-level reference
-        # File-level import edges have src like "python:path/to/file.py:1-1:file:file"
-        # We check for ":file" suffix OR common file extensions in the src path
+        # Filter edges: src must be in filtered symbols (or file-level ref),
+        # AND dst must not reference a node that was explicitly removed by
+        # tier filtering. Edges whose dst is an unresolved external reference
+        # (never in the node set) are kept — they represent real dependencies.
+        removed_symbol_ids = {s.id for s in all_symbols} - filtered_symbol_ids
+
         def _is_valid_edge_src(src: str) -> bool:
             if src in filtered_symbol_ids:
                 return True
@@ -3978,7 +3981,11 @@ def run_behavior_map(
                     return True
             return False  # pragma: no cover
 
-        filtered_edges = [e for e in all_edges if _is_valid_edge_src(e.src)]
+        filtered_edges = [
+            e
+            for e in all_edges
+            if _is_valid_edge_src(e.src) and e.dst not in removed_symbol_ids
+        ]
 
         all_symbols = filtered_symbols
         all_edges = filtered_edges
