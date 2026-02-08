@@ -3135,8 +3135,8 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
     p_slice.add_argument(
         "--max-files",
         type=int,
-        default=20,
-        help="Maximum number of files to include (default: 20)",
+        default=50,
+        help="Maximum number of files to include (default: 50)",
     )
     p_slice.add_argument(
         "--min-confidence",

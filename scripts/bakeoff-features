@@ -41,11 +41,12 @@ This is a **separate bakeoff loop**, not integrated into `scripts/bakeoff`:
 ## Quality Metrics
 
 Slice Quality:
-| Metric              | Good Range | Warning      |
-|---------------------|------------|--------------|
-| slice_coverage_pct  | 1-30%      | <0.1% or >50%|
-| limit_hit_frequency | <50%       | >80%         |
-| cross_file_ratio    | >20%       | <5%          |
+| Metric              | Good Range  | Warning       |
+|---------------------|-------------|---------------|
+| avg_slice_nodes     | 50-500      | <20 or >2000  |
+| slice_coverage_pct  | 0.1-10%     | <0.01% or >30%|
+| limit_hit_frequency | <50%        | >80%          |
+| cross_file_ratio    | >20%        | <5%           |
 
 Supply Chain:
 | Metric     | Good Range | Warning        |
@@ -113,7 +114,8 @@ _TEST_PATH_RE = re.compile(r'/(tests?|spec|__tests__|test_|_test\.)')
 
 # Quality thresholds
 QUALITY_THRESHOLDS = {
-    "slice_coverage_pct": {"good_min": 1, "good_max": 30, "warn_min": 0.1, "warn_max": 50},
+    "avg_slice_nodes": {"good_min": 50, "good_max": 500, "warn_min": 20, "warn_max": 2000},
+    "slice_coverage_pct": {"good_min": 0.1, "good_max": 10, "warn_min": 0.01, "warn_max": 30},
     "limit_hit_frequency": {"good_max": 50, "warn_max": 80},
     "cross_file_ratio": {"good_min": 20, "warn_min": 5},
     "tier1_pct": {"good_min": 40, "good_max": 80, "warn_min": 20, "warn_max": 95},
@@ -169,6 +171,7 @@ class RepoInfo:
 class FeatureMetrics:
     """Metrics collected from feature testing."""
     # Slice metrics
+    avg_slice_nodes: float = 0.0
     slice_coverage_pct: float = 0.0
     limit_hit_count: int = 0
     limit_hit_frequency: float = 0.0
@@ -363,27 +366,31 @@ def run_cmd(cmd: list, cwd: str = None, timeout: int = 3600) -> tuple:
         return -1, "", str(e)
 
 
+_COUNT_METRICS = {"avg_slice_nodes"}  # Metrics that are counts, not percentages
+
+
 def assess_metric(name: str, value: float) -> tuple:
     """Assess a metric against thresholds. Returns (status, message)."""
     thresholds = QUALITY_THRESHOLDS.get(name, {})
+    unit = "" if name in _COUNT_METRICS else "%"
 
     # Check good range
     good_min = thresholds.get("good_min")
     good_max = thresholds.get("good_max")
 
     if good_min is not None and value < good_min:
-        return ("WARN", f"LOW_{name.upper()}: {value:.1f}% < {good_min}%")
+        return ("WARN", f"LOW_{name.upper()}: {value:.1f}{unit} < {good_min}{unit}")
     if good_max is not None and value > good_max:
-        return ("WARN", f"HIGH_{name.upper()}: {value:.1f}% > {good_max}%")
+        return ("WARN", f"HIGH_{name.upper()}: {value:.1f}{unit} > {good_max}{unit}")
 
     # Check warning thresholds
     warn_min = thresholds.get("warn_min")
     warn_max = thresholds.get("warn_max")
 
     if warn_min is not None and value < warn_min:
-        return ("FAIL", f"CRITICAL_LOW_{name.upper()}: {value:.1f}% < {warn_min}%")
+        return ("FAIL", f"CRITICAL_LOW_{name.upper()}: {value:.1f}{unit} < {warn_min}{unit}")
     if warn_max is not None and value > warn_max:
-        return ("FAIL", f"CRITICAL_HIGH_{name.upper()}: {value:.1f}% > {warn_max}%")
+        return ("FAIL", f"CRITICAL_HIGH_{name.upper()}: {value:.1f}{unit} > {warn_max}{unit}")
 
     return ("GOOD", None)
 
@@ -659,8 +666,10 @@ def cmd_run(args):
         # Use --exclude-tests to focus on production dependencies
         # Note: Don't use --exclude-utility here - entry points may be in utility
         # dirs (e.g., docs_src for FastAPI) but their dependencies are still useful
-        # Use --max-hops 5 (vs default 3) to capture more of the dependency graph
-        # for quality assessment. Default 3 is too shallow for large repos (10K+ nodes).
+        # Use --max-hops 10 and --max-files 100 for quality assessment.
+        # Default 3 hops is too shallow for large repos (10K+ nodes), and the
+        # default 50-file limit naturally constrains output size even at high
+        # hop counts. Using 100 files in bakeoff to measure quality potential.
         for i, entry in enumerate(entries[:5]):
             safe_name = entry.replace("/", "_").replace(":", "_")[:50]
             print(f"  slice[{entry[:30]}]...", end=" ", flush=True)
@@ -670,7 +679,8 @@ def cmd_run(args):
                 "--entry", entry,
                 "--inline",
                 "--exclude-tests",
-                "--max-hops", "5",
+                "--max-hops", "10",
+                "--max-files", "100",
                 "--out", os.path.join(repo_out, f"slice.{i}.json"),
             ])
             with open(os.path.join(repo_out, f"slice.{i}.exit"), "w") as f:
@@ -689,7 +699,8 @@ def cmd_run(args):
                 "--inline",
                 "--exclude-tests",
                 "--exclude-utility",
-                "--max-hops", "5",
+                "--max-hops", "10",
+                "--max-files", "100",
                 "--out", os.path.join(repo_out, f"rslice.{i}.json"),
             ])
             with open(os.path.join(repo_out, f"rslice.{i}.exit"), "w") as f:
@@ -866,6 +877,8 @@ def cmd_diagnose(args):
         slice_node_counts = []
         cross_file_edges = 0
         total_slice_edges = 0
+        slices_with_limits = 0
+        total_slices = 0
 
         for sf in slice_files:
             try:
@@ -874,7 +887,11 @@ def cmd_diagnose(args):
                     feature = slice_data.get("feature", {})
                     slice_nodes = feature.get("nodes", [])
                     slice_edges = feature.get("edges", [])
+                    limits_hit = feature.get("limits_hit", [])
                     slice_node_counts.append(len(slice_nodes))
+                    total_slices += 1
+                    if limits_hit:
+                        slices_with_limits += 1
 
                     # Count cross-file edges
                     # Edge format: "lang:/path/to/file.py:lines:name:kind"
@@ -892,7 +909,12 @@ def cmd_diagnose(args):
 
         if slice_node_counts:
             avg_slice_size = sum(slice_node_counts) / len(slice_node_counts)
+            metrics.avg_slice_nodes = avg_slice_size
             metrics.slice_coverage_pct = (avg_slice_size / len(nodes) * 100) if nodes else 0
+
+        if total_slices > 0:
+            metrics.limit_hit_count = slices_with_limits
+            metrics.limit_hit_frequency = (slices_with_limits / total_slices * 100)
 
         if total_slice_edges > 0:
             metrics.cross_file_ratio = cross_file_edges / total_slice_edges * 100
@@ -908,7 +930,9 @@ def cmd_diagnose(args):
 
         # Assess metrics
         metric_assessments = [
+            ("avg_slice_nodes", metrics.avg_slice_nodes),
             ("slice_coverage_pct", metrics.slice_coverage_pct),
+            ("limit_hit_frequency", metrics.limit_hit_frequency),
             ("cross_file_ratio", metrics.cross_file_ratio),
             ("tier1_pct", metrics.tier1_pct),
             ("tier4_pct", metrics.tier4_pct),
