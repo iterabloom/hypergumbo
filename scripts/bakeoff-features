@@ -57,8 +57,8 @@ Supply Chain:
 Graph:
 | Metric          | Good Range | Warning        |
 |-----------------|------------|----------------|
-| centrality_gini | 0.3-0.7    | <0.1 or >0.9   |
-| orphan_rate     | <20%       | >40%           | (code nodes only)
+| centrality_gini | 0.3-0.85   | <0.1 or >0.95  |
+| orphan_rate     | <15%       | >35%           | (non-test code nodes)
 
 Environment:
     BAKEOFF_FEATURES_WORKDIR: Override workdir location
@@ -120,8 +120,8 @@ QUALITY_THRESHOLDS = {
     "cross_file_ratio": {"good_min": 20, "warn_min": 5},
     "tier1_pct": {"good_min": 40, "good_max": 80, "warn_min": 20, "warn_max": 95},
     "tier4_pct": {"good_max": 5, "warn_max": 10},
-    "centrality_gini": {"good_min": 0.3, "good_max": 0.7, "warn_min": 0.1, "warn_max": 0.9},
-    "orphan_rate": {"good_max": 20, "warn_max": 40},
+    "centrality_gini": {"good_min": 0.3, "good_max": 0.85, "warn_min": 0.1, "warn_max": 0.95},
+    "orphan_rate": {"good_max": 15, "warn_max": 35},
 }
 
 # Recommended larger repos for feature testing (diverse languages)
@@ -817,10 +817,16 @@ def cmd_diagnose(args):
         metrics.total_edges = len(edges)
         metrics.entrypoint_count = len(entrypoints)
 
-        # Compute orphan rate (code nodes with no edges).
+        # Compute orphan rate (non-test code nodes with no edges).
         # Only counts code-relevant node kinds (functions, methods, classes, etc.)
         # to avoid inflating the metric with documentation/CSS/config nodes.
-        code_nodes = [n for n in nodes if n.get("kind") in _CODE_NODE_KINDS]
+        # Excludes test files: test functions are naturally orphaned (called by
+        # test runner, not by application code) and inflate the orphan rate.
+        code_nodes = [
+            n for n in nodes
+            if n.get("kind") in _CODE_NODE_KINDS
+            and not _TEST_PATH_RE.search(n.get("path", ""))
+        ]
         code_node_ids = {n.get("id") for n in code_nodes}
         connected_nodes = set()
         for e in edges:
