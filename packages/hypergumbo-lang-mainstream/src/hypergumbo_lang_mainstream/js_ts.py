@@ -706,9 +706,10 @@ def _extract_express_usage_contexts(
                 handler_ref = symbol_by_position[position_key].id
 
         # Get the receiver name (app, router, express, etc.)
+        # _detect_route_call requires a member_expression callee, so one always exists
         receiver_name = None
-        for child in node.children:
-            if child.type == "member_expression":
+        for child in node.children:  # pragma: no branch
+            if child.type == "member_expression":  # pragma: no branch
                 receiver_name = _get_receiver_name(child, source)
                 break
 
@@ -1053,7 +1054,7 @@ def _extract_nextjs_usage_contexts(
                 is_default = True
             elif child.type == "function_declaration":
                 name = _find_name_in_children(child, source)
-                if name:
+                if name:  # pragma: no branch — function_declaration always has a name
                     export_name = name
             elif child.type == "identifier":  # pragma: no cover
                 export_name = _node_text(child, source)

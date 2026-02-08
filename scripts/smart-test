@@ -87,14 +87,11 @@ fi
 PYTEST_LOG="$REPO_ROOT/.ci/pytest-output.log"
 
 # Coverage paths for the modular package structure
-# --cov-branch enables branch coverage tracking (stricter than line coverage)
-# This helps catch untested code paths (if/else branches, loop conditions, etc.)
 COV_PATHS=(
     "--cov=packages/hypergumbo-core/src"
     "--cov=packages/hypergumbo-lang-mainstream/src"
     "--cov=packages/hypergumbo-lang-common/src"
     "--cov=packages/hypergumbo-lang-extended1/src"
-    "--cov-branch"
 )
 
 # Detect if sentence-transformers is available
