@@ -69,6 +69,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -105,6 +106,10 @@ _CODE_NODE_KINDS = frozenset({
     "http_client", "mq_subscriber", "mq_publisher", "rpc",
     "subprocess_call", "graphql_resolver", "db_query",
 })
+
+# Path segments that indicate test files. Used to filter entrypoints before
+# slicing with --exclude-tests (test-file entries yield empty slices).
+_TEST_PATH_RE = re.compile(r'/(tests?|spec|__tests__|test_|_test\.)')
 
 # Quality thresholds
 QUALITY_THRESHOLDS = {
@@ -638,17 +643,15 @@ def cmd_run(args):
             f.write(stdout)
         print("OK" if rc == 0 else f"FAIL({rc})")
 
-        # Parse entrypoints for slice tests
+        # Parse entrypoints for slice tests, filtering out test-file entries
+        # since we slice with --exclude-tests (test entries yield empty slices)
         entries = []
         try:
-            import re
-            # Format: "    python:/path/to/file.py:line-range:SymbolName:kind"
-            # Entry IDs start with language prefix like "python:", "javascript:", etc.
             for line in stdout.split("\n"):
                 line = line.strip()
-                # Match entry IDs that look like "lang:/path:lines:name:kind"
                 if re.match(r'^[a-z]+:/', line):
-                    entries.append(line)
+                    if not _TEST_PATH_RE.search(line):
+                        entries.append(line)
         except Exception:
             pass
 
