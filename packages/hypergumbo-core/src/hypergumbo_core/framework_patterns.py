@@ -145,6 +145,7 @@ class Pattern:
         annotation: Regex pattern to match against Java annotations
         parameter_type: Regex pattern to match against parameter types
         symbol_kind: Regex pattern to match against symbol kind field
+        modifiers: Regex pattern requiring at least one modifier to match (positive filter)
         modifiers_exclude: Regex pattern to reject symbols with matching modifiers
         symbol_path: Regex pattern to match against symbol's file path (search, not match)
         extract_path: JSONPath-like expression to extract route path from metadata
@@ -167,6 +168,7 @@ class Pattern:
     extract_path: str | None = None
     extract_method: str | None = None
     prefix_from_parent: str | None = None
+    modifiers: str | None = None
     modifiers_exclude: str | None = None
     symbol_path: str | None = None
     usage: UsagePatternSpec | None = None
@@ -192,6 +194,9 @@ class Pattern:
         )
         self._symbol_kind_re = (
             re.compile(self.symbol_kind) if self.symbol_kind else None
+        )
+        self._modifiers_re = (
+            re.compile(self.modifiers) if self.modifiers else None
         )
         self._modifiers_exclude_re = (
             re.compile(self.modifiers_exclude) if self.modifiers_exclude else None
@@ -219,6 +224,14 @@ class Pattern:
         # Used for Python __init__.py library export detection
         if self._symbol_path_re:
             if not symbol.path or not self._symbol_path_re.search(symbol.path):
+                return None
+
+        # Modifiers positive filter: require at least one modifier to match
+        # Used for Python re-exported symbols (re_exported modifier)
+        if self._modifiers_re:
+            if not symbol.modifiers:
+                return None
+            if not any(self._modifiers_re.match(m) for m in symbol.modifiers):
                 return None
 
         # Modifiers exclusion filter: reject symbols with any matching modifier
@@ -660,6 +673,7 @@ class FrameworkPatternDef:
                 annotation=p.get("annotation"),
                 parameter_type=p.get("parameter_type"),
                 symbol_kind=p.get("symbol_kind"),
+                modifiers=p.get("modifiers"),
                 modifiers_exclude=p.get("modifiers_exclude"),
                 symbol_path=p.get("symbol_path"),
                 extract_path=p.get("extract_path"),

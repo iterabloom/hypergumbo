@@ -2116,6 +2116,10 @@ def analyze_python(
             if source_symbol:
                 # Add alias: (package, local_name) -> source_symbol
                 global_symbols[(package_name, local_name)] = source_symbol
+                # Mark the source symbol as re-exported from __init__.py
+                # so library-export patterns can detect it
+                if "re_exported" not in source_symbol.modifiers:
+                    source_symbol.modifiers.append("re_exported")
 
     # Create resolver for efficient lookups in Pass 2 (with cached indexes)
     from hypergumbo_core.symbol_resolution import SymbolResolver

@@ -66,6 +66,23 @@ patterns:
     language: "^python$"
     symbol_path: "__init__\\.py$"
 
+  # Re-exported functions from __init__.py
+  # When __init__.py does "from .module import func", the original symbol
+  # in module.py gets a "re_exported" modifier. This pattern matches those
+  # symbols even though they're not physically in __init__.py.
+  - concept: library_export
+    symbol_name: "^[^_]"
+    symbol_kind: "^function$"
+    language: "^python$"
+    modifiers: "^re_exported$"
+
+  # Re-exported classes from __init__.py (e.g., FastAPI, APIRouter)
+  - concept: library_export
+    symbol_name: "^[^_]"
+    symbol_kind: "^class$"
+    language: "^python$"
+    modifiers: "^re_exported$"
+
   # === Go: Definition-based (exported symbols) ===
   # Go convention: exported symbols start with uppercase.
   # Matches functions, types, interfaces, and structs.

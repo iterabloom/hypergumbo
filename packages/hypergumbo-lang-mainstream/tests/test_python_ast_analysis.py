@@ -1222,6 +1222,72 @@ def test_django_path_with_local_cbv_as_view(tmp_path: Path) -> None:
 # See test_framework_patterns.py for pattern matching tests.
 
 
+def test_reexported_symbols_get_modifier(tmp_path: Path) -> None:
+    """Symbols re-exported from __init__.py get the 're_exported' modifier.
+
+    When a package __init__.py re-exports symbols from submodules:
+        # mypackage/__init__.py
+        from .submodule import MyClass
+        from .submodule import helper_func
+
+    The original symbols in submodule.py should gain a 're_exported' modifier,
+    enabling library-export pattern detection for re-exported public APIs.
+    """
+    pkg = tmp_path / "mypackage"
+    pkg.mkdir()
+
+    submodule = pkg / "submodule.py"
+    submodule.write_text(
+        "class MyClass:\n"
+        "    '''A public class.'''\n"
+        "    pass\n"
+        "\n"
+        "def helper_func():\n"
+        "    '''A public function.'''\n"
+        "    return 42\n"
+        "\n"
+        "def _private_func():\n"
+        "    '''A private function (not re-exported).'''\n"
+        "    return 0\n"
+    )
+
+    init_file = pkg / "__init__.py"
+    init_file.write_text(
+        "from .submodule import MyClass\n"
+        "from .submodule import helper_func\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    # Find the re-exported symbols
+    my_class = next(
+        (n for n in data["nodes"] if n["name"] == "MyClass"), None
+    )
+    helper = next(
+        (n for n in data["nodes"] if n["name"] == "helper_func"), None
+    )
+    private = next(
+        (n for n in data["nodes"] if n["name"] == "_private_func"), None
+    )
+
+    assert my_class is not None, "MyClass should be in output"
+    assert helper is not None, "helper_func should be in output"
+    assert private is not None, "_private_func should be in output"
+
+    # Re-exported symbols should have the 're_exported' modifier
+    assert "re_exported" in my_class.get("modifiers", []), \
+        f"MyClass should have re_exported modifier, got {my_class.get('modifiers', [])}"
+    assert "re_exported" in helper.get("modifiers", []), \
+        f"helper_func should have re_exported modifier, got {helper.get('modifiers', [])}"
+
+    # Non-re-exported symbol should NOT have the modifier
+    assert "re_exported" not in private.get("modifiers", []), \
+        "_private_func should NOT have re_exported modifier"
+
+
 def test_reexport_call_edges_resolved(tmp_path: Path) -> None:
     """Calls to re-exported symbols should create proper call edges.
 

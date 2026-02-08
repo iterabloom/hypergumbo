@@ -14249,6 +14249,53 @@ class TestLibraryExportPatterns:
         )
         assert pattern.matches(public_annotated_sym) is not None
 
+    def test_modifiers_positive_match(self) -> None:
+        """Pattern with modifiers requires at least one modifier to match."""
+        clear_pattern_cache()
+
+        pattern = Pattern(
+            concept="library_export",
+            symbol_kind="^(function|class)$",
+            language="^python$",
+            modifiers="^re_exported$",
+        )
+
+        # Symbol WITH re_exported modifier - should match
+        re_exported_sym = Symbol(
+            id="python:fastapi/routing.py:1-50:APIRouter:class",
+            name="APIRouter",
+            kind="class",
+            language="python",
+            path="fastapi/routing.py",
+            span=Span(1, 50, 0, 50),
+            modifiers=["re_exported"],
+        )
+        assert pattern.matches(re_exported_sym) is not None
+
+        # Symbol WITHOUT modifier - should NOT match
+        plain_sym = Symbol(
+            id="python:fastapi/routing.py:60-100:_InternalHelper:class",
+            name="_InternalHelper",
+            kind="class",
+            language="python",
+            path="fastapi/routing.py",
+            span=Span(60, 100, 0, 50),
+            modifiers=[],
+        )
+        assert pattern.matches(plain_sym) is None
+
+        # Symbol with wrong modifiers - should NOT match
+        other_mod_sym = Symbol(
+            id="python:fastapi/routing.py:110-150:SomeClass:class",
+            name="SomeClass",
+            kind="class",
+            language="python",
+            path="fastapi/routing.py",
+            span=Span(110, 150, 0, 50),
+            modifiers=["public"],
+        )
+        assert pattern.matches(other_mod_sym) is None
+
     def test_symbol_path_pattern_matching(self) -> None:
         """Pattern with symbol_path matches against symbol's file path."""
         pattern = Pattern(
@@ -14334,6 +14381,50 @@ class TestLibraryExportPatterns:
             path="fastapi/__init__.py",
             span=Span(1, 50, 0, 50),
             meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_python_reexported_matches_library_export(self) -> None:
+        """Python re-exported symbols (with re_exported modifier) match library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        # A class defined in routing.py but re-exported from __init__.py
+        # should match via the modifiers-based pattern
+        symbol = Symbol(
+            id="python:fastapi/routing.py:1-50:APIRouter:class",
+            name="APIRouter",
+            kind="class",
+            language="python",
+            path="fastapi/routing.py",
+            span=Span(1, 50, 0, 50),
+            meta={},
+            modifiers=["re_exported"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_python_reexported_function_matches_library_export(self) -> None:
+        """Python re-exported functions match library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="python:fastapi/param_functions.py:10-20:Depends:function",
+            name="Depends",
+            kind="function",
+            language="python",
+            path="fastapi/param_functions.py",
+            span=Span(10, 20, 0, 50),
+            meta={},
+            modifiers=["re_exported"],
         )
 
         results = match_patterns(symbol, [pattern_def])
