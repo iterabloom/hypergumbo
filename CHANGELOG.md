@@ -11,6 +11,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
+- **Go route-handler linking**: Go web framework routes (Gin, Echo, Fiber, Chi) are now linked to their handler functions by the route-handler linker. Previously, Go routes had 0% linking rate despite being detected — the handler function name was in the route symbol's `name` field but lacked a metadata reference for the linker. Now `handler_name` metadata enables resolution of both simple identifiers (`listUsers`) and package-qualified names (`handlers.GetAPI`).
+- **Go HTTP client detection**: The HTTP client-server linker now detects Go `net/http` calls: `http.Get`, `http.Post`, `http.Head`, `http.NewRequest`, and `http.NewRequestWithContext`. This enables cross-language linking from Go HTTP clients to route handlers in Python, Ruby, JS/TS, and other backends. Supports both literal URLs and variable references.
 - **Framework detection for 7 additional languages**: Extended dependency-file scanning to detect frameworks in languages that previously only had YAML patterns:
   - **Haskell**: servant, scotty (via `.cabal` files)
   - **Clojure**: ring-compojure, pedestal (via `deps.edn`, `project.clj`)

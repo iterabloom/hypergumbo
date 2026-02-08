@@ -18,6 +18,13 @@ Python:
 - requests.get(API_URL) - requests library with variable URL
 - httpx.get("/api/users") - httpx library
 
+Go:
+- http.Get("/api/users") - net/http standard library
+- http.Post("/api/users", contentType, body) - net/http POST
+- http.Head("/api/users") - net/http HEAD
+- http.NewRequest("DELETE", "/api/users/1", nil) - explicit method
+- http.NewRequestWithContext(ctx, "PATCH", "/api/users/1", body) - with context
+
 Variable URL Detection
 ----------------------
 URLs stored in variables are detected with lower confidence (0.65 vs 0.9):
@@ -232,9 +239,29 @@ def _match_route_pattern(request_path: str, route_pattern: str) -> bool:
         return False
 
 
+# Go HTTP client patterns
+# http.Get/Post/Head("url") - supports both literal URLs and variables
+GO_HTTP_SIMPLE_PATTERN = re.compile(
+    rf"""http\.(Get|Post|Head)\s*\(\s*{_URL_ARG}""",
+    re.VERBOSE,
+)
+
+# http.NewRequest("METHOD", "url", body) - explicit method
+GO_HTTP_NEW_REQUEST_PATTERN = re.compile(
+    rf"""http\.NewRequest\s*\(\s*["'](\w+)["']\s*,\s*{_URL_ARG}""",
+    re.VERBOSE,
+)
+
+# http.NewRequestWithContext(ctx, "METHOD", "url", body) - with context
+GO_HTTP_NEW_REQUEST_CTX_PATTERN = re.compile(
+    rf"""http\.NewRequestWithContext\s*\(\s*\w+\s*,\s*["'](\w+)["']\s*,\s*{_URL_ARG}""",
+    re.VERBOSE,
+)
+
+
 def _find_source_files(root: Path) -> Iterator[Path]:
     """Find files that might contain HTTP client calls."""
-    patterns = ["**/*.py", "**/*.js", "**/*.ts", "**/*.jsx", "**/*.tsx"]
+    patterns = ["**/*.py", "**/*.js", "**/*.ts", "**/*.jsx", "**/*.tsx", "**/*.go"]
     for path in find_files(root, patterns):
         yield path
 
@@ -366,6 +393,73 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
     return calls
 
 
+def _scan_go_file(file_path: Path, content: str) -> list[HttpClientCall]:
+    """Scan a Go file for HTTP client calls.
+
+    Detects standard library net/http patterns:
+    - http.Get/Post/Head("url") — simple shorthand calls
+    - http.NewRequest("METHOD", "url", body) — explicit method
+    - http.NewRequestWithContext(ctx, "METHOD", "url", body) — with context
+    """
+    calls: list[HttpClientCall] = []
+
+    # http.Get/Post/Head("url")
+    for match in GO_HTTP_SIMPLE_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        # Groups: 1=method name, 2=literal URL, 3=variable URL
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="go",
+                url_type=url_type,
+            )
+        )
+
+    # http.NewRequest("METHOD", "url", body)
+    for match in GO_HTTP_NEW_REQUEST_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        # Groups: 1=method, 2=literal URL, 3=variable URL
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="go",
+                url_type=url_type,
+            )
+        )
+
+    # http.NewRequestWithContext(ctx, "METHOD", "url", body)
+    for match in GO_HTTP_NEW_REQUEST_CTX_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        # Groups: 1=method, 2=literal URL, 3=variable URL
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="go",
+                url_type=url_type,
+            )
+        )
+
+    return calls
+
+
 def _create_client_symbol(call: HttpClientCall, root: Path) -> Symbol:
     """Create a symbol for an HTTP client call."""
     rel_path = Path(call.file_path).relative_to(root) if root else Path(call.file_path)
@@ -419,6 +513,8 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
 
             if file_path.suffix == ".py":
                 calls = _scan_python_file(file_path, content)
+            elif file_path.suffix == ".go":
+                calls = _scan_go_file(file_path, content)
             else:
                 calls = _scan_javascript_file(file_path, content)
 

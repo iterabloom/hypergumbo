@@ -7,6 +7,7 @@ from hypergumbo_core.ir import Span, Symbol
 from hypergumbo_core.linkers.http import (
     _extract_path_from_url,
     _match_route_pattern,
+    _scan_go_file,
     _scan_javascript_file,
     _scan_python_file,
     link_http,
@@ -870,3 +871,204 @@ class TestConceptMetadataSupport:
         path, method = _get_route_info_from_concept(symbol)
         assert path == "/api/users"
         assert method == "POST"
+
+
+class TestHttpLinkerEntryPoint:
+    """Tests for HTTP linker registry integration."""
+
+    def test_count_route_symbols(self, tmp_path):
+        """_count_route_symbols counts routes for requirement check."""
+        from hypergumbo_core.linkers.http import _count_route_symbols
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        route = Symbol(
+            id="server.py::get_users",
+            name="get_users",
+            kind="route",
+            path="server.py",
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
+            language="python",
+        )
+
+        non_route = Symbol(
+            id="utils.py::helper",
+            name="helper",
+            kind="function",
+            path="utils.py",
+            span=Span(start_line=1, start_col=0, end_line=5, end_col=0),
+            language="python",
+        )
+
+        ctx = LinkerContext(repo_root=tmp_path, symbols=[route, non_route])
+        assert _count_route_symbols(ctx) == 1
+
+    def test_http_linker_entry_point(self, tmp_path):
+        """http_linker entry point works via LinkerContext."""
+        from hypergumbo_core.linkers.http import http_linker
+        from hypergumbo_core.linkers.registry import LinkerContext
+
+        client_file = tmp_path / "client.js"
+        client_file.write_text('fetch("/api/users")')
+
+        route = Symbol(
+            id="server.py::get_users",
+            name="get_users",
+            kind="route",
+            path=str(tmp_path / "server.py"),
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
+            language="python",
+            meta={
+                "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
+            },
+        )
+
+        ctx = LinkerContext(repo_root=tmp_path, symbols=[route])
+        result = http_linker(ctx)
+
+        assert len(result.edges) == 1
+        assert result.run is not None
+
+
+class TestScanGoFile:
+    """Tests for Go HTTP client call detection."""
+
+    def test_http_get(self):
+        """Detects http.Get("url")."""
+        code = dedent('''
+            package main
+            import "net/http"
+            func main() {
+                resp, _ := http.Get("/api/users")
+            }
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/users"
+        assert calls[0].language == "go"
+
+    def test_http_post(self):
+        """Detects http.Post("url", contentType, body)."""
+        code = dedent('''
+            resp, _ := http.Post("/api/users", "application/json", body)
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+        assert calls[0].url == "/api/users"
+
+    def test_http_head(self):
+        """Detects http.Head("url")."""
+        code = dedent('''
+            resp, _ := http.Head("/api/health")
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "HEAD"
+        assert calls[0].url == "/api/health"
+
+    def test_http_new_request(self):
+        """Detects http.NewRequest("METHOD", "url", body)."""
+        code = dedent('''
+            req, _ := http.NewRequest("DELETE", "/api/users/1", nil)
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "DELETE"
+        assert calls[0].url == "/api/users/1"
+
+    def test_http_new_request_put(self):
+        """Detects http.NewRequest with PUT method."""
+        code = dedent('''
+            req, _ := http.NewRequest("PUT", "/api/users/1", bytes.NewReader(data))
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "PUT"
+
+    def test_http_new_request_with_context(self):
+        """Detects http.NewRequestWithContext(ctx, "METHOD", "url", body)."""
+        code = dedent('''
+            req, _ := http.NewRequestWithContext(ctx, "PATCH", "/api/users/1", body)
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "PATCH"
+        assert calls[0].url == "/api/users/1"
+
+    def test_http_get_with_variable(self):
+        """Detects http.Get(apiURL) with variable URL."""
+        code = dedent('''
+            apiURL := "/api/users"
+            resp, _ := http.Get(apiURL)
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert len(calls) == 1
+        assert calls[0].url == "apiURL"
+        assert calls[0].url_type == "variable"
+
+    def test_http_get_with_literal(self):
+        """Verifies literal URLs have url_type='literal'."""
+        code = dedent('''
+            resp, _ := http.Get("/api/users")
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert len(calls) == 1
+        assert calls[0].url_type == "literal"
+
+    def test_multiple_calls(self):
+        """Detects multiple Go HTTP calls in one file."""
+        code = dedent('''
+            resp1, _ := http.Get("/api/users")
+            resp2, _ := http.Post("/api/users", "application/json", body)
+            req, _ := http.NewRequest("DELETE", "/api/users/1", nil)
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert len(calls) == 3
+
+    def test_no_http_calls(self):
+        """Go file without HTTP calls returns empty list."""
+        code = dedent('''
+            package main
+            func add(a, b int) int { return a + b }
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert len(calls) == 0
+
+    def test_full_url(self):
+        """Detects http.Get with full URL."""
+        code = dedent('''
+            resp, _ := http.Get("http://localhost:8080/api/users")
+        ''')
+        calls = _scan_go_file(Path("main.go"), code)
+        assert len(calls) == 1
+        assert calls[0].url == "http://localhost:8080/api/users"
+
+
+class TestGoHttpLinking:
+    """Integration tests for Go HTTP client linking to routes."""
+
+    def test_links_go_http_get_to_route(self, tmp_path):
+        """Go http.Get calls link to route symbols."""
+        client_file = tmp_path / "client.go"
+        client_file.write_text('package main\nresp, _ := http.Get("/api/users")')
+
+        route_symbol = Symbol(
+            id="server.py::get_users",
+            name="get_users",
+            kind="route",
+            path=str(tmp_path / "server.py"),
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
+            language="python",
+            stable_id="sha256:abc123",
+            meta={
+                "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
+            },
+        )
+
+        result = link_http(tmp_path, [route_symbol])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].edge_type == "http_calls"
+        assert result.edges[0].dst == route_symbol.id
+        assert result.edges[0].meta["cross_language"] is True
