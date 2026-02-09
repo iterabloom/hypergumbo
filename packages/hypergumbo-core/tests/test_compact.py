@@ -1162,6 +1162,7 @@ class TestSelectByTokensFiltering:
         assert result.omitted.count >= 1
 
 
+
 # ============================================================================
 # Tests for induced subgraph fixes (edge AND filter, entrypoint filtering)
 # ============================================================================
@@ -1902,6 +1903,36 @@ class TestConnectivityAwareSelection:
         # D is unconnected, should not be selected
         assert sym_d.id not in selected_ids
 
+    def test_self_loop_edges_excluded_from_adjacency(self):
+        """Self-loop edges are ignored in connectivity-aware selection.
+
+        Self-loops (src == dst) should not inflate a node's connectivity
+        score or appear in the induced subgraph edges.
+        """
+        from hypergumbo_core.compact import select_by_connectivity
+
+        sym_a = make_symbol("visitor")
+        sym_b = make_symbol("handler")
+        sym_c = make_symbol("caller")
+        symbols = [sym_a, sym_b, sym_c]
+
+        edges = [
+            make_edge(sym_c.id, sym_a.id),
+            make_edge(sym_c.id, sym_b.id),
+            # Self-loop on visitor
+            make_edge(sym_a.id, sym_a.id),
+        ]
+
+        result = select_by_connectivity(
+            symbols, edges, seed_ids={sym_c.id}, max_additional=5
+        )
+
+        # Self-loop should not appear in induced edges
+        for e in result.included_edges:
+            assert e.src != e.dst, (
+                f"Self-loop in induced edges: {e.src} -> {e.dst}"
+            )
+
 
 class TestSelectByConnectivityIntegration:
     """Integration tests for connectivity selection with format functions."""
@@ -2188,3 +2219,75 @@ class TestTieredTokenBudget:
             f"Force-included symbols use {total_tokens} tokens, "
             f"exceeds 1000 budget. Included {result.included.count} symbols."
         )
+
+    def test_tiered_self_loop_edges_excluded(self):
+        """Self-loop edges (src==dst) are excluded from tiered output.
+
+        Regression: DMD bakeoff iter-002 found 28% of 64k view edges were
+        self-loops (visitor pattern self-references where src==dst). These
+        waste token budget and inflate edge counts without adding useful
+        connectivity information.
+        """
+        sym_a = make_symbol("process")
+        sym_b = make_symbol("handle")
+
+        # Normal edge + self-loop
+        normal_edge = make_edge(sym_a.id, sym_b.id)
+        self_loop = make_edge(sym_a.id, sym_a.id)
+        all_edges = [normal_edge, self_loop]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in [sym_a, sym_b]],
+            "edges": [e.to_dict() for e in all_edges],
+            "entrypoints": [],
+        }
+
+        result = format_tiered_behavior_map(
+            behavior_map, [sym_a, sym_b], all_edges,
+            target_tokens=10000,
+        )
+
+        # Self-loop should not appear in output edges
+        for e in result["edges"]:
+            assert e.get("src") != e.get("dst"), (
+                f"Self-loop found in tiered output: {e.get('src')} -> {e.get('dst')}"
+            )
+        # Normal edge should still be present
+        assert len(result["edges"]) == 1
+
+    def test_tiered_self_loops_dont_inflate_centrality(self):
+        """Self-loops should not inflate centrality during token selection.
+
+        A symbol with a self-loop should not get extra centrality relative
+        to an otherwise-equivalent symbol without one.
+        """
+        sym_a = make_symbol("visitor_accept")
+        sym_b = make_symbol("handler_process")
+        sym_c = make_symbol("caller")
+
+        # Normal edges: caller -> visitor, caller -> handler
+        # Plus self-loop on visitor
+        edges = [
+            make_edge(sym_c.id, sym_a.id),
+            make_edge(sym_c.id, sym_b.id),
+            make_edge(sym_a.id, sym_a.id),  # self-loop
+        ]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in [sym_a, sym_b, sym_c]],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+        }
+
+        result = format_tiered_behavior_map(
+            behavior_map, [sym_a, sym_b, sym_c], edges,
+            target_tokens=10000,
+        )
+
+        # Self-loop should not be in output
+        for e in result["edges"]:
+            assert e.get("src") != e.get("dst"), (
+                f"Self-loop in output: {e.get('src')} -> {e.get('dst')}"
+            )
+        # Should have exactly 2 edges: caller->visitor, caller->handler
+        assert len(result["edges"]) == 2

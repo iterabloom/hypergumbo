@@ -3926,11 +3926,13 @@ def run_behavior_map(
 
     del linker_ctx, captured_symbols  # Free linker data structures
 
-    # Deduplicate edges by ID (linkers may create duplicate edges)
+    # Deduplicate edges by ID (linkers may create duplicate edges) and
+    # remove self-loops (src == dst) which inflate centrality without adding
+    # useful connectivity. Common sources: visitor patterns, name collisions.
     seen_edge_ids: set[str] = set()
     unique_edges: list[Edge] = []
     for edge in all_edges:
-        if edge.id not in seen_edge_ids:
+        if edge.id not in seen_edge_ids and edge.src != edge.dst:
             seen_edge_ids.add(edge.id)
             unique_edges.append(edge)
     all_edges = unique_edges

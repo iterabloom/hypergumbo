@@ -465,6 +465,12 @@ def _build_adjacency_list(
     incoming: Dict[str, set] = {}
 
     for edge in edges:
+        # Skip self-loops — they don't represent useful connectivity
+        # and inflate centrality scores. Common source: visitor patterns,
+        # name collision in multi-file repos (e.g., D's accept() methods).
+        if edge.src == edge.dst:
+            continue
+
         if edge.src not in outgoing:
             outgoing[edge.src] = set()
         outgoing[edge.src].add(edge.dst)
@@ -573,7 +579,7 @@ def select_by_connectivity(
         ConnectivityResult with selected symbols and induced edges.
     """
     symbol_by_id = {s.id: s for s in symbols}
-    edge_set = {(e.src, e.dst): e for e in edges}
+    edge_set = {(e.src, e.dst): e for e in edges if e.src != e.dst}
 
     # Build adjacency lists
     outgoing, incoming = _build_adjacency_list(edges)
@@ -945,12 +951,13 @@ def format_compact_behavior_map(
         compact_map["nodes"] = [s.to_dict() for s in result.included.symbols]
         compact_map["nodes_summary"] = result.to_dict()
 
-        # Keep only edges where BOTH endpoints exist in the included set
-        # Using AND (not OR) ensures the induced subgraph has valid connectivity
+        # Keep only edges where BOTH endpoints exist in the included set and
+        # src != dst (self-loops waste budget without useful connectivity).
         included_ids = {s.id for s in result.included.symbols}
         compact_map["edges"] = [
             e for e in behavior_map.get("edges", [])
             if e.get("src") in included_ids and e.get("dst") in included_ids
+            and e.get("src") != e.get("dst")
         ]
 
         # Filter entrypoints to only those whose symbol_id exists in included nodes
@@ -1255,12 +1262,13 @@ def format_tiered_behavior_map(
     tiered_map["nodes"] = [s.to_dict() for s in result.included.symbols]
     tiered_map["nodes_summary"] = result.to_dict()
 
-    # Keep only edges where BOTH endpoints exist in the included set
-    # Using AND (not OR) ensures the induced subgraph has valid connectivity
+    # Keep only edges where BOTH endpoints exist in the included set and
+    # src != dst (self-loops waste tokens without adding useful connectivity).
     included_ids = {s.id for s in result.included.symbols}
     tiered_map["edges"] = [
         e for e in behavior_map.get("edges", [])
         if e.get("src") in included_ids and e.get("dst") in included_ids
+        and e.get("src") != e.get("dst")
     ]
 
     # Filter entrypoints to only those whose symbol_id exists in included nodes
