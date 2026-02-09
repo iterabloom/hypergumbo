@@ -21,7 +21,7 @@
   - Follow the below section titled "Autonomous Development Mode Stipulations"
   - "Profoundly stuck" means: all priority queue items attempted, all tests failing, no clear path forward, AND no unfixed root causes you could address
   - **Circuit breaker:** The stop hook approves stopping after 5 identical stop events with no progress (prevents death spirals). If the circuit breaker fires, persist stalled items to `last_stop_check.json` notes so they survive context compaction.
-  - **Lazy-load guidance:** When TODOs block stopping, full details are written to `~/hypergumbo_lab_notebook/guidance_log/stop_guidance_MMDDYYYY_HHMM.md`. The hook response is a short pointer, not the full content — read the file for details.
+  - **Lazy-load guidance:** The stop hook writes full guidance to `~/hypergumbo_lab_notebook/guidance_log/` and returns only a short pointer (1-2 lines). This applies to all three stop paths: TODO blocking, cooldown, and full reflection. When the hook fires, read the file path it provides to get the full instructions.
   - To reiterate: If AUTONOMOUS_MODE.txt contains TRUE, BROAD, or DEEP, you are authorized for indefinite continuous work according to the below section titled "Autonomous Development Mode Stipulations".
   - Use `./scripts/loop-toggle` to manage autonomous mode:
     - `./scripts/loop-toggle off` - Disable autonomous mode

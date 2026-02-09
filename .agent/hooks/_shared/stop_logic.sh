@@ -4,8 +4,12 @@
 #
 # Expects REPO_ROOT to be set by the caller.
 # Exports: TOTAL_HARD, TOTAL_SOFT, TOTAL_TODOS, CIRCUIT_BREAKER_TRIPPED,
-#          GUIDANCE_FILE, BAKEOFF_SUFFIX, COOLDOWN_CONTENT, COOLDOWN_NOTES_SECTION,
-#          REFLECTION_CONTENT, STATE_FILE, ELAPSED_MIN
+#          GUIDANCE_FILE, GUIDANCE_FILE_COOLDOWN, GUIDANCE_FILE_REFLECTION,
+#          STATE_FILE, ELAPSED_MIN
+#
+# Lazy-load pattern: full content is written to guidance files on disk.
+# Vendor wrappers return short pointers; the agent reads the file when needed.
+# This prevents large prompts from consuming context window space.
 #
 # Callers handle: early exits (autonomous mode check, loop sentinel, vendor guards)
 #                 and output formatting (JSON shape varies per vendor).
@@ -134,7 +138,7 @@ except Exception:
   fi
 fi
 
-# --- Cooldown & reflection content (pre-computed for vendor wrappers) ---
+# --- Cooldown & reflection: compute elapsed time, write guidance files ---
 STATE_FILE="$REPO_ROOT/.agent/last_stop_check.json"
 # Backward compat: fall back to old filename if new one doesn't exist
 if [[ ! -f "$STATE_FILE" && -f "$REPO_ROOT/.agent/stop_hook_state.json" ]]; then
@@ -142,21 +146,45 @@ if [[ ! -f "$STATE_FILE" && -f "$REPO_ROOT/.agent/stop_hook_state.json" ]]; then
 fi
 
 ELAPSED_MIN=9999  # Default: stale (will trigger Path 3)
-COOLDOWN_CONTENT=""
-COOLDOWN_NOTES_SECTION=""
 if [[ -f "$STATE_FILE" ]]; then
   LAST_TS=$(jq -r '.last_completed_utc // "1970-01-01T00:00:00Z"' "$STATE_FILE" 2>/dev/null || echo "1970-01-01T00:00:00Z")
   LAST_EPOCH=$(date -d "$LAST_TS" +%s 2>/dev/null || echo 0)
   NOW_EPOCH=$(date +%s)
   ELAPSED_MIN=$(( (NOW_EPOCH - LAST_EPOCH) / 60 ))
-
-  if [[ "$ELAPSED_MIN" -lt 30 ]]; then
-    COOLDOWN_CONTENT=$(cat "$REPO_ROOT/.agent/cooldown_prompt.md")
-    NOTES=$(jq -r '.notes // ""' "$STATE_FILE" 2>/dev/null || true)
-    if [[ -n "$NOTES" ]]; then
-      COOLDOWN_NOTES_SECTION=$(printf '\n\n---\n## LAST REFLECTION NOTES\n%s\n---' "$NOTES")
-    fi
-  fi
 fi
 
-REFLECTION_CONTENT=$(cat "$REPO_ROOT/.agent/stop_reflect.md")
+# --- Write guidance file for Path 2: Cooldown ---
+# Combines cooldown_prompt.md + last reflection notes + bakeoff suffix.
+GUIDANCE_FILE_COOLDOWN=""
+if [[ "$ELAPSED_MIN" -lt 30 ]]; then
+  TIMESTAMP=$(date +%m%d%Y_%H%M)
+  GUIDANCE_FILE_COOLDOWN="$GUIDANCE_LOG_DIR/stop_guidance_cooldown_${TIMESTAMP}.md"
+  {
+    cat "$REPO_ROOT/.agent/cooldown_prompt.md"
+    # Append last reflection notes if present
+    if [[ -f "$STATE_FILE" ]]; then
+      NOTES=$(jq -r '.notes // ""' "$STATE_FILE" 2>/dev/null || true)
+      if [[ -n "$NOTES" ]]; then
+        printf '\n\n---\n## LAST REFLECTION NOTES\n%s\n---' "$NOTES"
+      fi
+    fi
+    # Append bakeoff convergence if present
+    if [[ -n "$BAKEOFF_SUFFIX" ]]; then
+      printf '%s' "$BAKEOFF_SUFFIX"
+    fi
+  } > "$GUIDANCE_FILE_COOLDOWN"
+fi
+
+# --- Write guidance file for Path 3: Full reflection ---
+# Combines stop_reflect.md + bakeoff suffix.
+GUIDANCE_FILE_REFLECTION=""
+if [[ "$ELAPSED_MIN" -ge 30 ]]; then
+  TIMESTAMP=$(date +%m%d%Y_%H%M)
+  GUIDANCE_FILE_REFLECTION="$GUIDANCE_LOG_DIR/stop_guidance_reflect_${TIMESTAMP}.md"
+  {
+    cat "$REPO_ROOT/.agent/stop_reflect.md"
+    if [[ -n "$BAKEOFF_SUFFIX" ]]; then
+      printf '%s' "$BAKEOFF_SUFFIX"
+    fi
+  } > "$GUIDANCE_FILE_REFLECTION"
+fi

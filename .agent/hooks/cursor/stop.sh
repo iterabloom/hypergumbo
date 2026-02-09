@@ -59,11 +59,11 @@ fi
 
 # --- Path 2: Cooldown (reflection completed within last 30 minutes) ---
 if [[ "$ELAPSED_MIN" -lt 30 ]]; then
-  COOLDOWN_PROMPT=$(printf '%s%s%s' "$COOLDOWN_CONTENT" "$COOLDOWN_NOTES_SECTION" "$BAKEOFF_SUFFIX" | jq -Rs .)
-  echo "{\"followup_message\":$COOLDOWN_PROMPT}"
+  REASON=$(printf 'Cooldown active (reflection completed %d min ago). Read %s for next actions.' "$ELAPSED_MIN" "$GUIDANCE_FILE_COOLDOWN" | jq -Rs .)
+  echo "{\"followup_message\":$REASON}"
   exit 0
 fi
 
 # --- Path 3: Full reflection checklist (stale or no prior reflection) ---
-REFLECTION_PROMPT=$(printf '%s%s' "$REFLECTION_CONTENT" "$BAKEOFF_SUFFIX" | jq -Rs .)
-echo "{\"followup_message\":$REFLECTION_PROMPT}"
+REASON=$(printf 'Stale reflection (last: %d min ago). Read %s to complete the stop reflection protocol.' "$ELAPSED_MIN" "$GUIDANCE_FILE_REFLECTION" | jq -Rs .)
+echo "{\"followup_message\":$REASON}"
