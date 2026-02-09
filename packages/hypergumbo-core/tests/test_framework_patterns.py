@@ -6758,7 +6758,7 @@ class TestEnrichSymbolsWithUsageContexts:
                 Pattern(
                     concept="route",
                     usage=UsagePatternSpec(kind="^call$", name="^path$"),
-                    extract={"path": "metadata.route_path", "method": "literal:GET"},
+                    extract={"path": "metadata.route_path"},
                 ),
             ],
         )
@@ -6780,7 +6780,8 @@ class TestEnrichSymbolsWithUsageContexts:
         assert len(concepts) >= 1
         route = next(c for c in concepts if c["concept"] == "route")
         assert route["path"] == "/users/"
-        assert route["method"] == "GET"
+        # Django path() doesn't specify HTTP method — views handle all methods
+        assert "method" not in route
 
 
 class TestResolveDeferredSymbolRefs:
