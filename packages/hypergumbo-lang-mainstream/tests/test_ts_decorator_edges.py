@@ -105,3 +105,51 @@ class UserController {
         edge = decorated_by_edges[0]
         assert "getUsers" in edge.src
         assert "Get" in edge.dst
+
+    def test_decorator_does_not_resolve_to_class(self, tmp_path: Path) -> None:
+        """A decorator name that matches a class should not resolve to it.
+
+        Regression: NestJS @Post() decorator resolved to the Post data class
+        from graphql.schema.ts instead of remaining unresolved. When the only
+        symbol matching a decorator name is a class/interface/type (not a
+        function), the edge should be unresolved (confidence 0.50).
+        """
+        code_schema = '''
+export class Post {
+    id: number;
+    title: string;
+    content: string;
+}
+'''
+        code_controller = '''
+@Post('/cats')
+class CatsController {
+    create() { return {}; }
+}
+'''
+        schema_file = tmp_path / "graphql.schema.ts"
+        schema_file.write_text(code_schema)
+        controller_file = tmp_path / "cats.controller.ts"
+        controller_file.write_text(code_controller)
+
+        result = analyze_javascript(tmp_path)
+
+        # Find decorated_by edges for CatsController
+        decorated_by_edges = [
+            e for e in result.edges
+            if e.edge_type == "decorated_by" and "CatsController" in e.src
+        ]
+
+        assert len(decorated_by_edges) >= 1, "Expected at least one decorated_by edge"
+
+        edge = decorated_by_edges[0]
+        # The edge should NOT point to the Post class (wrong kind)
+        assert "graphql.schema" not in edge.dst, (
+            f"Decorator @Post resolved to Post class from graphql.schema.ts: {edge.dst}. "
+            f"Should be unresolved since Post class is not a decorator function."
+        )
+        # Should be unresolved (confidence 0.50)
+        assert edge.confidence <= 0.50, (
+            f"Decorator @Post resolved with confidence {edge.confidence} to {edge.dst}. "
+            f"Should be unresolved (0.50) since no function named Post exists."
+        )

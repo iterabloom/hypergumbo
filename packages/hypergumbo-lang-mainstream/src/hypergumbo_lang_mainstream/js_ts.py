@@ -1364,8 +1364,15 @@ def _extract_decorator_edges(
             if not dec_name or not isinstance(dec_name, str):  # pragma: no cover
                 continue
 
-            # Try to resolve the decorator to a symbol
+            # Try to resolve the decorator to a symbol.
+            # Only accept function-like symbols as decorator targets — a class,
+            # interface, or type named "Post" is not the @Post() decorator.
+            # This prevents name collision false positives (e.g., NestJS @Post()
+            # resolving to a GraphQL Post data class).
+            _DECORATOR_KINDS = {"function", "method", "arrow_function"}
             decorator_sym = global_symbols.get(dec_name)
+            if decorator_sym and decorator_sym.kind not in _DECORATOR_KINDS:
+                decorator_sym = None  # Wrong kind — leave as unresolved
 
             line = sym.span.start_line if sym.span else 0
 
