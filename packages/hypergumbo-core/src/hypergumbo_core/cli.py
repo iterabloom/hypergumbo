@@ -2314,8 +2314,9 @@ def cmd_remove_extras(args: argparse.Namespace) -> int:
 def cmd_symbols(args: argparse.Namespace) -> int:
     """Display symbol catalog with connectivity information.
 
-    Shows a table of symbols sorted by file connectivity (total degree of
-    symbols in each file), then by filename, then by individual symbol degree.
+    Shows a table of symbols sorted by individual degree (total in+out edges).
+    This ensures the most connected symbols surface first regardless of which
+    file they're in. Ties are broken alphabetically by name.
 
     Uses Rich for auto-adjusting column widths and proper text wrapping.
     """
@@ -2388,13 +2389,8 @@ def cmd_symbols(args: argparse.Namespace) -> int:
 
         symbol_rows.append((name, kind, ind, outd, degree, path))
 
-    # Compute total degree per file (invisible column for sorting)
-    file_total_degree: dict[str, int] = {}
-    for _name, _kind, ind, outd, _degree, path in symbol_rows:
-        file_total_degree[path] = file_total_degree.get(path, 0) + ind + outd
-
-    # Sort by: total file degree (descending), filename, individual degree (descending)
-    symbol_rows.sort(key=lambda r: (-file_total_degree.get(r[5], 0), r[5], -r[4]))
+    # Sort by individual degree (descending), then name (ascending) for ties
+    symbol_rows.sort(key=lambda r: (-r[4], r[0]))
 
     # Apply --max-per-file limit if specified
     max_per_file = getattr(args, "max_per_file", None)

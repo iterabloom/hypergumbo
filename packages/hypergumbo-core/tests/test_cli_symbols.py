@@ -77,46 +77,91 @@ def test_cmd_symbols_shows_tabular_output(tmp_path: Path, capsys) -> None:
     assert "src/main.py" in out
 
 
-def test_cmd_symbols_sorts_by_file_degree(tmp_path: Path, capsys) -> None:
-    """Symbols are sorted by total file degree (descending), then filename."""
+def test_cmd_symbols_sorts_by_individual_degree(tmp_path: Path, capsys) -> None:
+    """Symbols are sorted by individual degree (descending), not file total.
+
+    Regression test for the Django/NestJS bakeoff finding: a symbol with the
+    highest individual degree (e.g. QuerySet, degree=118) was buried at line 753
+    because expressions.py had higher *file total* degree. Sorting by individual
+    degree ensures the most connected symbols always appear first.
+    """
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
+            # "expressions.py" — many symbols with moderate degree
             {
-                "id": "python:src/cold.py:1-5:cold_func:function",
-                "name": "cold_func",
-                "kind": "function",
+                "id": "python:src/expressions.py:1-10:Func:class",
+                "name": "Func",
+                "kind": "class",
                 "language": "python",
-                "path": "src/cold.py",
-                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-            },
-            {
-                "id": "python:src/hot.py:1-10:hot_main:function",
-                "name": "hot_main",
-                "kind": "function",
-                "language": "python",
-                "path": "src/hot.py",
+                "path": "src/expressions.py",
                 "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
             },
             {
-                "id": "python:src/hot.py:11-20:hot_helper:function",
-                "name": "hot_helper",
-                "kind": "function",
+                "id": "python:src/expressions.py:11-20:Value:class",
+                "name": "Value",
+                "kind": "class",
                 "language": "python",
-                "path": "src/hot.py",
+                "path": "src/expressions.py",
                 "span": {"start_line": 11, "end_line": 20, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/expressions.py:21-30:Expr:class",
+                "name": "Expr",
+                "kind": "class",
+                "language": "python",
+                "path": "src/expressions.py",
+                "span": {"start_line": 21, "end_line": 30, "start_col": 0, "end_col": 10},
+            },
+            # "query.py" — one symbol with the HIGHEST individual degree
+            {
+                "id": "python:src/query.py:1-100:QuerySet:class",
+                "name": "QuerySet",
+                "kind": "class",
+                "language": "python",
+                "path": "src/query.py",
+                "span": {"start_line": 1, "end_line": 100, "start_col": 0, "end_col": 10},
             },
         ],
         "edges": [
-            # hot_main calls hot_helper - makes hot.py have higher total degree
-            {
-                "id": "edge:1",
-                "src": "python:src/hot.py:1-10:hot_main:function",
-                "dst": "python:src/hot.py:11-20:hot_helper:function",
-                "type": "calls",
-                "line": 5,
-                "confidence": 0.9,
-            },
+            # Internal edges within expressions.py:
+            # Func→Value, Value→Expr, Expr→Func (circular deps)
+            # Each symbol gets degree 2, file total = 6
+            {"id": "edge:1", "src": "python:src/expressions.py:1-10:Func:class",
+             "dst": "python:src/expressions.py:11-20:Value:class",
+             "type": "calls", "line": 5, "confidence": 0.9},
+            {"id": "edge:2", "src": "python:src/expressions.py:11-20:Value:class",
+             "dst": "python:src/expressions.py:21-30:Expr:class",
+             "type": "calls", "line": 15, "confidence": 0.9},
+            {"id": "edge:3", "src": "python:src/expressions.py:21-30:Expr:class",
+             "dst": "python:src/expressions.py:1-10:Func:class",
+             "type": "calls", "line": 25, "confidence": 0.9},
+            # QuerySet calls all three + each also calls back into QuerySet
+            # QuerySet: out=3, in=3 → degree=6
+            # Func: in=2(Expr+QS), out=2(Value+QS) → degree=4
+            # Value: in=2(Func+QS), out=2(Expr+QS) → degree=4
+            # Expr: in=2(Value+QS), out=2(Func+QS) → degree=4
+            # File totals: expressions.py = 12, query.py = 6
+            # With file-total sort: Func first (12 > 6)
+            # With individual sort: QuerySet first (6 > 4)
+            {"id": "edge:4", "src": "python:src/query.py:1-100:QuerySet:class",
+             "dst": "python:src/expressions.py:1-10:Func:class",
+             "type": "calls", "line": 10, "confidence": 0.9},
+            {"id": "edge:5", "src": "python:src/query.py:1-100:QuerySet:class",
+             "dst": "python:src/expressions.py:11-20:Value:class",
+             "type": "calls", "line": 20, "confidence": 0.9},
+            {"id": "edge:6", "src": "python:src/query.py:1-100:QuerySet:class",
+             "dst": "python:src/expressions.py:21-30:Expr:class",
+             "type": "calls", "line": 30, "confidence": 0.9},
+            {"id": "edge:7", "src": "python:src/expressions.py:1-10:Func:class",
+             "dst": "python:src/query.py:1-100:QuerySet:class",
+             "type": "calls", "line": 6, "confidence": 0.9},
+            {"id": "edge:8", "src": "python:src/expressions.py:11-20:Value:class",
+             "dst": "python:src/query.py:1-100:QuerySet:class",
+             "type": "calls", "line": 16, "confidence": 0.9},
+            {"id": "edge:9", "src": "python:src/expressions.py:21-30:Expr:class",
+             "dst": "python:src/query.py:1-100:QuerySet:class",
+             "type": "calls", "line": 26, "confidence": 0.9},
         ],
     }
     results_file = tmp_path / "hypergumbo.results.json"
@@ -137,10 +182,14 @@ def test_cmd_symbols_sorts_by_file_degree(tmp_path: Path, capsys) -> None:
     assert result == 0
 
     out, _ = capsys.readouterr()
-    # hot.py should come before cold.py because it has more total degree
-    hot_pos = out.find("hot_main")
-    cold_pos = out.find("cold_func")
-    assert hot_pos < cold_pos, "Hot file symbols should appear before cold file symbols"
+    # QuerySet (degree=6) should appear BEFORE Func (degree=4) even though
+    # expressions.py has higher total file degree (12 vs 6)
+    queryset_pos = out.find("QuerySet")
+    func_pos = out.find("Func")
+    assert queryset_pos < func_pos, (
+        f"QuerySet (highest individual degree=6) should appear before Func (degree=4), "
+        f"but found QuerySet at {queryset_pos}, Func at {func_pos}"
+    )
 
 
 def test_cmd_symbols_truncates_with_message(tmp_path: Path, capsys) -> None:
