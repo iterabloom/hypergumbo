@@ -2100,6 +2100,71 @@ class TestTieredTokenBudget:
             "Tiered output should strip sketch_precomputed to save tokens"
         )
 
+    def test_tiered_low_confidence_entrypoints_dont_crowd_bridge_nodes(self):
+        """Low-confidence entrypoints should not crowd out bridge nodes.
+
+        Regression: DMD bakeoff found 64k tiered view had 226 nodes but 0 edges.
+        Root cause: 1790 test main() functions (confidence 0.4 after test penalty)
+        were all force-included, filling the budget before bridge nodes that
+        would provide edges could be selected.
+
+        Fix: format_tiered_behavior_map should filter force_include_ids by
+        confidence, so only high-confidence entrypoints are force-included.
+        Low-confidence entrypoints compete on centrality with bridge nodes.
+        """
+        # Real entrypoints (high confidence, like actual main functions)
+        real_eps = [make_symbol(f"real_ep_{i}") for i in range(3)]
+        # Test main() entrypoints (low confidence after 50% test penalty)
+        test_eps = [make_symbol(f"test_main_{i}") for i in range(80)]
+        # Bridge nodes that connect real entrypoints (high centrality)
+        bridges = [make_symbol(f"bridge_{i}") for i in range(10)]
+
+        all_symbols = real_eps + test_eps + bridges
+
+        # Edges: real_eps → bridges, bridges → bridges (connected subgraph)
+        edge_list = []
+        for ep in real_eps:
+            edge_list.append(make_edge(ep.id, bridges[0].id))
+        for i in range(len(bridges) - 1):
+            edge_list.append(make_edge(bridges[i].id, bridges[i + 1].id))
+
+        entrypoints = [
+            {"symbol_id": ep.id, "kind": "main_function", "confidence": 0.9}
+            for ep in real_eps
+        ] + [
+            {"symbol_id": ep.id, "kind": "main_function", "confidence": 0.4}
+            for ep in test_eps
+        ]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in edge_list],
+            "entrypoints": entrypoints,
+        }
+
+        # 4k budget: ~35-40 symbols fit. Without the fix, 80 test mains
+        # fill the force-include phase, leaving no room for bridge nodes.
+        result = format_tiered_behavior_map(
+            behavior_map, all_symbols, edge_list,
+            target_tokens=4000,
+            force_include_entrypoints=True,
+        )
+
+        included_ids = {n["id"] for n in result["nodes"]}
+
+        # Bridge nodes should be present — they provide connectivity
+        bridge_included = sum(1 for b in bridges if b.id in included_ids)
+        assert bridge_included > 0, (
+            f"No bridge nodes included. {len(result['nodes'])} nodes total, "
+            f"0 bridge nodes. Low-confidence test entrypoints crowded them out."
+        )
+
+        # Edges should exist (bridge nodes connect things)
+        assert len(result["edges"]) > 0, (
+            f"Tiered view has {len(result['nodes'])} nodes but 0 edges. "
+            f"Low-confidence test entrypoints crowded out bridge nodes."
+        )
+
     def test_select_by_tokens_respects_budget_for_forced(self):
         """Force-included symbols should not exceed token budget."""
         # Create many symbols to force-include

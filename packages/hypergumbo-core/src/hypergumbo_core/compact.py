@@ -1195,11 +1195,34 @@ def format_tiered_behavior_map(
     Returns:
         Behavior map formatted for the token tier.
     """
-    # Extract entrypoint symbol_ids to force-include them
+    # Extract entrypoint symbol_ids to force-include them.
+    # Only force-include high-confidence entrypoints (>= 0.5) to prevent
+    # test main() functions (confidence ~0.4 after test penalty) from
+    # crowding out bridge nodes that provide edges.  Low-confidence
+    # entrypoints still compete on centrality in the regular fill phase.
+    # Cap total force-includes to half the estimated node capacity so
+    # bridge nodes always get budget, mirroring compact mode (line ~900).
+    _FORCE_INCLUDE_CONFIDENCE_THRESHOLD = 0.5
     force_include_ids: set = set()
     if force_include_entrypoints:
         symbol_ids = {s.id for s in symbols}
-        for ep in behavior_map.get("entrypoints", []):
+        avg_tokens_per_symbol = 75
+        estimated_capacity = max(
+            1, (target_tokens - TOKENS_BEHAVIOR_MAP_OVERHEAD) // avg_tokens_per_symbol
+        )
+        max_forced = max(1, estimated_capacity // 2)
+
+        # Sort by confidence descending, cap count
+        eligible_eps = sorted(
+            behavior_map.get("entrypoints", []),
+            key=lambda ep: (-ep.get("confidence", 0), ep.get("symbol_id", "")),
+        )
+        for ep in eligible_eps:
+            if len(force_include_ids) >= max_forced:
+                break
+            conf = ep.get("confidence", 0)
+            if conf < _FORCE_INCLUDE_CONFIDENCE_THRESHOLD:
+                break
             sid = ep.get("symbol_id")
             if sid and sid in symbol_ids:
                 force_include_ids.add(sid)
