@@ -3026,3 +3026,156 @@ def test_cmd_compact_file_not_found(tmp_path: Path) -> None:
     result = cmd_compact(args)
 
     assert result == 1
+
+
+def test_cmd_slice_auto_entry_exclude_tests(tmp_path: Path, capsys) -> None:
+    """--entry auto with --exclude-tests skips test file entrypoints.
+
+    Regression: previously --entry auto ignored --exclude-tests, causing
+    high-connectivity test file mains (e.g., compiler/test/paranoia.d:main)
+    to be selected over production entrypoints.
+    """
+    # Test file entrypoint with high connectivity (many outgoing edges)
+    test_node = {
+        "id": "d:test/integration/stress.d:1-500:main:function",
+        "name": "main",
+        "kind": "function",
+        "language": "d",
+        "path": "test/integration/stress.d",
+        "span": {"start_line": 1, "end_line": 500, "start_col": 0, "end_col": 1},
+        "meta": {"concepts": [{"concept": "main_function"}]},
+    }
+    # Production entrypoint with fewer edges
+    prod_node = {
+        "id": "d:src/main.d:1-50:main:function",
+        "name": "main",
+        "kind": "function",
+        "language": "d",
+        "path": "src/main.d",
+        "span": {"start_line": 1, "end_line": 50, "start_col": 0, "end_col": 1},
+        "meta": {"concepts": [{"concept": "main_function"}]},
+    }
+    # Helper nodes for edges
+    helpers = [
+        {
+            "id": f"d:src/helper{i}.d:1-10:func{i}:function",
+            "name": f"func{i}",
+            "kind": "function",
+            "language": "d",
+            "path": f"src/helper{i}.d",
+            "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 1},
+        }
+        for i in range(20)
+    ]
+    # Test main calls many helpers (high connectivity)
+    test_edges = [
+        {"id": f"e-test-{i}", "src": test_node["id"], "dst": h["id"], "type": "call"}
+        for i, h in enumerate(helpers)
+    ]
+    # Production main calls a few helpers
+    prod_edges = [
+        {"id": "e-prod-0", "src": prod_node["id"], "dst": helpers[0]["id"], "type": "call"},
+        {"id": "e-prod-1", "src": prod_node["id"], "dst": helpers[1]["id"], "type": "call"},
+    ]
+
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [test_node, prod_node] + helpers,
+        "edges": test_edges + prod_edges,
+    }
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "auto"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = True
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+    args.max_tier = None
+
+    result = cmd_slice(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "Auto-detected entry" in out
+    # Must select production entry, not test entry
+    assert "src/main.d" in out
+    assert "test/integration" not in out
+
+
+def test_cmd_slice_auto_entry_max_tier_filter(tmp_path: Path, capsys) -> None:
+    """--entry auto with --max-tier filters out higher-tier entrypoints."""
+    tier3_node = {
+        "id": "python:vendor/lib.py:1-5:main:function",
+        "name": "main",
+        "kind": "function",
+        "language": "python",
+        "path": "vendor/lib.py",
+        "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 1},
+        "meta": {"concepts": [{"concept": "main_function"}]},
+        "supply_chain": {"tier": 3},
+    }
+    tier1_node = {
+        "id": "python:src/app.py:1-5:main:function",
+        "name": "main",
+        "kind": "function",
+        "language": "python",
+        "path": "src/app.py",
+        "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 1},
+        "meta": {"concepts": [{"concept": "main_function"}]},
+        "supply_chain": {"tier": 1},
+    }
+    # Give tier3 node many edges to make it higher-scoring
+    helpers = [
+        {
+            "id": f"python:vendor/dep{i}.py:1-3:f{i}:function",
+            "name": f"f{i}",
+            "kind": "function",
+            "language": "python",
+            "path": f"vendor/dep{i}.py",
+            "span": {"start_line": 1, "end_line": 3, "start_col": 0, "end_col": 1},
+        }
+        for i in range(15)
+    ]
+    edges = [
+        {"id": f"e-v-{i}", "src": tier3_node["id"], "dst": h["id"], "type": "call"}
+        for i, h in enumerate(helpers)
+    ]
+
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [tier3_node, tier1_node] + helpers,
+        "edges": edges,
+    }
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "auto"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = False
+    args.language = None
+    args.max_tier = 1
+
+    result = cmd_slice(args)
+
+    assert result == 0
+    out, _ = capsys.readouterr()
+    assert "Auto-detected entry" in out
+    # Must select tier-1 entry, not tier-3
+    assert "src/app.py" in out
+    assert "vendor/lib.py" not in out

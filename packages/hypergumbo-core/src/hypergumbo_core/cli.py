@@ -1118,6 +1118,24 @@ def cmd_slice(args: argparse.Namespace) -> int:
     entry = args.entry
     if entry == "auto":
         entrypoints = detect_entrypoints(nodes, edges)
+
+        # Apply --exclude-tests and --max-tier filters to entry candidates
+        exclude_tests = getattr(args, "exclude_tests", False)
+        max_tier = getattr(args, "max_tier", None)
+        if exclude_tests or max_tier is not None:
+            symbol_lookup = {node.id: node for node in nodes}
+            filtered = []
+            for ep in entrypoints:
+                sym = symbol_lookup.get(ep.symbol_id)
+                if sym is None:
+                    continue  # pragma: no cover
+                if exclude_tests and sym.path and _is_test_path(sym.path):
+                    continue
+                if max_tier is not None and sym.supply_chain_tier > max_tier:
+                    continue
+                filtered.append(ep)
+            entrypoints = filtered
+
         if not entrypoints:
             print("Error: No entrypoints detected. Use --entry to specify manually.",
                   file=sys.stderr)

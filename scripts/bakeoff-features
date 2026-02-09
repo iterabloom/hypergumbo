@@ -656,7 +656,7 @@ def cmd_run(args):
         try:
             for line in stdout.split("\n"):
                 line = line.strip()
-                if re.match(r'^[a-z]+:/', line):
+                if re.match(r'^[a-z]+:\S', line):
                     if not _TEST_PATH_RE.search(line):
                         entries.append(line)
         except Exception:
@@ -709,6 +709,7 @@ def cmd_run(args):
             print("OK" if rc == 0 else f"FAIL({rc})")
 
         # 5. Tier-bounded slices
+        # Use --exclude-tests so --entry auto doesn't pick a test main()
         for tier in [1, 2]:
             print(f"  slice[tier={tier}]...", end=" ", flush=True)
             rc, stdout, stderr = run_cmd([
@@ -716,6 +717,7 @@ def cmd_run(args):
                 "--input", hg_json,
                 "--entry", "auto",
                 "--max-tier", str(tier),
+                "--exclude-tests",
                 "--inline",
                 "--out", os.path.join(repo_out, f"slice.tier{tier}.json"),
             ])
