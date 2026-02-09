@@ -1,4 +1,8 @@
-"""Tests for the hypergumbo routes command."""
+"""Tests for the hypergumbo routes command.
+
+Covers cmd_routes CLI command: listing API routes, filtering by language,
+test path exclusion, and output formatting.
+"""
 import json
 from pathlib import Path
 
@@ -491,3 +495,106 @@ def test_cmd_routes_prints_output_summary(tmp_path: Path, capsys) -> None:
     out, _ = capsys.readouterr()
     assert "[hypergumbo routes] Using 1 cached" in out
     assert "Output: stdout" in out
+
+
+def test_cmd_routes_excludes_test_routes_by_default(tmp_path: Path, capsys) -> None:
+    """Routes from test files are excluded by default.
+
+    Regression: Django bakeoff showed 73% of route source files were from
+    test directories, polluting the route output with test-only routes.
+    """
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/api.py:1-5:get_user:function",
+                "name": "get_user",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5},
+                "meta": {
+                    "concepts": [{"concept": "route", "path": "/users/{id}", "method": "GET"}]
+                },
+            },
+            {
+                "id": "python:tests/test_views.py:1-5:test_get_user:function",
+                "name": "test_get_user",
+                "kind": "function",
+                "language": "python",
+                "path": "tests/test_views.py",
+                "span": {"start_line": 1, "end_line": 5},
+                "meta": {
+                    "concepts": [{"concept": "route", "path": "/test-endpoint", "method": "GET"}]
+                },
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+    args.include_tests = False
+
+    result = cmd_routes(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Production route should be present
+    assert "get_user" in out
+    # Test route should be excluded
+    assert "test_get_user" not in out
+    assert "Found 1 API route" in out
+
+
+def test_cmd_routes_includes_test_routes_with_flag(tmp_path: Path, capsys) -> None:
+    """Routes from test files are included when --include-tests is used."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/api.py:1-5:get_user:function",
+                "name": "get_user",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5},
+                "meta": {
+                    "concepts": [{"concept": "route", "path": "/users/{id}", "method": "GET"}]
+                },
+            },
+            {
+                "id": "python:tests/test_views.py:1-5:test_get_user:function",
+                "name": "test_get_user",
+                "kind": "function",
+                "language": "python",
+                "path": "tests/test_views.py",
+                "span": {"start_line": 1, "end_line": 5},
+                "meta": {
+                    "concepts": [{"concept": "route", "path": "/test-endpoint", "method": "GET"}]
+                },
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+    args.include_tests = True
+
+    result = cmd_routes(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Both routes should be present
+    assert "get_user" in out
+    assert "test_get_user" in out
+    assert "Found 2 API route" in out

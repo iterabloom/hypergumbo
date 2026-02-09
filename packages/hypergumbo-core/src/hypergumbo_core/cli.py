@@ -1337,15 +1337,16 @@ def cmd_routes(args: argparse.Namespace) -> int:
     behavior_map = json.loads(input_path.read_text())
     nodes = behavior_map.get("nodes", [])
 
-    # Find route handlers - symbols with HTTP method markers in stable_id
-    # or route concepts in meta.concepts
+    from .paths import is_test_file
+
+    # Find route handlers - symbols with route concepts in meta.concepts
+    # Routes are ONLY detected via concepts (FRAMEWORK_PATTERNS enrichment).
+    # If routes aren't showing up, check that YAML patterns are being applied.
+    include_tests = getattr(args, "include_tests", False)
     routes: list[dict] = []
     for node in nodes:
         is_route = False
 
-        # Check for route concept in meta.concepts (FRAMEWORK_PATTERNS enrichment)
-        # Routes are ONLY detected via concepts - no fallback to legacy fields.
-        # If routes aren't showing up, check that YAML patterns are being applied.
         meta = node.get("meta") or {}
         concepts = meta.get("concepts", [])
         for concept in concepts:
@@ -1356,6 +1357,10 @@ def cmd_routes(args: argparse.Namespace) -> int:
         if is_route:
             # Apply language filter
             if args.language and node.get("language") != args.language:
+                continue
+            # Exclude routes from test files by default (Django bakeoff
+            # showed 73% of route source files were from test directories).
+            if not include_tests and is_test_file(node.get("path", "")):
                 continue
             routes.append(node)
 
@@ -3264,6 +3269,12 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         "--language",
         default=None,
         help="Filter by language (e.g., python, javascript)",
+    )
+    p_routes.add_argument(
+        "--include-tests",
+        action="store_true",
+        default=False,
+        help="Include routes from test files (excluded by default)",
     )
     p_routes.set_defaults(func=cmd_routes)
 
