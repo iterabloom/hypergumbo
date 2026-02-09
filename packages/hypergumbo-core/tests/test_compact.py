@@ -2104,17 +2104,18 @@ class TestTieredTokenBudget:
         """Low-confidence entrypoints should not crowd out bridge nodes.
 
         Regression: DMD bakeoff found 64k tiered view had 226 nodes but 0 edges.
-        Root cause: 1790 test main() functions (confidence 0.4 after test penalty)
-        were all force-included, filling the budget before bridge nodes that
-        would provide edges could be selected.
+        Root cause: 1790 test main() functions were all force-included, filling
+        the budget before bridge nodes that provide edges could be selected.
+        Test mains have confidence ~0.65 (0.9 base * 0.5 test penalty + 0.2
+        connectivity boost), so the threshold must be >= 0.7 to filter them.
 
-        Fix: format_tiered_behavior_map should filter force_include_ids by
-        confidence, so only high-confidence entrypoints are force-included.
-        Low-confidence entrypoints compete on centrality with bridge nodes.
+        Fix: format_tiered_behavior_map filters force_include_ids by confidence
+        (>= 0.7) and caps count. Low-confidence entrypoints compete on centrality
+        with bridge nodes in the regular fill phase.
         """
         # Real entrypoints (high confidence, like actual main functions)
         real_eps = [make_symbol(f"real_ep_{i}") for i in range(3)]
-        # Test main() entrypoints (low confidence after 50% test penalty)
+        # Test main() entrypoints (confidence 0.65: 0.9 * 0.5 + connectivity)
         test_eps = [make_symbol(f"test_main_{i}") for i in range(80)]
         # Bridge nodes that connect real entrypoints (high centrality)
         bridges = [make_symbol(f"bridge_{i}") for i in range(10)]
@@ -2132,7 +2133,8 @@ class TestTieredTokenBudget:
             {"symbol_id": ep.id, "kind": "main_function", "confidence": 0.9}
             for ep in real_eps
         ] + [
-            {"symbol_id": ep.id, "kind": "main_function", "confidence": 0.4}
+            # 0.65 matches real DMD scenario: test penalty (0.5x) + connectivity
+            {"symbol_id": ep.id, "kind": "main_function", "confidence": 0.65}
             for ep in test_eps
         ]
 

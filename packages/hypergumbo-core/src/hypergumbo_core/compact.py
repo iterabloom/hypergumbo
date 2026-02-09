@@ -1196,13 +1196,16 @@ def format_tiered_behavior_map(
         Behavior map formatted for the token tier.
     """
     # Extract entrypoint symbol_ids to force-include them.
-    # Only force-include high-confidence entrypoints (>= 0.5) to prevent
-    # test main() functions (confidence ~0.4 after test penalty) from
-    # crowding out bridge nodes that provide edges.  Low-confidence
-    # entrypoints still compete on centrality in the regular fill phase.
+    # Only force-include high-confidence entrypoints (>= 0.7) to prevent
+    # test main() functions from crowding out bridge nodes that provide
+    # edges.  Test penalty (0.5x) brings test mains from 0.9 to 0.45,
+    # but the connectivity boost (up to +0.25) can push them to ~0.70.
+    # A threshold of 0.7 cleanly separates real entrypoints (0.8+) from
+    # test/utility code.  Low-confidence entrypoints still compete on
+    # centrality in the regular fill phase.
     # Cap total force-includes to half the estimated node capacity so
     # bridge nodes always get budget, mirroring compact mode (line ~900).
-    _FORCE_INCLUDE_CONFIDENCE_THRESHOLD = 0.5
+    _FORCE_INCLUDE_CONFIDENCE_THRESHOLD = 0.7
     force_include_ids: set = set()
     if force_include_entrypoints:
         symbol_ids = {s.id for s in symbols}
