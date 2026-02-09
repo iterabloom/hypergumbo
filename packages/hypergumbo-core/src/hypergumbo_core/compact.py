@@ -1094,19 +1094,31 @@ def select_by_tokens(
     included_ids: set = set()
 
     # First, force-include any must-include symbols (e.g., entrypoints)
-    # These are semantically important and should always be included
+    # These are semantically important but still subject to the token budget.
+    # When there are more entrypoints than the budget allows (e.g., FastAPI
+    # with ~1400 routes), we cap them to fit.
     if force_include_ids:
         symbol_by_id = {s.id: s for s in symbols}
-        for sid in force_include_ids:
-            if sid in symbol_by_id and sid not in included_ids:
-                sym = symbol_by_id[sid]
-                node_dict = sym.to_dict()
-                node_tokens = estimate_node_tokens(node_dict)
-                included.append(sym)
-                included_centrality += centrality.get(sym.id, 0)
-                tokens_used += node_tokens
-                seen_names.add(sym.name)
-                included_ids.add(sid)
+        # Sort forced symbols by centrality so the most important ones
+        # are included first when the budget is tight
+        forced_syms = [
+            symbol_by_id[sid]
+            for sid in force_include_ids
+            if sid in symbol_by_id
+        ]
+        forced_syms.sort(
+            key=lambda s: (-centrality.get(s.id, 0), s.name)
+        )
+        for sym in forced_syms:
+            node_dict = sym.to_dict()
+            node_tokens = estimate_node_tokens(node_dict)
+            if tokens_used + node_tokens > available_tokens:
+                break
+            included.append(sym)
+            included_centrality += centrality.get(sym.id, 0)
+            tokens_used += node_tokens
+            seen_names.add(sym.name)
+            included_ids.add(sym.id)
 
     # Then fill remaining budget with highest-centrality symbols
     for sym in sorted_symbols:
@@ -1192,12 +1204,23 @@ def format_tiered_behavior_map(
             if sid and sid in symbol_ids:
                 force_include_ids.add(sid)
 
+    # Reserve tokens for non-node fields (entrypoints, nodes_summary, edges)
+    # that will be added after node selection. Each entrypoint dict is ~25
+    # tokens; nodes_summary ~200 tokens; edges and metadata ~200 tokens.
+    # Estimate conservatively: 30 tokens per entrypoint + 400 fixed.
+    ep_count = min(len(force_include_ids), len(behavior_map.get("entrypoints", [])))
+    non_node_reserve = ep_count * 30 + 400
+    adjusted_budget = max(target_tokens - non_node_reserve, 500)
+
     result = select_by_tokens(
-        symbols, edges, target_tokens, force_include_ids=force_include_ids
+        symbols, edges, adjusted_budget, force_include_ids=force_include_ids
     )
 
-    # Create tiered output
-    tiered_map = dict(behavior_map)
+    # Create tiered output, stripping large non-essential fields that
+    # would blow the token budget (analysis_runs, usage_contexts,
+    # sketch_precomputed can be thousands of tokens each)
+    _TIERED_STRIP_KEYS = {"analysis_runs", "usage_contexts", "sketch_precomputed"}
+    tiered_map = {k: v for k, v in behavior_map.items() if k not in _TIERED_STRIP_KEYS}
     tiered_map["view"] = "tiered"
     tiered_map["tier_tokens"] = target_tokens
     tiered_map["nodes"] = [s.to_dict() for s in result.included.symbols]

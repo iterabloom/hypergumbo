@@ -1952,3 +1952,133 @@ class TestSelectByConnectivityIntegration:
         for edge in result["edges"]:
             assert edge["src"] in included_ids
             assert edge["dst"] in included_ids
+
+
+class TestTieredTokenBudget:
+    """Tests for token budget compliance in tiered behavior maps.
+
+    Tiered output must fit within the target token budget. Two fixes:
+    1. Force-included entrypoints must be capped (like compact mode does).
+    2. Non-essential fields (analysis_runs, usage_contexts, sketch_precomputed)
+       must be stripped from tiered output.
+    """
+
+    def test_tiered_entrypoints_capped(self):
+        """When many entrypoints exist, tiered mode caps them to fit budget."""
+        # Simulate a repo with many entrypoints (like FastAPI with ~1400 routes)
+        entrypoint_syms = [make_symbol(f"route_{i}") for i in range(50)]
+        other_syms = [make_symbol(f"util_{i}") for i in range(50)]
+        all_symbols = entrypoint_syms + other_syms
+
+        entrypoints = [
+            {"symbol_id": s.id, "kind": "http_route", "confidence": 0.9 - i * 0.001}
+            for i, s in enumerate(entrypoint_syms)
+        ]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [],
+            "entrypoints": entrypoints,
+        }
+
+        # With 4k budget, we should NOT include all 50 entrypoints
+        result = format_tiered_behavior_map(
+            behavior_map, all_symbols, [],
+            target_tokens=4000,
+            force_include_entrypoints=True,
+        )
+
+        # The total token count of the output should be under budget
+        from hypergumbo_core.compact import estimate_behavior_map_tokens
+        actual_tokens = estimate_behavior_map_tokens(result)
+        assert actual_tokens <= 4000, (
+            f"Tiered output is {actual_tokens} tokens, exceeds 4000 budget. "
+            f"Nodes: {len(result['nodes'])}"
+        )
+
+    def test_tiered_strips_analysis_runs(self):
+        """Tiered output should not include full analysis_runs (too large)."""
+        symbols = [make_symbol("core")]
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [],
+            "entrypoints": [],
+            "analysis_runs": [
+                {"analyzer": f"analyzer_{i}", "files": 100, "symbols": 500}
+                for i in range(20)
+            ],
+        }
+
+        result = format_tiered_behavior_map(
+            behavior_map, symbols, [], target_tokens=4000
+        )
+
+        # analysis_runs should be stripped or summarized
+        assert "analysis_runs" not in result, (
+            "Tiered output should strip analysis_runs to save tokens"
+        )
+
+    def test_tiered_strips_usage_contexts(self):
+        """Tiered output should not include usage_contexts (too large)."""
+        symbols = [make_symbol("core")]
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [],
+            "entrypoints": [],
+            "usage_contexts": [
+                {"symbol_id": f"sym_{i}", "context": "call", "source": "file.py"}
+                for i in range(100)
+            ],
+        }
+
+        result = format_tiered_behavior_map(
+            behavior_map, symbols, [], target_tokens=4000
+        )
+
+        assert "usage_contexts" not in result, (
+            "Tiered output should strip usage_contexts to save tokens"
+        )
+
+    def test_tiered_strips_sketch_precomputed(self):
+        """Tiered output should not include sketch_precomputed (irrelevant)."""
+        symbols = [make_symbol("core")]
+        behavior_map = {
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [],
+            "entrypoints": [],
+            "sketch_precomputed": {
+                "config_info": "x" * 1000,
+                "vocabulary": ["word"] * 100,
+                "centrality_scores": {"file.py": 0.5},
+            },
+        }
+
+        result = format_tiered_behavior_map(
+            behavior_map, symbols, [], target_tokens=4000
+        )
+
+        assert "sketch_precomputed" not in result, (
+            "Tiered output should strip sketch_precomputed to save tokens"
+        )
+
+    def test_select_by_tokens_respects_budget_for_forced(self):
+        """Force-included symbols should not exceed token budget."""
+        # Create many symbols to force-include
+        symbols = [make_symbol(f"sym_{i}") for i in range(100)]
+        force_ids = {s.id for s in symbols}  # Force ALL
+
+        result = select_by_tokens(
+            symbols, [],
+            target_tokens=1000,
+            force_include_ids=force_ids,
+        )
+
+        # Total tokens used by included symbols should be under budget
+        total_tokens = sum(
+            estimate_node_tokens(s.to_dict()) for s in result.included.symbols
+        )
+        # Allow for overhead (200 + 200), but shouldn't be wildly over
+        assert total_tokens <= 1000, (
+            f"Force-included symbols use {total_tokens} tokens, "
+            f"exceeds 1000 budget. Included {result.included.count} symbols."
+        )
