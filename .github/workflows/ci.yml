@@ -422,6 +422,7 @@ jobs:
         if: steps.manifest.outputs.skip_tests != 'true'
         run: |
           MANIFEST=".ci/affected-tests.txt"
+          WORKERS="${{ vars.PYTEST_WORKERS || '2' }}"
 
           if [ ! -f "$MANIFEST" ] || [ "${{ steps.manifest.outputs.use_manifest }}" != "true" ]; then
             echo "❌ No valid manifest - cannot run tests"
@@ -562,7 +563,7 @@ jobs:
           echo "Running: pytest ($TEST_COUNT test files)"
           # SMART_TEST_ACTIVE=1 bypasses smart-test wrapper to use real pytest
           # (CI already computed test selection via manifest - don't re-compute)
-          SMART_TEST_ACTIVE=1 pytest -n 2 --tb=short $COV_PATHS $SELECTED_TESTS
+          SMART_TEST_ACTIVE=1 pytest -n "$WORKERS" --tb=short $COV_PATHS $SELECTED_TESTS
           TEST_EXIT=$?
 
           # Check 100% coverage for changed source files only

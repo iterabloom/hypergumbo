@@ -168,8 +168,9 @@ jobs:
           if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
             COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
           fi
+          WORKERS="${{ vars.PYTEST_WORKERS || '2' }}"
 
-          pytest packages/hypergumbo-core/tests/ -n 2 --tb=short \
+          pytest packages/hypergumbo-core/tests/ -n "$WORKERS" --tb=short \
             --cov=packages/hypergumbo-core/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
@@ -221,8 +222,9 @@ jobs:
           if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
             COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
           fi
+          WORKERS="${{ vars.PYTEST_WORKERS || '2' }}"
 
-          pytest packages/hypergumbo-lang-mainstream/tests/ -n 2 --tb=short \
+          pytest packages/hypergumbo-lang-mainstream/tests/ -n "$WORKERS" --tb=short \
             --cov=packages/hypergumbo-lang-mainstream/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
@@ -274,8 +276,9 @@ jobs:
           if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
             COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
           fi
+          WORKERS="${{ vars.PYTEST_WORKERS || '2' }}"
 
-          pytest packages/hypergumbo-lang-common/tests/ -n 2 --tb=short \
+          pytest packages/hypergumbo-lang-common/tests/ -n "$WORKERS" --tb=short \
             --cov=packages/hypergumbo-lang-common/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
@@ -327,8 +330,9 @@ jobs:
           if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
             COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
           fi
+          WORKERS="${{ vars.PYTEST_WORKERS || '2' }}"
 
-          pytest packages/hypergumbo-lang-extended1/tests/ -n 2 --tb=short \
+          pytest packages/hypergumbo-lang-extended1/tests/ -n "$WORKERS" --tb=short \
             --cov=packages/hypergumbo-lang-extended1/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
