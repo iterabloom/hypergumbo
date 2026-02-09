@@ -27,7 +27,7 @@ Why This Design
 - Subcommand dispatch keeps each operation isolated and testable
 - Default sketch mode optimizes for the common "quick overview" use case
 - run_behavior_map() is separate from cmd_run() for testability
-- Helper functions (_node_from_dict, _edge_from_dict) enable slice
+- Helper functions (Symbol.from_dict, _edge_from_dict) enable slice
   to work with previously-generated JSON files
 """
 import argparse
@@ -69,7 +69,7 @@ import hypergumbo_core.linkers.websocket as _websocket_linker  # noqa: F401
 import hypergumbo_core.linkers.inheritance as _inheritance_linker  # noqa: F401
 import hypergumbo_core.linkers.type_hierarchy as _type_hierarchy_linker  # noqa: F401
 from .entrypoints import detect_entrypoints
-from .ir import Symbol, Edge, Span
+from .ir import Symbol, Edge
 from .metrics import compute_metrics
 from .profile import detect_profile
 from .schema import new_behavior_map
@@ -802,30 +802,6 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
-def _node_from_dict(d: Dict[str, Any]) -> Symbol:
-    """Reconstruct a Symbol from its dict representation."""
-    span_data = d.get("span", {})
-    span = Span(
-        start_line=span_data.get("start_line", 0),
-        end_line=span_data.get("end_line", 0),
-        start_col=span_data.get("start_col", 0),
-        end_col=span_data.get("end_col", 0),
-    )
-    return Symbol(
-        id=d["id"],
-        name=d["name"],
-        kind=d["kind"],
-        language=d["language"],
-        path=d["path"],
-        span=span,
-        origin=d.get("origin", ""),
-        origin_run_id=d.get("origin_run_id", ""),
-        stable_id=d.get("stable_id"),
-        shape_id=d.get("shape_id"),
-        meta=d.get("meta"),  # Preserve metadata for entrypoint detection
-        supply_chain_tier=d.get("supply_chain_tier", 1),  # Default tier 1 (first-party)
-    )
-
 
 def _edge_from_dict(d: Dict[str, Any]) -> Edge:
     """Reconstruct an Edge from its dict representation."""
@@ -1084,7 +1060,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
     behavior_map = json.loads(input_path.read_text())
 
     # Reconstruct Symbol and Edge objects from the behavior map
-    nodes = [_node_from_dict(n) for n in behavior_map.get("nodes", [])]
+    nodes = [Symbol.from_dict(n) for n in behavior_map.get("nodes", [])]
     edges = [_edge_from_dict(e) for e in behavior_map.get("edges", [])]
 
     # Handle --files mode: find all files that depend on changed files

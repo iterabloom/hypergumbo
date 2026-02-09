@@ -677,6 +677,29 @@ def test_symbol_from_dict_with_defaults() -> None:
     assert symbol.modifiers == []
 
 
+def test_symbol_roundtrip_preserves_tier() -> None:
+    """to_dict → from_dict must preserve non-default supply_chain_tier.
+
+    Regression test: _node_from_dict (removed) read d.get("supply_chain_tier")
+    but to_dict() nests it under d["supply_chain"]["tier"], so non-default
+    tiers were silently lost during deserialization.
+    """
+    sym = Symbol(
+        id="python:vendor/lib.py:1-10:function:parse",
+        name="parse",
+        kind="function",
+        language="python",
+        path="vendor/lib.py",
+        span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+        supply_chain_tier=3,
+        supply_chain_reason="vendored",
+    )
+    d = sym.to_dict()
+    restored = Symbol.from_dict(d)
+    assert restored.supply_chain_tier == 3
+    assert restored.supply_chain_reason == "vendored"
+
+
 def test_edge_from_dict() -> None:
     """Edge.from_dict should reconstruct Edge from dict."""
     d = {
