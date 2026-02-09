@@ -2291,3 +2291,96 @@ class TestTieredTokenBudget:
             )
         # Should have exactly 2 edges: caller->visitor, caller->handler
         assert len(result["edges"]) == 2
+
+    def test_tiered_output_respects_token_budget_with_edges(self):
+        """Tiered output must not exceed the target token budget.
+
+        Regression: DMD bakeoff iter-002 showed 64k tiered view at 175K tokens
+        (2.7x over budget) because induced edges were added without any budget
+        accounting. DMD 16k was 3.4x over budget (54K tokens for 16K target).
+
+        The root cause: format_tiered_behavior_map selects nodes within budget,
+        then adds ALL induced edges and entrypoints without checking if the
+        total output fits. With dense graphs (DMD has 130K edges for 76K nodes),
+        the induced edge set can dwarf the node budget.
+
+        Fix: Post-selection budget validation with node shrinking to fit edges.
+        """
+        # Create a dense graph: 50 nodes, each connected to ~10 others
+        all_symbols = [make_symbol(f"func_{i}") for i in range(50)]
+        all_edges = []
+        for i in range(50):
+            for j in range(1, 11):
+                target = (i + j) % 50
+                if target != i:
+                    all_edges.append(make_edge(
+                        all_symbols[i].id, all_symbols[target].id
+                    ))
+
+        entrypoints = [
+            {"symbol_id": s.id, "kind": "main_function", "confidence": 0.9}
+            for s in all_symbols[:5]
+        ]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in all_edges],
+            "entrypoints": entrypoints,
+        }
+
+        # Test with 4k budget — dense graph should NOT blow the budget
+        result_4k = format_tiered_behavior_map(
+            behavior_map, all_symbols, all_edges,
+            target_tokens=4000,
+            force_include_entrypoints=True,
+        )
+        actual_4k = estimate_behavior_map_tokens(result_4k)
+        assert actual_4k <= 4000, (
+            f"4k tiered output is {actual_4k} tokens, exceeds 4000 budget. "
+            f"{len(result_4k['nodes'])} nodes, {len(result_4k['edges'])} edges."
+        )
+
+        # Test with 16k budget
+        result_16k = format_tiered_behavior_map(
+            behavior_map, all_symbols, all_edges,
+            target_tokens=16000,
+            force_include_entrypoints=True,
+        )
+        actual_16k = estimate_behavior_map_tokens(result_16k)
+        assert actual_16k <= 16000, (
+            f"16k tiered output is {actual_16k} tokens, exceeds 16000 budget. "
+            f"{len(result_16k['nodes'])} nodes, {len(result_16k['edges'])} edges."
+        )
+
+    def test_tiered_budget_compliance_edge_heavy_graph(self):
+        """Edge-heavy graph (like DMD visitor pattern) must still comply.
+
+        DMD has ~1.7 edges per node. Many nodes have high fan-out to
+        the same targets. The induced edge set for the selected nodes
+        should be truncated when it would blow the budget.
+        """
+        # 30 nodes, high fan-out: each calls 15 others
+        syms = [make_symbol(f"visit_{i}") for i in range(30)]
+        edges = []
+        for i in range(30):
+            for j in range(15):
+                target = (i + j + 1) % 30
+                if target != i:
+                    edges.append(make_edge(syms[i].id, syms[target].id))
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in syms],
+            "edges": [e.to_dict() for e in edges],
+            "entrypoints": [],
+        }
+
+        # 16k budget: should include many nodes but truncate edges to fit
+        result = format_tiered_behavior_map(
+            behavior_map, syms, edges,
+            target_tokens=16000,
+        )
+        actual = estimate_behavior_map_tokens(result)
+        assert actual <= 16000, (
+            f"16k tiered output is {actual} tokens, exceeds 16000 budget. "
+            f"{len(result['nodes'])} nodes, {len(result['edges'])} edges."
+        )

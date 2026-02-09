@@ -1237,45 +1237,85 @@ def format_tiered_behavior_map(
             if sid and sid in symbol_ids:
                 force_include_ids.add(sid)
 
-    # Reserve tokens for non-node fields (entrypoints, nodes_summary, edges)
-    # that will be added after node selection. Each entrypoint dict is ~25
-    # tokens; nodes_summary ~200 tokens; edges and metadata ~200 tokens.
-    # Cap the entrypoint reserve at 25% of the budget since select_by_tokens
-    # will cap included entrypoints to fit — we don't need to reserve for
-    # all 1400 entrypoints when only ~20 will fit in a 4K budget.
-    max_ep_reserve = target_tokens // 4
-    ep_count = min(len(force_include_ids), len(behavior_map.get("entrypoints", [])))
-    non_node_reserve = min(ep_count * 30 + 400, max_ep_reserve)
-    adjusted_budget = max(target_tokens - non_node_reserve, target_tokens // 2)
+    # Reserve half the budget for nodes, leaving the other half for edges,
+    # entrypoints, and overhead.  The old approach reserved almost nothing
+    # for edges (only ~400 tokens), so dense graphs (DMD: 1.7 edges/node)
+    # blew past the budget by 2-3x.  Reserving 50% for non-node content
+    # ensures the post-selection shrink loop (below) converges quickly.
+    adjusted_budget = target_tokens // 2
 
     result = select_by_tokens(
         symbols, edges, adjusted_budget, force_include_ids=force_include_ids
     )
 
-    # Create tiered output, stripping large non-essential fields that
-    # would blow the token budget (analysis_runs, usage_contexts,
-    # sketch_precomputed can be thousands of tokens each)
+    # Build the initial tiered output, stripping large non-essential fields
     _TIERED_STRIP_KEYS = {"analysis_runs", "usage_contexts", "sketch_precomputed"}
     tiered_map = {k: v for k, v in behavior_map.items() if k not in _TIERED_STRIP_KEYS}
     tiered_map["view"] = "tiered"
     tiered_map["tier_tokens"] = target_tokens
-    tiered_map["nodes"] = [s.to_dict() for s in result.included.symbols]
-    tiered_map["nodes_summary"] = result.to_dict()
 
-    # Keep only edges where BOTH endpoints exist in the included set and
-    # src != dst (self-loops waste tokens without adding useful connectivity).
-    included_ids = {s.id for s in result.included.symbols}
-    tiered_map["edges"] = [
-        e for e in behavior_map.get("edges", [])
+    included_symbols = list(result.included.symbols)
+    included_ids = {s.id for s in included_symbols}
+
+    # Induced edges: both endpoints in included set, no self-loops
+    all_bmap_edges = behavior_map.get("edges", [])
+    induced_edges = [
+        e for e in all_bmap_edges
         if e.get("src") in included_ids and e.get("dst") in included_ids
         and e.get("src") != e.get("dst")
     ]
 
-    # Filter entrypoints to only those whose symbol_id exists in included nodes
-    tiered_map["entrypoints"] = [
-        ep for ep in behavior_map.get("entrypoints", [])
+    # Filtered entrypoints
+    all_bmap_eps = behavior_map.get("entrypoints", [])
+    filtered_eps = [
+        ep for ep in all_bmap_eps
         if ep.get("symbol_id") in included_ids
     ]
+
+    tiered_map["nodes"] = [s.to_dict() for s in included_symbols]
+    tiered_map["edges"] = induced_edges
+    tiered_map["entrypoints"] = filtered_eps
+    tiered_map["nodes_summary"] = result.to_dict()
+
+    # --- Post-selection budget enforcement ---
+    # Check if the assembled output fits.  If not, shrink by removing
+    # lowest-centrality non-forced nodes (which also removes their edges
+    # and entrypoints).  This is the defence-in-depth that the old code
+    # lacked: edges and entrypoints are now accounted for.
+    actual_tokens = estimate_behavior_map_tokens(tiered_map)
+
+    if actual_tokens > target_tokens and len(included_symbols) > 1:
+        # Compute centrality for removal ordering
+        raw_centrality = compute_centrality(symbols, edges)
+        centrality = apply_tier_weights(raw_centrality, symbols)
+
+        # Sort included symbols by centrality ascending (lowest first to remove)
+        removable = sorted(
+            included_symbols,
+            key=lambda s: (s.id in force_include_ids, centrality.get(s.id, 0)),
+        )
+
+        while actual_tokens > target_tokens and len(removable) > 1:
+            # Remove the least important symbol
+            victim = removable.pop(0)
+            included_ids.discard(victim.id)
+            included_symbols = [s for s in included_symbols if s.id != victim.id]
+
+            # Rebuild edges and entrypoints with reduced node set
+            induced_edges = [
+                e for e in all_bmap_edges
+                if e.get("src") in included_ids and e.get("dst") in included_ids
+                and e.get("src") != e.get("dst")
+            ]
+            filtered_eps = [
+                ep for ep in all_bmap_eps
+                if ep.get("symbol_id") in included_ids
+            ]
+
+            tiered_map["nodes"] = [s.to_dict() for s in included_symbols]
+            tiered_map["edges"] = induced_edges
+            tiered_map["entrypoints"] = filtered_eps
+            actual_tokens = estimate_behavior_map_tokens(tiered_map)
 
     return tiered_map
 
