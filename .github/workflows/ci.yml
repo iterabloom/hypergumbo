@@ -148,7 +148,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: 'pip'
+          # cache: 'pip' — disabled; local runners can't reach the cache server
+          # (ETIMEDOUT on 10.85.0.20:37391), adding ~8 min of timeouts per job
       - name: Install linting tools
         run: |
           pip install --upgrade pip
@@ -191,7 +192,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: 'pip'
+          # cache: 'pip' — disabled; local runners can't reach the cache server
+          # (ETIMEDOUT on 10.85.0.20:37391), adding ~8 min of timeouts per job
       - name: Install pip-audit
         run: |
           pip install --upgrade pip wheel setuptools
@@ -209,7 +211,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: 'pip'
+          # cache: 'pip' — disabled; local runners can't reach the cache server
+          # (ETIMEDOUT on 10.85.0.20:37391), adding ~8 min of timeouts per job
       - name: Install dependencies
         run: |
           pip install --upgrade pip
