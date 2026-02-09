@@ -1207,10 +1207,13 @@ def format_tiered_behavior_map(
     # Reserve tokens for non-node fields (entrypoints, nodes_summary, edges)
     # that will be added after node selection. Each entrypoint dict is ~25
     # tokens; nodes_summary ~200 tokens; edges and metadata ~200 tokens.
-    # Estimate conservatively: 30 tokens per entrypoint + 400 fixed.
+    # Cap the entrypoint reserve at 25% of the budget since select_by_tokens
+    # will cap included entrypoints to fit — we don't need to reserve for
+    # all 1400 entrypoints when only ~20 will fit in a 4K budget.
+    max_ep_reserve = target_tokens // 4
     ep_count = min(len(force_include_ids), len(behavior_map.get("entrypoints", [])))
-    non_node_reserve = ep_count * 30 + 400
-    adjusted_budget = max(target_tokens - non_node_reserve, 500)
+    non_node_reserve = min(ep_count * 30 + 400, max_ep_reserve)
+    adjusted_budget = max(target_tokens - non_node_reserve, target_tokens // 2)
 
     result = select_by_tokens(
         symbols, edges, adjusted_budget, force_include_ids=force_include_ids

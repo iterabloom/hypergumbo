@@ -1996,6 +1996,45 @@ class TestTieredTokenBudget:
             f"Nodes: {len(result['nodes'])}"
         )
 
+    def test_tiered_many_entrypoints_still_produces_nodes(self):
+        """With 500+ entrypoints, tiered mode should still include nodes.
+
+        Regression: entrypoint reserve was ep_count * 30 + 400 which for
+        500 entrypoints = 15,400 tokens — exceeding the 4K budget entirely,
+        leaving 0 tokens for nodes. The reserve must be capped.
+        """
+        entrypoint_syms = [make_symbol(f"route_{i}") for i in range(500)]
+        other_syms = [make_symbol(f"util_{i}") for i in range(50)]
+        all_symbols = entrypoint_syms + other_syms
+
+        entrypoints = [
+            {"symbol_id": s.id, "kind": "http_route", "confidence": 0.9 - i * 0.0001}
+            for i, s in enumerate(entrypoint_syms)
+        ]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [],
+            "entrypoints": entrypoints,
+        }
+
+        result = format_tiered_behavior_map(
+            behavior_map, all_symbols, [],
+            target_tokens=4000,
+            force_include_entrypoints=True,
+        )
+
+        # Must include at least some nodes (not 0)
+        assert len(result["nodes"]) > 0, (
+            "Tiered output has 0 nodes despite 550 available symbols"
+        )
+
+        # Budget compliance
+        actual_tokens = estimate_behavior_map_tokens(result)
+        assert actual_tokens <= 4000, (
+            f"Tiered output is {actual_tokens} tokens, exceeds 4000 budget"
+        )
+
     def test_tiered_strips_analysis_runs(self):
         """Tiered output should not include full analysis_runs (too large)."""
         symbols = [make_symbol("core")]
