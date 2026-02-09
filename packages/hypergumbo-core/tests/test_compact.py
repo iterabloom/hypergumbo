@@ -2384,3 +2384,64 @@ class TestTieredTokenBudget:
             f"16k tiered output is {actual} tokens, exceeds 16000 budget. "
             f"{len(result['nodes'])} nodes, {len(result['edges'])} edges."
         )
+
+    def test_tiered_4k_produces_edges_when_graph_has_connectivity(self):
+        """4k tiered view should include edges when the graph is connected.
+
+        Regression: All three bakeoff repos (Django, DMD, NestJS) produced
+        0 edges in their 4k views despite having dense graphs. The 4k view
+        selected 7-12 high-centrality nodes independently, without considering
+        whether they were adjacent. A connected subgraph of 5 nodes with
+        edges is more useful than 12 disconnected nodes.
+
+        Fix: Use connectivity-aware selection in format_tiered_behavior_map.
+        """
+        # Create a graph with clear connected components
+        # Component 1: entrypoint -> service -> repository
+        ep = make_symbol("AppController")
+        svc = make_symbol("UserService")
+        repo = make_symbol("UserRepository")
+        # Component 2: isolated high-centrality nodes
+        isolated = [make_symbol(f"util_{i}") for i in range(10)]
+
+        all_symbols = [ep, svc, repo] + isolated
+
+        # Connected edges: ep -> svc -> repo (linear chain)
+        connected_edges = [
+            make_edge(ep.id, svc.id),
+            make_edge(svc.id, repo.id),
+        ]
+        # Also give isolated nodes high in-degree (many edges pointing to them)
+        # so centrality-only selection would prefer them
+        extra_callers = [make_symbol(f"caller_{i}") for i in range(30)]
+        all_symbols.extend(extra_callers)
+        isolated_edges = []
+        for i, caller in enumerate(extra_callers):
+            # Each caller -> 3 isolated utils (boosts their centrality)
+            for j in range(3):
+                idx = (i + j) % len(isolated)
+                isolated_edges.append(make_edge(caller.id, isolated[idx].id))
+
+        all_edges = connected_edges + isolated_edges
+
+        entrypoints = [
+            {"symbol_id": ep.id, "kind": "main_function", "confidence": 0.9},
+        ]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in all_edges],
+            "entrypoints": entrypoints,
+        }
+
+        result = format_tiered_behavior_map(
+            behavior_map, all_symbols, all_edges,
+            target_tokens=4000,
+            force_include_entrypoints=True,
+        )
+
+        # Should have at least 1 edge (the ep -> svc connection)
+        assert len(result["edges"]) >= 1, (
+            f"4k tiered view has {len(result['nodes'])} nodes but 0 edges. "
+            f"Connectivity-aware selection should produce connected output."
+        )

@@ -1237,15 +1237,32 @@ def format_tiered_behavior_map(
             if sid and sid in symbol_ids:
                 force_include_ids.add(sid)
 
-    # Reserve half the budget for nodes, leaving the other half for edges,
-    # entrypoints, and overhead.  The old approach reserved almost nothing
-    # for edges (only ~400 tokens), so dense graphs (DMD: 1.7 edges/node)
-    # blew past the budget by 2-3x.  Reserving 50% for non-node content
-    # ensures the post-selection shrink loop (below) converges quickly.
-    adjusted_budget = target_tokens // 2
+    # Use connectivity-aware selection to ensure the induced subgraph
+    # has edges.  The old centrality-only approach (select_by_tokens)
+    # picked high-centrality nodes independently, producing disconnected
+    # output: all three bakeoff repos had 0 edges in the 4k view.
+    # Connectivity-aware selection starts from entrypoints (seeds) and
+    # expands via the frontier, so selected nodes share edges by design.
+    #
+    # Estimate max_additional from the token budget.  Average node cost
+    # is ~250 tokens; reserve 50% of budget for edges, entrypoints, and
+    # overhead.  The post-selection shrink loop (below) enforces the
+    # exact budget, so over-estimating here is safe.
+    _AVG_TOKENS_PER_NODE = 250
+    node_budget_tokens = target_tokens // 2
+    max_additional = max(1, node_budget_tokens // _AVG_TOKENS_PER_NODE)
 
-    result = select_by_tokens(
-        symbols, edges, adjusted_budget, force_include_ids=force_include_ids
+    # Filter symbols the same way select_by_tokens does: exclude tests,
+    # non-code, and example paths so they don't pollute the tiered view.
+    eligible_symbols = [
+        s for s in symbols
+        if s.kind not in EXCLUDED_KINDS
+        and not _is_test_path(s.path)
+        and not _is_example_path(s.path)
+    ]
+
+    conn_result = select_by_connectivity(
+        eligible_symbols, edges, force_include_ids, max_additional
     )
 
     # Build the initial tiered output, stripping large non-essential fields
@@ -1254,7 +1271,7 @@ def format_tiered_behavior_map(
     tiered_map["view"] = "tiered"
     tiered_map["tier_tokens"] = target_tokens
 
-    included_symbols = list(result.included.symbols)
+    included_symbols = list(conn_result.included.symbols)
     included_ids = {s.id for s in included_symbols}
 
     # Induced edges: both endpoints in included set, no self-loops
@@ -1275,7 +1292,7 @@ def format_tiered_behavior_map(
     tiered_map["nodes"] = [s.to_dict() for s in included_symbols]
     tiered_map["edges"] = induced_edges
     tiered_map["entrypoints"] = filtered_eps
-    tiered_map["nodes_summary"] = result.to_dict()
+    tiered_map["nodes_summary"] = conn_result.to_dict()
 
     # --- Post-selection budget enforcement ---
     # Check if the assembled output fits.  If not, shrink by removing
