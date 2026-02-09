@@ -2073,9 +2073,6 @@ def analyze_python(
 
     start_time = time.time()
 
-    yeet = 1  # CI validation probe — delete after local runner test
-    yeet += 1  # CI validation probe — delete after local runner test
-
     # Create analysis run for provenance tracking
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
