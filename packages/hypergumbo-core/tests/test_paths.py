@@ -263,6 +263,7 @@ class TestIsUtilityFile:
     def test_benchmarks_directories(self) -> None:
         """Files in benchmark directories are utility files."""
         assert is_utility_file("benchmarks/perf.py") is True
+        assert is_utility_file("benchmark/gcbench/testgc3.d") is True
         assert is_utility_file("bench/speed.go") is True
 
     def test_not_utility_file(self) -> None:

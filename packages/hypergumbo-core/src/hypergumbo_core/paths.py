@@ -146,7 +146,7 @@ def is_utility_file(path: str) -> bool:
     - docs_src/, docs/, documentation/ (documentation source)
     - examples/, example/, samples/ (example code)
     - scripts/, tools/, bin/ (utility scripts)
-    - benchmarks/, bench/ (performance tests)
+    - benchmarks/, benchmark/, bench/ (performance tests)
 
     Args:
         path: File path to check
@@ -165,7 +165,7 @@ def is_utility_file(path: str) -> bool:
         # Scripts/tools
         "scripts", "tools", "bin", "utils", "utilities",
         # Benchmarks
-        "benchmarks", "bench", "perf",
+        "benchmarks", "benchmark", "bench", "perf",
     }
 
     for part in path_parts[:-1]:  # Exclude filename
