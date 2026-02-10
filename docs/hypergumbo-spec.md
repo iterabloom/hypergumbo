@@ -1,9 +1,6 @@
-# Hypergumbo Spec (MVP + Future Phases)
+# Hypergumbo Spec
 
-Status: draft, living document.
-
-- Spec A: MVP behavior map (current focus of this repo).
-- Spec B: Multi-phase, Galaxy Brain roadmap (not implemented yet).
+Status: living document.
 
 ## Implementation Status Legend
 
@@ -18,8 +15,6 @@ Status: draft, living document.
 
 *Use `grep "🟨"` to find in-progress items, etc.*
 
-# Spec A — hypergumbo MVP
-
 ## 0) One-sentence summary
 A local-first CLI that profiles a repo and emits a **repo behavior map** (versioned JSON views from an internal IR) with machine-readable provenance for agent-friendly context.
 
@@ -30,15 +25,15 @@ A local-first CLI that profiles a repo and emits a **repo behavior map** (versio
 * 🟩 **Agent-ready output**: deterministic JSON graph + "feature slices" so an agent can fetch only relevant code.
 * 🟩 **Fast iteration**: simple architecture, small dependency surface, fixtures-driven tests.
 * 🟩 **Local-first execution**: analysis runs offline by default (no network, no API keys required).
-* ⬛ **Capsule Plan composition**: Removed—the general-purpose analyzer handles all repos. See [Appendix I](#appendix-i-capsule-system-history).
+* ⬛ **Capsule Plan composition**: Removed—the general-purpose analyzer handles all repos. See [Appendix H](#appendix-h-capsule-system-history).
 * ⬛ **Portable analyzer artifact**: Removed—`hypergumbo run` works directly without initialization.
 
-## 2) Non-goals (for MVP)
+## 2) Non-goals
 * No deep type-resolution / interprocedural dataflow correctness guarantees.
 * No accounts, ratings, or social features.
 * No automatic PR fixing, no code editing, no CI annotations beyond "export JSON."
 * No attempt to support *every* language—support a small set well.
-* No incremental analysis daemon (full re-analysis is acceptable for MVP).
+* No incremental analysis daemon (full re-analysis is acceptable).
 * No LLM-generated analyzer code.
 
 ## 3) User experience (CLI)
@@ -67,7 +62,7 @@ Shows detailed info about a symbol (function, class, etc.) and its callers/calle
 * `-x` excludes callers/callees from test files
 
 ⬛ **`hypergumbo init`** *(removed)*
-Was part of the capsule system. See [Appendix I](#appendix-i-capsule-system-history).
+Was part of the capsule system. See [Appendix H](#appendix-h-capsule-system-history).
 
 🟩 **`hypergumbo run [path] [--out hypergumbo.results.json]`**
 Analyzes the repo and emits a behavior map. No initialization required—works directly on any repo.
@@ -79,7 +74,7 @@ Produces a reduced subgraph suitable for LLM context. Default output filename in
 Shows available language analyzers and which ones are suggested for the current repo. Useful for discovering what hypergumbo can analyze.
 
 ⬛ **`hypergumbo export-capsule`** *(removed)*
-Was part of the capsule system. See [Appendix I](#appendix-i-capsule-system-history).
+Was part of the capsule system. See [Appendix H](#appendix-h-capsule-system-history).
 
 🟩 **`hypergumbo test-coverage [path] [--format text|json]`**
 
@@ -161,7 +156,7 @@ Hypergumbo supports 104 languages via tree-sitter grammars. All are included in 
 * Grammars without PyPI packages (Lean, Wolfram) are built from source in CI (`scripts/build-source-grammars`)
 * 100% test coverage required; analyzers gracefully skip when grammars unavailable
 
-## 5) Architecture (local-only)
+## 5) Architecture
 
 ### Core packages
 
@@ -332,7 +327,7 @@ class AnalysisPass(Protocol):
 
 See §4 "Supported stacks" for the full list of 104 language analyzers, 19 cross-language linkers, and 87 pattern files (5 convention + 82 framework). Detailed reference: [LANGUAGES.md](LANGUAGES.md), [LINKERS.md](LINKERS.md).
 
-## 6) Output: "Repo Behavior Map" JSON (v0.1)
+## 6) Output: "Repo Behavior Map" JSON
 
 Single file: `hypergumbo.results.json`
 
@@ -482,7 +477,7 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
 **Presence rule:**
 - `stable_id`, `shape_id`, and `origin_run_signature` keys MUST be present on every node.
 - If unavailable, they MUST be set to `null` (not omitted).
-- This supports forward-compatible consumers and Spec B prerequisites without forcing every pass to compute every field.
+- This supports forward-compatible consumers without forcing every pass to compute every field.
 - For `stable_id` and `shape_id` semantics and computation, see [§5 Identity field semantics](#ir-layer).
 
 **supply_chain** (object, required):
@@ -752,7 +747,7 @@ C++ (82%), Lua (12%), CMake (6%)
 - `Client::Client` (Constructor) — src/client/client.cpp
 ```
 
-## 7) Slicing behavior (MVP)
+## 7) Slicing behavior
 
 ### Entry sources
 
@@ -801,7 +796,7 @@ Feature comparison across commits: same query → compare `node_ids`/`edge_ids` 
 ### Exclude patterns
 
 * `--exclude` supports gitignore-like globs
-* MVP implementation: `fnmatch` (upgrade to `pathspec` later if needed)
+* Implementation: `fnmatch` (upgrade to `pathspec` later if needed)
 * Default excludes:
   * `node_modules/`, `venv/`, `dist/`, `build/`
   * `*.min.js`, `*.bundle.js`
@@ -815,7 +810,7 @@ Feature comparison across commits: same query → compare `node_ids`/`edge_ids` 
 
 ### Confidence calculation (deterministic algorithm)
 
-**Evidence scoring** (MVP, stable contract)
+**Evidence scoring** (stable contract)
 
 Deterministic mapping from structured evidence → confidence score.
 
@@ -881,9 +876,9 @@ def calculate_evidence_confidence(
   * Edges: `(src, dst, type)`
 * Enables meaningful `git diff` of output files
 
-## 9) Cross-Language Edge Detection (MVP)
+## 9) Cross-Language Edge Detection
 
-Spec A provides **best-effort cross-language edge detection** for common integration patterns. These are AST-based heuristics with string literal matching, not type-resolved or dataflow analysis.
+Hypergumbo provides **best-effort cross-language edge detection** for common integration patterns. These are AST-based heuristics with string literal matching, not type-resolved or dataflow analysis.
 
 ### JNI Boundary Detection (Java ↔ C)
 
@@ -952,7 +947,7 @@ Detects message send/receive patterns across process boundaries using string lit
 
 ### HTTP Endpoint Detection (Server-side only)
 
-Detects HTTP route definitions for entrypoint detection. Full client→server linking is deferred to Spec B1.
+Detects HTTP route definitions for entrypoint detection.
 
 **Supported frameworks:**
 
@@ -970,8 +965,8 @@ Detects HTTP route definitions for entrypoint detection. Full client→server li
 * Symbol name: HTTP method + path (e.g., `GET /users/{id}`)
 * Used by entrypoint detection for slicing
 
-**Client-side linking (NOT in MVP):**
-Cross-language client→server matching (e.g., `fetch("/api/users")` → Flask handler) is deferred to Spec B1 HTTP linker.
+**Client-side linking:**
+Cross-language client→server matching (e.g., `fetch("/api/users")` → Flask handler) is not yet implemented. See [§16 Future Work](#16-future-work).
 
 ### Language-Specific Detection Notes
 
@@ -1486,7 +1481,7 @@ def test_observatory(capsys):
     assert validate_schema(result)  # Only hard check: didn't crash, valid schema
 ```
 
-**Infrastructure needed (not MVP):**
+**Infrastructure needed (not yet implemented):**
 - Persistent storage for metrics across CI runs
 - Aggregation/visualization tooling
 - Anomaly detection (alert on significant changes)
@@ -1561,9 +1556,21 @@ This is a fundamentally different paradigm than pytest's immediate feedback. Def
 
 * 🟩 All output is valid JSON even if analysis is incomplete. See [`analysis_incomplete`](#top-level-structure) in §6 for field semantics.
 
-## 14) Known Analysis Limitations
+## 14) Known limitations
 
-This section documents cross-cutting limitations that affect symbol resolution and edge detection across multiple language analyzers. See `CHANGELOG.md` for per-language implementation status.
+This section documents known limitations and risks of the current analysis system. See `CHANGELOG.md` for per-language implementation status.
+
+### Summary
+
+| Limitation | Impact | Notes |
+|------------|--------|-------|
+| Best-effort analysis | Medium | AST-based analysis cannot resolve all calls (dynamic dispatch, reflection, eval). Confidence scores communicate uncertainty; machine-readable evidence types enable transparency. |
+| Re-export resolution incomplete | Low | Imports through re-exporting modules may not fully resolve. See [details below](#re-export-resolution). |
+| Import tracking partial | Low | Only Python and Go fully utilize import tracking for cross-file disambiguation. See [details below](#import-tracking-for-disambiguation). |
+| ID collisions in edge cases | Low | Location-based IDs can collide for identically-named symbols at same line. Content hash appended if collision detected. |
+| Confidence scores are heuristics | Medium | Scores are calibrated heuristics, not ground truth. Evidence types show reasoning; `--confidence-threshold` allows filtering. |
+| Schema changes may break consumers | Medium | Semantic versioning from day 1; forward compatibility contract in [Appendix E](#appendix-e-forward-compatibility-contract); migration guides for breaking changes. |
+| stable_id limited in untyped code | Low | Without type annotations, stable_id uses arity-based hashing which may change on signature changes. shape_id provides structural alternative. |
 
 ### Re-export Resolution
 
@@ -1597,22 +1604,9 @@ crud.create_user()      # Resolve: app.crud.create_user()
 
 Currently, only Python and Go fully utilize import tracking for disambiguation. See **ADR-0007** for the roadmap to extend this to 30 additional analyzers with meaningful import semantics.
 
-> **Historical note:** The original v1.0 development milestones (Week 0-9 planning) have been archived to [docs/history/planning-v1.md](history/planning-v1.md).
+> **Historical note:** The original v1.0 development milestones (Week 0-9 planning) have been archived to [docs/history/planning-v1.md](history/planning-v1.md). Original success criteria and validation gates have been archived to [docs/history/validation-gates-v1.md](history/validation-gates-v1.md).
 
-## 15) Known limitations and risks
-
-| Limitation | Impact | Notes |
-|------------|--------|-------|
-| Best-effort analysis | Medium | AST-based analysis cannot resolve all calls (dynamic dispatch, reflection, eval). Confidence scores communicate uncertainty; machine-readable evidence types enable transparency. |
-| ID collisions in edge cases | Low | Location-based IDs can collide for identically-named symbols at same line. Content hash appended if collision detected. |
-| Confidence scores are heuristics | Medium | Scores are calibrated heuristics, not ground truth. Evidence types show reasoning; `--confidence-threshold` allows filtering. |
-| Schema changes may break consumers | Medium | Semantic versioning from day 1; forward compatibility contract in Appendix E; migration guides for breaking changes. |
-| stable_id limited in untyped code | Low | Without type annotations, stable_id uses arity-based hashing which may change on signature changes. shape_id provides structural alternative. |
-| Re-export resolution incomplete | Low | Imports through re-exporting modules (e.g., `from package import x` where x is re-exported) may not fully resolve. See §14. |
-
-> **Historical note:** Original success criteria and validation gates have been archived to [docs/history/validation-gates-v1.md](history/validation-gates-v1.md). Spec B work will be pursued when there's clear demand for capabilities beyond what Spec A provides.
-
-## 16) Autonomous Governance (ADR-0008)
+## 15) Autonomous Governance (ADR-0008)
 
 🟩 Hypergumbo includes a vendor-agnostic governance system for AI agent contributors working in autonomous mode. This enforces structural thinking before stopping work, preventing "workaround" fixes that bypass root causes.
 
@@ -1649,6 +1643,134 @@ The invariant ledger (`.agent/invariant-ledger.md`) tracks discovered invariants
 - **INV-004** (route-handler edges) was fixed via the `route_handler` linker
 
 See [ADR-0008](adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for the full governance design rationale.
+
+## 16) Future Work
+
+This section collects capabilities that are designed but not yet implemented. Pursue when there's clear demand beyond what the current system provides. See [Registry & Factory Vision](future/registry-factory-vision.md) for speculative ideas about sharing analyzers.
+
+### Multi-fidelity analysis
+
+The long-term vision is a multi-fidelity code understanding platform that produces typed IR and an agent context router for token-efficient editing.
+
+**Language-native engines** (optional, high-fidelity frontends):
+* 🟪 **TypeScript**: `tsserver` (type checker + language service)
+* 🟪 **Python**: `pyright` or `mypy` (type inference)
+* 🟪 **Rust**: `rust-analyzer` (full semantic analysis)
+* 🟪 **Go**: `gopls` (language server)
+* 🟪 **JVM**: Eclipse JDT (Java), Kotlin analysis tooling
+
+These would produce typed call graphs, enabling mixed-fidelity analysis: AST edges (0.7 confidence) + typed edges (0.95 confidence) in the same graph.
+
+**Runner types** for high-fidelity analyzers:
+* 🟪 **`toolchain_bundle`** — Ships with language server (100MB+ downloads, high fidelity)
+* 🟪 **`container_image`** — OCI/Docker image for maximum isolation
+* 🟪 **`daemon_process`** — Long-running incremental analysis (research-hard, defer indefinitely)
+
+**IR extensions:**
+* Typed symbol table + cross-ref index (extends current IR)
+* Control-flow graph (CFG) — opt-in with explicit partial-results flags
+* Dataflow facts (reaching definitions, taint tracking) — opt-in, not a core requirement
+
+**Technology choices:**
+* IR storage: Protocol Buffers (fast, versioned, language-neutral); JSON fallback if protobuf adds friction
+
+### AST-based type inference improvements
+
+The current system implements constructor tracking, parameter tracking, field type tracking, return type tracking, and type hierarchy dispatch (see ADR-0006 and CHANGELOG.md). Supported in Python, Java, Kotlin, TypeScript, C#, Dart, and Scala (method name only).
+
+Remaining improvements (without requiring language servers):
+
+| Feature | Value | Effort | Notes |
+|---------|-------|--------|-------|
+| **Method-scoped tracking** | Low-Medium | Medium | Current file-scoped tracking can cause false positives when same variable name used in different methods. Low priority since collisions are rare. |
+| **Generic handling** | High | High | Track `List<User>` to infer that `.get()` returns `User`. High complexity (type parameter binding, variance). Defer until simpler features are done. |
+
+### Agent context router
+
+Query interface: "I want to change behavior X in Y context"
+
+**Pipeline:**
+
+1. **Retrieve** relevant nodes/flows from IR
+   * Entry: symbol name, file path, route pattern
+   * 🟪 Natural language queries via embedding similarity
+
+2. **Slice** on:
+   * Call graph (forward/backward) — 🟩 already implemented
+   * 🟪 Dataflow (tainted data paths)
+   * 🟪 Schema ties (database columns, API contracts)
+   * Tests referencing the area — 🟩 already implemented
+   * 🟪 Configuration/deployment ties
+   * Supply chain tier boundaries — 🟩 already implemented
+
+3. **Assemble context bundle**:
+   * Minimal code excerpts (only changed + affected)
+   * Invariants/contracts (types, tests, assertions)
+   * 🟪 "What could break" checklist (requires whole-program analysis)
+
+Token budget optimization: BFS until token limit hit, sorted by (edge confidence, distance from entry).
+
+**Potential enhancements:**
+* 🟪 Learned relevance models
+* 🟪 Agent feedback loop (which code was actually edited?)
+* 🟪 Embedding-based context expansion
+* 🟪 Coverage report parsing for test summary
+* 🟪 Multi-language documentation summarization
+
+### Additional output views
+
+Beyond `behavior_map.json` (the current output), future views compiled from the IR:
+
+* 🟪 **ir_export.json** — Complete symbol table, typed edges with resolution provenance, dataflow facts, cross-language links
+* 🟪 **context_bundle.json** — Agent-optimized: minimal code excerpts for a query, invariant checklist, "impact zones" (what could break), token-budget optimized
+* 🟪 **sarif.json** — SARIF 2.1 compatible findings for integration with GitHub Code Scanning, GitLab SAST
+* 🟪 **Flow specs** — Named, traceable feature flows (e.g., "Signup pipeline": route → handler → validation → database → email notification). Each flow includes entry/exit points, all nodes/edges in path, invariants, and tests covering the flow.
+
+### Additional linkers
+
+* 🟪 **Constant propagation** for dynamic routes (`BASE_URL + "/users"`)
+* 🟪 **Middleware/proxy rewriting** detection
+
+### Incremental analysis
+
+**Not on roadmap.** This is an 18+ month effort minimum:
+- Dependency tracking (which symbols affect which)
+- Invalidation propagation (change X → re-analyze Y, Z)
+- Cross-file type inference updates
+
+TypeScript incremental took ~3 years, rust-analyzer ~2 years.
+
+**Current mitigation:**
+- Cached slices: Pre-compute common features
+- Symbol index: O(1) lookup for "find definition of X"
+- Partial re-analysis: Re-analyze changed files + direct importers only
+- Accept latency: Full analysis on deep queries is OK with progress bars
+
+### Performance targets (with high-fidelity analysis)
+
+* **Small repo** (<100 files): <10 seconds
+* **Medium repo** (~500 files): <60 seconds (2x current due to type checking)
+* **Large repo** (2000+ files): <5 minutes full analysis
+* **Context router query**: <2 seconds for typical slice assembly
+
+### Complexity acknowledgment
+
+* **Natural language query parsing** requires embedding models + semantic search
+* **Dataflow slicing** is NP-hard in general; even heuristic solutions are multi-month research
+* **Impact prediction** requires whole-program analysis with test coverage correlation
+
+If dataflow proves infeasible, agent-guided slicing (agents specify hops/filters via DSL) is a simpler alternative.
+
+### Non-goals for future work
+
+* "Prove programs correct" in the formal methods sense
+* Real-time collaboration or social features
+* Hosted SaaS offering or marketplace monetization
+* IDE integration (LSP server) or autonomous code editing
+
+### Abandoned approaches
+
+* **Ripgrep for centrality computation**: ⬛ Attempted and removed. Ripgrep was tried for symbol mention centrality but removed due to complexity around regex escaping for symbol names containing special characters. The parallelized Python regex approach is sufficient for practical repo sizes.
 
 ## Appendix A: Example output
 
@@ -1768,9 +1890,9 @@ Minimal working example for a tiny FastAPI app:
 }
 ```
 
-## Appendix B: Evolution path to future versions
+## Appendix B: Evolution path
 
-Spec A is designed to enable future enhancements without breaking changes:
+The architecture is designed to enable future enhancements without breaking changes. See [§16 Future Work](#16-future-work) for the full roadmap.
 
 ### What's future-proof
 
@@ -1809,11 +1931,6 @@ Spec A is designed to enable future enhancements without breaking changes:
 **Toolchain capture**:
 - Reproducibility requirements
 - Version tracking for debugging
-
-### What upgrades in future versions
-* Mixed-fidelity graphs (AST edges + typed edges)
-* Cross-language linkers (HTTP, IPC, SQL)
-* Context router (agent-optimized bundles)
 
 ## Appendix C: Versioning & Support Policy
 
@@ -1899,7 +2016,7 @@ Enable via `hypergumbo config --telemetry=on` or `hypergumbo_TELEMETRY=1` enviro
 
 This appendix defines the schema-level contract: which fields are immutable, how consumers handle unknown fields, and what constitutes a breaking change. For release lifecycle, support windows, and deprecation timelines, see [Appendix C](#appendix-c-versioning--support-policy).
 
-This contract ensures Spec A outputs remain valid when future capabilities are added, and enhancements degrade gracefully for Spec A consumers.
+This contract ensures current outputs remain valid when future capabilities are added, and enhancements degrade gracefully for existing consumers.
 
 ### Immutable Contracts (MUST NOT change without major version bump)
 
@@ -1977,24 +2094,23 @@ This contract ensures Spec A outputs remain valid when future capabilities are a
 
 ### Testing Requirements
 
-**Spec A test suite MUST:**
+**Current test suite MUST:**
 - Include golden file regression tests (fixtures → expected JSON)
 - Validate against JSON Schema (automated validation)
 - Test ID stability (same code → same IDs deterministically)
 - Test deterministic ordering (sort keys defined, reproducible output)
 
-**Future test suite MUST:**
-- Run Spec A golden files (backward compatibility check)
-- Ensure Spec A outputs pass future schema validation (with unknown field tolerance)
-- Test mixed-fidelity graphs (Spec A AST edges + future typed edges coexist)
+**Future test suite MUST additionally:**
+- Run current golden files (backward compatibility check)
+- Ensure current outputs pass future schema validation (with unknown field tolerance)
+- Test mixed-fidelity graphs (AST edges + future typed edges coexist)
 - Test view compilation (same IR → multiple views including behavior_map)
 
-### Migration Path (Spec A → Future)
+### Migration Path
 
 **User upgrades hypergumbo CLI:**
 ```bash
-# Was using Spec A v0.1.0
-pip install --upgrade hypergumbo  # Now future version
+pip install --upgrade hypergumbo
 
 # Just works - no reinitialization needed
 hypergumbo run  # Output compatible with existing tooling
@@ -2011,249 +2127,14 @@ See [Appendix C: Versioning & Support Policy](#appendix-c-versioning--support-po
 
 ### Compatibility Testing
 
-**Before releasing future versions:**
-- Run Spec A v0.1 output through future parsers (ensure parsing succeeds)
-- Run future output through Spec A v0.1 consumers (ensure unknown fields ignored)
+**Before releasing new major versions:**
+- Run prior-version output through new parsers (ensure parsing succeeds)
+- Run new output through prior-version consumers (ensure unknown fields ignored)
 - Version compatibility matrix published
 
 **Commitment:** No breaking changes to `behavior_map.json` view within v0.x series.
 
----
-
-# 🟪 Spec B — "Multi-Fidelity Analysis Platform"
-
-## 0) One-sentence summary
-
-A multi-fidelity code understanding platform that produces typed IR and an agent context router for token-efficient editing.
-
-*All of Spec B is future work. Pursue when there's clear demand for capabilities beyond Spec A.*
-
-### Potential Optimizations
-
-* **Ripgrep for centrality computation**: ⬛ Attempted and removed. Ripgrep was tried for symbol mention centrality but removed due to complexity around regex escaping for symbol names containing special characters. The parallelized Python regex approach is sufficient for practical repo sizes.
-
-## 1) Objectives
-
-* 🟪 **High-fidelity IR** — Typed call graphs via language servers (tsserver, pyright, gopls, rust-analyzer)
-* 🟪 **Agent context router** — "Give me the smallest set of code + invariants to safely edit X"
-* 🟪 **Local-first privacy** — All analysis runs locally, no data leaves machine
-
-See [Registry & Factory Vision](future/registry-factory-vision.md) for speculative ideas about sharing analyzers.
-
-## 2) Non-goals
-
-* "Prove programs correct" in the formal methods sense
-* Full support for every language; focus on dominant stacks with pluggable packs
-* Real-time collaboration or social features
-* Hosted SaaS offering or marketplace monetization
-* IDE integration (LSP server) or autonomous code editing
-
-## 3) System architecture
-
-### 3.1 Multi-pass analysis engine
-
-#### Frontends (parsers / symbolizers)
-
-* 🟩 **tree-sitter** for universal syntax (Spec A, 104 languages)
-* 🟪 **Language-native engines** (optional, high-fidelity):
-  * **TypeScript**: `tsserver` (type checker + language service)
-  * **Python**: `pyright` or `mypy` (type inference)
-  * **Rust**: `rust-analyzer` (full semantic analysis)
-  * **Go**: `gopls` (language server)
-  * **JVM**: Eclipse JDT (Java), Kotlin analysis tooling
-
-#### Runner types
-
-Different analyzers require different execution environments:
-
-* 🟩 **`python_script`** — Single Python file, minimal deps (Spec A)
-* 🟪 **`toolchain_bundle`** — Ships with language server (100MB+ downloads, high fidelity)
-* 🟪 **`container_image`** — OCI/Docker image for maximum isolation
-* 🟪 **`daemon_process`** — Long-running incremental analysis (research-hard, defer indefinitely)
-
-#### IR builder
-
-* **Typed symbol table** + cross-ref index (extends Spec A IR)
-* **Call graph** with resolution quality scores (0.0–1.0)
-* **Optional layers**:
-  * Control-flow graph (CFG)
-  * Dataflow facts (reaching definitions, taint tracking)
-
-Dataflow/CFG are opt-in with explicit partial-results flags, not core requirements.
-
-#### AST-based type inference improvements (bridge to Spec B)
-
-Spec A already implements constructor tracking, parameter tracking, field type tracking, return type tracking, and type hierarchy dispatch — see ADR-0006 and CHANGELOG.md for details. Supported in Python, Java, Kotlin, TypeScript, C#, Dart, and Scala (method name only).
-
-Remaining improvements (without requiring language servers):
-
-| Feature | Value | Effort | Notes |
-|---------|-------|--------|-------|
-| **Method-scoped tracking** | Low-Medium | Medium | Current file-scoped tracking can cause false positives when same variable name used in different methods. Low priority since collisions are rare. |
-| **Generic handling** | High | High | Track `List<User>` to infer that `.get()` returns `User`. High complexity (type parameter binding, variance). Defer until simpler features are done. |
-
-#### IR vs Views architecture
-
-```
-┌─────────────────────────────────────────┐
-│  Language-specific analyzers            │
-│  (AST parsers, type engines, LSPs)      │
-└──────────────┬──────────────────────────┘
-               │ emit to
-               ▼
-┌─────────────────────────────────────────┐
-│  Core IR (internal, versioned)          │
-│  • typed symbol table                   │
-│  • resolved call graph + quality scores │
-│  • dataflow facts (optional)            │
-│  • cross-language links                 │
-└──────────────┬──────────────────────────┘
-               │ compile to
-               ▼
-┌─────────────────────────────────────────┐
-│  Views (public, stable contracts)       │
-│  • behavior_map.json (Spec A compat)    │
-│  • ir_export.json (full detail)         │
-│  • context_bundle.json (agent-ready)    │
-│  • sarif.json (CI integration)          │
-└─────────────────────────────────────────┘
-```
-
-Mixed-fidelity analysis: AST edges (0.7 confidence) + typed edges (0.95 confidence) in same graph.
-
-#### Cross-language linkers
-
-Already implemented in Spec A:
-* 🟩 **HTTP**: route patterns ↔ client calls ↔ handlers
-* 🟩 **IPC (Electron)**: main ↔ renderer message channels
-* 🟩 **SQL**: query ↔ table/column mapping
-* 🟩 **Protobuf/gRPC**: service defs ↔ server impl ↔ client stubs
-* 🟩 **GraphQL**: schema ↔ resolvers ↔ clients
-* 🟩 **OpenAPI**: schema ↔ route handlers
-* 🟩 **Message Queue**: Kafka, RabbitMQ, SQS, Redis Pub/Sub
-* 🟩 **Event Sourcing**: EventEmitter, Django signals, Spring events
-
-Future linkers (if needed):
-* 🟪 **Constant propagation** for dynamic routes (`BASE_URL + "/users"`)
-* 🟪 **Middleware/proxy rewriting** detection
-
-### 3.2 Agent Context Router
-
-Query interface: "I want to change behavior X in Y context"
-
-#### Pipeline
-
-1. **Retrieve** relevant nodes/flows from IR
-   * Entry: symbol name, file path, route pattern
-   * 🟪 Future: natural language queries via embedding similarity
-
-2. **Slice** on:
-   * Call graph (forward/backward) — 🟩 done in Spec A
-   * 🟪 Dataflow (tainted data paths)
-   * 🟪 Schema ties (database columns, API contracts)
-   * Tests referencing the area — 🟩 done in Spec A
-   * 🟪 Configuration/deployment ties
-   * Supply chain tier boundaries — 🟩 done in Spec A
-
-3. **Assemble context bundle**:
-   * Minimal code excerpts (only changed + affected)
-   * Invariants/contracts (types, tests, assertions)
-   * 🟪 "What could break" checklist (requires whole-program analysis)
-
-Token budget optimization: BFS until token limit hit, sorted by (edge confidence, distance from entry).
-
-#### Future enhancements
-
-* 🟪 Learned relevance models
-* 🟪 Agent feedback loop (which code was actually edited?)
-* 🟪 Embedding-based context expansion
-* 🟪 Coverage report parsing for test summary
-* 🟪 Multi-language documentation summarization
-
-#### Complexity acknowledgment
-
-* **Natural language query parsing** requires embedding models + semantic search
-* **Dataflow slicing** is NP-hard in general; even heuristic solutions are multi-month research
-* **Impact prediction** requires whole-program analysis with test coverage correlation
-
-Honest about what's hard. If dataflow proves infeasible, agent-guided slicing (agents specify hops/filters via DSL) is a simpler alternative.
-
-## 4) Output contracts
-
-### Views
-
-#### 🟩 behavior_map.json (Spec A compatible)
-* Same schema as Spec A
-* Maintained for backward compatibility
-* Enhanced with higher-fidelity edges when available
-
-#### 🟪 ir_export.json (full detail)
-* Complete symbol table
-* Typed edges with resolution provenance
-* Dataflow facts (optional)
-* Cross-language links
-
-#### 🟪 context_bundle.json (agent-optimized)
-* Minimal code excerpts for a query
-* Invariant checklist
-* "Impact zones" (what could break)
-* Token-budget optimized
-
-#### 🟪 sarif.json (CI integration)
-* SARIF 2.1 compatible
-* Findings from rule packs
-* Integration with GitHub Code Scanning, GitLab SAST
-
-### Flow specs
-
-Named, traceable feature flows:
-* "Signup pipeline": route → handler → validation → database → email notification
-* "Payment settlement flow": API call → queue → worker → payment gateway → webhook
-
-Each flow includes entry/exit points, all nodes/edges in path, invariants, and tests covering the flow.
-
-## 5) Privacy & security
-
-Same privacy model as Spec A — see [Appendix D](#appendix-d-telemetry--privacy).
-
-## 6) Scale & performance
-
-### Incremental analysis: Not on roadmap
-
-**Why it's hard** (18+ months minimum):
-- Dependency tracking (which symbols affect which)
-- Invalidation propagation (change X → re-analyze Y, Z)
-- Cross-file type inference updates
-
-TypeScript incremental took ~3 years, rust-analyzer ~2 years.
-
-**Current mitigation**:
-- Cached slices: Pre-compute common features
-- Symbol index: O(1) lookup for "find definition of X"
-- Partial re-analysis: Re-analyze changed files + direct importers only
-- Accept latency: Full analysis on deep queries is OK with progress bars
-
-### Performance targets
-
-* **Small repo** (<100 files): <10 seconds (same as Spec A)
-* **Medium repo** (~500 files): <60 seconds (2× Spec A due to type checking)
-* **Large repo** (2000+ files): <5 minutes full analysis
-* **Context router query**: <2 seconds for typical slice assembly
-
-## Appendix F: Technology choices
-
-### IR storage
-* **Format**: Protocol Buffers (fast, versioned, language-neutral)
-* **Fallback**: JSON (if protobuf adds friction)
-
-### Language servers
-* **TypeScript**: `tsserver` (official)
-* **Python**: `pyright` (Microsoft)
-* **Go**: `gopls` (official)
-* **Rust**: `rust-analyzer` (official)
-* **Java**: Eclipse JDT
-
-## Appendix G: Future Testing Enhancements
+## Appendix F: Future Testing Enhancements
 
 ### Integration Tests
 
@@ -2278,7 +2159,7 @@ The current CI system is solid (see ADR-0010, ADR-0011) but has some potential i
 
 These are all quality-of-life improvements. The current system works correctly and provides fast feedback.
 
-## Appendix H: Planned Language/DSL Support
+## Appendix G: Planned Language/DSL Support
 
 Languages and DSLs identified as gaps from industry analysis.
 
@@ -2297,7 +2178,7 @@ Languages and DSLs identified as gaps from industry analysis.
 | **Device Tree (DTS)** | Linux kernel hardware descriptions |
 | **Kconfig** | Linux kernel configuration |
 
-## Appendix I: Capsule System History
+## Appendix H: Capsule System History
 
 The original design included a "capsule" abstraction for composing custom analyzers from building blocks. The idea was that users would run `hypergumbo init` to create a capsule configuration, then `hypergumbo run` would execute analysis according to that configuration.
 
