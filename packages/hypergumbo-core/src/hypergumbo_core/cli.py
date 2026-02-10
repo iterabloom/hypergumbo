@@ -67,6 +67,7 @@ import hypergumbo_core.linkers.subprocess_cli as _subprocess_linker  # noqa: F40
 import hypergumbo_core.linkers.swift_objc as _swift_objc_linker  # noqa: F401
 import hypergumbo_core.linkers.websocket as _websocket_linker  # noqa: F401
 import hypergumbo_core.linkers.inheritance as _inheritance_linker  # noqa: F401
+import hypergumbo_core.linkers.orm as _orm_linker  # noqa: F401
 import hypergumbo_core.linkers.type_hierarchy as _type_hierarchy_linker  # noqa: F401
 from .entrypoints import detect_entrypoints
 from .ir import Symbol, Edge

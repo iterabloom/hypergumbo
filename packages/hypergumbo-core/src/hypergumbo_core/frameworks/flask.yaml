@@ -130,3 +130,4 @@ patterns:
 linkers:
   - http
   - websocket
+  - orm

@@ -18,6 +18,7 @@ import hypergumbo_core.linkers.http
 import hypergumbo_core.linkers.ipc
 import hypergumbo_core.linkers.jni
 import hypergumbo_core.linkers.message_queue
+import hypergumbo_core.linkers.orm
 import hypergumbo_core.linkers.phoenix_ipc
 import hypergumbo_core.linkers.swift_objc
 import hypergumbo_core.linkers.websocket

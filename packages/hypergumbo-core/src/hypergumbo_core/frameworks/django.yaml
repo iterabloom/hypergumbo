@@ -131,3 +131,4 @@ patterns:
 linkers:
   - http
   - database_query
+  - orm
