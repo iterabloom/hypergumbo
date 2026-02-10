@@ -1467,36 +1467,6 @@ This prefers well-connected entries, producing richer slices.
 - Tests remain valid as analysis improves
 - Catches structural bugs (dangling references, invalid values)
 
-### 🟪 Future: Longitudinal analysis ("slow thinking")
-
-**Problem:** Property tests provide immediate pass/fail feedback ("fast thinking"). But some insights only emerge from patterns across many CI runs:
-- Did node count suddenly drop 40%? (regression)
-- Is edge detection improving over time? (progress)
-- How does analysis time scale with repo size? (performance)
-
-**Concept:** "Nonjudgmental fixtures"—run analysis on a real repo without asserting correctness, just observing metrics:
-
-```python
-def test_observatory(capsys):
-    """Emit metrics for longitudinal analysis. No assertions on correctness."""
-    result = analyze(Path("tests/fixtures/medium-repo"))
-    print(json.dumps({
-        "timestamp": datetime.utcnow().isoformat(),
-        "commit": os.environ.get("CI_COMMIT_SHA"),
-        "nodes": len(result.nodes),
-        "edges": len(result.edges),
-        "nodes_by_kind": dict(Counter(n.kind for n in result.nodes)),
-    }))
-    assert validate_schema(result)  # Only hard check: didn't crash, valid schema
-```
-
-**Infrastructure needed (not yet implemented):**
-- Persistent storage for metrics across CI runs
-- Aggregation/visualization tooling
-- Anomaly detection (alert on significant changes)
-
-This is a fundamentally different paradigm than pytest's immediate feedback. Defer to future work.
-
 ### Unit tests
 * 🟩 Parsing to nodes/edges (per language)
 * 🟩 Stability of IDs across runs (same code → same IDs)
@@ -1790,6 +1760,31 @@ Languages and DSLs identified as gaps from industry analysis.
 | Medium | **Kconfig** | Linux kernel configuration | — |
 
 ### Testing & CI enhancements
+
+**🟪 Longitudinal analysis ("slow thinking"):**
+
+Property tests provide immediate pass/fail feedback ("fast thinking"). But some insights only emerge from patterns across many CI runs:
+- Did node count suddenly drop 40%? (regression)
+- Is edge detection improving over time? (progress)
+- How does analysis time scale with repo size? (performance)
+
+Concept: "Nonjudgmental fixtures"—run analysis on a real repo without asserting correctness, just observing metrics:
+
+```python
+def test_observatory(capsys):
+    """Emit metrics for longitudinal analysis. No assertions on correctness."""
+    result = analyze(Path("tests/fixtures/medium-repo"))
+    print(json.dumps({
+        "timestamp": datetime.utcnow().isoformat(),
+        "commit": os.environ.get("CI_COMMIT_SHA"),
+        "nodes": len(result.nodes),
+        "edges": len(result.edges),
+        "nodes_by_kind": dict(Counter(n.kind for n in result.nodes)),
+    }))
+    assert validate_schema(result)  # Only hard check: didn't crash, valid schema
+```
+
+Infrastructure needed: persistent storage for metrics across CI runs, aggregation/visualization tooling, and anomaly detection (alert on significant changes). This is a fundamentally different paradigm than pytest's immediate feedback.
 
 **Integration tests:** Add optional integration tests that validate end-to-end behavior:
 
