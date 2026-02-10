@@ -25,7 +25,7 @@ A local-first CLI that profiles a repo and emits a **repo behavior map** (versio
 * 🟩 **Agent-ready output**: deterministic JSON graph + "feature slices" so an agent can fetch only relevant code.
 * 🟩 **Fast iteration**: simple architecture, small dependency surface, fixtures-driven tests.
 * 🟩 **Local-first execution**: analysis runs offline by default (no network, no API keys required).
-* ⬛ **Capsule Plan composition**: Removed—the general-purpose analyzer handles all repos. See [Appendix E](#appendix-e-capsule-system-history).
+* ⬛ **Capsule Plan composition**: Removed—the general-purpose analyzer handles all repos. See [Appendix D](#appendix-d-capsule-system-history).
 * ⬛ **Portable analyzer artifact**: Removed—`hypergumbo run` works directly without initialization.
 
 ## 2) Non-goals
@@ -62,7 +62,7 @@ Shows detailed info about a symbol (function, class, etc.) and its callers/calle
 * `-x` excludes callers/callees from test files
 
 ⬛ **`hypergumbo init`** *(removed)*
-Was part of the capsule system. See [Appendix E](#appendix-e-capsule-system-history).
+Was part of the capsule system. See [Appendix D](#appendix-d-capsule-system-history).
 
 🟩 **`hypergumbo run [path] [--out hypergumbo.results.json]`**
 Analyzes the repo and emits a behavior map. No initialization required—works directly on any repo.
@@ -74,7 +74,7 @@ Produces a reduced subgraph suitable for LLM context. Default output filename in
 Shows available language analyzers and which ones are suggested for the current repo. Useful for discovering what hypergumbo can analyze.
 
 ⬛ **`hypergumbo export-capsule`** *(removed)*
-Was part of the capsule system. See [Appendix E](#appendix-e-capsule-system-history).
+Was part of the capsule system. See [Appendix D](#appendix-d-capsule-system-history).
 
 🟩 **`hypergumbo test-coverage [path] [--format text|json]`**
 
@@ -155,18 +155,6 @@ Hypergumbo supports 104 languages via tree-sitter grammars. All are included in 
 * Tree-sitter grammars with PyPI wheels are installed directly as dependencies
 * Grammars without PyPI packages (Lean, Wolfram) are built from source in CI (`scripts/build-source-grammars`)
 * 100% test coverage required; analyzers gracefully skip when grammars unavailable
-
-### Planned additions
-
-Languages and DSLs identified as gaps from industry analysis.
-
-| Priority | Language/DSL | Use Case | Grammar Source |
-|----------|-------------|----------|----------------|
-| High | **Meson** | Build system (GNOME, QEMU) | tree-sitter-meson |
-| High | **Assembly** | Performance-critical code | tree-sitter-asm |
-| Medium | **Rego** | OPA/Gatekeeper policy-as-code | — |
-| Medium | **Device Tree (DTS)** | Linux kernel hardware descriptions | — |
-| Medium | **Kconfig** | Linux kernel configuration | — |
 
 ## 5) Architecture
 
@@ -1785,6 +1773,41 @@ If dataflow proves infeasible, agent-guided slicing (agents specify hops/filters
 * Hosted SaaS offering or marketplace monetization
 * IDE integration (LSP server) or autonomous code editing
 
+### Planned language additions
+
+Languages and DSLs identified as gaps from industry analysis.
+
+| Priority | Language/DSL | Use Case | Grammar Source |
+|----------|-------------|----------|----------------|
+| High | **Meson** | Build system (GNOME, QEMU) | tree-sitter-meson |
+| High | **Assembly** | Performance-critical code | tree-sitter-asm |
+| Medium | **Rego** | OPA/Gatekeeper policy-as-code | — |
+| Medium | **Device Tree (DTS)** | Linux kernel hardware descriptions | — |
+| Medium | **Kconfig** | Linux kernel configuration | — |
+
+### Testing & CI enhancements
+
+**Integration tests:** Add optional integration tests that validate end-to-end behavior:
+
+* Use `@pytest.mark.integration` marker
+* Skip automatically when dependencies are not available
+* Run only on explicit request (`pytest -m integration`)
+* Catch environment-specific issues
+
+**CI infrastructure improvements (nice-to-have):**
+
+The current CI system is solid (see ADR-0010, ADR-0011) but has some potential improvements:
+
+| Improvement | Current State | Benefit |
+|-------------|---------------|---------|
+| **DRY refactor full-suite.yml** | 4 near-identical `test-*` jobs copy-pasted | Use matrix strategy or composite action to reduce duplication |
+| **Job-to-job artifact sharing** | Each test job restores grammar wheels from cache separately | Use `actions/upload-artifact`/`download-artifact` for faster sharing |
+| **Parallel pytest in ci.yml** | All selected tests run in single job | For large changes affecting multiple packages, could split by package |
+| **Test count reporting** | ci.yml doesn't report how many tests ran | Add count to output for validating smart-test selection |
+| **Matrix strategy for packages** | Manual job per package | `matrix: { package: [core, mainstream, common, extended] }` |
+
+These are all quality-of-life improvements. The current system works correctly and provides fast feedback.
+
 ### Abandoned approaches
 
 * **Ripgrep for centrality computation**: ⬛ Attempted and removed. Ripgrep was tried for symbol mention centrality but removed due to complexity around regex escaping for symbol names containing special characters. The parallelized Python regex approach is sufficient for practical repo sizes.
@@ -1991,32 +2014,7 @@ See [Appendix A: Versioning & Support Policy](#appendix-a-versioning--support-po
 
 **Commitment:** No breaking changes to `behavior_map.json` view within v0.x series.
 
-## Appendix D: Future Testing Enhancements
-
-### Integration Tests
-
-Add optional integration tests that validate end-to-end behavior:
-
-* Use `@pytest.mark.integration` marker
-* Skip automatically when dependencies are not available
-* Run only on explicit request (`pytest -m integration`)
-* Catch environment-specific issues
-
-### CI Infrastructure Improvements (Nice-to-Have)
-
-The current CI system is solid (see ADR-0010, ADR-0011) but has some potential improvements:
-
-| Improvement | Current State | Benefit |
-|-------------|---------------|---------|
-| **DRY refactor full-suite.yml** | 4 near-identical `test-*` jobs copy-pasted | Use matrix strategy or composite action to reduce duplication |
-| **Job-to-job artifact sharing** | Each test job restores grammar wheels from cache separately | Use `actions/upload-artifact`/`download-artifact` for faster sharing |
-| **Parallel pytest in ci.yml** | All selected tests run in single job | For large changes affecting multiple packages, could split by package |
-| **Test count reporting** | ci.yml doesn't report how many tests ran | Add count to output for validating smart-test selection |
-| **Matrix strategy for packages** | Manual job per package | `matrix: { package: [core, mainstream, common, extended] }` |
-
-These are all quality-of-life improvements. The current system works correctly and provides fast feedback.
-
-## Appendix E: Capsule System History
+## Appendix D: Capsule System History
 
 The original design included a "capsule" abstraction for composing custom analyzers from building blocks. The idea was that users would run `hypergumbo init` to create a capsule configuration, then `hypergumbo run` would execute analysis according to that configuration.
 
