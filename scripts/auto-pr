@@ -444,6 +444,23 @@ do_pr() {
 	echo "🌿 Branch: $BRANCH → $BASE_BRANCH"
 	echo "🔑 Commit: ${LOCAL_SHA:0:7}"
 
+	# Regenerate test manifest to match current commit's diff
+	echo "---------------------------------------------------"
+	echo "📋 Regenerating test manifest..."
+	if "$SCRIPT_DIR/smart-test" --manifest >/dev/null 2>&1; then
+		if ! git diff --quiet -- .ci/affected-tests.txt 2>/dev/null; then
+			echo "   Manifest updated — amending commit"
+			git add .ci/affected-tests.txt
+			git commit --amend --no-edit -s
+			LOCAL_SHA="$(git rev-parse HEAD)"
+			echo "🔑 Commit: ${LOCAL_SHA:0:7} (manifest refreshed)"
+		else
+			echo "   ✅ Manifest up to date"
+		fi
+	else
+		echo "   ⚠️  Manifest generation skipped (no stable hypergumbo?)"
+	fi
+
 	# Check if queue is non-empty - if so, queue this too (maintain atomicity)
 	if [[ "$queue_count_val" -gt 0 ]]; then
 		echo ""
