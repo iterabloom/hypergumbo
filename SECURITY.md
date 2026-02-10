@@ -4,8 +4,8 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.5.x   | :white_check_mark: |
-| < 0.5   | :x:                |
+| 2.x     | :white_check_mark: |
+| < 2.0   | :x:                |
 
 Only the latest minor version receives security updates. We recommend always running the latest release.
 

@@ -1,6 +1,6 @@
 # Cross-Language Linkers
 
-Hypergumbo includes 19 linkers that connect symbols across language boundaries. Linkers run automatically during `hypergumbo run` after all language analyzers complete.
+Hypergumbo includes linkers that connect symbols across language boundaries. Linkers run automatically during `hypergumbo run` after all language analyzers complete.
 
 ## Linker Table
 

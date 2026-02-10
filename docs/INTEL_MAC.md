@@ -2,7 +2,7 @@
 
 Some tree-sitter grammar packages lack pre-built wheels for Intel Macs (x86_64 Darwin), causing installation failures. This guide provides a Docker-based workaround that mimics `pipx` behavior.
 
-**Limitation:** Lean and Wolfram analyzers require building grammars from source inside the container, which this setup does not support. All other 102 analyzers work.
+**Limitation:** Lean and Wolfram analyzers require building grammars from source inside the container, which this setup does not support. All other analyzers work.
 
 ## How It Works
 

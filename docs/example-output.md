@@ -1,5 +1,7 @@
 # Example: hypergumbo analyzing itself (run on Google Colab Terminal)
 
+> **Note:** This example was captured with hypergumbo v2.0.2 (Feb 2026) when the project used a single-package layout (`src/hypergumbo/`). The project has since been reorganized into multiple packages (`packages/hypergumbo-core/`, `packages/hypergumbo-lang-*/`). Running this command today will produce output reflecting the current structure.
+
 ```
 /content# pip install hypergumbo
 Collecting hypergumbo

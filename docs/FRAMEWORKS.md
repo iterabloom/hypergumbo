@@ -4,7 +4,7 @@ This document lists web and application frameworks that hypergumbo can analyze o
 
 ## Currently Supported (with YAML patterns)
 
-See `packages/hypergumbo-core/src/hypergumbo_core/frameworks/*.yaml` for the full list. Currently 82 framework patterns + 5 convention patterns = 87 total YAML files.
+See `packages/hypergumbo-core/src/hypergumbo_core/frameworks/*.yaml` for the full list.
 
 ### Python
 - Django, Flask, FastAPI, Tornado, Aiohttp, Celery, Pyramid, Bottle, Flask-Appbuilder, Flask-RESTful, Sanic, Quart, Falcon, Litestar, Masonite

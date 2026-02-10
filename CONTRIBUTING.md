@@ -211,7 +211,7 @@ pip install sentence-transformers
 
 This works on most development machines where PyTorch wheels are available (Linux x86_64, macOS, Windows).
 
-**Test that requires embeddings:** `test_run_behavior_map_stores_sketch_precomputed` in `tests/test_cli_run_behavior_map.py` tests the `sketch_precomputed` feature which uses embeddings. Other tests pass `include_sketch_precomputed=False` to skip embedding-dependent code paths.
+**Test that requires embeddings:** `test_run_behavior_map_stores_sketch_precomputed` in `packages/hypergumbo-core/tests/test_cli_run_behavior_map.py` tests the `sketch_precomputed` feature which uses embeddings. Other tests pass `include_sketch_precomputed=False` to skip embedding-dependent code paths.
 
 ### Coverage Configuration
 
@@ -219,8 +219,8 @@ We maintain 100% test coverage. Two coverage configurations exist:
 
 | Config | Used When | Omits |
 |--------|-----------|-------|
-| Default (`pyproject.toml`) | Local dev, CI with embeddings | `sketch_embeddings.py` |
-| `.coveragerc.no-embeddings` | CI without embeddings (Python 3.10 matrix) | `sketch_embeddings.py`, `_embedding_data.py` |
+| Default (`pyproject.toml`) | Local dev, CI with embeddings | Embedding-only modules |
+| `.coveragerc.no-embeddings` | CI without embeddings (Python 3.10 matrix) | Embedding-only modules + `_embedding_data.py` |
 
 **When to use `# pragma: no cover`:**
 
