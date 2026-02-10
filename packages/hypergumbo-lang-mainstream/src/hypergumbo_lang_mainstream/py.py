@@ -19,13 +19,14 @@ Analysis proceeds in two passes for cross-file resolution:
 - Walk AST to find function/method call sites
 - Resolve callees using local symbols first, then imports
 - Detect self.method() calls within classes
+- Detect self.field.method() calls using field type inference from __init__
 - Detect ClassName() instantiation patterns
 - Create import edges from files to imported symbols
 
 Detected Patterns
 -----------------
 - Function calls: helper(), module.func()
-- Method calls: self.method(), obj.method()
+- Method calls: self.method(), obj.method(), self.field.method()
 - Class instantiation: ClassName()
 - Imports: from X import Y, import X
 - Django URL patterns: path(), re_path(), url() calls in urls.py
@@ -1519,11 +1520,14 @@ def _extract_edges(
     Handles:
     - Direct calls: helper(), ClassName()
     - Self method calls: self.method()
+    - Self field method calls: self.field.method() (using field type inference from __init__)
     - Module-qualified calls: module.ClassName(), module.func()
     - Variable method calls: variable.method() (with constructor-only type inference)
 
     Note: Type inference only tracks types from direct constructor calls
     (stub = Client()), not from function returns (stub = get_client()).
+    Field type inference tracks self.field assignments in __init__ from typed params
+    and constructor calls.
 
     Args:
         tree: The parsed AST
@@ -1802,6 +1806,46 @@ def _extract_edges(
                     confidence=0.50,
                 ))
 
+    # Pre-collect class field types for self.field.method() resolution (INV-014).
+    # Scans __init__ methods for self.field = param (typed) and self.field = Class()
+    # assignments, building a per-class map of field name -> type Symbol.
+    class_field_types: dict[str, dict[str, Symbol]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        init_method = None
+        for item in node.body:
+            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == "__init__":
+                init_method = item
+                break
+        if init_method is None:
+            continue
+        init_param_types = _extract_param_types(init_method)
+        field_types: dict[str, Symbol] = {}
+        for stmt in ast.walk(init_method):
+            if not isinstance(stmt, ast.Assign):
+                continue
+            for target in stmt.targets:
+                if (
+                    isinstance(target, ast.Attribute)
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id == "self"
+                ):
+                    field_name = target.attr
+                    # self.field = param where param has type annotation
+                    if isinstance(stmt.value, ast.Name) and stmt.value.id in init_param_types:
+                        field_types[field_name] = init_param_types[stmt.value.id]
+                    # self.field = ClassName()
+                    elif isinstance(stmt.value, ast.Call):
+                        assigned_class = _resolve_call_target(
+                            stmt.value, local_symbols, imports, global_symbols,
+                            module_imports, resolver
+                        )
+                        if assigned_class and assigned_class.kind == "class":
+                            field_types[field_name] = assigned_class
+        if field_types:
+            class_field_types[node.name] = field_types
+
     # Process functions (including async functions)
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -1811,6 +1855,13 @@ def _extract_edges(
                 _process_decorators(caller_symbol, node.decorator_list)
                 # Extract types from parameter annotations
                 param_types = _extract_param_types(node)
+                # Merge class field types for self.field.method() resolution
+                if caller_symbol.kind == "method":
+                    class_name = caller_symbol.name.split(".")[0]
+                    if class_name in class_field_types:
+                        for fname, fsym in class_field_types[class_name].items():
+                            if fname not in param_types:
+                                param_types[fname] = fsym
                 process_code_block(node.body, caller_symbol, param_types)
 
         # Process class decorators
@@ -1895,6 +1946,7 @@ def _process_call(
     Handles:
     - Direct calls: helper(), ClassName()
     - Self method calls: self.method()
+    - Self field method calls: self.field.method() (using field type inference)
     - Module-qualified calls: module.ClassName(), module.func()
     - Variable method calls: stub.method() (using var_types for type inference)
     """
@@ -1976,6 +2028,25 @@ def _process_call(
                     callee_symbol = _lookup_symbol_by_module(
                         global_symbols, submodule_name, attr_name, resolver=resolver
                     )
+
+        # Case 2f: self.field.method() - call on injected dependency (INV-014)
+        # Pattern: self.svc.process() where self.svc was assigned from a typed param
+        # or constructor call in __init__. Field types are pre-loaded into var_types.
+        elif (
+            isinstance(func.value, ast.Attribute)
+            and isinstance(func.value.value, ast.Name)
+            and func.value.value.id == "self"
+        ):
+            field_name = func.value.attr
+            if field_name in var_types:
+                class_symbol = var_types[field_name]
+                qualified_name = f"{class_symbol.name}.{attr_name}"
+                callee_symbol = local_symbols.get(qualified_name)
+                if not callee_symbol:
+                    for (_mod, sym_name), sym in global_symbols.items():
+                        if sym.path == class_symbol.path and sym_name == qualified_name:
+                            callee_symbol = sym
+                            break
 
     # Emit edge if we resolved the callee
     if callee_symbol:

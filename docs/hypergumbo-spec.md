@@ -2105,7 +2105,7 @@ Future improvements to AST-based type inference (without requiring language serv
 |---------|-------|--------|----------|--------|
 | **Type hierarchy** | High | Medium | 1st | ✅ Done |
 | **Return type tracking** | Medium-High | Medium | 2nd | |
-| **Field type tracking** | High | Medium | 3rd | ✅ Done (Java, Kotlin, C#) |
+| **Field type tracking** | High | Medium | 3rd | ✅ Done (Java, Kotlin, C#, Python) |
 | **Method-scoped tracking** | Low-Medium | Medium | 4th | |
 | **Generic handling** | High | High | 5th | |
 
@@ -2113,7 +2113,7 @@ Future improvements to AST-based type inference (without requiring language serv
 
 **Return type tracking:** Track `func() -> ReturnType` annotations; infer type when `var = func()`. Natural extension of two-pass analysis. Applicable to all typed languages.
 
-**Field type tracking:** ✅ Implemented for Java (field_declaration type tracking), Kotlin (constructor parameter type tracking), and C# (field declaration type tracking, handles generic_name types). Enables resolution of `this.field.method()` → `FieldType.method()`. Scala uses method name matching without explicit type inference. Python field type tracking is a TODO (requires tracking `self.field = TypeName()` assignments).
+**Field type tracking:** ✅ Implemented for Java (field_declaration type tracking), Kotlin (constructor parameter type tracking), C# (field declaration type tracking, handles generic_name types), and Python (`self.field` type tracking from typed `__init__` params and constructor calls). Enables resolution of `this.field.method()` / `self.field.method()` → `FieldType.method()`. Scala uses method name matching without explicit type inference.
 
 **Method-scoped tracking:** Current file-scoped tracking can cause false positives when same variable name used in different methods. Low priority since collisions are rare.
 

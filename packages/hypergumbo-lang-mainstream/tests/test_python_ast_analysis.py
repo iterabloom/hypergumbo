@@ -2724,6 +2724,85 @@ class TestVariableMethodCalls:
         )
         assert process_edge is not None, "Expected call edge for svc.process() via local class annotation"
 
+    def test_self_field_method_call_with_param_type(self, tmp_path: Path) -> None:
+        """self.field.method() should resolve when field is assigned from typed param.
+
+        Pattern: class Controller(__init__(self, svc: Service)) assigns self.svc = svc,
+        then handle() calls self.svc.process(). INV-014 structural fix for Python.
+        """
+        service_file = tmp_path / "service.py"
+        service_file.write_text(
+            "class Service:\n"
+            "    def process(self, data):\n"
+            "        pass\n"
+        )
+
+        controller_file = tmp_path / "controller.py"
+        controller_file.write_text(
+            "from service import Service\n"
+            "\n"
+            "class Controller:\n"
+            "    def __init__(self, svc: Service):\n"
+            "        self.svc = svc\n"
+            "\n"
+            "    def handle(self, data):\n"
+            "        self.svc.process(data)\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        process_edge = next(
+            (e for e in call_edges if "handle" in e["src"] and "process" in e["dst"]),
+            None
+        )
+        assert process_edge is not None, (
+            "Expected call edge from Controller.handle to Service.process "
+            "via self.svc.process() with typed param"
+        )
+        assert "service.py" in process_edge["dst"]
+
+    def test_self_field_method_call_with_constructor(self, tmp_path: Path) -> None:
+        """self.field.method() should resolve when field is assigned from constructor.
+
+        Pattern: self.repo = Repository() in __init__, then self.repo.save() in method.
+        """
+        repo_file = tmp_path / "repo.py"
+        repo_file.write_text(
+            "class Repository:\n"
+            "    def save(self, item):\n"
+            "        pass\n"
+        )
+
+        controller_file = tmp_path / "controller.py"
+        controller_file.write_text(
+            "from repo import Repository\n"
+            "\n"
+            "class Controller:\n"
+            "    def __init__(self):\n"
+            "        self.repo = Repository()\n"
+            "\n"
+            "    def create(self, item):\n"
+            "        self.repo.save(item)\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        save_edge = next(
+            (e for e in call_edges if "create" in e["src"] and "save" in e["dst"]),
+            None
+        )
+        assert save_edge is not None, (
+            "Expected call edge from Controller.create to Repository.save "
+            "via self.repo.save() with constructor assignment"
+        )
+        assert "repo.py" in save_edge["dst"]
+
 
 # ============================================================================
 # Rich Metadata Extraction Tests (ADR-0003)
