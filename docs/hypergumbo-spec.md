@@ -1192,6 +1192,12 @@ hypergumbo run . --first-party-only
 hypergumbo run . --max-tier 3
 ```
 
+#### Reverse slice class expansion
+
+🟩 Implemented:
+
+When reverse-slicing from a class/interface entry, the slicer auto-expands the BFS starting set to include all member methods (via `contains` edges). This enables `--reverse --entry OwnerRepository` to find callers of `findById`, `search`, etc. Applies to class, interface, module, struct, trait, and enum containers.
+
 #### Slice tier filtering
 
 🟩 Implemented:

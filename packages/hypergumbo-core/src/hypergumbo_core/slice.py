@@ -27,6 +27,14 @@ Reverse slicing (reverse=True) answers "what calls this function?" by following
 edges from callee to caller. Useful for impact analysis - understanding what
 code might be affected by changes to a function.
 
+Class-Level Reverse Slice Expansion
+------------------------------------
+When reverse-slicing from a class/interface entry point, the slicer automatically
+expands the starting set to include all member methods (discovered via "contains"
+edges). This way ``--reverse --entry OwnerRepository`` finds callers of
+``findById``, ``search``, etc., rather than returning an empty result (since
+call edges connect methods to methods, not classes).
+
 The result is a "feature" - a subgraph with a stable ID derived from
 the query parameters (sha256 of JSON-serialized query). Same query
 always produces same feature ID, enabling caching and reproducibility.
@@ -329,6 +337,11 @@ def slice_graph(
     # BFS state: (node_id, current_hop)
     queue: deque[tuple[str, int]] = deque()
 
+    # Container kinds that should be expanded to member methods for reverse slicing.
+    # When reverse-slicing from a class/interface, we also want to find callers of
+    # its methods, not just edges pointing directly to the class node.
+    _CONTAINER_KINDS = {"class", "interface", "module", "struct", "trait", "enum"}
+
     # Initialize with entry nodes
     for entry in entry_nodes:
         if query.exclude_tests and is_test_file(entry.path):
@@ -341,6 +354,30 @@ def slice_graph(
         # Add import edges from this file (forward only)
         if not query.reverse:
             add_file_imports(entry.path)
+
+    # Reverse slice class expansion: when entry nodes include container types
+    # (class, interface, etc.), auto-expand to include member methods as
+    # additional starting points. This way --reverse --entry OwnerRepository
+    # finds callers of findById, search, etc.
+    if query.reverse:
+        for entry in entry_nodes:
+            if entry.kind not in _CONTAINER_KINDS:
+                continue
+            # Follow 'contains' edges FROM this class to find member methods
+            for edge in edges_from.get(entry.id, []):
+                if edge.edge_type != "contains":
+                    continue
+                member = node_by_id.get(edge.dst)
+                if member is None:  # pragma: no cover - edge dst always in node_by_id
+                    continue
+                if query.exclude_tests and is_test_file(member.path):
+                    continue
+                if query.exclude_utility and is_utility_file(member.path):
+                    continue
+                if member.id not in visited_nodes:
+                    visited_nodes.add(member.id)
+                    files_seen.add(member.path)
+                    queue.append((member.id, 0))
 
     # BFS traversal
     while queue:

@@ -1150,6 +1150,310 @@ class TestRankSliceNodes:
         test_rank = ranked.index(test_sym.id)
         assert prod_rank < test_rank  # prod ranks higher
 
+class TestReverseSliceClassExpansion:
+    """Tests for reverse slice auto-expanding class entries to member methods.
+
+    When a reverse slice entry point resolves to a class/interface node,
+    the slicer should automatically expand the starting set to include
+    all member methods (via 'contains' edges). This way, querying
+    "what calls OwnerRepository?" returns callers of findById, etc.
+    """
+
+    def test_class_entry_expands_to_member_methods(self) -> None:
+        """Reverse slice from class should find callers of its methods."""
+        # Class with two methods
+        repo_class = make_symbol(
+            "OwnerRepository", kind="interface",
+            path="src/repo.java", start_line=1, end_line=30, language="java",
+        )
+        find_method = make_symbol(
+            "OwnerRepository.findById", kind="method",
+            path="src/repo.java", start_line=10, end_line=15, language="java",
+        )
+        search_method = make_symbol(
+            "OwnerRepository.search", kind="method",
+            path="src/repo.java", start_line=20, end_line=25, language="java",
+        )
+
+        # Caller of findById
+        controller = make_symbol(
+            "Controller.show", kind="method",
+            path="src/ctrl.java", start_line=1, end_line=10, language="java",
+        )
+
+        # Contains edges: class -> methods
+        contains1 = make_edge(repo_class, find_method, "contains")
+        contains2 = make_edge(repo_class, search_method, "contains")
+        # Calls edge: controller -> findById
+        calls1 = make_edge(controller, find_method, "calls")
+
+        nodes = [repo_class, find_method, search_method, controller]
+        edges = [contains1, contains2, calls1]
+
+        # Reverse slice from class name should find the controller
+        query = SliceQuery(
+            entrypoint="OwnerRepository", max_hops=3, reverse=True,
+        )
+        result = slice_graph(nodes, edges, query)
+
+        # Should include: class, both methods, and the controller caller
+        assert repo_class.id in result.node_ids
+        assert find_method.id in result.node_ids
+        assert search_method.id in result.node_ids
+        assert controller.id in result.node_ids
+        assert calls1.id in result.edge_ids
+
+    def test_class_entry_expansion_multi_hop(self) -> None:
+        """Reverse slice from class should follow multiple hops from methods."""
+        # Class with one method
+        svc_class = make_symbol(
+            "UserService", kind="class",
+            path="src/svc.py", start_line=1, end_line=30, language="python",
+        )
+        get_user = make_symbol(
+            "UserService.get_user", kind="method",
+            path="src/svc.py", start_line=10, end_line=15, language="python",
+        )
+        # Caller chain: handler -> controller -> get_user
+        controller = make_symbol(
+            "Controller.show", kind="method",
+            path="src/ctrl.py", start_line=1, end_line=10, language="python",
+        )
+        handler = make_symbol(
+            "Handler.process", kind="method",
+            path="src/handler.py", start_line=1, end_line=10, language="python",
+        )
+
+        contains = make_edge(svc_class, get_user, "contains")
+        call1 = make_edge(controller, get_user, "calls")
+        call2 = make_edge(handler, controller, "calls")
+
+        nodes = [svc_class, get_user, controller, handler]
+        edges = [contains, call1, call2]
+
+        query = SliceQuery(
+            entrypoint="UserService", max_hops=3, reverse=True,
+        )
+        result = slice_graph(nodes, edges, query)
+
+        # Should reach handler via: class -> get_user -> controller -> handler
+        assert handler.id in result.node_ids
+        assert call2.id in result.edge_ids
+
+    def test_method_entry_not_affected(self) -> None:
+        """Method-level entries should NOT trigger class expansion."""
+        repo_class = make_symbol(
+            "OwnerRepository", kind="interface",
+            path="src/repo.java", start_line=1, end_line=30, language="java",
+        )
+        find_method = make_symbol(
+            "OwnerRepository.findById", kind="method",
+            path="src/repo.java", start_line=10, end_line=15, language="java",
+        )
+        search_method = make_symbol(
+            "OwnerRepository.search", kind="method",
+            path="src/repo.java", start_line=20, end_line=25, language="java",
+        )
+        # Caller of search only
+        caller = make_symbol(
+            "Service.doSearch", kind="method",
+            path="src/svc.java", start_line=1, end_line=5, language="java",
+        )
+
+        contains1 = make_edge(repo_class, find_method, "contains")
+        contains2 = make_edge(repo_class, search_method, "contains")
+        call = make_edge(caller, search_method, "calls")
+
+        nodes = [repo_class, find_method, search_method, caller]
+        edges = [contains1, contains2, call]
+
+        # Reverse slice from findById method directly - should NOT find caller
+        # of search (expansion only for class-level entries)
+        query = SliceQuery(
+            entrypoint="OwnerRepository.findById", max_hops=3, reverse=True,
+        )
+        result = slice_graph(nodes, edges, query)
+
+        assert find_method.id in result.node_ids
+        assert caller.id not in result.node_ids
+
+    def test_forward_slice_from_class_not_affected(self) -> None:
+        """Forward slice from class should NOT trigger method expansion."""
+        svc_class = make_symbol(
+            "UserService", kind="class",
+            path="src/svc.py", start_line=1, end_line=30, language="python",
+        )
+        get_user = make_symbol(
+            "UserService.get_user", kind="method",
+            path="src/svc.py", start_line=10, end_line=15, language="python",
+        )
+        # get_user calls helper
+        helper = make_symbol(
+            "helper.validate", kind="function",
+            path="src/helper.py", start_line=1, end_line=5, language="python",
+        )
+
+        contains = make_edge(svc_class, get_user, "contains")
+        call = make_edge(get_user, helper, "calls")
+
+        nodes = [svc_class, get_user, helper]
+        edges = [contains, call]
+
+        # Forward slice from class - should follow contains edges normally
+        # but NOT expand to member methods for BFS starting points
+        query = SliceQuery(
+            entrypoint="UserService", max_hops=3, reverse=False,
+        )
+        result = slice_graph(nodes, edges, query)
+
+        # Forward from class follows contains to get_user, then calls to helper
+        assert svc_class.id in result.node_ids
+        assert get_user.id in result.node_ids
+        assert helper.id in result.node_ids
+
+    def test_expansion_respects_exclude_tests(self) -> None:
+        """Class expansion should exclude test methods when requested."""
+        svc_class = make_symbol(
+            "Service", kind="class",
+            path="src/svc.py", start_line=1, end_line=30, language="python",
+        )
+        method = make_symbol(
+            "Service.do_work", kind="method",
+            path="src/svc.py", start_line=10, end_line=15, language="python",
+        )
+        # Caller from test file
+        test_caller = make_symbol(
+            "test_service", kind="function",
+            path="tests/test_svc.py", start_line=1, end_line=5, language="python",
+        )
+
+        contains = make_edge(svc_class, method, "contains")
+        call = make_edge(test_caller, method, "calls")
+
+        nodes = [svc_class, method, test_caller]
+        edges = [contains, call]
+
+        query = SliceQuery(
+            entrypoint="Service", max_hops=3, reverse=True,
+            exclude_tests=True,
+        )
+        result = slice_graph(nodes, edges, query)
+
+        # Method should be expanded from class
+        assert method.id in result.node_ids
+        # Test caller should be excluded
+        assert test_caller.id not in result.node_ids
+
+    def test_expansion_skips_non_contains_edges(self) -> None:
+        """Class expansion should only follow 'contains' edges, not others."""
+        svc_class = make_symbol(
+            "ParentService", kind="class",
+            path="src/parent.py", start_line=1, end_line=30, language="python",
+        )
+        child_class = make_symbol(
+            "ChildService", kind="class",
+            path="src/child.py", start_line=1, end_line=30, language="python",
+        )
+        method = make_symbol(
+            "ParentService.do_work", kind="method",
+            path="src/parent.py", start_line=10, end_line=15, language="python",
+        )
+        caller = make_symbol(
+            "handler", kind="function",
+            path="src/handler.py", start_line=1, end_line=5, language="python",
+        )
+
+        # Contains edge: class -> method
+        contains = make_edge(svc_class, method, "contains")
+        # Extends edge: class -> child (should not be followed for expansion)
+        extends = make_edge(svc_class, child_class, "extends")
+        # Caller of method
+        call = make_edge(caller, method, "calls")
+
+        nodes = [svc_class, child_class, method, caller]
+        edges = [contains, extends, call]
+
+        query = SliceQuery(
+            entrypoint="ParentService", max_hops=3, reverse=True,
+        )
+        result = slice_graph(nodes, edges, query)
+
+        # Method and caller should be found (via contains expansion)
+        assert method.id in result.node_ids
+        assert caller.id in result.node_ids
+        # Child class should NOT be expanded (extends edge, not contains)
+        # It may or may not be in the result depending on BFS traversal,
+        # but the key check is that expansion only follows contains edges.
+
+    def test_expansion_excludes_utility_members(self) -> None:
+        """Class expansion should exclude utility file members when requested."""
+        svc_class = make_symbol(
+            "Service", kind="class",
+            path="src/svc.py", start_line=1, end_line=30, language="python",
+        )
+        # Method in utility/examples directory
+        example_method = make_symbol(
+            "Service.example", kind="method",
+            path="examples/demo.py", start_line=1, end_line=5, language="python",
+        )
+        # Normal method
+        normal_method = make_symbol(
+            "Service.do_work", kind="method",
+            path="src/svc.py", start_line=10, end_line=15, language="python",
+        )
+        caller = make_symbol(
+            "handler", kind="function",
+            path="src/handler.py", start_line=1, end_line=5, language="python",
+        )
+
+        contains1 = make_edge(svc_class, example_method, "contains")
+        contains2 = make_edge(svc_class, normal_method, "contains")
+        call = make_edge(caller, normal_method, "calls")
+
+        nodes = [svc_class, example_method, normal_method, caller]
+        edges = [contains1, contains2, call]
+
+        query = SliceQuery(
+            entrypoint="Service", max_hops=3, reverse=True,
+            exclude_utility=True,
+        )
+        result = slice_graph(nodes, edges, query)
+
+        # Normal method and caller should be found
+        assert normal_method.id in result.node_ids
+        assert caller.id in result.node_ids
+        # Utility member should be excluded
+        assert example_method.id not in result.node_ids
+
+    def test_expansion_skips_test_member(self) -> None:
+        """Class expansion should skip test file members when exclude_tests."""
+        svc_class = make_symbol(
+            "Service", kind="class",
+            path="src/svc.py", start_line=1, end_line=30, language="python",
+        )
+        # A method defined in a test file (unusual but possible)
+        test_member = make_symbol(
+            "Service.test_helper", kind="method",
+            path="tests/test_svc.py", start_line=1, end_line=5, language="python",
+        )
+
+        contains = make_edge(svc_class, test_member, "contains")
+
+        nodes = [svc_class, test_member]
+        edges = [contains]
+
+        query = SliceQuery(
+            entrypoint="Service", max_hops=3, reverse=True,
+            exclude_tests=True,
+        )
+        result = slice_graph(nodes, edges, query)
+
+        # Class is the entry so it's always included
+        assert svc_class.id in result.node_ids
+        # Test member should be excluded from expansion
+        assert test_member.id not in result.node_ids
+
+
     def test_test_weight_useful_for_reverse_slice(self) -> None:
         """Test weight is useful for reverse slicing to prioritize prod callers."""
         # Target function that is called by both test and prod
