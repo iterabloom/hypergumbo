@@ -206,6 +206,34 @@ def _extract_java_signature(
     return signature
 
 
+def _extract_java_return_type_name(signature: str | None) -> str | None:
+    """Extract simple return type name from a Java method signature.
+
+    Parses signatures like "(int a, int b) Client" and returns "Client".
+    Only handles simple (non-generic, non-array, non-primitive) return types.
+    Returns None for void methods (no return type in signature),
+    primitive types, array types, and generic types.
+
+    Args:
+        signature: Method signature string from Symbol.signature.
+
+    Returns:
+        The simple class name if found, None otherwise.
+    """
+    if not signature:
+        return None
+    # Java signatures: "(params) ReturnType" or "(params)" for void
+    paren_idx = signature.rfind(")")
+    if paren_idx < 0 or paren_idx == len(signature) - 1:
+        return None
+    ret_part = signature[paren_idx + 1:].strip()
+    # Only handle simple class names (identifiers starting with uppercase)
+    # Excludes: int, boolean, byte[], List<T>, int[]
+    if ret_part and ret_part.isidentifier() and ret_part[0].isupper():
+        return ret_part
+    return None
+
+
 def _extract_param_types(
     node: "tree_sitter.Node", source: bytes
 ) -> dict[str, str]:
@@ -327,10 +355,12 @@ def _get_java_parser() -> Optional["tree_sitter.Parser"]:
 class _ParsedFile:
     """Holds parsed file data for two-pass analysis.
 
-    Note on type inference: Variable method calls (e.g., stub.method()) are resolved
-    using constructor-only type inference. This tracks types from direct constructor
-    calls (stub = new Client()) but NOT from factory methods (stub = Client.create()).
-    This covers ~90% of real-world cases with minimal complexity.
+    Type inference sources for variable method call resolution (e.g., stub.method()):
+    1. Direct constructor calls: stub = new Client() → var_types['stub'] = 'Client'
+    2. Return type annotations: stub = factory.createClient() where createClient returns
+       Client → var_types['stub'] = 'Client'
+    3. Parameter type annotations: void process(Client client) → var_types['client'] = 'Client'
+    4. Field declarations: private Repository repo → var_types['repo'] = 'Repository'
     """
 
     path: Path
@@ -972,6 +1002,7 @@ def _extract_edges(
                     ancestors = _get_class_ancestors(node, source)
                     current_class = ".".join(ancestors) if ancestors else None
                     edge_added = False
+                    resolved_sym: Symbol | None = None
 
                     # Case 1: this.method() or method() - resolve in current class
                     if receiver_name is None or receiver_name == "this":
@@ -993,6 +1024,7 @@ def _extract_edges(
                                 )
                                 edges.append(edge)
                                 edge_added = True
+                                resolved_sym = lookup_result.symbol
 
                     # Case 2: ClassName.method() - static call
                     elif receiver_name and receiver_name in class_symbols:
@@ -1012,6 +1044,7 @@ def _extract_edges(
                             )
                             edges.append(edge)
                             edge_added = True
+                            resolved_sym = lookup_result.symbol
 
                     # Case 3: variable.method() - use type inference
                     elif receiver_name and receiver_name in var_types:
@@ -1032,6 +1065,22 @@ def _extract_edges(
                             )
                             edges.append(edge)
                             edge_added = True
+                            resolved_sym = lookup_result.symbol
+
+                    # Return type inference: if the resolved method has
+                    # a return type and the call is in a variable assignment,
+                    # track the variable's type from that return type.
+                    if resolved_sym and resolved_sym.kind == "method":
+                        ret_name = _extract_java_return_type_name(
+                            resolved_sym.signature
+                        )
+                        if ret_name and ret_name in class_symbols:
+                            parent_node = node.parent
+                            if parent_node and parent_node.type == "variable_declarator":
+                                for pc in parent_node.children:
+                                    if pc.type == "identifier":
+                                        var_types[_node_text(pc, source)] = ret_name
+                                        break
 
                     # Case 4: Fallback - try imported class or just the receiver name
                     # This handles edge cases where the receiver isn't recognized as a

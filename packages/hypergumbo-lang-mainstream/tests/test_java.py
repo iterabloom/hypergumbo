@@ -1511,6 +1511,41 @@ public class Legacy {
         assert method.signature == "(String[] args)"
 
 
+class TestJavaReturnTypeExtraction:
+    """Unit tests for _extract_java_return_type_name helper."""
+
+    def test_simple_return_type(self) -> None:
+        from hypergumbo_lang_mainstream.java import _extract_java_return_type_name
+
+        assert _extract_java_return_type_name("(int a) Client") == "Client"
+
+    def test_void_method(self) -> None:
+        from hypergumbo_lang_mainstream.java import _extract_java_return_type_name
+
+        assert _extract_java_return_type_name("(String msg)") is None
+
+    def test_primitive_return(self) -> None:
+        from hypergumbo_lang_mainstream.java import _extract_java_return_type_name
+
+        # Primitive types start with lowercase, not tracked
+        assert _extract_java_return_type_name("(int a, int b) int") is None
+
+    def test_none_signature(self) -> None:
+        from hypergumbo_lang_mainstream.java import _extract_java_return_type_name
+
+        assert _extract_java_return_type_name(None) is None
+
+    def test_empty_signature(self) -> None:
+        from hypergumbo_lang_mainstream.java import _extract_java_return_type_name
+
+        assert _extract_java_return_type_name("") is None
+
+    def test_no_paren(self) -> None:
+        from hypergumbo_lang_mainstream.java import _extract_java_return_type_name
+
+        assert _extract_java_return_type_name("no parens") is None
+
+
 class TestJavaStaticImportSkip:
     """Tests for static import handling."""
 
@@ -1597,6 +1632,112 @@ public class Caller {
         assert call_edge is not None
         assert call_edge.evidence_type == "ast_call_type_inferred"
         assert call_edge.confidence == 0.85
+
+
+class TestJavaReturnTypeInference:
+    """Tests for return type tracking from method signatures."""
+
+    def test_return_type_enables_method_resolution(self, tmp_path: Path) -> None:
+        """Factory method return type enables resolution of subsequent method calls."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Client.java").write_text("""
+public class Client {
+    public void send() {}
+}
+""")
+        (tmp_path / "Factory.java").write_text("""
+public class Factory {
+    public Client createClient() {
+        return new Client();
+    }
+}
+""")
+        (tmp_path / "App.java").write_text("""
+public class App {
+    public void run() {
+        Factory f = new Factory();
+        Client c = f.createClient();
+        c.send();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # c.send() should resolve via return type of createClient()
+        send_edge = next(
+            (e for e in call_edges if "run" in e.src and "send" in e.dst),
+            None,
+        )
+        assert send_edge is not None, "Expected call edge for c.send() via return type inference"
+        assert send_edge.evidence_type == "ast_call_type_inferred"
+
+    def test_no_return_type_no_resolution(self, tmp_path: Path) -> None:
+        """Void methods don't enable return type inference."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Client.java").write_text("""
+public class Client {
+    public void send() {}
+}
+""")
+        (tmp_path / "Service.java").write_text("""
+public class Service {
+    public void process() {}
+}
+""")
+        (tmp_path / "App.java").write_text("""
+public class App {
+    public void run() {
+        Service s = new Service();
+        s.process();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # process() is void — no return type inference needed (resolved via constructor type)
+        process_edge = next(
+            (e for e in call_edges if "run" in e.src and "process" in e.dst),
+            None,
+        )
+        assert process_edge is not None
+
+    def test_generic_return_type_not_tracked(self, tmp_path: Path) -> None:
+        """Generic return types like List<Client> are not tracked for inference."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Client.java").write_text("""
+public class Client {
+    public void send() {}
+}
+""")
+        (tmp_path / "Factory.java").write_text("""
+import java.util.List;
+import java.util.ArrayList;
+
+public class Factory {
+    public List<Client> getClients() {
+        return new ArrayList<>();
+    }
+}
+""")
+        (tmp_path / "App.java").write_text("""
+public class App {
+    public void run() {
+        Factory f = new Factory();
+        Object result = f.getClients();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+        # Just verify it doesn't crash - generic returns aren't tracked
+        assert result.run is not None
 
 
 class TestJavaImportResolution:

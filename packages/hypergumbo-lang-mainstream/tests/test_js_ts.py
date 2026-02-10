@@ -3604,6 +3604,40 @@ function run() {
         )
 
 
+class TestJsTsReturnTypeExtraction:
+    """Unit tests for _extract_jsts_return_type_name helper."""
+
+    def test_simple_return_type(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import _extract_jsts_return_type_name
+
+        assert _extract_jsts_return_type_name("(x: number): MyClass") == "MyClass"
+
+    def test_no_return_type(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import _extract_jsts_return_type_name
+
+        assert _extract_jsts_return_type_name("(x: number)") is None
+
+    def test_generic_return_type(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import _extract_jsts_return_type_name
+
+        assert _extract_jsts_return_type_name("(): Promise<Client>") is None
+
+    def test_none_signature(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import _extract_jsts_return_type_name
+
+        assert _extract_jsts_return_type_name(None) is None
+
+    def test_empty_signature(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import _extract_jsts_return_type_name
+
+        assert _extract_jsts_return_type_name("") is None
+
+    def test_no_paren(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import _extract_jsts_return_type_name
+
+        assert _extract_jsts_return_type_name("no parens") is None
+
+
 class TestVariableTypeInference:
     """Tests for variable type inference from constructor calls."""
 
@@ -3645,8 +3679,49 @@ function run() {
         # Verify it resolved to ServiceClient.send
         assert "ServiceClient.send" in method_edge.dst or "send" in method_edge.dst
 
-    def test_type_inference_limited_to_constructors(self, tmp_path: Path) -> None:
-        """Type inference should NOT track types from function returns."""
+    def test_type_inference_from_return_type_annotation(self, tmp_path: Path) -> None:
+        """TypeScript return type annotations enable type inference."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "main.ts"
+        ts_file.write_text("""
+class ServiceClient {
+    send(): string {
+        return 'sent';
+    }
+}
+
+function getClient(): ServiceClient {
+    return new ServiceClient();
+}
+
+function run() {
+    const client = getClient();
+    client.send();
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        get_client_edge = next(
+            (e for e in call_edges if "run" in e.src and "getClient" in e.dst),
+            None
+        )
+        assert get_client_edge is not None, "Expected call edge for getClient"
+
+        # client.send() should resolve via return type annotation
+        type_inferred_edges = [
+            e for e in call_edges
+            if e.evidence_type == "ast_method_type_inferred"
+            and "send" in e.dst
+        ]
+        assert len(type_inferred_edges) == 1, (
+            "Expected type-inferred edge for client.send() via return type"
+        )
+
+    def test_type_inference_no_annotation_no_resolution(self, tmp_path: Path) -> None:
+        """JS functions without return type annotations don't enable type inference."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "main.js"
@@ -3662,29 +3737,20 @@ function getClient() {
 }
 
 function run() {
-    const client = getClient();  // NOT tracked - function return
-    client.send();  // Should NOT be high-confidence resolved
+    const client = getClient();
+    client.send();
 }
 """)
 
         result = analyze_javascript(tmp_path)
 
-        # Should have call edge for getClient()
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        get_client_edge = next(
-            (e for e in call_edges if "run" in e.src and "getClient" in e.dst),
-            None
-        )
-        assert get_client_edge is not None, "Expected call edge for getClient"
-
-        # client.send() should NOT be resolved with high confidence
-        # (may have low-confidence inferred edge, but not type_inferred evidence)
         type_inferred_edges = [
             e for e in call_edges
-            if e.meta and e.meta.get("evidence_type") == "ast_method_type_inferred"
+            if e.evidence_type == "ast_method_type_inferred"
         ]
         assert len(type_inferred_edges) == 0, (
-            "Should NOT have type-inferred edge for function return"
+            "Should NOT have type-inferred edge without annotation"
         )
 
     def test_namespace_class_instantiation(self, tmp_path: Path) -> None:

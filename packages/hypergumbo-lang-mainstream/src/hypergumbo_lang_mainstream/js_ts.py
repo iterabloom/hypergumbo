@@ -217,10 +217,11 @@ JsAnalysisResult = AnalysisResult
 class _ParsedFile:
     """Holds parsed file data for two-pass analysis.
 
-    Note on type inference: Variable method calls (e.g., client.send()) are resolved
-    using constructor-only type inference. This tracks types from direct constructor
-    calls (client = new Client()) but NOT from function returns (client = getClient()).
-    This covers ~90% of real-world cases with minimal complexity.
+    Type inference sources for variable method call resolution (e.g., client.send()):
+    1. Direct constructor calls: client = new Client() → var_types['client'] = 'Client'
+    2. Return type annotations (TypeScript): client = getClient() where
+       getClient(): Client → var_types['client'] = 'Client'
+    3. Parameter type annotations: constructor(private db: Database) → var_types['db'] = 'Database'
     """
 
     path: Path
@@ -498,6 +499,38 @@ def _extract_jsts_signature(
         sig += ret_text
 
     return sig
+
+
+def _extract_jsts_return_type_name(signature: str | None) -> str | None:
+    """Extract simple return type name from a JS/TS function signature.
+
+    Parses signatures like "(x: number): MyClass" and returns "MyClass".
+    Only handles simple (non-generic) return types — returns None for
+    complex types like "Promise<X>", "X | Y", "X[]", etc.
+
+    The return type in JS/TS signatures appears after "):" at the end,
+    unlike Python which uses " -> ".
+
+    Args:
+        signature: Function signature string from Symbol.signature.
+
+    Returns:
+        The simple class name if found, None otherwise.
+    """
+    if not signature:
+        return None
+    # Find the closing paren, then look for ": ReturnType" after it
+    paren_idx = signature.rfind(")")
+    if paren_idx < 0:
+        return None
+    after_paren = signature[paren_idx + 1:].strip()
+    if not after_paren.startswith(":"):
+        return None
+    ret_part = after_paren[1:].strip()
+    # Only handle simple names (identifiers), not generics or unions
+    if ret_part and ret_part.isidentifier():
+        return ret_part
+    return None
 
 
 def _extract_param_types(
@@ -2379,6 +2412,22 @@ def _extract_edges(
                                 confidence=edge_confidence,
                             )
                             edges.append(edge)
+
+                            # Return type inference: if function has a return
+                            # type annotation, track the variable's type
+                            resolved_sym = lookup_result.symbol
+                            if resolved_sym.kind in ("function", "method"):
+                                ret_name = _extract_jsts_return_type_name(
+                                    resolved_sym.signature
+                                )
+                                if ret_name and node.parent and node.parent.type == "variable_declarator":
+                                    # Check return type is a known class
+                                    class_result = class_resolver.lookup(ret_name)
+                                    if class_result.found:
+                                        for pc in node.parent.children:
+                                            if pc.type == "identifier":
+                                                var_types[_node_text(pc, source)] = ret_name
+                                                break
 
             # Method calls: obj.method()
             if func_node and func_node.type == "member_expression":
