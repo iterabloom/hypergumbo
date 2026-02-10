@@ -29,3 +29,12 @@ jobs:
           echo "$VARS_CONTEXT"
           echo "=== all environment variables ==="
           env | sort
+          echo "=== CPU introspection ==="
+          echo "nproc: $(nproc 2>/dev/null || echo 'not available')"
+          echo "os.sched_getaffinity: $(python3 -c 'import os; print(len(os.sched_getaffinity(0)))' 2>/dev/null || echo 'not available')"
+          echo "os.cpu_count: $(python3 -c 'import os; print(os.cpu_count())' 2>/dev/null || echo 'not available')"
+          echo "/proc/cpuinfo processors: $(grep -c ^processor /proc/cpuinfo 2>/dev/null || echo 'not available')"
+          echo "cgroup cpu.max: $(cat /sys/fs/cgroup/cpu.max 2>/dev/null || echo 'not available')"
+          echo "cgroup cpu.weight: $(cat /sys/fs/cgroup/cpu.weight 2>/dev/null || echo 'not available')"
+          echo "cgroup cpuset.cpus: $(cat /sys/fs/cgroup/cpuset.cpus 2>/dev/null || echo 'not available')"
+          echo "cgroup cpuset.cpus.effective: $(cat /sys/fs/cgroup/cpuset.cpus.effective 2>/dev/null || echo 'not available')"
