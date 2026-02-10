@@ -2322,13 +2322,6 @@ Languages and DSLs identified as gaps from industry analysis.
 | **Device Tree (DTS)** | Linux kernel hardware descriptions |
 | **Kconfig** | Linux kernel configuration |
 
-### Not Planned
-
-| Format | Reason |
-|--------|--------|
-| **Markdown/RST** | Intellectual exhaustion |
-| **Plain text specs** | Intellectual exhaustion |
-
 ## Appendix I: Capsule System History
 
 The original design included a "capsule" abstraction for composing custom analyzers from building blocks. The idea was that users would run `hypergumbo init` to create a capsule configuration, then `hypergumbo run` would execute analysis according to that configuration.
