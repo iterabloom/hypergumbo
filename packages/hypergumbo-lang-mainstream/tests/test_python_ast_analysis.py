@@ -2440,9 +2440,55 @@ class TestVariableMethodCalls:
         )
         assert method_edge is not None, "Expected call edge for SendEmail method"
 
-    def test_type_inference_limited_to_constructors(self, tmp_path: Path) -> None:
-        """Type inference only works for constructor assignments, not function returns."""
-        # Create a client class
+    def test_type_inference_from_return_type_annotation(self, tmp_path: Path) -> None:
+        """Return type annotations enable type inference for function results.
+
+        When a function has a return type annotation like `-> ServiceClient`,
+        assigning its result to a variable should track the type so that
+        subsequent method calls (stub.send_request()) resolve correctly.
+        """
+        client_file = tmp_path / "client.py"
+        client_file.write_text(
+            "class ServiceClient:\n"
+            "    def send_request(self):\n"
+            "        pass\n"
+            "\n"
+            "def get_client() -> ServiceClient:\n"
+            "    return ServiceClient()\n"
+        )
+
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "from client import get_client\n"
+            "\n"
+            "def make_request():\n"
+            "    stub = get_client()\n"
+            "    stub.send_request()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        # get_client() call should resolve
+        get_client_edge = next(
+            (e for e in call_edges if "make_request" in e["src"] and "get_client" in e["dst"]),
+            None
+        )
+        assert get_client_edge is not None, "Expected call edge for get_client"
+
+        # stub.send_request() should resolve via return type annotation
+        send_request_edge = next(
+            (e for e in call_edges if "make_request" in e["src"] and "send_request" in e["dst"]),
+            None
+        )
+        assert send_request_edge is not None, (
+            "Expected call edge for stub.send_request() via return type inference"
+        )
+
+    def test_type_inference_no_annotation_no_resolution(self, tmp_path: Path) -> None:
+        """Without return type annotation, function results don't enable type inference."""
         client_file = tmp_path / "client.py"
         client_file.write_text(
             "class ServiceClient:\n"
@@ -2453,21 +2499,19 @@ class TestVariableMethodCalls:
             "    return ServiceClient()\n"
         )
 
-        # Create main module using function return (NOT tracked)
         main_file = tmp_path / "main.py"
         main_file.write_text(
             "from client import get_client\n"
             "\n"
             "def make_request():\n"
-            "    stub = get_client()  # NOT tracked - function return\n"
-            "    stub.send_request()  # Should NOT be resolved\n"
+            "    stub = get_client()\n"
+            "    stub.send_request()  # Should NOT be resolved - no annotation\n"
         )
 
         out_path = tmp_path / "out.json"
         run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
         data = json.loads(out_path.read_text())
 
-        # Should have a call edge for get_client()
         call_edges = [e for e in data["edges"] if e["type"] == "calls"]
         get_client_edge = next(
             (e for e in call_edges if "make_request" in e["src"] and "get_client" in e["dst"]),
@@ -2475,12 +2519,140 @@ class TestVariableMethodCalls:
         )
         assert get_client_edge is not None, "Expected call edge for get_client"
 
-        # Should NOT have a call edge for send_request (type not tracked from function return)
+        # No annotation → no resolution
         send_request_edge = next(
             (e for e in call_edges if "send_request" in e["dst"]),
             None
         )
-        assert send_request_edge is None, "Should NOT resolve stub.send_request() from function return"
+        assert send_request_edge is None, "Should NOT resolve stub.send_request() without annotation"
+
+    def test_return_type_generic_not_tracked(self, tmp_path: Path) -> None:
+        """Generic return types like Optional[X] are not tracked."""
+        client_file = tmp_path / "client.py"
+        client_file.write_text(
+            "from typing import Optional\n"
+            "\n"
+            "class ServiceClient:\n"
+            "    def send_request(self):\n"
+            "        pass\n"
+            "\n"
+            "def get_client() -> Optional[ServiceClient]:\n"
+            "    return ServiceClient()\n"
+        )
+
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "from client import get_client\n"
+            "\n"
+            "def make_request():\n"
+            "    stub = get_client()\n"
+            "    stub.send_request()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        # Generic return type → no resolution for method call
+        send_request_edge = next(
+            (e for e in call_edges if "send_request" in e["dst"]),
+            None
+        )
+        assert send_request_edge is None, "Generic return types should not enable type inference"
+
+    def test_return_type_local_class(self, tmp_path: Path) -> None:
+        """Return type resolved from same file as caller."""
+        single_file = tmp_path / "app.py"
+        single_file.write_text(
+            "class Repo:\n"
+            "    def query(self):\n"
+            "        pass\n"
+            "\n"
+            "def get_repo() -> Repo:\n"
+            "    return Repo()\n"
+            "\n"
+            "def handler():\n"
+            "    r = get_repo()\n"
+            "    r.query()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        query_edge = next(
+            (e for e in call_edges if "handler" in e["src"] and "query" in e["dst"]),
+            None
+        )
+        assert query_edge is not None, "Return type from local class should resolve method calls"
+
+    def test_return_type_imported_class(self, tmp_path: Path) -> None:
+        """Return type resolved via caller's imports."""
+        models_file = tmp_path / "models.py"
+        models_file.write_text(
+            "class User:\n"
+            "    def save(self):\n"
+            "        pass\n"
+        )
+
+        factory_file = tmp_path / "factory.py"
+        factory_file.write_text(
+            "from models import User\n"
+            "\n"
+            "def create_user() -> User:\n"
+            "    return User()\n"
+        )
+
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "from models import User\n"
+            "from factory import create_user\n"
+            "\n"
+            "def handler():\n"
+            "    u = create_user()\n"
+            "    u.save()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        save_edge = next(
+            (e for e in call_edges if "handler" in e["src"] and "save" in e["dst"]),
+            None
+        )
+        assert save_edge is not None, "Return type imported by caller should resolve method calls"
+
+    def test_return_type_unknown_class(self, tmp_path: Path) -> None:
+        """Return type pointing to unknown class doesn't crash."""
+        lib_file = tmp_path / "lib.py"
+        lib_file.write_text(
+            "def get_thing() -> ExternalThing:\n"
+            "    pass\n"
+        )
+
+        main_file = tmp_path / "main.py"
+        main_file.write_text(
+            "from lib import get_thing\n"
+            "\n"
+            "def handler():\n"
+            "    t = get_thing()\n"
+            "    t.process()\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        call_edges = [e for e in data["edges"] if e["type"] == "calls"]
+        process_edge = next(
+            (e for e in call_edges if "process" in e["dst"]),
+            None
+        )
+        assert process_edge is None, "Unknown return type class should not resolve"
 
     def test_module_level_module_qualified_call(self, tmp_path: Path) -> None:
         """Module-level code with module.func() calls should emit edges from <module> node."""

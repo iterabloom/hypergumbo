@@ -21,6 +21,7 @@ Analysis proceeds in two passes for cross-file resolution:
 - Detect self.method() calls within classes
 - Detect self.field.method() calls using field type inference from __init__
 - Detect ClassName() instantiation patterns
+- Track return type annotations for variable type inference
 - Create import edges from files to imported symbols
 
 Detected Patterns
@@ -90,6 +91,77 @@ def _make_file_id(path: str) -> str:
 def _make_module_id(module_name: str) -> str:
     """Generate ID for an external module (used as import edge destination)."""
     return f"python:{module_name}:0-0:module:module"
+
+
+def _extract_return_type_name(signature: str | None) -> str | None:
+    """Extract simple return type name from a function signature string.
+
+    Parses signatures like "(x: int) -> MyClass" and returns "MyClass".
+    Only handles simple (non-generic) return types — returns None for
+    complex types like "Optional[X]", "list[X]", "X | Y", etc.
+
+    Args:
+        signature: Function signature string from Symbol.signature.
+
+    Returns:
+        The simple class name if found, None otherwise.
+    """
+    if not signature or " -> " not in signature:
+        return None
+    ret_part = signature.rsplit(" -> ", 1)[1]
+    # Only handle simple names (identifiers), not generics or unions
+    if ret_part.isidentifier():
+        return ret_part
+    return None
+
+
+def _resolve_return_type_class(
+    type_name: str,
+    func_symbol: "Symbol",
+    local_symbols: dict[str, "Symbol"],
+    imports: dict[str, tuple[str, str]],
+    global_symbols: dict[tuple[str, str], "Symbol"],
+    resolver: "SymbolResolver | None" = None,
+) -> "Symbol | None":
+    """Resolve a return type name to a class Symbol.
+
+    Searches for the class in three places (in order):
+    1. The caller's local symbols (same file as the call site)
+    2. The caller's imports
+    3. The function's own module (the return type is usually co-located
+       with the function that returns it)
+
+    Only returns symbols with kind == "class".
+
+    Args:
+        type_name: Simple class name (e.g., "ServiceClient").
+        func_symbol: The function Symbol whose return type we're resolving.
+        local_symbols: Symbols defined in the caller's file.
+        imports: Import mappings from the caller's file.
+        global_symbols: All symbols across the project.
+        resolver: Optional SymbolResolver for efficient lookups.
+
+    Returns:
+        The class Symbol if found, None otherwise.
+    """
+    # Check caller's local symbols first
+    sym = local_symbols.get(type_name)
+    if sym and sym.kind == "class":
+        return sym
+    # Check caller's imports
+    if type_name in imports:
+        module_name, original_name = imports[type_name]
+        sym = _lookup_symbol_by_module(
+            global_symbols, module_name, original_name, resolver=resolver
+        )
+        if sym and sym.kind == "class":
+            return sym
+    # Check function's own module — the return type class is typically
+    # defined in the same file as the function
+    for (_mod, sym_name), sym in global_symbols.items():
+        if sym_name == type_name and sym.kind == "class" and sym.path == func_symbol.path:
+            return sym
+    return None
 
 
 def _lookup_symbol_by_module(
@@ -1524,8 +1596,12 @@ def _extract_edges(
     - Module-qualified calls: module.ClassName(), module.func()
     - Variable method calls: variable.method() (with constructor-only type inference)
 
-    Note: Type inference only tracks types from direct constructor calls
-    (stub = Client()), not from function returns (stub = get_client()).
+    Type inference sources:
+    1. Direct constructor calls: stub = Client() → var_types['stub'] = Client
+    2. Return type annotations: stub = get_client() where get_client() -> Client
+       → var_types['stub'] = Client (requires annotation on the function)
+    3. Parameter type annotations: def f(session: Session) → param maps to Session
+
     Field type inference tracks self.field assignments in __init__ from typed params
     and constructor calls.
 
@@ -1564,6 +1640,20 @@ def _extract_edges(
                         )
                         if assigned_class and assigned_class.kind == "class":
                             var_types[target.id] = assigned_class
+                        elif assigned_class and assigned_class.kind in ("function", "method"):
+                            # Return type inference: if the function has a
+                            # return type annotation pointing to a class,
+                            # track the variable's type from that annotation.
+                            ret_name = _extract_return_type_name(
+                                assigned_class.signature
+                            )
+                            if ret_name:
+                                ret_class = _resolve_return_type_class(
+                                    ret_name, assigned_class, local_symbols,
+                                    imports, global_symbols, resolver,
+                                )
+                                if ret_class:
+                                    var_types[target.id] = ret_class
 
             # Process calls
             if isinstance(node, ast.Call):
