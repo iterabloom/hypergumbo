@@ -378,12 +378,18 @@ statements are reached; input diversity testing ensures they produce correct res
   - Forward slice from CatsController.create had 0 useful nodes
   - Assessment noted: "misses the actual business logic call to catsService.create()"
 - **Impact:** Forward slices from NestJS/Angular controllers now include service layer calls
-- **Limitation:** In monorepos with multiple files defining the same class name (e.g., many
-  `CatsService.create` across 11 sample apps in NestJS repo), resolution may fail due to
-  ambiguity in the name resolver. Would need import-aware disambiguation to fully solve.
-  The fix works correctly for single-project repos (tested with isolated test files).
+- **Limitation:** Previously, in monorepos with multiple files defining the same class name
+  (e.g., many `CatsService.create` across 11 sample apps in NestJS repo), resolution would
+  pick an arbitrary symbol. Now fixed: import-path disambiguation uses `import { Foo } from './module'`
+  to select the correct symbol when multiple candidates exist.
 - **Regression tests:**
   - `test_js_ts.py::TestVariableTypeInference::test_this_property_method_call_nestjs_pattern`
+  - `test_js_ts.py::TestVariableTypeInference::test_this_property_disambiguates_via_named_import`
+  - `test_js_ts.py::TestVariableTypeInference::test_variable_method_disambiguates_via_named_import`
+  - `test_js_ts.py::TestVariableTypeInference::test_import_alias_tracked_in_named_imports`
+  - `test_js_ts.py::TestVariableTypeInference::test_disambiguate_non_relative_import_falls_through`
+  - `test_js_ts.py::TestVariableTypeInference::test_disambiguate_single_candidate_returns_none`
+  - `test_js_ts.py::TestVariableTypeInference::test_disambiguate_no_match_returns_none`
 - **Pending Generalizations:** None
 
 ## INV-014: Chained Member Access Call Resolution

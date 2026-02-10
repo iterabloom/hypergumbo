@@ -230,6 +230,8 @@ class _ParsedFile:
     line_offset: int = 0  # For Svelte script blocks
     # Maps local alias -> module name for 'import * as alias' and 'import alias'
     namespace_imports: dict[str, str] | None = None
+    # Maps imported name -> module path for 'import { Foo } from "module"'
+    named_imports: dict[str, str] | None = None
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str, lang: str) -> str:
@@ -315,6 +317,97 @@ def _extract_namespace_imports(
             namespace_imports[alias] = module_name
 
     return namespace_imports
+
+
+def _extract_named_imports(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract named imports from a parsed tree.
+
+    Tracks: import { Foo, Bar as Baz } from 'module' -> Foo: module, Baz: module
+
+    Returns dict mapping imported name (or alias) -> module path.
+    Used to disambiguate type references when multiple files define
+    the same class name (e.g., monorepos with duplicate CatsService).
+    """
+    named_imports: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "import_statement":
+            continue
+
+        module_name = None
+        import_names: list[str] = []
+
+        for child in node.children:
+            if child.type == "string":
+                module_name = _node_text(child, source).strip("'\"")
+            elif child.type == "import_clause":
+                for clause_child in child.children:
+                    if clause_child.type == "named_imports":
+                        for spec in clause_child.children:
+                            if spec.type == "import_specifier":
+                                # import { Foo as Bar } — use alias (Bar)
+                                # import { Foo } — use original name (Foo)
+                                alias_node = None
+                                original_node = None
+                                for sc in spec.children:
+                                    if sc.type == "identifier":
+                                        if original_node is None:
+                                            original_node = sc
+                                        else:
+                                            alias_node = sc
+                                if alias_node:
+                                    import_names.append(_node_text(alias_node, source))
+                                elif original_node:
+                                    import_names.append(_node_text(original_node, source))
+
+        if module_name:
+            for name in import_names:
+                named_imports[name] = module_name
+
+    return named_imports
+
+
+def _disambiguate_by_import(
+    import_path: str,
+    file_path: Path,
+    full_name: str,
+    symbols_by_name: dict[str, list["Symbol"]],
+) -> "Symbol | None":
+    """Disambiguate same-named symbols using the import path.
+
+    When multiple files define the same symbol name (e.g., NestJS monorepo with
+    duplicate CatsService in different apps), uses the relative import path from
+    ``import { Foo } from './module'`` to select the correct symbol.
+
+    Resolves the import path relative to the importing file's directory and
+    matches against candidate symbol file paths (with extension stripped).
+    Only handles relative imports (starting with '.').
+
+    Returns the matching Symbol, or None if disambiguation fails.
+    """
+    if not import_path.startswith("."):
+        return None  # Non-relative imports can't be disambiguated this way
+
+    candidates = symbols_by_name.get(full_name)
+    if not candidates or len(candidates) < 2:
+        return None  # No disambiguation needed
+
+    # Resolve import path relative to importing file's directory
+    # e.g., './cats.service' relative to '/repo/dir_b/controller.ts'
+    # -> '/repo/dir_b/cats.service'
+    resolved = (file_path.parent / import_path).resolve()
+    resolved_str = str(resolved)
+
+    for candidate in candidates:
+        # Strip file extension: '/repo/dir_b/cats.service.ts' -> '/repo/dir_b/cats.service'
+        candidate_stem = str(Path(candidate.path).with_suffix(""))
+        if candidate_stem == resolved_str:
+            return candidate
+
+    return None
 
 
 # HTTP methods recognized as route handlers (Express, Fastify, Koa, etc.)
@@ -2129,6 +2222,8 @@ def _extract_edges(
     method_resolver: ListNameResolver | None = None,
     class_resolver: NameResolver | None = None,
     symbol_by_position: dict[tuple[str, int, int], Symbol] | None = None,
+    named_imports: dict[str, str] | None = None,
+    symbols_by_name: dict[str, list[Symbol]] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed tree (pass 2).
 
@@ -2148,6 +2243,12 @@ def _extract_edges(
     - Function parameters (TypeScript): function process(client: Client) -> client has type Client
 
     Type inference does NOT track types from function returns (const client = getClient()).
+
+    Import-path disambiguation (INV-013):
+    When multiple files define the same class name (e.g., NestJS monorepos),
+    ``named_imports`` and ``symbols_by_name`` are used to pick the correct
+    symbol by matching the relative import path against candidate file paths.
+    This applies to Cases 1b (this.property.method()) and 3 (variable.method()).
     """
     if namespace_imports is None:
         namespace_imports = {}
@@ -2310,17 +2411,27 @@ def _extract_edges(
                             if this_node and property_name and property_name in var_types:
                                 type_class_name = var_types[property_name]
                                 full_name = f"{type_class_name}.{method_name}"
-                                lookup_result = resolver.lookup(full_name)
-                                if lookup_result.found and lookup_result.symbol is not None:
+                                # Try import-path disambiguation first (monorepo duplicate names)
+                                import_module = (named_imports or {}).get(type_class_name)
+                                callee = None
+                                if import_module and symbols_by_name:
+                                    callee = _disambiguate_by_import(
+                                        import_module, file_path, full_name, symbols_by_name,
+                                    )
+                                if callee is None:
+                                    lookup_result = resolver.lookup(full_name)
+                                    if lookup_result.found and lookup_result.symbol is not None:
+                                        callee = lookup_result.symbol
+                                if callee is not None:
                                     edge = Edge.create(
                                         src=current_function.id,
-                                        dst=lookup_result.symbol.id,
+                                        dst=callee.id,
                                         edge_type="calls",
                                         line=node.start_point[0] + 1 + line_offset,
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
                                         evidence_type="ast_method_this_property",
-                                        confidence=0.90 * lookup_result.confidence,
+                                        confidence=0.90,
                                     )
                                     edges.append(edge)
                                     edge_added = True
@@ -2351,17 +2462,27 @@ def _extract_edges(
                         elif obj_name and obj_name in var_types:
                             type_class_name = var_types[obj_name]
                             full_name = f"{type_class_name}.{method_name}"
-                            lookup_result = resolver.lookup(full_name)
-                            if lookup_result.found and lookup_result.symbol is not None:
+                            # Try import-path disambiguation first (monorepo duplicate names)
+                            import_module = (named_imports or {}).get(type_class_name)
+                            callee = None
+                            if import_module and symbols_by_name:
+                                callee = _disambiguate_by_import(
+                                    import_module, file_path, full_name, symbols_by_name,
+                                )
+                            if callee is None:
+                                lookup_result = resolver.lookup(full_name)
+                                if lookup_result.found and lookup_result.symbol is not None:
+                                    callee = lookup_result.symbol
+                            if callee is not None:
                                 edge = Edge.create(
                                     src=current_function.id,
-                                    dst=lookup_result.symbol.id,
+                                    dst=callee.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1 + line_offset,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_method_type_inferred",
-                                    confidence=0.85 * lookup_result.confidence,
+                                    confidence=0.85,
                                 )
                                 edges.append(edge)
                                 edge_added = True
@@ -2676,9 +2797,10 @@ def analyze_javascript(
             tree = parser.parse(source)
             lang = _get_language_for_file(file_path)
             ns_imports = _extract_namespace_imports(tree, source)
+            nm_imports = _extract_named_imports(tree, source)
             parsed_files.append(_ParsedFile(
                 path=file_path, tree=tree, source=source, lang=lang,
-                namespace_imports=ns_imports
+                namespace_imports=ns_imports, named_imports=nm_imports
             ))
             symbols = _extract_symbols(tree, source, file_path, lang, run)
             all_symbols.extend(symbols)
@@ -2705,10 +2827,12 @@ def analyze_javascript(
                 lang = "typescript" if block.is_typescript else "javascript"
                 line_offset = block.start_line - 1
                 ns_imports = _extract_namespace_imports(tree, source_bytes)
+                nm_imports = _extract_named_imports(tree, source_bytes)
 
                 parsed_files.append(_ParsedFile(
                     path=file_path, tree=tree, source=source_bytes,
-                    lang=lang, line_offset=line_offset, namespace_imports=ns_imports
+                    lang=lang, line_offset=line_offset, namespace_imports=ns_imports,
+                    named_imports=nm_imports
                 ))
                 symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset)
                 all_symbols.extend(symbols)
@@ -2736,10 +2860,12 @@ def analyze_javascript(
                 lang = "typescript" if block.is_typescript else "javascript"
                 line_offset = block.start_line - 1
                 ns_imports = _extract_namespace_imports(tree, source_bytes)
+                nm_imports = _extract_named_imports(tree, source_bytes)
 
                 parsed_files.append(_ParsedFile(
                     path=file_path, tree=tree, source=source_bytes,
-                    lang=lang, line_offset=line_offset, namespace_imports=ns_imports
+                    lang=lang, line_offset=line_offset, namespace_imports=ns_imports,
+                    named_imports=nm_imports
                 ))
                 symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset)
                 all_symbols.extend(symbols)
@@ -2752,11 +2878,17 @@ def analyze_javascript(
     global_symbols: dict[str, Symbol] = {}
     global_methods: dict[str, list[Symbol]] = {}
     global_classes: dict[str, Symbol] = {}
+    # All symbols indexed by name (supports multiple with same name for disambiguation)
+    symbols_by_name: dict[str, list[Symbol]] = {}
     # Position-based lookup for inline route handlers: (file_path, start_line, start_col) -> Symbol
     symbol_by_position: dict[tuple[str, int, int], Symbol] = {}
 
     for sym in all_symbols:
         global_symbols[sym.name] = sym
+        # Multi-value index for import-path disambiguation
+        if sym.name not in symbols_by_name:
+            symbols_by_name[sym.name] = []
+        symbols_by_name[sym.name].append(sym)
         # Index by position for inline handler lookup in UsageContext creation
         symbol_by_position[(sym.path, sym.span.start_line, sym.span.start_col)] = sym
         if sym.kind == "method":
@@ -2779,6 +2911,8 @@ def analyze_javascript(
             pf.namespace_imports or {},
             resolver, method_resolver, class_resolver,
             symbol_by_position,
+            pf.named_imports or {},
+            symbols_by_name,
         )
         all_edges.extend(edges)
 

@@ -3894,6 +3894,193 @@ class CatsController {
         assert create_edge.confidence == 0.90
         assert find_all_edge.confidence == 0.90
 
+    def test_this_property_disambiguates_via_named_import(self, tmp_path: Path) -> None:
+        """this.property.method() should resolve to the correct class via named import.
+
+        When multiple files define the same class name, the import path should
+        disambiguate which one to use. This is essential for monorepos (e.g., NestJS
+        with multiple sample apps each defining CatsService).
+
+        The controller is in dir_b (alphabetically later) and imports from its own
+        directory, while dir_a has a decoy CatsService. Without import-aware
+        disambiguation, the resolver would pick dir_a (alphabetically first).
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # dir_a has a decoy CatsService (alphabetically first = default pick)
+        (tmp_path / "dir_a").mkdir()
+        # dir_b has the correct CatsService (alphabetically later)
+        (tmp_path / "dir_b").mkdir()
+
+        decoy_service = tmp_path / "dir_a" / "cats.service.ts"
+        decoy_service.write_text("""
+export class CatsService {
+    create(data: any) { return data; }
+}
+""")
+
+        correct_service = tmp_path / "dir_b" / "cats.service.ts"
+        correct_service.write_text("""
+export class CatsService {
+    create(data: any) { return data; }
+}
+""")
+
+        # Controller in dir_b imports CatsService from its own directory
+        controller = tmp_path / "dir_b" / "cats.controller.ts"
+        controller.write_text("""
+import { CatsService } from './cats.service';
+
+class CatsController {
+    constructor(private readonly catsService: CatsService) {}
+
+    async create(data: any) {
+        return this.catsService.create(data);
+    }
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        ctrl_create = next(
+            (s for s in result.symbols if s.name == "CatsController.create"), None
+        )
+        assert ctrl_create is not None, "Expected CatsController.create symbol"
+
+        # Find both CatsService.create symbols
+        svc_creates = [s for s in result.symbols if s.name == "CatsService.create"]
+        assert len(svc_creates) == 2, f"Expected 2 CatsService.create symbols, got {len(svc_creates)}"
+
+        svc_create_correct = next(
+            (s for s in svc_creates if "dir_b" in s.path), None
+        )
+        svc_create_decoy = next(
+            (s for s in svc_creates if "dir_a" in s.path), None
+        )
+        assert svc_create_correct is not None
+        assert svc_create_decoy is not None
+
+        # Should have an edge to dir_b's CatsService.create (same directory import)
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        correct_edge = next(
+            (e for e in call_edges if e.src == ctrl_create.id and e.dst == svc_create_correct.id),
+            None,
+        )
+        assert correct_edge is not None, (
+            "Expected call edge to dir_b/CatsService.create (via named import), "
+            f"got edges: {[(e.dst, e.evidence_type) for e in call_edges if e.src == ctrl_create.id]}"
+        )
+
+        # Should NOT have an edge to dir_a's CatsService.create
+        wrong_edge = next(
+            (e for e in call_edges if e.src == ctrl_create.id and e.dst == svc_create_decoy.id),
+            None,
+        )
+        assert wrong_edge is None, (
+            "Should NOT have edge to dir_a/CatsService.create — wrong disambiguation"
+        )
+
+    def test_variable_method_disambiguates_via_named_import(self, tmp_path: Path) -> None:
+        """variable.method() (Case 3) should also use import-path disambiguation."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "dir_a").mkdir()
+        (tmp_path / "dir_b").mkdir()
+
+        # Decoy in dir_a (alphabetically first)
+        (tmp_path / "dir_a" / "cats.service.ts").write_text(
+            "export class CatsService {\n    create() { return 1; }\n}\n"
+        )
+        # Correct in dir_b
+        (tmp_path / "dir_b" / "cats.service.ts").write_text(
+            "export class CatsService {\n    create() { return 2; }\n}\n"
+        )
+        # Consumer in dir_b uses local variable (Case 3: svc.create())
+        (tmp_path / "dir_b" / "app.ts").write_text(
+            "import { CatsService } from './cats.service';\n"
+            "function run() {\n"
+            "    const svc = new CatsService();\n"
+            "    svc.create();\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+        run_fn = next((s for s in result.symbols if s.name == "run"), None)
+        assert run_fn is not None
+        svc_creates = [s for s in result.symbols if s.name == "CatsService.create"]
+        assert len(svc_creates) == 2
+        correct = next((s for s in svc_creates if "dir_b" in s.path), None)
+        assert correct is not None
+
+        type_edges = [
+            e for e in result.edges
+            if e.src == run_fn.id and e.evidence_type == "ast_method_type_inferred"
+        ]
+        assert any(e.dst == correct.id for e in type_edges), (
+            f"Expected Case 3 edge to dir_b/CatsService.create, got: "
+            f"{[(e.dst, e.evidence_type) for e in type_edges]}"
+        )
+
+    def test_import_alias_tracked_in_named_imports(self, tmp_path: Path) -> None:
+        """import { Foo as Bar } from './module' should track alias 'Bar'."""
+        from hypergumbo_lang_mainstream.js_ts import _extract_named_imports, _get_parser_for_lang
+
+        parser = _get_parser_for_lang(is_typescript=True)
+        assert parser is not None
+        source = b"import { CatsService as CS } from './cats.service';"
+        tree = parser.parse(source)
+        imports = _extract_named_imports(tree, source)
+        # Alias should be the key, not the original name
+        assert "CS" in imports
+        assert imports["CS"] == "./cats.service"
+
+    def test_disambiguate_non_relative_import_falls_through(self, tmp_path: Path) -> None:
+        """Non-relative imports (e.g., @nestjs/common) skip disambiguation."""
+        from hypergumbo_lang_mainstream.js_ts import _disambiguate_by_import
+        from hypergumbo_core.ir import Symbol, Span
+
+        sym = Symbol(
+            id="test:1", name="Foo.bar", kind="method",
+            path="/repo/foo.ts", span=Span(1, 0, 1, 0), language="typescript",
+        )
+        result = _disambiguate_by_import(
+            "@nestjs/common", Path("/repo/app.ts"), "Foo.bar", {"Foo.bar": [sym, sym]},
+        )
+        assert result is None
+
+    def test_disambiguate_single_candidate_returns_none(self, tmp_path: Path) -> None:
+        """Disambiguation with a single candidate returns None (no ambiguity)."""
+        from hypergumbo_lang_mainstream.js_ts import _disambiguate_by_import
+        from hypergumbo_core.ir import Symbol, Span
+
+        sym = Symbol(
+            id="test:1", name="Foo.bar", kind="method",
+            path="/repo/foo.ts", span=Span(1, 0, 1, 0), language="typescript",
+        )
+        result = _disambiguate_by_import(
+            "./foo", Path("/repo/app.ts"), "Foo.bar", {"Foo.bar": [sym]},
+        )
+        assert result is None
+
+    def test_disambiguate_no_match_returns_none(self, tmp_path: Path) -> None:
+        """Disambiguation returns None when import path doesn't match any candidate."""
+        from hypergumbo_lang_mainstream.js_ts import _disambiguate_by_import
+        from hypergumbo_core.ir import Symbol, Span
+
+        sym_a = Symbol(
+            id="test:a", name="Foo.bar", kind="method",
+            path="/repo/dir_a/foo.ts", span=Span(1, 0, 1, 0), language="typescript",
+        )
+        sym_b = Symbol(
+            id="test:b", name="Foo.bar", kind="method",
+            path="/repo/dir_b/foo.ts", span=Span(1, 0, 1, 0), language="typescript",
+        )
+        # Import points to dir_c which doesn't match either candidate
+        result = _disambiguate_by_import(
+            "./dir_c/foo", Path("/repo/app.ts"), "Foo.bar", {"Foo.bar": [sym_a, sym_b]},
+        )
+        assert result is None
+
 
 # ============================================================================
 # TypeScript Decorator Metadata Tests (Phase 4)
