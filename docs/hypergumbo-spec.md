@@ -873,13 +873,24 @@ def calculate_evidence_confidence(
 ## 11) Output reproducibility
 
 ### Caching
-* Location: `.hypergumbo/cache/`
+* Location: `~/.cache/hypergumbo/` (XDG-compliant; respects `XDG_CACHE_HOME` if set)
+* Cache structure:
+  ```
+  ~/.cache/hypergumbo/
+  └── <repo-fingerprint>/
+      ├── embeddings/
+      │   └── embed_<file-content-hash>.npy
+      └── results/
+          └── <state-hash>/
+              └── hypergumbo.results.json
+  ```
 * Keying strategy:
-  * File-level results: `(content_hash, run_signature)`
-  * Full analysis outputs: `(repo_fingerprint, run_signature)` where `repo_fingerprint` changes when any analyzed file content changes (including dirty git files).
-* File-level cache stores mapping: `file_path → content_hash → cached_result`
-* Cache invalidation: if analyzer version changes or repo_fingerprint changes
-* Cache format: JSON (simple, debuggable)
+  * **Repo fingerprint** (stable identity): hash of remote origin URL + first commit SHA (git repos) or absolute path (non-git). Shared across checkouts of the same repo.
+  * **State hash** (point-in-time snapshot): hash of HEAD SHA + diff of tracked changes + untracked source file metadata. Changes when any file is modified.
+  * **Embedding cache**: keyed by individual file content hash; shared across all repo states since embeddings depend only on file content.
+* Cache invalidation: state hash changes when any analyzed file content changes (including dirty git files)
+* Cache format: JSON for analysis results, NumPy `.npy` for embeddings
+* Management: `hypergumbo cache-status` and `hypergumbo cache-clear [--older-than N] [--dry-run]`
 
 ### Deterministic ordering
 * Stable sort of nodes/edges for reproducible diffs
