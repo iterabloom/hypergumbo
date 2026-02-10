@@ -168,7 +168,7 @@ jobs:
           if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
             COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
           fi
-          WORKERS="${{ vars.PYTEST_WORKERS || '2' }}"
+          WORKERS=${{ runner.name == 'hypergumbo-local' && '8' || '2' }}
 
           pytest packages/hypergumbo-core/tests/ -n "$WORKERS" --tb=short \
             --cov=packages/hypergumbo-core/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
@@ -222,7 +222,7 @@ jobs:
           if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
             COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
           fi
-          WORKERS="${{ vars.PYTEST_WORKERS || '2' }}"
+          WORKERS=${{ runner.name == 'hypergumbo-local' && '8' || '2' }}
 
           pytest packages/hypergumbo-lang-mainstream/tests/ -n "$WORKERS" --tb=short \
             --cov=packages/hypergumbo-lang-mainstream/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
@@ -276,7 +276,7 @@ jobs:
           if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
             COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
           fi
-          WORKERS="${{ vars.PYTEST_WORKERS || '2' }}"
+          WORKERS=${{ runner.name == 'hypergumbo-local' && '8' || '2' }}
 
           pytest packages/hypergumbo-lang-common/tests/ -n "$WORKERS" --tb=short \
             --cov=packages/hypergumbo-lang-common/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
@@ -330,7 +330,7 @@ jobs:
           if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
             COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
           fi
-          WORKERS="${{ vars.PYTEST_WORKERS || '2' }}"
+          WORKERS=${{ runner.name == 'hypergumbo-local' && '8' || '2' }}
 
           pytest packages/hypergumbo-lang-extended1/tests/ -n "$WORKERS" --tb=short \
             --cov=packages/hypergumbo-lang-extended1/src $COV_CONFIG --cov-report=term | tee coverage-output.txt

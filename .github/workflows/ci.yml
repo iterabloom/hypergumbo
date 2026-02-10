@@ -142,13 +142,17 @@ jobs:
     needs: [changes, stop-the-line]
     if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure'
     runs-on: codeberg-small-lazy
+    env:
+      SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: 'pip'
+          # No cache: 'pip' — setup-python@v5 bundles @actions/cache npm v4
+          # which speaks Twirp v2 protocol. Forgejo's cache proxy only implements
+          # v1 REST, so the v4 client hangs with ETIMEDOUT (~3 min per job).
       - name: Install linting tools
         run: |
           pip install --upgrade pip
@@ -185,13 +189,14 @@ jobs:
     needs: [changes, stop-the-line]
     if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure'
     runs-on: codeberg-small-lazy
+    env:
+      SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: 'pip'
       - name: Install pip-audit
         run: |
           pip install --upgrade pip wheel setuptools
@@ -203,13 +208,14 @@ jobs:
     needs: [changes, stop-the-line]
     if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure'
     runs-on: codeberg-small-lazy
+    env:
+      SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: 'pip'
       - name: Install dependencies
         run: |
           pip install --upgrade pip
@@ -231,6 +237,8 @@ jobs:
     needs: [changes, stop-the-line]
     if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure'
     runs-on: codeberg-small-lazy
+    env:
+      SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -256,6 +264,8 @@ jobs:
     if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure' && needs.build-grammars.result != 'failure'
     runs-on: codeberg-small-lazy
     timeout-minutes: 30
+    env:
+      SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -422,7 +432,7 @@ jobs:
         if: steps.manifest.outputs.skip_tests != 'true'
         run: |
           MANIFEST=".ci/affected-tests.txt"
-          WORKERS="${{ vars.PYTEST_WORKERS || '2' }}"
+          WORKERS=${{ runner.name == 'hypergumbo-local' && '8' || '2' }}
 
           if [ ! -f "$MANIFEST" ] || [ "${{ steps.manifest.outputs.use_manifest }}" != "true" ]; then
             echo "❌ No valid manifest - cannot run tests"
