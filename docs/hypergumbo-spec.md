@@ -1990,14 +1990,13 @@ This contract ensures current outputs remain valid when future capabilities are 
 
 ### Testing Requirements
 
-**Current test suite MUST:**
-- Include golden file regression tests (fixtures → expected JSON)
+**Current test suite MUST** (see [§15 Testing & quality bar](#15-testing--quality-bar) for details):
+- Verify structural invariants via property-based tests (valid IDs, confidence ranges, schema compliance, no dangling edge references)
 - Validate against JSON Schema (automated validation)
 - Test ID stability (same code → same IDs deterministically)
 - Test deterministic ordering (sort keys defined, reproducible output)
 
 **Future test suite MUST additionally:**
-- Run current golden files (backward compatibility check)
 - Ensure current outputs pass future schema validation (with unknown field tolerance)
 - Test mixed-fidelity graphs (AST edges + future typed edges coexist)
 - Test view compilation (same IR → multiple views including behavior_map)
