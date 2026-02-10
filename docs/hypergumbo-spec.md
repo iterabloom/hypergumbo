@@ -16,7 +16,7 @@ Status: living document.
 *Use `grep "🟨"` to find in-progress items, etc.*
 
 ## 0) One-sentence summary
-A local-first CLI that profiles a repo and emits a **repo behavior map** (versioned JSON views from an internal IR) with machine-readable provenance for agent-friendly context.
+A local-first CLI that helps developers and AI agents understand an unfamiliar codebase by analyzing its structure and emitting a **repo behavior map**—a JSON graph of symbols, call edges, routes, and framework patterns with confidence scores and provenance tracking.
 
 ## 1) Goals
 * 🟩 **Internal IR with views**: Parsers emit to an internal representation; public outputs are compiled views (enables future typed passes without breaking schema).
@@ -32,7 +32,7 @@ A local-first CLI that profiles a repo and emits a **repo behavior map** (versio
 * No deep type-resolution / interprocedural dataflow correctness guarantees.
 * No accounts, ratings, or social features.
 * No automatic PR fixing, no code editing, no CI annotations beyond "export JSON."
-* No attempt to support *every* language—support a small set well.
+* No attempt to support every language *deeply*—broad coverage via tree-sitter (104 languages), deep call-graph extraction for a smaller set. See §4.
 * No incremental analysis daemon (full re-analysis is acceptable).
 * No LLM-generated analyzer code.
 
@@ -1298,9 +1298,9 @@ def should_traverse(edge: Edge, target: Symbol, max_tier: int) -> bool:
 }
 ```
 
-### File Role Classification (Proposed)
+### File Role Classification
 
-Supply chain **tiers** answer "where does this file come from?" (provenance). A complementary dimension, **file roles**, answers "what is this file for?" (purpose). See [ADR-0004](adr/0004-file-taxonomy.md) for the full design proposal.
+Supply chain **tiers** answer "where does this file come from?" (provenance). A complementary dimension, **file roles**, answers "what is this file for?" (purpose). See [ADR-0004](adr/0004-file-taxonomy.md) for the design rationale.
 
 | Role | Description | Examples |
 |------|-------------|----------|
