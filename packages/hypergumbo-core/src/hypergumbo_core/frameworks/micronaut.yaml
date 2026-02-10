@@ -9,14 +9,18 @@ language: java
 patterns:
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
   # Micronaut Controller annotation
+  # @Controller("/api") defines the base path for all method routes
   - concept: controller
     annotation: "^Controller$"
+    extract_path: "annotation_value"
 
   # Micronaut HTTP method annotations
+  # Method routes inherit path prefix from class-level @Controller (prefix_from_parent)
   - concept: route
     annotation: "^(Get|Post|Put|Delete|Patch|Head|Options)$"
     extract_path: "annotation_value"
     extract_method: "annotation_name"
+    prefix_from_parent: "controller"
 
   # Micronaut @Produces
   - concept: route

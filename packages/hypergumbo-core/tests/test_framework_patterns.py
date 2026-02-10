@@ -2308,6 +2308,86 @@ class TestSpringPatterns:
         assert route_concept["path"] == "/users"
         assert route_concept["framework"] == "spring-boot"
 
+    def test_spring_request_mapping_positional_path(self) -> None:
+        """@RequestMapping with positional arg extracts path correctly.
+
+        @RequestMapping("/owners/{ownerId}") on a class uses args[0],
+        not kwargs.value. The extract_path must support both.
+        """
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("spring-boot")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:PetController.java:46:PetController:class",
+            name="PetController",
+            kind="class",
+            language="java",
+            path="PetController.java",
+            span=Span(46, 140, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "RequestMapping", "args": ["/owners/{ownerId}"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        route_result = next((r for r in results if r["concept"] == "route"), None)
+        assert route_result is not None
+        assert route_result["path"] == "/owners/{ownerId}"
+
+    def test_spring_prefix_from_parent_request_mapping(self) -> None:
+        """Method routes inherit path prefix from class-level @RequestMapping.
+
+        Spring MVC pattern: @RequestMapping on class + @GetMapping on method
+        should combine paths (e.g., /owners/{ownerId} + /pets/new = /owners/{ownerId}/pets/new).
+        """
+        clear_pattern_cache()
+
+        # Class with @Controller and @RequestMapping("/owners/{ownerId}")
+        controller = Symbol(
+            id="test:PetController.java:46-140:PetController:class",
+            name="PetController",
+            kind="class",
+            language="java",
+            path="PetController.java",
+            span=Span(46, 140, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Controller", "args": [], "kwargs": {}},
+                    {"name": "RequestMapping", "args": ["/owners/{ownerId}"], "kwargs": {}},
+                ],
+            },
+        )
+
+        # Method with @GetMapping("/pets/new")
+        method = Symbol(
+            id="test:PetController.java:98-104:PetController.initCreationForm:method",
+            name="PetController.initCreationForm",
+            kind="method",
+            language="java",
+            path="PetController.java",
+            span=Span(98, 104, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "GetMapping", "args": ["/pets/new"], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([controller, method], {"spring-boot"})
+
+        # Method should have combined path from class-level @RequestMapping
+        method_concepts = enriched[1].meta.get("concepts", [])
+        route_concept = next(
+            (c for c in method_concepts if c.get("concept") == "route"), None
+        )
+        assert route_concept is not None
+        assert route_concept["method"] == "GET"
+        assert route_concept["path"] == "/owners/{ownerId}/pets/new"
+
 
 class TestAnnotationMethodExtraction:
     """Tests for annotation-based method extraction modes."""
@@ -5945,6 +6025,286 @@ class TestAspNetPatterns:
         controller = next(s for s in enriched if s.name == "UsersController")
         assert "concepts" in controller.meta
         assert any(c["concept"] == "controller" for c in controller.meta["concepts"])
+
+    def test_aspnet_prefix_from_parent_route(self) -> None:
+        """[HttpGet] inherits path prefix from class-level [Route].
+
+        ASP.NET pattern: [Route("api/users")] on class + [HttpGet("{id}")] on
+        method should combine paths to /api/users/{id}.
+        """
+        clear_pattern_cache()
+
+        # Class with [ApiController] and [Route("api/users")]
+        controller = Symbol(
+            id="test:UsersController.cs:1-50:UsersController:class",
+            name="UsersController",
+            kind="class",
+            language="csharp",
+            path="Controllers/UsersController.cs",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "ApiController", "args": [], "kwargs": {}},
+                    {"name": "Route", "args": ["api/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        # Method with [HttpGet("{id}")]
+        method = Symbol(
+            id="test:UsersController.cs:10-20:UsersController.GetById:method",
+            name="UsersController.GetById",
+            kind="method",
+            language="csharp",
+            path="Controllers/UsersController.cs",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "annotations": [
+                    {"name": "HttpGet", "args": ["{id}"], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([controller, method], {"aspnet"})
+
+        method_concepts = enriched[1].meta.get("concepts", [])
+        route_concept = next(
+            (c for c in method_concepts if c.get("concept") == "route"), None
+        )
+        assert route_concept is not None
+        assert route_concept["method"] == "GET"
+        assert route_concept["path"] == "/api/users/{id}"
+
+
+class TestJaxRsPatterns:
+    """Tests for JAX-RS framework pattern matching."""
+
+    def test_jaxrs_path_annotation(self) -> None:
+        """@Path annotation extracts resource path."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jax-rs")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UsersResource.java:10:UsersResource:class",
+            name="UsersResource",
+            kind="class",
+            language="java",
+            path="UsersResource.java",
+            span=Span(10, 100, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Path", "args": ["/api/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        resource_path = next(
+            (r for r in results if r["concept"] == "resource_path"), None
+        )
+        assert resource_path is not None
+        assert resource_path["path"] == "/api/users"
+
+    def test_jaxrs_http_method_annotations(self) -> None:
+        """@GET, @POST etc. match route patterns with method extraction."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jax-rs")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UsersResource.java:20:UsersResource.getAll:method",
+            name="UsersResource.getAll",
+            kind="method",
+            language="java",
+            path="UsersResource.java",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "GET", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        route = next((r for r in results if r["concept"] == "route"), None)
+        assert route is not None
+        assert route["method"] == "GET"
+
+    def test_jaxrs_prefix_from_parent_path(self) -> None:
+        """@GET on method inherits path prefix from class-level @Path.
+
+        JAX-RS pattern: @Path("/api/users") on class + @GET on method
+        should give the route concept the parent's path.
+        """
+        clear_pattern_cache()
+
+        # Class with @Path("/api/users")
+        resource_class = Symbol(
+            id="test:UsersResource.java:10-100:UsersResource:class",
+            name="UsersResource",
+            kind="class",
+            language="java",
+            path="UsersResource.java",
+            span=Span(10, 100, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Path", "args": ["/api/users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        # Method with @GET (no path of its own)
+        method = Symbol(
+            id="test:UsersResource.java:20-30:UsersResource.getAll:method",
+            name="UsersResource.getAll",
+            kind="method",
+            language="java",
+            path="UsersResource.java",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "GET", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([resource_class, method], {"jax-rs"})
+
+        method_concepts = enriched[1].meta.get("concepts", [])
+        route_concept = next(
+            (c for c in method_concepts if c.get("concept") == "route"), None
+        )
+        assert route_concept is not None
+        assert route_concept["method"] == "GET"
+        assert route_concept["path"] == "/api/users"
+
+
+class TestMicronautPatterns:
+    """Tests for Micronaut framework pattern matching."""
+
+    def test_micronaut_controller_annotation(self) -> None:
+        """@Controller annotation matches with path extraction."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("micronaut")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UserController.java:10:UserController:class",
+            name="UserController",
+            kind="class",
+            language="java",
+            path="UserController.java",
+            span=Span(10, 100, 0, 0),
+            meta={
+                "annotations": [
+                    {
+                        "name": "Controller",
+                        "annotation_value": "/api",
+                        "args": [],
+                        "kwargs": {},
+                    },
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        controller = next(
+            (r for r in results if r["concept"] == "controller"), None
+        )
+        assert controller is not None
+        assert controller["path"] == "/api"
+
+    def test_micronaut_route_annotations(self) -> None:
+        """@Get, @Post etc. match route patterns."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("micronaut")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:UserController.java:20:UserController.list:method",
+            name="UserController.list",
+            kind="method",
+            language="java",
+            path="UserController.java",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "annotations": [
+                    {
+                        "name": "Get",
+                        "annotation_value": "/users",
+                        "args": [],
+                        "kwargs": {},
+                    },
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        route = next((r for r in results if r["concept"] == "route"), None)
+        assert route is not None
+        assert route["path"] == "/users"
+
+    def test_micronaut_prefix_from_parent_controller(self) -> None:
+        """@Get on method inherits path prefix from class-level @Controller.
+
+        Micronaut pattern: @Controller("/api") on class + @Get("/users") on
+        method should combine paths to /api/users.
+        """
+        clear_pattern_cache()
+
+        # Class with @Controller("/api")
+        controller = Symbol(
+            id="test:UserController.java:10-100:UserController:class",
+            name="UserController",
+            kind="class",
+            language="java",
+            path="UserController.java",
+            span=Span(10, 100, 0, 0),
+            meta={
+                "annotations": [
+                    {
+                        "name": "Controller",
+                        "annotation_value": "/api",
+                        "args": [],
+                        "kwargs": {},
+                    },
+                ],
+            },
+        )
+
+        # Method with @Get("/users")
+        method = Symbol(
+            id="test:UserController.java:20-30:UserController.list:method",
+            name="UserController.list",
+            kind="method",
+            language="java",
+            path="UserController.java",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "annotations": [
+                    {
+                        "name": "Get",
+                        "annotation_value": "/users",
+                        "args": [],
+                        "kwargs": {},
+                    },
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([controller, method], {"micronaut"})
+
+        method_concepts = enriched[1].meta.get("concepts", [])
+        route_concept = next(
+            (c for c in method_concepts if c.get("concept") == "route"), None
+        )
+        assert route_concept is not None
+        assert route_concept["path"] == "/api/users"
 
 
 class TestJavaAnalyzerIntegration:
