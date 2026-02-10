@@ -390,15 +390,15 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
 ```json
 {
   "execution_id": "uuid:abc-def-789...",
-  "run_signature": "sha256:xyz789...",  // (deterministic hash of pass+version+config_fingerprint+toolchain)
-  "repo_fingerprint": "sha256:repo123...",  // (deterministic snapshot id)
+  "run_signature": "sha256:xyz789...",
+  "repo_fingerprint": "sha256:repo123...",
   "pass": "python-ast-v1",
   "version": "hypergumbo-0.1.0",
   "toolchain": {"name": "python", "version": "3.11.0"},
   "config_fingerprint": "sha256:abc123...",
   "files_analyzed": 42,
   "files_skipped": 1,
-  "skipped_passes": [],  // (for requested-but-unavailable components)
+  "skipped_passes": [],
   "warnings": ["skipped bundle.min.js (2.1MB exceeds limit)"],
   "started_at": "2024-01-15T10:30:00Z",
   "duration_ms": 1234
@@ -407,7 +407,7 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
 
 **Field semantics:**
 
-`execution_id`, `run_signature`, and `repo_fingerprint` are defined in [§5 IR Layer](#ir-layer). Additional fields:
+`execution_id`, `run_signature`, and `repo_fingerprint` are defined in [§5 Identity and provenance field semantics](#ir-layer). Additional fields:
 
 * `toolchain`: Versions of language runtimes/parsers used (empty `{}` for syntax-only passes)
 * `config_fingerprint`: Hash of effective configuration affecting this pass (for cache invalidation)
@@ -1774,163 +1774,17 @@ If dataflow proves infeasible, agent-guided slicing (agents specify hops/filters
 
 ## Appendix A: Example output
 
-Minimal working example for a tiny FastAPI app:
+The JSON output structure is documented field-by-field in [§6](#6-output-repo-behavior-map-json), with inline examples for each top-level section (`analysis_runs[]`, `nodes[]`, `edges[]`, `features[]`, `metrics`, `limits`). The [top-level structure](#top-level-structure) shows all fields together.
 
-```json
-{
-  "schema_version": "0.2.1",
-  "confidence_model": "hypergumbo-evidence-v1",
-  "view": "behavior_map",
-  "generated_at": "2024-01-15T10:30:00Z",
-  "analysis_incomplete": false,
-  "analysis_runs": [
-    {
-      "execution_id": "uuid:abc-def-789...",
-      "run_signature": "sha256:run1abc...",
-      "repo_fingerprint": "sha256:repo123...",
-      "pass": "python-ast-v1",
-      "version": "hypergumbo-0.1.0",
-      "toolchain": {"name": "python", "version": "3.11.0"},
-      "config_fingerprint": "sha256:abc123...",
-      "files_analyzed": 3,
-      "files_skipped": 0,
-      "skipped_passes": [],
-      "warnings": [],
-      "started_at": "2024-01-15T10:30:00Z",
-      "duration_ms": 450
-    }
-  ],
-  "profile": {
-    "languages": {"python": {"files": 3, "loc": 120}},
-    "frameworks": ["fastapi"],
-    "repo_kind": "web_api"
-  },
-  "nodes": [
-    {
-      "id": "python:main.py:1-50:main:module",
-      "stable_id": "sha256:main_module_hash...",
-      "canonical_name": "main",
-      "fingerprint": "sha256:abc...",
-      "kind": "module",
-      "name": "main",
-      "path": "main.py",
-      "language": "python",
-      "span": {"start_line": 1, "end_line": 50},
-      "origin": "python-ast-v1",
-      "origin_run_id": "uuid:abc-def-789...",
-      "quality": {"score": 1.0, "reason": "module definition"}
-    },
-    {
-      "id": "python:main.py:10-15:get_user:function",
-      "stable_id": "sha256:get_user_sig_hash...",
-      "canonical_name": "main.get_user",
-      "fingerprint": "sha256:def...",
-      "kind": "endpoint",
-      "name": "get_user",
-      "path": "main.py",
-      "language": "python",
-      "span": {"start_line": 10, "end_line": 15},
-      "origin": "python-ast-v1",
-      "origin_run_id": "uuid:abc-def-789...",
-      "quality": {"score": 0.95, "reason": "FastAPI route decorator detected"}
-    }
-  ],
-  "edges": [
-    {
-      "id": "edge:sha256:call1...",
-      "type": "calls",
-      "src": "python:main.py:10-15:get_user:function",
-      "dst": "python:db.py:5-10:query_user:function",
-      "confidence": 0.90,
-      "origin": "python-ast-v1",
-      "origin_run_id": "uuid:abc-def-789...",
-      "quality": {"score": 0.90, "reason": "Direct AST call"},
-      "meta": {
-        "evidence_type": "ast_call_direct",
-        "evidence_lang": "python",
-        "evidence_spans": [
-          {
-            "file": "main.py",
-            "span": {"start_line": 12, "end_line": 12, "start_col": 8, "end_col": 24}
-          }
-        ]
-      }
-    }
-  ],
-  "features": [
-    {
-      "id": "sha256:feature1...",
-      "name": "get-user-flow",
-      "entry_nodes": ["python:main.py:10-15:get_user:function"],
-      "node_ids": ["python:main.py:10-15:get_user:function", "python:db.py:5-10:query_user:function"],
-      "edge_ids": ["edge:sha256:call1..."],
-      "query": {
-        "method": "bfs",
-        "entrypoint": "fastapi_route:/user/{id}",
-        "hops": 2,
-        "max_files": 10
-      },
-      "limits_hit": []
-    }
-  ],
-  "metrics": {
-    "total_nodes": 2,
-    "total_edges": 1,
-    "avg_confidence": 0.90
-  },
-  "limits": {
-    "not_captured": ["dynamic imports"],
-    "truncated_files": [],
-    "skipped_languages": [],
-    "failed_files": [],
-    "partial_results_reason": "",
-    "analyzer_version": "hypergumbo-0.1.0",
-    "analysis_depth": "syntax_only"
-  }
-}
-```
+For a complete real-world example (install, run, and full output), see [example-output.md](example-output.md).
 
 ## Appendix B: Evolution path
 
-The architecture is designed to enable future enhancements without breaking changes. See [§16 Future Work](#16-future-work) for the full roadmap.
+The architecture is designed to enable future enhancements without breaking changes. Key extensibility points are documented in their primary locations:
 
-### What's future-proof
-
-* **Internal IR**: Strong analyzers (tsserver, pyright) can enhance the IR
-* **View system**: New views (`ir_export`, `context_bundle`) can be added
-* **Provenance**: Already tracks which pass created which nodes/edges via execution_id
-* **Versioned schema**: Room for v0.2, v0.3 with migration paths
-
-### What stays the same
-
-* `behavior_map.json` format (backward compatible)
-* Location-based node IDs (stable anchor)
-* Confidence/quality model (extensible via versioning)
-* Slicing primitives (features with query specs)
-
-### What enables future capabilities
-
-**stable_id**:
-- Cross-refactor tracking (incremental analysis)
-- Symbol identity when code moves (impact zones)
-
-**shape_id**:
-- Detect structural changes independent of signature
-- Implementation similarity analysis
-
-**evidence_type + confidence layering**:
-- Mixed-fidelity graphs (AST edges + typed edges in same IR)
-- Analyzer benchmarking (precision by evidence type)
-- Agent filtering (show only high-confidence edges)
-
-**Machine-readable provenance**:
-- Critical for merging edges from multiple analyzers
-- Enables programmatic quality assessment
-- Foundation for context router filtering
-
-**Toolchain capture**:
-- Reproducibility requirements
-- Version tracking for debugging
+* **IR and identity fields** (`stable_id`, `shape_id`, provenance): [§5 Architecture](#5-architecture) — designed for cross-refactor tracking, mixed-fidelity analysis, and multi-pass merging.
+* **Output schema** (immutable contracts, unknown-field tolerance, view system): [Appendix E](#appendix-e-forward-compatibility-contract) — defines what can change in minor vs. major versions.
+* **Planned capabilities** (language servers, agent context router, additional views): [§16 Future Work](#16-future-work) — the features these extensibility points are designed to enable.
 
 ## Appendix C: Versioning & Support Policy
 
