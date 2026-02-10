@@ -385,7 +385,7 @@ The schema follows JSON Schema Draft 2020-12 and can be used for:
 
 The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring algorithm. Consumers should treat unknown evidence types as 0.30 confidence.
 
-For the deterministic scoring algorithm (language-specific base scores, evidence types, contextual adjustments), see [§8 Confidence calculation](#confidence-calculation-deterministic-algorithm).
+For the deterministic scoring algorithm (language-specific base scores, evidence types, contextual adjustments), see [§9 Confidence calculation](#confidence-calculation-deterministic-algorithm).
 
 ### analysis_runs[] — provenance tracking
 ```json
@@ -439,7 +439,7 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
 }
 ```
 
-**LOC definition:** Lines of code counts non-empty lines in files matching language extensions. Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§10 File Role Classification](#file-role-classification-proposed) for the proposed taxonomy that would also exclude pure data files from LOC counts.
+**LOC definition:** Lines of code counts non-empty lines in files matching language extensions. Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§12 File Role Classification](#file-role-classification-proposed) for the proposed taxonomy that would also exclude pure data files from LOC counts.
 
 ### nodes[] — definitions, files, endpoints
 
@@ -485,7 +485,7 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
 - `tier` (integer, 1-4): Numeric tier for filtering/sorting
 - `tier_name` (string): Human-readable name (`first_party`, `internal_dep`, `external_dep`, `derived`)
 - `reason` (string): Classification rationale (e.g., "matches ^src/", "detected as minified")
-- See §10 for classification algorithm and tier definitions.
+- See §12 for classification algorithm and tier definitions.
 
 `origin_run_id` and `origin_run_signature` are defined in [§5 IR Layer](#ir-layer). They reference `analysis_runs[].execution_id` and `analysis_runs[].run_signature` respectively.
 
@@ -570,7 +570,7 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
 - `evidence_lang` (optional): Language used for confidence scoring. Defaults to `src` node's language if omitted. Required for cross-language edges (HTTP, IPC) where src/dst languages differ.
 - `evidence_spans[]`: Structured locations of evidence. Each span includes file path and line/column range.
 
-**Evidence types** (machine-readable, see [§8](#confidence-calculation-deterministic-algorithm) for scoring algorithm):
+**Evidence types** (machine-readable, see [§9](#confidence-calculation-deterministic-algorithm) for scoring algorithm):
 * `ast_call_direct` — Direct function call in AST
 * `ast_call_method` — Method call with receiver
 * `ast_getattr_call` — Call via getattr/dynamic lookup
@@ -796,7 +796,7 @@ Query format enables exact reproduction:
 
 Feature comparison across commits: same query → compare `node_ids`/`edge_ids` to detect changes.
 
-## 8) Safety + performance guardrails
+## 8) Analysis guardrails
 
 ### Exclude patterns
 
@@ -812,6 +812,8 @@ Feature comparison across commits: same query → compare `node_ids`/`edge_ids` 
 * `--max-file-bytes` default: 2MB
 * Especially important for HTML/minified JS
 * Truncated files logged in `limits.truncated_files[]`
+
+## 9) Confidence scoring
 
 ### Confidence calculation (deterministic algorithm)
 
@@ -865,6 +867,8 @@ def calculate_evidence_confidence(
 
 **Note**: Base scores are heuristic baselines (to be validated against benchmark suite). New evidence types can be added in minor versions.
 
+## 10) Output reproducibility
+
 ### Caching
 * Location: `.hypergumbo/cache/`
 * Keying strategy:
@@ -881,7 +885,7 @@ def calculate_evidence_confidence(
   * Edges: `(src, dst, type)`
 * Enables meaningful `git diff` of output files
 
-## 9) Cross-Language Edge Detection
+## 11) Cross-Language Edge Detection
 
 Hypergumbo provides **best-effort cross-language edge detection** for common integration patterns. These are AST-based heuristics with string literal matching, not type-resolved or dataflow analysis.
 
@@ -971,7 +975,7 @@ Detects HTTP route definitions for entrypoint detection.
 * Used by entrypoint detection for slicing
 
 **Client-side linking:**
-Cross-language client→server matching (e.g., `fetch("/api/users")` → Flask handler) is not yet implemented. See [§16 Future Work](#16-future-work).
+Cross-language client→server matching (e.g., `fetch("/api/users")` → Flask handler) is not yet implemented. See [§18 Future Work](#18-future-work).
 
 ### Language-Specific Detection Notes
 
@@ -1019,7 +1023,7 @@ Cross-language linkers log unresolved patterns for debugging:
 }
 ```
 
-## 10) Supply Chain Classification
+## 12) Supply Chain Classification
 
 Hypergumbo classifies files by their position in the project's dependency graph. This enables focused analysis (first-party code prioritized in results) and noise reduction (derived artifacts excluded from analysis entirely).
 
@@ -1333,7 +1337,7 @@ Tier and Role compose for analysis decisions:
 
 **Status:** 🟩 Implemented (ADR-0004). The `taxonomy.py` module provides the unified file classification system with `FileRole` enum and `LanguageSpec` dataclass for 75+ languages.
 
-## 11) Entrypoint Detection
+## 13) Entrypoint Detection
 
 Entrypoint detection identifies HTTP handlers, CLI mains, background tasks, and other entry sources for slicing. Detection is **YAML-driven** via the framework patterns system.
 
@@ -1416,7 +1420,7 @@ See [ADR-0003](adr/0003-architectural-analysis-and-revision-plan.md) for the des
 
 ### Entrypoint Confidence Tiers
 
-These tiers apply to entrypoint detection. For edge confidence scoring, see [§8 Confidence calculation](#confidence-calculation-deterministic-algorithm).
+These tiers apply to entrypoint detection. For edge confidence scoring, see [§9 Confidence calculation](#confidence-calculation-deterministic-algorithm).
 
 Confidence scores reflect detection reliability, enabling meaningful ordering in sketch output:
 
@@ -1439,7 +1443,7 @@ score = confidence * (1 + log(1 + outgoing_edges))
 
 This prefers well-connected entries, producing richer slices.
 
-## 12) Testing & quality bar
+## 14) Testing & quality bar
 
 ### Test fixtures
 
@@ -1522,7 +1526,7 @@ This is a fundamentally different paradigm than pytest's immediate feedback. Def
 * 🟩 Medium repo (~500 files): <30 seconds
 * 🟩 Caching: second run on unchanged repo <2 seconds (see docs/CACHE.md)
 
-## 13) Error handling
+## 15) Error handling
 
 ### Parse errors
 
@@ -1561,7 +1565,7 @@ This is a fundamentally different paradigm than pytest's immediate feedback. Def
 
 * 🟩 All output is valid JSON even if analysis is incomplete. See [`analysis_incomplete`](#top-level-structure) in §6 for field semantics.
 
-## 14) Known limitations
+## 16) Known limitations
 
 This section documents known limitations and risks of the current analysis system. See `CHANGELOG.md` for per-language implementation status.
 
@@ -1611,7 +1615,7 @@ Currently, only Python and Go fully utilize import tracking for disambiguation. 
 
 > **Historical note:** The original v1.0 development milestones (Week 0-9 planning) have been archived to [docs/history/planning-v1.md](history/planning-v1.md). Original success criteria and validation gates have been archived to [docs/history/validation-gates-v1.md](history/validation-gates-v1.md).
 
-## 15) Autonomous Governance (ADR-0008)
+## 17) Autonomous Governance (ADR-0008)
 
 🟩 Hypergumbo includes a vendor-agnostic governance system for AI agent contributors working in autonomous mode. This enforces structural thinking before stopping work, preventing "workaround" fixes that bypass root causes.
 
@@ -1649,7 +1653,7 @@ The invariant ledger (`.agent/invariant-ledger.md`) tracks discovered invariants
 
 See [ADR-0008](adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for the full governance design rationale.
 
-## 16) Future Work
+## 18) Future Work
 
 This section collects capabilities that are designed but not yet implemented. Pursue when there's clear demand beyond what the current system provides. The architecture is designed to support these enhancements without breaking changes: the IR and identity fields ([§5](#5-architecture)) enable cross-refactor tracking and multi-pass merging, and the forward compatibility contract ([Appendix C](#appendix-c-forward-compatibility-contract)) defines what can change in minor vs. major versions. See also [Registry & Factory Vision](future/registry-factory-vision.md) for speculative ideas about sharing analyzers.
 
