@@ -398,7 +398,7 @@ The `confidence` field on edges (0.0-1.0) indicates detection reliability:
 | `cross_lang_link` | 0.75 | Cross-language boundary (JNI, IPC) |
 | `inferred` | 0.60 | Heuristic inference |
 
-The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring algorithm. Consumers should treat unknown evidence types as 0.30 confidence.
+The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring algorithm. Consumers should treat unknown evidence types as 0.30 confidence. For the full deterministic scoring algorithm (language-specific base scores, contextual adjustments), see [§8 Confidence calculation](#confidence-calculation-deterministic-algorithm).
 
 ### analysis_runs[] — provenance tracking
 ```json
@@ -420,19 +420,9 @@ The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring a
 ```
 
 **Field semantics:**
-* `execution_id`: Unique identifier for this specific analysis run
-  - Format: `uuid:` prefix for UUID v4, or `sha256:` for deterministic hash
-  - Used to identify which analysis run produced which nodes/edges
-  - Enables multi-pass merging and provenance tracking
-* `run_signature`: Deterministic fingerprint of analyzer configuration
-  - Hash of (pass_id, version, config_fingerprint, toolchain)
-  - Same pass + version + config + toolchain → same signature
-  - Used for cache keying and grouping results
-* `repo_fingerprint`: Hash identifying the code snapshot analyzed
-  - Git repos: `sha256(git_head + sorted([(path, sha256(content_bytes)) for each dirty file]))`
-    - Includes the content hash of dirty tracked files and included untracked files to avoid false cache hits.
-  - Non-git: `sha256(sorted([(path, content_hash) for all files]))`
-  - Enables cache keying and provenance tracking
+
+`execution_id`, `run_signature`, and `repo_fingerprint` are defined in [§5 IR Layer](#ir-layer). Additional fields:
+
 * `toolchain`: Versions of language runtimes/parsers used (empty `{}` for syntax-only passes)
 * `config_fingerprint`: Hash of effective configuration affecting this pass (for cache invalidation)
 
@@ -498,10 +488,11 @@ The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring a
   }
 }
 ```
-**Presence rule (v0.1.0):**
+**Presence rule:**
 - `stable_id`, `shape_id`, and `origin_run_signature` keys MUST be present on every node.
 - If unavailable, they MUST be set to `null` (not omitted).
 - This supports forward-compatible consumers and Spec B prerequisites without forcing every pass to compute every field.
+- For `stable_id` and `shape_id` semantics and computation, see [§5 Identity field semantics](#ir-layer).
 
 **supply_chain** (object, required):
 - `tier` (integer, 1-4): Numeric tier for filtering/sorting
@@ -2019,11 +2010,7 @@ hypergumbo run  # Output compatible with existing tooling
 4. Agents can check `confidence_model` version, warn if too new
 
 **Deprecation process (if ever needed):**
-1. Announce 6 months before removal
-2. Add deprecation warnings to CLI output
-3. Maintain old version per support policy (Appendix C)
-4. Provide migration guide
-5. Remove only after support window expires
+See [Appendix C: Versioning & Support Policy](#appendix-c-versioning--support-policy) for the deprecation process and support windows.
 
 ### Compatibility Testing
 
