@@ -100,11 +100,14 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version="hypergumbo-0.1.0")
 
-    # Build map of class/interface names to symbols
-    container_by_name: dict[str, Symbol] = {}
+    # Build multimap of class/interface names to symbols.
+    # Multiple classes can share the same name (e.g., Django has 238 classes
+    # named "Model" — 1 real + 237 test stubs). When linking methods, we
+    # prefer the class in the same file as the method.
+    container_by_name: dict[str, list[Symbol]] = {}
     for sym in ctx.symbols:
         if sym.kind in CONTAINER_KINDS:
-            container_by_name[sym.name] = sym
+            container_by_name.setdefault(sym.name, []).append(sym)
 
     # Build set of existing contains edge keys for deduplication
     existing_contains: set[tuple[str, str]] = {
@@ -124,10 +127,21 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
         if parent_name is None:
             continue
 
-        # Look up the parent container
-        parent_sym = container_by_name.get(parent_name)
-        if parent_sym is None:
+        # Look up the parent container, preferring same-file match
+        candidates = container_by_name.get(parent_name)
+        if not candidates:
             continue
+        parent_sym: Symbol | None = None
+        if len(candidates) == 1:
+            parent_sym = candidates[0]
+        else:
+            # Prefer the class in the same file as the method
+            for c in candidates:
+                if c.path == sym.path:
+                    parent_sym = c
+                    break
+            if parent_sym is None:
+                parent_sym = candidates[0]
 
         # Skip self-containment
         if parent_sym.id == sym.id:

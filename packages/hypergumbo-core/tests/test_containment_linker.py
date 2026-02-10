@@ -438,3 +438,149 @@ class TestContainmentLinker:
         assert len(result.edges) == 1
         assert result.edges[0].src == enum.id
         assert result.edges[0].dst == method.id
+
+
+class TestContainmentNameCollision:
+    """Tests for name collision handling in the containment linker.
+
+    When multiple classes share the same name (e.g., Django's Model class
+    and 237 test Model classes), the linker must prefer the same-file
+    match for method containment.
+    """
+
+    def test_same_name_classes_prefer_same_file(self) -> None:
+        """When multiple classes share a name, methods link to the same-file class."""
+        # Real Model class in base.py with methods
+        real_model = _sym(
+            "py:base.py:500-2500:Model:class",
+            "Model",
+            "class",
+            path="base.py",
+            start=500,
+            end=2500,
+        )
+        method1 = _sym(
+            "py:base.py:600-610:Model.save:method",
+            "Model.save",
+            "method",
+            path="base.py",
+            start=600,
+            end=610,
+        )
+        method2 = _sym(
+            "py:base.py:700-710:Model.delete:method",
+            "Model.delete",
+            "method",
+            path="base.py",
+            start=700,
+            end=710,
+        )
+        # Test Model class in a different file (no methods of its own)
+        test_model = _sym(
+            "py:test_models.py:10-20:Model:class",
+            "Model",
+            "class",
+            path="test_models.py",
+            start=10,
+            end=20,
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[real_model, method1, method2, test_model],
+            edges=[],
+        )
+        result = link_containment(ctx)
+
+        # Both methods should be linked to real_model, not test_model
+        assert len(result.edges) == 2
+        for edge in result.edges:
+            assert edge.src == real_model.id, (
+                f"Method should be contained by same-file class, "
+                f"got src={edge.src}"
+            )
+
+    def test_same_name_classes_last_wins_without_same_file(self) -> None:
+        """When no same-file class exists, falls back to any matching class."""
+        # Two Model classes, neither in the method's file
+        model_a = _sym(
+            "py:models_a.py:1-10:Model:class",
+            "Model",
+            "class",
+            path="models_a.py",
+        )
+        model_b = _sym(
+            "py:models_b.py:1-10:Model:class",
+            "Model",
+            "class",
+            path="models_b.py",
+        )
+        # Method in a third file — no same-file match possible
+        method = _sym(
+            "py:other.py:5-10:Model.save:method",
+            "Model.save",
+            "method",
+            path="other.py",
+            start=5,
+            end=10,
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[model_a, model_b, method],
+            edges=[],
+        )
+        result = link_containment(ctx)
+
+        # Should still create an edge (fallback to some match)
+        assert len(result.edges) == 1
+
+    def test_many_duplicate_classes_correct_linkage(self) -> None:
+        """Simulates Django: 1 real Model + many test Models, methods link correctly."""
+        # Real Model class with methods
+        real_model = _sym(
+            "py:django/db/models/base.py:501-2512:Model:class",
+            "Model",
+            "class",
+            path="django/db/models/base.py",
+            start=501,
+            end=2512,
+        )
+        real_methods = []
+        for i, name in enumerate(["_is_pk_set", "save", "delete", "clean"]):
+            real_methods.append(_sym(
+                f"py:django/db/models/base.py:{600+i*20}-{610+i*20}:Model.{name}:method",
+                f"Model.{name}",
+                "method",
+                path="django/db/models/base.py",
+                start=600 + i * 20,
+                end=610 + i * 20,
+            ))
+
+        # 10 test Model classes in different files (simulating Django's 237)
+        test_models = []
+        for i in range(10):
+            test_models.append(_sym(
+                f"py:tests/test_{i}.py:10-20:Model:class",
+                "Model",
+                "class",
+                path=f"tests/test_{i}.py",
+                start=10,
+                end=20,
+            ))
+
+        all_symbols = [real_model] + real_methods + test_models
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=all_symbols,
+            edges=[],
+        )
+        result = link_containment(ctx)
+
+        # All 4 methods should be contained by real_model
+        method_edges = [e for e in result.edges if e.dst in {m.id for m in real_methods}]
+        assert len(method_edges) == 4
+        for edge in method_edges:
+            assert edge.src == real_model.id, (
+                f"Expected src={real_model.id}, got src={edge.src}"
+            )
