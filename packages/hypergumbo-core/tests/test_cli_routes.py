@@ -497,11 +497,10 @@ def test_cmd_routes_prints_output_summary(tmp_path: Path, capsys) -> None:
     assert "Output: stdout" in out
 
 
-def test_cmd_routes_excludes_test_routes_by_default(tmp_path: Path, capsys) -> None:
-    """Routes from test files are excluded by default.
+def test_cmd_routes_includes_test_routes_by_default(tmp_path: Path, capsys) -> None:
+    """Routes from test files are included by default (consistent with other commands).
 
-    Regression: Django bakeoff showed 73% of route source files were from
-    test directories, polluting the route output with test-only routes.
+    All subcommands use --exclude-tests (opt-in exclusion). Routes is no exception.
     """
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
@@ -538,21 +537,24 @@ def test_cmd_routes_excludes_test_routes_by_default(tmp_path: Path, capsys) -> N
     args.path = str(tmp_path)
     args.input = None
     args.language = None
-    args.include_tests = False
+    args.exclude_tests = False
 
     result = cmd_routes(args)
     assert result == 0
 
     out, _ = capsys.readouterr()
-    # Production route should be present
+    # Both routes should be present by default
     assert "get_user" in out
-    # Test route should be excluded
-    assert "test_get_user" not in out
-    assert "Found 1 API route" in out
+    assert "test_get_user" in out
+    assert "Found 2 API route" in out
 
 
-def test_cmd_routes_includes_test_routes_with_flag(tmp_path: Path, capsys) -> None:
-    """Routes from test files are included when --include-tests is used."""
+def test_cmd_routes_excludes_test_routes_with_flag(tmp_path: Path, capsys) -> None:
+    """Routes from test files are excluded when --exclude-tests is used.
+
+    Django bakeoff showed 73% of route source files were from test
+    directories. Use -x/--exclude-tests to filter them out.
+    """
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -588,13 +590,14 @@ def test_cmd_routes_includes_test_routes_with_flag(tmp_path: Path, capsys) -> No
     args.path = str(tmp_path)
     args.input = None
     args.language = None
-    args.include_tests = True
+    args.exclude_tests = True
 
     result = cmd_routes(args)
     assert result == 0
 
     out, _ = capsys.readouterr()
-    # Both routes should be present
+    # Production route should be present
     assert "get_user" in out
-    assert "test_get_user" in out
-    assert "Found 2 API route" in out
+    # Test route should be excluded
+    assert "test_get_user" not in out
+    assert "Found 1 API route" in out

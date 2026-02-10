@@ -54,7 +54,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Tiered view overhaul**: Three improvements to `format_tiered_behavior_map`: (1) budget enforcement on full output (nodes + edges + entrypoints) — previously exceeded budget by up to 2.7x; (2) connectivity-aware node selection starting from entrypoints and expanding via frontier, replacing centrality-only selection that produced disconnected subgraphs; (3) confidence-filtered force-includes (>= 0.5, capped to half capacity), preventing low-confidence test entrypoints from crowding out bridge nodes.
 - **Self-loop edge filtering**: Filtered from output, adjacency lists, and connectivity scoring. Removes wasted token budget and inflated centrality.
 - **Symbol ranking by individual degree**: `hypergumbo symbols` sorts by per-symbol degree instead of file-total-degree.
-- **Route test filtering**: `hypergumbo routes` excludes test-file routes by default. Use `--include-tests` to include them.
+- **Route test filtering**: `hypergumbo routes` supports `-x`/`--exclude-tests` to filter test-file routes (consistent with `sketch`, `slice`, `explain`, `symbols`).
 - **Exclude derived/minified files by default**: Tier 4 symbols excluded from output. Use `--max-tier 4` to include them.
 - **Increase default `--max-files` for slice from 20 to 50**: Previous default was too restrictive for large codebases.
 - **Django route method accuracy**: `path()`/`re_path()`/`url()` no longer hardcode `GET`. Django routing doesn't specify methods.
