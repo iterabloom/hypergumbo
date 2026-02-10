@@ -443,7 +443,7 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
 }
 ```
 
-**LOC definition:** Lines of code counts non-empty lines in files matching language extensions. Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§8.6 File Role Classification](#file-role-classification-proposed) for the proposed taxonomy that would also exclude pure data files from LOC counts.
+**LOC definition:** Lines of code counts non-empty lines in files matching language extensions. Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§10 File Role Classification](#file-role-classification-proposed) for the proposed taxonomy that would also exclude pure data files from LOC counts.
 
 ### nodes[] — definitions, files, endpoints
 
@@ -489,7 +489,7 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
 - `tier` (integer, 1-4): Numeric tier for filtering/sorting
 - `tier_name` (string): Human-readable name (`first_party`, `internal_dep`, `external_dep`, `derived`)
 - `reason` (string): Classification rationale (e.g., "matches ^src/", "detected as minified")
-- See §8.6 for classification algorithm and tier definitions.
+- See §10 for classification algorithm and tier definitions.
 
 `origin_run_id` and `origin_run_signature` are defined in [§5 IR Layer](#ir-layer). They reference `analysis_runs[].execution_id` and `analysis_runs[].run_signature` respectively.
 
@@ -881,7 +881,7 @@ def calculate_evidence_confidence(
   * Edges: `(src, dst, type)`
 * Enables meaningful `git diff` of output files
 
-## 8.5) Cross-Language Edge Detection (MVP)
+## 9) Cross-Language Edge Detection (MVP)
 
 Spec A provides **best-effort cross-language edge detection** for common integration patterns. These are AST-based heuristics with string literal matching, not type-resolved or dataflow analysis.
 
@@ -1019,7 +1019,7 @@ Cross-language linkers log unresolved patterns for debugging:
 }
 ```
 
-## 8.6) Supply Chain Classification
+## 10) Supply Chain Classification
 
 Hypergumbo classifies files by their position in the project's dependency graph. This enables focused analysis (first-party code prioritized in results) and noise reduction (derived artifacts excluded from analysis entirely).
 
@@ -1333,7 +1333,7 @@ Tier and Role compose for analysis decisions:
 
 **Status:** 🟩 Implemented (ADR-0004). The `taxonomy.py` module provides the unified file classification system with `FileRole` enum and `LanguageSpec` dataclass for 75+ languages.
 
-## 8.7) Entrypoint Detection
+## 11) Entrypoint Detection
 
 Entrypoint detection identifies HTTP handlers, CLI mains, background tasks, and other entry sources for slicing. Detection is **YAML-driven** via the framework patterns system.
 
@@ -1439,7 +1439,7 @@ score = confidence * (1 + log(1 + outgoing_edges))
 
 This prefers well-connected entries, producing richer slices.
 
-## 9) Testing & quality bar
+## 12) Testing & quality bar
 
 ### Test fixtures
 
@@ -1522,7 +1522,7 @@ This is a fundamentally different paradigm than pytest's immediate feedback. Def
 * 🟩 Medium repo (~500 files): <30 seconds
 * 🟩 Caching: second run on unchanged repo <2 seconds (see docs/CACHE.md)
 
-## 9.5) Error handling
+## 13) Error handling
 
 ### Parse errors
 
@@ -1561,7 +1561,7 @@ This is a fundamentally different paradigm than pytest's immediate feedback. Def
 
 * 🟩 All output is valid JSON even if analysis is incomplete. See [`analysis_incomplete`](#top-level-structure) in §6 for field semantics.
 
-## 9.6) Known Analysis Limitations
+## 14) Known Analysis Limitations
 
 This section documents cross-cutting limitations that affect symbol resolution and edge detection across multiple language analyzers. See `CHANGELOG.md` for per-language implementation status.
 
@@ -1599,7 +1599,7 @@ Currently, only Python and Go fully utilize import tracking for disambiguation. 
 
 > **Historical note:** The original v1.0 development milestones (Week 0-9 planning) have been archived to [docs/history/planning-v1.md](history/planning-v1.md).
 
-## 10) Known limitations and risks
+## 15) Known limitations and risks
 
 | Limitation | Impact | Notes |
 |------------|--------|-------|
@@ -1608,11 +1608,11 @@ Currently, only Python and Go fully utilize import tracking for disambiguation. 
 | Confidence scores are heuristics | Medium | Scores are calibrated heuristics, not ground truth. Evidence types show reasoning; `--confidence-threshold` allows filtering. |
 | Schema changes may break consumers | Medium | Semantic versioning from day 1; forward compatibility contract in Appendix E; migration guides for breaking changes. |
 | stable_id limited in untyped code | Low | Without type annotations, stable_id uses arity-based hashing which may change on signature changes. shape_id provides structural alternative. |
-| Re-export resolution incomplete | Low | Imports through re-exporting modules (e.g., `from package import x` where x is re-exported) may not fully resolve. See §9.6. |
+| Re-export resolution incomplete | Low | Imports through re-exporting modules (e.g., `from package import x` where x is re-exported) may not fully resolve. See §14. |
 
 > **Historical note:** Original success criteria and validation gates have been archived to [docs/history/validation-gates-v1.md](history/validation-gates-v1.md). Spec B work will be pursued when there's clear demand for capabilities beyond what Spec A provides.
 
-## 11) Autonomous Governance (ADR-0008)
+## 16) Autonomous Governance (ADR-0008)
 
 🟩 Hypergumbo includes a vendor-agnostic governance system for AI agent contributors working in autonomous mode. This enforces structural thinking before stopping work, preventing "workaround" fixes that bypass root causes.
 
