@@ -387,18 +387,9 @@ These fields prevent semantic drift: if an algorithm changes in the future, the 
 
 ### Confidence scoring
 
-The `confidence` field on edges (0.0-1.0) indicates detection reliability:
+The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring algorithm. Consumers should treat unknown evidence types as 0.30 confidence.
 
-| Evidence Type | Base Score | Example |
-|---------------|------------|---------|
-| `ast_call_direct` | 0.90 | Direct function call in AST |
-| `ast_call_method` | 0.85 | Method call on object |
-| `import_static` | 0.95 | Static import statement |
-| `pattern_match` | 0.80 | Framework pattern (decorator, annotation) |
-| `cross_lang_link` | 0.75 | Cross-language boundary (JNI, IPC) |
-| `inferred` | 0.60 | Heuristic inference |
-
-The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring algorithm. Consumers should treat unknown evidence types as 0.30 confidence. For the full deterministic scoring algorithm (language-specific base scores, contextual adjustments), see [§8 Confidence calculation](#confidence-calculation-deterministic-algorithm).
+For the deterministic scoring algorithm (language-specific base scores, evidence types, contextual adjustments), see [§8 Confidence calculation](#confidence-calculation-deterministic-algorithm).
 
 ### analysis_runs[] — provenance tracking
 ```json
@@ -575,11 +566,7 @@ The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring a
 - `evidence_lang` (optional): Language used for confidence scoring. Defaults to `src` node's language if omitted. Required for cross-language edges (HTTP, IPC) where src/dst languages differ.
 - `evidence_spans[]`: Structured locations of evidence. Each span includes file path and line/column range.
 
-**Confidence model (evidence-based):**
-
-Source: `confidence` field, derived from `meta.evidence_type` via deterministic matrix.
-
-**Evidence types** (machine-readable):
+**Evidence types** (machine-readable, see [§8](#confidence-calculation-deterministic-algorithm) for scoring algorithm):
 * `ast_call_direct` — Direct function call in AST
 * `ast_call_method` — Method call with receiver
 * `ast_getattr_call` — Call via getattr/dynamic lookup
@@ -1564,10 +1551,7 @@ This is a fundamentally different paradigm than pytest's immediate feedback. Def
 
 ### Partial results guarantee
 
-* 🟩 **All output is valid JSON** even if analysis is incomplete
-* 🟩 `analysis_incomplete: true` flag signals partial results
-* 🟩 `limits.partial_results_reason` documents what went wrong
-* 🟩 Agents can decide whether partial results are sufficient
+* 🟩 All output is valid JSON even if analysis is incomplete. See [`analysis_incomplete`](#top-level-structure) in §6 for field semantics.
 
 ## 9.6) Known Analysis Limitations
 
@@ -1825,6 +1809,8 @@ Spec A is designed to enable future enhancements without breaking changes:
 
 ## Appendix C: Versioning & Support Policy
 
+This appendix covers release lifecycle, support windows, and deprecation timelines. For the schema-level compatibility contract (which fields are immutable, how consumers handle unknown fields), see [Appendix E](#appendix-e-forward-compatibility-contract).
+
 ### Semantic versioning
 
 * **Schema versions**: `MAJOR.MINOR.PATCH`
@@ -1902,6 +1888,9 @@ Enable via `hypergumbo config --telemetry=on` or `hypergumbo_TELEMETRY=1` enviro
 * Opt-in status shown in `hypergumbo config --show`
 
 ## Appendix E: Forward Compatibility Contract
+
+This appendix defines the schema-level contract: which fields are immutable, how consumers handle unknown fields, and what constitutes a breaking change. For release lifecycle, support windows, and deprecation timelines, see [Appendix C](#appendix-c-versioning--support-policy).
+
 This contract ensures Spec A outputs remain valid when future capabilities are added, and enhancements degrade gracefully for Spec A consumers.
 
 ### Immutable Contracts (MUST NOT change without major version bump)
@@ -2086,34 +2075,14 @@ Dataflow/CFG are opt-in with explicit partial-results flags, not core requiremen
 
 #### AST-based type inference improvements (bridge to Spec B)
 
-Spec A implements basic type inference for method call resolution (see ADR-0006):
-- ✅ Constructor tracking: `db = Database()` → `db` has type `Database`
-- ✅ Parameter tracking: `def f(db: Database)` → `db` has type `Database`
-- ✅ Field type tracking: `private val svc: Service` → `this.svc.process()` resolves to `Service.process`
-- ✅ Return type tracking: `stub = get_client()` where `get_client() -> Client` → `stub` has type `Client` (Python, TypeScript, Java, Kotlin, C#, Dart)
-- Supported in: Python, Java, Kotlin, TypeScript, C#, Dart, Scala (method name only)
+Spec A already implements constructor tracking, parameter tracking, field type tracking, return type tracking, and type hierarchy dispatch — see ADR-0006 and CHANGELOG.md for details. Supported in Python, Java, Kotlin, TypeScript, C#, Dart, and Scala (method name only).
 
-Future improvements to AST-based type inference (without requiring language servers):
+Remaining improvements (without requiring language servers):
 
-| Feature | Value | Effort | Priority | Status |
-|---------|-------|--------|----------|--------|
-| **Type hierarchy** | High | Medium | 1st | ✅ Done |
-| **Return type tracking** | Medium-High | Medium | 2nd | ✅ All 6 languages |
-| **Field type tracking** | High | Medium | 3rd | ✅ Done (Java, Kotlin, C#, Python) |
-| **Method-scoped tracking** | Low-Medium | Medium | 4th | |
-| **Generic handling** | High | High | 5th | |
-
-**Type hierarchy:** ✅ Implemented via type hierarchy linker. Creates `dispatches_to` edges from parent/interface methods to overriding implementations in child classes. Currently works with Java (which creates `extends`/`implements` edges); other languages need inheritance edge creation for full benefit.
-
-**Return type tracking:** ✅ Implemented for all six typed languages: Python, TypeScript, Java, Kotlin, C#, and Dart. Tracks return type annotations and infers variable type when `var = func()` so that `var.method()` resolves to `ReturnType.method()`. Python resolves return type from caller's local symbols, imports, or function's own module. TypeScript resolves from the class resolver. Java resolves from the class symbol table. Kotlin resolves from the class_symbols dict for both simple function calls (`val x = getHelper()`) and navigation calls (`val x = factory.create()`). C# resolves from local_symbols, tracking through both member-access type inference and fallback resolution paths. Dart parses call targets from `initialized_variable_definition` AST nodes, handling both simple calls (`var x = getClient()`) and navigation calls (`var x = factory.create()`). Only simple (non-generic) return types are tracked; `Optional[X]`, `Promise<X>`, `List<T>`, etc. are not resolved.
-
-**Field type tracking:** ✅ Implemented for Java (field_declaration type tracking), Kotlin (constructor parameter type tracking), C# (field declaration type tracking, handles generic_name types), and Python (`self.field` type tracking from typed `__init__` params and constructor calls). Enables resolution of `this.field.method()` / `self.field.method()` → `FieldType.method()`. Scala uses method name matching without explicit type inference.
-
-**Method-scoped tracking:** Current file-scoped tracking can cause false positives when same variable name used in different methods. Low priority since collisions are rare.
-
-**Generic handling:** Track `List<User>` to infer that `.get()` returns `User`. High complexity (type parameter binding, variance). Defer until simpler features are done.
-
-These improvements provide incremental call graph quality gains without the complexity of full language server integration (Spec B).
+| Feature | Value | Effort | Notes |
+|---------|-------|--------|-------|
+| **Method-scoped tracking** | Low-Medium | Medium | Current file-scoped tracking can cause false positives when same variable name used in different methods. Low priority since collisions are rare. |
+| **Generic handling** | High | High | Track `List<User>` to infer that `.get()` returns `User`. High complexity (type parameter binding, variance). Defer until simpler features are done. |
 
 #### IR vs Views architecture
 
