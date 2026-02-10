@@ -190,7 +190,37 @@ Hypergumbo supports 104 languages via tree-sitter grammars. All are included in 
 **Discovery & catalog:**
 * `catalog.py` — Pass availability checking (used by `catalog` command)
 
-### IR Layer
+Parsers emit to a shared internal representation; see [§6 Internal Representation](#6-internal-representation) for the IR definition and field semantics.
+
+### Pass interface and registry
+Parsers implement a common interface for future multi-pass orchestration:
+```python
+class AnalysisPass(Protocol):
+    """Interface for pluggable analysis passes."""
+    
+    id: str              # e.g., "python-ast-v1"
+    version: str         # e.g., "hypergumbo-0.1.0"
+    capabilities: List[str]  # e.g., ["python"]
+    
+    def run(
+        self, 
+        ir: AnalysisIR, 
+        files: List[Path], 
+        config: Config
+    ) -> IRDelta:
+        """
+        Run analysis pass on given files.
+        
+        Returns:
+            IRDelta: New symbols, references, relationships to add to IR
+        """
+        ...
+```
+
+See §4 "Supported stacks" for the full list of 104 language analyzers, 19 cross-language linkers, and 87 pattern files (5 convention + 82 framework). Detailed reference: [LANGUAGES.md](LANGUAGES.md), [LINKERS.md](LINKERS.md).
+
+## 6) Internal Representation
+
 Parsers emit to `AnalysisIR`:
 ```python
 @dataclass
@@ -236,7 +266,8 @@ class AnalysisIR:
     relationships: List[Relationship]  # typed edges with quality scores
 ```
 
-**Identity field semantics**:
+### Identity field semantics
+
 * `id` (location-based): `{lang}:{file}:{start_line}-{end_line}:{name}:{kind}`
   - Changes when code moves to different file/line
   - Purpose: Reproducible slicing, deterministic diffs
@@ -257,13 +288,6 @@ class AnalysisIR:
   - `sha256(ast_structure)` excluding literals/identifiers
   - Purpose: Detect structural changes (control flow, nesting) without caring about variable names
   - Use case: "Implementation changed but signature stayed same"
-
-**Scheme versioning note:** The exact algorithms for identity and provenance fields are governed by scheme identifiers in the output:
-* `stable_id_scheme`: identifies the algorithm/normalization used to compute `stable_id`
-* `shape_id_scheme`: identifies the algorithm used to compute `shape_id`
-* `repo_fingerprint_scheme`: identifies the algorithm used to compute `analysis_runs[].repo_fingerprint`
-
-Any change that would alter computed values MUST bump the corresponding scheme identifier.
 * `fingerprint` (content hash): `sha256(source_bytes)`
   - Changes when implementation changes
   - Purpose: Detect modifications
@@ -283,7 +307,17 @@ def authenticate(username: str, password: str) -> User:
 # shape_id changes if control flow changed
 ```
 
-**Provenance field semantics**:
+### Scheme versioning
+
+The exact algorithms for identity and provenance fields are governed by scheme identifiers in the output:
+* `stable_id_scheme`: identifies the algorithm/normalization used to compute `stable_id`
+* `shape_id_scheme`: identifies the algorithm used to compute `shape_id`
+* `repo_fingerprint_scheme`: identifies the algorithm used to compute `analysis_runs[].repo_fingerprint`
+
+Any change that would alter computed values MUST bump the corresponding scheme identifier.
+
+### Provenance field semantics
+
 * `execution_id`: Unique identifier for this specific analysis run
   - Format: `uuid:` prefix for UUID v4, or `sha256:` for deterministic hash
   - Purpose: Track which specific run produced which nodes/edges
@@ -299,6 +333,9 @@ def authenticate(username: str, password: str) -> User:
     - Purpose: ensures repo_fingerprint changes when dirty file contents change, not just when paths change
   - Non-git: `sha256(sorted([(path, content_hash) for all files]))`
   - Purpose: Cache invalidation, provenance tracking
+
+### Output views
+
 Public outputs are **compiled views** from this IR:
 * 🟩 `behavior_map.json` (v0.1 default)
 * 🟩 `sketch` — Token-budgeted Markdown summary for LLM context windows (stdout)
@@ -306,34 +343,7 @@ Public outputs are **compiled views** from this IR:
 
 **Design principle:** Strong passes (tsserver, pyright) added later will enhance the IR without breaking the behavior map view.
 
-### Pass interface and registry
-Parsers implement a common interface for future multi-pass orchestration:
-```python
-class AnalysisPass(Protocol):
-    """Interface for pluggable analysis passes."""
-    
-    id: str              # e.g., "python-ast-v1"
-    version: str         # e.g., "hypergumbo-0.1.0"
-    capabilities: List[str]  # e.g., ["python"]
-    
-    def run(
-        self, 
-        ir: AnalysisIR, 
-        files: List[Path], 
-        config: Config
-    ) -> IRDelta:
-        """
-        Run analysis pass on given files.
-        
-        Returns:
-            IRDelta: New symbols, references, relationships to add to IR
-        """
-        ...
-```
-
-See §4 "Supported stacks" for the full list of 104 language analyzers, 19 cross-language linkers, and 87 pattern files (5 convention + 82 framework). Detailed reference: [LANGUAGES.md](LANGUAGES.md), [LINKERS.md](LINKERS.md).
-
-## 6) Output: "Repo Behavior Map" JSON
+## 7) Output: "Repo Behavior Map" JSON
 
 Single file: `hypergumbo.results.json`
 
@@ -373,7 +383,7 @@ The schema follows JSON Schema Draft 2020-12 and can be used for:
 
 **DRY Principle:** The Python dataclasses (`Symbol`, `Edge`, `Span`, `AnalysisRun`) are the single source of truth. The JSON Schema and this spec document the *meaning* of fields; the dataclasses define the *structure*.
 
-**Scheme identifiers** (`stable_id_scheme`, `shape_id_scheme`, `repo_fingerprint_scheme`): Identify the algorithms used to compute their respective fields. See [§5 Scheme versioning note](#ir-layer) for definitions and the versioning mandate.
+**Scheme identifiers** (`stable_id_scheme`, `shape_id_scheme`, `repo_fingerprint_scheme`): Identify the algorithms used to compute their respective fields. See [§6 Scheme versioning](#scheme-versioning) for definitions and the versioning mandate.
 
 **analysis_incomplete** (boolean, default: false):
 - Set to `true` if analysis terminated early due to errors, timeouts, or resource limits
@@ -385,7 +395,7 @@ The schema follows JSON Schema Draft 2020-12 and can be used for:
 
 The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring algorithm. Consumers should treat unknown evidence types as 0.30 confidence.
 
-For the deterministic scoring algorithm (language-specific base scores, evidence types, contextual adjustments), see [§9 Confidence calculation](#confidence-calculation-deterministic-algorithm).
+For the deterministic scoring algorithm (language-specific base scores, evidence types, contextual adjustments), see [§10 Confidence calculation](#confidence-calculation-deterministic-algorithm).
 
 ### analysis_runs[] — provenance tracking
 ```json
@@ -406,9 +416,7 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
 }
 ```
 
-**Field semantics:**
-
-`execution_id`, `run_signature`, and `repo_fingerprint` are defined in [§5 Identity and provenance field semantics](#ir-layer). Additional fields:
+**Field semantics** are defined in [§6 Internal Representation](#6-internal-representation). Additional output-specific fields:
 
 * `toolchain`: Versions of language runtimes/parsers used (empty `{}` for syntax-only passes)
 * `config_fingerprint`: Hash of effective configuration affecting this pass (for cache invalidation)
@@ -439,7 +447,7 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
 }
 ```
 
-**LOC definition:** Lines of code counts non-empty lines in files matching language extensions. Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§12 File Role Classification](#file-role-classification-proposed) for the proposed taxonomy that would also exclude pure data files from LOC counts.
+**LOC definition:** Lines of code counts non-empty lines in files matching language extensions. Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§13 File Role Classification](#file-role-classification) for the proposed taxonomy that would also exclude pure data files from LOC counts.
 
 ### nodes[] — definitions, files, endpoints
 
@@ -479,15 +487,12 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
 - `stable_id`, `shape_id`, and `origin_run_signature` keys MUST be present on every node.
 - If unavailable, they MUST be set to `null` (not omitted).
 - This supports forward-compatible consumers without forcing every pass to compute every field.
-- For `stable_id` and `shape_id` semantics and computation, see [§5 Identity field semantics](#ir-layer).
 
 **supply_chain** (object, required):
 - `tier` (integer, 1-4): Numeric tier for filtering/sorting
 - `tier_name` (string): Human-readable name (`first_party`, `internal_dep`, `external_dep`, `derived`)
 - `reason` (string): Classification rationale (e.g., "matches ^src/", "detected as minified")
-- See §12 for classification algorithm and tier definitions.
-
-`origin_run_id` and `origin_run_signature` are defined in [§5 IR Layer](#ir-layer). They reference `analysis_runs[].execution_id` and `analysis_runs[].run_signature` respectively.
+- See §13 for classification algorithm and tier definitions.
 
 **Node kinds:**
 * `file` — source file
@@ -526,8 +531,6 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
   }
 }
 ```
-
-`origin`, `origin_run_id`, and `origin_run_signature` have the same semantics as on nodes — see [§5 IR Layer](#ir-layer).
 
 **Multi-pass evidence (optional):** When multiple analysis passes observe the same relationship, `meta.evidence[]` accumulates their individual observations. The top-level `meta.evidence_type`, `meta.evidence_lang`, and `meta.evidence_spans` always reflect the primary (highest-confidence) record.
 
@@ -570,7 +573,7 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
 - `evidence_lang` (optional): Language used for confidence scoring. Defaults to `src` node's language if omitted. Required for cross-language edges (HTTP, IPC) where src/dst languages differ.
 - `evidence_spans[]`: Structured locations of evidence. Each span includes file path and line/column range.
 
-**Evidence types** (machine-readable, see [§9](#confidence-calculation-deterministic-algorithm) for scoring algorithm):
+**Evidence types** (machine-readable, see [§10](#confidence-calculation-deterministic-algorithm) for scoring algorithm):
 * `ast_call_direct` — Direct function call in AST
 * `ast_call_method` — Method call with receiver
 * `ast_getattr_call` — Call via getattr/dynamic lookup
@@ -752,7 +755,7 @@ C++ (82%), Lua (12%), CMake (6%)
 
 For a complete real-world example (install, run, and full JSON output), see [example-output.md](example-output.md).
 
-## 7) Slicing behavior
+## 8) Slicing behavior
 
 ### Entry sources
 
@@ -796,7 +799,7 @@ Query format enables exact reproduction:
 
 Feature comparison across commits: same query → compare `node_ids`/`edge_ids` to detect changes.
 
-## 8) Analysis guardrails
+## 9) Analysis guardrails
 
 ### Exclude patterns
 
@@ -813,7 +816,7 @@ Feature comparison across commits: same query → compare `node_ids`/`edge_ids` 
 * Especially important for HTML/minified JS
 * Truncated files logged in `limits.truncated_files[]`
 
-## 9) Confidence scoring
+## 10) Confidence scoring
 
 ### Confidence calculation (deterministic algorithm)
 
@@ -867,7 +870,7 @@ def calculate_evidence_confidence(
 
 **Note**: Base scores are heuristic baselines (to be validated against benchmark suite). New evidence types can be added in minor versions.
 
-## 10) Output reproducibility
+## 11) Output reproducibility
 
 ### Caching
 * Location: `.hypergumbo/cache/`
@@ -885,7 +888,7 @@ def calculate_evidence_confidence(
   * Edges: `(src, dst, type)`
 * Enables meaningful `git diff` of output files
 
-## 11) Cross-Language Edge Detection
+## 12) Cross-Language Edge Detection
 
 Hypergumbo provides **best-effort cross-language edge detection** for common integration patterns. These are AST-based heuristics with string literal matching, not type-resolved or dataflow analysis.
 
@@ -975,7 +978,7 @@ Detects HTTP route definitions for entrypoint detection.
 * Used by entrypoint detection for slicing
 
 **Client-side linking:**
-Cross-language client→server matching (e.g., `fetch("/api/users")` → Flask handler) is not yet implemented. See [§18 Future Work](#18-future-work).
+Cross-language client→server matching (e.g., `fetch("/api/users")` → Flask handler) is not yet implemented. See [§19 Future Work](#19-future-work).
 
 ### Language-Specific Detection Notes
 
@@ -1023,7 +1026,7 @@ Cross-language linkers log unresolved patterns for debugging:
 }
 ```
 
-## 12) Supply Chain Classification
+## 13) Supply Chain Classification
 
 Hypergumbo classifies files by their position in the project's dependency graph. This enables focused analysis (first-party code prioritized in results) and noise reduction (derived artifacts excluded from analysis entirely).
 
@@ -1337,7 +1340,7 @@ Tier and Role compose for analysis decisions:
 
 **Status:** 🟩 Implemented (ADR-0004). The `taxonomy.py` module provides the unified file classification system with `FileRole` enum and `LanguageSpec` dataclass for 75+ languages.
 
-## 13) Entrypoint Detection
+## 14) Entrypoint Detection
 
 Entrypoint detection identifies HTTP handlers, CLI mains, background tasks, and other entry sources for slicing. Detection is **YAML-driven** via the framework patterns system.
 
@@ -1420,7 +1423,7 @@ See [ADR-0003](adr/0003-architectural-analysis-and-revision-plan.md) for the des
 
 ### Entrypoint Confidence Tiers
 
-These tiers apply to entrypoint detection. For edge confidence scoring, see [§9 Confidence calculation](#confidence-calculation-deterministic-algorithm).
+These tiers apply to entrypoint detection. For edge confidence scoring, see [§10 Confidence calculation](#confidence-calculation-deterministic-algorithm).
 
 Confidence scores reflect detection reliability, enabling meaningful ordering in sketch output:
 
@@ -1443,7 +1446,7 @@ score = confidence * (1 + log(1 + outgoing_edges))
 
 This prefers well-connected entries, producing richer slices.
 
-## 14) Testing & quality bar
+## 15) Testing & quality bar
 
 ### Test fixtures
 
@@ -1496,7 +1499,7 @@ This prefers well-connected entries, producing richer slices.
 * 🟩 Medium repo (~500 files): <30 seconds
 * 🟩 Caching: second run on unchanged repo <2 seconds (see docs/CACHE.md)
 
-## 15) Error handling
+## 16) Error handling
 
 ### Parse errors
 
@@ -1533,9 +1536,9 @@ This prefers well-connected entries, producing richer slices.
 
 ### Partial results guarantee
 
-* 🟩 All output is valid JSON even if analysis is incomplete. See [`analysis_incomplete`](#top-level-structure) in §6 for field semantics.
+* 🟩 All output is valid JSON even if analysis is incomplete. See [`analysis_incomplete`](#top-level-structure) in §7 for field semantics.
 
-## 16) Known limitations
+## 17) Known limitations
 
 This section documents known limitations and risks of the current analysis system. See `CHANGELOG.md` for per-language implementation status.
 
@@ -1585,7 +1588,7 @@ Currently, only Python and Go fully utilize import tracking for disambiguation. 
 
 > **Historical note:** The original v1.0 development milestones (Week 0-9 planning) have been archived to [docs/history/planning-v1.md](history/planning-v1.md). Original success criteria and validation gates have been archived to [docs/history/validation-gates-v1.md](history/validation-gates-v1.md).
 
-## 17) Autonomous Governance (ADR-0008)
+## 18) Autonomous Governance (ADR-0008)
 
 🟩 Hypergumbo includes a vendor-agnostic governance system for AI agent contributors working in autonomous mode. This enforces structural thinking before stopping work, preventing "workaround" fixes that bypass root causes.
 
@@ -1623,9 +1626,9 @@ The invariant ledger (`.agent/invariant-ledger.md`) tracks discovered invariants
 
 See [ADR-0008](adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for the full governance design rationale.
 
-## 18) Future Work
+## 19) Future Work
 
-This section collects capabilities that are designed but not yet implemented. Pursue when there's clear demand beyond what the current system provides. The architecture is designed to support these enhancements without breaking changes: the IR and identity fields ([§5](#5-architecture)) enable cross-refactor tracking and multi-pass merging, and the forward compatibility contract ([Appendix C](#appendix-c-forward-compatibility-contract)) defines what can change in minor vs. major versions. See also [Registry & Factory Vision](future/registry-factory-vision.md) for speculative ideas about sharing analyzers.
+This section collects capabilities that are designed but not yet implemented. Pursue when there's clear demand beyond what the current system provides. The architecture is designed to support these enhancements without breaking changes: the IR and identity fields ([§6](#6-internal-representation)) enable cross-refactor tracking and multi-pass merging, and the forward compatibility contract ([Appendix C](#appendix-c-forward-compatibility-contract)) defines what can change in minor vs. major versions. See also [Registry & Factory Vision](future/registry-factory-vision.md) for speculative ideas about sharing analyzers.
 
 ### Multi-fidelity analysis
 
