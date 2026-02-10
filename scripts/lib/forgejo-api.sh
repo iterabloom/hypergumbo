@@ -347,82 +347,112 @@ except Exception:
 
 # ------------------------------------------------------------------
 # fetch_job_log HEAD_SHA [JOB_NAME]
-#   Fetch plain-text log for a job matching JOB_NAME in the run for
-#   HEAD_SHA. Prints log to stdout. Returns 1 if not found.
-#   Uses --http1.1 to avoid Codeberg HTTP/2 proxy issues.
+#   Fetch plain-text log for a CI job. Uses the web route with
+#   /attempt/1/logs (the REST API /actions/jobs endpoint returns 404
+#   on Codeberg's Forgejo v14).
+#
+#   Strategy (2 API calls + 1 web route):
+#     1. GET /actions/runs?head_sha=<full-sha> → index_in_repo (run number)
+#     2. GET /{owner}/{repo}/actions/runs/{run_number}/jobs/0 (HTML)
+#        → parse embedded JSON for job names/indices
+#     3. GET /{owner}/{repo}/actions/runs/{run_number}/jobs/{idx}/attempt/1/logs
+#
+#   Prints log to stdout. Returns 1 if not found.
 # ------------------------------------------------------------------
 fetch_job_log() {
 	local head_sha="$1"
 	local target_name="${2:-}"
 
-	# Step 1: Find run_id for this commit
+	# Resolve full SHA (the API requires it, not a prefix)
+	if [[ ${#head_sha} -lt 40 ]]; then
+		head_sha=$(git rev-parse "$head_sha" 2>/dev/null) || {
+			echo "Could not resolve SHA: $1" >&2
+			return 1
+		}
+	fi
+
+	# Derive the base web URL from API_BASE
+	# API_BASE = https://codeberg.org/api/v1/repos/owner/repo
+	local web_base
+	web_base=$(echo "$API_BASE" | sed 's|/api/v1/repos/|/|')
+
+	# Step 1: Find run_number (index_in_repo) for this commit
 	local runs_response
 	runs_response=$(curl -sS --http1.1 --max-time 15 \
 		-H "Authorization: token ${FORGEJO_TOKEN:-}" \
-		"$API_BASE/actions/runs?limit=10" 2>/dev/null) || return 1
+		"$API_BASE/actions/runs?head_sha=$head_sha" 2>/dev/null) || return 1
 
-	local run_id
-	run_id=$(echo "$runs_response" | python3 -c "
+	local run_info
+	run_info=$(echo "$runs_response" | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
-    runs = data if isinstance(data, list) else data.get('workflow_runs', [])
-    sha = '$head_sha'
-    for r in runs:
-        if r.get('head_sha', '').startswith(sha[:8]):
-            print(r['id'])
-            break
+    runs = data.get('workflow_runs', data if isinstance(data, list) else [])
+    # Prefer ci.yml runs over full-suite.yml (ci.yml has the pytest job)
+    ci_runs = [r for r in runs if 'ci' in str(r.get('workflow_id', '')).lower()]
+    pick = ci_runs[0] if ci_runs else (runs[0] if runs else None)
+    if pick:
+        print(f'{pick[\"id\"]} {pick.get(\"index_in_repo\", \"\")}')
 except Exception:
     pass
 " 2>/dev/null)
 
-	if [[ -z "$run_id" ]]; then
-		echo "Could not find run for commit $head_sha" >&2
+	local run_id run_number
+	read -r run_id run_number <<< "$run_info"
+
+	if [[ -z "$run_number" ]]; then
+		echo "Could not find CI run for commit ${head_sha:0:8}" >&2
 		return 1
 	fi
 
-	# Step 2: Find matching job
-	local jobs_response
-	jobs_response=$(curl -sS --http1.1 --max-time 15 \
+	# Step 2: Get job list from the HTML page's embedded JSON
+	local page_html
+	page_html=$(curl -sSL --http1.1 --max-time 15 \
 		-H "Authorization: token ${FORGEJO_TOKEN:-}" \
-		"$API_BASE/actions/jobs?limit=50" 2>/dev/null) || return 1
+		"$web_base/actions/runs/$run_number/jobs/0" 2>/dev/null) || return 1
 
-	local job_id job_name
-	read -r job_id job_name < <(echo "$jobs_response" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    jobs = data if isinstance(data, list) else data.get('body', data.get('jobs', []))
-    target = '$target_name'.lower()
-    run_id = $run_id
-    for j in jobs:
-        if j.get('run_id') != run_id:
-            continue
-        name = j.get('name', '')
-        status = j.get('status', '')
-        conclusion = j.get('conclusion', '')
-        # If target specified, match by name; otherwise pick first failed
-        if target and target not in name.lower():
-            continue
-        if not target and conclusion not in ('failure', 'error', ''):
-            continue
-        print(f'{j[\"id\"]} {name}')
+	local job_index job_name
+	read -r job_index job_name < <(echo "$page_html" | python3 -c "
+import sys, json, html, re
+
+page = html.unescape(sys.stdin.read())
+target = '${target_name}'.lower()
+
+# Extract JSON blob containing jobs from the decoded HTML
+match = re.search(r'\"jobs\":\s*\[(\{.*?\}(?:,\{.*?\})*)\]', page)
+if not match:
+    sys.exit(1)
+
+jobs = json.loads('[' + match.group(1) + ']')
+
+# Match by name, or pick first failed job, or first job
+best = None
+for i, j in enumerate(jobs):
+    name = j.get('name', '')
+    status = j.get('status', '')
+    if target and target in name.lower():
+        best = (i, name)
         break
-except Exception:
-    pass
+    if not target and status in ('failure', 'error') and best is None:
+        best = (i, name)
+    if not target and best is None:
+        best = (i, name)
+
+if best:
+    print(f'{best[0]} {best[1]}')
 " 2>/dev/null)
 
-	if [[ -z "$job_id" ]]; then
-		echo "Could not find job${target_name:+ matching '$target_name'} in run $run_id" >&2
+	if [[ -z "$job_index" ]]; then
+		echo "Could not find job${target_name:+ matching '$target_name'} in run $run_number" >&2
 		return 1
 	fi
 
-	echo "Fetching log for job '$job_name' (id: $job_id)..." >&2
+	echo "Fetching log for job '$job_name' (run #$run_number, index $job_index)..." >&2
 
-	# Step 3: Fetch the log
+	# Step 3: Download log via web route with attempt number
 	curl -sSL --http1.1 --max-time 60 \
 		-H "Authorization: token ${FORGEJO_TOKEN:-}" \
-		"$API_BASE/actions/jobs/$job_id/logs" 2>/dev/null
+		"$web_base/actions/runs/$run_number/jobs/$job_index/attempt/1/logs" 2>/dev/null
 }
 
 # ------------------------------------------------------------------
