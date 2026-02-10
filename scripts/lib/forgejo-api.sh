@@ -204,9 +204,11 @@ poll_ci() {
 
 	# Track how long ci-complete has been the sole holdout (Scenario A)
 	local ci_complete_sole_holdout_since=0
+	local poll_count=0
 
 	while true; do
 		elapsed=$(( $(date +%s) - start_time ))
+		poll_count=$((poll_count + 1))
 		if [[ $elapsed -ge $timeout ]]; then
 			echo ""
 			echo "⏰ CI polling timed out after ${timeout}s (exit code 2)"
@@ -245,6 +247,17 @@ except Exception:
 " 2>/dev/null || echo "unknown")
 			echo ""
 			echo "❌ CI Failed. Contexts: $failed_contexts"
+			echo ""
+			echo "📋 Fetching failed job log..."
+			local log_output
+			if log_output=$(fetch_job_log "$head_sha" 2>/dev/null); then
+				echo "--- Last 30 lines ---"
+				echo "$log_output" | tail -30
+				echo "--- End of log snippet ---"
+			else
+				echo "   (could not retrieve log automatically)"
+			fi
+			echo "💡 Full log: ./scripts/ci-debug logs"
 			return 1
 		fi
 
@@ -295,9 +308,121 @@ except Exception:
 			ci_complete_sole_holdout_since=0
 		fi
 
-		printf "."
+		# Telemetry: every 3rd pass, print job summary (reuses API_RESPONSE,
+		# no extra API call — be considerate of Codeberg as a community resource)
+		if (( poll_count % 3 == 0 )); then
+			echo ""
+			echo "  [${elapsed}s] $(ci_job_summary)"
+		else
+			printf "."
+		fi
+
 		sleep 10
 	done
+}
+
+# ------------------------------------------------------------------
+# ci_job_summary
+#   Format one-line job status summary from API_RESPONSE (commit status).
+#   Call after api_get ".../commits/$sha/status".
+# ------------------------------------------------------------------
+ci_job_summary() {
+	echo "$API_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    statuses = data.get('statuses', [])
+    parts = []
+    for s in statuses:
+        ctx = s.get('context', '?')
+        name = ctx.split(' / ')[-1].split(' (')[0] if ' / ' in ctx else ctx
+        st = s.get('state', '?')
+        marker = '✅' if st == 'success' else '❌' if st in ('failure', 'error') else '⏳'
+        parts.append(f'{marker}{name}')
+    print(' '.join(parts) if parts else '(no jobs yet)')
+except Exception:
+    print('(unavailable)')
+" 2>/dev/null || echo "(unavailable)"
+}
+
+# ------------------------------------------------------------------
+# fetch_job_log HEAD_SHA [JOB_NAME]
+#   Fetch plain-text log for a job matching JOB_NAME in the run for
+#   HEAD_SHA. Prints log to stdout. Returns 1 if not found.
+#   Uses --http1.1 to avoid Codeberg HTTP/2 proxy issues.
+# ------------------------------------------------------------------
+fetch_job_log() {
+	local head_sha="$1"
+	local target_name="${2:-}"
+
+	# Step 1: Find run_id for this commit
+	local runs_response
+	runs_response=$(curl -sS --http1.1 --max-time 15 \
+		-H "Authorization: token ${FORGEJO_TOKEN:-}" \
+		"$API_BASE/actions/runs?limit=10" 2>/dev/null) || return 1
+
+	local run_id
+	run_id=$(echo "$runs_response" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    runs = data if isinstance(data, list) else data.get('workflow_runs', [])
+    sha = '$head_sha'
+    for r in runs:
+        if r.get('head_sha', '').startswith(sha[:8]):
+            print(r['id'])
+            break
+except Exception:
+    pass
+" 2>/dev/null)
+
+	if [[ -z "$run_id" ]]; then
+		echo "Could not find run for commit $head_sha" >&2
+		return 1
+	fi
+
+	# Step 2: Find matching job
+	local jobs_response
+	jobs_response=$(curl -sS --http1.1 --max-time 15 \
+		-H "Authorization: token ${FORGEJO_TOKEN:-}" \
+		"$API_BASE/actions/jobs?limit=50" 2>/dev/null) || return 1
+
+	local job_id job_name
+	read -r job_id job_name < <(echo "$jobs_response" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    jobs = data if isinstance(data, list) else data.get('body', data.get('jobs', []))
+    target = '$target_name'.lower()
+    run_id = $run_id
+    for j in jobs:
+        if j.get('run_id') != run_id:
+            continue
+        name = j.get('name', '')
+        status = j.get('status', '')
+        conclusion = j.get('conclusion', '')
+        # If target specified, match by name; otherwise pick first failed
+        if target and target not in name.lower():
+            continue
+        if not target and conclusion not in ('failure', 'error', ''):
+            continue
+        print(f'{j[\"id\"]} {name}')
+        break
+except Exception:
+    pass
+" 2>/dev/null)
+
+	if [[ -z "$job_id" ]]; then
+		echo "Could not find job${target_name:+ matching '$target_name'} in run $run_id" >&2
+		return 1
+	fi
+
+	echo "Fetching log for job '$job_name' (id: $job_id)..." >&2
+
+	# Step 3: Fetch the log
+	curl -sSL --http1.1 --max-time 60 \
+		-H "Authorization: token ${FORGEJO_TOKEN:-}" \
+		"$API_BASE/actions/jobs/$job_id/logs" 2>/dev/null
 }
 
 # ------------------------------------------------------------------

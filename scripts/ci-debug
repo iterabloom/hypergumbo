@@ -34,12 +34,16 @@ usage() {
   echo "  runs              List recent workflow runs (default)"
   echo "  status [sha]      Get status for a specific commit (default: HEAD)"
   echo "  pr-status <num>   Show PR state, merged status, HEAD SHA"
+  echo "  logs [job] [sha]  Fetch log for a CI job (default: first failed job at HEAD)"
   echo "  analyze-deps      Check tree-sitter packages vs pyproject.toml"
   echo ""
   echo "Examples:"
   echo "  $0 runs              # Show last 10 runs"
   echo "  $0 status            # Show status for current commit"
   echo "  $0 pr-status 42      # Show PR #42 details"
+  echo "  $0 logs              # Fetch log for first failed job at HEAD"
+  echo "  $0 logs pytest       # Fetch log for 'pytest' job at HEAD"
+  echo "  $0 logs pytest abc123  # Fetch log for 'pytest' job at specific commit"
   echo "  $0 analyze-deps      # Find missing tree-sitter dependencies"
 }
 
@@ -141,6 +145,24 @@ cmd_pr_status() {
   fi
 }
 
+cmd_logs() {
+  local job_name="${1:-}"
+  local sha="${2:-$(git rev-parse HEAD)}"
+
+  echo "Fetching CI log for commit ${sha:0:8}${job_name:+ (job: $job_name)}..."
+  echo ""
+
+  local log_output
+  if log_output=$(fetch_job_log "$sha" "$job_name"); then
+    echo "$log_output"
+  else
+    echo "❌ Could not retrieve log. Check:"
+    echo "  - Is the commit SHA correct? (got: ${sha:0:12})"
+    echo "  - Does the job name match?"
+    echo "  - Run './scripts/ci-debug status ${sha:0:8}' to see available jobs"
+  fi
+}
+
 cmd_analyze_deps() {
   echo "Analyzing tree-sitter dependencies..."
   echo ""
@@ -177,6 +199,9 @@ case "${1:-runs}" in
     ;;
   pr-status)
     cmd_pr_status "${2:-}"
+    ;;
+  logs)
+    cmd_logs "${2:-}" "${3:-}"
     ;;
   analyze-deps)
     cmd_analyze_deps
