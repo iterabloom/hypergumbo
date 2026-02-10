@@ -432,7 +432,18 @@ jobs:
         if: steps.manifest.outputs.skip_tests != 'true'
         run: |
           MANIFEST=".ci/affected-tests.txt"
-          WORKERS=${{ runner.name == 'hypergumbo-local' && '8' || '2' }}
+          # Detect available CPUs from cgroup limits (Codeberg sets cpu.max
+          # to 200000/100000 = 2 cores but nproc reports the host's 32).
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
 
           if [ ! -f "$MANIFEST" ] || [ "${{ steps.manifest.outputs.use_manifest }}" != "true" ]; then
             echo "❌ No valid manifest - cannot run tests"

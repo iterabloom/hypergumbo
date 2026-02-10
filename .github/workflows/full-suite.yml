@@ -168,7 +168,18 @@ jobs:
           if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
             COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
           fi
-          WORKERS=${{ runner.name == 'hypergumbo-local' && '8' || '2' }}
+          # Detect available CPUs from cgroup limits (Codeberg sets cpu.max
+          # to 200000/100000 = 2 cores but nproc reports the host's 32).
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
 
           pytest packages/hypergumbo-core/tests/ -n "$WORKERS" --tb=short \
             --cov=packages/hypergumbo-core/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
@@ -222,7 +233,18 @@ jobs:
           if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
             COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
           fi
-          WORKERS=${{ runner.name == 'hypergumbo-local' && '8' || '2' }}
+          # Detect available CPUs from cgroup limits (Codeberg sets cpu.max
+          # to 200000/100000 = 2 cores but nproc reports the host's 32).
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
 
           pytest packages/hypergumbo-lang-mainstream/tests/ -n "$WORKERS" --tb=short \
             --cov=packages/hypergumbo-lang-mainstream/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
@@ -276,7 +298,18 @@ jobs:
           if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
             COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
           fi
-          WORKERS=${{ runner.name == 'hypergumbo-local' && '8' || '2' }}
+          # Detect available CPUs from cgroup limits (Codeberg sets cpu.max
+          # to 200000/100000 = 2 cores but nproc reports the host's 32).
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
 
           pytest packages/hypergumbo-lang-common/tests/ -n "$WORKERS" --tb=short \
             --cov=packages/hypergumbo-lang-common/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
@@ -330,7 +363,18 @@ jobs:
           if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
             COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
           fi
-          WORKERS=${{ runner.name == 'hypergumbo-local' && '8' || '2' }}
+          # Detect available CPUs from cgroup limits (Codeberg sets cpu.max
+          # to 200000/100000 = 2 cores but nproc reports the host's 32).
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
 
           pytest packages/hypergumbo-lang-extended1/tests/ -n "$WORKERS" --tb=short \
             --cov=packages/hypergumbo-lang-extended1/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
