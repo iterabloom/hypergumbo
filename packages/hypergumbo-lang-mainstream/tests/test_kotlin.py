@@ -797,6 +797,118 @@ class Service {
         assert call_edge.evidence_type == "ast_call_this"
         assert call_edge.confidence == 0.90
 
+    def test_this_property_method_call_resolved(self, tmp_path: Path) -> None:
+        """this.property.method() calls resolve via constructor parameter types.
+
+        Kotlin classes often inject dependencies via constructor parameters:
+            class Controller(private val svc: Service) {
+                fun doWork() { this.svc.process() }
+            }
+        The call this.svc.process() should resolve to Service.process.
+        """
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        svc_file = tmp_path / "Service.kt"
+        svc_file.write_text("""
+class Service {
+    fun process() {
+        println("processing")
+    }
+}
+""")
+
+        ctrl_file = tmp_path / "Controller.kt"
+        ctrl_file.write_text("""
+class Controller(private val svc: Service) {
+    fun doWork() {
+        this.svc.process()
+    }
+}
+""")
+
+        result = analyze_kotlin(tmp_path)
+
+        assert result.run is not None
+
+        # Find symbols
+        do_work = next(
+            (s for s in result.symbols if "doWork" in s.name), None
+        )
+        process_method = next(
+            (s for s in result.symbols if "process" in s.name
+             and "Service" in s.id), None
+        )
+
+        assert do_work is not None, "doWork method not found"
+        assert process_method is not None, "Service.process method not found"
+
+        # Should have edge from Controller.doWork to Service.process
+        call_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == do_work.id
+                and e.dst == process_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, (
+            f"Expected call edge from doWork to Service.process. "
+            f"Edges from doWork: {[e for e in result.edges if e.src == do_work.id]}"
+        )
+
+    def test_this_property_method_call_generic_type(self, tmp_path: Path) -> None:
+        """Constructor parameter with generic type resolves correctly.
+
+        Generic type parameters (e.g., Repository<User>) are stripped to the
+        base type (Repository) for method call resolution.
+        """
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        repo_file = tmp_path / "Repository.kt"
+        repo_file.write_text("""
+class Repository<T> {
+    fun findAll(): List<T> {
+        return emptyList()
+    }
+}
+""")
+
+        ctrl_file = tmp_path / "Controller.kt"
+        ctrl_file.write_text("""
+class Controller(private val repo: Repository<String>) {
+    fun list() {
+        this.repo.findAll()
+    }
+}
+""")
+
+        result = analyze_kotlin(tmp_path)
+
+        list_method = next(
+            (s for s in result.symbols if "list" in s.name
+             and "Controller" in s.id), None
+        )
+        find_all = next(
+            (s for s in result.symbols if "findAll" in s.name), None
+        )
+
+        assert list_method is not None
+        assert find_all is not None
+
+        call_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == list_method.id
+                and e.dst == find_all.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None
+
 
 class TestKotlinImportExtraction:
     """Tests for import extraction and tracking."""

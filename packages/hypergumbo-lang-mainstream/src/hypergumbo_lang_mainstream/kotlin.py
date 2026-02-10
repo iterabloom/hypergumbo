@@ -528,6 +528,20 @@ def _extract_edges_from_file(
                     origin_run_id=run.execution_id,
                 ))
 
+        # Track constructor parameter types: class Ctrl(private val svc: Service)
+        elif node.type == "class_parameter":
+            param_name_node = _find_child_by_type(node, "identifier")
+            type_node = _find_child_by_type(node, "user_type")
+            if param_name_node and type_node:
+                param_name = _node_text(param_name_node, source)
+                type_name = _node_text(type_node, source)
+                if type_name:
+                    # Strip generics
+                    if "<" in type_name:
+                        type_name = type_name.split("<")[0]
+                    if type_name[0].isupper():
+                        var_types[param_name] = type_name
+
         # Track variable types from property declarations: val x = ClassName()
         elif node.type == "property_declaration":
             # Find variable_declaration and call_expression children
@@ -570,6 +584,10 @@ def _extract_edges_from_file(
                 for child in nav_node.children:
                     if child.type == "this_expression":
                         receiver_node = child
+                    elif child.type == "navigation_expression":
+                        # Nested: this.property.method() — inner nav is
+                        # this.property, outer identifier is method
+                        receiver_node = child
                     elif child.type == "identifier":
                         if receiver_node is None:
                             receiver_node = child
@@ -599,6 +617,42 @@ def _extract_edges_from_file(
                                     evidence_type="ast_call_this",
                                 ))
                                 edge_added = True
+
+                    # Case 1b: this.property.method() - call on injected dep
+                    elif receiver_node.type == "navigation_expression":
+                        this_node = _find_child_by_type(
+                            receiver_node, "this_expression"
+                        )
+                        prop_node = _find_child_by_type(
+                            receiver_node, "identifier"
+                        )
+                        if this_node and prop_node:
+                            prop_name = _node_text(prop_node, source)
+                            if prop_name in var_types:
+                                type_name = var_types[prop_name]
+                                candidate = f"{type_name}.{method_name}"
+                                import_hint = imports.get(type_name)
+                                lookup_result = resolver.lookup(
+                                    candidate, path_hint=import_hint
+                                )
+                                if (
+                                    lookup_result.found
+                                    and lookup_result.symbol is not None
+                                ):
+                                    edges.append(Edge.create(
+                                        src=current_function.id,
+                                        dst=lookup_result.symbol.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1,
+                                        confidence=0.85
+                                        * lookup_result.confidence,
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                        evidence_type=(
+                                            "ast_call_this_property"
+                                        ),
+                                    ))
+                                    edge_added = True
 
                     # For non-this cases, get receiver name from identifier node
                     else:

@@ -521,10 +521,19 @@ def _extract_edges_from_file(
                 # Get the function being called
                 callee_node = _find_child_by_type(node, "identifier")
                 if not callee_node:
-                    # Try field expression for method calls
-                    field_node = _find_child_by_type(node, "field_expression")  # pragma: no cover - grammar fallback
-                    if field_node:  # pragma: no cover - grammar fallback
-                        callee_node = _find_child_by_type(field_node, "identifier")
+                    # Method call: obj.method() — field_expression has
+                    # [identifier(obj), ".", identifier(method)]
+                    field_node = _find_child_by_type(node, "field_expression")
+                    if field_node:
+                        ids = [
+                            c for c in field_node.children
+                            if c.type == "identifier"
+                        ]
+                        if len(ids) >= 2:
+                            # Last identifier is the method name
+                            callee_node = ids[-1]
+                        elif ids:  # pragma: no cover - defensive
+                            callee_node = ids[0]
 
                 if callee_node:
                     callee_name = _node_text(callee_node, source)

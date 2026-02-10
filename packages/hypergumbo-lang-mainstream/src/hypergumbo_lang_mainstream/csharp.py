@@ -832,6 +832,32 @@ def _extract_edges_from_file(
             for param_name, param_type in param_types.items():
                 var_types[param_name] = param_type
 
+        # Field declarations - track field types: private readonly IService _svc;
+        elif node.type == "field_declaration":
+            var_decl = _find_child_by_type(node, "variable_declaration")
+            if var_decl:
+                # Type can be identifier (simple) or generic_name (generic)
+                type_name = None
+                type_id = _find_child_by_type(var_decl, "identifier")
+                if type_id:
+                    type_name = _node_text(type_id, source)
+                else:
+                    gen_name = _find_child_by_type(var_decl, "generic_name")
+                    if gen_name:
+                        gen_id = _find_child_by_type(gen_name, "identifier")
+                        if gen_id:
+                            type_name = _node_text(gen_id, source)
+                var_declarator = _find_child_by_type(
+                    var_decl, "variable_declarator"
+                )
+                if type_name and var_declarator:
+                    name_node = _find_child_by_type(
+                        var_declarator, "identifier"
+                    )
+                    if name_node:
+                        field_name = _node_text(name_node, source)
+                        var_types[field_name] = type_name
+
         # Invocation expression (method call)
         elif node.type == "invocation_expression":
             current_function = _get_enclosing_method(node, source, local_symbols)
@@ -841,9 +867,28 @@ def _extract_edges_from_file(
                 if member_access:
                     # Extract receiver and method name
                     identifiers = _find_children_by_type(member_access, "identifier")
+                    receiver_name = None
+                    method_name = None
                     if len(identifiers) >= 2:
                         receiver_name = _node_text(identifiers[0], source)
                         method_name = _node_text(identifiers[-1], source)
+                    elif len(identifiers) == 1:
+                        # Nested: this._field.Method() — inner is
+                        # member_access_expression(this, _field)
+                        method_name = _node_text(identifiers[0], source)
+                        inner = _find_child_by_type(
+                            member_access, "member_access_expression"
+                        )
+                        if inner:
+                            inner_ids = _find_children_by_type(
+                                inner, "identifier"
+                            )
+                            this_node = _find_child_by_type(inner, "this")
+                            if this_node and inner_ids:
+                                receiver_name = _node_text(
+                                    inner_ids[-1], source
+                                )
+                    if receiver_name and method_name:
 
                         # Try type inference: receiver.method() -> ClassName.method
                         if receiver_name in var_types:

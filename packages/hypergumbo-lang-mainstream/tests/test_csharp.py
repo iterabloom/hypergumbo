@@ -541,6 +541,102 @@ public class Service {
 
         assert send_edge is not None, "Expected call edge for client.Send() via constructor type inference"
 
+    def test_field_type_inference(self, tmp_path: Path) -> None:
+        """Field declaration types enable method call resolution.
+
+        In C# dependency injection, fields are commonly declared with a type
+        and calls like _svc.Process() resolve via the declared field type.
+        """
+        (tmp_path / "App.cs").write_text("""
+public class Repo {
+    public void Save() { }
+}
+
+public class Controller {
+    private readonly Repo _repo;
+
+    public void DoWork() {
+        _repo.Save();
+    }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        do_work = next(
+            (s for s in result.symbols if s.name == "Controller.DoWork"), None
+        )
+        repo_save = next(
+            (s for s in result.symbols if s.name == "Repo.Save"), None
+        )
+
+        assert do_work is not None
+        assert repo_save is not None
+
+        call_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == do_work.id
+                and e.dst == repo_save.id
+                and e.edge_type == "calls"
+                and e.evidence_type == "method_call_type_inferred"
+            ),
+            None,
+        )
+        assert call_edge is not None, (
+            f"Expected call edge for _repo.Save() via field type inference. "
+            f"Edges from DoWork: {[e for e in result.edges if e.src == do_work.id]}"
+        )
+
+    def test_this_field_method_call(self, tmp_path: Path) -> None:
+        """this.field.method() calls resolve via field type inference.
+
+        The pattern this._repo.Save() has a nested member_access_expression
+        structure that requires special handling. Also tests generic type
+        stripping (Repository<string> -> Repository).
+        """
+        (tmp_path / "App.cs").write_text("""
+public class Repo {
+    public void Save() { }
+}
+
+public class Controller {
+    private Repo<string> _repo;
+
+    public void DoWork() {
+        this._repo.Save();
+    }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        do_work = next(
+            (s for s in result.symbols if s.name == "Controller.DoWork"), None
+        )
+        repo_save = next(
+            (s for s in result.symbols if s.name == "Repo.Save"), None
+        )
+
+        assert do_work is not None
+        assert repo_save is not None
+
+        call_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == do_work.id
+                and e.dst == repo_save.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, (
+            f"Expected call edge for this._repo.Save() via field type inference. "
+            f"Edges from DoWork: {[e for e in result.edges if e.src == do_work.id]}"
+        )
+
 
 class TestCSharpCrossFileResolution:
     """Tests for cross-file symbol resolution."""

@@ -386,6 +386,27 @@ statements are reached; input diversity testing ensures they produce correct res
   - `test_js_ts.py::TestVariableTypeInference::test_this_property_method_call_nestjs_pattern`
 - **Pending Generalizations:** None
 
+## INV-014: Chained Member Access Call Resolution
+- **Statement:** Method calls on object properties (e.g., `this.field.method()`, `obj.field.method()`) must resolve to the correct target method
+- **Status:** ✅ FIXED (Java, Kotlin, C#, Scala, JS/TS, Go)
+- **Root cause:** Analyzers only checked for simple `identifier` receivers in method invocation/call_expression nodes. Nested member access (navigation_expression, member_access_expression, field_expression, selector_expression) was not handled, causing zero call edges for the most common method call pattern in OO languages.
+- **Discovery:** Forward slice from `OwnerController.showOwner` in spring-petclinic returned 0 edges despite the method calling `this.owners.findById(ownerId)`.
+- **Fix:**
+  - **Java** (PR #972): Replaced identifier scanning with `child_by_field_name("name"/"object")`, added field_access handling and class field type tracking
+  - **Kotlin** (this PR): Added constructor parameter type tracking (`class_parameter` → `var_types`), added nested `navigation_expression` handling for `this.property.method()` pattern
+  - **C#** (this PR): Added field declaration type tracking (`field_declaration` → `var_types`, handles both simple and generic types), added nested `member_access_expression` handling for `this._field.Method()` pattern
+  - **Scala** (this PR): Fixed method name extraction from `field_expression` — was taking first identifier (receiver name) instead of last (method name)
+  - **JS/TS** (INV-013, pre-existing): Already handled nested `member_expression` with `this` for NestJS constructor injection
+  - **Go**: Already works — method name extracted from outermost `field_identifier`, resolver matches by name
+- **Regression tests:**
+  - `test_kotlin.py::TestKotlinThisMethodCalls::test_this_property_method_call_resolved`
+  - `test_kotlin.py::TestKotlinThisMethodCalls::test_this_property_method_call_generic_type`
+  - `test_csharp.py::TestCSharpTypeInference::test_field_type_inference`
+  - `test_csharp.py::TestCSharpTypeInference::test_this_field_method_call`
+  - `test_scala.py::TestScalaFunctionCalls::test_detects_method_call_on_object`
+  - `test_java.py::TestJavaAnalysis::test_extracts_field_access_method_calls` (PR #972)
+- **Pending Generalizations:** None
+
 ---
 
 ## INV-XXX: Template for New Invariants

@@ -205,6 +205,55 @@ def helper(): Unit = {
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
 
+    def test_detects_method_call_on_object(self, tmp_path: Path) -> None:
+        """Detects obj.method() calls via field_expression.
+
+        Scala method calls like svc.process() produce a field_expression
+        AST node. The method name is the last identifier in the expression.
+        """
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        scala_file = tmp_path / "App.scala"
+        scala_file.write_text("""
+class Service {
+  def process(): Unit = {}
+}
+
+class Controller(val svc: Service) {
+  def doWork(): Unit = {
+    svc.process()
+  }
+}
+""")
+
+        result = analyze_scala(tmp_path)
+
+        do_work = next(
+            (s for s in result.symbols if "doWork" in s.name), None
+        )
+        process = next(
+            (s for s in result.symbols if "process" in s.name
+             and "Service" in s.id), None
+        )
+
+        assert do_work is not None
+        assert process is not None
+
+        call_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == do_work.id
+                and e.dst == process.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, (
+            f"Expected call edge from doWork to Service.process. "
+            f"Edges: {[e for e in result.edges if e.edge_type == 'calls']}"
+        )
+
 
 class TestScalaLambdaCallAttribution:
     """Tests for call edge attribution inside lambda expressions.
