@@ -904,27 +904,53 @@ def _extract_edges(
             for param_name, param_type in param_types.items():
                 var_types[param_name] = param_type
 
-        # Method invocations
+        # Class field declarations — track field types for method call resolution
+        # Java: private Repository repo; → var_types["repo"] = "Repository"
+        elif node.type == "field_declaration":
+            type_node = None
+            for child in node.children:
+                if child.type == "type_identifier":
+                    type_node = child
+                elif child.type == "variable_declarator" and type_node is not None:
+                    for vc in child.children:
+                        if vc.type == "identifier":
+                            var_types[_node_text(vc, source)] = _node_text(
+                                type_node, source
+                            )
+                            break
+
+        # Method invocations — use tree-sitter field names for reliable extraction
         elif node.type == "method_invocation":
             current_method = _get_enclosing_method(node, source, global_symbols)
             if current_method:
-                # Get the method name being called
-                method_name = None
-                receiver_name = None
-                for child in node.children:
-                    if child.type == "identifier":
-                        # First identifier is receiver, second is method name
-                        if receiver_name is None and method_name is None:
-                            # This could be either receiver.method() or just method()
-                            receiver_name = _node_text(child, source)
-                        else:
-                            # This is the method name in receiver.method()
-                            method_name = _node_text(child, source)
+                # Use tree-sitter named fields: "name" is the method, "object"
+                # is the receiver.  This correctly handles field_access receivers
+                # like `this.svc.process()` where the object child is a
+                # field_access node rather than a simple identifier.
+                name_node = node.child_by_field_name("name")
+                object_node = node.child_by_field_name("object")
 
-                # If only one identifier found, it's the method name (no receiver)
-                if method_name is None and receiver_name is not None:
-                    method_name = receiver_name
-                    receiver_name = None
+                method_name = _node_text(name_node, source) if name_node else None
+                receiver_name = None
+
+                if object_node is not None:
+                    if object_node.type == "identifier":
+                        receiver_name = _node_text(object_node, source)
+                    elif object_node.type == "field_access":
+                        # e.g. this.svc → extract "svc" (rightmost identifier)
+                        # and use it for type-inference lookup
+                        fa_field = object_node.child_by_field_name("field")
+                        fa_obj = object_node.child_by_field_name("object")
+                        if fa_field:
+                            receiver_name = _node_text(fa_field, source)
+                        # If the object is "this", treat the field as the
+                        # receiver for type inference (this.repo → "repo")
+                        if (
+                            fa_obj
+                            and fa_obj.type == "this"
+                            and fa_field
+                        ):
+                            receiver_name = _node_text(fa_field, source)
 
                 if method_name:
                     # Get class context

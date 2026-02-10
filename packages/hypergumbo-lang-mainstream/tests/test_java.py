@@ -226,6 +226,102 @@ public class Service {
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
 
+    def test_extracts_field_access_method_calls(self, tmp_path: Path) -> None:
+        """Extracts method calls on field access receivers (e.g., this.field.method()).
+
+        Tree-sitter represents `this.owners.findById()` as a method_invocation
+        where the object child is a `field_access` node, not an `identifier`.
+        The analyzer must use child_by_field_name("name") to extract the method
+        name and child_by_field_name("object") for the receiver.
+
+        Without this fix, the identifier scanning loop misidentifies the method
+        name: it finds only one identifier (the method name) from child[2] and
+        treats it as the receiver, then sets method_name=receiver_name with no
+        actual method name to resolve.
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Controller.java"
+        java_file.write_text("""
+public class Controller {
+    private Service svc;
+
+    public void doWork() {
+        this.svc.process();
+    }
+}
+
+class Service {
+    public void process() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        assert result.run is not None
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        do_work = next(
+            (s for s in result.symbols if s.name == "Controller.doWork"), None
+        )
+        assert do_work is not None
+
+        # this.svc.process() should produce a call edge from doWork to
+        # Service.process. The receiver is a field_access node ("this.svc"),
+        # and the method name is "process".
+        do_work_calls = [e for e in call_edges if e.src == do_work.id]
+        assert len(do_work_calls) >= 1, (
+            f"Expected call edges from doWork for this.svc.process(), "
+            f"got {len(do_work_calls)}. "
+            "field_access receiver likely not handled."
+        )
+        # The edge should target Service.process
+        svc_process = next(
+            (s for s in result.symbols if s.name == "Service.process"), None
+        )
+        assert svc_process is not None
+        targets = {e.dst for e in do_work_calls}
+        assert svc_process.id in targets, (
+            f"Expected call to Service.process, got targets: {targets}"
+        )
+
+    def test_extracts_variable_dot_method_calls(self, tmp_path: Path) -> None:
+        """Extracts calls like `variable.method()` where variable is a local var.
+
+        This is the most common Java call pattern: `mav.addObject(owner)`.
+        The tree-sitter node has an `identifier` as the `object` field and
+        another `identifier` as the `name` field.
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Service.java"
+        java_file.write_text("""
+public class Service {
+    public void process() {
+        Helper h = new Helper();
+        h.doWork();
+    }
+}
+
+class Helper {
+    public void doWork() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        assert result.run is not None
+        calls = [e for e in result.edges if e.edge_type == "calls"]
+        process_sym = next(
+            (s for s in result.symbols if s.name == "Service.process"), None
+        )
+        assert process_sym is not None
+        process_calls = [e for e in calls if e.src == process_sym.id]
+        # h.doWork() should resolve via type inference (h is Helper)
+        assert len(process_calls) >= 1, (
+            f"Expected call edge from process to doWork via type inference, "
+            f"got {len(process_calls)}."
+        )
+
 
 class TestJavaInheritanceEdges:
     """Tests for Java inheritance edge detection."""
