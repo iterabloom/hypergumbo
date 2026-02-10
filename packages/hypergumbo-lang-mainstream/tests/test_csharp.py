@@ -638,6 +638,206 @@ public class Controller {
         )
 
 
+class TestCSharpReturnTypeInference:
+    """Tests for return type tracking from method return type annotations."""
+
+    def test_return_type_inference(self, tmp_path: Path) -> None:
+        """Methods with return type annotations enable variable type inference."""
+        (tmp_path / "App.cs").write_text("""
+public class ServiceClient {
+    public void Fetch() { }
+}
+
+public class Factory {
+    public ServiceClient GetClient() {
+        return new ServiceClient();
+    }
+}
+
+public class App {
+    public void Run() {
+        var factory = new Factory();
+        var client = factory.GetClient();
+        client.Fetch();
+    }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        assert result.run is not None
+
+        run_method = next(
+            (s for s in result.symbols if s.name == "App.Run"), None
+        )
+        fetch_method = next(
+            (s for s in result.symbols if s.name == "ServiceClient.Fetch"), None
+        )
+
+        assert run_method is not None
+        assert fetch_method is not None
+
+        # Should have edge from App.Run to ServiceClient.Fetch via return type inference
+        call_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == run_method.id
+                and e.dst == fetch_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, (
+            "Expected call edge for client.Fetch() via return type inference. "
+            f"Edges from Run: {[e for e in result.edges if e.src == run_method.id]}"
+        )
+        assert call_edge.evidence_type == "method_call_type_inferred"
+
+    def test_return_type_inference_void_no_resolution(self, tmp_path: Path) -> None:
+        """Methods with void return type don't enable type inference."""
+        (tmp_path / "App.cs").write_text("""
+public class ServiceClient {
+    public void Fetch() { }
+}
+
+public class Factory {
+    public void GetClient() { }
+}
+
+public class App {
+    public void Run() {
+        var factory = new Factory();
+        var client = factory.GetClient();
+        client.Fetch();
+    }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        assert result.run is not None
+
+        run_method = next(
+            (s for s in result.symbols if s.name == "App.Run"), None
+        )
+        fetch_method = next(
+            (s for s in result.symbols if s.name == "ServiceClient.Fetch"), None
+        )
+
+        assert run_method is not None
+        assert fetch_method is not None
+
+        # Without return type tracking, client.Fetch() should NOT resolve via
+        # type inference (void return means no var_types entry for client).
+        # The fallback may still resolve it, but with "method_call" evidence,
+        # not "method_call_type_inferred".
+        type_inferred_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == run_method.id
+                and e.dst == fetch_method.id
+                and e.edge_type == "calls"
+                and e.evidence_type == "method_call_type_inferred"
+            ),
+            None,
+        )
+        assert type_inferred_edge is None
+
+    def test_simple_call_return_type_inference(self, tmp_path: Path) -> None:
+        """Simple function calls (not member access) also track return types."""
+        (tmp_path / "App.cs").write_text("""
+public class ServiceClient {
+    public void Fetch() { }
+}
+
+public static class Helpers {
+    public static ServiceClient GetClient() {
+        return new ServiceClient();
+    }
+}
+
+public class App {
+    public void Run() {
+        var client = GetClient();
+        client.Fetch();
+    }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        assert result.run is not None
+
+        run_method = next(
+            (s for s in result.symbols if s.name == "App.Run"), None
+        )
+        fetch_method = next(
+            (s for s in result.symbols if s.name == "ServiceClient.Fetch"), None
+        )
+
+        assert run_method is not None
+        assert fetch_method is not None
+
+        # Should have edge from App.Run to ServiceClient.Fetch via return type inference
+        call_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == run_method.id
+                and e.dst == fetch_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, (
+            "Expected call edge for client.Fetch() via simple call return type inference. "
+            f"Edges from Run: {[e for e in result.edges if e.src == run_method.id]}"
+        )
+        assert call_edge.evidence_type == "method_call_type_inferred"
+
+
+class TestCSharpReturnTypeExtraction:
+    """Unit tests for _extract_csharp_return_type_name helper."""
+
+    def test_simple_return_type(self) -> None:
+        """Extracts simple return type from C# signature."""
+        from hypergumbo_lang_mainstream.csharp import _extract_csharp_return_type_name
+
+        assert _extract_csharp_return_type_name("() ServiceClient") == "ServiceClient"
+
+    def test_with_params(self) -> None:
+        """Extracts return type with parameters."""
+        from hypergumbo_lang_mainstream.csharp import _extract_csharp_return_type_name
+
+        assert _extract_csharp_return_type_name("(string name, int age) User") == "User"
+
+    def test_no_return_type(self) -> None:
+        """Returns None when no return type (void is omitted)."""
+        from hypergumbo_lang_mainstream.csharp import _extract_csharp_return_type_name
+
+        assert _extract_csharp_return_type_name("()") is None
+
+    def test_none_signature(self) -> None:
+        """Returns None for None signature."""
+        from hypergumbo_lang_mainstream.csharp import _extract_csharp_return_type_name
+
+        assert _extract_csharp_return_type_name(None) is None
+
+    def test_lowercase_return_type(self) -> None:
+        """Returns None for lowercase return types (primitives like int, string)."""
+        from hypergumbo_lang_mainstream.csharp import _extract_csharp_return_type_name
+
+        assert _extract_csharp_return_type_name("() string") is None
+
+    def test_generic_return_type(self) -> None:
+        """Returns None for generic return types (not simple identifier)."""
+        from hypergumbo_lang_mainstream.csharp import _extract_csharp_return_type_name
+
+        assert _extract_csharp_return_type_name("() List<string>") is None
+
+
 class TestCSharpCrossFileResolution:
     """Tests for cross-file symbol resolution."""
 

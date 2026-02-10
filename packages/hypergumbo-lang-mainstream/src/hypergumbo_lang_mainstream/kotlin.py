@@ -186,6 +186,35 @@ def _extract_kotlin_signature(
     return signature
 
 
+def _extract_kotlin_return_type_name(signature: str | None) -> str | None:
+    """Extract the return type name from a Kotlin function signature.
+
+    Kotlin signatures use the format ``(params): ReturnType``.
+    Returns the type name only if it is a simple identifier (no generics,
+    no nullable ``?`` suffix). Returns None for Unit return type (which is
+    already omitted from the signature by ``_extract_kotlin_signature``).
+
+    Examples:
+        ``"(): ServiceClient"`` → ``"ServiceClient"``
+        ``"(name: String): User"`` → ``"User"``
+        ``"()"`` → ``None``
+        ``"(): List<String>"`` → ``None``
+        ``"(): String?"`` → ``None``
+    """
+    if not signature:
+        return None
+    paren_idx = signature.rfind(")")
+    if paren_idx < 0:
+        return None  # pragma: no cover - all Kotlin signatures contain parens
+    after_paren = signature[paren_idx + 1:].strip()
+    if not after_paren.startswith(":"):
+        return None
+    ret_part = after_paren[1:].strip()
+    if ret_part and ret_part.isidentifier():
+        return ret_part
+    return None
+
+
 def _extract_param_types(
     node: "tree_sitter.Node", source: bytes
 ) -> dict[str, str]:
@@ -658,6 +687,8 @@ def _extract_edges_from_file(
                     else:
                         receiver_name = _node_text(receiver_node, source)
 
+                        resolved_nav_sym = None
+
                         # Case 2: Object.method() - static/object call
                         if receiver_name in class_symbols:
                             candidate = f"{receiver_name}.{method_name}"
@@ -676,6 +707,7 @@ def _extract_edges_from_file(
                                     evidence_type="ast_call_static",
                                 ))
                                 edge_added = True
+                                resolved_nav_sym = lookup_result.symbol
 
                         # Case 3: instance.method() - use type inference
                         elif receiver_name in var_types:
@@ -696,6 +728,27 @@ def _extract_edges_from_file(
                                     evidence_type="ast_call_type_inferred",
                                 ))
                                 edge_added = True
+                                resolved_nav_sym = lookup_result.symbol
+
+                        # Return type tracking for navigation calls
+                        if resolved_nav_sym and resolved_nav_sym.kind in ("function", "method"):
+                            ret_name = _extract_kotlin_return_type_name(
+                                resolved_nav_sym.signature
+                            )
+                            if ret_name and ret_name in class_symbols:
+                                prop_decl = node.parent
+                                if prop_decl and prop_decl.type == "property_declaration":
+                                    var_decl = _find_child_by_type(
+                                        prop_decl, "variable_declaration"
+                                    )
+                                    if var_decl:
+                                        var_name_node = _find_child_by_type(
+                                            var_decl, "identifier"
+                                        )
+                                        if var_name_node:
+                                            var_types[
+                                                _node_text(var_name_node, source)
+                                            ] = ret_name
 
                         # Case 4: Fallback - try qualified name directly
                         if not edge_added:  # pragma: no cover
@@ -719,6 +772,7 @@ def _extract_edges_from_file(
                 callee_node = _find_child_by_type(node, "identifier")
                 if callee_node:
                     callee_name = _node_text(callee_node, source)
+                    resolved_simple_sym = None
 
                     # Check local symbols first
                     if callee_name in local_symbols:
@@ -733,6 +787,7 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
+                        resolved_simple_sym = callee
                     # Check global symbols via resolver
                     else:
                         # Use import path as hint for disambiguation
@@ -749,6 +804,33 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                             ))
+                            resolved_simple_sym = lookup_result.symbol
+
+                    # Return type tracking for simple function calls
+                    if (
+                        resolved_simple_sym
+                        and resolved_simple_sym.kind in ("function", "method")
+                    ):
+                        ret_name = _extract_kotlin_return_type_name(
+                            resolved_simple_sym.signature
+                        )
+                        if ret_name and ret_name in class_symbols:
+                            prop_decl = node.parent
+                            if (
+                                prop_decl
+                                and prop_decl.type == "property_declaration"
+                            ):
+                                var_decl = _find_child_by_type(
+                                    prop_decl, "variable_declaration"
+                                )
+                                if var_decl:
+                                    var_name_node = _find_child_by_type(
+                                        var_decl, "identifier"
+                                    )
+                                    if var_name_node:
+                                        var_types[
+                                            _node_text(var_name_node, source)
+                                        ] = ret_name
 
     return edges
 

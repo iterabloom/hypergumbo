@@ -281,19 +281,28 @@ def _extract_csharp_signature(
     type_node_types = ("predefined_type", "generic_name", "array_type",
                        "nullable_type", "qualified_name", "ref_type", "pointer_type")
 
+    # Collect identifiers before parameter_list to distinguish return type
+    # from method name.  In C# method_declaration children:
+    #   [modifiers] return_type method_name parameter_list block
+    # Custom return types (e.g. ServiceClient) are plain identifier nodes,
+    # so if there are 2+ identifiers before the parameter_list, the first
+    # is the return type.
+    pre_params_identifiers: list[str] = []
+
     for child in node.children:
         if child.type == "parameter_list":
             params_node = child
         # Return type is a type node, not identifier
         elif child.type in type_node_types:
             return_type = _extract_type_text(child, source)
-        # Handle custom type as return (identifier that's a type, not method name)
-        # The identifier for return type comes BEFORE parameter_list
-        elif child.type == "identifier" and params_node is None and return_type is None:
-            # Check if this is a type (followed by another identifier which is method name)
-            # Actually, for custom return types we need special handling
-            # Let's skip this for now - will use the type nodes above
-            pass
+        # Track identifiers before parameter_list for custom return type detection
+        elif child.type == "identifier" and params_node is None:
+            pre_params_identifiers.append(_node_text(child, source))
+
+    # If no type_node return type was found but there are 2+ identifiers
+    # before the parameter_list, the first identifier is the return type
+    if return_type is None and len(pre_params_identifiers) >= 2:
+        return_type = pre_params_identifiers[0]
 
     if params_node is None:
         return None  # pragma: no cover
@@ -325,6 +334,69 @@ def _extract_csharp_signature(
         signature += f" {return_type}"
 
     return signature
+
+
+def _extract_csharp_return_type_name(signature: str | None) -> str | None:
+    """Extract the return type name from a C# method signature.
+
+    C# signatures use the format ``(params) ReturnType`` where void is omitted.
+    Returns the type name only if it is a simple uppercase identifier (filters
+    out primitive types like ``int``, ``string`` and generics like ``List<T>``).
+
+    Examples:
+        ``"() ServiceClient"`` → ``"ServiceClient"``
+        ``"(string name, int age) User"`` → ``"User"``
+        ``"()"`` → ``None``
+        ``"() string"`` → ``None`` (lowercase = primitive)
+        ``"() List<string>"`` → ``None`` (generic)
+    """
+    if not signature:
+        return None
+    paren_idx = signature.rfind(")")
+    if paren_idx < 0 or paren_idx == len(signature) - 1:
+        return None
+    ret_part = signature[paren_idx + 1:].strip()
+    if ret_part and ret_part.isidentifier() and ret_part[0].isupper():
+        return ret_part
+    return None
+
+
+def _track_csharp_return_type(
+    resolved_sym: "Symbol",
+    node: "tree_sitter.Node",
+    source: bytes,
+    var_types: dict[str, str],
+    local_symbols: dict[str, "Symbol"],
+) -> None:
+    """Track variable type from a resolved method's return type annotation.
+
+    When ``var client = factory.GetClient()`` resolves to ``Factory.GetClient``
+    with signature ``() ServiceClient``, this sets ``var_types["client"] = "ServiceClient"``
+    so that subsequent ``client.Fetch()`` resolves via type inference.
+
+    The invocation_expression AST in C# has the parent chain:
+    ``equals_value_clause > variable_declarator > identifier``.
+    """
+    if resolved_sym.kind != "method":
+        return  # pragma: no cover - callers resolve to methods
+    ret_name = _extract_csharp_return_type_name(resolved_sym.signature)
+    if not ret_name or ret_name not in local_symbols:
+        return
+    parent = node.parent
+    if not parent:
+        return  # pragma: no cover - AST nodes always have parents
+    # Direct child of variable_declarator
+    if parent.type == "variable_declarator":
+        name_node = _find_child_by_type(parent, "identifier")
+        if name_node:
+            var_types[_node_text(name_node, source)] = ret_name
+    # Inside equals_value_clause -> variable_declarator
+    elif parent.type == "equals_value_clause":  # pragma: no cover - alt AST pattern
+        grandparent = parent.parent
+        if grandparent and grandparent.type == "variable_declarator":
+            name_node = _find_child_by_type(grandparent, "identifier")
+            if name_node:
+                var_types[_node_text(name_node, source)] = ret_name
 
 
 def _extract_method_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -906,6 +978,9 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                 ))
+                                _track_csharp_return_type(
+                                    callee, node, source, var_types, local_symbols
+                                )
                                 continue
                             else:
                                 # Use type's import path for disambiguation
@@ -922,6 +997,10 @@ def _extract_edges_from_file(
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
                                     ))
+                                    _track_csharp_return_type(
+                                        lookup_result.symbol, node, source,
+                                        var_types, local_symbols,
+                                    )
                                     continue
 
                 # Fallback to original simple name resolution
@@ -940,6 +1019,9 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
+                        _track_csharp_return_type(
+                            callee, node, source, var_types, local_symbols
+                        )
                     # Check global symbols via resolver
                     else:
                         # Use import path for disambiguation
@@ -956,6 +1038,10 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                             ))
+                            _track_csharp_return_type(
+                                lookup_result.symbol, node, source,
+                                var_types, local_symbols,
+                            )
 
         # Object creation expression (new ClassName())
         elif node.type == "object_creation_expression":
