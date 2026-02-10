@@ -25,7 +25,7 @@ A local-first CLI that profiles a repo and emits a **repo behavior map** (versio
 * 🟩 **Agent-ready output**: deterministic JSON graph + "feature slices" so an agent can fetch only relevant code.
 * 🟩 **Fast iteration**: simple architecture, small dependency surface, fixtures-driven tests.
 * 🟩 **Local-first execution**: analysis runs offline by default (no network, no API keys required).
-* ⬛ **Capsule Plan composition**: Removed—the general-purpose analyzer handles all repos. See [Appendix H](#appendix-h-capsule-system-history).
+* ⬛ **Capsule Plan composition**: Removed—the general-purpose analyzer handles all repos. See [Appendix E](#appendix-e-capsule-system-history).
 * ⬛ **Portable analyzer artifact**: Removed—`hypergumbo run` works directly without initialization.
 
 ## 2) Non-goals
@@ -62,7 +62,7 @@ Shows detailed info about a symbol (function, class, etc.) and its callers/calle
 * `-x` excludes callers/callees from test files
 
 ⬛ **`hypergumbo init`** *(removed)*
-Was part of the capsule system. See [Appendix H](#appendix-h-capsule-system-history).
+Was part of the capsule system. See [Appendix E](#appendix-e-capsule-system-history).
 
 🟩 **`hypergumbo run [path] [--out hypergumbo.results.json]`**
 Analyzes the repo and emits a behavior map. No initialization required—works directly on any repo.
@@ -74,7 +74,7 @@ Produces a reduced subgraph suitable for LLM context. Default output filename in
 Shows available language analyzers and which ones are suggested for the current repo. Useful for discovering what hypergumbo can analyze.
 
 ⬛ **`hypergumbo export-capsule`** *(removed)*
-Was part of the capsule system. See [Appendix H](#appendix-h-capsule-system-history).
+Was part of the capsule system. See [Appendix E](#appendix-e-capsule-system-history).
 
 🟩 **`hypergumbo test-coverage [path] [--format text|json]`**
 
@@ -113,7 +113,7 @@ Cold Spots (untested - need coverage)
 **Use case:** Quickly identify which parts of your codebase may need more test coverage, without running any tests.
 
 ### Key principle
-**Analysis execution requires no network or API keys** (by default). Output is deterministic and reproducible given the same repo state. See [Appendix D](#appendix-d-telemetry--privacy) for the full privacy and telemetry policy.
+**Analysis execution requires no network or API keys** (by default). Output is deterministic and reproducible given the same repo state. See [Appendix B](#appendix-b-telemetry--privacy) for the full privacy and telemetry policy.
 
 ## 4) Supported stacks
 
@@ -155,6 +155,18 @@ Hypergumbo supports 104 languages via tree-sitter grammars. All are included in 
 * Tree-sitter grammars with PyPI wheels are installed directly as dependencies
 * Grammars without PyPI packages (Lean, Wolfram) are built from source in CI (`scripts/build-source-grammars`)
 * 100% test coverage required; analyzers gracefully skip when grammars unavailable
+
+### Planned additions
+
+Languages and DSLs identified as gaps from industry analysis.
+
+| Priority | Language/DSL | Use Case | Grammar Source |
+|----------|-------------|----------|----------------|
+| High | **Meson** | Build system (GNOME, QEMU) | tree-sitter-meson |
+| High | **Assembly** | Performance-critical code | tree-sitter-asm |
+| Medium | **Rego** | OPA/Gatekeeper policy-as-code | — |
+| Medium | **Device Tree (DTS)** | Linux kernel hardware descriptions | — |
+| Medium | **Kconfig** | Linux kernel configuration | — |
 
 ## 5) Architecture
 
@@ -257,7 +269,13 @@ class AnalysisIR:
   - `sha256(ast_structure)` excluding literals/identifiers
   - Purpose: Detect structural changes (control flow, nesting) without caring about variable names
   - Use case: "Implementation changed but signature stayed same"
-**Scheme versioning note:** The exact algorithms for `stable_id` and `shape_id` are governed by `stable_id_scheme` and `shape_id_scheme` in the output. Any change that would alter computed values MUST bump the corresponding scheme identifier.
+
+**Scheme versioning note:** The exact algorithms for identity and provenance fields are governed by scheme identifiers in the output:
+* `stable_id_scheme`: identifies the algorithm/normalization used to compute `stable_id`
+* `shape_id_scheme`: identifies the algorithm used to compute `shape_id`
+* `repo_fingerprint_scheme`: identifies the algorithm used to compute `analysis_runs[].repo_fingerprint`
+
+Any change that would alter computed values MUST bump the corresponding scheme identifier.
 * `fingerprint` (content hash): `sha256(source_bytes)`
   - Changes when implementation changes
   - Purpose: Detect modifications
@@ -354,7 +372,7 @@ Single file: `hypergumbo.results.json`
 
 ### JSON Schema (Auto-Generated)
 
-A formal JSON Schema is available at `docs/schema.json`. This schema is **auto-generated** from the Python dataclasses in `src/hypergumbo/ir.py` to ensure it stays in sync with the implementation.
+A formal JSON Schema is available at `docs/schema.json`. This schema is **auto-generated** from the Python dataclasses in `packages/hypergumbo-core/src/hypergumbo_core/ir.py` to ensure it stays in sync with the implementation.
 
 **Regenerate with:** `./scripts/generate-schema`
 
@@ -367,12 +385,7 @@ The schema follows JSON Schema Draft 2020-12 and can be used for:
 
 **DRY Principle:** The Python dataclasses (`Symbol`, `Edge`, `Span`, `AnalysisRun`) are the single source of truth. The JSON Schema and this spec document the *meaning* of fields; the dataclasses define the *structure*.
 
-**Scheme identifiers:**
-- `stable_id_scheme`: identifies the algorithm/normalization used to compute `stable_id`
-- `shape_id_scheme`: identifies the algorithm used to compute `shape_id`
-- `repo_fingerprint_scheme`: identifies the algorithm used to compute `analysis_runs[].repo_fingerprint`
-
-These fields prevent semantic drift: if an algorithm changes in the future, the scheme string MUST change.
+**Scheme identifiers** (`stable_id_scheme`, `shape_id_scheme`, `repo_fingerprint_scheme`): Identify the algorithms used to compute their respective fields. See [§5 Scheme versioning note](#ir-layer) for definitions and the versioning mandate.
 
 **analysis_incomplete** (boolean, default: false):
 - Set to `true` if analysis terminated early due to errors, timeouts, or resource limits
@@ -525,6 +538,8 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
   }
 }
 ```
+
+`origin`, `origin_run_id`, and `origin_run_signature` have the same semantics as on nodes — see [§5 IR Layer](#ir-layer).
 
 **Multi-pass evidence (optional):** When multiple analysis passes observe the same relationship, `meta.evidence[]` accumulates their individual observations. The top-level `meta.evidence_type`, `meta.evidence_lang`, and `meta.evidence_spans` always reflect the primary (highest-confidence) record.
 
@@ -746,6 +761,8 @@ C++ (82%), Lua (12%), CMake (6%)
 - `main` (Cli main) — src/main.cpp
 - `Client::Client` (Constructor) — src/client/client.cpp
 ```
+
+For a complete real-world example (install, run, and full JSON output), see [example-output.md](example-output.md).
 
 ## 7) Slicing behavior
 
@@ -1569,7 +1586,7 @@ This section documents known limitations and risks of the current analysis syste
 | Import tracking partial | Low | Only Python and Go fully utilize import tracking for cross-file disambiguation. See [details below](#import-tracking-for-disambiguation). |
 | ID collisions in edge cases | Low | Location-based IDs can collide for identically-named symbols at same line. Content hash appended if collision detected. |
 | Confidence scores are heuristics | Medium | Scores are calibrated heuristics, not ground truth. Evidence types show reasoning; `--confidence-threshold` allows filtering. |
-| Schema changes may break consumers | Medium | Semantic versioning from day 1; forward compatibility contract in [Appendix E](#appendix-e-forward-compatibility-contract); migration guides for breaking changes. |
+| Schema changes may break consumers | Medium | Semantic versioning from day 1; forward compatibility contract in [Appendix C](#appendix-c-forward-compatibility-contract); migration guides for breaking changes. |
 | stable_id limited in untyped code | Low | Without type annotations, stable_id uses arity-based hashing which may change on signature changes. shape_id provides structural alternative. |
 
 ### Re-export Resolution
@@ -1646,7 +1663,7 @@ See [ADR-0008](adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for 
 
 ## 16) Future Work
 
-This section collects capabilities that are designed but not yet implemented. Pursue when there's clear demand beyond what the current system provides. See [Registry & Factory Vision](future/registry-factory-vision.md) for speculative ideas about sharing analyzers.
+This section collects capabilities that are designed but not yet implemented. Pursue when there's clear demand beyond what the current system provides. The architecture is designed to support these enhancements without breaking changes: the IR and identity fields ([§5](#5-architecture)) enable cross-refactor tracking and multi-pass merging, and the forward compatibility contract ([Appendix C](#appendix-c-forward-compatibility-contract)) defines what can change in minor vs. major versions. See also [Registry & Factory Vision](future/registry-factory-vision.md) for speculative ideas about sharing analyzers.
 
 ### Multi-fidelity analysis
 
@@ -1772,23 +1789,9 @@ If dataflow proves infeasible, agent-guided slicing (agents specify hops/filters
 
 * **Ripgrep for centrality computation**: ⬛ Attempted and removed. Ripgrep was tried for symbol mention centrality but removed due to complexity around regex escaping for symbol names containing special characters. The parallelized Python regex approach is sufficient for practical repo sizes.
 
-## Appendix A: Example output
+## Appendix A: Versioning & Support Policy
 
-The JSON output structure is documented field-by-field in [§6](#6-output-repo-behavior-map-json), with inline examples for each top-level section (`analysis_runs[]`, `nodes[]`, `edges[]`, `features[]`, `metrics`, `limits`). The [top-level structure](#top-level-structure) shows all fields together.
-
-For a complete real-world example (install, run, and full output), see [example-output.md](example-output.md).
-
-## Appendix B: Evolution path
-
-The architecture is designed to enable future enhancements without breaking changes. Key extensibility points are documented in their primary locations:
-
-* **IR and identity fields** (`stable_id`, `shape_id`, provenance): [§5 Architecture](#5-architecture) — designed for cross-refactor tracking, mixed-fidelity analysis, and multi-pass merging.
-* **Output schema** (immutable contracts, unknown-field tolerance, view system): [Appendix E](#appendix-e-forward-compatibility-contract) — defines what can change in minor vs. major versions.
-* **Planned capabilities** (language servers, agent context router, additional views): [§16 Future Work](#16-future-work) — the features these extensibility points are designed to enable.
-
-## Appendix C: Versioning & Support Policy
-
-This appendix covers release lifecycle, support windows, and deprecation timelines. For the schema-level compatibility contract (which fields are immutable, how consumers handle unknown fields), see [Appendix E](#appendix-e-forward-compatibility-contract).
+This appendix covers release lifecycle, support windows, and deprecation timelines. For the schema-level compatibility contract (which fields are immutable, how consumers handle unknown fields), see [Appendix C](#appendix-c-forward-compatibility-contract).
 
 ### Semantic versioning
 
@@ -1804,7 +1807,7 @@ This appendix covers release lifecycle, support windows, and deprecation timelin
 
 * **v0.1 outputs readable by v0.2+** if v0.2 is backward-compatible (MINOR bump)
 * **v1.0 outputs readable by v1.x** for all v1.x (MAJOR version promises stability)
-* **Breaking changes only in MAJOR bumps** with 6-month migration period. See [Appendix E](#appendix-e-forward-compatibility-contract) for the technical definition of what constitutes a breaking change.
+* **Breaking changes only in MAJOR bumps** with 6-month migration period. See [Appendix C](#appendix-c-forward-compatibility-contract) for the technical definition of what constitutes a breaking change.
 
 ### Support windows
 
@@ -1828,7 +1831,7 @@ This appendix covers release lifecycle, support windows, and deprecation timelin
   - v0.x enters "previous major" (18-month clock starts)
 * 18 months after v1.x release: v0.x unsupported
 
-## Appendix D: Telemetry & Privacy
+## Appendix B: Telemetry & Privacy
 
 ### Default: Zero telemetry
 
@@ -1866,9 +1869,9 @@ Enable via `hypergumbo config --telemetry=on` or `hypergumbo_TELEMETRY=1` enviro
 * Privacy policy published at https://hypergumbo.iterabloom.com/privacy
 * Opt-in status shown in `hypergumbo config --show`
 
-## Appendix E: Forward Compatibility Contract
+## Appendix C: Forward Compatibility Contract
 
-This appendix defines the schema-level contract: which fields are immutable, how consumers handle unknown fields, and what constitutes a breaking change. For release lifecycle, support windows, and deprecation timelines, see [Appendix C](#appendix-c-versioning--support-policy).
+This appendix defines the schema-level contract: which fields are immutable, how consumers handle unknown fields, and what constitutes a breaking change. For release lifecycle, support windows, and deprecation timelines, see [Appendix A](#appendix-a-versioning--support-policy).
 
 This contract ensures current outputs remain valid when future capabilities are added, and enhancements degrade gracefully for existing consumers.
 
@@ -1977,7 +1980,7 @@ hypergumbo run  # Output compatible with existing tooling
 4. Agents can check `confidence_model` version, warn if too new
 
 **Deprecation process (if ever needed):**
-See [Appendix C: Versioning & Support Policy](#appendix-c-versioning--support-policy) for the deprecation process and support windows.
+See [Appendix A: Versioning & Support Policy](#appendix-a-versioning--support-policy) for the deprecation process and support windows.
 
 ### Compatibility Testing
 
@@ -1988,7 +1991,7 @@ See [Appendix C: Versioning & Support Policy](#appendix-c-versioning--support-po
 
 **Commitment:** No breaking changes to `behavior_map.json` view within v0.x series.
 
-## Appendix F: Future Testing Enhancements
+## Appendix D: Future Testing Enhancements
 
 ### Integration Tests
 
@@ -2013,26 +2016,7 @@ The current CI system is solid (see ADR-0010, ADR-0011) but has some potential i
 
 These are all quality-of-life improvements. The current system works correctly and provides fast feedback.
 
-## Appendix G: Planned Language/DSL Support
-
-Languages and DSLs identified as gaps from industry analysis.
-
-### High Priority (Build-from-source)
-
-| Language | Use Case | Grammar Source |
-|----------|----------|----------------|
-| **Meson** | Build system (GNOME, QEMU) | tree-sitter-meson |
-| **Assembly** | Performance-critical code | tree-sitter-asm |
-
-### Medium Priority (Specialized ecosystems)
-
-| Language/DSL | Use Case |
-|--------------|----------|
-| **Rego** | OPA/Gatekeeper policy-as-code |
-| **Device Tree (DTS)** | Linux kernel hardware descriptions |
-| **Kconfig** | Linux kernel configuration |
-
-## Appendix H: Capsule System History
+## Appendix E: Capsule System History
 
 The original design included a "capsule" abstraction for composing custom analyzers from building blocks. The idea was that users would run `hypergumbo init` to create a capsule configuration, then `hypergumbo run` would execute analysis according to that configuration.
 
