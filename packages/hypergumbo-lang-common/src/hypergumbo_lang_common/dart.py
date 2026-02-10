@@ -208,6 +208,31 @@ def _extract_dart_signature(
     return sig
 
 
+def _extract_dart_return_type_name(signature: str | None) -> str | None:
+    """Extract the return type name from a Dart function signature.
+
+    Dart signatures use the format ``(params) ReturnType`` where void is omitted.
+    Returns the type name only if it is a simple uppercase identifier (filters
+    out primitive types like ``int``, ``String`` and generics like ``List<T>``).
+
+    Examples:
+        ``"() ServiceClient"`` → ``"ServiceClient"``
+        ``"(String name, int age) User"`` → ``"User"``
+        ``"()"`` → ``None``
+        ``"() int"`` → ``None`` (lowercase = primitive)
+        ``"() List<String>"`` → ``None`` (generic)
+    """
+    if not signature:
+        return None
+    paren_idx = signature.rfind(")")
+    if paren_idx < 0 or paren_idx == len(signature) - 1:
+        return None
+    ret_part = signature[paren_idx + 1:].strip()
+    if ret_part and ret_part.isidentifier() and ret_part[0].isupper():
+        return ret_part
+    return None
+
+
 def _find_enclosing_class(
     node: "tree_sitter.Node",
     source: bytes,
@@ -564,6 +589,71 @@ def _extract_edges_from_file(
         if node.type == "function_signature":
             param_types = _extract_param_types(node, source)
             var_types.update(param_types)
+
+        # Track return types from function/method calls in variable declarations
+        # Pattern: var client = getClient() or var client = factory.create()
+        # AST: initialized_variable_definition > [inferred_type] identifier = identifier [selector(.method)] selector(args)
+        if node.type == "initialized_variable_definition":
+            children = list(node.children)
+            var_name = None
+            call_target = None
+            call_method = None
+            has_args = False
+            after_eq = False
+
+            for child in children:
+                if child.type == "identifier":
+                    if not after_eq:
+                        var_name = _node_text(child, source)
+                    elif call_target is None:
+                        call_target = _node_text(child, source)
+                elif child.type == "=":
+                    after_eq = True
+                elif child.type == "selector" and after_eq:
+                    for sel_child in child.children:
+                        if sel_child.type == "unconditional_assignable_selector":
+                            for sub in sel_child.children:
+                                if sub.type == "identifier":
+                                    call_method = _node_text(sub, source)
+                        if sel_child.type in ("argument_part", "arguments"):
+                            has_args = True
+                    if any(
+                        c.type in ("argument_part", "arguments")
+                        for c in child.children
+                    ):
+                        has_args = True
+
+            if var_name and call_target and has_args:
+                resolved_sym = None
+                if call_method and call_target in var_types:
+                    # receiver.method() pattern
+                    class_name = var_types[call_target]
+                    qualified_name = f"{class_name}.{call_method}"
+                    path_hint = import_hints.get(class_name)
+                    lookup_result = resolver.lookup(
+                        qualified_name, path_hint=path_hint
+                    )
+                    if lookup_result.found and lookup_result.symbol:
+                        resolved_sym = lookup_result.symbol
+                elif not call_method:
+                    # Simple function call pattern
+                    path_hint = import_hints.get(call_target)
+                    lookup_result = resolver.lookup(
+                        call_target, path_hint=path_hint
+                    )
+                    if lookup_result.found and lookup_result.symbol:
+                        resolved_sym = lookup_result.symbol
+
+                if resolved_sym and resolved_sym.kind in ("function", "method"):
+                    ret_name = _extract_dart_return_type_name(
+                        resolved_sym.signature
+                    )
+                    if ret_name:
+                        # Verify return type class exists
+                        class_result = resolver.lookup(ret_name)
+                        if class_result.found:
+                            var_types[var_name] = ret_name
+
         # Import/export directive
         if node.type == "import_or_export":
             import_path = _extract_import_path(node, source)

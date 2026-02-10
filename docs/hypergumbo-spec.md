@@ -2097,7 +2097,7 @@ Spec A implements basic type inference for method call resolution (see ADR-0006)
 - ✅ Constructor tracking: `db = Database()` → `db` has type `Database`
 - ✅ Parameter tracking: `def f(db: Database)` → `db` has type `Database`
 - ✅ Field type tracking: `private val svc: Service` → `this.svc.process()` resolves to `Service.process`
-- 🟡 Return type tracking: `stub = get_client()` where `get_client() -> Client` → `stub` has type `Client` (Python, TypeScript, Java, Kotlin, C#)
+- ✅ Return type tracking: `stub = get_client()` where `get_client() -> Client` → `stub` has type `Client` (Python, TypeScript, Java, Kotlin, C#, Dart)
 - Supported in: Python, Java, Kotlin, TypeScript, C#, Dart, Scala (method name only)
 
 Future improvements to AST-based type inference (without requiring language servers):
@@ -2105,14 +2105,14 @@ Future improvements to AST-based type inference (without requiring language serv
 | Feature | Value | Effort | Priority | Status |
 |---------|-------|--------|----------|--------|
 | **Type hierarchy** | High | Medium | 1st | ✅ Done |
-| **Return type tracking** | Medium-High | Medium | 2nd | 🟡 Python, TS, Java, Kotlin, C# |
+| **Return type tracking** | Medium-High | Medium | 2nd | ✅ All 6 languages |
 | **Field type tracking** | High | Medium | 3rd | ✅ Done (Java, Kotlin, C#, Python) |
 | **Method-scoped tracking** | Low-Medium | Medium | 4th | |
 | **Generic handling** | High | High | 5th | |
 
 **Type hierarchy:** ✅ Implemented via type hierarchy linker. Creates `dispatches_to` edges from parent/interface methods to overriding implementations in child classes. Currently works with Java (which creates `extends`/`implements` edges); other languages need inheritance edge creation for full benefit.
 
-**Return type tracking:** 🟡 Implemented for Python, TypeScript, Java, Kotlin, and C#. Tracks return type annotations and infers variable type when `var = func()` so that `var.method()` resolves to `ReturnType.method()`. Python resolves return type from caller's local symbols, imports, or function's own module. TypeScript resolves from the class resolver. Java resolves from the class symbol table. Kotlin resolves from the class_symbols dict for both simple function calls (`val x = getHelper()`) and navigation calls (`val x = factory.create()`). C# resolves from local_symbols, tracking through both member-access type inference and fallback resolution paths. Only simple (non-generic) return types are tracked; `Optional[X]`, `Promise<X>`, `List<T>`, etc. are not resolved. Not yet implemented: Dart.
+**Return type tracking:** ✅ Implemented for all six typed languages: Python, TypeScript, Java, Kotlin, C#, and Dart. Tracks return type annotations and infers variable type when `var = func()` so that `var.method()` resolves to `ReturnType.method()`. Python resolves return type from caller's local symbols, imports, or function's own module. TypeScript resolves from the class resolver. Java resolves from the class symbol table. Kotlin resolves from the class_symbols dict for both simple function calls (`val x = getHelper()`) and navigation calls (`val x = factory.create()`). C# resolves from local_symbols, tracking through both member-access type inference and fallback resolution paths. Dart parses call targets from `initialized_variable_definition` AST nodes, handling both simple calls (`var x = getClient()`) and navigation calls (`var x = factory.create()`). Only simple (non-generic) return types are tracked; `Optional[X]`, `Promise<X>`, `List<T>`, etc. are not resolved.
 
 **Field type tracking:** ✅ Implemented for Java (field_declaration type tracking), Kotlin (constructor parameter type tracking), C# (field declaration type tracking, handles generic_name types), and Python (`self.field` type tracking from typed `__init__` params and constructor calls). Enables resolution of `this.field.method()` / `self.field.method()` → `FieldType.method()`. Scala uses method name matching without explicit type inference.
 

@@ -684,6 +684,203 @@ void process({Logger logger}) {
         assert "Logger.log" in edge.dst
 
 
+class TestDartReturnTypeInference:
+    """Tests for return type tracking from function return type annotations."""
+
+    def test_type_inference_from_return_type_annotation(
+        self, tmp_path: Path
+    ) -> None:
+        """Functions with return type annotations enable variable type inference."""
+        from hypergumbo_lang_common.dart import analyze_dart
+
+        make_dart_file(tmp_path, "main.dart", """
+class ServiceClient {
+  void fetch() {}
+}
+
+ServiceClient getClient() {
+  return ServiceClient();
+}
+
+void main() {
+  var client = getClient();
+  client.fetch();
+}
+""")
+        result = analyze_dart(tmp_path)
+
+        assert result.run is not None
+
+        main_func = next(
+            (s for s in result.symbols if s.name == "main"), None
+        )
+        fetch_method = next(
+            (s for s in result.symbols if "fetch" in s.name), None
+        )
+
+        assert main_func is not None
+        assert fetch_method is not None
+
+        # Should have edge from main to ServiceClient.fetch via return type inference
+        call_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == main_func.id
+                and e.dst == fetch_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, (
+            "Expected call edge for client.fetch() via return type inference. "
+            f"Edges from main: {[e for e in result.edges if e.src == main_func.id]}"
+        )
+        assert call_edge.evidence_type == "method_call_type_inferred"
+
+    def test_type_inference_no_annotation_no_resolution(
+        self, tmp_path: Path
+    ) -> None:
+        """Functions without return type annotation don't enable type inference."""
+        from hypergumbo_lang_common.dart import analyze_dart
+
+        make_dart_file(tmp_path, "main.dart", """
+class ServiceClient {
+  void fetch() {}
+}
+
+getClient() {
+  return ServiceClient();
+}
+
+void main() {
+  var client = getClient();
+  client.fetch();
+}
+""")
+        result = analyze_dart(tmp_path)
+
+        assert result.run is not None
+
+        main_func = next(
+            (s for s in result.symbols if s.name == "main"), None
+        )
+        fetch_method = next(
+            (s for s in result.symbols if "fetch" in s.name), None
+        )
+
+        assert main_func is not None
+        assert fetch_method is not None
+
+        # Should NOT resolve via type inference (no return type annotation)
+        type_inferred_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == main_func.id
+                and e.dst == fetch_method.id
+                and e.edge_type == "calls"
+                and e.evidence_type == "method_call_type_inferred"
+            ),
+            None,
+        )
+        assert type_inferred_edge is None
+
+    def test_navigation_call_return_type_inference(
+        self, tmp_path: Path
+    ) -> None:
+        """Method calls (factory.create()) also track return types."""
+        from hypergumbo_lang_common.dart import analyze_dart
+
+        make_dart_file(tmp_path, "main.dart", """
+class ServiceClient {
+  void fetch() {}
+}
+
+class Factory {
+  ServiceClient create() {
+    return ServiceClient();
+  }
+}
+
+void main() {
+  var factory = new Factory();
+  var client = factory.create();
+  client.fetch();
+}
+""")
+        result = analyze_dart(tmp_path)
+
+        assert result.run is not None
+
+        main_func = next(
+            (s for s in result.symbols if s.name == "main"), None
+        )
+        fetch_method = next(
+            (s for s in result.symbols if "fetch" in s.name), None
+        )
+
+        assert main_func is not None
+        assert fetch_method is not None
+
+        # Should have edge from main to ServiceClient.fetch via return type inference
+        call_edge = next(
+            (
+                e
+                for e in result.edges
+                if e.src == main_func.id
+                and e.dst == fetch_method.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, (
+            "Expected call edge for client.fetch() via navigation return type inference. "
+            f"Edges from main: {[e for e in result.edges if e.src == main_func.id]}"
+        )
+        assert call_edge.evidence_type == "method_call_type_inferred"
+
+
+class TestDartReturnTypeExtraction:
+    """Unit tests for _extract_dart_return_type_name helper."""
+
+    def test_simple_return_type(self) -> None:
+        """Extracts simple return type from Dart signature."""
+        from hypergumbo_lang_common.dart import _extract_dart_return_type_name
+
+        assert _extract_dart_return_type_name("() ServiceClient") == "ServiceClient"
+
+    def test_with_params(self) -> None:
+        """Extracts return type with parameters."""
+        from hypergumbo_lang_common.dart import _extract_dart_return_type_name
+
+        assert _extract_dart_return_type_name("(String name, int age) User") == "User"
+
+    def test_no_return_type(self) -> None:
+        """Returns None when no return type (void is omitted)."""
+        from hypergumbo_lang_common.dart import _extract_dart_return_type_name
+
+        assert _extract_dart_return_type_name("()") is None
+
+    def test_none_signature(self) -> None:
+        """Returns None for None signature."""
+        from hypergumbo_lang_common.dart import _extract_dart_return_type_name
+
+        assert _extract_dart_return_type_name(None) is None
+
+    def test_lowercase_return_type(self) -> None:
+        """Returns None for lowercase return types (primitives like int, String)."""
+        from hypergumbo_lang_common.dart import _extract_dart_return_type_name
+
+        assert _extract_dart_return_type_name("() int") is None
+
+    def test_generic_return_type(self) -> None:
+        """Returns None for generic return types (not simple identifier)."""
+        from hypergumbo_lang_common.dart import _extract_dart_return_type_name
+
+        assert _extract_dart_return_type_name("() List<String>") is None
+
+
 class TestDartImportHintsExtraction:
     """Tests for import hints extraction for disambiguation."""
 
