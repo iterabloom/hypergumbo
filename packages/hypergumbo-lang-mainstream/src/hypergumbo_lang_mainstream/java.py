@@ -782,14 +782,28 @@ def _get_enclosing_method(
     node: "tree_sitter.Node",
     source: bytes,
     global_symbols: dict[str, Symbol],
+    file_path: Path | None = None,
+    symbol_by_position: dict[tuple[str, int, int], Symbol] | None = None,
 ) -> Optional[Symbol]:
     """Walk up the tree to find the enclosing method/constructor.
 
     Returns the Symbol for the enclosing method, or None if not inside a method.
+
+    Uses symbol_by_position (keyed by file path + start position) when available,
+    which correctly handles monorepos where multiple files define methods with
+    the same name. Falls back to global_symbols when symbol_by_position is unavailable.
     """
+    file_path_str = str(file_path) if file_path else None
     current = node.parent
     while current is not None:
         if current.type in ("method_declaration", "constructor_declaration"):
+            # Position-based lookup handles duplicate names across files
+            if symbol_by_position and file_path_str:
+                pos_key = (file_path_str, current.start_point[0] + 1, current.start_point[1])
+                sym = symbol_by_position.get(pos_key)
+                if sym:
+                    return sym
+            # Fallback to name-based lookup
             name = _get_method_name(current, source)
             if name:
                 # Get class context
@@ -813,6 +827,7 @@ def _extract_edges(
     imports: dict[str, str] | None = None,
     resolver: NameResolver | None = None,
     class_resolver: NameResolver | None = None,
+    symbol_by_position: dict[tuple[str, int, int], Symbol] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed Java tree (pass 2).
 
@@ -921,7 +936,7 @@ def _extract_edges(
 
         # Method invocations — use tree-sitter field names for reliable extraction
         elif node.type == "method_invocation":
-            current_method = _get_enclosing_method(node, source, global_symbols)
+            current_method = _get_enclosing_method(node, source, global_symbols, file_path, symbol_by_position)
             if current_method:
                 # Use tree-sitter named fields: "name" is the method, "object"
                 # is the receiver.  This correctly handles field_access receivers
@@ -1047,7 +1062,7 @@ def _extract_edges(
 
         # Object creation: new ClassName()
         elif node.type == "object_creation_expression":
-            current_method = _get_enclosing_method(node, source, global_symbols)
+            current_method = _get_enclosing_method(node, source, global_symbols, file_path, symbol_by_position)
             type_name = None
 
             # Find the type being instantiated
@@ -1254,8 +1269,12 @@ def analyze_java(repo_root: Path) -> JavaAnalysisResult:
     global_symbols: dict[str, Symbol] = {}
     class_symbols: dict[str, Symbol] = {}
 
+    # Position-based lookup for enclosing method resolution in monorepos
+    symbol_by_position: dict[tuple[str, int, int], Symbol] = {}
+
     for sym in all_symbols:
         global_symbols[sym.name] = sym
+        symbol_by_position[(sym.path, sym.span.start_line, sym.span.start_col)] = sym
         if sym.kind in ("class", "interface", "enum"):
             class_symbols[sym.name] = sym
 
@@ -1264,7 +1283,8 @@ def analyze_java(repo_root: Path) -> JavaAnalysisResult:
     for pf in parsed_files:
         edges = _extract_edges(
             pf.tree, pf.source, pf.path, run,
-            global_symbols, class_symbols, pf.imports or {}
+            global_symbols, class_symbols, pf.imports or {},
+            symbol_by_position=symbol_by_position,
         )
         all_edges.extend(edges)
 

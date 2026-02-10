@@ -378,10 +378,14 @@ statements are reached; input diversity testing ensures they produce correct res
   - Forward slice from CatsController.create had 0 useful nodes
   - Assessment noted: "misses the actual business logic call to catsService.create()"
 - **Impact:** Forward slices from NestJS/Angular controllers now include service layer calls
-- **Limitation:** Previously, in monorepos with multiple files defining the same class name
-  (e.g., many `CatsService.create` across 11 sample apps in NestJS repo), resolution would
-  pick an arbitrary symbol. Now fixed: import-path disambiguation uses `import { Foo } from './module'`
-  to select the correct symbol when multiple candidates exist.
+- **Limitation:** JS files without type annotations (e.g., `constructor(catsService)` in babel example)
+  cannot be type-inferred, so `this.catsService.create()` falls through to Case 4 (method name match)
+  which produces low-confidence edges to all matching methods. This is inherent to untyped JavaScript.
+- **Fix 2 (PR #977):** `_get_enclosing_function` used `global_symbols[full_name]` which only stores
+  one symbol per name. In monorepos with 11 files defining `CatsController.create`, only the
+  last-processed file's symbol could be found; the other 10 returned `None` → no call edges.
+  Fixed by using `symbol_by_position` (keyed by file+line+col) which uniquely identifies every symbol.
+  Result: 1/9 → 9/9 controllers produce call edges on NestJS repo.
 - **Regression tests:**
   - `test_js_ts.py::TestVariableTypeInference::test_this_property_method_call_nestjs_pattern`
   - `test_js_ts.py::TestVariableTypeInference::test_this_property_disambiguates_via_named_import`
@@ -390,6 +394,7 @@ statements are reached; input diversity testing ensures they produce correct res
   - `test_js_ts.py::TestVariableTypeInference::test_disambiguate_non_relative_import_falls_through`
   - `test_js_ts.py::TestVariableTypeInference::test_disambiguate_single_candidate_returns_none`
   - `test_js_ts.py::TestVariableTypeInference::test_disambiguate_no_match_returns_none`
+  - `test_js_ts.py::TestVariableTypeInference::test_enclosing_function_found_for_all_duplicate_named_methods`
 - **Pending Generalizations:** None
 
 ## INV-014: Chained Member Access Call Resolution

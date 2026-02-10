@@ -4081,6 +4081,60 @@ class CatsController {
         )
         assert result is None
 
+    def test_enclosing_function_found_for_all_duplicate_named_methods(self, tmp_path: Path) -> None:
+        """All instances of a duplicate-named method must produce call edges.
+
+        In monorepos where multiple files define the same class/method name
+        (e.g., NestJS with CatsController.create in 11 sample apps), each
+        controller's method must produce its own call edges. Previously,
+        _get_enclosing_function used global_symbols which keeps only one
+        symbol per name, so only the last-processed file produced edges.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # Create 3 directories each with identical CatsController + CatsService
+        for d in ["app_a", "app_b", "app_c"]:
+            (tmp_path / d).mkdir()
+            (tmp_path / d / "cats.service.ts").write_text(
+                "export class CatsService {\n"
+                "    create(data: any) { return data; }\n"
+                "}\n"
+            )
+            (tmp_path / d / "cats.controller.ts").write_text(
+                "import { CatsService } from './cats.service';\n"
+                "\n"
+                "export class CatsController {\n"
+                "    constructor(private readonly catsService: CatsService) {}\n"
+                "\n"
+                "    async create(data: any) {\n"
+                "        return this.catsService.create(data);\n"
+                "    }\n"
+                "}\n"
+            )
+
+        result = analyze_javascript(tmp_path)
+
+        # All 3 controllers should produce call edges
+        ctrl_creates = [s for s in result.symbols if s.name == "CatsController.create"]
+        assert len(ctrl_creates) == 3, (
+            f"Expected 3 CatsController.create, got {len(ctrl_creates)}"
+        )
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        controllers_with_edges = set()
+        for ctrl in ctrl_creates:
+            ctrl_edges = [e for e in call_edges if e.src == ctrl.id]
+            if ctrl_edges:
+                controllers_with_edges.add(ctrl.path)
+
+        # The bug: only 1 of 3 controllers produces edges because
+        # _get_enclosing_function uses global_symbols (one per name)
+        assert len(controllers_with_edges) == 3, (
+            f"Expected ALL 3 controllers to have call edges, "
+            f"but only {len(controllers_with_edges)} do: "
+            f"{[p.split(str(tmp_path))[-1] for p in controllers_with_edges]}"
+        )
+
 
 # ============================================================================
 # TypeScript Decorator Metadata Tests (Phase 4)

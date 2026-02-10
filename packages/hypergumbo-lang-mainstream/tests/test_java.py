@@ -323,6 +323,54 @@ class Helper {
         )
 
 
+class TestJavaMonorepoDuplicateNames:
+    """Tests for monorepo handling where multiple files define same class names."""
+
+    def test_enclosing_method_found_for_all_duplicate_named_classes(self, tmp_path: Path) -> None:
+        """All instances of a duplicate-named method must produce call edges.
+
+        In monorepos where multiple modules define the same class name (e.g.,
+        UserService in module_a and module_b), each service's methods must
+        produce their own call edges.
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        for d in ["module_a", "module_b", "module_c"]:
+            (tmp_path / d).mkdir()
+            (tmp_path / d / "UserService.java").write_text(
+                "public class UserService {\n"
+                "    public void save(String name) {}\n"
+                "}\n"
+            )
+            (tmp_path / d / "UserController.java").write_text(
+                "public class UserController {\n"
+                "    private UserService svc;\n"
+                "    public void create() {\n"
+                "        svc.save(\"test\");\n"
+                "    }\n"
+                "}\n"
+            )
+
+        result = analyze_java(tmp_path)
+
+        ctrl_creates = [s for s in result.symbols if s.name == "UserController.create"]
+        assert len(ctrl_creates) == 3, (
+            f"Expected 3 UserController.create, got {len(ctrl_creates)}"
+        )
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        controllers_with_edges = set()
+        for ctrl in ctrl_creates:
+            ctrl_edges = [e for e in call_edges if e.src == ctrl.id]
+            if ctrl_edges:
+                controllers_with_edges.add(ctrl.path)
+
+        assert len(controllers_with_edges) == 3, (
+            f"Expected ALL 3 controllers to have call edges, "
+            f"but only {len(controllers_with_edges)} do"
+        )
+
+
 class TestJavaInheritanceEdges:
     """Tests for Java inheritance edge detection."""
 

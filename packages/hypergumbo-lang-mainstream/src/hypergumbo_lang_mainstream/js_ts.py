@@ -2140,26 +2140,47 @@ def _get_enclosing_function(
     file_path: Path,
     global_symbols: dict[str, Symbol],
     symbol_by_position: dict[tuple[str, int, int], Symbol] | None = None,
+    line_offset: int = 0,
 ) -> Optional[Symbol]:
     """Walk up the tree to find the enclosing function/method.
 
     Returns the Symbol for the enclosing function, or None if not inside one.
 
+    Uses symbol_by_position (keyed by file path + start position) for lookup,
+    which correctly handles monorepos where multiple files define methods with
+    the same name (e.g., CatsController.create in 11 NestJS sample apps).
+    Falls back to global_symbols when symbol_by_position is unavailable.
+
     For arrow functions passed as callbacks (not assigned to variables), looks up
     the symbol by position using symbol_by_position. This enables call attribution
     for patterns like: app.get('/', (req, res) => { helper(); })
     """
+    file_path_str = str(file_path)
     current = node.parent
     while current is not None:
         if current.type == "function_declaration":
+            # Position-based lookup handles duplicate names across files
+            if symbol_by_position:
+                pos_key = (file_path_str, current.start_point[0] + 1 + line_offset, current.start_point[1])
+                sym = symbol_by_position.get(pos_key)
+                if sym:
+                    return sym
+            # Fallback to name-based lookup
             name = _find_name_in_children(current, source)
             if name and name in global_symbols:
                 sym = global_symbols[name]
-                if sym.path == str(file_path):
+                if sym.path == file_path_str:
                     return sym
             return None  # pragma: no cover
 
         if current.type == "method_definition":
+            # Position-based lookup handles duplicate names across files
+            if symbol_by_position:
+                pos_key = (file_path_str, current.start_point[0] + 1 + line_offset, current.start_point[1])
+                sym = symbol_by_position.get(pos_key)
+                if sym:
+                    return sym
+            # Fallback to name-based lookup
             name = _find_name_in_children(current, source)
             if name:
                 class_ctx = _get_class_context(current, source)
@@ -2167,7 +2188,7 @@ def _get_enclosing_function(
                     full_name = f"{class_ctx}.{name}"
                     if full_name in global_symbols:
                         sym = global_symbols[full_name]
-                        if sym.path == str(file_path):
+                        if sym.path == file_path_str:
                             return sym
             return None  # pragma: no cover
 
@@ -2182,7 +2203,7 @@ def _get_enclosing_function(
                             name = _node_text(child, source)
                             if name in global_symbols:
                                 sym = global_symbols[name]
-                                if sym.path == str(file_path):
+                                if sym.path == file_path_str:
                                     return sym
                     break  # pragma: no cover
                 # Don't go too far up
@@ -2341,7 +2362,7 @@ def _extract_edges(
                             break
                 else:
                     # Regular function call - use resolver for suffix matching
-                    current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position)
+                    current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset)
                     if current_function:
                         lookup_result = resolver.lookup(func_name)
                         if lookup_result.found:
@@ -2361,7 +2382,7 @@ def _extract_edges(
 
             # Method calls: obj.method()
             if func_node and func_node.type == "member_expression":
-                current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position)
+                current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset)
                 if current_function:
                     method_name = None
                     obj_node = None
@@ -2506,7 +2527,7 @@ def _extract_edges(
 
         # new ClassName() or new namespace.ClassName()
         elif node.type == "new_expression":
-            current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position)
+            current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset)
             class_name = None
             target_sym = None
             lookup_confidence = 1.0  # Default for exact match
