@@ -239,6 +239,8 @@ class Symbol:
     origin_run_id: str         # references AnalysisRun.execution_id
     supply_chain_tier: int     # 1=first_party, 2=internal_dep, 3=external_dep, 4=derived
     supply_chain_reason: str   # classification rationale (e.g., "matches ^src/")
+    # Note: In JSON output (§7), these flat fields are compiled into a nested
+    # supply_chain object with a derived tier_name field. See nodes[] in §7.
     origin_run_signature: Optional[str]  # references AnalysisRun.run_signature (for grouping)
     quality: QualityScore
 
@@ -489,9 +491,10 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
 - This supports forward-compatible consumers without forcing every pass to compute every field.
 
 **supply_chain** (object, required):
-- `tier` (integer, 1-4): Numeric tier for filtering/sorting
-- `tier_name` (string): Human-readable name (`first_party`, `internal_dep`, `external_dep`, `derived`)
-- `reason` (string): Classification rationale (e.g., "matches ^src/", "detected as minified")
+Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields (see [§6](#6-internal-representation)).
+- `tier` (integer, 1-4): Numeric tier for filtering/sorting (from IR `supply_chain_tier`)
+- `tier_name` (string): Human-readable name derived from `tier` at serialization time (`first_party`, `internal_dep`, `external_dep`, `derived`). Not stored in the IR.
+- `reason` (string): Classification rationale (from IR `supply_chain_reason`, e.g., "matches ^src/", "detected as minified")
 - See §13 for classification algorithm and tier definitions.
 
 **Node kinds:**
