@@ -118,7 +118,7 @@ Cold Spots (untested - need coverage)
 **Use case:** Quickly identify which parts of your codebase may need more test coverage, without running any tests.
 
 ### Key principle
-**Analysis execution requires no network or API keys** (by default). Output is deterministic and reproducible given the same repo state.
+**Analysis execution requires no network or API keys** (by default). Output is deterministic and reproducible given the same repo state. See [Appendix D](#appendix-d-telemetry--privacy) for the full privacy and telemetry policy.
 
 ## 4) Supported stacks
 
@@ -372,7 +372,7 @@ The schema follows JSON Schema Draft 2020-12 and can be used for:
 
 **DRY Principle:** The Python dataclasses (`Symbol`, `Edge`, `Span`, `AnalysisRun`) are the single source of truth. The JSON Schema and this spec document the *meaning* of fields; the dataclasses define the *structure*.
 
-**Scheme identifiers (new, v0.1.0):**
+**Scheme identifiers:**
 - `stable_id_scheme`: identifies the algorithm/normalization used to compute `stable_id`
 - `shape_id_scheme`: identifies the algorithm used to compute `shape_id`
 - `repo_fingerprint_scheme`: identifies the algorithm used to compute `analysis_runs[].repo_fingerprint`
@@ -491,9 +491,7 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
 - `reason` (string): Classification rationale (e.g., "matches ^src/", "detected as minified")
 - See §8.6 for classification algorithm and tier definitions.
 
-**origin_run_id**: References `analysis_runs[].execution_id` (unique per run). When present, indicates exactly which analysis run created this node.
-
-**origin_run_signature** (optional): References `analysis_runs[].run_signature` (for grouping nodes by analyzer configuration).
+`origin_run_id` and `origin_run_signature` are defined in [§5 IR Layer](#ir-layer). They reference `analysis_runs[].execution_id` and `analysis_runs[].run_signature` respectively.
 
 **Node kinds:**
 * `file` — source file
@@ -528,27 +526,40 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
         "file": "src/auth.py",
         "span": {"start_line": 45, "end_line": 45, "start_col": 8, "end_col": 24}
       }
-    ],
+    ]
+  }
+}
+```
+
+**Multi-pass evidence (optional):** When multiple analysis passes observe the same relationship, `meta.evidence[]` accumulates their individual observations. The top-level `meta.evidence_type`, `meta.evidence_lang`, and `meta.evidence_spans` always reflect the primary (highest-confidence) record.
+
+```json
+{
+  "meta": {
+    "evidence_type": "ast_call_direct",
+    "evidence_lang": "python",
+    "evidence_spans": [{"file": "src/auth.py", "span": {"start_line": 45, "end_line": 45}}],
     "evidence": [
       {
         "origin": "python-ast-v1",
         "origin_run_id": "uuid:abc-def-789...",
-        "origin_run_signature": "sha256:xyz789...",
         "evidence_type": "ast_call_direct",
         "evidence_lang": "python",
-        "evidence_spans": [
-          {
-            "file": "src/auth.py",
-            "span": {"start_line": 45, "end_line": 45, "start_col": 8, "end_col": 24}
-          }
-        ],
         "confidence": 0.85
+      },
+      {
+        "origin": "pyright-v1",
+        "origin_run_id": "uuid:ghi-jkl-012...",
+        "evidence_type": "type_resolved_call",
+        "evidence_lang": "python",
+        "confidence": 0.95
       }
     ]
   }
 }
 ```
-**edge_key (new, v0.1.0):**
+
+**edge_key:**
 - `edge_key` is a canonical identity used to deduplicate/merge multiple observations of the “same” relationship across passes.
 - Format: `edgekey:sha256:<hash>`
 - Recommended hash inputs (deterministic):
@@ -557,12 +568,7 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
   - `dst` (prefer `stable_id` if both src/dst nodes have it, else use `id`)
 - `id` remains a unique identifier for this edge record instance.
 
-**meta.evidence[] (optional, v0.1.0):**
-- `meta.evidence[]` is an optional array of evidence records. Each record captures one piece of evidence from one analysis run.
-- When present, the top-level `meta.evidence_type`, `meta.evidence_lang`, and `meta.evidence_spans` MUST reflect the “primary” evidence (typically the highest-confidence record), to preserve compatibility with v0.1 consumers.
-- Mixed-fidelity graphs (future Spec B) SHOULD accumulate evidence in `meta.evidence[]` rather than overwriting provenance.
-
-**New meta fields**:
+**Meta fields**:
 - `evidence_lang` (optional): Language used for confidence scoring. Defaults to `src` node's language if omitted. Required for cross-language edges (HTTP, IPC) where src/dst languages differ.
 - `evidence_spans[]`: Structured locations of evidence. Each span includes file path and line/column range.
 
@@ -1408,7 +1414,9 @@ The framework pattern system supports multiple detection strategies:
 
 See [ADR-0003](adr/0003-architectural-analysis-and-revision-plan.md) for the design rationale and [UsageContext extension](adr/0003-usage-context-patterns.md) for call-based framework support.
 
-### Confidence Tiers
+### Entrypoint Confidence Tiers
+
+These tiers apply to entrypoint detection. For edge confidence scoring, see [§8 Confidence calculation](#confidence-calculation-deterministic-algorithm).
 
 Confidence scores reflect detection reliability, enabling meaningful ordering in sketch output:
 
@@ -1825,7 +1833,7 @@ This appendix covers release lifecycle, support windows, and deprecation timelin
 
 * **v0.1 outputs readable by v0.2+** if v0.2 is backward-compatible (MINOR bump)
 * **v1.0 outputs readable by v1.x** for all v1.x (MAJOR version promises stability)
-* **Breaking changes only in MAJOR bumps** with 6-month migration period
+* **Breaking changes only in MAJOR bumps** with 6-month migration period. See [Appendix E](#appendix-e-forward-compatibility-contract) for the technical definition of what constitutes a breaking change.
 
 ### Support windows
 
@@ -1929,7 +1937,7 @@ This contract ensures Spec A outputs remain valid when future capabilities are a
 - Any field marked "optional" can be absent
 - Consumers MUST handle absence gracefully (default value or skip)
 - Examples: `stable_id`, `shape_id`, `origin_run_signature`
-**Key presence vs. value presence (v0.1.0 rule):**
+**Key presence vs. value presence:**
 - Some fields may be semantically optional but SHOULD be present as keys with `null` values to reduce consumer branching.
 - For v0.1.0, producers SHOULD include these keys with `null` when unknown:
   - `nodes[].stable_id`
@@ -2206,9 +2214,7 @@ Each flow includes entry/exit points, all nodes/edges in path, invariants, and t
 
 ## 5) Privacy & security
 
-* All analysis runs locally
-* No data leaves machine
-* No network calls during analysis
+Same privacy model as Spec A — see [Appendix D](#appendix-d-telemetry--privacy).
 
 ## 6) Scale & performance
 
