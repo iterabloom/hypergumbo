@@ -117,6 +117,9 @@ class SliceQuery:
         max_tier: Maximum supply chain tier to include (1-4). None means no
                   tier filtering. Lower tiers are higher priority.
         language: Filter entry point matches to this language (e.g., "python").
+        hub_threshold: Maximum out-degree (forward) or in-degree (reverse) a
+                       node may have before it is pruned: included in the slice
+                       but NOT traversed through. None means no pruning.
     """
 
     entrypoint: str
@@ -129,6 +132,7 @@ class SliceQuery:
     reverse: bool = False
     max_tier: int | None = None
     language: str | None = None
+    hub_threshold: int | None = None
 
     def to_dict(self) -> dict:
         """Serialize query to dict for feature output."""
@@ -145,6 +149,8 @@ class SliceQuery:
             result["max_tier"] = self.max_tier
         if self.language is not None:
             result["language"] = self.language
+        if self.hub_threshold is not None:
+            result["hub_threshold"] = self.hub_threshold
         return result
 
 
@@ -396,6 +402,12 @@ def slice_graph(
         else:
             # Forward: follow edges FROM this node (find callees)
             relevant_edges = edges_from.get(current_id, [])
+
+        # Hub node pruning: skip traversal for high-degree nodes
+        if query.hub_threshold is not None and len(relevant_edges) > query.hub_threshold:
+            if "hub_pruned" not in limits_hit:
+                limits_hit.append("hub_pruned")
+            continue
 
         for edge in relevant_edges:
             # Filter by confidence

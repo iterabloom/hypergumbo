@@ -1183,6 +1183,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
     # Build slice query
     max_tier = getattr(args, "max_tier", None)
     exclude_utility = getattr(args, "exclude_utility", False)
+    hub_threshold = getattr(args, "hub_threshold", None)
     query = SliceQuery(
         entrypoint=entry,
         max_hops=args.max_hops,
@@ -1193,6 +1194,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
         reverse=args.reverse,
         max_tier=max_tier,
         language=args.language,
+        hub_threshold=hub_threshold,
     )
 
     # Perform slice
@@ -3183,6 +3185,15 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
         dest="max_tier",
         help="Stop at supply chain tier boundary (1=first-party only, "
              "2=+internal, 3=+external, 4=all). Default: no tier filtering.",
+    )
+    p_slice.add_argument(
+        "--hub-threshold",
+        type=int,
+        default=None,
+        dest="hub_threshold",
+        help="Prune hub nodes: nodes with more outgoing (forward) or incoming "
+             "(reverse) edges than this threshold are included but not traversed. "
+             "Prevents slice explosion through high-degree utility functions.",
     )
     p_slice.add_argument(
         "--language",
