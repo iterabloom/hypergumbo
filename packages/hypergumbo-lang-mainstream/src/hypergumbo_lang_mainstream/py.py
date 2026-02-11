@@ -1252,9 +1252,70 @@ def _extract_import_edges(
     return edges
 
 
+def _resolve_base_class(
+    base_name: str,
+    child_sym: Symbol,
+    class_by_name: dict[str, list[Symbol]],
+    sym_file_imports: dict[str, dict[str, tuple[str, str]]],
+) -> Symbol | None:
+    """Resolve a base class name to a specific Symbol, disambiguating collisions.
+
+    When multiple classes share the same name (e.g., 238 classes named 'Model'
+    in Django), uses a priority cascade:
+
+    1. Same-file match: base class defined in the same file as the child
+    2. Import match: child's file imports match a candidate's module path
+    3. First by ID: deterministic fallback (sorted by symbol ID)
+
+    Args:
+        base_name: The base class name to resolve (e.g., 'Model')
+        child_sym: The child class symbol (for file context)
+        class_by_name: Multi-value lookup: class name -> list of Symbol candidates
+        sym_file_imports: Maps symbol ID -> file-level imports dict
+            (imported_name -> (module_name, original_name))
+
+    Returns:
+        The resolved base class Symbol, or None if no match found.
+    """
+    candidates = class_by_name.get(base_name)
+    if not candidates:
+        return None
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    # Extract file path from child symbol ID for same-file check
+    child_path = child_sym.path or ""
+
+    # 1. Same-file match: prefer base class in the same file
+    same_file = [c for c in candidates if c.path == child_path]
+    if len(same_file) == 1:
+        return same_file[0]
+
+    # 2. Import match: check if child's file imports resolve to a candidate
+    child_imports = sym_file_imports.get(child_sym.id, {})
+    if base_name in child_imports:
+        import_module, _original_name = child_imports[base_name]
+        # Match import module against candidate file paths
+        # e.g., import_module="db.models" matches candidate path "db/models.py"
+        module_as_path = import_module.replace(".", "/")
+        for cand in candidates:
+            cand_path = cand.path or ""
+            # Check if candidate path contains the module path
+            # e.g., "db/models.py" contains "db/models"
+            cand_no_ext = cand_path.rsplit(".py", 1)[0]
+            if cand_no_ext.endswith(module_as_path):
+                return cand
+
+    # 3. Deterministic fallback: first by symbol ID (sorted for stability)
+    candidates_sorted = sorted(candidates, key=lambda c: c.id)
+    return candidates_sorted[0]
+
+
 def _extract_inheritance_edges(
     symbols: list[Symbol],
-    class_symbols: dict[str, Symbol],
+    class_by_name: dict[str, list[Symbol]],
+    sym_file_imports: dict[str, dict[str, tuple[str, str]]],
     run: AnalysisRun,
 ) -> list[Edge]:
     """Extract extends edges from class inheritance.
@@ -1263,9 +1324,14 @@ def _extract_inheritance_edges(
     base classes that exist in the analyzed codebase. This enables the
     type hierarchy linker to create dispatches_to edges for polymorphic dispatch.
 
+    When multiple classes share the same name (common in large repos like Django
+    where 238 test stubs are named 'Model'), uses import-aware disambiguation
+    via ``_resolve_base_class()`` to find the correct target.
+
     Args:
         symbols: All extracted symbols
-        class_symbols: Map of class name -> Symbol for class lookup
+        class_by_name: Multi-value lookup: class name -> list of Symbol candidates
+        sym_file_imports: Maps symbol ID -> file-level imports dict
         run: Current analysis run for provenance
 
     Returns:
@@ -1285,9 +1351,11 @@ def _extract_inheritance_edges(
             # Strip generics from base class name (e.g., "Generic[T]" -> "Generic")
             base_name = base_class_name.split("[")[0]
 
-            # Look up base class in the symbol table
-            if base_name in class_symbols:
-                base_sym = class_symbols[base_name]
+            # Resolve to the correct base class, handling name collisions
+            base_sym = _resolve_base_class(
+                base_name, sym, class_by_name, sym_file_imports
+            )
+            if base_sym is not None and base_sym.id != sym.id:
                 edge = Edge.create(
                     src=sym.id,
                     dst=base_sym.id,
@@ -2324,14 +2392,24 @@ def analyze_python(
         all_usage_contexts.extend(analysis.usage_contexts)
 
     # Extract inheritance edges (META-001: base_classes metadata -> extends edges)
-    # Build a class symbol lookup by name
-    class_symbols: dict[str, Symbol] = {}
+    # Build multi-value class lookup: name -> list of candidates
+    # (single-value dict had last-writer-wins bug: 238 Django 'Model' classes
+    # all resolved to a single test stub instead of django.db.models.base.Model)
+    class_by_name: dict[str, list[Symbol]] = {}
     for sym in all_symbols:
         if sym.kind == "class":
-            class_symbols[sym.name] = sym
+            class_by_name.setdefault(sym.name, []).append(sym)
 
-    # Create extends edges for base classes that exist in the repo
-    inheritance_edges = _extract_inheritance_edges(all_symbols, class_symbols, run)
+    # Build symbol ID -> file-level imports mapping for disambiguation
+    sym_file_imports: dict[str, dict[str, tuple[str, str]]] = {}
+    for _py_file, analysis in file_analyses.items():
+        for sym in analysis.symbols:
+            sym_file_imports[sym.id] = analysis.imports
+
+    # Create extends edges with import-aware disambiguation
+    inheritance_edges = _extract_inheritance_edges(
+        all_symbols, class_by_name, sym_file_imports, run
+    )
     all_edges.extend(inheritance_edges)
 
     # Update run metadata

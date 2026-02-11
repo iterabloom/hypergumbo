@@ -4177,6 +4177,128 @@ class TestPythonInheritanceEdges:
         assert any("LogMixin" in dst for dst in dst_names)
         assert any("SaveMixin" in dst for dst in dst_names)
 
+    def test_extends_prefers_imported_class_over_name_collision(
+        self, tmp_path: Path
+    ) -> None:
+        """When multiple classes share a name, extends resolves to the imported one.
+
+        Regression test for the Django bakeoff finding: 238 classes named 'Model'
+        exist across Django's codebase (1 real in db/models/base.py + 237 test stubs).
+        All 2376 extends edges were pointing to a single test stub because
+        class_symbols used last-writer-wins dict semantics.
+
+        The fix: use import information to disambiguate.  When test_app.py has
+        ``from db.models import Model`` and defines ``class Article(Model):``,
+        the extends edge should resolve to db/models.py::Model, not to
+        tests/test_other.py::Model.
+        """
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        # Real Model class in non-test file
+        (tmp_path / "db").mkdir()
+        (tmp_path / "db" / "__init__.py").write_text("")
+        (tmp_path / "db" / "models.py").write_text(
+            "class Model:\n"
+            "    def save(self):\n"
+            "        pass\n"
+        )
+
+        # Test stub Model class (different file, same name)
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "__init__.py").write_text("")
+        (tmp_path / "tests" / "test_helpers.py").write_text(
+            "class Model:\n"
+            "    '''Test stub model.'''\n"
+            "    pass\n"
+        )
+
+        # A file that imports from db.models and extends Model
+        (tmp_path / "app.py").write_text(
+            "from db.models import Model\n"
+            "\n"
+            "class Article(Model):\n"
+            "    def publish(self):\n"
+            "        pass\n"
+        )
+
+        result = analyze_python(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        article_extends = [e for e in extends_edges if "Article" in e.src]
+        assert len(article_extends) == 1, (
+            f"Expected 1 extends edge from Article, got {len(article_extends)}"
+        )
+
+        # Edge should point to db/models.py::Model, NOT tests/test_helpers.py::Model
+        edge = article_extends[0]
+        assert "db/models.py" in edge.dst or "db\\models.py" in edge.dst, (
+            f"Article extends edge should point to db/models.py::Model, "
+            f"but points to: {edge.dst}"
+        )
+
+    def test_extends_same_file_class_preferred_over_other_file(
+        self, tmp_path: Path
+    ) -> None:
+        """When base class is defined in the same file, prefer it over other files."""
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        # Model defined in file A
+        (tmp_path / "a.py").write_text(
+            "class Base:\n    pass\n"
+        )
+
+        # Model defined in file B AND used as base in same file
+        (tmp_path / "b.py").write_text(
+            "class Base:\n    pass\n"
+            "\n"
+            "class Child(Base):\n    pass\n"
+        )
+
+        result = analyze_python(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        child_extends = [e for e in extends_edges if "Child" in e.src]
+        assert len(child_extends) == 1
+
+        # Should resolve to b.py::Base (same file), not a.py::Base
+        edge = child_extends[0]
+        assert "b.py" in edge.dst, (
+            f"Child extends edge should prefer same-file Base (b.py), "
+            f"but points to: {edge.dst}"
+        )
+
+    def test_extends_deterministic_fallback_when_ambiguous(
+        self, tmp_path: Path
+    ) -> None:
+        """When no same-file or import match, extends uses deterministic fallback.
+
+        With multiple classes named 'Base' in different files and no import
+        information, the resolver falls back to sorted-by-ID for stability.
+        """
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        # Two files define 'Base', neither is imported
+        (tmp_path / "mod_a.py").write_text(
+            "class Base:\n    pass\n"
+        )
+        (tmp_path / "mod_b.py").write_text(
+            "class Base:\n    pass\n"
+        )
+        # A third file extends 'Base' without importing either
+        (tmp_path / "child.py").write_text(
+            "class Child(Base):\n    pass\n"
+        )
+
+        result = analyze_python(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        child_extends = [e for e in extends_edges if "Child" in e.src]
+        # Should still create an edge (deterministic fallback)
+        assert len(child_extends) == 1
+        # The target should be deterministic (sorted by ID)
+        edge = child_extends[0]
+        assert "Base" in edge.dst
+
     def test_no_extends_edge_for_external_base_class(self, tmp_path: Path) -> None:
         """No extends edge created when base class is external (not in repo)."""
         from hypergumbo_lang_mainstream.py import analyze_python
