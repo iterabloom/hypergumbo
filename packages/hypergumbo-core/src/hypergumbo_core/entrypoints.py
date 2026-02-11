@@ -628,11 +628,26 @@ def detect_entrypoints(
         if sym.supply_chain_tier >= 3:
             ep.confidence *= 0.3
 
-    # Boost confidence based on connectivity (outgoing edges)
-    # An entrypoint that calls many other functions is more "interesting"
+    # Boost confidence based on connectivity (outgoing edges).
+    # Uses one-hop transitive reach: an entrypoint's effective out-degree
+    # includes the out-degree of its immediate callees (at 50% weight).
+    # This handles the "thin wrapper" pattern: main() → tryMain() (178 edges)
+    # gets credit for tryMain's connectivity, outranking utility mains that
+    # call many small functions directly.
     outgoing_counts: dict[str, int] = defaultdict(int)
+    direct_callees: dict[str, list[str]] = defaultdict(list)
     for edge in edges:
         outgoing_counts[edge.src] += 1
+        direct_callees[edge.src].append(edge.dst)
+
+    def _effective_out_degree(symbol_id: str) -> float:
+        """Compute effective out-degree with one-hop transitive credit."""
+        direct = outgoing_counts.get(symbol_id, 0)
+        # Add callees' out-degree at 50% weight (one hop only, no recursion)
+        transitive = sum(
+            outgoing_counts.get(callee, 0) for callee in direct_callees[symbol_id]
+        )
+        return direct + 0.5 * transitive
 
     for ep in unique_entrypoints:
         # Skip connectivity boost for CONNECTIVITY_BASED entrypoints:
@@ -640,15 +655,22 @@ def detect_entrypoints(
         # boosting again would double-count connectivity.
         if ep.kind == EntrypointKind.CONNECTIVITY_BASED:
             continue
-        out_edges = outgoing_counts.get(ep.symbol_id, 0)
-        if out_edges > 0:
+        effective_edges = _effective_out_degree(ep.symbol_id)
+        if effective_edges > 0:
             # Logarithmic boost: diminishing returns for very high counts
             # log(1 + 10) / 10 ≈ 0.24, log(1 + 100) / 10 ≈ 0.46
             # Cap at 0.25 to avoid overwhelming the base confidence
-            connectivity_boost = min(0.25, math.log(1 + out_edges) / 10)
+            connectivity_boost = min(0.25, math.log(1 + effective_edges) / 10)
             ep.confidence = min(1.0, ep.confidence + connectivity_boost)
 
-    # Sort by confidence (highest first) for better --entry auto behavior
-    unique_entrypoints.sort(key=lambda ep: ep.confidence, reverse=True)
+    # Sort by confidence (highest first) for better --entry auto behavior.
+    # Use effective out-degree as tiebreaker: when two entrypoints have
+    # the same confidence (e.g., both at 1.0), prefer the one with higher
+    # transitive reach.  This ensures the "real" main in a compiler repo
+    # ranks above a utility main, even when both hit the confidence cap.
+    unique_entrypoints.sort(
+        key=lambda ep: (ep.confidence, _effective_out_degree(ep.symbol_id)),
+        reverse=True,
+    )
 
     return unique_entrypoints

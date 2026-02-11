@@ -266,6 +266,11 @@ class TestIsUtilityFile:
         assert is_utility_file("benchmark/gcbench/testgc3.d") is True
         assert is_utility_file("bench/speed.go") is True
 
+    def test_build_system_directories(self) -> None:
+        """Files in build system directories are utility files."""
+        assert is_utility_file("vcbuild/msvc-lib.d") is True
+        assert is_utility_file("cmake/FindFoo.cmake") is True
+
     def test_not_utility_file(self) -> None:
         """Regular source files are not utility files."""
         assert is_utility_file("src/main.py") is False

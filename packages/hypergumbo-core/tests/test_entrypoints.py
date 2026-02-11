@@ -1510,6 +1510,81 @@ class TestConnectivityBasedRanking:
         assert route_eps[0].symbol_id == route_caller.id
         assert route_eps[1].symbol_id == route_callee.id
 
+    def test_transitive_connectivity_boost(self) -> None:
+        """A main() that delegates to a high-connectivity function should outrank
+        a utility main with many direct calls but shallow transitive reach.
+
+        This mirrors the DMD pattern: compiler/src/dmd/main.d:main calls tryMain
+        (178 edges), while msvc-lib.d:main calls 10 small utility functions.
+        The compiler main should rank higher despite fewer direct edges.
+
+        Both may hit the 1.0 confidence cap, so the test checks rank order
+        (sorted position) rather than strict confidence inequality.
+        """
+        # Main function meta for D main() detection
+        main_meta = {"concepts": [{"concept": "main_function", "language": "d"}]}
+
+        # "Compiler main" — calls only tryMain, which calls many helpers
+        compiler_main = make_symbol(
+            "main", path="compiler/src/main.d", language="d",
+            start_line=1, end_line=10, meta=main_meta,
+        )
+        try_main = make_symbol(
+            "tryMain", path="compiler/src/main.d", language="d",
+            start_line=20, end_line=200,
+        )
+
+        # "Utility main" — calls many small helpers directly
+        utility_main = make_symbol(
+            "main", path="vcbuild/msvc-lib.d", language="d",
+            start_line=1, end_line=30, meta=main_meta,
+        )
+
+        # Create 50 helpers (mimics tryMain's high connectivity)
+        helpers = [
+            make_symbol(f"helper_{i}", path="helpers.d", language="d", start_line=i * 10)
+            for i in range(50)
+        ]
+
+        nodes = [compiler_main, try_main, utility_main] + helpers
+
+        edges = [
+            # compiler_main calls tryMain (1 direct edge)
+            Edge.create(src=compiler_main.id, dst=try_main.id, edge_type="calls", line=5),
+            # tryMain calls 50 helpers (high transitive reach)
+            *[
+                Edge.create(src=try_main.id, dst=h.id, edge_type="calls", line=25 + i)
+                for i, h in enumerate(helpers)
+            ],
+            # utility_main calls 10 helpers directly (moderate direct reach)
+            *[
+                Edge.create(src=utility_main.id, dst=helpers[i].id, edge_type="calls", line=5 + i)
+                for i in range(10)
+            ],
+        ]
+
+        entrypoints = detect_entrypoints(nodes, edges)
+
+        main_eps = [
+            ep for ep in entrypoints
+            if ep.kind == EntrypointKind.MAIN_FUNCTION
+        ]
+        assert len(main_eps) >= 2
+
+        # Entrypoints are sorted by confidence desc, then by effective
+        # out-degree desc.  The compiler main (1 direct + 0.5 * 50 transitive
+        # = 26 effective) should outrank the utility main (10 effective).
+        compiler_idx = next(
+            i for i, ep in enumerate(main_eps) if ep.symbol_id == compiler_main.id
+        )
+        utility_idx = next(
+            i for i, ep in enumerate(main_eps) if ep.symbol_id == utility_main.id
+        )
+        assert compiler_idx < utility_idx, (
+            f"Compiler main should rank before utility main "
+            f"(compiler at index {compiler_idx}, utility at {utility_idx})"
+        )
+
 
 class TestLifecycleHookConceptDetection:
     """Tests for lifecycle_hook concept-based entrypoint detection (ADR-0003 v1.1.x).

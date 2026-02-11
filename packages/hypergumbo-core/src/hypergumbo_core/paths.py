@@ -164,6 +164,8 @@ def is_utility_file(path: str) -> bool:
         "examples", "example", "samples", "sample", "demos", "demo",
         # Scripts/tools
         "scripts", "tools", "bin", "utils", "utilities",
+        # Build systems
+        "vcbuild", "cmake",
         # Benchmarks
         "benchmarks", "benchmark", "bench", "perf",
     }
