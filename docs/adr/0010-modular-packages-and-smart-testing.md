@@ -184,7 +184,7 @@ Using hypergumbo to test hypergumbo could pose a bootstrap paradox. Mitigations:
 2. **Full suite fallback** for changes to core analysis:
    - `sketch.py` (call graph construction)
    - `slice.py` (dependency traversal)
-   - `analyze/registry.py` (analyzer dispatch)
+   - `analyze/all_analyzers.py` (analyzer dispatch; see [ADR-0012](0012-pass-unification-and-multi-fidelity.md) for the relationship between `all_analyzers.py` and `analyze/registry.py`)
 
 ### CI Architecture
 

@@ -186,30 +186,52 @@ Hypergumbo supports 104 languages via tree-sitter grammars. All are included in 
 
 Parsers emit to a shared internal representation; see [§6 Internal Representation](#6-internal-representation) for the IR definition and field semantics.
 
-### Pass interface and registry
-Parsers implement a common interface for future multi-pass orchestration:
+### Analysis pipeline (two-tier model)
+
+The analysis pipeline has two tiers reflecting different information needs:
+
+**Tier 1 — Language analyzers (independent producers):**
+Each analyzer is a plain function registered via `AnalyzerSpec` and discovered through Python entry-points (see [ADR-0010](adr/0010-modular-packages-and-smart-testing.md)):
+```python
+@dataclass
+class AnalysisResult:
+    symbols: list[Symbol]
+    edges: list[Edge]
+    usage_contexts: list[UsageContext]
+    run: AnalysisRun | None
+    skipped: bool = False
+
+# Analyzer function signature (all 100+ analyzers follow this)
+def analyze_go(repo_root: Path, max_files: int | None = None) -> AnalysisResult:
+    ...
+```
+Analyzers are embarrassingly parallel — each scans the repo independently and returns a bag of symbols and edges. They do not see each other's output.
+
+**Tier 2 — Linkers and enrichment (context-dependent refiners):**
+After all analyzers run, the orchestrator (`run_behavior_map`) collects the unified symbol graph and runs post-processing:
+1. Deferred symbol reference resolution (cross-file call targets)
+2. Framework pattern enrichment (YAML-driven concept metadata)
+3. Cross-language linkers (24 linkers registered via `@register_linker` decorator, receiving `LinkerContext` with the full symbol graph)
+4. Entrypoint detection
+
+Linkers use a decorator-based registry (`linkers/registry.py`) and receive the accumulated analysis state:
+```python
+@register_linker("jni", requires=["c", "java"])
+def link_jni(ctx: LinkerContext) -> LinkerResult:
+    ...
+```
+
+**🟪 Design target — Unified pass interface:**
+For multi-fidelity analysis (e.g., a pyright pass refining AST-extracted edges with type-resolved information), both tiers would converge on a single interface where passes receive the IR and return deltas:
 ```python
 class AnalysisPass(Protocol):
-    """Interface for pluggable analysis passes."""
-    
     id: str              # e.g., "python-ast-v1"
     version: str         # e.g., "hypergumbo-0.1.0"
-    capabilities: List[str]  # e.g., ["python"]
-    
-    def run(
-        self, 
-        ir: AnalysisIR, 
-        files: List[Path], 
-        config: Config
-    ) -> IRDelta:
-        """
-        Run analysis pass on given files.
-        
-        Returns:
-            IRDelta: New symbols, references, relationships to add to IR
-        """
-        ...
+    capabilities: list[str]  # e.g., ["python"]
+
+    def run(self, ir: AnalysisIR, files: list[Path], config: Config) -> IRDelta: ...
 ```
+This would allow a type-resolution pass to slot in between Tier 1 and Tier 2, reading AST-produced symbols and upgrading their edge confidences. Tier 1 analyzers would receive an empty IR (they remain independent); Tier 2 refiners would receive the accumulated graph. The orchestrator becomes generic — just iterating passes in priority order. See [ADR-0012](adr/0012-pass-unification-and-multi-fidelity.md) for the design rationale and migration path.
 
 See §4 "Supported stacks" for the full list of 104 language analyzers, 19 cross-language linkers, and 87 pattern files (5 convention + 82 framework). Detailed reference: [LANGUAGES.md](LANGUAGES.md), [LINKERS.md](LINKERS.md).
 
