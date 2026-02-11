@@ -561,6 +561,33 @@ class TestHubNodePruning:
         assert len(result.node_ids) == 32
         assert "hub_pruned" not in result.limits_hit
 
+    def test_entry_node_exempt_from_hub_pruning(self) -> None:
+        """Entry node is always expanded even if it exceeds hub_threshold."""
+        # Entry itself has 40 outgoing edges (exceeds threshold of 20)
+        entry = make_symbol("entry", path="src/entry.py")
+        callees = [
+            make_symbol(f"callee_{i}", path=f"src/callee_{i}.py")
+            for i in range(40)
+        ]
+
+        edges_list: List[Edge] = []
+        for callee in callees:
+            edges_list.append(make_edge(entry, callee))
+
+        all_nodes = [entry] + callees
+
+        query = SliceQuery(
+            entrypoint="entry", max_hops=5, max_files=100,
+            hub_threshold=20,
+        )
+        result = slice_graph(all_nodes, edges_list, query)
+
+        # Entry is exempt from pruning, so all 41 nodes should be visited
+        assert len(result.node_ids) == 41
+        assert entry.id in result.node_ids
+        for callee in callees:
+            assert callee.id in result.node_ids
+
     def test_hub_threshold_uses_forward_degree_only(self) -> None:
         """Hub threshold counts outgoing edges, not incoming for forward slice."""
         # Node with many incoming edges but few outgoing should NOT be pruned

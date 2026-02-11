@@ -323,6 +323,7 @@ def slice_graph(
     files_seen: Set[str] = set()
     files_with_imports_added: Set[str] = set()  # Track files whose imports we've added
     limits_hit: List[str] = []
+    entry_node_ids: Set[str] = {n.id for n in entry_nodes}
 
     def add_file_imports(file_path: str) -> None:
         """Add import edges from the file node(s) for the given path."""
@@ -403,8 +404,13 @@ def slice_graph(
             # Forward: follow edges FROM this node (find callees)
             relevant_edges = edges_from.get(current_id, [])
 
-        # Hub node pruning: skip traversal for high-degree nodes
-        if query.hub_threshold is not None and len(relevant_edges) > query.hub_threshold:
+        # Hub node pruning: skip traversal for high-degree nodes.
+        # Entry nodes are exempt — they are the starting points we want to expand.
+        if (
+            query.hub_threshold is not None
+            and len(relevant_edges) > query.hub_threshold
+            and current_id not in entry_node_ids
+        ):
             if "hub_pruned" not in limits_hit:
                 limits_hit.append("hub_pruned")
             continue

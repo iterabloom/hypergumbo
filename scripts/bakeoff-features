@@ -681,6 +681,7 @@ def cmd_run(args):
                 "--exclude-tests",
                 "--max-hops", "10",
                 "--max-files", "100",
+                "--hub-threshold", "30",
                 "--out", os.path.join(repo_out, f"slice.{i}.json"),
             ])
             with open(os.path.join(repo_out, f"slice.{i}.exit"), "w") as f:
