@@ -25,6 +25,7 @@ from typing import Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -344,6 +345,7 @@ class SchemeAnalyzer:
         return None  # pragma: no cover
 
 
+@register_analyzer("scheme")
 def analyze_scheme(repo_root: Path) -> SchemeAnalysisResult:
     """Analyze Scheme source files in a repository.
 

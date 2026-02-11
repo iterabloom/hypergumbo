@@ -67,6 +67,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     node_text as _node_text,
 )
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -2817,6 +2818,7 @@ def _analyze_vue_file(
     return all_symbols, all_edges, True
 
 
+@register_analyzer("javascript", supports_max_files=True)
 def analyze_javascript(
     repo_root: Path, max_files: int | None = None
 ) -> JsAnalysisResult:

@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -402,6 +403,7 @@ class JsonnetAnalyzer:
         return base_name in JSONNET_BUILTINS
 
 
+@register_analyzer("jsonnet")
 def analyze_jsonnet(repo_root: Path) -> JsonnetAnalysisResult:
     """Analyze Jsonnet files in the repository.
 

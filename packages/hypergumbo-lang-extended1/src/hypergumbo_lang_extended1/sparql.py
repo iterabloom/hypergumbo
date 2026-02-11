@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -375,6 +376,7 @@ class SPARQLAnalyzer:
         return prefixes
 
 
+@register_analyzer("sparql")
 def analyze_sparql(repo_root: Path) -> SPARQLAnalysisResult:
     """Analyze SPARQL files in a repository.
 

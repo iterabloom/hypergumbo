@@ -43,6 +43,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -379,6 +380,7 @@ def _process_node(ctx: _FileContext, node: "tree_sitter.Node") -> None:
         _process_object_declaration(ctx, node)
 
 
+@register_analyzer("ada")
 def analyze_ada(repo_root: Path) -> AdaAnalysisResult:
     """Analyze Ada files in a repository.
 

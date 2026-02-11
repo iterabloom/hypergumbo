@@ -42,6 +42,7 @@ from hypergumbo_core.analyze.base import iter_tree
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -301,6 +302,7 @@ def _extract_fish_edges(
             _process_command_edges(ctx, node, resolver)
 
 
+@register_analyzer("fish")
 def analyze_fish(repo_root: Path) -> FishAnalysisResult:
     """Analyze Fish shell files in a repository.
 

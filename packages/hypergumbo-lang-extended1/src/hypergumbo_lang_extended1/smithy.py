@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -480,6 +481,7 @@ class SmithyAnalyzer:
         self.edges.append(edge)
 
 
+@register_analyzer("smithy")
 def analyze_smithy(repo_root: Path) -> SmithyAnalysisResult:
     """Analyze Smithy files in the repository.
 

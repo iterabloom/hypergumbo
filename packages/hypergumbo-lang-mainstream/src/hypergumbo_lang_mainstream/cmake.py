@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -403,6 +404,7 @@ def _process_cmake_tree(
                     break
 
 
+@register_analyzer("cmake")
 def analyze_cmake_files(repo_root: Path) -> CMakeAnalysisResult:
     """Analyze CMake files in the repository.
 

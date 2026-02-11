@@ -177,9 +177,11 @@ The analysis pipeline has two tiers reflecting different information needs.
 **Terminology:** A *pass* is any analysis component that reads code and produces IR output. An *analyzer* is a Tier 1 pass that extracts symbols and edges for a single language. A *linker* is a Tier 2 pass that creates cross-language or cross-component relationships. The `pass_id` field in `AnalysisRun` uses the generic term.
 
 **Tier 1 — Language analyzers (independent producers):**
-Each analyzer is a plain function registered via `AnalyzerSpec` and discovered through Python entry-points (see [ADR-0010](adr/0010-modular-packages-and-smart-testing.md)):
+Each analyzer is a plain function registered via the `@register_analyzer` decorator and discovered through Python entry-points (see [ADR-0010](adr/0010-modular-packages-and-smart-testing.md), [ADR-0012](adr/0012-pass-unification-and-multi-fidelity.md)):
 ```python
-# Analyzer function signature (all 100+ analyzers follow this)
+from hypergumbo_core.analyze.registry import register_analyzer
+
+@register_analyzer("go", priority=50)
 def analyze_go(repo_root: Path, max_files: int | None = None) -> AnalysisResult:
     ...
 ```

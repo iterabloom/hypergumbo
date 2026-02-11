@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -276,6 +277,7 @@ def _process_verilog_tree(
                 edges.append(edge)
 
 
+@register_analyzer("verilog")
 def analyze_verilog_files(repo_root: Path) -> VerilogAnalysisResult:
     """Analyze Verilog/SystemVerilog files in the repository.
 

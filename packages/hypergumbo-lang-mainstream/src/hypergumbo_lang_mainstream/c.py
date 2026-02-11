@@ -40,6 +40,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -435,6 +436,7 @@ def _analyze_c_file(
     return symbols, edges, True
 
 
+@register_analyzer("c", capture_symbols_as="c")
 def analyze_c(repo_root: Path) -> CAnalysisResult:
     """Analyze all C files in a repository.
 

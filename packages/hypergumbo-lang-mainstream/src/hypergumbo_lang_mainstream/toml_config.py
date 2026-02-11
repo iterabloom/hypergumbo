@@ -37,6 +37,7 @@ from typing import Iterator
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.registry import register_analyzer
 
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
@@ -302,6 +303,7 @@ def _process_toml_tree(
                 )
 
 
+@register_analyzer("toml")
 def analyze_toml_files(root: Path) -> TomlAnalysisResult:
     """Analyze TOML files in a directory.
 

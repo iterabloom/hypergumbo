@@ -34,6 +34,7 @@ from typing import Optional
 from hypergumbo_core.analyze.base import iter_tree
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 PASS_ID = "latex"
 
@@ -361,6 +362,7 @@ def _extract_edges_from_file(
     return edges
 
 
+@register_analyzer("latex")
 def analyze_latex(repo_root: Path) -> LaTeXAnalysisResult:
     """Analyze LaTeX files in the repository.
 

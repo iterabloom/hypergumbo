@@ -50,6 +50,7 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id as _base_make_symbol_id,
     node_text as _node_text,
 )
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -565,6 +566,7 @@ def _extract_edges_from_file(
     return edges
 
 
+@register_analyzer("cpp")
 def analyze_cpp(repo_root: Path) -> CppAnalysisResult:
     """Analyze all C++ files in a repository.
 

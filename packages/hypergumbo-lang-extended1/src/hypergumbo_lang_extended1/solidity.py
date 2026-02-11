@@ -43,6 +43,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -414,6 +415,7 @@ def _extract_edges_from_file(
     return edges, import_aliases
 
 
+@register_analyzer("solidity")
 def analyze_solidity(repo_root: Path) -> SolidityAnalysisResult:
     """Analyze Solidity files in a repository.
 

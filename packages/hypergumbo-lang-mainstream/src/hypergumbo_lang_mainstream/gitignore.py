@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -262,6 +263,7 @@ class GitignoreAnalyzer:
         self._symbols.append(symbol)
 
 
+@register_analyzer("gitignore")
 def analyze_gitignore(repo_root: Path) -> GitignoreAnalysisResult:
     """Analyze gitignore files in a repository.
 

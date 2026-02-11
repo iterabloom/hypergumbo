@@ -45,6 +45,7 @@ from typing import Iterator
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 PASS_ID = "html-pattern-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -77,6 +78,7 @@ class HtmlAnalysisResult:
     run: AnalysisRun | None = None
 
 
+@register_analyzer("html", supports_max_files=True)
 def analyze_html(
     repo_root: Path, max_files: int | None = None
 ) -> HtmlAnalysisResult:

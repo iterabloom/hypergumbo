@@ -26,6 +26,7 @@ from typing import Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -308,6 +309,7 @@ class JanetAnalyzer:
         return None  # pragma: no cover
 
 
+@register_analyzer("janet")
 def analyze_janet(repo_root: Path) -> JanetAnalysisResult:
     """Analyze Janet source files in a repository.
 

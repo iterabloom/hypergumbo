@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -532,6 +533,7 @@ class HackAnalyzer:
         return False
 
 
+@register_analyzer("hack")
 def analyze_hack(repo_root: Path) -> HackAnalysisResult:
     """Analyze Hack files in the repository.
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Design target (not yet implemented)
+Step 1 implemented (analyzer registration unified). Steps 2-3 remain design targets.
 
 ## Context
 
@@ -132,8 +132,8 @@ An alternative or complementary path: build an importer that accepts externally-
 ## References
 
 - Spec §5 "Architecture" — updated to describe the two-tier model and mark the Protocol as 🟪
-- `packages/hypergumbo-core/src/hypergumbo_core/analyze/all_analyzers.py` — current active dispatch
-- `packages/hypergumbo-core/src/hypergumbo_core/analyze/registry.py` — decorator registry (currently unused)
+- `packages/hypergumbo-core/src/hypergumbo_core/analyze/all_analyzers.py` — facade delegating to the registry
+- `packages/hypergumbo-core/src/hypergumbo_core/analyze/registry.py` — canonical decorator registry (active, 104 analyzers)
 - `packages/hypergumbo-core/src/hypergumbo_core/linkers/registry.py` — decorator registry (active, 24 linkers)
 - Li et al., "Scaling static analyses at Facebook" (ICSE 2020) — call graph precision/recall benchmarks
 - PyCG, "Practical Call Graph Generation in Python" (ICSE 2021) — Python call graph analysis

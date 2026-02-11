@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -414,6 +415,7 @@ class RSTAnalyzer:
         self._edges.append(edge)
 
 
+@register_analyzer("rst")
 def analyze_rst(repo_root: Path) -> RSTAnalysisResult:
     """Analyze RST files in a repository.
 

@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -476,6 +477,7 @@ class LuauAnalyzer:
         self.edges.append(edge)
 
 
+@register_analyzer("luau")
 def analyze_luau(repo_root: Path) -> LuauAnalysisResult:
     """Analyze Luau files in the repository.
 

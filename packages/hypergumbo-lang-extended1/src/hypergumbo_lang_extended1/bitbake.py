@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -416,6 +417,7 @@ class BitBakeAnalyzer:
         self._symbols.append(symbol)
 
 
+@register_analyzer("bitbake")
 def analyze_bitbake(repo_root: Path) -> BitBakeAnalysisResult:
     """Analyze BitBake files in a repository.
 

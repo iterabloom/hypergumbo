@@ -77,6 +77,7 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id as _base_make_symbol_id,
     node_text as _node_text,
 )
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -1257,6 +1258,7 @@ def _analyze_java_file(
     return symbols, edges, True
 
 
+@register_analyzer("java", capture_symbols_as="java")
 def analyze_java(repo_root: Path) -> JavaAnalysisResult:
     """Analyze all Java files in a repository.
 

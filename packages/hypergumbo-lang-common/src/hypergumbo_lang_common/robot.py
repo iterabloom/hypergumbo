@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -590,6 +591,7 @@ class RobotAnalyzer:
         self._edges.append(edge)
 
 
+@register_analyzer("robot")
 def analyze_robot(repo_root: Path) -> RobotAnalysisResult:
     """Analyze Robot Framework files in a repository.
 

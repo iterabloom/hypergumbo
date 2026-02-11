@@ -46,6 +46,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from hypergumbo_core.analyze.base import iter_tree
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -337,6 +338,7 @@ def _extract_symbols_and_edges(
     return symbols, edges
 
 
+@register_analyzer("proto")
 def analyze_proto(repo_root: Path) -> ProtoAnalysisResult:
     """Analyze all Proto files in the repository.
 

@@ -66,6 +66,7 @@ from typing import TYPE_CHECKING, Iterator
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     from hypergumbo_core.symbol_resolution import SymbolResolver
@@ -2217,6 +2218,7 @@ def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None
     )
 
 
+@register_analyzer("python", supports_max_files=True)
 def analyze_python(
     repo_root: Path, max_files: int | None = None
 ) -> AnalysisResult:

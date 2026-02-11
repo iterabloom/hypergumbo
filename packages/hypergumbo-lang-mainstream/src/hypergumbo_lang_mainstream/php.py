@@ -42,6 +42,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -869,6 +870,7 @@ def _analyze_php_file(
     return symbols, edges, True
 
 
+@register_analyzer("php")
 def analyze_php(repo_root: Path) -> PhpAnalysisResult:
     """Analyze all PHP files in a repository.
 

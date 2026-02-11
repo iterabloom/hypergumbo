@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -450,6 +451,7 @@ class ScssAnalyzer:
             self._edges.append(edge)
 
 
+@register_analyzer("scss")
 def analyze_scss(repo_root: Path) -> ScssAnalysisResult:
     """Analyze SCSS/Sass stylesheet files in a repository.
 

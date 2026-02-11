@@ -31,6 +31,7 @@ from typing import Iterator, Optional, TYPE_CHECKING
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -511,6 +512,7 @@ def _extract_edges_from_tree(
     return import_aliases
 
 
+@register_analyzer("zig")
 def analyze_zig(root: Path) -> ZigAnalysisResult:
     """Analyze Zig files in the given directory.
 

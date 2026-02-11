@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -535,6 +536,7 @@ class TwigAnalyzer:
         self._edges.append(edge)
 
 
+@register_analyzer("twig")
 def analyze_twig(repo_root: Path) -> TwigAnalysisResult:
     """Analyze Twig template files in a repository.
 

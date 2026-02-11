@@ -29,6 +29,7 @@ from typing import Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -392,6 +393,7 @@ class MesonAnalyzer:
             self._extract_edges(child, path)
 
 
+@register_analyzer("meson")
 def analyze_meson(repo_root: Path) -> MesonAnalysisResult:
     """Analyze Meson build files in a repository.
 

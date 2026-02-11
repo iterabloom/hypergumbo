@@ -31,6 +31,7 @@ from typing import Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -440,6 +441,7 @@ class OdinAnalyzer:
         return None  # pragma: no cover
 
 
+@register_analyzer("odin")
 def analyze_odin(repo_root: Path) -> OdinAnalysisResult:
     """Analyze Odin source files in a repository.
 

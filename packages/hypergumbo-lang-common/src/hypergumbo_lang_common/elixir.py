@@ -39,6 +39,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.registry import register_analyzer
 
 # Phoenix HTTP method macros for route detection
 PHOENIX_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
@@ -721,6 +722,7 @@ def _extract_edges_from_file(
     return edges
 
 
+@register_analyzer("elixir")
 def analyze_elixir(repo_root: Path) -> ElixirAnalysisResult:
     """Analyze all Elixir files in a repository.
 

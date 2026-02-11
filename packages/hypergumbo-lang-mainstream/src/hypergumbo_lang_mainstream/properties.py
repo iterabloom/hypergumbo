@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -233,6 +234,7 @@ class PropertiesAnalyzer:
         self._symbols.append(symbol)
 
 
+@register_analyzer("properties")
 def analyze_properties(repo_root: Path) -> PropertiesAnalysisResult:
     """Analyze Java properties files in a repository.
 

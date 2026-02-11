@@ -26,6 +26,7 @@ from typing import Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -317,6 +318,7 @@ class FennelAnalyzer:
         return None  # pragma: no cover
 
 
+@register_analyzer("fennel")
 def analyze_fennel(repo_root: Path) -> FennelAnalysisResult:
     """Analyze Fennel source files in a repository.
 

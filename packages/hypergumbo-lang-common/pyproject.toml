@@ -40,7 +40,7 @@ dependencies = [
 ]
 
 [project.entry-points."hypergumbo.analyzers"]
-common = "hypergumbo_lang_common:ANALYZER_SPECS"
+common = "hypergumbo_lang_common:ANALYZER_MODULES"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hypergumbo_lang_common"]

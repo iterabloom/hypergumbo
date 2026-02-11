@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -266,6 +267,7 @@ class KdlAnalyzer:
         return ""  # pragma: no cover
 
 
+@register_analyzer("kdl")
 def analyze_kdl(repo_root: Path) -> KdlAnalysisResult:
     """Analyze KDL configuration files in a repository.
 

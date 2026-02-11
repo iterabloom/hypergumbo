@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -211,6 +212,7 @@ class BibtexAnalyzer:
         self._symbols.append(symbol)
 
 
+@register_analyzer("bibtex")
 def analyze_bibtex(repo_root: Path) -> BibtexAnalysisResult:
     """Analyze BibTeX bibliography files in a repository.
 

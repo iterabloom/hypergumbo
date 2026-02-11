@@ -49,6 +49,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -310,6 +311,7 @@ def _find_containing_service(
     return None  # pragma: no cover - defensive
 
 
+@register_analyzer("thrift")
 def analyze_thrift(repo_root: Path) -> ThriftAnalysisResult:
     """Analyze all Thrift files in the repository.
 

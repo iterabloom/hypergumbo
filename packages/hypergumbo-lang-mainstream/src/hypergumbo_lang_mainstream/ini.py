@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -301,6 +302,7 @@ class IniAnalyzer:
         self._symbols.append(symbol)
 
 
+@register_analyzer("ini")
 def analyze_ini(repo_root: Path) -> IniAnalysisResult:
     """Analyze INI configuration files in a repository.
 

@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -604,6 +605,7 @@ def _detect_json_type(path: Path) -> str:
     return "generic"
 
 
+@register_analyzer("json")
 def analyze_json_files(repo_root: Path) -> JSONAnalysisResult:
     """Analyze JSON files in the repository.
 

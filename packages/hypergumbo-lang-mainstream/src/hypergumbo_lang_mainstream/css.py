@@ -36,6 +36,7 @@ from typing import Iterator
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.registry import register_analyzer
 
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
@@ -396,6 +397,7 @@ def _process_css_tree(
         # iter_tree automatically handles recursion for all node types
 
 
+@register_analyzer("css")
 def analyze_css_files(root: Path) -> CSSAnalysisResult:
     """Analyze CSS files in a directory.
 
