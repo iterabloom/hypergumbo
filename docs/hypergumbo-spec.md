@@ -32,7 +32,7 @@ For goals that were considered and rejected, see [Appendix D](#appendix-d-capsul
 * No deep type-resolution / interprocedural dataflow correctness guarantees.
 * No accounts, ratings, or social features.
 * No automatic PR fixing, no code editing, no CI annotations beyond "export JSON."
-* No attempt to support every language *deeply*—broad coverage via tree-sitter (104 languages), deep call-graph extraction for a smaller set. See §4.
+* No attempt to support every language *deeply*—broad coverage via tree-sitter (104 languages), deep call-graph extraction for a smaller set. See [§4 Supported stacks](#4-supported-stacks).
 * No incremental analysis daemon (full re-analysis is acceptable).
 * No LLM-generated analyzer code.
 
@@ -211,7 +211,7 @@ Analyzers are embarrassingly parallel — each scans the repo independently and 
 After all analyzers run, the orchestrator (`run_behavior_map`) collects the unified symbol graph and runs post-processing:
 1. Deferred symbol reference resolution (cross-file call targets)
 2. Framework pattern enrichment (YAML-driven concept metadata)
-3. Cross-language linkers (24 linkers registered via `@register_linker` decorator, receiving `LinkerContext` with the full symbol graph)
+3. Cross-language linkers (registered via `@register_linker` decorator, receiving `LinkerContext` with the full symbol graph; see [LINKERS.md](LINKERS.md) for the full list)
 4. Entrypoint detection
 
 Linkers use a decorator-based registry (`linkers/registry.py`) and receive the accumulated analysis state:
@@ -233,7 +233,7 @@ class AnalysisPass(Protocol):
 ```
 This would allow a type-resolution pass to slot in between Tier 1 and Tier 2, reading AST-produced symbols and upgrading their edge confidences. Tier 1 analyzers would receive an empty IR (they remain independent); Tier 2 refiners would receive the accumulated graph. The orchestrator becomes generic — just iterating passes in priority order. See [ADR-0012](adr/0012-pass-unification-and-multi-fidelity.md) for the design rationale and migration path.
 
-See §4 "Supported stacks" for the full list of 104 language analyzers, 19 cross-language linkers, and 87 pattern files (5 convention + 82 framework). Detailed reference: [LANGUAGES.md](LANGUAGES.md), [LINKERS.md](LINKERS.md).
+For the full catalog of language analyzers, cross-language linkers, and framework pattern files, see [LANGUAGES.md](LANGUAGES.md), [LINKERS.md](LINKERS.md), and [FRAMEWORKS.md](FRAMEWORKS.md).
 
 ## 6) Internal Representation
 
@@ -255,8 +255,8 @@ class Symbol:
     origin_run_id: str         # references AnalysisRun.execution_id
     supply_chain_tier: int     # 1=first_party, 2=internal_dep, 3=external_dep, 4=derived
     supply_chain_reason: str   # classification rationale (e.g., "matches ^src/")
-    # Note: In JSON output (§7), these flat fields are compiled into a nested
-    # supply_chain object with a derived tier_name field. See nodes[] in §7.
+    # Note: In JSON output (§7 Output formats), these flat fields are compiled
+    # into a nested supply_chain object with a derived tier_name field.
     origin_run_signature: Optional[str]  # references AnalysisRun.run_signature (for grouping)
     quality: QualityScore
 
@@ -383,7 +383,7 @@ Single file: `hypergumbo.results.json`
   "shape_id_scheme": "hypergumbo-shapeid-v1",
   "repo_fingerprint_scheme": "hypergumbo-repofp-v1",
   "view": "behavior_map",
-  "generated_at": "2024-01-15T10:30:00Z",
+  "generated_at": "2026-01-15T10:30:00Z",
   "analysis_incomplete": false,
   "analysis_runs": [],
   "profile": {},
@@ -438,7 +438,7 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
   "files_skipped": 1,
   "skipped_passes": [],
   "warnings": ["skipped bundle.min.js (2.1MB exceeds limit)"],
-  "started_at": "2024-01-15T10:30:00Z",
+  "started_at": "2026-01-15T10:30:00Z",
   "duration_ms": 1234
 }
 ```
@@ -520,7 +520,7 @@ Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields
 - `tier` (integer, 1-4): Numeric tier for filtering/sorting (from IR `supply_chain_tier`)
 - `tier_name` (string): Human-readable name derived from `tier` at serialization time (`first_party`, `internal_dep`, `external_dep`, `derived`). Not stored in the IR.
 - `reason` (string): Classification rationale (from IR `supply_chain_reason`, e.g., "matches ^src/", "detected as minified")
-- See §13 for classification algorithm and tier definitions.
+- See [§13 Supply Chain Classification](#13-supply-chain-classification) for classification algorithm and tier definitions.
 
 **Node kinds:**
 * `file` — source file
@@ -1575,7 +1575,7 @@ This prefers well-connected entries, producing richer slices.
 
 ### Partial results guarantee
 
-* 🟩 All output is valid JSON even if analysis is incomplete. See [`analysis_incomplete`](#top-level-structure) in §7 for field semantics.
+* 🟩 All output is valid JSON even if analysis is incomplete. See [`analysis_incomplete`](#top-level-structure) in [§7 Output formats](#7-output-formats) for field semantics.
 
 ## 17) Known limitations
 
