@@ -440,13 +440,15 @@ Detects HTTP route definitions for entrypoint detection.
 | JAX-RS | `@Path("/path")` | `@GET @Path("/users/{id}")` |
 | Spring MVC | `@RequestMapping("/path")` | `@PostMapping("/api/login")` |
 
+These are representative examples; route detection is supported for 81 frameworks. See [FRAMEWORKS.md](FRAMEWORKS.md) for the full list.
+
 **Detection output:**
 * Symbol kind: `route` or `endpoint`
 * Symbol name: HTTP method + path (e.g., `GET /users/{id}`)
 * Used by entrypoint detection for slicing
 
 **Client-side linking:**
-Cross-language client→server matching (e.g., `fetch("/api/users")` → Flask handler) is not yet implemented. See [§19 Future Work](#19-future-work).
+🟩 The HTTP linker (`linkers/http.py`) matches client calls to server route handlers across languages. Supported client patterns: JS/TS (`fetch`, `axios`, OpenAPI-generated clients), Python (`requests`, `httpx`), and Go (`net/http`). Routes are matched by HTTP method and URL path, with support for parameterized paths (`:id`, `{id}`, `<id>`). Literal URLs score 0.90 confidence; variable URLs score 0.65.
 
 ### Language-specific notes for cross-language linking
 
@@ -491,7 +493,7 @@ ANALYZERS (pure language, no framework knowledge)
   → Capture symbols + rich metadata (decorators, base classes, parameters)
   → Capture UsageContext for call-based patterns (route registrations, etc.)
 
-PATTERN SYSTEM (87 YAML files: 5 convention + 82 framework)
+PATTERN SYSTEM (87 YAML files: 6 convention + 81 framework)
   → Match patterns against symbol metadata and usage contexts
   → Enrich symbols with concept metadata (route, task, model, etc.)
 
@@ -533,15 +535,16 @@ The pattern system has two categories:
 
 | Category | When Loaded | Purpose | Examples |
 |----------|-------------|---------|----------|
-| **Convention** | Always | Language-agnostic patterns | main-functions, test-frameworks, language-conventions, config-conventions |
+| **Convention** | Always | Language-agnostic patterns | main-functions, test-frameworks, naming-conventions, language-conventions, config-conventions, library-exports |
 | **Framework** | When detected | Framework-specific patterns | fastapi, django, express, spring-boot |
 
-**Convention patterns (5 files):**
+**Convention patterns (6 files):**
 - `main-functions.yaml`: main() entrypoints across 10+ languages
 - `test-frameworks.yaml`: Test function detection (pytest, JUnit, xUnit, etc.)
 - `language-conventions.yaml`: CUDA kernels, WGSL shaders, COBOL programs, LaTeX structure, Starlark rules
 - `config-conventions.yaml`: NPM/Maven/Cargo dependencies, Android components, TypeScript references
 - `library-exports.yaml`: Library entry point detection via exports from index files (JS/TS)
+- `naming-conventions.yaml`: Heuristic entrypoints by naming pattern (`*Controller`, `*Handler`, `*Service`)
 
 **Framework patterns:** Loaded only when the framework is detected in profile. See [FRAMEWORKS.md](FRAMEWORKS.md) for the full list; YAML source is in `packages/hypergumbo-core/src/hypergumbo_core/frameworks/`.
 
@@ -824,7 +827,7 @@ For a complete real-world example (install, run, and full JSON output), see [exa
 * 🟩 **Method**: BFS or DFS on relationships
 * 🟩 **Limits**:
   * Hop limit (default: 3)
-  * File count limit (default: 20)
+  * File count limit (default: 50)
   * Configurable via `--max-hops`, `--max-files`
 * 🟩 **Edge filtering**: Optionally exclude tests, exclude low-confidence edges
 
@@ -843,7 +846,7 @@ Query format enables exact reproduction:
   "method": "bfs",
   "entrypoint": "fastapi_route:/api/login",
   "hops": 3,
-  "max_files": 20,
+  "max_files": 50,
   "exclude_tests": true
 }
 ```
