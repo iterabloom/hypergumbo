@@ -650,38 +650,12 @@ The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `
 For the deterministic scoring algorithm (language-specific base scores, evidence types, contextual adjustments), see [§12 Confidence calculation](#confidence-calculation-deterministic-algorithm).
 
 #### analysis_runs[] — provenance tracking
-```json
-{
-  "execution_id": "uuid:abc-def-789...",
-  "run_signature": "sha256:xyz789...",
-  "repo_fingerprint": "sha256:repo123...",
-  "pass": "python-ast-v1",
-  "version": "hypergumbo-0.1.0",
-  "toolchain": {"name": "python", "version": "3.11.0"},
-  "config_fingerprint": "sha256:abc123...",
-  "files_analyzed": 42,
-  "files_skipped": 1,
-  "skipped_passes": [],
-  "warnings": ["skipped bundle.min.js (2.1MB exceeds limit)"],
-  "started_at": "2026-01-15T10:30:00Z",
-  "duration_ms": 1234
-}
-```
 
-**Field semantics** are defined in [§6 Internal Representation](#6-internal-representation). The one output-specific rename: `pass_id` in the IR is serialized as `pass` in JSON.
+Each entry records provenance for one analyzer pass. Field semantics are defined in [§6 Internal Representation](#6-internal-representation); see `docs/schema.json` for the full field list.
 
-**skipped_passes** (array, optional):
-- List of passes that could not run (e.g., missing grammar)
-- Each entry includes pass ID and reason
-- Example:
-```json
-"skipped_passes": [
-  {
-    "pass": "lean-ts-v1",
-    "reason": "tree-sitter-lean grammar not available"
-  }
-]
-```
+**Output-specific note:** The IR field `pass_id` is serialized as `pass` in JSON output.
+
+**skipped_passes** (array, optional): Lists passes that could not run (e.g., `{"pass": "lean-ts-v1", "reason": "tree-sitter-lean grammar not available"}`). Each entry includes pass ID and reason.
 
 #### profile — repo characteristics
 
@@ -700,113 +674,23 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
 
 #### nodes[] — definitions, files, endpoints
 
-**Field semantics** (`id`, `stable_id`, `shape_id`, `fingerprint`, `origin`, `quality`, etc.) are defined in [§6 Internal Representation](#6-internal-representation). This section documents the JSON serialization and output-specific fields.
+Field semantics (`id`, `stable_id`, `shape_id`, `fingerprint`, `origin`, `quality`, etc.) are defined in [§6 Internal Representation](#6-internal-representation). See `docs/schema.json` for the full field list. This section documents output-specific serialization rules.
 
-**Node fields:**
+**Presence rule:** `stable_id`, `shape_id`, and `origin_run_signature` keys MUST be present on every node. If unavailable, they MUST be set to `null` (not omitted). This supports forward-compatible consumers without forcing every pass to compute every field.
+
+**supply_chain** (object, required): Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields into a nested object with an added `tier_name` field (e.g., `first_party`, `internal_dep`), computed from the numeric `tier` at serialization time. See [§14 Supply Chain Classification](#14-supply-chain-classification) for tier definitions.
+
 ```json
-{
-  "id": "python:src/auth.py:42-48:login:function",
-  "stable_id": "sha256:abc123...",
-  "shape_id": "sha256:shape456...",
-  "canonical_name": "myapp.auth.login",
-  "fingerprint": "sha256:def456...",
-  "kind": "function",
-  "name": "login",
-  "path": "src/auth.py",
-  "language": "python",
-  "span": {
-    "start_line": 42,
-    "end_line": 48,
-    "start_col": 0,
-    "end_col": 15
-  },
-  "origin": "python-ast-v1",
-  "origin_run_id": "uuid:abc-def-789...",
-  "origin_run_signature": "sha256:xyz789...",
-  "quality": {
-    "score": 0.9,
-    "reason": "AST-based definition, unambiguous scope"
-  },
-  "supply_chain": {
-    "tier": 1,
-    "tier_name": "first_party",
-    "reason": "matches ^src/"
-  }
-}
+"supply_chain": {"tier": 1, "tier_name": "first_party", "reason": "matches ^src/"}
 ```
-**Presence rule:**
-- `stable_id`, `shape_id`, and `origin_run_signature` keys MUST be present on every node.
-- If unavailable, they MUST be set to `null` (not omitted).
-- This supports forward-compatible consumers without forcing every pass to compute every field.
 
-**supply_chain** (object, required):
-Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields into a nested object. The only derived field is `tier_name` (e.g., `first_party`, `internal_dep`), which is computed from the numeric `tier` at serialization time and not stored in the IR. See [§14 Supply Chain Classification](#14-supply-chain-classification) for tier definitions and the classification algorithm.
-
-**Node kinds:**
-* `file` — source file
-* `module` — Python module, JS module
-* `function` — function/method
-* `class` — class definition
-* `endpoint` — HTTP route, IPC handler, CLI entrypoint
+**Node kinds:** `file`, `module`, `function` (function/method), `class`, `endpoint` (HTTP route, IPC handler, CLI entrypoint).
 
 #### edges[] — relationships
 
-**Edge fields:**
-```json
-{
-  "id": "edge:sha256:def456...",
-  "edge_key": "edgekey:sha256:rel_abc123...",
-  "type": "calls",
-  "src": "python:src/auth.py:42-48:login:function",
-  "dst": "python:src/db.py:10-15:query_user:function",
-  "confidence": 0.85,
-  "origin": "python-ast-v1",
-  "origin_run_id": "uuid:abc-def-789...",
-  "origin_run_signature": "sha256:xyz789...",
-  "quality": {
-    "score": 0.85,
-    "reason": "Direct AST call"
-  },
-  "meta": {
-    "evidence_type": "ast_call_direct",
-    "evidence_lang": "python",
-    "evidence_spans": [
-      {
-        "file": "src/auth.py",
-        "span": {"start_line": 45, "end_line": 45, "start_col": 8, "end_col": 24}
-      }
-    ]
-  }
-}
-```
+Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenance fields (`origin`, `origin_run_id`, `origin_run_signature`), `quality`, and a `meta` object with structured evidence. See `docs/schema.json` for the full field list.
 
 **Multi-pass evidence (optional):** When multiple analysis passes observe the same relationship, `meta.evidence[]` accumulates their individual observations. The top-level `meta.evidence_type`, `meta.evidence_lang`, and `meta.evidence_spans` always reflect the primary (highest-confidence) record.
-
-```json
-{
-  "meta": {
-    "evidence_type": "ast_call_direct",
-    "evidence_lang": "python",
-    "evidence_spans": [{"file": "src/auth.py", "span": {"start_line": 45, "end_line": 45}}],
-    "evidence": [
-      {
-        "origin": "python-ast-v1",
-        "origin_run_id": "uuid:abc-def-789...",
-        "evidence_type": "ast_call_direct",
-        "evidence_lang": "python",
-        "confidence": 0.85
-      },
-      {
-        "origin": "pyright-v1",
-        "origin_run_id": "uuid:ghi-jkl-012...",
-        "evidence_type": "type_resolved_call",
-        "evidence_lang": "python",
-        "confidence": 0.95
-      }
-    ]
-  }
-}
-```
 
 **edge_key:**
 - `edge_key` is a canonical identity used to deduplicate/merge multiple observations of the “same” relationship across passes.
@@ -848,106 +732,27 @@ Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields
 
 #### features[] — named slices
 
-**Feature structure:**
+Each feature contains `id`, `name`, `entry_nodes[]`, `node_ids[]`, `edge_ids[]`, a `query` object (method, entrypoint, hops, max_files, exclude_tests), `limits_hit[]`, and `summary`. See `docs/schema.json` for the full structure.
 
-```json
-{
-  "id": "sha256:feature_query_hash...",
-  "name": "auth-flow",
-  "entry_nodes": ["python:src/auth.py:42-48:login:function"],
-  "node_ids": ["python:src/auth.py:42-48:login:function", "..."],
-  "edge_ids": ["edge:sha256:def456...", "..."],
-  "query": {
-    "method": "bfs",
-    "entrypoint": "fastapi_route:/api/login",
-    "hops": 3,
-    "max_files": 20,
-    "exclude_tests": true
-  },
-  "limits_hit": ["hop_limit"],
-  "summary": "User authentication flow from FastAPI route to database query"
-}
-```
-
-**Feature ID:** Stable identifier based on query spec: `sha256(json.dumps(query, sort_keys=True))`
-
-**Query reproducibility:** Same query on same code → same feature ID → enables diff across commits.
+**Feature ID:** Stable identifier based on query spec: `sha256(json.dumps(query, sort_keys=True))`. Same query on same code → same feature ID → enables diff across commits.
 
 #### metrics — optional counts
 
-```json
-{
-  "total_nodes": 523,
-  "total_edges": 1847,
-  "avg_confidence": 0.82,
-  "languages": {
-    "python": {"nodes": 320, "edges": 1200},
-    "javascript": {"nodes": 203, "edges": 647}
-  },
-  "by_supply_chain_tier": {
-    "first_party": {"nodes": 380, "edges": 1200},
-    "internal_dep": {"nodes": 85, "edges": 150},
-    "external_dep": {"nodes": 58, "edges": 497}
-  }
-}
-```
+Aggregate statistics: `total_nodes`, `total_edges`, `avg_confidence`, per-language breakdowns (`languages.*`), and per-tier breakdowns (`by_supply_chain_tier.*`). Each breakdown includes `nodes` and `edges` counts.
 
 #### supply_chain_summary — classification overview
 
-```json
-{
-  "supply_chain_summary": {
-    "first_party": {"files": 42, "symbols": 380},
-    "internal_dep": {"files": 12, "symbols": 85},
-    "external_dep": {"files": 8, "symbols": 58},
-    "derived_skipped": {
-      "files": 3,
-      "paths": ["dist/bundle.js", "build/app.min.js", "out/compiled.js"]
-    }
-  }
-}
-```
-
-**derived_skipped.paths**: Capped at 10 entries. Full list available via `--verbose` flag.
+Per-tier file and symbol counts (`first_party`, `internal_dep`, `external_dep`), plus a `derived_skipped` object listing files excluded from analysis. `derived_skipped.paths` is capped at 10 entries; full list available via `--verbose`.
 
 #### limits — explicit gaps
 
-```json
-{
-  "not_captured": [
-    "dynamic imports (importlib, require with variables)",
-    "eval() and exec() calls",
-    "decorators with complex logic"
-  ],
-  "truncated_files": [
-    {
-      "path": "dist/bundle.min.js",
-      "size_bytes": 2100000,
-      "reason": "exceeds --max-file-bytes"
-    }
-  ],
-  "skipped_languages": ["go", "rust"],
-  "failed_files": [
-    {
-      "path": "malformed.py",
-      "reason": "SyntaxError: invalid syntax (line 42)",
-      "analyzer": "python-ast-v1"
-    }
-  ],
-  "partial_results_reason": "",
-  "analyzer_version": "hypergumbo-0.1.0",
-  "analysis_depth": "syntax_only"
-}
-```
+Documents what the analysis *didn't* capture. Key arrays:
+- `not_captured[]`: Categories of constructs not analyzed (e.g., dynamic imports, eval, complex decorators)
+- `truncated_files[]`: Files skipped due to size, with path, size, and reason
+- `skipped_languages[]`: Languages with unavailable grammars
+- `failed_files[]`: Files that caused parse errors, with path, reason, and analyzer ID
 
-**partial_results_reason** (string, optional):
-- Present only when `analysis_incomplete: true`
-- Human-readable explanation of why analysis did not complete
-- Examples:
-  - `"Timeout: Analysis exceeded 300 seconds"`
-  - `"Resource limit: Memory usage exceeded 2GB"`
-  - `"Critical error: catalog.json could not be loaded"`
-  - `"User interrupted: Ctrl-C received"`
+**partial_results_reason** (string, optional): Present only when `analysis_incomplete: true`. Human-readable explanation (e.g., `"Timeout: Analysis exceeded 300 seconds"`, `"User interrupted: Ctrl-C received"`).
 
 ### Sketch (Markdown)
 
