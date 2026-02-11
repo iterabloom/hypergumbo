@@ -26,7 +26,7 @@ Status: living document.
 | 4 | [Supported stacks](#4-supported-stacks) |
 | 5 | [Architecture](#5-architecture) |
 | 6 | [Internal Representation](#6-internal-representation) |
-| 7 | [Cross-Language Edge Detection](#7-cross-language-edge-detection) |
+| 7 | [Cross-Language Edge Detection (Illustrative Examples)](#7-cross-language-edge-detection-illustrative-examples) |
 | 8 | [Entrypoint Detection](#8-entrypoint-detection) |
 | 9 | [Output formats](#9-output-formats) |
 | 10 | [Slicing behavior](#10-slicing-behavior) |
@@ -50,7 +50,7 @@ A local-first CLI that helps developers and AI agents understand an unfamiliar c
 ## 1) Goals
 * 🟩 **Internal IR with views**: Parsers emit to an internal representation; public outputs are compiled views (enables future typed passes without breaking schema).
 * 🟩 **Provenance tracking**: Every node/edge records which analyzer pass created it, with unique execution identifiers enabling quality assessment and mixed-fidelity analysis.
-* 🟩 **Machine-readable provenance**: All confidence scores and edge evidence captured in structured fields, not just human-readable strings, enabling programmatic filtering and multi-pass merging.
+* 🟩 **Machine-readable provenance**: Confidence scores and edge evidence use structured fields (not human-readable strings). This enables programmatic filtering and multi-pass merging.
 * 🟩 **Agent-ready output**: deterministic JSON graph + "feature slices" so an agent can fetch only relevant code.
 * 🟩 **Fast iteration**: simple architecture, small dependency surface, fixtures-driven tests.
 * 🟩 **Local-first execution**: analysis runs offline by default (no network, no API keys required).
@@ -215,7 +215,9 @@ Parsers emit to a shared internal representation; see [§6 Internal Representati
 
 ### Analysis pipeline (two-tier model)
 
-The analysis pipeline has two tiers reflecting different information needs:
+The analysis pipeline has two tiers reflecting different information needs.
+
+**Terminology:** A *pass* is any analysis component that reads code and produces IR output. An *analyzer* is a Tier 1 pass that extracts symbols and edges for a single language. A *linker* is a Tier 2 pass that creates cross-language or cross-component relationships. The `pass_id` field in `AnalysisRun` uses the generic term.
 
 **Tier 1 — Language analyzers (independent producers):**
 Each analyzer is a plain function registered via `AnalyzerSpec` and discovered through Python entry-points (see [ADR-0010](adr/0010-modular-packages-and-smart-testing.md)):
@@ -385,9 +387,9 @@ Public outputs are **compiled views** from this IR — the IR defines the canoni
 
 **Design principle:** Strong passes (tsserver, pyright) added later will enhance the IR without breaking existing views.
 
-## 7) Cross-Language Edge Detection
+## 7) Cross-Language Edge Detection (Illustrative Examples)
 
-Hypergumbo provides **best-effort cross-language edge detection** for common integration patterns. These are AST-based heuristics with string literal matching, not type-resolved or dataflow analysis.
+Hypergumbo provides **best-effort cross-language edge detection** for common integration patterns. These are AST-based heuristics with string literal matching, not type-resolved or dataflow analysis. This section illustrates the linker system with three representative mechanisms. For the full catalog of 20+ cross-language linkers, see [LINKERS.md](LINKERS.md).
 
 ### JNI Boundary Detection (Java ↔ C)
 
@@ -454,7 +456,7 @@ Detects message send/receive patterns across process boundaries using string lit
 * Does not validate message schema compatibility
 * Logs unmatched patterns in `limits.unresolved_ipc[]`
 
-### HTTP Endpoint Detection (Server-side only)
+### HTTP Endpoint Detection
 
 Detects HTTP route definitions for entrypoint detection.
 
@@ -626,6 +628,8 @@ Hypergumbo produces two output formats from the same analysis pipeline:
 - **Sketch** (default mode): Token-budgeted Markdown summary written to stdout. Designed for pasting into LLM chat interfaces.
 
 Both are views compiled from the IR; see [§6 Output views](#output-views) for the view concept and design rationale.
+
+**Reading guide:** This section describes serialization rules and output-specific fields. Field *semantics* (what `id`, `stable_id`, `origin`, etc. mean) are defined once in [§6 Internal Representation](#6-internal-representation) and not repeated here.
 
 ### Behavior Map JSON
 
@@ -882,7 +886,26 @@ Query format enables exact reproduction:
 
 Feature comparison across commits: same query → compare `node_ids`/`edge_ids` to detect changes.
 
-Supply chain tiers add two additional slicing capabilities: **tier filtering** (`--max-tier`) stops traversal at dependency boundaries, and **reverse slice class expansion** auto-includes member methods when slicing from a class entry. See [§14 Supply Chain Classification](#14-supply-chain-classification) for details.
+### Tier filtering
+
+🟩 Supply chain tiers (defined in [§14](#14-supply-chain-classification)) add tier-based traversal boundaries to slicing:
+
+```bash
+# Slice stops at first-party boundary
+hypergumbo slice --entry main --max-tier 1
+
+# Slice includes internal deps but not external
+hypergumbo slice --entry main --max-tier 2
+
+# Default: slice can traverse into external deps
+hypergumbo slice --entry main --max-tier 3
+```
+
+When `--max-tier N` is specified, BFS traversal skips nodes whose supply chain tier exceeds N.
+
+### Reverse slice class expansion
+
+🟩 When reverse-slicing from a class/interface entry (e.g., `--reverse --entry OwnerRepository`), the slicer auto-expands the BFS starting set to include all member methods (via `contains` edges). This enables finding callers of `findById`, `search`, etc. Applies to class, interface, module, struct, trait, and enum containers.
 
 ## 11) Analysis guardrails
 
@@ -902,6 +925,8 @@ Supply chain tiers add two additional slicing capabilities: **tier filtering** (
 * Truncated files logged in `limits.truncated_files[]`
 
 ## 12) Confidence scoring
+
+Edge confidence scores quantify how reliably hypergumbo detected a relationship between two symbols. This is distinct from *entrypoint* confidence ([§8](#8-entrypoint-detection)), which scores how reliably a symbol was identified as an entry point. The two systems are independent: an edge originating from a high-confidence entrypoint does not inherit that entrypoint's confidence score.
 
 ### Confidence calculation (deterministic algorithm)
 
@@ -1145,24 +1170,11 @@ hypergumbo run . --max-tier 3
 
 #### Reverse slice class expansion
 
-🟩 Implemented:
-
-When reverse-slicing from a class/interface entry, the slicer auto-expands the BFS starting set to include all member methods (via `contains` edges). This enables `--reverse --entry OwnerRepository` to find callers of `findById`, `search`, etc. Applies to class, interface, module, struct, trait, and enum containers.
+🟩 Implemented. When reverse-slicing from a class/interface entry, the slicer auto-expands the BFS starting set to include all member methods. See [§10 Slicing behavior](#10-slicing-behavior) for details.
 
 #### Slice tier filtering
 
-🟩 Implemented:
-
-```bash
-# Slice stops at first-party boundary
-hypergumbo slice --entry main --max-tier 1
-
-# Slice includes internal deps but not external
-hypergumbo slice --entry main --max-tier 2
-
-# Default: slice can traverse into external deps
-hypergumbo slice --entry main --max-tier 3
-```
+🟩 Implemented. `--max-tier N` stops BFS traversal at tier boundaries. See [§10 Slicing behavior](#10-slicing-behavior) for details and CLI examples.
 
 #### Sketch prioritization
 
@@ -1483,32 +1495,6 @@ This section collects capabilities that are designed but not yet implemented. Pu
 | Agent context router | Medium-term | Multi-fidelity analysis |
 | Incremental analysis | Not on roadmap | — |
 
-### Multi-fidelity analysis *(medium-term)*
-
-The long-term vision is a multi-fidelity code understanding platform that produces typed IR and an agent context router for token-efficient editing.
-
-**Language-native engines** (optional, high-fidelity frontends):
-* 🟪 **TypeScript**: `tsserver` (type checker + language service)
-* 🟪 **Python**: `pyright` or `mypy` (type inference)
-* 🟪 **Rust**: `rust-analyzer` (full semantic analysis)
-* 🟪 **Go**: `gopls` (language server)
-* 🟪 **JVM**: Eclipse JDT (Java), Kotlin analysis tooling
-
-These would produce typed call graphs, enabling mixed-fidelity analysis: AST edges (0.7 confidence) + typed edges (0.95 confidence) in the same graph.
-
-**Runner types** for high-fidelity analyzers:
-* 🟪 **`toolchain_bundle`** — Ships with language server (100MB+ downloads, high fidelity)
-* 🟪 **`container_image`** — OCI/Docker image for maximum isolation
-* 🟪 **`daemon_process`** — Long-running incremental analysis (research-hard, defer indefinitely)
-
-**IR extensions:**
-* Typed symbol table + cross-ref index (extends current IR)
-* Control-flow graph (CFG) — opt-in with explicit partial-results flags
-* Dataflow facts (reaching definitions, taint tracking) — opt-in, not a core requirement
-
-**Technology choices:**
-* IR storage: Protocol Buffers (fast, versioned, language-neutral); JSON fallback if protobuf adds friction
-
 ### AST-based type inference improvements *(near-term)*
 
 The current system implements constructor tracking, parameter tracking, field type tracking, return type tracking, and type hierarchy dispatch (see ADR-0006 and CHANGELOG.md). Supported in Python, Java, Kotlin, TypeScript, C#, Dart, and Scala (method name only).
@@ -1520,36 +1506,10 @@ Remaining improvements (without requiring language servers):
 | **Method-scoped tracking** | Low-Medium | Medium | Current file-scoped tracking can cause false positives when same variable name used in different methods. Low priority since collisions are rare. |
 | **Generic handling** | High | High | Track `List<User>` to infer that `.get()` returns `User`. High complexity (type parameter binding, variance). Defer until simpler features are done. |
 
-### Agent context router *(medium-term)*
+### Additional linkers *(near-term)*
 
-Query interface: "I want to change behavior X in Y context"
-
-The router would build on existing slicing capabilities — call graph traversal, test filtering, and supply chain tier boundaries (see [§10](#10-slicing-behavior) and [§14](#14-supply-chain-classification)) — and extend them with:
-
-**Pipeline:**
-
-1. **Retrieve** relevant nodes/flows from IR
-   * Entry: symbol name, file path, route pattern
-   * 🟪 Natural language queries via embedding similarity
-
-2. **Slice** on (beyond existing call graph / test / tier slicing):
-   * 🟪 Dataflow (tainted data paths)
-   * 🟪 Schema ties (database columns, API contracts)
-   * 🟪 Configuration/deployment ties
-
-3. **Assemble context bundle**:
-   * Minimal code excerpts (only changed + affected)
-   * Invariants/contracts (types, tests, assertions)
-   * 🟪 "What could break" checklist (requires whole-program analysis)
-
-Token budget optimization: BFS until token limit hit, sorted by (edge confidence, distance from entry).
-
-**Potential enhancements:**
-* 🟪 Learned relevance models
-* 🟪 Agent feedback loop (which code was actually edited?)
-* 🟪 Embedding-based context expansion
-* 🟪 Coverage report parsing for test summary
-* 🟪 Multi-language documentation summarization
+* 🟪 **Constant propagation** for dynamic routes (`BASE_URL + "/users"`)
+* 🟪 **Middleware/proxy rewriting** detection
 
 ### Additional output views *(near-term)*
 
@@ -1559,50 +1519,6 @@ Beyond `behavior_map.json` (the current output), future views compiled from the 
 * 🟪 **context_bundle.json** — Agent-optimized: minimal code excerpts for a query, invariant checklist, "impact zones" (what could break), token-budget optimized
 * 🟪 **sarif.json** — SARIF 2.1 compatible findings for integration with GitHub Code Scanning, GitLab SAST
 * 🟪 **Flow specs** — Named, traceable feature flows (e.g., "Signup pipeline": route → handler → validation → database → email notification). Each flow includes entry/exit points, all nodes/edges in path, invariants, and tests covering the flow.
-
-### Additional linkers *(near-term)*
-
-* 🟪 **Constant propagation** for dynamic routes (`BASE_URL + "/users"`)
-* 🟪 **Middleware/proxy rewriting** detection
-
-### Incremental analysis *(not on roadmap)*
-
-This is an 18+ month effort minimum:
-- Dependency tracking (which symbols affect which)
-- Invalidation propagation (change X → re-analyze Y, Z)
-- Cross-file type inference updates
-
-TypeScript incremental took ~3 years, rust-analyzer ~2 years.
-
-**Current mitigation:**
-- Cached slices: Pre-compute common features
-- Symbol index: O(1) lookup for "find definition of X"
-- Partial re-analysis: Re-analyze changed files + direct importers only
-- Accept latency: Full analysis on deep queries is OK with progress bars
-
-### Scope and constraints
-
-**Performance targets (with high-fidelity analysis):**
-
-* **Small repo** (<100 files): <10 seconds
-* **Medium repo** (~500 files): <60 seconds (2x current due to type checking)
-* **Large repo** (2000+ files): <5 minutes full analysis
-* **Context router query**: <2 seconds for typical slice assembly
-
-**Complexity acknowledgment:**
-
-* **Natural language query parsing** requires embedding models + semantic search
-* **Dataflow slicing** is NP-hard in general; even heuristic solutions are multi-month research
-* **Impact prediction** requires whole-program analysis with test coverage correlation
-
-If dataflow proves infeasible, agent-guided slicing (agents specify hops/filters via DSL) is a simpler alternative.
-
-**Non-goals for future work:**
-
-* "Prove programs correct" in the formal methods sense
-* Real-time collaboration or social features
-* Hosted SaaS offering or marketplace monetization
-* IDE integration (LSP server) or autonomous code editing
 
 ### Testing & CI enhancements *(near-term)*
 
@@ -1637,6 +1553,102 @@ Infrastructure needed: persistent storage for metrics across CI runs, aggregatio
 * Skip automatically when dependencies are not available
 * Run only on explicit request (`pytest -m integration`)
 * Catch environment-specific issues
+
+### Multi-fidelity analysis *(medium-term)*
+
+The long-term vision is a multi-fidelity code understanding platform that produces typed IR and an agent context router for token-efficient editing.
+
+**Language-native engines** (optional, high-fidelity frontends):
+* 🟪 **TypeScript**: `tsserver` (type checker + language service)
+* 🟪 **Python**: `pyright` or `mypy` (type inference)
+* 🟪 **Rust**: `rust-analyzer` (full semantic analysis)
+* 🟪 **Go**: `gopls` (language server)
+* 🟪 **JVM**: Eclipse JDT (Java), Kotlin analysis tooling
+
+These would produce typed call graphs, enabling mixed-fidelity analysis: AST edges (0.7 confidence) + typed edges (0.95 confidence) in the same graph.
+
+**Runner types** for high-fidelity analyzers:
+* 🟪 **`toolchain_bundle`** — Ships with language server (100MB+ downloads, high fidelity)
+* 🟪 **`container_image`** — OCI/Docker image for maximum isolation
+* 🟪 **`daemon_process`** — Long-running incremental analysis (research-hard, defer indefinitely)
+
+**IR extensions:**
+* Typed symbol table + cross-ref index (extends current IR)
+* Control-flow graph (CFG) — opt-in with explicit partial-results flags
+* Dataflow facts (reaching definitions, taint tracking) — opt-in, not a core requirement
+
+**Technology choices:**
+* IR storage: Protocol Buffers (fast, versioned, language-neutral); JSON fallback if protobuf adds friction
+
+### Agent context router *(medium-term)*
+
+Query interface: "I want to change behavior X in Y context"
+
+The router would build on existing slicing capabilities — call graph traversal, test filtering, and supply chain tier boundaries (see [§10](#10-slicing-behavior) and [§14](#14-supply-chain-classification)) — and extend them with:
+
+**Pipeline:**
+
+1. **Retrieve** relevant nodes/flows from IR
+   * Entry: symbol name, file path, route pattern
+   * 🟪 Natural language queries via embedding similarity
+
+2. **Slice** on (beyond existing call graph / test / tier slicing):
+   * 🟪 Dataflow (tainted data paths)
+   * 🟪 Schema ties (database columns, API contracts)
+   * 🟪 Configuration/deployment ties
+
+3. **Assemble context bundle**:
+   * Minimal code excerpts (only changed + affected)
+   * Invariants/contracts (types, tests, assertions)
+   * 🟪 "What could break" checklist (requires whole-program analysis)
+
+Token budget optimization: BFS until token limit hit, sorted by (edge confidence, distance from entry).
+
+**Potential enhancements:**
+* 🟪 Learned relevance models
+* 🟪 Agent feedback loop (which code was actually edited?)
+* 🟪 Embedding-based context expansion
+* 🟪 Coverage report parsing for test summary
+* 🟪 Multi-language documentation summarization
+
+### Incremental analysis *(not on roadmap)*
+
+This is an 18+ month effort minimum:
+- Dependency tracking (which symbols affect which)
+- Invalidation propagation (change X → re-analyze Y, Z)
+- Cross-file type inference updates
+
+TypeScript incremental took ~3 years, rust-analyzer ~2 years.
+
+**Current mitigation:**
+- Cached slices: Pre-compute common features
+- Symbol index: O(1) lookup for "find definition of X"
+- Partial re-analysis: Re-analyze changed files + direct importers only
+- Accept latency: Full analysis on deep queries is OK with progress bars
+
+### Constraints and non-goals
+
+**Performance targets (with high-fidelity analysis):**
+
+* **Small repo** (<100 files): <10 seconds
+* **Medium repo** (~500 files): <60 seconds (2x current due to type checking)
+* **Large repo** (2000+ files): <5 minutes full analysis
+* **Context router query**: <2 seconds for typical slice assembly
+
+**Complexity acknowledgment:**
+
+* **Natural language query parsing** requires embedding models + semantic search
+* **Dataflow slicing** is NP-hard in general; even heuristic solutions are multi-month research
+* **Impact prediction** requires whole-program analysis with test coverage correlation
+
+If dataflow proves infeasible, agent-guided slicing (agents specify hops/filters via DSL) is a simpler alternative.
+
+**Non-goals for future work:**
+
+* "Prove programs correct" in the formal methods sense
+* Real-time collaboration or social features
+* Hosted SaaS offering or marketplace monetization
+* IDE integration (LSP server) or autonomous code editing
 
 ## Appendix A: Release Lifecycle & Support
 

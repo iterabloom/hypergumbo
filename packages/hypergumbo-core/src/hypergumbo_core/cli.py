@@ -19,8 +19,8 @@ common case (`hypergumbo .`) as simple as possible.
 
 The `run` command orchestrates all language analyzers and cross-language
 linkers, collecting their results into a unified behavior map. Analyzers
-run in sequence: Python, HTML, JS/TS, PHP, C, Java. Linkers (JNI, IPC)
-run after all analyzers complete to create cross-language edges.
+run independently across 100+ languages. Linkers run after all analyzers
+complete to create cross-language edges.
 
 Why This Design
 ---------------
