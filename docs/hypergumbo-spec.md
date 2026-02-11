@@ -149,6 +149,15 @@ Gitignore-style glob patterns for paths to skip. Uses `fnmatch` matching.
 Skip files exceeding this size. Particularly useful for HTML and minified JavaScript.
 * Skipped files logged in `limits.truncated_files[]`
 
+🟩 **`--first-party-only`**
+Analyze only first-party code (tier 1). Equivalent to `--max-tier 1`.
+
+🟩 **`--max-tier N`** (default: 3)
+Control which supply chain tiers are included in analysis. See [§13](#13-supply-chain-classification) for tier definitions.
+
+🟩 **`--no-first-party-priority`**
+Disable tier-based weighting in Key Symbols ranking (use raw centrality instead).
+
 ## 4) Supported stacks
 
 Hypergumbo supports 104 languages via tree-sitter grammars. All are included in the base package.
@@ -1144,46 +1153,6 @@ packages/*/src/          # JS monorepo source dirs
 
 **Default rule:** If no other tier matches, classify as tier 1 (first-party). This ensures unknown directories are analyzed rather than skipped.
 
-### CLI Integration
-
-#### Analysis scope flags
-
-🟩 Implemented:
-
-```bash
-# Default: analyze tiers 1-3, skip tier 4 (derived)
-hypergumbo run .
-
-# First-party only (fast, focused)
-hypergumbo run . --first-party-only
-# Equivalent to: --max-tier 1
-
-# Explicit tier control (default is 3)
-hypergumbo run . --max-tier 3
-```
-
-#### Reverse slice class expansion
-
-🟩 Implemented. When reverse-slicing from a class/interface entry, the slicer auto-expands the BFS starting set to include all member methods. See [§10 Slicing behavior](#10-slicing-behavior) for details.
-
-#### Slice tier filtering
-
-🟩 Implemented. `--max-tier N` stops BFS traversal at tier boundaries. See [§10 Slicing behavior](#10-slicing-behavior) for details and CLI examples.
-
-#### Sketch prioritization
-
-🟩 Implemented:
-
-The `--no-first-party-priority` flag disables tier-based weighting for Key Symbols ranking:
-
-```bash
-# Key Symbols prioritizes first-party (default)
-hypergumbo sketch .
-
-# Disable tier weighting (raw centrality)
-hypergumbo sketch . --no-first-party-priority
-```
-
 ### Impact on Analysis
 
 #### Sketch Key Symbols ranking
@@ -1227,19 +1196,6 @@ The Additional Files section uses a README-first hybrid ranking algorithm:
 6. docs/api.md (similarity-ranked)
 ...
 ```
-
-#### Slicing behavior
-
-When `--max-tier N` is specified, BFS traversal stops at tier boundaries:
-
-```python
-def should_traverse(edge: Edge, target: Symbol, max_tier: int) -> bool:
-    if target.supply_chain.tier > max_tier:
-        return False  # Don't cross into lower tier
-    return True
-```
-
-**Use case:** "Show me everything my code calls, but don't trace into lodash internals."
 
 ### Limitations
 
