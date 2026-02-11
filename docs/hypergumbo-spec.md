@@ -15,6 +15,35 @@ Status: living document.
 
 *Use `grep "🟨"` to find in-progress items, etc.*
 
+## Table of Contents
+
+| § | Title |
+|---|-------|
+| 0 | [One-sentence summary](#0-one-sentence-summary) |
+| 1 | [Goals](#1-goals) |
+| 2 | [Non-goals](#2-non-goals) |
+| 3 | [User experience (CLI)](#3-user-experience-cli) |
+| 4 | [Supported stacks](#4-supported-stacks) |
+| 5 | [Architecture](#5-architecture) |
+| 6 | [Internal Representation](#6-internal-representation) |
+| 7 | [Cross-Language Edge Detection](#7-cross-language-edge-detection) |
+| 8 | [Entrypoint Detection](#8-entrypoint-detection) |
+| 9 | [Output formats](#9-output-formats) |
+| 10 | [Slicing behavior](#10-slicing-behavior) |
+| 11 | [Analysis guardrails](#11-analysis-guardrails) |
+| 12 | [Confidence scoring](#12-confidence-scoring) |
+| 13 | [Output reproducibility](#13-output-reproducibility) |
+| 14 | [Supply Chain Classification](#14-supply-chain-classification) |
+| 15 | [Testing & quality bar](#15-testing--quality-bar) |
+| 16 | [Error handling](#16-error-handling) |
+| 17 | [Known limitations](#17-known-limitations) |
+| 18 | [Autonomous Governance](#18-autonomous-governance-adr-0008) |
+| 19 | [Future Work](#19-future-work) |
+| A | [Release Lifecycle & Support](#appendix-a-release-lifecycle--support) |
+| B | [Telemetry & Privacy](#appendix-b-telemetry--privacy) |
+| C | [Schema Compatibility Contract](#appendix-c-schema-compatibility-contract) |
+| D | [Capsule System History](#appendix-d-capsule-system-history) |
+
 ## 0) One-sentence summary
 A local-first CLI that helps developers and AI agents understand an unfamiliar codebase by analyzing its structure and emitting a **repo behavior map**—a JSON graph of symbols, call edges, routes, and framework patterns with confidence scores and provenance tracking.
 
@@ -761,8 +790,8 @@ Markdown output to stdout (not a file). This is the default output mode. Designe
 
 **Section order (in priority for truncation):**
 
-| # | Section | Purpose |
-|---|---------|---------|
+| Order | Section | Purpose |
+|-------|---------|---------|
 | 1 | 🟩 Header | Title, description |
 | 2 | 🟩 Overview | Language breakdown, file counts, LOC |
 | 3 | 🟩 Structure | Tree built from important files |
@@ -1307,6 +1336,7 @@ Tier and Role compose for analysis decisions:
 * 🟩 Provenance tracking (correct origin fields, execution_id/run_signature hashing)
 * 🟩 IR → view compilation correctness
 * 🟩 **Catalog loading**: passes discovered correctly, schema validation
+
 ### Schema validation tests
 * 🟩 Output validates against published JSON Schema
 * 🟩 Forward compatibility: v0.1 output readable by v0.2+ (if backward compatible)
@@ -1314,6 +1344,7 @@ Tier and Role compose for analysis decisions:
 * 🟩 ID format conformance (both `id` and `stable_id` when present)
 * 🟩 Evidence type presence in all edges
 * 🟩 Toolchain capture in analysis_runs
+
 ### Smoke test
 * 🟩 `hypergumbo run` on a fixture repo yields valid JSON schema
 * 🟩 All expected nodes/edges present
@@ -1493,19 +1524,18 @@ Remaining improvements (without requiring language servers):
 
 Query interface: "I want to change behavior X in Y context"
 
+The router would build on existing slicing capabilities — call graph traversal, test filtering, and supply chain tier boundaries (see [§10](#10-slicing-behavior) and [§14](#14-supply-chain-classification)) — and extend them with:
+
 **Pipeline:**
 
 1. **Retrieve** relevant nodes/flows from IR
    * Entry: symbol name, file path, route pattern
    * 🟪 Natural language queries via embedding similarity
 
-2. **Slice** on:
-   * Call graph (forward/backward) — 🟩 already implemented
+2. **Slice** on (beyond existing call graph / test / tier slicing):
    * 🟪 Dataflow (tainted data paths)
    * 🟪 Schema ties (database columns, API contracts)
-   * Tests referencing the area — 🟩 already implemented
    * 🟪 Configuration/deployment ties
-   * Supply chain tier boundaries — 🟩 already implemented
 
 3. **Assemble context bundle**:
    * Minimal code excerpts (only changed + affected)
