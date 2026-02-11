@@ -325,6 +325,42 @@ def _extract_import_aliases(
     return aliases
 
 
+def _extract_imported_modules(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> list[str]:
+    """Extract all imported module paths for import-scope disambiguation.
+
+    In D, ``import errors;`` makes all public symbols from the ``errors``
+    module available in the current scope.  When resolving a bare call
+    like ``error()``, we prefer symbols from imported modules over
+    identically-named symbols in unrelated files.
+
+    Returns a list of module path strings converted to file-path style
+    (dots replaced with ``/``), e.g. ``["errors", "dmd/errors"]``.
+    """
+    modules: list[str] = []
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "import_declaration":
+            continue
+
+        imported = _find_child_by_type(node, "imported")
+        if not imported:  # pragma: no cover - defensive
+            continue
+
+        fqn = _find_child_by_type(imported, "module_fqn")
+        if not fqn:
+            continue  # pragma: no cover - defensive
+
+        module_name = _node_text(fqn, source)
+        # Convert D module path (dots) to file path (slashes)
+        # e.g., "dmd.errors" -> "dmd/errors"
+        modules.append(module_name.replace(".", "/"))
+
+    return modules
+
+
 def _get_call_target_name_d(
     node: "tree_sitter.Node", source: bytes
 ) -> tuple[Optional[str], Optional[str]]:
@@ -381,8 +417,9 @@ def analyze_d(repo_root: Path) -> DAnalysisResult:
     # Global symbol registry for cross-file resolution
     global_symbol_registry: dict[str, Symbol] = {}
 
-    # Store parsed files for pass 2: (rel_path, source, tree, file_stable_id, import_aliases)
-    parsed_files: list[tuple[str, bytes, object, str, dict[str, str]]] = []
+    # Store parsed files for pass 2:
+    # (rel_path, source, tree, file_stable_id, import_aliases, imported_modules)
+    parsed_files: list[tuple[str, bytes, object, str, dict[str, str], list[str]]] = []
 
     # Pass 1: Extract symbols from all files
     for file_path in find_d_files(repo_root):
@@ -397,8 +434,9 @@ def analyze_d(repo_root: Path) -> DAnalysisResult:
         rel_path = str(file_path.relative_to(repo_root))
         file_stable_id = f"d:{rel_path}:file:"
 
-        # Extract import aliases for disambiguation
+        # Extract import aliases and module paths for disambiguation
         import_aliases = _extract_import_aliases(tree, source)
+        imported_modules = _extract_imported_modules(tree, source)
 
         ctx = _FileContext(
             source=source,
@@ -423,19 +461,27 @@ def analyze_d(repo_root: Path) -> DAnalysisResult:
             elif node.type == "interface_declaration":
                 _process_interface_declaration(ctx, node)
 
-        # Register symbols globally
+        # Register symbols globally using module-qualified names.
+        # This prevents name collisions: errors.error and unrelated.error
+        # both exist in the registry, enabling suffix matching with path
+        # hint disambiguation when the caller imports one module.
+        file_stem = Path(rel_path).stem  # "errors.d" -> "errors"
         for sym in symbols:
             if sym.path == rel_path:
+                qualified = f"{file_stem}.{sym.name}"
+                global_symbol_registry[qualified] = sym
+                # Also register unqualified for exact-match fallback
+                # (last writer wins, but suffix matching has all)
                 global_symbol_registry[sym.name] = sym
 
         # Store for pass 2
-        parsed_files.append((rel_path, source, tree, file_stable_id, import_aliases))
+        parsed_files.append((rel_path, source, tree, file_stable_id, import_aliases, imported_modules))
 
     # Create resolver from global registry
     resolver = NameResolver(global_symbol_registry)
 
     # Pass 2: Extract edges (imports + calls)
-    for rel_path, source, tree, file_stable_id, import_aliases in parsed_files:
+    for rel_path, source, tree, file_stable_id, import_aliases, imported_modules in parsed_files:
         # Build local symbol map for this file (functions and methods)
         local_symbols = {s.name: s for s in symbols
                          if s.path == rel_path and s.kind in ("function", "method")}
@@ -466,8 +512,16 @@ def analyze_d(repo_root: Path) -> DAnalysisResult:
                         if receiver:
                             path_hint = import_aliases.get(receiver)
 
-                        # Use resolver for callee resolution
-                        lookup_result = resolver.lookup(target_name, path_hint=path_hint)
+                        # Use resolver for callee resolution.  For bare calls
+                        # (no receiver), pass imported module paths as hints
+                        # so the resolver prefers symbols from imported modules
+                        # over identically-named symbols in unrelated files.
+                        hints = imported_modules if not receiver else None
+                        lookup_result = resolver.lookup(
+                            target_name,
+                            path_hint=path_hint,
+                            path_hints=hints,
+                        )
                         if lookup_result.found and lookup_result.symbol:
                             dst_id = lookup_result.symbol.id
                             confidence = 0.85 * lookup_result.confidence

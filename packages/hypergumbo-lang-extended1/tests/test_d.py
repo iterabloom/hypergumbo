@@ -436,3 +436,69 @@ void calculate() {
         calc_calls = [e for e in call_edges if "calculate" in e.src]
         # Should have at least the sin call
         assert len(calc_calls) >= 1
+
+    def test_bare_call_prefers_imported_module(self, temp_repo: Path) -> None:
+        """Bare function call resolves to imported module, not same-named file.
+
+        This is the DMD pattern: main.d imports dmd.errors and calls error(),
+        but another file also defines error(). The call should resolve to the
+        imported module's symbol, not an arbitrary same-named symbol.
+
+        To force the wrong symbol into the registry, we name the conflicting
+        file so it sorts alphabetically AFTER the production file — the last
+        file processed wins in the global_symbol_registry dict.
+        """
+        # Production error() function — at root level, processed first by rglob
+        (temp_repo / "errors.d").write_text("""
+module errors;
+
+void error(string msg) {
+}
+
+void fatal() {
+}
+""")
+
+        # Main file imports errors module and calls error()
+        (temp_repo / "main.d").write_text("""
+module main;
+
+import errors;
+
+void tryMain() {
+    error("something went wrong");
+    fatal();
+}
+""")
+
+        # Conflicting error() in a subdirectory — rglob processes subdirectories
+        # AFTER root-level files, so this overwrites errors.d's "error" in the
+        # global_symbol_registry. Without import-scope disambiguation, the call
+        # will resolve to this wrong target.
+        sub = temp_repo / "other"
+        sub.mkdir()
+        (sub / "unrelated.d").write_text("""
+module unrelated;
+
+void error(int code) {
+}
+""")
+
+        result = analyze_d(temp_repo)
+
+        # Find call edges from tryMain
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        trymain_calls = [e for e in call_edges if "tryMain" in e.src]
+
+        # Should have at least 2 calls (error + fatal)
+        assert len(trymain_calls) >= 2
+
+        # The error() call should resolve to errors.d, NOT other/unrelated.d
+        error_call = next(
+            (e for e in trymain_calls if "error" in e.dst and "external" not in e.dst),
+            None,
+        )
+        assert error_call is not None, "error() call should be resolved (not external)"
+        assert "errors.d" in error_call.dst and "unrelated" not in error_call.dst, (
+            f"error() should resolve to errors.d (imported module), got: {error_call.dst}"
+        )

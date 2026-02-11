@@ -412,37 +412,68 @@ class NameResolver:
         *,
         allow_suffix: bool = True,
         path_hint: str | None = None,
+        path_hints: list[str] | None = None,
     ) -> LookupResult:
         """Look up a symbol by name with optional suffix matching.
 
         Tries strategies in order:
-        1. Exact match on name
-        2. Suffix matching (if allow_suffix=True)
+        1. Exact match on name (skipped if path_hints provided and no match)
+        2. Suffix matching with path hint disambiguation (if allow_suffix=True)
 
         Args:
             name: The symbol name to look up.
             allow_suffix: Whether to try suffix matching as fallback.
             path_hint: Optional path substring to prefer among candidates.
+            path_hints: Optional list of path substrings from import
+                declarations.  When provided, exact matches are only returned
+                if their path matches at least one hint; otherwise we fall
+                through to suffix matching where ALL candidates (including
+                the exact-match symbol) are checked against the hints.  This
+                lets callers with import scope (e.g., D ``import errors;``)
+                disambiguate identically-named symbols across files.
 
         Returns:
             LookupResult with the found symbol and match metadata.
         """
         # Strategy 1: Exact match (O(1))
         if name in self.registry:
-            return LookupResult(
-                symbol=self.registry[name],
-                confidence=self.CONFIDENCE_EXACT,
-            )
+            exact_sym = self.registry[name]
+            # If caller provided import-scope hints, verify the exact match
+            # is in an imported module.  If not, fall through to suffix
+            # matching so that ALL candidates are checked.
+            if path_hints:
+                if any(h in exact_sym.path for h in path_hints):
+                    return LookupResult(
+                        symbol=exact_sym,
+                        confidence=self.CONFIDENCE_EXACT,
+                    )
+                # else: fall through — exact match is NOT in an imported module
+            else:
+                return LookupResult(
+                    symbol=exact_sym,
+                    confidence=self.CONFIDENCE_EXACT,
+                )
 
         # Strategy 2: Suffix matching
         if allow_suffix:
-            result = self._lookup_suffix(name, path_hint)
+            # Merge single path_hint into hints list for unified handling
+            effective_hints = path_hints
+            if path_hint and not effective_hints:
+                effective_hints = [path_hint]
+            result = self._lookup_suffix(
+                name, path_hint=None, path_hints=effective_hints,
+            )
             if result.found or result.candidates:
                 return result
 
         return LookupResult(symbol=None)
 
-    def _lookup_suffix(self, name: str, path_hint: str | None) -> LookupResult:
+    def _lookup_suffix(
+        self,
+        name: str,
+        path_hint: str | None,
+        path_hints: list[str] | None = None,
+    ) -> LookupResult:
         """Look up symbol using suffix matching.
 
         Finds any key that ends with '.{name}' or equals '{name}'.
@@ -450,7 +481,9 @@ class NameResolver:
 
         Args:
             name: The symbol name suffix to match.
-            path_hint: Optional path substring to prefer among candidates.
+            path_hint: Optional single path substring to prefer among candidates.
+            path_hints: Optional list of path substrings (e.g., from imports)
+                to prefer among candidates.  Takes precedence over path_hint.
 
         Returns:
             LookupResult with suffix match or None.
@@ -464,10 +497,11 @@ class NameResolver:
 
         candidates = [self.registry[key] for key in candidates_keys]
 
-        # Try path hint disambiguation if multiple candidates
-        if path_hint and len(candidates) > 1:
+        # Try path hints disambiguation (from imports or single hint)
+        all_hints = path_hints or ([path_hint] if path_hint else None)
+        if all_hints and len(candidates) > 1:
             for candidate in candidates:
-                if path_hint in candidate.path:
+                if any(h in candidate.path for h in all_hints):
                     return LookupResult(
                         symbol=candidate,
                         confidence=self.CONFIDENCE_PATH_HINT,

@@ -407,6 +407,59 @@ class TestNameResolverExactMatch:
         assert result.symbol is None
 
 
+class TestNameResolverPathHints:
+    """Tests for import-scope disambiguation via path_hints in NameResolver."""
+
+    def test_path_hints_skip_wrong_exact_match(self) -> None:
+        """When path_hints are provided and exact match is NOT in an imported
+        module, fall through to suffix matching which checks all candidates."""
+        sym_wrong = make_symbol("error", "test/unrelated.d", "d")
+        sym_right = make_symbol("error", "src/errors.d", "d")
+        registry = {
+            "error": sym_wrong,  # exact match points to wrong symbol
+            "errors.error": sym_right,  # qualified name in suffix index
+        }
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("error", path_hints=["errors"])
+
+        assert result.found is True
+        assert result.symbol is sym_right
+        assert result.confidence == NameResolver.CONFIDENCE_PATH_HINT
+
+    def test_path_hints_confirm_correct_exact_match(self) -> None:
+        """When path_hints are provided and exact match IS in an imported
+        module, return the exact match with full confidence."""
+        sym = make_symbol("error", "src/errors.d", "d")
+        registry = {
+            "error": sym,
+            "errors.error": sym,
+        }
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("error", path_hints=["errors"])
+
+        assert result.found is True
+        assert result.symbol is sym
+        assert result.confidence == NameResolver.CONFIDENCE_EXACT
+
+    def test_path_hints_no_match_falls_through(self) -> None:
+        """When path_hints don't match any candidate, return ambiguous result."""
+        sym_a = make_symbol("error", "test/a.d", "d")
+        sym_b = make_symbol("error", "test/b.d", "d")
+        registry = {
+            "error": sym_a,
+            "a.error": sym_a,
+            "b.error": sym_b,
+        }
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("error", path_hints=["nonexistent"])
+
+        # Should still find something (ambiguous/suffix match)
+        assert result.found is True
+
+
 class TestNameResolverSuffixMatch:
     """Tests for suffix-based name matching in NameResolver."""
 
