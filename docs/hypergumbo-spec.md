@@ -1587,7 +1587,7 @@ If dataflow proves infeasible, agent-guided slicing (agents specify hops/filters
 
 ## Appendix A: Release Lifecycle & Support
 
-This appendix covers **process**: release lifecycle, support windows, and deprecation timelines. For the technical contract governing output schema stability, see [Appendix C](#appendix-c-schema-compatibility-contract).
+For the technical contract governing output schema stability, see [Appendix C](#appendix-c-schema-compatibility-contract).
 
 ### Semantic versioning
 
@@ -1603,28 +1603,7 @@ This appendix covers **process**: release lifecycle, support windows, and deprec
 
 * **v0.1 outputs readable by v0.2+** if v0.2 is backward-compatible (MINOR bump)
 * **v1.0 outputs readable by v1.x** for all v1.x (MAJOR version promises stability)
-* **Breaking changes only in MAJOR bumps** with 6-month migration period. See [Appendix C](#appendix-c-schema-compatibility-contract) for the technical definition of what constitutes a breaking change.
-
-### Support windows
-
-* **Current version**: Full support (bugs, features, security)
-* **Previous MINOR**: Security fixes only, 12 months after next MINOR release
-* **Previous MAJOR**: Security fixes only, 18 months after next MAJOR release
-* **Unmaintained**: Versions >18 months old receive no updates
-
-### Deprecation process
-
-1. **Announce**: 6 months before removal, add deprecation warnings
-2. **Document**: Migration guide published
-3. **Support**: Old version maintained per support windows
-4. **Remove**: After support window expires
-
-### Example timeline
-
-See `CHANGELOG.md` for the authoritative release history. The policy illustrated:
-
-* When a new MAJOR version ships, the previous MAJOR enters "previous major" support (18-month clock starts)
-* 18 months after the new MAJOR release, the old MAJOR becomes unsupported
+* **Breaking changes only in MAJOR bumps.** See [Appendix C](#appendix-c-schema-compatibility-contract) for the technical definition of what constitutes a breaking change.
 
 ## Appendix B: Telemetry & Privacy
 
@@ -1666,7 +1645,7 @@ Enable via `hypergumbo config --telemetry=on` or `hypergumbo_TELEMETRY=1` enviro
 
 ## Appendix C: Schema Compatibility Contract
 
-This appendix defines the **technical contract** for output consumers: which fields are immutable, how consumers must handle unknown fields, and what constitutes a breaking change. For release process, support windows, and deprecation timelines, see [Appendix A](#appendix-a-release-lifecycle--support).
+This appendix defines the **technical contract** for output consumers: which fields are immutable, how consumers must handle unknown fields, and what constitutes a breaking change. For versioning policy, see [Appendix A](#appendix-a-release-lifecycle--support).
 
 ### Immutable Contracts (MUST NOT change without major version bump)
 
@@ -1741,45 +1720,6 @@ This appendix defines the **technical contract** for output consumers: which fie
 - `ir_export.json` view (new view type)
 - New `evidence_type` values
 - New `kind` values for nodes
-
-### Testing Requirements
-
-**Current test suite MUST** (see [§14 Testing & quality bar](#14-testing--quality-bar) for details):
-- Verify structural invariants via property-based tests (valid IDs, confidence ranges, schema compliance, no dangling edge references)
-- Validate against JSON Schema (automated validation)
-- Test ID stability (same code → same IDs deterministically)
-- Test deterministic ordering (sort keys defined, reproducible output)
-
-**Future test suite MUST additionally:**
-- Ensure current outputs pass future schema validation (with unknown field tolerance)
-- Test mixed-fidelity graphs (AST edges + future typed edges coexist)
-- Test view compilation (same IR → multiple views including behavior_map)
-
-### Migration Path
-
-**User upgrades hypergumbo CLI:**
-```bash
-pip install --upgrade hypergumbo
-
-# Just works - no reinitialization needed
-hypergumbo run  # Output compatible with existing tooling
-```
-
-**User upgrades output consumers (agents, tooling):**
-1. Agents consuming `behavior_map.json` don't need changes
-2. New fields under `meta.*` are optionally used (if agent wants higher fidelity)
-3. Schema validation passes (new fields ignored by old consumers)
-4. Agents can check `confidence_model` version, warn if too new
-
-**Deprecation process (if ever needed):**
-See [Appendix A](#appendix-a-release-lifecycle--support) for the deprecation process and support windows.
-
-### Compatibility Testing
-
-**Before releasing new major versions:**
-- Run prior-version output through new parsers (ensure parsing succeeds)
-- Run new output through prior-version consumers (ensure unknown fields ignored)
-- Version compatibility matrix published
 
 **Commitment:** No breaking changes to `behavior_map.json` view within v0.x series.
 
