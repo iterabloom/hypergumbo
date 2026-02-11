@@ -28,16 +28,18 @@ Status: living document.
 | 6 | [Internal Representation](#6-internal-representation) |
 | 7 | [Cross-Language Linkers](#7-cross-language-linkers) |
 | 8 | [Entrypoint Detection](#8-entrypoint-detection) |
-| 9 | [Output formats](#9-output-formats) |
-| 10 | [Slicing behavior](#10-slicing-behavior) |
-| 11 | [Confidence scoring](#11-confidence-scoring) |
-| 12 | [Output reproducibility](#12-output-reproducibility) |
-| 13 | [Supply Chain Classification](#13-supply-chain-classification) |
-| 14 | [Testing & quality bar](#14-testing--quality-bar) |
-| 15 | [Error handling](#15-error-handling) |
-| 16 | [Known limitations](#16-known-limitations) |
-| 17 | [Autonomous Governance](#17-autonomous-governance-adr-0008) |
-| 18 | [Future Work](#18-future-work) |
+| 9 | [Behavior Map JSON](#9-behavior-map-json) |
+| 10 | [Sketch output](#10-sketch-output) |
+| 11 | [Slicing behavior](#11-slicing-behavior) |
+| 12 | [Confidence scoring](#12-confidence-scoring) |
+| 13 | [Output reproducibility](#13-output-reproducibility) |
+| 14 | [Supply Chain Classification](#14-supply-chain-classification) |
+| 15 | [File Role Classification](#15-file-role-classification) |
+| 16 | [Testing & quality bar](#16-testing--quality-bar) |
+| 17 | [Error handling](#17-error-handling) |
+| 18 | [Known limitations](#18-known-limitations) |
+| 19 | [Autonomous Governance](#19-autonomous-governance-adr-0008) |
+| 20 | [Future Work](#20-future-work) |
 | A | [Release Lifecycle & Support](#appendix-a-release-lifecycle--support) |
 | B | [Telemetry & Privacy](#appendix-b-telemetry--privacy) |
 | C | [Schema Compatibility Contract](#appendix-c-schema-compatibility-contract) |
@@ -153,7 +155,7 @@ Skip files exceeding this size. Particularly useful for HTML and minified JavaSc
 Analyze only first-party code (tier 1). Equivalent to `--max-tier 1`.
 
 🟩 **`--max-tier N`** (default: 3)
-Control which supply chain tiers are included in analysis. See [§13](#13-supply-chain-classification) for tier definitions.
+Control which supply chain tiers are included in analysis. See [§14](#14-supply-chain-classification) for tier definitions.
 
 🟩 **`--no-first-party-priority`**
 Disable tier-based weighting in Key Symbols ranking (use raw centrality instead).
@@ -296,7 +298,7 @@ class Symbol:
     origin_run_id: str         # references AnalysisRun.execution_id
     supply_chain_tier: int     # 1=first_party, 2=internal_dep, 3=external_dep, 4=derived
     supply_chain_reason: str   # classification rationale (e.g., "matches ^src/")
-    # Note: In JSON output (§9 Output formats), these flat fields are compiled
+    # Note: In JSON output (§9 Behavior Map JSON), these flat fields are compiled
     # into a nested supply_chain object with a derived tier_name field.
     origin_run_signature: Optional[str]  # references AnalysisRun.run_signature (for grouping)
     quality: QualityScore
@@ -395,7 +397,7 @@ Any change that would alter computed values MUST bump the corresponding scheme i
 
 ### Output views
 
-Public outputs are **compiled views** from this IR — the IR defines the canonical data model, and each view selects and reshapes fields for its audience. See [§9 Output formats](#9-output-formats) for the available views and their serialization details.
+Public outputs are **compiled views** from this IR — the IR defines the canonical data model, and each view selects and reshapes fields for its audience. See [§9](#9-behavior-map-json) and [§10](#10-sketch-output) for the available views and their serialization details.
 
 **Design principle:** Strong passes (tsserver, pyright) added later will enhance the IR without breaking existing views.
 
@@ -609,7 +611,7 @@ See [ADR-0003](adr/0003-architectural-analysis-and-revision-plan.md) for the des
 
 ### Entrypoint Confidence Tiers
 
-These tiers apply to entrypoint detection. For edge confidence scoring, see [§11 Confidence calculation](#confidence-calculation-deterministic-algorithm).
+These tiers apply to entrypoint detection. For edge confidence scoring, see [§12 Confidence calculation](#confidence-calculation-deterministic-algorithm).
 
 Confidence scores reflect detection reliability, enabling meaningful ordering in sketch output:
 
@@ -632,22 +634,13 @@ score = confidence * (1 + log(1 + outgoing_edges))
 
 This prefers well-connected entries, producing richer slices.
 
-## 9) Output formats
+## 9) Behavior Map JSON
 
-Hypergumbo produces two output formats from the same analysis pipeline:
-
-- **Behavior Map JSON** (`hypergumbo run`): Full structured graph written to a file. Designed for programmatic consumption by agents and tooling.
-- **Sketch** (default mode): Token-budgeted Markdown summary written to stdout. Designed for pasting into LLM chat interfaces.
-
-Both are views compiled from the IR; see [§6 Output views](#output-views) for the view concept and design rationale.
-
-**Reading guide:** This section describes serialization rules and output-specific fields. Field *semantics* (what `id`, `stable_id`, `origin`, etc. mean) are defined once in [§6 Internal Representation](#6-internal-representation) and not repeated here.
-
-### Behavior Map JSON
+The behavior map is a JSON file produced by `hypergumbo run`. It is a compiled view of the IR (see [§6 Output views](#output-views)) designed for programmatic consumption by agents and tooling. Field *semantics* (`id`, `stable_id`, `origin`, etc.) are defined once in [§6 Internal Representation](#6-internal-representation) and not repeated here; this section covers serialization rules and output-specific fields.
 
 Single file: `hypergumbo.results.json`
 
-#### Top-level structure
+### Top-level structure
 ```json
 {
   "schema_version": "0.2.1",
@@ -668,7 +661,7 @@ Single file: `hypergumbo.results.json`
 }
 ```
 
-#### JSON Schema (Auto-Generated)
+### JSON Schema (Auto-Generated)
 
 A formal JSON Schema is available at `docs/schema.json`. This schema is **auto-generated** from the Python dataclasses in `packages/hypergumbo-core/src/hypergumbo_core/ir.py` to ensure it stays in sync with the implementation.
 
@@ -691,11 +684,11 @@ The schema follows JSON Schema Draft 2020-12 and can be used for:
 - Check `limits.partial_results_reason` for details
 - Agents should decide whether partial results are sufficient for their use case
 
-#### Confidence scoring
+### Confidence scoring
 
-The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring algorithm. See [§11 Confidence calculation](#confidence-calculation-deterministic-algorithm) for the deterministic scoring algorithm and [Appendix C](#appendix-c-schema-compatibility-contract) for consumer obligations (including the 0.30 default for unknown evidence types).
+The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring algorithm. See [§12 Confidence calculation](#confidence-calculation-deterministic-algorithm) for the deterministic scoring algorithm and [Appendix C](#appendix-c-schema-compatibility-contract) for consumer obligations (including the 0.30 default for unknown evidence types).
 
-#### analysis_runs[] — provenance tracking
+### analysis_runs[] — provenance tracking
 
 Each entry records provenance for one analyzer pass. Field semantics are defined in [§6 Internal Representation](#6-internal-representation); see `docs/schema.json` for the full field list.
 
@@ -703,7 +696,7 @@ Each entry records provenance for one analyzer pass. Field semantics are defined
 
 **skipped_passes** (array, optional): Lists passes that could not run (e.g., `{"pass": "lean-ts-v1", "reason": "tree-sitter-lean grammar not available"}`). Each entry includes pass ID and reason.
 
-#### profile — repo characteristics
+### profile — repo characteristics
 
 ```json
 {
@@ -716,15 +709,15 @@ Each entry records provenance for one analyzer pass. Field semantics are defined
 }
 ```
 
-**LOC definition:** Lines of code counts non-empty lines in files matching language extensions. Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§13 File Role Classification](#file-role-classification) for the proposed taxonomy that would also exclude pure data files from LOC counts.
+**LOC definition:** Lines of code counts non-empty lines in files matching language extensions. Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§15 File Role Classification](#15-file-role-classification) for the proposed taxonomy that would also exclude pure data files from LOC counts.
 
-#### nodes[] — definitions, files, endpoints
+### nodes[] — definitions, files, endpoints
 
 Field semantics (`id`, `stable_id`, `shape_id`, `fingerprint`, `origin`, `quality`, etc.) are defined in [§6 Internal Representation](#6-internal-representation). See `docs/schema.json` for the full field list. This section documents output-specific serialization rules.
 
 **Presence rule:** `stable_id`, `shape_id`, and `origin_run_signature` keys MUST be present on every node. If unavailable, they MUST be set to `null` (not omitted). This supports forward-compatible consumers without forcing every pass to compute every field.
 
-**supply_chain** (object, required): Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields into a nested object with an added `tier_name` field (e.g., `first_party`, `internal_dep`), computed from the numeric `tier` at serialization time. See [§13 Supply Chain Classification](#13-supply-chain-classification) for tier definitions.
+**supply_chain** (object, required): Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields into a nested object with an added `tier_name` field (e.g., `first_party`, `internal_dep`), computed from the numeric `tier` at serialization time. See [§14 Supply Chain Classification](#14-supply-chain-classification) for tier definitions.
 
 ```json
 "supply_chain": {"tier": 1, "tier_name": "first_party", "reason": "matches ^src/"}
@@ -732,7 +725,7 @@ Field semantics (`id`, `stable_id`, `shape_id`, `fingerprint`, `origin`, `qualit
 
 **Node kinds:** `file`, `module`, `function` (function/method), `class`, `endpoint` (HTTP route, IPC handler, CLI entrypoint).
 
-#### edges[] — relationships
+### edges[] — relationships
 
 Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenance fields (`origin`, `origin_run_id`, `origin_run_signature`), `quality`, and a `meta` object with structured evidence. See `docs/schema.json` for the full field list.
 
@@ -751,7 +744,7 @@ Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenan
 - `evidence_lang` (optional): Language used for confidence scoring. Defaults to `src` node's language if omitted. Required for cross-language edges (HTTP, IPC) where src/dst languages differ.
 - `evidence_spans[]`: Structured locations of evidence. Each span includes file path and line/column range.
 
-**Evidence types** (machine-readable, see [§11](#confidence-calculation-deterministic-algorithm) for scoring algorithm):
+**Evidence types** (machine-readable, see [§12](#confidence-calculation-deterministic-algorithm) for scoring algorithm):
 * `ast_call_direct` — Direct function call in AST
 * `ast_call_method` — Method call with receiver
 * `ast_getattr_call` — Call via getattr/dynamic lookup
@@ -776,21 +769,21 @@ Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenan
 * `instantiates` — class instantiation (constructor call)
 * `manual` — user-annotated
 
-#### features[] — named slices
+### features[] — named slices
 
 Each feature contains `id`, `name`, `entry_nodes[]`, `node_ids[]`, `edge_ids[]`, a `query` object (method, entrypoint, hops, max_files, exclude_tests), `limits_hit[]`, and `summary`. See `docs/schema.json` for the full structure.
 
 **Feature ID:** Stable identifier based on query spec: `sha256(json.dumps(query, sort_keys=True))`. Same query on same code → same feature ID → enables diff across commits.
 
-#### metrics — optional counts
+### metrics — optional counts
 
 Aggregate statistics: `total_nodes`, `total_edges`, `avg_confidence`, per-language breakdowns (`languages.*`), and per-tier breakdowns (`by_supply_chain_tier.*`). Each breakdown includes `nodes` and `edges` counts.
 
-#### supply_chain_summary — classification overview
+### supply_chain_summary — classification overview
 
 Per-tier file and symbol counts (`first_party`, `internal_dep`, `external_dep`), plus a `derived_skipped` object listing files excluded from analysis. `derived_skipped.paths` is capped at 10 entries; full list available via `--verbose`.
 
-#### limits — explicit gaps
+### limits — explicit gaps
 
 Documents what the analysis *didn't* capture. Key arrays:
 - `not_captured[]`: Categories of constructs not analyzed (e.g., dynamic imports, eval, complex decorators)
@@ -800,7 +793,7 @@ Documents what the analysis *didn't* capture. Key arrays:
 
 **partial_results_reason** (string, optional): Present only when `analysis_incomplete: true`. Human-readable explanation (e.g., `"Timeout: Analysis exceeded 300 seconds"`, `"User interrupted: Ctrl-C received"`).
 
-### Sketch (Markdown)
+## 10) Sketch output
 
 Markdown output to stdout (not a file). This is the default output mode. Designed for pasting into LLM chat interfaces. See [ADR-0005](adr/0005-sketch-budget-allocation.md) for detailed budget allocation and section composition.
 
@@ -854,7 +847,7 @@ C++ (82%), Lua (12%), CMake (6%)
 
 For a complete real-world example (install, run, and full JSON output), see [example-output.md](example-output.md).
 
-## 10) Slicing behavior
+## 11) Slicing behavior
 
 ### Entry sources
 
@@ -900,13 +893,13 @@ Feature comparison across commits: same query → compare `node_ids`/`edge_ids` 
 
 ### Tier filtering
 
-🟩 The `--max-tier` flag (defined in [§3](#3-user-experience-cli); tier definitions in [§13](#13-supply-chain-classification)) adds tier-based traversal boundaries to slicing: BFS traversal skips nodes whose supply chain tier exceeds the specified value. For example, `--max-tier 1` constrains the slice to first-party code only.
+🟩 The `--max-tier` flag (defined in [§3](#3-user-experience-cli); tier definitions in [§14](#14-supply-chain-classification)) adds tier-based traversal boundaries to slicing: BFS traversal skips nodes whose supply chain tier exceeds the specified value. For example, `--max-tier 1` constrains the slice to first-party code only.
 
 ### Reverse slice class expansion
 
 🟩 When reverse-slicing from a class/interface entry (e.g., `--reverse --entry OwnerRepository`), the slicer auto-expands the BFS starting set to include all member methods (via `contains` edges). This enables finding callers of `findById`, `search`, etc. Applies to class, interface, module, struct, trait, and enum containers.
 
-## 11) Confidence scoring
+## 12) Confidence scoring
 
 Edge confidence scores quantify how reliably hypergumbo detected a relationship between two symbols. This is distinct from *entrypoint* confidence ([§8](#8-entrypoint-detection)), which scores how reliably a symbol was identified as an entry point. The two systems are independent: an edge originating from a high-confidence entrypoint does not inherit that entrypoint's confidence score.
 
@@ -962,7 +955,7 @@ def calculate_evidence_confidence(
 
 **Note**: Base scores are heuristic baselines (to be validated against benchmark suite). New evidence types can be added in minor versions.
 
-## 12) Output reproducibility
+## 13) Output reproducibility
 
 Reproducibility has two dimensions: **caching** ensures that re-running analysis on unchanged code returns the same result quickly, and **deterministic ordering** ensures that output is diffable across runs.
 
@@ -993,7 +986,7 @@ Reproducibility has two dimensions: **caching** ensures that re-running analysis
   * Edges: `(src, dst, type)`
 * Enables meaningful `git diff` of output files
 
-## 13) Supply Chain Classification
+## 14) Supply Chain Classification
 
 Hypergumbo classifies files by their position in the project's dependency graph. This enables focused analysis (first-party code prioritized in results) and noise reduction (derived artifacts excluded from analysis entirely).
 
@@ -1202,7 +1195,7 @@ The Additional Files section uses a README-first hybrid ranking algorithm:
 }
 ```
 
-### File Role Classification
+## 15) File Role Classification
 
 Supply chain **tiers** answer "where does this file come from?" (provenance). A complementary dimension, **file roles**, answers "what is this file for?" (purpose). See [ADR-0004](adr/0004-file-taxonomy.md) for the design rationale.
 
@@ -1241,7 +1234,7 @@ Tier and Role compose for analysis decisions:
 
 **Status:** 🟩 Implemented (ADR-0004). The `taxonomy.py` module provides the unified file classification system with `FileRole` enum and `LanguageSpec` dataclass for 75+ languages.
 
-## 14) Testing & quality bar
+## 16) Testing & quality bar
 
 ### Test fixtures
 
@@ -1297,7 +1290,7 @@ Tier and Role compose for analysis decisions:
 * 🟩 Medium repo (~500 files): <30 seconds
 * 🟩 Caching: second run on unchanged repo <2 seconds (see docs/CACHE.md)
 
-## 15) Error handling
+## 17) Error handling
 
 ### Parse errors
 
@@ -1319,7 +1312,7 @@ Tier and Role compose for analysis decisions:
 ### Missing dependencies
 
 * 🟩 **Behavior**: If pass requires unavailable grammar (e.g., tree-sitter), skip pass
-* 🟩 **Output**: Add to `analysis_runs[].skipped_passes[]` (see [§9 Behavior Map JSON](#behavior-map-json) for field format)
+* 🟩 **Output**: Add to `analysis_runs[].skipped_passes[]` (see [§9 Behavior Map JSON](#9-behavior-map-json) for field format)
 
 ### Analyzer crashes
 
@@ -1333,9 +1326,9 @@ Tier and Role compose for analysis decisions:
 
 ### Partial results guarantee
 
-* 🟩 All output is valid JSON even if analysis is incomplete. See [`analysis_incomplete` in §9](#behavior-map-json) for field semantics.
+* 🟩 All output is valid JSON even if analysis is incomplete. See [`analysis_incomplete` in §9](#9-behavior-map-json) for field semantics.
 
-## 16) Known limitations
+## 18) Known limitations
 
 This section documents known limitations and risks of the current analysis system. See `CHANGELOG.md` for per-language implementation status.
 
@@ -1383,7 +1376,7 @@ crud.create_user()      # Resolve: app.crud.create_user()
 
 Currently, only Python and Go fully utilize import tracking for disambiguation. See **ADR-0007** for the roadmap to extend this to 30 additional analyzers with meaningful import semantics.
 
-## 17) Autonomous Governance (ADR-0008)
+## 19) Autonomous Governance (ADR-0008)
 
 🟩 Hypergumbo includes a vendor-agnostic governance system for AI agent contributors working in autonomous mode. This enforces structural thinking before stopping work, preventing "workaround" fixes that bypass root causes.
 
@@ -1416,7 +1409,7 @@ Each AI coding tool has a different hook mechanism. Adapter scripts provide a co
 
 The invariant ledger (`.agent/invariant-ledger.md`) is the authoritative source for discovered invariants and their current fix status. See [ADR-0008](adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for the full governance design rationale.
 
-## 18) Future Work
+## 20) Future Work
 
 This section collects capabilities that are designed but not yet implemented. Pursue when there's clear demand beyond what the current system provides. The architecture is designed to support these enhancements without breaking changes: the IR and identity fields ([§6](#6-internal-representation)) enable cross-refactor tracking and multi-pass merging, and the schema compatibility contract ([Appendix C](#appendix-c-schema-compatibility-contract)) defines what can change in minor vs. major versions. See also [Registry & Factory Vision](future/registry-factory-vision.md) for speculative ideas about sharing analyzers.
 
@@ -1519,7 +1512,7 @@ These would produce typed call graphs, enabling mixed-fidelity analysis: AST edg
 
 Query interface: "I want to change behavior X in Y context"
 
-The router would build on existing slicing capabilities — call graph traversal, test filtering, and supply chain tier boundaries (see [§10](#10-slicing-behavior) and [§13](#13-supply-chain-classification)) — and extend them with:
+The router would build on existing slicing capabilities — call graph traversal, test filtering, and supply chain tier boundaries (see [§11](#11-slicing-behavior) and [§14](#14-supply-chain-classification)) — and extend them with:
 
 **Pipeline:**
 
