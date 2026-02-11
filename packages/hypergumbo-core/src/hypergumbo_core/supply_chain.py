@@ -27,7 +27,7 @@ checked in order; first match wins:
 This ensures library monorepos classify workspace source code as tier 1,
 while examples outside workspaces are tier 2 (lower priority).
 
-See §8.6 of the hypergumbo spec for full details.
+See §14 of the hypergumbo spec for full details.
 """
 
 from __future__ import annotations

@@ -182,7 +182,7 @@ class Symbol:
         quality: Score and reason dict for quality assessment
         meta: Optional metadata dict for language-specific information
         supply_chain_tier: Position in dependency graph (1=first_party, 2=internal_dep,
-            3=external_dep, 4=derived). See §8.6 of spec.
+            3=external_dep, 4=derived). See §14 of spec.
         supply_chain_reason: Why this tier was assigned (e.g., "matches ^src/")
         cyclomatic_complexity: McCabe cyclomatic complexity (decision points + 1).
             Counts if/elif/else, for, while, except, with, and/or, match/case.

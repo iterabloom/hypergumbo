@@ -256,7 +256,7 @@ class Symbol:
     origin_run_id: str         # references AnalysisRun.execution_id
     supply_chain_tier: int     # 1=first_party, 2=internal_dep, 3=external_dep, 4=derived
     supply_chain_reason: str   # classification rationale (e.g., "matches ^src/")
-    # Note: In JSON output (§7 Output formats), these flat fields are compiled
+    # Note: In JSON output (§9 Output formats), these flat fields are compiled
     # into a nested supply_chain object with a derived tier_name field.
     origin_run_signature: Optional[str]  # references AnalysisRun.run_signature (for grouping)
     quality: QualityScore
@@ -362,7 +362,251 @@ Public outputs are **compiled views** from this IR:
 
 **Design principle:** Strong passes (tsserver, pyright) added later will enhance the IR without breaking the behavior map view.
 
-## 7) Output formats
+## 7) Cross-Language Edge Detection
+
+Hypergumbo provides **best-effort cross-language edge detection** for common integration patterns. These are AST-based heuristics with string literal matching, not type-resolved or dataflow analysis.
+
+### JNI Boundary Detection (Java ↔ C)
+
+Detects native method declarations in Java and matches them to C implementations via naming conventions.
+
+**Java side detection:**
+```java
+public class GuacamoleSession {
+    public native void processFrame(byte[] data);
+}
+```
+
+**C side detection (matched by naming convention):**
+```c
+JNIEXPORT void JNICALL Java_GuacamoleSession_processFrame(
+    JNIEnv *env, jobject obj, jbyteArray data)
+```
+
+**Detection rules:**
+1. Find Java methods with `native` modifier
+2. Find C functions matching `Java_{ClassName}_{methodName}` pattern (mangled names)
+3. Emit `native_bridge` edge from Java method → C function
+
+**Confidence scoring:**
+* Pattern-matched (naming convention): 0.80
+* Annotation-confirmed (`@hypergumbo.jni_impl`): 0.95
+
+**Limitations:**
+* Does not resolve JNI calls through reflection
+* Does not track `JNI_OnLoad` dynamic registration
+* Does not handle inner classes (mangling includes `$`)
+* Logs unmatched natives in `limits.unresolved_jni[]`
+
+### IPC/Message Channel Detection
+
+Detects message send/receive patterns across process boundaries using string literal matching on channel/event names.
+
+**Supported patterns:**
+
+| Framework | Send Pattern | Receive Pattern | Evidence Type |
+|-----------|-------------|-----------------|---------------|
+| Electron | `ipcRenderer.send("channel")` | `ipcMain.on("channel")` | `ipc_electron` |
+| Electron | `ipcMain.handle("channel")` | `ipcRenderer.invoke("channel")` | `ipc_electron` |
+| WebSocket | `ws.send({type: "X"})` | `ws.on("message", ...)` with type check | `ipc_websocket` |
+| Guacamole | `tunnel.sendMessage("opcode", ...)` | `oninstruction` handlers | `ipc_guacamole` |
+| Node EventEmitter | `emitter.emit("event")` | `emitter.on("event")` | `ipc_eventemitter` |
+
+**Detection algorithm:**
+1. Parse AST for known send/receive function patterns
+2. Extract channel/event name from string literal argument
+3. Build index of all senders and receivers by channel name
+4. Match senders to receivers with same channel name
+5. Emit `message_send` edge (caller → channel) and `message_receive` edge (channel → handler)
+
+**Confidence scoring:**
+* String literal channel name match: 0.85
+* Variable/computed channel name: 0.50 (best-effort, name extracted if simple)
+* Template literal with interpolation: 0.40 (partial match)
+* Annotation-provided (`@hypergumbo.ipc_channel("name")`): 0.95
+
+**Limitations:**
+* Dynamic channel names require annotation hints
+* Complex message routing (middleware, proxies) not traced
+* Does not validate message schema compatibility
+* Logs unmatched patterns in `limits.unresolved_ipc[]`
+
+### HTTP Endpoint Detection (Server-side only)
+
+Detects HTTP route definitions for entrypoint detection.
+
+**Supported frameworks:**
+
+| Framework | Pattern | Example |
+|-----------|---------|---------|
+| FastAPI | `@app.get("/path")` | `@app.get("/users/{id}")` |
+| Flask | `@app.route("/path")` | `@app.route("/login", methods=["POST"])` |
+| Express | `app.get("/path", handler)` | `router.post("/api/users", createUser)` |
+| Java Servlet | `@WebServlet("/path")` | `@WebServlet("/api/session")` |
+| JAX-RS | `@Path("/path")` | `@GET @Path("/users/{id}")` |
+| Spring MVC | `@RequestMapping("/path")` | `@PostMapping("/api/login")` |
+
+**Detection output:**
+* Symbol kind: `route` or `endpoint`
+* Symbol name: HTTP method + path (e.g., `GET /users/{id}`)
+* Used by entrypoint detection for slicing
+
+**Client-side linking:**
+Cross-language client→server matching (e.g., `fetch("/api/users")` → Flask handler) is not yet implemented. See [§19 Future Work](#19-future-work).
+
+### Language-Specific Detection Notes
+
+**C analyzer detects:**
+* Functions, structs, typedefs, enums
+* Function calls (direct calls only, not function pointers)
+* `#include` edges (file → file)
+* JNI export patterns (`JNIEXPORT`, `JNICALL`, `Java_*` naming)
+* Macro definitions (as symbols, not expanded)
+
+**Java analyzer detects:**
+* Classes, interfaces, enums, annotations
+* Methods, constructors, fields
+* `implements` edges (class → interface)
+* `extends` edges (class → superclass, interface → superinterface)
+* `native` method declarations (for JNI linking)
+* Annotation detection (`@Override`, `@Deprecated`, servlet/JAX-RS annotations)
+* `instantiates` edges (constructor calls)
+
+### limits.cross_language — tracking unresolved links
+
+Cross-language linkers log unresolved patterns for debugging:
+
+```json
+{
+  "limits": {
+    "cross_language": {
+      "unresolved_jni": [
+        {
+          "java_method": "com.example.Native.processData",
+          "expected_c_name": "Java_com_example_Native_processData",
+          "reason": "no_matching_c_function"
+        }
+      ],
+      "unresolved_ipc": [
+        {
+          "channel": "user.login",
+          "senders": ["src/client/auth.js:45"],
+          "receivers": [],
+          "reason": "no_receiver_found"
+        }
+      ]
+    }
+  }
+}
+```
+
+## 8) Entrypoint Detection
+
+Entrypoint detection identifies HTTP handlers, CLI mains, background tasks, and other entry sources for slicing. Detection is **YAML-driven** via the framework patterns system.
+
+### Architecture
+
+```
+ANALYZERS (pure language, no framework knowledge)
+  → Capture symbols + rich metadata (decorators, base classes, parameters)
+  → Capture UsageContext for call-based patterns (route registrations, etc.)
+
+PATTERN SYSTEM (87 YAML files: 5 convention + 82 framework)
+  → Match patterns against symbol metadata and usage contexts
+  → Enrich symbols with concept metadata (route, task, model, etc.)
+
+ENTRYPOINTS (semantic detection)
+  → Query enriched metadata: if "route" in sym.concepts → Entry(kind="route")
+  → High confidence (0.95) from semantic match
+```
+
+**Key insight:** Entry kinds (routes, tasks, commands) are framework-afforded concepts detected from symbol metadata, not file paths.
+
+### meta.concepts Structure
+
+Enriched symbols have a `meta.concepts` list that serves as the **single source of truth** for semantic metadata:
+
+```json
+{
+  "meta": {
+    "concepts": [
+      {"concept": "route", "path": "/users", "method": "GET", "framework": "fastapi"},
+      {"concept": "test_function", "framework": "test-frameworks"},
+      {"concept": "main_entrypoint", "framework": "main-functions"}
+    ]
+  }
+}
+```
+
+**Fields:**
+- `concept`: Semantic type (route, model, task, test_function, main_entrypoint, etc.)
+- `framework`: Which pattern file matched (fastapi, test-frameworks, main-functions, etc.)
+- Additional fields vary by concept type (e.g., `path`, `method` for routes)
+
+**Path normalization:** Route paths are normalized to always start with `/` for consistent matching (e.g., `users` → `/users`).
+
+Linkers and entrypoint detection query `meta.concepts` exclusively.
+
+### Convention Patterns vs Framework Patterns
+
+The pattern system has two categories:
+
+| Category | When Loaded | Purpose | Examples |
+|----------|-------------|---------|----------|
+| **Convention** | Always | Language-agnostic patterns | main-functions, test-frameworks, language-conventions, config-conventions |
+| **Framework** | When detected | Framework-specific patterns | fastapi, django, express, spring-boot |
+
+**Convention patterns (5 files):**
+- `main-functions.yaml`: main() entrypoints across 10+ languages
+- `test-frameworks.yaml`: Test function detection (pytest, JUnit, xUnit, etc.)
+- `language-conventions.yaml`: CUDA kernels, WGSL shaders, COBOL programs, LaTeX structure, Starlark rules
+- `config-conventions.yaml`: NPM/Maven/Cargo dependencies, Android components, TypeScript references
+- `library-exports.yaml`: Library entry point detection via exports from index files (JS/TS)
+
+**Framework patterns:** Loaded only when the framework is detected in profile. See [FRAMEWORKS.md](FRAMEWORKS.md) for the full list; YAML source is in `packages/hypergumbo-core/src/hypergumbo_core/frameworks/`.
+
+### Pattern Types
+
+The framework pattern system supports multiple detection strategies:
+
+| Pattern Type | Example Frameworks | Detection Method |
+|--------------|-------------------|------------------|
+| **Decorator-based** | FastAPI, Flask, NestJS, Spring Boot | Match `@app.get`, `@Controller` decorators |
+| **Call-based** | Django, Express, Go Gin/Echo | Capture `path("/url", view)` via UsageContext |
+| **DSL-based** | Rails, Sinatra, Phoenix | Parse `get '/path' do` blocks |
+| **File-based** | Next.js, Nuxt | Infer routes from `pages/`, `app/` paths |
+| **Export-based** | JS/TS libraries | Detect exports from `index.ts/js` as library entrypoints |
+
+**Path inheritance (v1.3.x):** Patterns can use `prefix_from_parent` to inherit path prefixes from parent concepts. For example, NestJS route handlers use `prefix_from_parent: "controller"` to combine `@Controller('/users')` prefix with `@Get(':id')` path into `/users/:id`.
+
+See [ADR-0003](adr/0003-architectural-analysis-and-revision-plan.md) for the design rationale and [UsageContext extension](adr/0003-usage-context-patterns.md) for call-based framework support.
+
+### Entrypoint Confidence Tiers
+
+These tiers apply to entrypoint detection. For edge confidence scoring, see [§12 Confidence calculation](#confidence-calculation-deterministic-algorithm).
+
+Confidence scores reflect detection reliability, enabling meaningful ordering in sketch output:
+
+| Tier | Confidence | Detection Method | Examples |
+|------|------------|------------------|----------|
+| 🟩 **Declared** | 0.99 | Manifest files | `pyproject.toml [project.scripts]`, `package.json "bin"`, `Cargo.toml [[bin]]` |
+| 🟩 **Decorator/Annotation** | 0.95 | Explicit code markers | `@app.route`, `@click.command`, `@Controller`, `@RequestMapping` |
+| 🟩 **Structural** | 0.85 | Strong conventions | `if __name__ == "__main__"`, class extends `Activity` |
+| 🟩 **Naming** | 0.70 | Heuristic patterns | Class named `*Controller`, `*Handler`, `*Service` without annotations |
+
+All four confidence tiers are now implemented. Naming-based detection serves as a fallback when no framework-specific patterns match.
+
+### Scoring for Auto-Slice Entry Selection
+
+When multiple entrypoints exist, scoring selects the most useful ones:
+
+```python
+score = confidence * (1 + log(1 + outgoing_edges))
+```
+
+This prefers well-connected entries, producing richer slices.
+
+## 9) Output formats
 
 Hypergumbo produces two output formats from the same analysis pipeline:
 
@@ -423,7 +667,7 @@ The schema follows JSON Schema Draft 2020-12 and can be used for:
 
 The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring algorithm. Consumers should treat unknown evidence types as 0.30 confidence.
 
-For the deterministic scoring algorithm (language-specific base scores, evidence types, contextual adjustments), see [§10 Confidence calculation](#confidence-calculation-deterministic-algorithm).
+For the deterministic scoring algorithm (language-specific base scores, evidence types, contextual adjustments), see [§12 Confidence calculation](#confidence-calculation-deterministic-algorithm).
 
 #### analysis_runs[] — provenance tracking
 ```json
@@ -475,7 +719,7 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
 }
 ```
 
-**LOC definition:** Lines of code counts non-empty lines in files matching language extensions. Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§13 File Role Classification](#file-role-classification) for the proposed taxonomy that would also exclude pure data files from LOC counts.
+**LOC definition:** Lines of code counts non-empty lines in files matching language extensions. Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§14 File Role Classification](#file-role-classification) for the proposed taxonomy that would also exclude pure data files from LOC counts.
 
 #### nodes[] — definitions, files, endpoints
 
@@ -521,7 +765,7 @@ Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields
 - `tier` (integer, 1-4): Numeric tier for filtering/sorting (from IR `supply_chain_tier`)
 - `tier_name` (string): Human-readable name derived from `tier` at serialization time (`first_party`, `internal_dep`, `external_dep`, `derived`). Not stored in the IR.
 - `reason` (string): Classification rationale (from IR `supply_chain_reason`, e.g., "matches ^src/", "detected as minified")
-- See [§13 Supply Chain Classification](#13-supply-chain-classification) for classification algorithm and tier definitions.
+- See [§14 Supply Chain Classification](#14-supply-chain-classification) for classification algorithm and tier definitions.
 
 **Node kinds:**
 * `file` — source file
@@ -602,7 +846,7 @@ Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields
 - `evidence_lang` (optional): Language used for confidence scoring. Defaults to `src` node's language if omitted. Required for cross-language edges (HTTP, IPC) where src/dst languages differ.
 - `evidence_spans[]`: Structured locations of evidence. Each span includes file path and line/column range.
 
-**Evidence types** (machine-readable, see [§10](#confidence-calculation-deterministic-algorithm) for scoring algorithm):
+**Evidence types** (machine-readable, see [§12](#confidence-calculation-deterministic-algorithm) for scoring algorithm):
 * `ast_call_direct` — Direct function call in AST
 * `ast_call_method` — Method call with receiver
 * `ast_getattr_call` — Call via getattr/dynamic lookup
@@ -784,7 +1028,7 @@ C++ (82%), Lua (12%), CMake (6%)
 
 For a complete real-world example (install, run, and full JSON output), see [example-output.md](example-output.md).
 
-## 8) Slicing behavior
+## 10) Slicing behavior
 
 ### Entry sources
 
@@ -828,7 +1072,7 @@ Query format enables exact reproduction:
 
 Feature comparison across commits: same query → compare `node_ids`/`edge_ids` to detect changes.
 
-## 9) Analysis guardrails
+## 11) Analysis guardrails
 
 ### Exclude patterns
 
@@ -845,7 +1089,7 @@ Feature comparison across commits: same query → compare `node_ids`/`edge_ids` 
 * Especially important for HTML/minified JS
 * Truncated files logged in `limits.truncated_files[]`
 
-## 10) Confidence scoring
+## 12) Confidence scoring
 
 ### Confidence calculation (deterministic algorithm)
 
@@ -899,7 +1143,7 @@ def calculate_evidence_confidence(
 
 **Note**: Base scores are heuristic baselines (to be validated against benchmark suite). New evidence types can be added in minor versions.
 
-## 11) Output reproducibility
+## 13) Output reproducibility
 
 ### Caching
 * Location: `~/.cache/hypergumbo/` (XDG-compliant; respects `XDG_CACHE_HOME` if set)
@@ -928,145 +1172,7 @@ def calculate_evidence_confidence(
   * Edges: `(src, dst, type)`
 * Enables meaningful `git diff` of output files
 
-## 12) Cross-Language Edge Detection
-
-Hypergumbo provides **best-effort cross-language edge detection** for common integration patterns. These are AST-based heuristics with string literal matching, not type-resolved or dataflow analysis.
-
-### JNI Boundary Detection (Java ↔ C)
-
-Detects native method declarations in Java and matches them to C implementations via naming conventions.
-
-**Java side detection:**
-```java
-public class GuacamoleSession {
-    public native void processFrame(byte[] data);
-}
-```
-
-**C side detection (matched by naming convention):**
-```c
-JNIEXPORT void JNICALL Java_GuacamoleSession_processFrame(
-    JNIEnv *env, jobject obj, jbyteArray data)
-```
-
-**Detection rules:**
-1. Find Java methods with `native` modifier
-2. Find C functions matching `Java_{ClassName}_{methodName}` pattern (mangled names)
-3. Emit `native_bridge` edge from Java method → C function
-
-**Confidence scoring:**
-* Pattern-matched (naming convention): 0.80
-* Annotation-confirmed (`@hypergumbo.jni_impl`): 0.95
-
-**Limitations:**
-* Does not resolve JNI calls through reflection
-* Does not track `JNI_OnLoad` dynamic registration
-* Does not handle inner classes (mangling includes `$`)
-* Logs unmatched natives in `limits.unresolved_jni[]`
-
-### IPC/Message Channel Detection
-
-Detects message send/receive patterns across process boundaries using string literal matching on channel/event names.
-
-**Supported patterns:**
-
-| Framework | Send Pattern | Receive Pattern | Evidence Type |
-|-----------|-------------|-----------------|---------------|
-| Electron | `ipcRenderer.send("channel")` | `ipcMain.on("channel")` | `ipc_electron` |
-| Electron | `ipcMain.handle("channel")` | `ipcRenderer.invoke("channel")` | `ipc_electron` |
-| WebSocket | `ws.send({type: "X"})` | `ws.on("message", ...)` with type check | `ipc_websocket` |
-| Guacamole | `tunnel.sendMessage("opcode", ...)` | `oninstruction` handlers | `ipc_guacamole` |
-| Node EventEmitter | `emitter.emit("event")` | `emitter.on("event")` | `ipc_eventemitter` |
-
-**Detection algorithm:**
-1. Parse AST for known send/receive function patterns
-2. Extract channel/event name from string literal argument
-3. Build index of all senders and receivers by channel name
-4. Match senders to receivers with same channel name
-5. Emit `message_send` edge (caller → channel) and `message_receive` edge (channel → handler)
-
-**Confidence scoring:**
-* String literal channel name match: 0.85
-* Variable/computed channel name: 0.50 (best-effort, name extracted if simple)
-* Template literal with interpolation: 0.40 (partial match)
-* Annotation-provided (`@hypergumbo.ipc_channel("name")`): 0.95
-
-**Limitations:**
-* Dynamic channel names require annotation hints
-* Complex message routing (middleware, proxies) not traced
-* Does not validate message schema compatibility
-* Logs unmatched patterns in `limits.unresolved_ipc[]`
-
-### HTTP Endpoint Detection (Server-side only)
-
-Detects HTTP route definitions for entrypoint detection.
-
-**Supported frameworks:**
-
-| Framework | Pattern | Example |
-|-----------|---------|---------|
-| FastAPI | `@app.get("/path")` | `@app.get("/users/{id}")` |
-| Flask | `@app.route("/path")` | `@app.route("/login", methods=["POST"])` |
-| Express | `app.get("/path", handler)` | `router.post("/api/users", createUser)` |
-| Java Servlet | `@WebServlet("/path")` | `@WebServlet("/api/session")` |
-| JAX-RS | `@Path("/path")` | `@GET @Path("/users/{id}")` |
-| Spring MVC | `@RequestMapping("/path")` | `@PostMapping("/api/login")` |
-
-**Detection output:**
-* Symbol kind: `route` or `endpoint`
-* Symbol name: HTTP method + path (e.g., `GET /users/{id}`)
-* Used by entrypoint detection for slicing
-
-**Client-side linking:**
-Cross-language client→server matching (e.g., `fetch("/api/users")` → Flask handler) is not yet implemented. See [§19 Future Work](#19-future-work).
-
-### Language-Specific Detection Notes
-
-**C analyzer detects:**
-* Functions, structs, typedefs, enums
-* Function calls (direct calls only, not function pointers)
-* `#include` edges (file → file)
-* JNI export patterns (`JNIEXPORT`, `JNICALL`, `Java_*` naming)
-* Macro definitions (as symbols, not expanded)
-
-**Java analyzer detects:**
-* Classes, interfaces, enums, annotations
-* Methods, constructors, fields
-* `implements` edges (class → interface)
-* `extends` edges (class → superclass, interface → superinterface)
-* `native` method declarations (for JNI linking)
-* Annotation detection (`@Override`, `@Deprecated`, servlet/JAX-RS annotations)
-* `instantiates` edges (constructor calls)
-
-### limits.cross_language — tracking unresolved links
-
-Cross-language linkers log unresolved patterns for debugging:
-
-```json
-{
-  "limits": {
-    "cross_language": {
-      "unresolved_jni": [
-        {
-          "java_method": "com.example.Native.processData",
-          "expected_c_name": "Java_com_example_Native_processData",
-          "reason": "no_matching_c_function"
-        }
-      ],
-      "unresolved_ipc": [
-        {
-          "channel": "user.login",
-          "senders": ["src/client/auth.js:45"],
-          "receivers": [],
-          "reason": "no_receiver_found"
-        }
-      ]
-    }
-  }
-}
-```
-
-## 13) Supply Chain Classification
+## 14) Supply Chain Classification
 
 Hypergumbo classifies files by their position in the project's dependency graph. This enables focused analysis (first-party code prioritized in results) and noise reduction (derived artifacts excluded from analysis entirely).
 
@@ -1380,112 +1486,6 @@ Tier and Role compose for analysis decisions:
 
 **Status:** 🟩 Implemented (ADR-0004). The `taxonomy.py` module provides the unified file classification system with `FileRole` enum and `LanguageSpec` dataclass for 75+ languages.
 
-## 14) Entrypoint Detection
-
-Entrypoint detection identifies HTTP handlers, CLI mains, background tasks, and other entry sources for slicing. Detection is **YAML-driven** via the framework patterns system.
-
-### Architecture
-
-```
-ANALYZERS (pure language, no framework knowledge)
-  → Capture symbols + rich metadata (decorators, base classes, parameters)
-  → Capture UsageContext for call-based patterns (route registrations, etc.)
-
-PATTERN SYSTEM (87 YAML files: 5 convention + 82 framework)
-  → Match patterns against symbol metadata and usage contexts
-  → Enrich symbols with concept metadata (route, task, model, etc.)
-
-ENTRYPOINTS (semantic detection)
-  → Query enriched metadata: if "route" in sym.concepts → Entry(kind="route")
-  → High confidence (0.95) from semantic match
-```
-
-**Key insight:** Entry kinds (routes, tasks, commands) are framework-afforded concepts detected from symbol metadata, not file paths.
-
-### meta.concepts Structure
-
-Enriched symbols have a `meta.concepts` list that serves as the **single source of truth** for semantic metadata:
-
-```json
-{
-  "meta": {
-    "concepts": [
-      {"concept": "route", "path": "/users", "method": "GET", "framework": "fastapi"},
-      {"concept": "test_function", "framework": "test-frameworks"},
-      {"concept": "main_entrypoint", "framework": "main-functions"}
-    ]
-  }
-}
-```
-
-**Fields:**
-- `concept`: Semantic type (route, model, task, test_function, main_entrypoint, etc.)
-- `framework`: Which pattern file matched (fastapi, test-frameworks, main-functions, etc.)
-- Additional fields vary by concept type (e.g., `path`, `method` for routes)
-
-**Path normalization:** Route paths are normalized to always start with `/` for consistent matching (e.g., `users` → `/users`).
-
-Linkers and entrypoint detection query `meta.concepts` exclusively.
-
-### Convention Patterns vs Framework Patterns
-
-The pattern system has two categories:
-
-| Category | When Loaded | Purpose | Examples |
-|----------|-------------|---------|----------|
-| **Convention** | Always | Language-agnostic patterns | main-functions, test-frameworks, language-conventions, config-conventions |
-| **Framework** | When detected | Framework-specific patterns | fastapi, django, express, spring-boot |
-
-**Convention patterns (5 files):**
-- `main-functions.yaml`: main() entrypoints across 10+ languages
-- `test-frameworks.yaml`: Test function detection (pytest, JUnit, xUnit, etc.)
-- `language-conventions.yaml`: CUDA kernels, WGSL shaders, COBOL programs, LaTeX structure, Starlark rules
-- `config-conventions.yaml`: NPM/Maven/Cargo dependencies, Android components, TypeScript references
-- `library-exports.yaml`: Library entry point detection via exports from index files (JS/TS)
-
-**Framework patterns:** Loaded only when the framework is detected in profile. See [FRAMEWORKS.md](FRAMEWORKS.md) for the full list; YAML source is in `packages/hypergumbo-core/src/hypergumbo_core/frameworks/`.
-
-### Pattern Types
-
-The framework pattern system supports multiple detection strategies:
-
-| Pattern Type | Example Frameworks | Detection Method |
-|--------------|-------------------|------------------|
-| **Decorator-based** | FastAPI, Flask, NestJS, Spring Boot | Match `@app.get`, `@Controller` decorators |
-| **Call-based** | Django, Express, Go Gin/Echo | Capture `path("/url", view)` via UsageContext |
-| **DSL-based** | Rails, Sinatra, Phoenix | Parse `get '/path' do` blocks |
-| **File-based** | Next.js, Nuxt | Infer routes from `pages/`, `app/` paths |
-| **Export-based** | JS/TS libraries | Detect exports from `index.ts/js` as library entrypoints |
-
-**Path inheritance (v1.3.x):** Patterns can use `prefix_from_parent` to inherit path prefixes from parent concepts. For example, NestJS route handlers use `prefix_from_parent: "controller"` to combine `@Controller('/users')` prefix with `@Get(':id')` path into `/users/:id`.
-
-See [ADR-0003](adr/0003-architectural-analysis-and-revision-plan.md) for the design rationale and [UsageContext extension](adr/0003-usage-context-patterns.md) for call-based framework support.
-
-### Entrypoint Confidence Tiers
-
-These tiers apply to entrypoint detection. For edge confidence scoring, see [§10 Confidence calculation](#confidence-calculation-deterministic-algorithm).
-
-Confidence scores reflect detection reliability, enabling meaningful ordering in sketch output:
-
-| Tier | Confidence | Detection Method | Examples |
-|------|------------|------------------|----------|
-| 🟩 **Declared** | 0.99 | Manifest files | `pyproject.toml [project.scripts]`, `package.json "bin"`, `Cargo.toml [[bin]]` |
-| 🟩 **Decorator/Annotation** | 0.95 | Explicit code markers | `@app.route`, `@click.command`, `@Controller`, `@RequestMapping` |
-| 🟩 **Structural** | 0.85 | Strong conventions | `if __name__ == "__main__"`, class extends `Activity` |
-| 🟩 **Naming** | 0.70 | Heuristic patterns | Class named `*Controller`, `*Handler`, `*Service` without annotations |
-
-All four confidence tiers are now implemented. Naming-based detection serves as a fallback when no framework-specific patterns match.
-
-### Scoring for Auto-Slice Entry Selection
-
-When multiple entrypoints exist, scoring selects the most useful ones:
-
-```python
-score = confidence * (1 + log(1 + outgoing_edges))
-```
-
-This prefers well-connected entries, producing richer slices.
-
 ## 15) Testing & quality bar
 
 ### Test fixtures
@@ -1576,7 +1576,7 @@ This prefers well-connected entries, producing richer slices.
 
 ### Partial results guarantee
 
-* 🟩 All output is valid JSON even if analysis is incomplete. See [`analysis_incomplete`](#top-level-structure) in [§7 Output formats](#7-output-formats) for field semantics.
+* 🟩 All output is valid JSON even if analysis is incomplete. See [`analysis_incomplete`](#top-level-structure) in [§9 Output formats](#9-output-formats) for field semantics.
 
 ## 17) Known limitations
 
