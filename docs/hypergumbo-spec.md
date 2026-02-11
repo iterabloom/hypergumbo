@@ -25,25 +25,25 @@ Status: living document.
 | 3 | [User experience (CLI)](#3-user-experience-cli) |
 | 4 | [Supported stacks](#4-supported-stacks) |
 | 5 | [Architecture](#5-architecture) |
-| 6 | [Internal Representation](#6-internal-representation) |
-| 7 | [Cross-Language Linkers](#7-cross-language-linkers) |
-| 8 | [Entrypoint Detection](#8-entrypoint-detection) |
-| 9 | [Behavior Map JSON](#9-behavior-map-json) |
+| 6 | [Internal representation](#6-internal-representation) |
+| 7 | [Cross-language linkers](#7-cross-language-linkers) |
+| 8 | [Entrypoint detection](#8-entrypoint-detection) |
+| 9 | [Behavior map JSON](#9-behavior-map-json) |
 | 10 | [Sketch output](#10-sketch-output) |
 | 11 | [Slicing behavior](#11-slicing-behavior) |
 | 12 | [Confidence scoring](#12-confidence-scoring) |
 | 13 | [Output reproducibility](#13-output-reproducibility) |
-| 14 | [Supply Chain Classification](#14-supply-chain-classification) |
-| 15 | [File Role Classification](#15-file-role-classification) |
+| 14 | [Supply chain classification](#14-supply-chain-classification) |
+| 15 | [File role classification](#15-file-role-classification) |
 | 16 | [Testing & quality bar](#16-testing--quality-bar) |
 | 17 | [Error handling](#17-error-handling) |
 | 18 | [Known limitations](#18-known-limitations) |
-| 19 | [Autonomous Governance](#19-autonomous-governance-adr-0008) |
-| 20 | [Future Work](#20-future-work) |
-| A | [Release Lifecycle & Support](#appendix-a-release-lifecycle--support) |
-| B | [Telemetry & Privacy](#appendix-b-telemetry--privacy) |
-| C | [Schema Compatibility Contract](#appendix-c-schema-compatibility-contract) |
-| D | [Capsule System History](#appendix-d-capsule-system-history) |
+| 19 | [Autonomous governance](#19-autonomous-governance-adr-0008) |
+| 20 | [Future work](#20-future-work) |
+| A | [Release lifecycle & support](#appendix-a-release-lifecycle--support) |
+| B | [Telemetry & privacy](#appendix-b-telemetry--privacy) |
+| C | [Schema compatibility contract](#appendix-c-schema-compatibility-contract) |
+| D | [Capsule system history](#appendix-d-capsule-system-history) |
 
 ## 0) One-sentence summary
 A local-first CLI that helps developers and AI agents understand an unfamiliar codebase by analyzing its structure and emitting a **repo behavior map**—a JSON graph of symbols, call edges, routes, and framework patterns with confidence scores and provenance tracking.
@@ -233,7 +233,7 @@ Hypergumbo supports 104 languages via tree-sitter grammars. All are included in 
 **Discovery & catalog:**
 * `catalog.py` — Pass availability checking (used by `catalog` command)
 
-Parsers emit to a shared internal representation; see [§6 Internal Representation](#6-internal-representation) for the IR definition and field semantics.
+Parsers emit to a shared internal representation; see [§6 Internal representation](#6-internal-representation) for the IR definition and field semantics.
 
 ### Analysis pipeline (two-tier model)
 
@@ -248,7 +248,7 @@ Each analyzer is a plain function registered via `AnalyzerSpec` and discovered t
 def analyze_go(repo_root: Path, max_files: int | None = None) -> AnalysisResult:
     ...
 ```
-Each analyzer returns an `AnalysisResult` containing symbols, edges, and usage contexts — the data types defined in [§6 Internal Representation](#6-internal-representation). Analyzers are embarrassingly parallel — each scans the repo independently and returns a bag of symbols and edges. They do not see each other's output.
+Each analyzer returns an `AnalysisResult` containing symbols, edges, and usage contexts — the data types defined in [§6 Internal representation](#6-internal-representation). Analyzers are embarrassingly parallel — each scans the repo independently and returns a bag of symbols and edges. They do not see each other's output.
 
 **Tier 2 — Linkers and enrichment (context-dependent refiners):**
 After all analyzers run, the orchestrator (`run_behavior_map`) collects the unified symbol graph and runs post-processing:
@@ -278,7 +278,7 @@ This would allow a type-resolution pass to slot in between Tier 1 and Tier 2, re
 
 For the full catalog of language analyzers, cross-language linkers, and framework pattern files, see [LANGUAGES.md](LANGUAGES.md), [LINKERS.md](LINKERS.md), and [FRAMEWORKS.md](FRAMEWORKS.md).
 
-## 6) Internal Representation
+## 6) Internal representation
 
 Parsers emit to `AnalysisIR`:
 ```python
@@ -298,7 +298,7 @@ class Symbol:
     origin_run_id: str         # references AnalysisRun.execution_id
     supply_chain_tier: int     # 1=first_party, 2=internal_dep, 3=external_dep, 4=derived
     supply_chain_reason: str   # classification rationale (e.g., "matches ^src/")
-    # Note: In JSON output (§9 Behavior Map JSON), these flat fields are compiled
+    # Note: In JSON output (§9 Behavior map JSON), these flat fields are compiled
     # into a nested supply_chain object with a derived tier_name field.
     origin_run_signature: Optional[str]  # references AnalysisRun.run_signature (for grouping)
     quality: QualityScore
@@ -401,9 +401,9 @@ Public outputs are **compiled views** from this IR — the IR defines the canoni
 
 **Design principle:** Strong passes (tsserver, pyright) added later will enhance the IR without breaking existing views.
 
-## 7) Cross-Language Linkers
+## 7) Cross-language linkers
 
-Hypergumbo provides **best-effort cross-language edge detection** for common integration patterns. These are AST-based heuristics with string literal matching, not type-resolved or dataflow analysis. This section specifies three linkers in detail (JNI, IPC, HTTP); for the full catalog of 20+ cross-language linkers, see [LINKERS.md](LINKERS.md).
+Hypergumbo provides **best-effort cross-language edge detection** for common integration patterns. These are AST-based heuristics with string literal matching, not type-resolved or dataflow analysis. This section specifies three linkers in detail (JNI, IPC, HTTP client-server); for the full catalog of 20+ cross-language linkers, see [LINKERS.md](LINKERS.md).
 
 ### JNI Boundary Detection (Java ↔ C)
 
@@ -429,7 +429,7 @@ JNIEXPORT void JNICALL Java_GuacamoleSession_processFrame(
 
 **Confidence scoring:**
 * Pattern-matched (naming convention): 0.80
-* Annotation-confirmed (`@hypergumbo.jni_impl`): 0.95
+* 🟪 Annotation-confirmed (`@hypergumbo.jni_impl`): 0.95
 
 **Limitations:**
 * Does not resolve JNI calls through reflection
@@ -462,7 +462,7 @@ Detects message send/receive patterns across process boundaries using string lit
 * String literal channel name match: 0.85
 * Variable/computed channel name: 0.50 (best-effort, name extracted if simple)
 * Template literal with interpolation: 0.40 (partial match)
-* Annotation-provided (`@hypergumbo.ipc_channel("name")`): 0.95
+* 🟪 Annotation-provided (`@hypergumbo.ipc_channel("name")`): 0.95
 
 **Limitations:**
 * Dynamic channel names require annotation hints
@@ -470,30 +470,27 @@ Detects message send/receive patterns across process boundaries using string lit
 * Does not validate message schema compatibility
 * Logs unmatched patterns in `limits.unresolved_ipc[]`
 
-### HTTP Endpoint Detection
+### HTTP client-server linking
 
-Detects HTTP route definitions for entrypoint detection.
+🟩 The HTTP linker (`linkers/http.py`) matches client HTTP calls to server route handlers across languages. Route detection itself is handled by the YAML-driven pattern system (see [§8 Entrypoint detection](#8-entrypoint-detection) and [FRAMEWORKS.md](FRAMEWORKS.md)); this linker creates cross-language edges from client call sites to the detected server routes.
 
-**Supported frameworks:**
+**Supported client patterns:**
 
-| Framework | Pattern | Example |
-|-----------|---------|---------|
-| FastAPI | `@app.get("/path")` | `@app.get("/users/{id}")` |
-| Flask | `@app.route("/path")` | `@app.route("/login", methods=["POST"])` |
-| Express | `app.get("/path", handler)` | `router.post("/api/users", createUser)` |
-| Java Servlet | `@WebServlet("/path")` | `@WebServlet("/api/session")` |
-| JAX-RS | `@Path("/path")` | `@GET @Path("/users/{id}")` |
-| Spring MVC | `@RequestMapping("/path")` | `@PostMapping("/api/login")` |
+| Language | Libraries | Example |
+|----------|-----------|---------|
+| JS/TS | `fetch`, `axios`, OpenAPI-generated clients | `fetch("/api/users")` |
+| Python | `requests`, `httpx` | `requests.get("/api/users")` |
+| Go | `net/http` | `http.Get("http://host/api/users")` |
 
-These are representative examples; route detection is supported for 81 frameworks. See [FRAMEWORKS.md](FRAMEWORKS.md) for the full list.
+**Matching algorithm:**
+1. Collect server route symbols detected by the pattern system (see [§8](#8-entrypoint-detection))
+2. Scan client code for HTTP call patterns with URL arguments
+3. Match by HTTP method and URL path, with support for parameterized paths (`:id`, `{id}`, `<id>`)
+4. Emit `calls` edge from client call site to matching route handler
 
-**Detection output:**
-* Symbol kind: `route` or `endpoint`
-* Symbol name: HTTP method + path (e.g., `GET /users/{id}`)
-* Used by entrypoint detection for slicing
-
-**Client-side linking:**
-🟩 The HTTP linker (`linkers/http.py`) matches client calls to server route handlers across languages. Supported client patterns: JS/TS (`fetch`, `axios`, OpenAPI-generated clients), Python (`requests`, `httpx`), and Go (`net/http`). Routes are matched by HTTP method and URL path, with support for parameterized paths (`:id`, `{id}`, `<id>`). Literal URLs score 0.90 confidence; variable URLs score 0.65.
+**Confidence scoring:**
+* Literal URL match: 0.90
+* Variable/computed URL: 0.65
 
 ### Language-specific notes for cross-language linking
 
@@ -527,7 +524,7 @@ Cross-language linkers log unresolved patterns for debugging:
 }
 ```
 
-## 8) Entrypoint Detection
+## 8) Entrypoint detection
 
 Entrypoint detection identifies HTTP handlers, CLI mains, background tasks, and other entry sources for slicing. Detection is **YAML-driven** via the framework patterns system.
 
@@ -538,7 +535,7 @@ ANALYZERS (pure language, no framework knowledge)
   → Capture symbols + rich metadata (decorators, base classes, parameters)
   → Capture UsageContext for call-based patterns (route registrations, etc.)
 
-PATTERN SYSTEM (87 YAML files: 6 convention + 81 framework)
+PATTERN SYSTEM (YAML files: convention + framework)
   → Match patterns against symbol metadata and usage contexts
   → Enrich symbols with concept metadata (route, task, model, etc.)
 
@@ -634,9 +631,9 @@ score = confidence * (1 + log(1 + outgoing_edges))
 
 This prefers well-connected entries, producing richer slices.
 
-## 9) Behavior Map JSON
+## 9) Behavior map JSON
 
-The behavior map is a JSON file produced by `hypergumbo run`. It is a compiled view of the IR (see [§6 Output views](#output-views)) designed for programmatic consumption by agents and tooling. Field *semantics* (`id`, `stable_id`, `origin`, etc.) are defined once in [§6 Internal Representation](#6-internal-representation) and not repeated here; this section covers serialization rules and output-specific fields.
+The behavior map is a JSON file produced by `hypergumbo run`. It is a compiled view of the IR (see [§6 Output views](#output-views)) designed for programmatic consumption by agents and tooling. Field *semantics* (`id`, `stable_id`, `origin`, etc.) are defined once in [§6 Internal representation](#6-internal-representation) and not repeated here; this section covers serialization rules and output-specific fields.
 
 Single file: `hypergumbo.results.json`
 
@@ -690,7 +687,7 @@ The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `
 
 ### analysis_runs[] — provenance tracking
 
-Each entry records provenance for one analyzer pass. Field semantics are defined in [§6 Internal Representation](#6-internal-representation); see `docs/schema.json` for the full field list.
+Each entry records provenance for one analyzer pass. Field semantics are defined in [§6 Internal representation](#6-internal-representation); see `docs/schema.json` for the full field list.
 
 **Output-specific note:** The IR field `pass_id` is serialized as `pass` in JSON output.
 
@@ -709,15 +706,15 @@ Each entry records provenance for one analyzer pass. Field semantics are defined
 }
 ```
 
-**LOC definition:** Lines of code counts non-empty lines in files matching language extensions. Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§15 File Role Classification](#15-file-role-classification) for the proposed taxonomy that would also exclude pure data files from LOC counts.
+**LOC definition:** Lines of code counts non-empty lines in files matching language extensions. Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§15 File role classification](#15-file-role-classification) for the proposed taxonomy that would also exclude pure data files from LOC counts.
 
 ### nodes[] — definitions, files, endpoints
 
-Field semantics (`id`, `stable_id`, `shape_id`, `fingerprint`, `origin`, `quality`, etc.) are defined in [§6 Internal Representation](#6-internal-representation). See `docs/schema.json` for the full field list. This section documents output-specific serialization rules.
+Field semantics (`id`, `stable_id`, `shape_id`, `fingerprint`, `origin`, `quality`, etc.) are defined in [§6 Internal representation](#6-internal-representation). See `docs/schema.json` for the full field list. This section documents output-specific serialization rules.
 
 **Presence rule:** `stable_id`, `shape_id`, and `origin_run_signature` keys MUST be present on every node. If unavailable, they MUST be set to `null` (not omitted). This supports forward-compatible consumers without forcing every pass to compute every field.
 
-**supply_chain** (object, required): Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields into a nested object with an added `tier_name` field (e.g., `first_party`, `internal_dep`), computed from the numeric `tier` at serialization time. See [§14 Supply Chain Classification](#14-supply-chain-classification) for tier definitions.
+**supply_chain** (object, required): Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields into a nested object with an added `tier_name` field (e.g., `first_party`, `internal_dep`), computed from the numeric `tier` at serialization time. See [§14 Supply chain classification](#14-supply-chain-classification) for tier definitions.
 
 ```json
 "supply_chain": {"tier": 1, "tier_name": "first_party", "reason": "matches ^src/"}
@@ -986,7 +983,7 @@ Reproducibility has two dimensions: **caching** ensures that re-running analysis
   * Edges: `(src, dst, type)`
 * Enables meaningful `git diff` of output files
 
-## 14) Supply Chain Classification
+## 14) Supply chain classification
 
 Hypergumbo classifies files by their position in the project's dependency graph. This enables focused analysis (first-party code prioritized in results) and noise reduction (derived artifacts excluded from analysis entirely).
 
@@ -1195,7 +1192,7 @@ The Additional Files section uses a README-first hybrid ranking algorithm:
 }
 ```
 
-## 15) File Role Classification
+## 15) File role classification
 
 Supply chain **tiers** answer "where does this file come from?" (provenance). A complementary dimension, **file roles**, answers "what is this file for?" (purpose). See [ADR-0004](adr/0004-file-taxonomy.md) for the design rationale.
 
@@ -1312,7 +1309,7 @@ Tier and Role compose for analysis decisions:
 ### Missing dependencies
 
 * 🟩 **Behavior**: If pass requires unavailable grammar (e.g., tree-sitter), skip pass
-* 🟩 **Output**: Add to `analysis_runs[].skipped_passes[]` (see [§9 Behavior Map JSON](#9-behavior-map-json) for field format)
+* 🟩 **Output**: Add to `analysis_runs[].skipped_passes[]` (see [§9 Behavior map JSON](#9-behavior-map-json) for field format)
 
 ### Analyzer crashes
 
@@ -1376,7 +1373,7 @@ crud.create_user()      # Resolve: app.crud.create_user()
 
 Currently, only Python and Go fully utilize import tracking for disambiguation. See **ADR-0007** for the roadmap to extend this to 30 additional analyzers with meaningful import semantics.
 
-## 19) Autonomous Governance (ADR-0008)
+## 19) Autonomous governance (ADR-0008)
 
 🟩 Hypergumbo includes a vendor-agnostic governance system for AI agent contributors working in autonomous mode. This enforces structural thinking before stopping work, preventing "workaround" fixes that bypass root causes.
 
@@ -1409,7 +1406,7 @@ Each AI coding tool has a different hook mechanism. Adapter scripts provide a co
 
 The invariant ledger (`.agent/invariant-ledger.md`) is the authoritative source for discovered invariants and their current fix status. See [ADR-0008](adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for the full governance design rationale.
 
-## 20) Future Work
+## 20) Future work
 
 This section collects capabilities that are designed but not yet implemented. Pursue when there's clear demand beyond what the current system provides. The architecture is designed to support these enhancements without breaking changes: the IR and identity fields ([§6](#6-internal-representation)) enable cross-refactor tracking and multi-pass merging, and the schema compatibility contract ([Appendix C](#appendix-c-schema-compatibility-contract)) defines what can change in minor vs. major versions. See also [Registry & Factory Vision](future/registry-factory-vision.md) for speculative ideas about sharing analyzers.
 
@@ -1578,7 +1575,7 @@ If dataflow proves infeasible, agent-guided slicing (agents specify hops/filters
 * Hosted SaaS offering or marketplace monetization
 * IDE integration (LSP server) or autonomous code editing
 
-## Appendix A: Release Lifecycle & Support
+## Appendix A: Release lifecycle & support
 
 For the technical contract governing output schema stability, see [Appendix C](#appendix-c-schema-compatibility-contract).
 
@@ -1598,45 +1595,47 @@ For the technical contract governing output schema stability, see [Appendix C](#
 * **v1.0 outputs readable by v1.x** for all v1.x (MAJOR version promises stability)
 * **Breaking changes only in MAJOR bumps.** See [Appendix C](#appendix-c-schema-compatibility-contract) for the technical definition of what constitutes a breaking change.
 
-## Appendix B: Telemetry & Privacy
+## Appendix B: Telemetry & privacy
 
-### Default: Zero telemetry
+This appendix is the canonical privacy policy for hypergumbo.
 
-By default, hypergumbo **sends no data** anywhere. All analysis is local-only.
+### Current policy: zero telemetry
 
-### Opt-in crash reporting
-
-Enable via `hypergumbo config --telemetry=on` or `hypergumbo_TELEMETRY=1` environment variable.
-
-**What is collected** (only if opted in):
-* Crash stack traces (sanitized: no code, no symbol names, no file paths)
-* Performance metrics (file counts, timings, memory usage)
-* Feature usage (which commands run, which flags used)
-* Anonymized session ID (random UUID, not linked to identity)
+Hypergumbo **sends no data** anywhere. All analysis is local-only. There is no telemetry infrastructure, no crash reporting service, and no opt-in toggle. Nothing is collected.
 
 **What is NEVER collected**:
 * Source code
 * Symbol names (function/class/variable names)
 * File paths or directory names
 * API keys or credentials
-* IP addresses (beyond what HTTPS inherently reveals)
+* IP addresses
 
-### Data retention
+### 🟪 Planned: opt-in crash reporting
 
+The following describes a telemetry system that is not yet implemented. If and when it is built, the commitments above will remain the default, and telemetry will require explicit opt-in.
+
+**Planned opt-in mechanism:** `hypergumbo config --telemetry=on` or `HYPERGUMBO_TELEMETRY=1` environment variable.
+
+**What would be collected** (only if opted in):
+* Crash stack traces (sanitized: no code, no symbol names, no file paths)
+* Performance metrics (file counts, timings, memory usage)
+* Feature usage (which commands run, which flags used)
+* Anonymized session ID (random UUID, not linked to identity)
+
+**Planned data retention:**
 * Crash reports: 90 days
 * Aggregated metrics: 2 years
 * No raw session data retained beyond 30 days
 
-### Third-party services
-* If enabled, telemetry sent to Sentry (crash reporting) or similar
+**Third-party services:**
+* If enabled, telemetry would be sent to Sentry (crash reporting) or similar
 * Subject to their privacy policies (links provided in docs)
 
-### Transparency
-* Telemetry code is open source (can audit exactly what's sent)
-* Privacy policy: this appendix is the canonical privacy policy
-* Opt-in status shown in `hypergumbo config --show`
+**Transparency commitments** (apply now and after telemetry is built):
+* All telemetry code will be open source (auditable)
+* Opt-in status will be shown in `hypergumbo config --show`
 
-## Appendix C: Schema Compatibility Contract
+## Appendix C: Schema compatibility contract
 
 This appendix defines the **technical contract** for output consumers: which fields are immutable, how consumers must handle unknown fields, and what constitutes a breaking change. For versioning policy, see [Appendix A](#appendix-a-release-lifecycle--support).
 
@@ -1716,7 +1715,7 @@ This appendix defines the **technical contract** for output consumers: which fie
 
 **Commitment:** No breaking changes to `behavior_map.json` view within v0.x series.
 
-## Appendix D: Capsule System History
+## Appendix D: Capsule system history
 
 The original design included a "capsule" abstraction for composing custom analyzers from building blocks. The idea was that users would run `hypergumbo init` to create a capsule configuration, then `hypergumbo run` would execute analysis according to that configuration.
 
