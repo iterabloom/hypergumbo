@@ -1633,7 +1633,7 @@ Enable via `hypergumbo config --telemetry=on` or `hypergumbo_TELEMETRY=1` enviro
 
 ### Transparency
 * Telemetry code is open source (can audit exactly what's sent)
-* Privacy policy published at https://hypergumbo.iterabloom.com/privacy
+* Privacy policy: this appendix is the canonical privacy policy
 * Opt-in status shown in `hypergumbo config --show`
 
 ## Appendix C: Schema Compatibility Contract
