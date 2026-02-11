@@ -242,19 +242,11 @@ The analysis pipeline has two tiers reflecting different information needs.
 **Tier 1 — Language analyzers (independent producers):**
 Each analyzer is a plain function registered via `AnalyzerSpec` and discovered through Python entry-points (see [ADR-0010](adr/0010-modular-packages-and-smart-testing.md)):
 ```python
-@dataclass
-class AnalysisResult:
-    symbols: list[Symbol]
-    edges: list[Edge]
-    usage_contexts: list[UsageContext]
-    run: AnalysisRun | None
-    skipped: bool = False
-
 # Analyzer function signature (all 100+ analyzers follow this)
 def analyze_go(repo_root: Path, max_files: int | None = None) -> AnalysisResult:
     ...
 ```
-Analyzers are embarrassingly parallel — each scans the repo independently and returns a bag of symbols and edges. They do not see each other's output.
+Each analyzer returns an `AnalysisResult` containing symbols, edges, and usage contexts — the data types defined in [§6 Internal Representation](#6-internal-representation). Analyzers are embarrassingly parallel — each scans the repo independently and returns a bag of symbols and edges. They do not see each other's output.
 
 **Tier 2 — Linkers and enrichment (context-dependent refiners):**
 After all analyzers run, the orchestrator (`run_behavior_map`) collects the unified symbol graph and runs post-processing:
@@ -908,20 +900,7 @@ Feature comparison across commits: same query → compare `node_ids`/`edge_ids` 
 
 ### Tier filtering
 
-🟩 Supply chain tiers (defined in [§13](#13-supply-chain-classification)) add tier-based traversal boundaries to slicing:
-
-```bash
-# Slice stops at first-party boundary
-hypergumbo slice --entry main --max-tier 1
-
-# Slice includes internal deps but not external
-hypergumbo slice --entry main --max-tier 2
-
-# Default: slice can traverse into external deps
-hypergumbo slice --entry main --max-tier 3
-```
-
-When `--max-tier N` is specified, BFS traversal skips nodes whose supply chain tier exceeds N.
+🟩 The `--max-tier` flag (defined in [§3](#3-user-experience-cli); tier definitions in [§13](#13-supply-chain-classification)) adds tier-based traversal boundaries to slicing: BFS traversal skips nodes whose supply chain tier exceeds the specified value. For example, `--max-tier 1` constrains the slice to first-party code only.
 
 ### Reverse slice class expansion
 
