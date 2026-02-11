@@ -355,12 +355,9 @@ Any change that would alter computed values MUST bump the corresponding scheme i
 
 ### Output views
 
-Public outputs are **compiled views** from this IR:
-* 🟩 `behavior_map.json` (v0.1 default)
-* 🟩 `sketch` — Token-budgeted Markdown summary for LLM context windows (stdout)
-* 🟪 Future: `ir_export.json`, `sarif.json`, `context_bundle.json`
+Public outputs are **compiled views** from this IR — the IR defines the canonical data model, and each view selects and reshapes fields for its audience. See [§9 Output formats](#9-output-formats) for the available views and their serialization details.
 
-**Design principle:** Strong passes (tsserver, pyright) added later will enhance the IR without breaking the behavior map view.
+**Design principle:** Strong passes (tsserver, pyright) added later will enhance the IR without breaking existing views.
 
 ## 7) Cross-Language Edge Detection
 
@@ -688,10 +685,7 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
 }
 ```
 
-**Field semantics** are defined in [§6 Internal Representation](#6-internal-representation). Additional output-specific fields:
-
-* `toolchain`: Versions of language runtimes/parsers used (empty `{}` for syntax-only passes)
-* `config_fingerprint`: Hash of effective configuration affecting this pass (for cache invalidation)
+**Field semantics** are defined in [§6 Internal Representation](#6-internal-representation). The one output-specific rename: `pass_id` in the IR is serialized as `pass` in JSON.
 
 **skipped_passes** (array, optional):
 - List of passes that could not run (e.g., missing grammar)
@@ -722,6 +716,8 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
 **LOC definition:** Lines of code counts non-empty lines in files matching language extensions. Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§14 File Role Classification](#file-role-classification) for the proposed taxonomy that would also exclude pure data files from LOC counts.
 
 #### nodes[] — definitions, files, endpoints
+
+**Field semantics** (`id`, `stable_id`, `shape_id`, `fingerprint`, `origin`, `quality`, etc.) are defined in [§6 Internal Representation](#6-internal-representation). This section documents the JSON serialization and output-specific fields.
 
 **Node fields:**
 ```json
@@ -761,11 +757,7 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
 - This supports forward-compatible consumers without forcing every pass to compute every field.
 
 **supply_chain** (object, required):
-Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields (see [§6](#6-internal-representation)).
-- `tier` (integer, 1-4): Numeric tier for filtering/sorting (from IR `supply_chain_tier`)
-- `tier_name` (string): Human-readable name derived from `tier` at serialization time (`first_party`, `internal_dep`, `external_dep`, `derived`). Not stored in the IR.
-- `reason` (string): Classification rationale (from IR `supply_chain_reason`, e.g., "matches ^src/", "detected as minified")
-- See [§14 Supply Chain Classification](#14-supply-chain-classification) for classification algorithm and tier definitions.
+Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields into a nested object. The only derived field is `tier_name` (e.g., `first_party`, `internal_dep`), which is computed from the numeric `tier` at serialization time and not stored in the IR. See [§14 Supply Chain Classification](#14-supply-chain-classification) for tier definitions and the classification algorithm.
 
 **Node kinds:**
 * `file` — source file
