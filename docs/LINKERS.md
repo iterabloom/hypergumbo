@@ -7,6 +7,8 @@ Hypergumbo includes linkers that connect symbols across language boundaries. Lin
 | Linker | Description |
 |--------|-------------|
 | JNI | Java `native` methods ↔ C JNI implementations |
+| Cgo | Go `C.funcName()` calls ↔ C/C++ function implementations |
+| Python FFI | Python `ctypes`/`cffi` calls ↔ C/C++ functions, PyO3 Rust ↔ Python |
 | IPC | Electron IPC, Web Workers, `postMessage` patterns |
 | WebSocket | Socket.io, native WebSocket, Django Channels, FastAPI WebSocket |
 | Phoenix | Phoenix Channels (`broadcast!`, `push`, `handle_in`) and LiveView |

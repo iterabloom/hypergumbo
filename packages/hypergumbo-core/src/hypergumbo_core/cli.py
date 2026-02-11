@@ -49,6 +49,7 @@ from .analyze.all_analyzers import run_all_analyzers
 from .catalog import get_default_catalog, is_available, suggest_passes_for_languages
 from .linkers.registry import LinkerContext, run_all_linkers
 # Import linker modules to trigger @register_linker decoration (side effect imports)
+import hypergumbo_core.linkers.cgo as _cgo_linker  # noqa: F401
 import hypergumbo_core.linkers.containment as _containment_linker  # noqa: F401
 import hypergumbo_core.linkers.database_query as _database_query_linker  # noqa: F401
 import hypergumbo_core.linkers.dependency as _dependency_linker  # noqa: F401
@@ -68,6 +69,7 @@ import hypergumbo_core.linkers.swift_objc as _swift_objc_linker  # noqa: F401
 import hypergumbo_core.linkers.websocket as _websocket_linker  # noqa: F401
 import hypergumbo_core.linkers.inheritance as _inheritance_linker  # noqa: F401
 import hypergumbo_core.linkers.orm as _orm_linker  # noqa: F401
+import hypergumbo_core.linkers.pyffi as _pyffi_linker  # noqa: F401
 import hypergumbo_core.linkers.type_hierarchy as _type_hierarchy_linker  # noqa: F401
 from .entrypoints import detect_entrypoints
 from .ir import Symbol, Edge
