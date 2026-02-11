@@ -593,7 +593,7 @@ Hypergumbo produces two output formats from the same analysis pipeline:
 - **Behavior Map JSON** (`hypergumbo run`): Full structured graph written to a file. Designed for programmatic consumption by agents and tooling.
 - **Sketch** (default mode): Token-budgeted Markdown summary written to stdout. Designed for pasting into LLM chat interfaces.
 
-Both are compiled views of the internal representation defined in [§6](#6-internal-representation).
+Both are views compiled from the IR; see [§6 Output views](#output-views) for the view concept and design rationale.
 
 ### Behavior Map JSON
 
@@ -645,9 +645,7 @@ The schema follows JSON Schema Draft 2020-12 and can be used for:
 
 #### Confidence scoring
 
-The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring algorithm. Consumers should treat unknown evidence types as 0.30 confidence.
-
-For the deterministic scoring algorithm (language-specific base scores, evidence types, contextual adjustments), see [§12 Confidence calculation](#confidence-calculation-deterministic-algorithm).
+The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring algorithm. See [§12 Confidence calculation](#confidence-calculation-deterministic-algorithm) for the deterministic scoring algorithm and [Appendix C](#appendix-c-schema-compatibility-contract) for consumer obligations (including the 0.30 default for unknown evidence types).
 
 #### analysis_runs[] — provenance tracking
 
@@ -1345,13 +1343,7 @@ Tier and Role compose for analysis decisions:
 ### Missing dependencies
 
 * 🟩 **Behavior**: If pass requires unavailable grammar (e.g., tree-sitter), skip pass
-* 🟩 **Output**: Add to `analysis_runs[].skipped_passes[]`:
-  ```json
-  {
-    "pass": "lean-ts-v1",
-    "reason": "tree-sitter-lean grammar not available"
-  }
-  ```
+* 🟩 **Output**: Add to `analysis_runs[].skipped_passes[]` (see [§9 Behavior Map JSON](#behavior-map-json) for field format)
 
 ### Analyzer crashes
 
@@ -1360,7 +1352,7 @@ Tier and Role compose for analysis decisions:
 
 ### Partial results guarantee
 
-* 🟩 All output is valid JSON even if analysis is incomplete. See [`analysis_incomplete`](#top-level-structure) in [§9 Output formats](#9-output-formats) for field semantics.
+* 🟩 All output is valid JSON even if analysis is incomplete. See [`analysis_incomplete` in §9](#behavior-map-json) for field semantics.
 
 ## 17) Known limitations
 
