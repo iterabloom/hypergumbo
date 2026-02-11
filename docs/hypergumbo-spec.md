@@ -30,15 +30,14 @@ Status: living document.
 | 8 | [Entrypoint Detection](#8-entrypoint-detection) |
 | 9 | [Output formats](#9-output-formats) |
 | 10 | [Slicing behavior](#10-slicing-behavior) |
-| 11 | [Analysis guardrails](#11-analysis-guardrails) |
-| 12 | [Confidence scoring](#12-confidence-scoring) |
-| 13 | [Output reproducibility](#13-output-reproducibility) |
-| 14 | [Supply Chain Classification](#14-supply-chain-classification) |
-| 15 | [Testing & quality bar](#15-testing--quality-bar) |
-| 16 | [Error handling](#16-error-handling) |
-| 17 | [Known limitations](#17-known-limitations) |
-| 18 | [Autonomous Governance](#18-autonomous-governance-adr-0008) |
-| 19 | [Future Work](#19-future-work) |
+| 11 | [Confidence scoring](#11-confidence-scoring) |
+| 12 | [Output reproducibility](#12-output-reproducibility) |
+| 13 | [Supply Chain Classification](#13-supply-chain-classification) |
+| 14 | [Testing & quality bar](#14-testing--quality-bar) |
+| 15 | [Error handling](#15-error-handling) |
+| 16 | [Known limitations](#16-known-limitations) |
+| 17 | [Autonomous Governance](#17-autonomous-governance-adr-0008) |
+| 18 | [Future Work](#18-future-work) |
 | A | [Release Lifecycle & Support](#appendix-a-release-lifecycle--support) |
 | B | [Telemetry & Privacy](#appendix-b-telemetry--privacy) |
 | C | [Schema Compatibility Contract](#appendix-c-schema-compatibility-contract) |
@@ -137,6 +136,18 @@ Cold Spots (untested - need coverage)
 **Note:** Hot spots are ranked by test density (tests/LOC), not raw test count. This surfaces small utility functions that are disproportionately tested relative to their size.
 
 **Use case:** Quickly identify which parts of your codebase may need more test coverage, without running any tests.
+
+### Analysis options
+
+These options apply to all analysis commands (`run`, `slice`, and default sketch mode).
+
+🟩 **`--exclude PATTERN`**
+Gitignore-style glob patterns for paths to skip. Uses `fnmatch` matching.
+* Default excludes: `node_modules/`, `venv/`, `dist/`, `build/`, `*.min.js`, `*.bundle.js`, `.git/`, `__pycache__/`
+
+🟩 **`--max-file-bytes N`** (default: 2MB)
+Skip files exceeding this size. Particularly useful for HTML and minified JavaScript.
+* Skipped files logged in `limits.truncated_files[]`
 
 ## 4) Supported stacks
 
@@ -597,7 +608,7 @@ See [ADR-0003](adr/0003-architectural-analysis-and-revision-plan.md) for the des
 
 ### Entrypoint Confidence Tiers
 
-These tiers apply to entrypoint detection. For edge confidence scoring, see [§12 Confidence calculation](#confidence-calculation-deterministic-algorithm).
+These tiers apply to entrypoint detection. For edge confidence scoring, see [§11 Confidence calculation](#confidence-calculation-deterministic-algorithm).
 
 Confidence scores reflect detection reliability, enabling meaningful ordering in sketch output:
 
@@ -681,7 +692,7 @@ The schema follows JSON Schema Draft 2020-12 and can be used for:
 
 #### Confidence scoring
 
-The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring algorithm. See [§12 Confidence calculation](#confidence-calculation-deterministic-algorithm) for the deterministic scoring algorithm and [Appendix C](#appendix-c-schema-compatibility-contract) for consumer obligations (including the 0.30 default for unknown evidence types).
+The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring algorithm. See [§11 Confidence calculation](#confidence-calculation-deterministic-algorithm) for the deterministic scoring algorithm and [Appendix C](#appendix-c-schema-compatibility-contract) for consumer obligations (including the 0.30 default for unknown evidence types).
 
 #### analysis_runs[] — provenance tracking
 
@@ -704,7 +715,7 @@ Each entry records provenance for one analyzer pass. Field semantics are defined
 }
 ```
 
-**LOC definition:** Lines of code counts non-empty lines in files matching language extensions. Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§14 File Role Classification](#file-role-classification) for the proposed taxonomy that would also exclude pure data files from LOC counts.
+**LOC definition:** Lines of code counts non-empty lines in files matching language extensions. Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§13 File Role Classification](#file-role-classification) for the proposed taxonomy that would also exclude pure data files from LOC counts.
 
 #### nodes[] — definitions, files, endpoints
 
@@ -712,7 +723,7 @@ Field semantics (`id`, `stable_id`, `shape_id`, `fingerprint`, `origin`, `qualit
 
 **Presence rule:** `stable_id`, `shape_id`, and `origin_run_signature` keys MUST be present on every node. If unavailable, they MUST be set to `null` (not omitted). This supports forward-compatible consumers without forcing every pass to compute every field.
 
-**supply_chain** (object, required): Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields into a nested object with an added `tier_name` field (e.g., `first_party`, `internal_dep`), computed from the numeric `tier` at serialization time. See [§14 Supply Chain Classification](#14-supply-chain-classification) for tier definitions.
+**supply_chain** (object, required): Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields into a nested object with an added `tier_name` field (e.g., `first_party`, `internal_dep`), computed from the numeric `tier` at serialization time. See [§13 Supply Chain Classification](#13-supply-chain-classification) for tier definitions.
 
 ```json
 "supply_chain": {"tier": 1, "tier_name": "first_party", "reason": "matches ^src/"}
@@ -739,7 +750,7 @@ Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenan
 - `evidence_lang` (optional): Language used for confidence scoring. Defaults to `src` node's language if omitted. Required for cross-language edges (HTTP, IPC) where src/dst languages differ.
 - `evidence_spans[]`: Structured locations of evidence. Each span includes file path and line/column range.
 
-**Evidence types** (machine-readable, see [§12](#confidence-calculation-deterministic-algorithm) for scoring algorithm):
+**Evidence types** (machine-readable, see [§11](#confidence-calculation-deterministic-algorithm) for scoring algorithm):
 * `ast_call_direct` — Direct function call in AST
 * `ast_call_method` — Method call with receiver
 * `ast_getattr_call` — Call via getattr/dynamic lookup
@@ -888,7 +899,7 @@ Feature comparison across commits: same query → compare `node_ids`/`edge_ids` 
 
 ### Tier filtering
 
-🟩 Supply chain tiers (defined in [§14](#14-supply-chain-classification)) add tier-based traversal boundaries to slicing:
+🟩 Supply chain tiers (defined in [§13](#13-supply-chain-classification)) add tier-based traversal boundaries to slicing:
 
 ```bash
 # Slice stops at first-party boundary
@@ -907,24 +918,7 @@ When `--max-tier N` is specified, BFS traversal skips nodes whose supply chain t
 
 🟩 When reverse-slicing from a class/interface entry (e.g., `--reverse --entry OwnerRepository`), the slicer auto-expands the BFS starting set to include all member methods (via `contains` edges). This enables finding callers of `findById`, `search`, etc. Applies to class, interface, module, struct, trait, and enum containers.
 
-## 11) Analysis guardrails
-
-### Exclude patterns
-
-* `--exclude` supports gitignore-like globs
-* Implementation: `fnmatch` (upgrade to `pathspec` later if needed)
-* Default excludes:
-  * `node_modules/`, `venv/`, `dist/`, `build/`
-  * `*.min.js`, `*.bundle.js`
-  * `.git/`, `__pycache__/`
-
-### File size limits
-
-* `--max-file-bytes` default: 2MB
-* Especially important for HTML/minified JS
-* Truncated files logged in `limits.truncated_files[]`
-
-## 12) Confidence scoring
+## 11) Confidence scoring
 
 Edge confidence scores quantify how reliably hypergumbo detected a relationship between two symbols. This is distinct from *entrypoint* confidence ([§8](#8-entrypoint-detection)), which scores how reliably a symbol was identified as an entry point. The two systems are independent: an edge originating from a high-confidence entrypoint does not inherit that entrypoint's confidence score.
 
@@ -980,7 +974,7 @@ def calculate_evidence_confidence(
 
 **Note**: Base scores are heuristic baselines (to be validated against benchmark suite). New evidence types can be added in minor versions.
 
-## 13) Output reproducibility
+## 12) Output reproducibility
 
 Reproducibility has two dimensions: **caching** ensures that re-running analysis on unchanged code returns the same result quickly, and **deterministic ordering** ensures that output is diffable across runs.
 
@@ -1011,7 +1005,7 @@ Reproducibility has two dimensions: **caching** ensures that re-running analysis
   * Edges: `(src, dst, type)`
 * Enables meaningful `git diff` of output files
 
-## 14) Supply Chain Classification
+## 13) Supply Chain Classification
 
 Hypergumbo classifies files by their position in the project's dependency graph. This enables focused analysis (first-party code prioritized in results) and noise reduction (derived artifacts excluded from analysis entirely).
 
@@ -1312,7 +1306,7 @@ Tier and Role compose for analysis decisions:
 
 **Status:** 🟩 Implemented (ADR-0004). The `taxonomy.py` module provides the unified file classification system with `FileRole` enum and `LanguageSpec` dataclass for 75+ languages.
 
-## 15) Testing & quality bar
+## 14) Testing & quality bar
 
 ### Test fixtures
 
@@ -1362,12 +1356,13 @@ Tier and Role compose for analysis decisions:
 * 🟩 All expected nodes/edges present
 * 🟩 No crashes, warnings logged appropriately
 * 🟩 `hypergumbo catalog` displays available passes
+
 ### Performance benchmarks
 * 🟩 Small repo (<100 files): <5 seconds end-to-end
 * 🟩 Medium repo (~500 files): <30 seconds
 * 🟩 Caching: second run on unchanged repo <2 seconds (see docs/CACHE.md)
 
-## 16) Error handling
+## 15) Error handling
 
 ### Parse errors
 
@@ -1396,11 +1391,16 @@ Tier and Role compose for analysis decisions:
 * 🟩 **Behavior**: Catch exception, log stack trace to `.hypergumbo/error.log`, continue
 * 🟩 **Output**: Set `analysis_incomplete: true` in top-level, add to `warnings[]`
 
+### File size limits
+
+* 🟩 **Behavior**: Skip files exceeding `--max-file-bytes` (default: 2MB), continue analysis
+* 🟩 **Output**: Add to `limits.truncated_files[]` with path, size, and reason
+
 ### Partial results guarantee
 
 * 🟩 All output is valid JSON even if analysis is incomplete. See [`analysis_incomplete` in §9](#behavior-map-json) for field semantics.
 
-## 17) Known limitations
+## 16) Known limitations
 
 This section documents known limitations and risks of the current analysis system. See `CHANGELOG.md` for per-language implementation status.
 
@@ -1448,7 +1448,7 @@ crud.create_user()      # Resolve: app.crud.create_user()
 
 Currently, only Python and Go fully utilize import tracking for disambiguation. See **ADR-0007** for the roadmap to extend this to 30 additional analyzers with meaningful import semantics.
 
-## 18) Autonomous Governance (ADR-0008)
+## 17) Autonomous Governance (ADR-0008)
 
 🟩 Hypergumbo includes a vendor-agnostic governance system for AI agent contributors working in autonomous mode. This enforces structural thinking before stopping work, preventing "workaround" fixes that bypass root causes.
 
@@ -1481,7 +1481,7 @@ Each AI coding tool has a different hook mechanism. Adapter scripts provide a co
 
 The invariant ledger (`.agent/invariant-ledger.md`) is the authoritative source for discovered invariants and their current fix status. See [ADR-0008](adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for the full governance design rationale.
 
-## 19) Future Work
+## 18) Future Work
 
 This section collects capabilities that are designed but not yet implemented. Pursue when there's clear demand beyond what the current system provides. The architecture is designed to support these enhancements without breaking changes: the IR and identity fields ([§6](#6-internal-representation)) enable cross-refactor tracking and multi-pass merging, and the schema compatibility contract ([Appendix C](#appendix-c-schema-compatibility-contract)) defines what can change in minor vs. major versions. See also [Registry & Factory Vision](future/registry-factory-vision.md) for speculative ideas about sharing analyzers.
 
@@ -1584,7 +1584,7 @@ These would produce typed call graphs, enabling mixed-fidelity analysis: AST edg
 
 Query interface: "I want to change behavior X in Y context"
 
-The router would build on existing slicing capabilities — call graph traversal, test filtering, and supply chain tier boundaries (see [§10](#10-slicing-behavior) and [§14](#14-supply-chain-classification)) — and extend them with:
+The router would build on existing slicing capabilities — call graph traversal, test filtering, and supply chain tier boundaries (see [§10](#10-slicing-behavior) and [§13](#13-supply-chain-classification)) — and extend them with:
 
 **Pipeline:**
 
@@ -1809,7 +1809,7 @@ This appendix defines the **technical contract** for output consumers: which fie
 
 ### Testing Requirements
 
-**Current test suite MUST** (see [§15 Testing & quality bar](#15-testing--quality-bar) for details):
+**Current test suite MUST** (see [§14 Testing & quality bar](#14-testing--quality-bar) for details):
 - Verify structural invariants via property-based tests (valid IDs, confidence ranges, schema compliance, no dangling edge references)
 - Validate against JSON Schema (automated validation)
 - Test ID stability (same code → same IDs deterministically)
