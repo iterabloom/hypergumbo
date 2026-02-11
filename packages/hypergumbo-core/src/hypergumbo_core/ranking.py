@@ -643,6 +643,10 @@ def _compute_centrality_with_python(
 
     Uses a single combined regex pattern for efficiency: O(files) instead of
     O(files * symbols). The pattern matches all symbol names in one pass.
+
+    Note: ripgrep was tried here but removed due to complexity around regex
+    escaping for symbol names containing special characters. The parallelized
+    Python regex approach is sufficient for practical repo sizes.
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
 

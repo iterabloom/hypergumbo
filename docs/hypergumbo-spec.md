@@ -25,8 +25,8 @@ A local-first CLI that helps developers and AI agents understand an unfamiliar c
 * 🟩 **Agent-ready output**: deterministic JSON graph + "feature slices" so an agent can fetch only relevant code.
 * 🟩 **Fast iteration**: simple architecture, small dependency surface, fixtures-driven tests.
 * 🟩 **Local-first execution**: analysis runs offline by default (no network, no API keys required).
-* ⬛ **Capsule Plan composition**: Removed—the general-purpose analyzer handles all repos. See [Appendix D](#appendix-d-capsule-system-history).
-* ⬛ **Portable analyzer artifact**: Removed—`hypergumbo run` works directly without initialization.
+
+For goals that were considered and rejected, see [Appendix D](#appendix-d-capsule-system-history).
 
 ## 2) Non-goals
 * No deep type-resolution / interprocedural dataflow correctness guarantees.
@@ -61,9 +61,6 @@ Shows detailed info about a symbol (function, class, etc.) and its callers/calle
 * `-t N` limits source output to approximately N tokens. When budget exceeded, omits sources one-at-a-time in priority order: module-level first, then ascending in-degree (least important first)
 * `-x` excludes callers/callees from test files
 
-⬛ **`hypergumbo init`** *(removed)*
-Was part of the capsule system. See [Appendix D](#appendix-d-capsule-system-history).
-
 🟩 **`hypergumbo run [path] [--out hypergumbo.results.json]`**
 Analyzes the repo and emits a behavior map. No initialization required—works directly on any repo.
 
@@ -72,9 +69,6 @@ Produces a reduced subgraph suitable for LLM context. Default output filename in
 
 🟩 **`hypergumbo catalog [--show-all]`**
 Shows available language analyzers and which ones are suggested for the current repo. Useful for discovering what hypergumbo can analyze.
-
-⬛ **`hypergumbo export-capsule`** *(removed)*
-Was part of the capsule system. See [Appendix D](#appendix-d-capsule-system-history).
 
 🟩 **`hypergumbo test-coverage [path] [--format text|json]`**
 
@@ -1823,10 +1817,6 @@ The current CI system is solid (see ADR-0010, ADR-0011) but has some potential i
 | **Matrix strategy for packages** | Manual job per package | `matrix: { package: [core, mainstream, common, extended] }` |
 
 These are all quality-of-life improvements. The current system works correctly and provides fast feedback.
-
-### Abandoned approaches
-
-* **Ripgrep for centrality computation**: ⬛ Attempted and removed. Ripgrep was tried for symbol mention centrality but removed due to complexity around regex escaping for symbol names containing special characters. The parallelized Python regex approach is sufficient for practical repo sizes.
 
 ## Appendix A: Versioning & Support Policy
 
