@@ -44,6 +44,9 @@ For goals that were considered and rejected, see [Appendix D](#appendix-d-capsul
 * `pip install hypergumbo[embeddings]` (optional embedding-based config extraction)
 
 ### Commands
+
+**Key principle:** Analysis execution requires no network or API keys (by default). Output is deterministic and reproducible given the same repo state. See [Appendix B](#appendix-b-telemetry--privacy) for the full privacy and telemetry policy.
+
 🟩 **`hypergumbo [path] [-t tokens]`** (default mode)
 Generates a token-budgeted Markdown sketch to stdout. Optimized for pasting into LLM chat interfaces.
 * If no subcommand is given, assumes sketch mode.
@@ -105,9 +108,6 @@ Cold Spots (untested - need coverage)
 **Note:** Hot spots are ranked by test density (tests/LOC), not raw test count. This surfaces small utility functions that are disproportionately tested relative to their size.
 
 **Use case:** Quickly identify which parts of your codebase may need more test coverage, without running any tests.
-
-### Key principle
-**Analysis execution requires no network or API keys** (by default). Output is deterministic and reproducible given the same repo state. See [Appendix B](#appendix-b-telemetry--privacy) for the full privacy and telemetry policy.
 
 ## 4) Supported stacks
 
@@ -1669,7 +1669,17 @@ See [ADR-0008](adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for 
 
 This section collects capabilities that are designed but not yet implemented. Pursue when there's clear demand beyond what the current system provides. The architecture is designed to support these enhancements without breaking changes: the IR and identity fields ([§6](#6-internal-representation)) enable cross-refactor tracking and multi-pass merging, and the forward compatibility contract ([Appendix C](#appendix-c-forward-compatibility-contract)) defines what can change in minor vs. major versions. See also [Registry & Factory Vision](future/registry-factory-vision.md) for speculative ideas about sharing analyzers.
 
-### Multi-fidelity analysis
+| Item | Horizon | Depends on |
+|------|---------|------------|
+| AST-based type inference improvements | Near-term | — |
+| Additional linkers | Near-term | — |
+| Additional output views | Near-term | — |
+| Testing & CI enhancements | Near-term | CI infrastructure |
+| Multi-fidelity analysis | Medium-term | Language server integration |
+| Agent context router | Medium-term | Multi-fidelity analysis |
+| Incremental analysis | Not on roadmap | — |
+
+### Multi-fidelity analysis *(medium-term)*
 
 The long-term vision is a multi-fidelity code understanding platform that produces typed IR and an agent context router for token-efficient editing.
 
@@ -1695,7 +1705,7 @@ These would produce typed call graphs, enabling mixed-fidelity analysis: AST edg
 **Technology choices:**
 * IR storage: Protocol Buffers (fast, versioned, language-neutral); JSON fallback if protobuf adds friction
 
-### AST-based type inference improvements
+### AST-based type inference improvements *(near-term)*
 
 The current system implements constructor tracking, parameter tracking, field type tracking, return type tracking, and type hierarchy dispatch (see ADR-0006 and CHANGELOG.md). Supported in Python, Java, Kotlin, TypeScript, C#, Dart, and Scala (method name only).
 
@@ -1706,7 +1716,7 @@ Remaining improvements (without requiring language servers):
 | **Method-scoped tracking** | Low-Medium | Medium | Current file-scoped tracking can cause false positives when same variable name used in different methods. Low priority since collisions are rare. |
 | **Generic handling** | High | High | Track `List<User>` to infer that `.get()` returns `User`. High complexity (type parameter binding, variance). Defer until simpler features are done. |
 
-### Agent context router
+### Agent context router *(medium-term)*
 
 Query interface: "I want to change behavior X in Y context"
 
@@ -1738,7 +1748,7 @@ Token budget optimization: BFS until token limit hit, sorted by (edge confidence
 * 🟪 Coverage report parsing for test summary
 * 🟪 Multi-language documentation summarization
 
-### Additional output views
+### Additional output views *(near-term)*
 
 Beyond `behavior_map.json` (the current output), future views compiled from the IR:
 
@@ -1747,14 +1757,14 @@ Beyond `behavior_map.json` (the current output), future views compiled from the 
 * 🟪 **sarif.json** — SARIF 2.1 compatible findings for integration with GitHub Code Scanning, GitLab SAST
 * 🟪 **Flow specs** — Named, traceable feature flows (e.g., "Signup pipeline": route → handler → validation → database → email notification). Each flow includes entry/exit points, all nodes/edges in path, invariants, and tests covering the flow.
 
-### Additional linkers
+### Additional linkers *(near-term)*
 
 * 🟪 **Constant propagation** for dynamic routes (`BASE_URL + "/users"`)
 * 🟪 **Middleware/proxy rewriting** detection
 
-### Incremental analysis
+### Incremental analysis *(not on roadmap)*
 
-**Not on roadmap.** This is an 18+ month effort minimum:
+This is an 18+ month effort minimum:
 - Dependency tracking (which symbols affect which)
 - Invalidation propagation (change X → re-analyze Y, Z)
 - Cross-file type inference updates
@@ -1767,14 +1777,16 @@ TypeScript incremental took ~3 years, rust-analyzer ~2 years.
 - Partial re-analysis: Re-analyze changed files + direct importers only
 - Accept latency: Full analysis on deep queries is OK with progress bars
 
-### Performance targets (with high-fidelity analysis)
+### Scope and constraints
+
+**Performance targets (with high-fidelity analysis):**
 
 * **Small repo** (<100 files): <10 seconds
 * **Medium repo** (~500 files): <60 seconds (2x current due to type checking)
 * **Large repo** (2000+ files): <5 minutes full analysis
 * **Context router query**: <2 seconds for typical slice assembly
 
-### Complexity acknowledgment
+**Complexity acknowledgment:**
 
 * **Natural language query parsing** requires embedding models + semantic search
 * **Dataflow slicing** is NP-hard in general; even heuristic solutions are multi-month research
@@ -1782,14 +1794,14 @@ TypeScript incremental took ~3 years, rust-analyzer ~2 years.
 
 If dataflow proves infeasible, agent-guided slicing (agents specify hops/filters via DSL) is a simpler alternative.
 
-### Non-goals for future work
+**Non-goals for future work:**
 
 * "Prove programs correct" in the formal methods sense
 * Real-time collaboration or social features
 * Hosted SaaS offering or marketplace monetization
 * IDE integration (LSP server) or autonomous code editing
 
-### Testing & CI enhancements
+### Testing & CI enhancements *(near-term)*
 
 **🟪 Longitudinal analysis ("slow thinking"):**
 
