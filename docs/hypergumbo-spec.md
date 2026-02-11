@@ -361,11 +361,20 @@ Public outputs are **compiled views** from this IR:
 
 **Design principle:** Strong passes (tsserver, pyright) added later will enhance the IR without breaking the behavior map view.
 
-## 7) Output: "Repo Behavior Map" JSON
+## 7) Output formats
+
+Hypergumbo produces two output formats from the same analysis pipeline:
+
+- **Behavior Map JSON** (`hypergumbo run`): Full structured graph written to a file. Designed for programmatic consumption by agents and tooling.
+- **Sketch** (default mode): Token-budgeted Markdown summary written to stdout. Designed for pasting into LLM chat interfaces.
+
+Both are compiled views of the internal representation defined in [§6](#6-internal-representation).
+
+### Behavior Map JSON
 
 Single file: `hypergumbo.results.json`
 
-### Top-level structure
+#### Top-level structure
 ```json
 {
   "schema_version": "0.2.1",
@@ -386,7 +395,7 @@ Single file: `hypergumbo.results.json`
 }
 ```
 
-### JSON Schema (Auto-Generated)
+#### JSON Schema (Auto-Generated)
 
 A formal JSON Schema is available at `docs/schema.json`. This schema is **auto-generated** from the Python dataclasses in `packages/hypergumbo-core/src/hypergumbo_core/ir.py` to ensure it stays in sync with the implementation.
 
@@ -409,13 +418,13 @@ The schema follows JSON Schema Draft 2020-12 and can be used for:
 - Check `limits.partial_results_reason` for details
 - Agents should decide whether partial results are sufficient for their use case
 
-### Confidence scoring
+#### Confidence scoring
 
 The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring algorithm. Consumers should treat unknown evidence types as 0.30 confidence.
 
 For the deterministic scoring algorithm (language-specific base scores, evidence types, contextual adjustments), see [§10 Confidence calculation](#confidence-calculation-deterministic-algorithm).
 
-### analysis_runs[] — provenance tracking
+#### analysis_runs[] — provenance tracking
 ```json
 {
   "execution_id": "uuid:abc-def-789...",
@@ -452,7 +461,7 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
 ]
 ```
 
-### profile — repo characteristics
+#### profile — repo characteristics
 
 ```json
 {
@@ -467,7 +476,7 @@ For the deterministic scoring algorithm (language-specific base scores, evidence
 
 **LOC definition:** Lines of code counts non-empty lines in files matching language extensions. Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§13 File Role Classification](#file-role-classification) for the proposed taxonomy that would also exclude pure data files from LOC counts.
 
-### nodes[] — definitions, files, endpoints
+#### nodes[] — definitions, files, endpoints
 
 **Node fields:**
 ```json
@@ -520,7 +529,7 @@ Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields
 * `class` — class definition
 * `endpoint` — HTTP route, IPC handler, CLI entrypoint
 
-### edges[] — relationships
+#### edges[] — relationships
 
 **Edge fields:**
 ```json
@@ -617,7 +626,7 @@ Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields
 * `instantiates` — class instantiation (constructor call)
 * `manual` — user-annotated
 
-### features[] — named slices
+#### features[] — named slices
 
 **Feature structure:**
 
@@ -644,7 +653,7 @@ Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields
 
 **Query reproducibility:** Same query on same code → same feature ID → enables diff across commits.
 
-### metrics — optional counts
+#### metrics — optional counts
 
 ```json
 {
@@ -663,7 +672,7 @@ Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields
 }
 ```
 
-### supply_chain_summary — classification overview
+#### supply_chain_summary — classification overview
 
 ```json
 {
@@ -681,7 +690,7 @@ Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields
 
 **derived_skipped.paths**: Capped at 10 entries. Full list available via `--verbose` flag.
 
-### limits — explicit gaps
+#### limits — explicit gaps
 
 ```json
 {
@@ -720,9 +729,9 @@ Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields
   - `"Critical error: catalog.json could not be loaded"`
   - `"User interrupted: Ctrl-C received"`
 
-### sketch — Human/LLM-readable summary
+### Sketch (Markdown)
 
-Markdown output to stdout (not a file). Designed for pasting into LLM chat interfaces. See [ADR-0005](adr/0005-sketch-budget-allocation.md) for detailed budget allocation and section composition.
+Markdown output to stdout (not a file). This is the default output mode. Designed for pasting into LLM chat interfaces. See [ADR-0005](adr/0005-sketch-budget-allocation.md) for detailed budget allocation and section composition.
 
 **Section order (in priority for truncation):**
 
