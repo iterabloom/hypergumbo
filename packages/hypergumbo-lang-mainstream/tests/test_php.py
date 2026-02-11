@@ -464,6 +464,54 @@ class Caller {
         assert inferred[0].confidence < 0.9  # Lower confidence for inferred
 
 
+class TestPhpInferredMethodNoFanout:
+    """Bare name fallback should emit at most one edge, not N per candidate."""
+
+    def test_inferred_method_no_fanout(self, tmp_path: Path) -> None:
+        """Multiple classes with same method name: emit at most 1 inferred edge.
+
+        When multiple classes define the same method name and a call site can't
+        be resolved via type info, the fallback should emit a single best-guess
+        edge rather than fanning out to all candidates.
+        """
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "app.php").write_text("""<?php
+class CatsService {
+    public function create($dto) {
+        return $dto;
+    }
+}
+
+class UsersService {
+    public function create($dto) {
+        return $dto;
+    }
+}
+
+class OrdersService {
+    public function create($dto) {
+        return $dto;
+    }
+}
+
+class Handler {
+    public function run($unknown) {
+        return $unknown->create(["name" => "test"]);
+    }
+}
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        inferred = [e for e in call_edges if e.evidence_type == "ast_method_inferred"]
+        # Should emit at most 1 edge, NOT 3 (one per candidate)
+        assert len(inferred) <= 1
+        if inferred:
+            assert "create" in inferred[0].dst
+
+
 class TestPhpCrossFileResolution:
     """Tests for cross-file call resolution."""
 

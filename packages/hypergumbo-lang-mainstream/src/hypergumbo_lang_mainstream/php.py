@@ -748,22 +748,22 @@ def _extract_edges(
                             )
                             edges.append(edge)
                     else:
-                        # Try to resolve to any method with this name
+                        # Try to resolve to any method with this name.
+                        # Emit only one edge to the best candidate (not all
+                        # candidates) to avoid name-collision fanout.
                         lookup_result = method_resolver.lookup(method_name)
-                        if lookup_result.found and lookup_result.candidates:
-                            # Use lower confidence since we can't be sure of the type
-                            for target_sym in lookup_result.candidates:
-                                edge = Edge.create(
-                                    src=current_function.id,
-                                    dst=target_sym.id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    confidence=0.60 * lookup_result.confidence,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    evidence_type="ast_method_inferred",
-                                )
-                                edges.append(edge)
+                        if lookup_result.found and lookup_result.symbol is not None:
+                            edge = Edge.create(
+                                src=current_function.id,
+                                dst=lookup_result.symbol.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                confidence=0.60 * lookup_result.confidence,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="ast_method_inferred",
+                            )
+                            edges.append(edge)
 
         # Static method calls: ClassName::method()
         elif node.type == "scoped_call_expression":

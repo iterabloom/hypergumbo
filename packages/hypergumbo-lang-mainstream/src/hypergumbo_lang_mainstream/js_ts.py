@@ -2558,22 +2558,24 @@ def _extract_edges(
                                 edges.append(edge)
                                 edge_added = True
 
-                        # Case 4: Fallback - method name match with low confidence
+                        # Case 4: Fallback - method name match with low confidence.
+                        # Emit only one edge to the best candidate (not all
+                        # candidates) to avoid name-collision fanout where
+                        # every class with the same method name gets linked.
                         if not edge_added:
                             lookup_result = method_resolver.lookup(method_name)
-                            if lookup_result.found and lookup_result.candidates:
-                                for target_sym in lookup_result.candidates:
-                                    edge = Edge.create(
-                                        src=current_function.id,
-                                        dst=target_sym.id,
-                                        edge_type="calls",
-                                        line=node.start_point[0] + 1 + line_offset,
-                                        origin=PASS_ID,
-                                        origin_run_id=run.execution_id,
-                                        evidence_type="ast_method_inferred",
-                                        confidence=0.60 * lookup_result.confidence,
-                                    )
-                                    edges.append(edge)
+                            if lookup_result.found and lookup_result.symbol is not None:
+                                edge = Edge.create(
+                                    src=current_function.id,
+                                    dst=lookup_result.symbol.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1 + line_offset,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    evidence_type="ast_method_inferred",
+                                    confidence=0.60 * lookup_result.confidence,
+                                )
+                                edges.append(edge)
 
         # new ClassName() or new namespace.ClassName()
         elif node.type == "new_expression":

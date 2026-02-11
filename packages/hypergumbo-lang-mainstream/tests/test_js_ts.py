@@ -1829,6 +1829,53 @@ function main(logger) {
         assert "writeMessage" in inferred_calls[0].dst
         assert inferred_calls[0].confidence == 0.60
 
+    def test_inferred_method_no_fanout(self, tmp_path: Path) -> None:
+        """Bare name fallback emits at most one edge, not N edges for N candidates.
+
+        When multiple classes define the same method name and a call site can't
+        be resolved via type info, Case 4 should emit a single best-guess edge
+        rather than fanning out to all candidates. This prevents false positives
+        in reverse slicing (e.g., asking "who calls CatsController.create?"
+        should not return every other 'create' method in the codebase).
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+class CatsService {
+    create(dto) {
+        return dto;
+    }
+}
+
+class UsersService {
+    create(dto) {
+        return dto;
+    }
+}
+
+class OrdersService {
+    create(dto) {
+        return dto;
+    }
+}
+
+function handler(unknown) {
+    unknown.create({name: "test"});
+}
+"""
+        (tmp_path / "app.js").write_text(code)
+
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        inferred_calls = [
+            e for e in call_edges if e.evidence_type == "ast_method_inferred"
+        ]
+        # Should emit at most 1 edge, NOT 3 (one per candidate)
+        assert len(inferred_calls) <= 1
+        if inferred_calls:
+            assert "create" in inferred_calls[0].dst
+
     def test_new_class_instantiation(self, tmp_path: Path) -> None:
         """Detects new ClassName() instantiation."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
