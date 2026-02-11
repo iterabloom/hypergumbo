@@ -9,9 +9,12 @@ How It Works
 ------------
 Ranking uses multiple signals combined:
 
-1. **Centrality**: In-degree centrality measures how many other symbols
-   reference a given symbol. Symbols called by many others are considered
-   more important ("authority" in the codebase).
+1. **Centrality**: Bidirectional centrality uses in-degree as the base
+   signal (how many other symbols reference this one), boosted by a
+   log-scaled out-degree factor.  This rewards *connectors* — symbols
+   that are both depended-on and depend-on-others (e.g., QuerySet, Model)
+   — over pure *sinks* (e.g., exception classes, utility decorators) that
+   have high in-degree but near-zero out-degree.
 
 2. **Supply Chain Tier Weighting**: First-party code (tier 1) gets a 2x
    boost, internal dependencies (tier 2) get 1.5x, external dependencies
@@ -24,8 +27,9 @@ Ranking uses multiple signals combined:
 
 Why These Heuristics
 --------------------
-- **Centrality** captures structural importance: heavily-called utilities,
-  core abstractions, and integration points naturally score high.
+- **Centrality** captures structural importance: core abstractions and
+  integration points (connectors) naturally score higher than pure sinks
+  (exception classes, utility decorators imported everywhere).
 
 - **Tier weighting** reflects user intent: when exploring a codebase, you
   usually care more about the project's own code than vendored libraries.
@@ -51,6 +55,7 @@ For combined ranking with all heuristics:
 from __future__ import annotations
 
 import logging
+import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -111,10 +116,19 @@ def compute_centrality(
     symbols: List[Symbol],
     edges: List[Edge],
 ) -> Dict[str, float]:
-    """Compute symbol importance using in-degree centrality.
+    """Compute symbol importance using bidirectional centrality.
 
-    Symbols called by many others are considered more important.
-    This uses in-degree as a simple proxy for "authority" in the codebase.
+    Uses in-degree as the base signal (symbols called by many others are
+    important), boosted by a log-scaled out-degree factor.  This rewards
+    *connectors* — symbols that are both depended-on and depend-on-others —
+    over pure *sinks* (exception classes, utility decorators) that have high
+    in-degree but near-zero out-degree.
+
+    The formula is::
+
+        raw_score = in_degree * (1 + ln(1 + out_degree))
+
+    Scores are normalized to 0-1 after computation.
 
     Args:
         symbols: List of symbols to rank.
@@ -125,19 +139,29 @@ def compute_centrality(
     """
     symbol_ids = {s.id for s in symbols}
     in_degree: Dict[str, int] = dict.fromkeys(symbol_ids, 0)
+    out_degree: Dict[str, int] = dict.fromkeys(symbol_ids, 0)
 
     for edge in edges:
-        # Edge uses 'dst' for target in IR
         target = edge.dst
         if target and target in in_degree:
             in_degree[target] += 1
+        source = edge.src
+        if source and source in out_degree:
+            out_degree[source] += 1
+
+    # Bidirectional score: in-degree boosted by log-scaled out-degree
+    scores: Dict[str, float] = {}
+    for sid in symbol_ids:
+        ind = in_degree[sid]
+        outd = out_degree[sid]
+        scores[sid] = ind * (1 + math.log(1 + outd))
 
     # Normalize to 0-1 range
-    max_degree = max(in_degree.values()) if in_degree else 1
-    if max_degree == 0:
-        max_degree = 1
+    max_score = max(scores.values()) if scores else 1.0
+    if max_score == 0:
+        max_score = 1.0
 
-    return {sid: count / max_degree for sid, count in in_degree.items()}
+    return {sid: score / max_score for sid, score in scores.items()}
 
 
 def apply_tier_weights(

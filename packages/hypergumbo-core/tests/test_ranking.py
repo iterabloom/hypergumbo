@@ -110,12 +110,12 @@ class TestComputeCentrality:
         assert result[caller3.id] == 0.0
 
     def test_normalization(self):
-        """Centrality scores are normalized to 0-1 range."""
+        """Centrality scores are normalized to 0-1 range with correct ordering."""
         a = make_symbol("a")
         b = make_symbol("b")
         c = make_symbol("c")
 
-        # b gets 2 incoming, c gets 1 incoming
+        # b gets 2 incoming (out=0), c gets 1 incoming (out=1 via c→b), a has 0 incoming (out=2)
         edges = [
             make_edge(a.id, b.id),
             make_edge(c.id, b.id),
@@ -124,9 +124,14 @@ class TestComputeCentrality:
 
         result = compute_centrality([a, b, c], edges)
 
-        assert result[b.id] == 1.0  # max (2/2)
-        assert result[c.id] == 0.5  # 1/2
-        assert result[a.id] == 0.0  # 0/2
+        # b has highest raw score (in=2), still max
+        assert result[b.id] == pytest.approx(1.0)
+        # c has lower in-degree (1) but gets out-degree boost from c→b
+        assert 0 < result[c.id] < 1.0
+        # b still outranks c (2 in-degree > 1 in-degree, even with c's out-degree boost)
+        assert result[b.id] > result[c.id]
+        # a has zero in-degree → zero centrality
+        assert result[a.id] == 0.0
 
     def test_edge_to_unknown_symbol_ignored(self):
         """Edges pointing to non-existent symbols are ignored."""
@@ -136,6 +141,88 @@ class TestComputeCentrality:
         result = compute_centrality([foo], [edge])
 
         assert result[foo.id] == 0.0
+
+
+class TestBidirectionalCentrality:
+    """Tests for bidirectional centrality boost.
+
+    Nodes with both high in-degree and high out-degree (connectors) should
+    rank above pure sinks (high in-degree, near-zero out-degree) like
+    exception classes and utility decorators.
+    """
+
+    def test_connector_outranks_sink(self):
+        """Node with both in and out edges outranks pure sink with higher in-degree.
+
+        Simulates: cached_property (in=10, out=0) vs QuerySet (in=6, out=8).
+        QuerySet should rank higher because it's a connector.
+        """
+        # "Sink" node: high in-degree, zero out-degree (like cached_property)
+        sink = make_symbol("cached_property")
+        # "Connector" node: moderate in-degree, high out-degree (like QuerySet)
+        connector = make_symbol("QuerySet")
+        # Callers of sink (10 callers)
+        sink_callers = [make_symbol(f"sink_caller_{i}") for i in range(10)]
+        # Callers of connector (6 callers)
+        conn_callers = [make_symbol(f"conn_caller_{i}") for i in range(6)]
+        # Callees of connector (8 callees)
+        conn_callees = [make_symbol(f"conn_callee_{i}") for i in range(8)]
+
+        edges = []
+        for caller in sink_callers:
+            edges.append(make_edge(caller.id, sink.id))
+        for caller in conn_callers:
+            edges.append(make_edge(caller.id, connector.id))
+        for callee in conn_callees:
+            edges.append(make_edge(connector.id, callee.id))
+
+        all_symbols = [sink, connector] + sink_callers + conn_callers + conn_callees
+
+        result = compute_centrality(all_symbols, edges)
+
+        # Connector should outrank sink despite lower in-degree
+        assert result[connector.id] > result[sink.id]
+
+    def test_pure_sink_still_has_nonzero_score(self):
+        """Pure sink nodes (no outgoing edges) still get nonzero centrality."""
+        sink = make_symbol("Error")
+        caller = make_symbol("caller")
+        edges = [make_edge(caller.id, sink.id)]
+
+        result = compute_centrality([sink, caller], edges)
+
+        assert result[sink.id] > 0
+
+    def test_zero_in_degree_has_zero_centrality(self):
+        """Nodes with zero in-degree have zero centrality regardless of out-degree."""
+        source = make_symbol("source")
+        target = make_symbol("target")
+        edges = [make_edge(source.id, target.id)]
+
+        result = compute_centrality([source, target], edges)
+
+        # source has 0 in-degree, so centrality should be 0
+        assert result[source.id] == 0.0
+
+    def test_existing_normalization_preserved(self):
+        """Max centrality is still normalized to 1.0."""
+        a = make_symbol("a")
+        b = make_symbol("b")
+        c = make_symbol("c")
+
+        # b gets 2 incoming + has 1 outgoing
+        # c gets 1 incoming + no outgoing
+        edges = [
+            make_edge(a.id, b.id),
+            make_edge(c.id, b.id),
+            make_edge(a.id, c.id),
+            make_edge(b.id, a.id),  # b calls a (gives b out-degree 1)
+        ]
+
+        result = compute_centrality([a, b, c], edges)
+
+        # Max should still be 1.0
+        assert max(result.values()) == pytest.approx(1.0)
 
 
 class TestApplyTierWeights:
