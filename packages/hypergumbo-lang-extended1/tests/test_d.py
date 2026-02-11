@@ -502,3 +502,91 @@ void error(int code) {
         assert "errors.d" in error_call.dst and "unrelated" not in error_call.dst, (
             f"error() should resolve to errors.d (imported module), got: {error_call.dst}"
         )
+
+
+class TestDImportEdgeResolution:
+    """Tests for resolving D import edges to actual module symbols."""
+
+    def test_internal_import_resolved_to_module_symbol(self, temp_repo: Path) -> None:
+        """Import of a module defined in the repo resolves to that module's symbol ID."""
+        (temp_repo / "utils.d").write_text('''
+module utils;
+
+void helper() {}
+''')
+        (temp_repo / "main.d").write_text('''
+module main;
+
+import utils;
+
+void run() { helper(); }
+''')
+
+        result = analyze_d(temp_repo)
+
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        utils_imports = [e for e in import_edges if "utils" in e.dst]
+
+        # Should have at least one import edge for 'utils'
+        assert len(utils_imports) >= 1
+
+        # The dst should point to the actual module symbol, NOT d:?:utils:module
+        for edge in utils_imports:
+            assert "?" not in edge.dst, (
+                f"Import edge dst should be resolved, got unresolved: {edge.dst}"
+            )
+            assert "utils.d" in edge.dst, (
+                f"Import edge should point to utils.d module, got: {edge.dst}"
+            )
+
+    def test_external_import_stays_unresolved(self, temp_repo: Path) -> None:
+        """Import of a module NOT in the repo stays unresolved (d:?:...)."""
+        (temp_repo / "main.d").write_text('''
+module main;
+
+import std.stdio;
+
+void run() {}
+''')
+
+        result = analyze_d(temp_repo)
+
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        stdio_imports = [e for e in import_edges if "std.stdio" in e.dst]
+
+        assert len(stdio_imports) >= 1
+        # External imports should remain unresolved
+        for edge in stdio_imports:
+            assert "?" in edge.dst, (
+                f"External import should be unresolved (d:?:...), got: {edge.dst}"
+            )
+
+    def test_dotted_module_import_resolved(self, temp_repo: Path) -> None:
+        """Import of a dotted module name (pkg.sub) resolves when present."""
+        sub = temp_repo / "pkg"
+        sub.mkdir()
+        (sub / "math.d").write_text('''
+module pkg.math;
+
+int add(int a, int b) { return a + b; }
+''')
+        (temp_repo / "main.d").write_text('''
+module main;
+
+import pkg.math;
+
+void run() { add(1, 2); }
+''')
+
+        result = analyze_d(temp_repo)
+
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        math_imports = [e for e in import_edges if "math" in e.dst]
+
+        assert len(math_imports) >= 1
+        # Should be resolved to the actual module
+        resolved = [e for e in math_imports if "?" not in e.dst]
+        assert len(resolved) >= 1, (
+            f"Dotted module import should be resolved, edges: {[e.dst for e in math_imports]}"
+        )
+        assert any("pkg/math.d" in e.dst or "pkg.math" in e.dst for e in resolved)

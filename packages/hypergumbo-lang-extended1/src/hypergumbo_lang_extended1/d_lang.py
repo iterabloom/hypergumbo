@@ -155,8 +155,18 @@ def _process_module_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> 
     ctx.symbols.append(_make_symbol(ctx, node, mod_name, "module"))
 
 
-def _process_import_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
-    """Process an import declaration."""
+def _process_import_declaration(
+    ctx: _FileContext,
+    node: "tree_sitter.Node",
+    module_registry: dict[str, str] | None = None,
+) -> None:
+    """Process an import declaration.
+
+    When *module_registry* maps module names to their symbol IDs, the
+    dst of the import edge is resolved to the actual module symbol.
+    Otherwise, the dst falls back to the unresolved ``d:?:name:module``
+    format used for external / standard-library imports.
+    """
     # Find the imported module
     imported = _find_child_by_type(node, "imported")
     if not imported:
@@ -167,14 +177,23 @@ def _process_import_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> 
         return  # pragma: no cover - defensive
 
     import_name = _node_text(fqn, ctx.source)
+
+    # Resolve to actual module symbol if available
+    if module_registry and import_name in module_registry:
+        dst = module_registry[import_name]
+        confidence = 0.95
+    else:
+        dst = f"d:?:{import_name}:module"
+        confidence = 0.9
+
     ctx.edges.append(
         Edge(
             id=f"edge:d:{uuid.uuid4().hex[:12]}",
             src=ctx.file_stable_id,
-            dst=f"d:?:{import_name}:module",
+            dst=dst,
             edge_type="imports",
             line=node.start_point[0] + 1,
-            confidence=0.9,
+            confidence=confidence,
             origin=PASS_ID,
             origin_run_id=ctx.run_id,
         )
@@ -477,6 +496,12 @@ def analyze_d(repo_root: Path) -> DAnalysisResult:
         # Store for pass 2
         parsed_files.append((rel_path, source, tree, file_stable_id, import_aliases, imported_modules))
 
+    # Build module name → symbol ID mapping for import edge resolution.
+    # Module symbols have kind="module" and name like "dmd.lexer".
+    module_registry: dict[str, str] = {
+        s.name: s.id for s in symbols if s.kind == "module"
+    }
+
     # Create resolver from global registry
     resolver = NameResolver(global_symbol_registry)
 
@@ -499,7 +524,7 @@ def analyze_d(repo_root: Path) -> DAnalysisResult:
         for node in iter_tree(tree.root_node):  # type: ignore
             # Process imports
             if node.type == "import_declaration":
-                _process_import_declaration(ctx, node)
+                _process_import_declaration(ctx, node, module_registry)
 
             # Process function calls
             elif node.type == "call_expression":
