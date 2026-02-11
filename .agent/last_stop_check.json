@@ -1,11 +1,10 @@
 {
-  "last_completed_utc": "2026-02-11T15:04:57Z",
+  "last_completed_utc": "2026-02-11T16:40:00Z",
   "branch": "dev",
-  "last_pr": 1001,
+  "last_pr": 1004,
   "last_pr_state": "merged",
   "pending_hard_todos": 0,
   "pending_soft_todos": 0,
   "unfixed_invariants": 0,
-  "notes": "Reflection complete. DEEP priorities 2-5 assessed good (Feb 10 notebook). Next: (1) DEEP priority 6 \u2014 run bakeoff-features-reflect for LLM-driven developer usefulness assessment. (2) DEEP priority 7 \u2014 investigate new cross-language linker opportunities on polyglot repos (e.g. Python-calling-Rust via PyO3/cffi, Ruby-calling-C via FFI). (3) If bakeoff reveals specific gaps, implement fixes via TDD.",
-  "guidance_file": "/home/jgstern_agent/hypergumbo_lab_notebook/guidance_log/stop_guidance_02112026_0557.md"
+  "notes": "PR#1004 fix name-collision edge fanout in JS/TS and PHP merged. DEEP bakeoff-features-reflect completed for cohort 7 iter 3 (Django PARTIALLY_USEFUL, DMD NOT_USEFUL, NestJS PARTIALLY_USEFUL). Next priorities from reflection: (1) test entrypoint filtering/demotion (DMD 98% test mains), (2) inheritance-aware centrality (Django Model/View/Form underranked), (3) raise default min_confidence in slice to 0.5."
 }

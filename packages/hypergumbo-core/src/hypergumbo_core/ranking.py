@@ -278,11 +278,16 @@ def rank_symbols(
     # Build lookup for filtering edges
     symbol_path_by_id = {s.id: s.path for s in symbols}
 
-    # Filter edges if requested
+    # Filter edges if requested.  Structural edges (extends, implements)
+    # are always preserved because they reflect architectural importance
+    # of the *target* (base class / interface), regardless of whether the
+    # *source* lives in a test file.
+    _STRUCTURAL_EDGE_TYPES = {"extends", "implements"}
     if exclude_test_edges:
         filtered_edges = [
             e for e in edges
-            if not _is_test_path(symbol_path_by_id.get(e.src, ''))
+            if e.edge_type in _STRUCTURAL_EDGE_TYPES
+            or not _is_test_path(symbol_path_by_id.get(e.src, ''))
         ]
     else:
         filtered_edges = list(edges)

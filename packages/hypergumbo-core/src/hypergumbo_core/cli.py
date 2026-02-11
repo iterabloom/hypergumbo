@@ -2381,12 +2381,17 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         src = edge.get("src", "")
         dst = edge.get("dst", "")
 
-        # If excluding tests, skip edges involving test files
+        # If excluding tests, skip edges involving test files.
+        # Structural edges (extends, implements) are always preserved
+        # because they reflect architectural importance of the target
+        # (base class / interface), regardless of where the source lives.
         if exclude_tests:
-            src_path = node_paths.get(src, _extract_path_from_symbol_id(src))
-            dst_path = node_paths.get(dst, _extract_path_from_symbol_id(dst))
-            if _is_test_path(src_path) or _is_test_path(dst_path):
-                continue
+            edge_type = edge.get("type", "")
+            if edge_type not in ("extends", "implements"):
+                src_path = node_paths.get(src, _extract_path_from_symbol_id(src))
+                dst_path = node_paths.get(dst, _extract_path_from_symbol_id(dst))
+                if _is_test_path(src_path) or _is_test_path(dst_path):
+                    continue
 
         if src in node_ids:
             out_degree[src] = out_degree.get(src, 0) + 1

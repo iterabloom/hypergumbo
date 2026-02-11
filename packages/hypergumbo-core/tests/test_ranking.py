@@ -480,6 +480,81 @@ class TestRankSymbols:
         assert prod_ranked.raw_centrality > 0
 
 
+    def test_exclude_test_edges_preserves_extends(self):
+        """Inheritance edges from test files to production base classes survive test filtering.
+
+        When exclude_test_edges=True, call edges from test files are excluded.
+        But extends/implements edges should be preserved because they indicate
+        architectural importance of the base class, regardless of where the
+        subclass lives. Without this, Django's Model (degree 5) is massively
+        underranked because most subclasses are in test files.
+        """
+        base_class = make_symbol("Model", path="src/models/base.py", kind="class")
+        # Multiple test subclasses (like Django's test models)
+        test_sub1 = make_symbol("TestModel1", path="tests/test_models.py", kind="class")
+        test_sub2 = make_symbol("TestModel2", path="tests/test_other.py", kind="class")
+        test_sub3 = make_symbol("TestModel3", path="tests/test_views.py", kind="class")
+        prod_sub = make_symbol("UserModel", path="src/models/user.py", kind="class")
+        # A utility function called by prod code (to create a non-trivial max)
+        util_fn = make_symbol("helper", path="src/utils.py")
+
+        # Extends edges: 3 from test, 1 from production
+        edges = [
+            make_edge(test_sub1.id, base_class.id, edge_type="extends"),
+            make_edge(test_sub2.id, base_class.id, edge_type="extends"),
+            make_edge(test_sub3.id, base_class.id, edge_type="extends"),
+            make_edge(prod_sub.id, base_class.id, edge_type="extends"),
+            # Call edges: 1 from test (should be excluded), 3 from prod to util
+            make_edge(test_sub1.id, util_fn.id, edge_type="calls"),
+            make_edge(prod_sub.id, util_fn.id, edge_type="calls"),
+            make_edge(base_class.id, util_fn.id, edge_type="calls"),
+            make_edge(test_sub2.id, util_fn.id, edge_type="calls"),
+        ]
+
+        all_symbols = [base_class, test_sub1, test_sub2, test_sub3, prod_sub, util_fn]
+
+        result = rank_symbols(all_symbols, edges, exclude_test_edges=True)
+
+        base_ranked = next(r for r in result if r.symbol.name == "Model")
+        util_ranked = next(r for r in result if r.symbol.name == "helper")
+
+        # Model should rank higher than helper because it has 4 extends edges
+        # (all preserved) vs helper's 2 production call edges (test calls excluded).
+        # Without the fix, Model only gets 1 extends edge (from prod_sub) and
+        # helper gets 2 call edges, making helper rank higher.
+        assert base_ranked.rank < util_ranked.rank, (
+            f"Model (rank {base_ranked.rank}) should rank above helper "
+            f"(rank {util_ranked.rank}) because extends edges from test files "
+            f"should be preserved"
+        )
+
+    def test_exclude_test_edges_preserves_implements(self):
+        """Implements edges from test files also survive test filtering."""
+        interface = make_symbol("Repository", path="src/repository.py", kind="interface")
+        test_impl = make_symbol("MockRepo", path="tests/mocks.py", kind="class")
+        prod_impl = make_symbol("SqlRepo", path="src/sql_repo.py", kind="class")
+        # Extra symbol with more production call edges to compare against
+        util_fn = make_symbol("connect", path="src/db.py")
+
+        edges = [
+            make_edge(test_impl.id, interface.id, edge_type="implements"),
+            make_edge(prod_impl.id, interface.id, edge_type="implements"),
+            # Call edges from production code to util
+            make_edge(prod_impl.id, util_fn.id, edge_type="calls"),
+        ]
+
+        result = rank_symbols(
+            [interface, test_impl, prod_impl, util_fn],
+            edges,
+            exclude_test_edges=True,
+        )
+
+        iface_ranked = next(r for r in result if r.symbol.name == "Repository")
+        # Repository should have in-degree 2 (both implements edges preserved)
+        # not just 1 (only production implements edge)
+        assert iface_ranked.raw_centrality == 1.0
+
+
 class TestRankFiles:
     """Tests for rank_files function."""
 
