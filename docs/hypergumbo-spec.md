@@ -127,7 +127,7 @@ Hypergumbo supports 104 languages via tree-sitter grammars. All are included in 
 * 🟩 **Kotlin/Scala/Swift** (tree-sitter)
 
 **Additional languages (symbol extraction):**
-* 🟩 Bash, Clojure, Dart, Elm, Erlang, F#, Fortran, Haskell, Julia, Lua, Nim, OCaml, Perl, R, Zig, and 30+ more
+* 🟩 Bash, Clojure, Dart, Elm, Erlang, F#, Fortran, Haskell, Julia, Lua, Nim, OCaml, Perl, R, Zig, and many more — see [LANGUAGES.md](LANGUAGES.md) for the full list
 
 **Configuration/data formats:**
 * 🟩 JSON, YAML, TOML, XML, HCL/Terraform, Dockerfile, Makefile, CMake, SQL, GraphQL, Protobuf, Thrift
@@ -138,13 +138,14 @@ Hypergumbo supports 104 languages via tree-sitter grammars. All are included in 
 > The analyzer is "best-effort, explicitly limited," but produces consistent structures.
 
 ### Dependency strategy
-* **All-in-one package**: `pip install hypergumbo` includes Python AST + 40+ tree-sitter grammars as standard dependencies
-* **Tree-sitter grammars included**: JavaScript, TypeScript, PHP, C, C++, Java, Go, Rust, Ruby, Kotlin, Swift, Scala, Lua, Haskell, OCaml, Elixir, Dart, LaTeX, R, COBOL, and many more
+* **All-in-one package**: `pip install hypergumbo` includes Python AST + tree-sitter grammars for all supported languages as standard dependencies (see [LANGUAGES.md](LANGUAGES.md) for the full list)
+* **Tree-sitter grammars included**: JavaScript, TypeScript, PHP, C, C++, Java, Go, Rust, Ruby, Kotlin, Swift, Scala, Lua, Haskell, OCaml, Elixir, Dart, LaTeX, R, COBOL, and others
 * **Language pack**: `tree-sitter-language-pack` provides additional grammars (Elixir, COBOL, Dart, LaTeX, R)
 * **Build-from-source grammars**: Lean, Wolfram built from source in CI for languages lacking PyPI packages
 * **Fallback**: If a specific grammar fails to load, that language is skipped with explicit `limits.skipped_languages[]` logging
 * **Optional extras**:
   - `[embeddings]`: sentence-transformers for embedding-based config extraction
+
 ### Build strategy
 * Tree-sitter grammars with PyPI wheels are installed directly as dependencies
 * Grammars without PyPI packages (Lean, Wolfram) are built from source in CI (`scripts/build-source-grammars`)
@@ -1442,7 +1443,7 @@ The pattern system has two categories:
 - `config-conventions.yaml`: NPM/Maven/Cargo dependencies, Android components, TypeScript references
 - `library-exports.yaml`: Library entry point detection via exports from index files (JS/TS)
 
-**Framework patterns (82 files):** Loaded only when the framework is detected in profile. See `src/hypergumbo/frameworks/` for full list.
+**Framework patterns:** Loaded only when the framework is detected in profile. See [FRAMEWORKS.md](FRAMEWORKS.md) for the full list; YAML source is in `packages/hypergumbo-core/src/hypergumbo_core/frameworks/`.
 
 ### Pattern Types
 
@@ -1658,12 +1659,7 @@ Each AI coding tool has a different hook mechanism. Adapter scripts provide a co
 
 ### Invariant Status
 
-The invariant ledger (`.agent/invariant-ledger.md`) tracks discovered invariants. As of v1.1.0, all invariants (INV-001 through INV-006) are **FIXED**:
-
-- **INV-002** (`symbol_ref` gate) was fixed via deferred resolution in `resolve_deferred_symbol_refs()`
-- **INV-004** (route-handler edges) was fixed via the `route_handler` linker
-
-See [ADR-0008](adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for the full governance design rationale.
+The invariant ledger (`.agent/invariant-ledger.md`) is the authoritative source for discovered invariants and their current fix status. See [ADR-0008](adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for the full governance design rationale.
 
 ## 19) Future Work
 
@@ -1871,11 +1867,10 @@ This appendix covers release lifecycle, support windows, and deprecation timelin
 
 ### Example timeline
 
-* 2025-12: v0.5.0 ships (initial public release)
-* 2026-01-09: v0.9.1 ships (schema 0.2.0, YAML patterns)
-* Future: v1.1.0+ ships (first v1.x stable release)
-  - v0.x enters "previous major" (18-month clock starts)
-* 18 months after v1.x release: v0.x unsupported
+See `CHANGELOG.md` for the authoritative release history. The policy illustrated:
+
+* When a new MAJOR version ships, the previous MAJOR enters "previous major" support (18-month clock starts)
+* 18 months after the new MAJOR release, the old MAJOR becomes unsupported
 
 ## Appendix B: Telemetry & Privacy
 
