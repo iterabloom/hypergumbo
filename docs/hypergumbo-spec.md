@@ -38,14 +38,14 @@ For goals that were considered and rejected, see [Appendix D](#appendix-d-capsul
 
 ## 3) User experience (CLI)
 
+**Key principle:** Analysis execution requires no network or API keys (by default). Output is deterministic and reproducible given the same repo state. See [Appendix B](#appendix-b-telemetry--privacy) for the full privacy and telemetry policy.
+
 ### Install
 * `pipx install hypergumbo` (primary, includes all 104 language analyzers)
 * `pip install hypergumbo` (secondary)
 * `pip install hypergumbo[embeddings]` (optional embedding-based config extraction)
 
 ### Commands
-
-**Key principle:** Analysis execution requires no network or API keys (by default). Output is deterministic and reproducible given the same repo state. See [Appendix B](#appendix-b-telemetry--privacy) for the full privacy and telemetry policy.
 
 🟩 **`hypergumbo [path] [-t tokens]`** (default mode)
 Generates a token-budgeted Markdown sketch to stdout. Optimized for pasting into LLM chat interfaces.
@@ -135,12 +135,9 @@ Hypergumbo supports 104 languages via tree-sitter grammars. All are included in 
 **Markup:**
 * 🟩 HTML (script tag extraction), CSS, LaTeX, Markdown
 
-> The analyzer is "best-effort, explicitly limited," but produces consistent structures.
-
 ### Dependency strategy
 * **All-in-one package**: `pip install hypergumbo` includes Python AST + tree-sitter grammars for all supported languages as standard dependencies (see [LANGUAGES.md](LANGUAGES.md) for the full list)
-* **Tree-sitter grammars included**: JavaScript, TypeScript, PHP, C, C++, Java, Go, Rust, Ruby, Kotlin, Swift, Scala, Lua, Haskell, OCaml, Elixir, Dart, LaTeX, R, COBOL, and others
-* **Language pack**: `tree-sitter-language-pack` provides additional grammars (Elixir, COBOL, Dart, LaTeX, R)
+* **Grammar sources**: Most grammars are installed as individual PyPI packages (e.g., `tree-sitter-javascript`). A subset (Elixir, COBOL, Dart, LaTeX, R) come from `tree-sitter-language-pack`.
 * **Build-from-source grammars**: Lean, Wolfram built from source in CI for languages lacking PyPI packages
 * **Fallback**: If a specific grammar fails to load, that language is skipped with explicit `limits.skipped_languages[]` logging
 * **Optional extras**:
@@ -451,23 +448,9 @@ Detects HTTP route definitions for entrypoint detection.
 **Client-side linking:**
 Cross-language client→server matching (e.g., `fetch("/api/users")` → Flask handler) is not yet implemented. See [§19 Future Work](#19-future-work).
 
-### Language-Specific Detection Notes
+### Language-specific notes for cross-language linking
 
-**C analyzer detects:**
-* Functions, structs, typedefs, enums
-* Function calls (direct calls only, not function pointers)
-* `#include` edges (file → file)
-* JNI export patterns (`JNIEXPORT`, `JNICALL`, `Java_*` naming)
-* Macro definitions (as symbols, not expanded)
-
-**Java analyzer detects:**
-* Classes, interfaces, enums, annotations
-* Methods, constructors, fields
-* `implements` edges (class → interface)
-* `extends` edges (class → superclass, interface → superinterface)
-* `native` method declarations (for JNI linking)
-* Annotation detection (`@Override`, `@Deprecated`, servlet/JAX-RS annotations)
-* `instantiates` edges (constructor calls)
+The C analyzer detects JNI export patterns (`JNIEXPORT`, `JNICALL`, `Java_*` naming) and the Java analyzer detects `native` method declarations, both feeding into the JNI linker above. For full per-language analyzer capabilities, see [LANGUAGES.md](LANGUAGES.md).
 
 ### limits.cross_language — tracking unresolved links
 
@@ -1064,6 +1047,8 @@ Query format enables exact reproduction:
 
 Feature comparison across commits: same query → compare `node_ids`/`edge_ids` to detect changes.
 
+Supply chain tiers add two additional slicing capabilities: **tier filtering** (`--max-tier`) stops traversal at dependency boundaries, and **reverse slice class expansion** auto-includes member methods when slicing from a class entry. See [§14 Supply Chain Classification](#14-supply-chain-classification) for details.
+
 ## 11) Analysis guardrails
 
 ### Exclude patterns
@@ -1136,6 +1121,8 @@ def calculate_evidence_confidence(
 **Note**: Base scores are heuristic baselines (to be validated against benchmark suite). New evidence types can be added in minor versions.
 
 ## 13) Output reproducibility
+
+Reproducibility has two dimensions: **caching** ensures that re-running analysis on unchanged code returns the same result quickly, and **deterministic ordering** ensures that output is diffable across runs.
 
 ### Caching
 * Location: `~/.cache/hypergumbo/` (XDG-compliant; respects `XDG_CACHE_HOME` if set)
