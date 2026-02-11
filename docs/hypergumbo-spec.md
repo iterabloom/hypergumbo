@@ -249,7 +249,7 @@ class AnalysisRun:
     execution_id: str          # unique per run (uuid or hash of run_signature + started_at + repo_fingerprint)
     run_signature: str         # deterministic: hash of (pass_id, version, config_fingerprint, toolchain)
     repo_fingerprint: str      # hash of (git_head + dirty_files) or hash of (file_list + content_hashes)
-    pass: str                  # e.g., "python-ast-v1"
+    pass_id: str               # e.g., "python-ast-v1" (serialized as "pass" in JSON output)
     version: str               # e.g., "hypergumbo-0.1.0"
     toolchain: Dict            # {"name": "python", "version": "3.11.0"}
     config_fingerprint: str    # sha256 of effective config
