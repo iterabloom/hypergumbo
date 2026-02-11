@@ -326,7 +326,7 @@ def authenticate(username: str, password: str) -> User:
 # shape_id changes if control flow changed
 ```
 
-### Scheme versioning
+### Identity and provenance scheme versioning
 
 The exact algorithms for identity and provenance fields are governed by scheme identifiers in the output:
 * `stable_id_scheme`: identifies the algorithm/normalization used to compute `stable_id`
@@ -411,7 +411,7 @@ The schema follows JSON Schema Draft 2020-12 and can be used for:
 
 **DRY Principle:** The Python dataclasses (`Symbol`, `Edge`, `Span`, `AnalysisRun`) are the single source of truth. The JSON Schema and this spec document the *meaning* of fields; the dataclasses define the *structure*.
 
-**Scheme identifiers** (`stable_id_scheme`, `shape_id_scheme`, `repo_fingerprint_scheme`): Identify the algorithms used to compute their respective fields. See [§6 Scheme versioning](#scheme-versioning) for definitions and the versioning mandate.
+**Scheme identifiers** (`stable_id_scheme`, `shape_id_scheme`, `repo_fingerprint_scheme`): Identify the algorithms used to compute their respective fields. See [§6 Identity and provenance scheme versioning](#identity-and-provenance-scheme-versioning) for definitions and the versioning mandate.
 
 **analysis_incomplete** (boolean, default: false):
 - Set to `true` if analysis terminated early due to errors, timeouts, or resource limits
@@ -1591,7 +1591,7 @@ This section documents known limitations and risks of the current analysis syste
 | Import tracking partial | Low | Only Python and Go fully utilize import tracking for cross-file disambiguation. See [details below](#import-tracking-for-disambiguation). |
 | ID collisions in edge cases | Low | Location-based IDs can collide for identically-named symbols at same line. Content hash appended if collision detected. |
 | Confidence scores are heuristics | Medium | Scores are calibrated heuristics, not ground truth. Evidence types show reasoning; `--confidence-threshold` allows filtering. |
-| Schema changes may break consumers | Medium | Semantic versioning from day 1; forward compatibility contract in [Appendix C](#appendix-c-forward-compatibility-contract); migration guides for breaking changes. |
+| Schema changes may break consumers | Medium | Semantic versioning from day 1; schema compatibility contract in [Appendix C](#appendix-c-schema-compatibility-contract); migration guides for breaking changes. |
 | stable_id limited in untyped code | Low | Without type annotations, stable_id uses arity-based hashing which may change on signature changes. shape_id provides structural alternative. |
 
 ### Re-export Resolution
@@ -1663,7 +1663,7 @@ The invariant ledger (`.agent/invariant-ledger.md`) is the authoritative source 
 
 ## 19) Future Work
 
-This section collects capabilities that are designed but not yet implemented. Pursue when there's clear demand beyond what the current system provides. The architecture is designed to support these enhancements without breaking changes: the IR and identity fields ([§6](#6-internal-representation)) enable cross-refactor tracking and multi-pass merging, and the forward compatibility contract ([Appendix C](#appendix-c-forward-compatibility-contract)) defines what can change in minor vs. major versions. See also [Registry & Factory Vision](future/registry-factory-vision.md) for speculative ideas about sharing analyzers.
+This section collects capabilities that are designed but not yet implemented. Pursue when there's clear demand beyond what the current system provides. The architecture is designed to support these enhancements without breaking changes: the IR and identity fields ([§6](#6-internal-representation)) enable cross-refactor tracking and multi-pass merging, and the schema compatibility contract ([Appendix C](#appendix-c-schema-compatibility-contract)) defines what can change in minor vs. major versions. See also [Registry & Factory Vision](future/registry-factory-vision.md) for speculative ideas about sharing analyzers.
 
 | Item | Horizon | Depends on |
 |------|---------|------------|
@@ -1831,9 +1831,9 @@ Infrastructure needed: persistent storage for metrics across CI runs, aggregatio
 * Run only on explicit request (`pytest -m integration`)
 * Catch environment-specific issues
 
-## Appendix A: Versioning & Support Policy
+## Appendix A: Release Lifecycle & Support
 
-This appendix covers release lifecycle, support windows, and deprecation timelines. For the schema-level compatibility contract (which fields are immutable, how consumers handle unknown fields), see [Appendix C](#appendix-c-forward-compatibility-contract).
+This appendix covers **process**: release lifecycle, support windows, and deprecation timelines. For the technical contract governing output schema stability, see [Appendix C](#appendix-c-schema-compatibility-contract).
 
 ### Semantic versioning
 
@@ -1849,7 +1849,7 @@ This appendix covers release lifecycle, support windows, and deprecation timelin
 
 * **v0.1 outputs readable by v0.2+** if v0.2 is backward-compatible (MINOR bump)
 * **v1.0 outputs readable by v1.x** for all v1.x (MAJOR version promises stability)
-* **Breaking changes only in MAJOR bumps** with 6-month migration period. See [Appendix C](#appendix-c-forward-compatibility-contract) for the technical definition of what constitutes a breaking change.
+* **Breaking changes only in MAJOR bumps** with 6-month migration period. See [Appendix C](#appendix-c-schema-compatibility-contract) for the technical definition of what constitutes a breaking change.
 
 ### Support windows
 
@@ -1910,11 +1910,9 @@ Enable via `hypergumbo config --telemetry=on` or `hypergumbo_TELEMETRY=1` enviro
 * Privacy policy published at https://hypergumbo.iterabloom.com/privacy
 * Opt-in status shown in `hypergumbo config --show`
 
-## Appendix C: Forward Compatibility Contract
+## Appendix C: Schema Compatibility Contract
 
-This appendix defines the schema-level contract: which fields are immutable, how consumers handle unknown fields, and what constitutes a breaking change. For release lifecycle, support windows, and deprecation timelines, see [Appendix A](#appendix-a-versioning--support-policy).
-
-This contract ensures current outputs remain valid when future capabilities are added, and enhancements degrade gracefully for existing consumers.
+This appendix defines the **technical contract** for output consumers: which fields are immutable, how consumers must handle unknown fields, and what constitutes a breaking change. For release process, support windows, and deprecation timelines, see [Appendix A](#appendix-a-release-lifecycle--support).
 
 ### Immutable Contracts (MUST NOT change without major version bump)
 
@@ -2020,7 +2018,7 @@ hypergumbo run  # Output compatible with existing tooling
 4. Agents can check `confidence_model` version, warn if too new
 
 **Deprecation process (if ever needed):**
-See [Appendix A: Versioning & Support Policy](#appendix-a-versioning--support-policy) for the deprecation process and support windows.
+See [Appendix A](#appendix-a-release-lifecycle--support) for the deprecation process and support windows.
 
 ### Compatibility Testing
 
