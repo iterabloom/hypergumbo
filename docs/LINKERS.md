@@ -9,6 +9,7 @@ Hypergumbo includes linkers that connect symbols across language boundaries. Lin
 | JNI | Java `native` methods ↔ C JNI implementations |
 | Cgo | Go `C.funcName()` calls ↔ C/C++ function implementations |
 | Python FFI | Python `ctypes`/`cffi` calls ↔ C/C++ functions, PyO3 Rust ↔ Python |
+| Ruby FFI | Ruby FFI gem `attach_function` ↔ C/C++ functions, `rb_define_method` C extensions |
 | IPC | Electron IPC, Web Workers, `postMessage` patterns |
 | WebSocket | Socket.io, native WebSocket, Django Channels, FastAPI WebSocket |
 | Phoenix | Phoenix Channels (`broadcast!`, `push`, `handle_in`) and LiveView |
