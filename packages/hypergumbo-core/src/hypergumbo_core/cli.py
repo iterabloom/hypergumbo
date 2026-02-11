@@ -2344,9 +2344,11 @@ def cmd_remove_extras(args: argparse.Namespace) -> int:
 def cmd_symbols(args: argparse.Namespace) -> int:
     """Display symbol catalog with connectivity information.
 
-    Shows a table of symbols sorted by individual degree (total in+out edges).
-    This ensures the most connected symbols surface first regardless of which
-    file they're in. Ties are broken alphabetically by name.
+    Shows a table of symbols sorted by bidirectional centrality: connectors
+    (symbols with both incoming and outgoing edges) rank above pure sinks
+    (high in-degree but low out-degree, like exception classes).  Uses the
+    formula ``in_degree * (1 + ln(1 + out_degree))`` which is the same
+    scoring as ``ranking.compute_centrality()``.
 
     Uses Rich for auto-adjusting column widths and proper text wrapping.
     """
@@ -2424,8 +2426,10 @@ def cmd_symbols(args: argparse.Namespace) -> int:
 
         symbol_rows.append((name, kind, ind, outd, degree, path))
 
-    # Sort by individual degree (descending), then name (ascending) for ties
-    symbol_rows.sort(key=lambda r: (-r[4], r[0]))
+    # Sort by bidirectional centrality: in_degree * (1 + ln(1 + out_degree))
+    # This rewards connectors (both in and out edges) over pure sinks
+    # (high in-degree but zero out-degree like exception classes)
+    symbol_rows.sort(key=lambda r: (-(r[2] * (1 + math.log(1 + r[3]))), r[0]))
 
     # Apply --max-per-file limit if specified
     max_per_file = getattr(args, "max_per_file", None)

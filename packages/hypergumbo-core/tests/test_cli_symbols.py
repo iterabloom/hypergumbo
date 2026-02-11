@@ -78,12 +78,13 @@ def test_cmd_symbols_shows_tabular_output(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_symbols_sorts_by_individual_degree(tmp_path: Path, capsys) -> None:
-    """Symbols are sorted by individual degree (descending), not file total.
+    """Symbols are sorted by bidirectional centrality, not file total.
 
     Regression test for the Django/NestJS bakeoff finding: a symbol with the
     highest individual degree (e.g. QuerySet, degree=118) was buried at line 753
-    because expressions.py had higher *file total* degree. Sorting by individual
-    degree ensures the most connected symbols always appear first.
+    because expressions.py had higher *file total* degree. Sorting by bidirectional
+    centrality ``in_degree * (1 + ln(1 + out_degree))`` ensures the most connected
+    symbols always appear first.
     """
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
@@ -189,6 +190,110 @@ def test_cmd_symbols_sorts_by_individual_degree(tmp_path: Path, capsys) -> None:
     assert queryset_pos < func_pos, (
         f"QuerySet (highest individual degree=6) should appear before Func (degree=4), "
         f"but found QuerySet at {queryset_pos}, Func at {func_pos}"
+    )
+
+
+def test_cmd_symbols_connector_outranks_pure_sink(tmp_path: Path, capsys) -> None:
+    """Bidirectional centrality: connector (in+out) ranks above pure sink (in only).
+
+    A pure sink (high in-degree, zero out-degree) like an exception class should
+    rank below a connector (moderate in-degree, moderate out-degree) like a
+    service function.  Uses ``in_degree * (1 + ln(1 + out_degree))``.
+
+    Pure sink:  in=8, out=0 → 8 * (1 + ln(1)) = 8 * 1 = 8.0
+    Connector:  in=5, out=6 → 5 * (1 + ln(7)) = 5 * 2.946 = 14.7
+    """
+    nodes = [
+        {
+            "id": "python:src/exc.py:1-10:ValidationError:class",
+            "name": "ValidationError",
+            "kind": "class",
+            "language": "python",
+            "path": "src/exc.py",
+            "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+        },
+        {
+            "id": "python:src/svc.py:1-50:UserService:class",
+            "name": "UserService",
+            "kind": "class",
+            "language": "python",
+            "path": "src/svc.py",
+            "span": {"start_line": 1, "end_line": 50, "start_col": 0, "end_col": 10},
+        },
+    ]
+    # Create callers that import into ValidationError (pure sink)
+    callers = []
+    for i in range(8):
+        caller_id = f"python:src/caller{i}.py:1-5:caller{i}:function"
+        nodes.append({
+            "id": caller_id,
+            "name": f"caller{i}",
+            "kind": "function",
+            "language": "python",
+            "path": f"src/caller{i}.py",
+            "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+        })
+        callers.append(caller_id)
+
+    edges = []
+    edge_id = 1
+
+    # 8 callers → ValidationError (pure sink: in=8, out=0)
+    for caller_id in callers:
+        edges.append({
+            "id": f"edge:{edge_id}",
+            "src": caller_id,
+            "dst": "python:src/exc.py:1-10:ValidationError:class",
+            "type": "calls", "line": 3, "confidence": 0.9,
+        })
+        edge_id += 1
+
+    # UserService: in=5 (callers 0-4 call it), out=6 (calls callers 2-7)
+    for caller_id in callers[:5]:
+        edges.append({
+            "id": f"edge:{edge_id}",
+            "src": caller_id,
+            "dst": "python:src/svc.py:1-50:UserService:class",
+            "type": "calls", "line": 2, "confidence": 0.9,
+        })
+        edge_id += 1
+    for caller_id in callers[2:]:
+        edges.append({
+            "id": f"edge:{edge_id}",
+            "src": "python:src/svc.py:1-50:UserService:class",
+            "dst": caller_id,
+            "type": "calls", "line": 10, "confidence": 0.9,
+        })
+        edge_id += 1
+
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": nodes,
+        "edges": edges,
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 200
+    args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
+
+    result = cmd_symbols(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    svc_pos = out.find("UserService")
+    err_pos = out.find("ValidationError")
+    assert svc_pos < err_pos, (
+        f"UserService (connector, in=5 out=6) should rank above "
+        f"ValidationError (pure sink, in=8 out=0) with bidirectional centrality, "
+        f"but found UserService at {svc_pos}, ValidationError at {err_pos}"
     )
 
 
