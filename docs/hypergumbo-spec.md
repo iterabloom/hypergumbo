@@ -114,7 +114,7 @@ These options apply to all analysis commands (`run`, `slice`, and default sketch
 Gitignore-style glob patterns for paths to skip. Uses `fnmatch` matching.
 * Default excludes: `node_modules/`, `venv/`, `dist/`, `build/`, `*.min.js`, `*.bundle.js`, `.git/`, `__pycache__/`
 
-🟩 **`--max-file-bytes N`** (default: 2MB)
+⬜ **`--max-file-bytes N`** (default: 2MB)
 Skip files exceeding this size. Particularly useful for HTML and minified JavaScript.
 * Skipped files logged in `limits.truncated_files[]`
 
@@ -198,6 +198,7 @@ Linkers use a decorator-based registry (`linkers/registry.py`) and receive the a
 def link_jni(ctx: LinkerContext) -> LinkerResult:
     ...
 ```
+🟪 Spec example above is outdated; code uses `activation=LinkerActivation(language_pairs=[("java","c"),("java","cpp")])` and `requirements=list[LinkerRequirement]` instead of `requires=list[str]`.
 
 **🟪 Design target — Unified pass interface:**
 For multi-fidelity analysis (e.g., a pyright pass refining AST-extracted edges with type-resolved information), both tiers would converge on a single interface where passes receive the IR and return deltas:
@@ -222,8 +223,8 @@ class Symbol:
     id: str                    # location-based identifier
     stable_id: Optional[str]   # semantic identity hash (signature-based)
     shape_id: Optional[str]    # structural implementation fingerprint
-    canonical_name: str
-    fingerprint: str           # content hash
+    canonical_name: str        # 🟪 code: Optional[str] = None
+    fingerprint: str           # 🟪 code: Optional[str] = None
     kind: str                  # function, class, module, etc.
     name: str
     path: str
@@ -236,7 +237,7 @@ class Symbol:
     # Note: In JSON output (§9 Behavior map JSON), these flat fields are compiled
     # into a nested supply_chain object with a derived tier_name field.
     origin_run_signature: Optional[str]  # references AnalysisRun.run_signature (for grouping)
-    quality: QualityScore
+    quality: QualityScore      # 🟪 QualityScore not defined; code: Optional[Dict[str, Any]] = None
 
 @dataclass
 class AnalysisRun:
@@ -261,6 +262,7 @@ class AnalysisIR:
     references: List[Reference]        # use sites
     relationships: List[Relationship]  # typed edges with quality scores
 ```
+🟪 `AnalysisIR`, `Reference`, `Relationship` are spec names; code uses `AnalysisResult`, `Symbol`, `Edge`.
 
 ### Identity field semantics
 
@@ -268,22 +270,24 @@ class AnalysisIR:
   - Changes when code moves to different file/line
   - Purpose: Reproducible slicing, deterministic diffs
 * `stable_id` (semantic, optional): Interface identity (signature-based), **not implementation identity**
-  - **For typed languages or annotated Python**: `sha256({kind}:{normalized_signature}:{visibility}:{containing_module_stable_id})`
+  - 🟪 **For typed languages or annotated Python**: `sha256({kind}:{normalized_signature}:{visibility}:{containing_module_stable_id})`
     - `normalized_signature`: Canonical type signature (param types, return type, type params)
     - `visibility`: public, private, protected (if language has concept)
     - `containing_module_stable_id`: Recursive stable_id of parent module/class
     - **Excludes**: Implementation details, docstrings, comments
-  - **For untyped code**: `sha256({kind}:{parameter_count}:{arity_flags}:{decorator_presence}:{containing_module_stable_id})`
+  - 🟩 **For untyped code**: `sha256({kind}:{parameter_count}:{arity_flags}:{decorator_presence}:{containing_module_stable_id})`
     - `arity_flags`: has_defaults, has_varargs, has_kwargs (structural signature info)
     - `decorator_presence`: Sorted list of decorator names (e.g., `["property", "staticmethod"]`)
     - **Excludes**: Source hash, canonical name (survives renames)
   - Purpose: Track symbols across refactors (renames, moves, documentation changes)
   - **Does NOT change** when: Renaming, moving between files, changing implementation, adding comments
   - **DOES change** when: Signature changes (param types, arity), visibility changes, decorators added/removed
-* `shape_id` (optional): Structural implementation fingerprint
+* 🟨 `shape_id` (optional): Structural implementation fingerprint
   - `sha256(ast_structure)` excluding literals/identifiers
   - Purpose: Detect structural changes (control flow, nesting) without caring about variable names
   - Use case: "Implementation changed but signature stayed same"
+  - 🟩 Python: implemented via `_compute_shape_id()` using Python's `ast` module
+  - ⬜ All other languages: planned via a generic tree-sitter CST walker (single implementation — walk CST, keep node types, strip literal values and identifier names, hash the structure)
 * `fingerprint` (content hash): `sha256(source_bytes)`
   - Changes when implementation changes
   - Purpose: Detect modifications
@@ -363,14 +367,14 @@ JNIEXPORT void JNICALL Java_GuacamoleSession_processFrame(
 3. Emit `native_bridge` edge from Java method → C function
 
 **Confidence scoring** (see [§12](#12-confidence-scoring) for the full confidence model):
-* Pattern-matched (naming convention): 0.80
-* 🟪 Annotation-confirmed (`@hypergumbo.jni_impl`): 0.95
+* Pattern-matched (naming convention): 0.95
+* 🟪 Annotation-confirmed (`@hypergumbo.jni_impl`): 0.98
 
 **Limitations:**
 * Does not resolve JNI calls through reflection
 * Does not track `JNI_OnLoad` dynamic registration
 * Does not handle inner classes (mangling includes `$`)
-* Logs unmatched natives in `limits.unresolved_jni[]`
+* ⬜ Logs unmatched natives in `limits.unresolved_jni[]` (field not yet implemented; see §7 limits.cross_language)
 
 ### IPC/Message Channel Detection
 
@@ -383,7 +387,7 @@ Detects message send/receive patterns across process boundaries using string lit
 | Electron | `ipcRenderer.send("channel")` | `ipcMain.on("channel")` | `ipc_electron` |
 | Electron | `ipcMain.handle("channel")` | `ipcRenderer.invoke("channel")` | `ipc_electron` |
 | WebSocket | `ws.send({type: "X"})` | `ws.on("message", ...)` with type check | `ipc_websocket` |
-| Guacamole | `tunnel.sendMessage("opcode", ...)` | `oninstruction` handlers | `ipc_guacamole` |
+| ⬜ Guacamole | `tunnel.sendMessage("opcode", ...)` | `oninstruction` handlers | `ipc_guacamole` |
 | Node EventEmitter | `emitter.emit("event")` | `emitter.on("event")` | `ipc_eventemitter` |
 
 **Detection algorithm:**
@@ -395,15 +399,15 @@ Detects message send/receive patterns across process boundaries using string lit
 
 **Confidence scoring** (see [§12](#12-confidence-scoring) for the full confidence model):
 * String literal channel name match: 0.85
-* Variable/computed channel name: 0.50 (best-effort, name extracted if simple)
-* Template literal with interpolation: 0.40 (partial match)
+* 🟪 Variable/computed channel name: 0.50 (code uses flat 0.65 for all non-literal matches; no variable/template distinction)
+* 🟪 Template literal with interpolation: 0.40 (see above)
 * 🟪 Annotation-provided (`@hypergumbo.ipc_channel("name")`): 0.95
 
 **Limitations:**
 * Dynamic channel names require annotation hints
 * Complex message routing (middleware, proxies) not traced
 * Does not validate message schema compatibility
-* Logs unmatched patterns in `limits.unresolved_ipc[]`
+* ⬜ Logs unmatched patterns in `limits.unresolved_ipc[]` (field not yet implemented; see §7 limits.cross_language)
 
 ### HTTP client-server linking
 
@@ -421,7 +425,7 @@ Detects message send/receive patterns across process boundaries using string lit
 1. Collect server route symbols detected by the pattern system (see [§8](#8-entrypoint-detection))
 2. Scan client code for HTTP call patterns with URL arguments
 3. Match by HTTP method and URL path, with support for parameterized paths (`:id`, `{id}`, `<id>`)
-4. Emit `calls` edge from client call site to matching route handler
+4. Emit `http_calls` edge from client call site to matching route handler
 
 **Confidence scoring** (see [§12](#12-confidence-scoring) for the full confidence model):
 * Literal URL match: 0.90
@@ -433,7 +437,7 @@ The C analyzer detects JNI export patterns (`JNIEXPORT`, `JNICALL`, `Java_*` nam
 
 ### limits.cross_language — tracking unresolved links
 
-Cross-language linkers log unresolved patterns for debugging:
+🟪 Cross-language linkers log unresolved patterns for debugging (not yet implemented — `limits` dataclass has no `cross_language`, `unresolved_jni`, or `unresolved_ipc` fields):
 
 ```json
 {
@@ -592,6 +596,7 @@ Single file: `hypergumbo.results.json`
   "limits": {}
 }
 ```
+Code also emits `usage_contexts`, `entrypoints` (documented below), and `sketch_precomputed` (internal cache artifact — not part of the public schema; consumers should not depend on its presence).
 
 ### JSON Schema (Auto-Generated)
 
@@ -690,22 +695,95 @@ Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenan
 **Edge types:**
 * `calls` — function/method invocation
 * `imports` — module/symbol import
-* `defines` — definition relationship
-* `renders` — template rendering
-* `loads_script` — script tag src
+* `defines_target` — definition relationship
+* ⬜ `renders` — template rendering (not implemented)
+* `script_src` — script tag src attribute
 * `implements` — class implements interface (Java, TypeScript)
 * `extends` — class extends base class
 * `native_bridge` — Java native method → C implementation (JNI)
 * `message_send` — sends IPC/protocol message
 * `message_receive` — handles IPC/protocol message
 * `instantiates` — class instantiation (constructor call)
-* `manual` — user-annotated
+* `http_calls` — HTTP client call site to server route handler (see [§7 HTTP client-server linking](#http-client-server-linking))
+* ⬜ `manual` — user-annotated (not implemented)
 
 ### features[] — named slices
 
 Each feature contains `id`, `name`, `entry_nodes[]`, `node_ids[]`, `edge_ids[]`, a `query` object (method, entrypoint, hops, max_files, exclude_tests), `limits_hit[]`, and `summary`. See `docs/schema.json` for the full structure.
 
 **Feature ID:** Stable identifier based on query spec: `sha256(json.dumps(query, sort_keys=True))`. Same query on same code → same feature ID → enables diff across commits.
+
+### entrypoints[] — detected entry points
+
+🟩 Pre-computed, confidence-ranked array of execution entry points (HTTP routes, CLI commands, main functions, lifecycle hooks, etc.). Each entry references a node in the graph.
+
+```json
+{
+  "entrypoints": [
+    {
+      "symbol_id": "python:src/app.py:10-25:get_users:function",
+      "kind": "http_route",
+      "confidence": 0.95,
+      "label": "HTTP GET /users"
+    }
+  ]
+}
+```
+
+**Fields:**
+- `symbol_id`: Reference to a node (matches `nodes[].id`)
+- `kind`: Entry point type (`http_route`, `cli_command`, `main_function`, `background_task`, `websocket_handler`, `library_export`, `connectivity_based`, etc.)
+- `confidence`: Detection confidence (0.0–1.0), reflecting pattern strength, penalties for test/vendor code, and connectivity boost
+- `label`: Human-readable description
+
+**Confidence tiers** (see [§8](#8-entrypoint-detection) and [§12](#12-confidence-scoring)):
+- 0.99: Manifest-declared (package.json `bin`, Cargo.toml `[[bin]]`, pyproject.toml `[project.scripts]`)
+- 0.95: Framework patterns (decorators, base classes)
+- 0.85: Structural (Python `if __name__ == "__main__"`)
+- 0.80: Language conventions (`main()` function)
+- 0.70: Naming heuristics (`*Controller`, `*Handler`)
+- 0.50: Connectivity-based fallback (top 5 most-connected callables when no patterns match)
+
+Penalties: test files (−50%), vendor/external deps (−70%), utility files (−50%). Connectivity boost: up to +0.25 for entrypoints with many outgoing edges.
+
+**Sorting:** Ranked by confidence (highest first).
+
+**Not redundant with nodes:** While nodes carry `meta.concepts` metadata from framework pattern matching, the `entrypoints` array provides pre-computed confidence (with penalties and boosts), ranking, and labeled kinds. Consumers would otherwise need to iterate all nodes, check concepts, apply scoring logic, and sort. Used by sketch generation, slicing, and compact output.
+
+### usage_contexts[] — framework pattern evidence
+
+🟩 Intermediate representation of how symbols are *used* (as opposed to how they are *defined*). Each entry records a call site, data value, export, or macro invocation that gives semantic meaning to a symbol through its usage context. See [ADR-0003](adr/0003-usage-context-patterns.md) for design rationale.
+
+```json
+{
+  "usage_contexts": [
+    {
+      "id": "uc:...",
+      "kind": "call",
+      "context_name": "app.get",
+      "symbol_ref": "javascript:src/routes.js:10-25:listUsers:function",
+      "position": "args[1]",
+      "metadata": {"http_method": "GET", "route_path": "/users"},
+      "path": "src/app.js",
+      "span": {"start_line": 5, "end_line": 5, "start_col": 0, "end_col": 40}
+    }
+  ]
+}
+```
+
+**Fields:**
+- `id`: Unique identifier
+- `kind`: Context type (`call`, `data_value`, `export`, `macro`)
+- `context_name`: Function/variable/file name where usage occurs
+- `symbol_ref`: ID of the symbol being used (may be null if unresolved)
+- `position`: Where in the context the symbol appears (e.g., `args[1]`, `:get`, `default`)
+- `metadata`: Context-specific data (e.g., `http_method`, `route_path`)
+- `path`: File where usage occurs
+- `span`: Source location
+
+**Role in the pipeline:** Usage contexts feed into framework pattern matching (`enrich_symbols()`), which adds concepts to symbols, which in turn drive entrypoint detection and linker behavior. Most consumers should use the enriched `nodes` and `entrypoints` rather than processing `usage_contexts` directly.
+
+**Stripped from compact/tiered views** to reduce payload size.
 
 ### metrics — optional counts
 
@@ -859,7 +937,7 @@ All scores use the same 0.0–1.0 scale and the same semantic contract: higher m
 
 ### Edge confidence: analyzer evidence
 
-Deterministic mapping from structured evidence → confidence score. This covers edges produced by language analyzers (Tier 1 passes).
+🟪 Deterministic mapping from structured evidence → confidence score. This covers edges produced by language analyzers (Tier 1 passes). Not yet implemented: no `EVIDENCE_CONFIDENCE_MATRIX` lookup, no contextual adjustments (`dynamic_dispatch`, `missing_types`, `has_type_annotation`). Edge default confidence is 0.85 in code (not the 0.30 specified below).
 
 ```python
 # (language, evidence_type) → base_score
@@ -913,11 +991,11 @@ Cross-language linkers (Tier 2 passes) produce their own confidence scores based
 
 | Linker | Match type | Confidence |
 |--------|-----------|------------|
-| **JNI** | Naming convention (`Java_{Class}_{method}`) | 0.80 |
-| **JNI** | 🟪 Annotation-confirmed | 0.95 |
+| **JNI** | Naming convention (`Java_{Class}_{method}`) | 0.95 |
+| **JNI** | 🟪 Annotation-confirmed | 0.98 |
 | **IPC** | String literal channel name match | 0.85 |
-| **IPC** | Variable/computed channel name | 0.50 |
-| **IPC** | Template literal with interpolation | 0.40 |
+| **IPC** | 🟪 Variable/computed channel name | 0.50 (code uses flat 0.65) |
+| **IPC** | 🟪 Template literal with interpolation | 0.40 (no variable/template distinction in code) |
 | **IPC** | 🟪 Annotation-provided | 0.95 |
 | **HTTP** | Literal URL match | 0.90 |
 | **HTTP** | Variable/computed URL | 0.65 |
@@ -955,11 +1033,12 @@ Reproducibility has two dimensions: **caching** ensures that re-running analysis
 * Management: `hypergumbo cache-status` and `hypergumbo cache-clear [--older-than N] [--dry-run]`
 
 ### Deterministic ordering
-* Stable sort of nodes/edges for reproducible diffs
-* Sort keys:
-  * Nodes: `(language, path, start_line, name)`
-  * Edges: `(src, dst, type)`
-* Enables meaningful `git diff` of output files
+
+Output ordering is deterministic (same input → same output) and optimized for consumption priority.
+
+* 🟩 **Default: centrality-ranked** — Nodes sorted by centrality score (most important first). Edges sorted by source node centrality. This ordering is deterministic given the same input graph and optimizes for LLM context windows and human scanning. Used in JSON output, sketch output, and compact/tiered views.
+* ⬜ **JSON key-level reproducibility** — `json.dumps` should use `sort_keys=True` for reproducible diffs at the key level (currently missing).
+* 🟪 **`--sort-order` option** — Future flag to allow alternative orderings (e.g., `--sort-order alphabetical` with sort keys: nodes by `(language, path, start_line, name)`, edges by `(src, dst, type)`) for users who prefer diffability over importance ranking.
 
 ## 14) Supply chain classification
 
@@ -1131,6 +1210,7 @@ This ensures first-party symbols appear first even when third-party utilities ha
 4. **Handle unconventional structures**: Projects with unusual layouts (e.g., source in root, deps in `lib/`) may be misclassified.
 
 **Logged in limits:**
+🟪 Dataclasses and serialization exist (`ClassificationFailure`, `AmbiguousPath`, `SupplyChainLimits`), but no production code populates them — `classify_file()` always succeeds and never records failures or ambiguities. Fields are always empty arrays in output.
 ```json
 {
   "limits": {
@@ -1235,9 +1315,9 @@ Tier and Role compose for analysis decisions:
 * 🟩 `hypergumbo catalog` displays available passes
 
 ### Performance benchmarks
-* 🟩 Small repo (<100 files): <5 seconds end-to-end
-* 🟩 Medium repo (~500 files): <30 seconds
-* 🟩 Caching: second run on unchanged repo <2 seconds (see docs/CACHE.md)
+* Small repo (<100 files): <5 seconds end-to-end
+* Medium repo (~500 files): <30 seconds
+* Caching: second run on unchanged repo <2 seconds (see docs/CACHE.md)
 
 ## 17) Error handling
 
@@ -1270,8 +1350,8 @@ Tier and Role compose for analysis decisions:
 
 ### File size limits
 
-* 🟩 **Behavior**: Skip files exceeding `--max-file-bytes` (default: 2MB), continue analysis
-* 🟩 **Output**: Add to `limits.truncated_files[]` with path, size, and reason
+* ⬜ **Behavior**: Skip files exceeding `--max-file-bytes` (default: 2MB), continue analysis (`--max-file-bytes` not implemented; see §3)
+* ⬜ **Output**: Add to `limits.truncated_files[]` with path, size, and reason (`add_truncated_file()` exists but is never called)
 
 ### Partial results guarantee
 
