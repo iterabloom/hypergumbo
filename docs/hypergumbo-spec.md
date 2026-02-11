@@ -62,7 +62,7 @@ For goals that were considered and rejected, see [Appendix D](#appendix-d-capsul
 * No deep type-resolution / interprocedural dataflow correctness guarantees.
 * No accounts, ratings, or social features.
 * No automatic PR fixing, no code editing, no CI annotations beyond "export JSON."
-* No attempt to support every language *deeply*—broad coverage via tree-sitter (104 languages), deep call-graph extraction for a smaller set. See [§4 Supported stacks](#4-supported-stacks).
+* No attempt to support every language *deeply*—broad coverage via tree-sitter (100+ languages; see [LANGUAGES.md](LANGUAGES.md)), deep call-graph extraction for a smaller set. See [§4 Supported stacks](#4-supported-stacks).
 * No incremental analysis daemon (full re-analysis is acceptable).
 * No LLM-generated analyzer code.
 
@@ -71,7 +71,7 @@ For goals that were considered and rejected, see [Appendix D](#appendix-d-capsul
 **Key principle:** Analysis execution requires no network or API keys (by default). Output is deterministic and reproducible given the same repo state. See [Appendix B](#appendix-b-telemetry--privacy) for the full privacy and telemetry policy.
 
 ### Install
-* `pipx install hypergumbo` (primary, includes all 104 language analyzers)
+* `pipx install hypergumbo` (primary, includes all language analyzers)
 * `pip install hypergumbo` (secondary)
 * `pip install hypergumbo[embeddings]` (optional embedding-based config extraction)
 
@@ -129,7 +129,7 @@ Disable tier-based weighting in Key Symbols ranking (use raw centrality instead)
 
 ## 4) Supported stacks
 
-Hypergumbo supports 104 languages via tree-sitter grammars. All are included in the base package.
+Hypergumbo supports 100+ languages via tree-sitter grammars (see [LANGUAGES.md](LANGUAGES.md) for the full list). All are included in the base package.
 
 **Primary languages (full symbol/edge extraction):**
 * 🟩 **Python** (AST-based, full call edges)
@@ -362,7 +362,7 @@ JNIEXPORT void JNICALL Java_GuacamoleSession_processFrame(
 2. Find C functions matching `Java_{ClassName}_{methodName}` pattern (mangled names)
 3. Emit `native_bridge` edge from Java method → C function
 
-**Confidence scoring:**
+**Confidence scoring** (see [§12](#12-confidence-scoring) for the full confidence model):
 * Pattern-matched (naming convention): 0.80
 * 🟪 Annotation-confirmed (`@hypergumbo.jni_impl`): 0.95
 
@@ -393,7 +393,7 @@ Detects message send/receive patterns across process boundaries using string lit
 4. Match senders to receivers with same channel name
 5. Emit `message_send` edge (caller → channel) and `message_receive` edge (channel → handler)
 
-**Confidence scoring:**
+**Confidence scoring** (see [§12](#12-confidence-scoring) for the full confidence model):
 * String literal channel name match: 0.85
 * Variable/computed channel name: 0.50 (best-effort, name extracted if simple)
 * Template literal with interpolation: 0.40 (partial match)
@@ -423,7 +423,7 @@ Detects message send/receive patterns across process boundaries using string lit
 3. Match by HTTP method and URL path, with support for parameterized paths (`:id`, `{id}`, `<id>`)
 4. Emit `calls` edge from client call site to matching route handler
 
-**Confidence scoring:**
+**Confidence scoring** (see [§12](#12-confidence-scoring) for the full confidence model):
 * Literal URL match: 0.90
 * Variable/computed URL: 0.65
 
@@ -543,7 +543,7 @@ See [ADR-0003](adr/0003-architectural-analysis-and-revision-plan.md) for the des
 
 ### Entrypoint Confidence Tiers
 
-These tiers apply to entrypoint detection. For edge confidence scoring, see [§12 Confidence calculation](#confidence-calculation-deterministic-algorithm).
+These tiers apply to entrypoint detection. For edge confidence scoring, see [§12 Confidence scoring](#12-confidence-scoring).
 
 Confidence scores reflect detection reliability, enabling meaningful ordering in sketch output:
 
@@ -618,7 +618,7 @@ The schema follows JSON Schema Draft 2020-12 and can be used for:
 
 ### Confidence scoring
 
-The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring algorithm. See [§12 Confidence calculation](#confidence-calculation-deterministic-algorithm) for the deterministic scoring algorithm and [Appendix C](#appendix-c-schema-compatibility-contract) for consumer obligations (including the 0.30 default for unknown evidence types).
+The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v1`) identifies the scoring algorithm. See [§12 Confidence scoring](#12-confidence-scoring) for the full confidence model and [Appendix C](#appendix-c-schema-compatibility-contract) for consumer obligations (including the 0.30 default for unknown evidence types).
 
 ### analysis_runs[] — provenance tracking
 
@@ -676,7 +676,7 @@ Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenan
 - `evidence_lang` (optional): Language used for confidence scoring. Defaults to `src` node's language if omitted. Required for cross-language edges (HTTP, IPC) where src/dst languages differ.
 - `evidence_spans[]`: Structured locations of evidence. Each span includes file path and line/column range.
 
-**Evidence types** (machine-readable, see [§12](#confidence-calculation-deterministic-algorithm) for scoring algorithm):
+**Evidence types** (machine-readable, see [§12](#12-confidence-scoring) for scoring algorithm):
 * `ast_call_direct` — Direct function call in AST
 * `ast_call_method` — Method call with receiver
 * `ast_getattr_call` — Call via getattr/dynamic lookup
@@ -845,13 +845,21 @@ Feature comparison across commits: same query → compare `node_ids`/`edge_ids` 
 
 ## 12) Confidence scoring
 
-Edge confidence scores quantify how reliably hypergumbo detected a relationship between two symbols. This is distinct from *entrypoint* confidence ([§8](#8-entrypoint-detection)), which scores how reliably a symbol was identified as an entry point. The two systems are independent: an edge originating from a high-confidence entrypoint does not inherit that entrypoint's confidence score.
+Hypergumbo assigns confidence scores (0.0–1.0) in three independent categories. The scores quantify detection reliability — how certain hypergumbo is that a detected relationship or entrypoint is real, not a false positive. The three categories are independent: an edge originating from a high-confidence entrypoint does not inherit that entrypoint's confidence score, and analyzer-produced edges and linker-produced edges use different scoring logic.
 
-### Confidence calculation (deterministic algorithm)
+### Three confidence categories
 
-**Evidence scoring** (stable contract)
+| Category | What it scores | Scoring basis | Score range | Defined in |
+|----------|---------------|---------------|-------------|------------|
+| **Analyzer edge confidence** | Intra-language relationships (calls, imports) | `(language, evidence_type)` matrix + contextual adjustments | 0.30–0.95 | [Below](#edge-confidence-analyzer-evidence) |
+| **Linker edge confidence** | Cross-language relationships (JNI, IPC, HTTP) | Match quality (literal vs. dynamic, naming convention vs. annotation) | 0.40–0.95 | [Below](#edge-confidence-cross-language-linkers), details in [§7](#7-cross-language-linkers) |
+| **Entrypoint confidence** | Whether a symbol is an entry point | Detection method (manifest, decorator, convention, naming) | 0.70–0.99 | [Below](#entrypoint-confidence-tiers), details in [§8](#8-entrypoint-detection) |
 
-Deterministic mapping from structured evidence → confidence score.
+All scores use the same 0.0–1.0 scale and the same semantic contract: higher means more certain. The `confidence_model` field in output (`hypergumbo-evidence-v1`) identifies the scoring algorithm version. Consumers MUST default unknown `evidence_type` values to 0.30 (see [Appendix C](#appendix-c-schema-compatibility-contract)).
+
+### Edge confidence: analyzer evidence
+
+Deterministic mapping from structured evidence → confidence score. This covers edges produced by language analyzers (Tier 1 passes).
 
 ```python
 # (language, evidence_type) → base_score
@@ -869,8 +877,8 @@ EVIDENCE_CONFIDENCE_MATRIX = {
 }
 
 def calculate_evidence_confidence(
-    lang: str, 
-    evidence_type: str, 
+    lang: str,
+    evidence_type: str,
     context: dict
 ) -> float:
     """
@@ -880,12 +888,12 @@ def calculate_evidence_confidence(
         lang: Language (from edge.meta.evidence_lang or src.language)
         evidence_type: From edge.meta.evidence_type
         context: Additional flags (dynamic_dispatch, has_type_annotation, etc.)
-    
+
     Returns:
         float in [0.0, 1.0]
     """
     base = EVIDENCE_CONFIDENCE_MATRIX.get((lang, evidence_type), 0.30)
-    
+
     adjustments = 0.0
     if context.get("dynamic_dispatch"):
         adjustments -= 0.1
@@ -893,11 +901,34 @@ def calculate_evidence_confidence(
         adjustments -= 0.05
     if context.get("has_type_annotation"):
         adjustments += 0.05
-    
+
     return min(1.0, max(0.0, base + adjustments))
 ```
 
 **Note**: Base scores are heuristic baselines (to be validated against benchmark suite). New evidence types can be added in minor versions.
+
+### Edge confidence: cross-language linkers
+
+Cross-language linkers (Tier 2 passes) produce their own confidence scores based on match quality. These scores are independent of the analyzer evidence matrix above. See [§7 Cross-language linkers](#7-cross-language-linkers) for detection rules and limitations.
+
+| Linker | Match type | Confidence |
+|--------|-----------|------------|
+| **JNI** | Naming convention (`Java_{Class}_{method}`) | 0.80 |
+| **JNI** | 🟪 Annotation-confirmed | 0.95 |
+| **IPC** | String literal channel name match | 0.85 |
+| **IPC** | Variable/computed channel name | 0.50 |
+| **IPC** | Template literal with interpolation | 0.40 |
+| **IPC** | 🟪 Annotation-provided | 0.95 |
+| **HTTP** | Literal URL match | 0.90 |
+| **HTTP** | Variable/computed URL | 0.65 |
+
+**Pattern:** Across all linkers, literal/static matches score higher than dynamic/computed ones, and annotation-confirmed matches approach 0.95. This reflects the inherent uncertainty of heuristic string matching.
+
+### Entrypoint confidence tiers
+
+Entrypoint confidence scores how reliably a symbol was identified as an entry point (route, CLI main, task handler, etc.). This is independent of edge confidence — a function detected as a route at 0.95 confidence may have call edges at any confidence level.
+
+See [§8 Entrypoint detection](#8-entrypoint-detection) for the detection architecture and the full tier table. The four tiers: Declared (0.99), Decorator/Annotation (0.95), Structural (0.85), Naming (0.70).
 
 ## 13) Output reproducibility
 
@@ -1487,18 +1518,4 @@ This appendix defines the **technical contract** for output consumers: which fie
 
 ## Appendix D: Capsule system history
 
-The original design included a "capsule" abstraction for composing custom analyzers from building blocks. The idea was that users would run `hypergumbo init` to create a capsule configuration, then `hypergumbo run` would execute analysis according to that configuration.
-
-In practice, the general-purpose analyzer worked well enough that custom composition wasn't needed. The capsule system was never used:
-- `init` created capsule files, but `run` ignored them
-- The `Pack` concept for bundling passes was deprecated
-- LLM-assisted plan generation was a proof of concept that added complexity without value
-
-**Removed in v1.0.0:**
-- `init` and `export-capsule` commands
-- `plan.py`, `llm_assist.py`, `export.py` modules
-- `Pack` class from catalog (framework-specific behavior handled by linker activation conditions and `--frameworks` flag)
-
-**For historical reference**, see [history/capsule-system-v1.md](history/capsule-system-v1.md).
-
-**Other archived v1.0 materials:** The original development milestones (Week 0-9 planning) have been archived to [history/planning-v1.md](history/planning-v1.md). Original success criteria and validation gates have been archived to [history/validation-gates-v1.md](history/validation-gates-v1.md).
+The capsule system (custom analyzer composition via `hypergumbo init`) was removed in v1.0.0. See [history/capsule-system-v1.md](history/capsule-system-v1.md) for details. Other archived v1.0 materials: [history/planning-v1.md](history/planning-v1.md), [history/validation-gates-v1.md](history/validation-gates-v1.md).
