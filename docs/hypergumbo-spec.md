@@ -26,7 +26,7 @@ Status: living document.
 | 4 | [Supported stacks](#4-supported-stacks) |
 | 5 | [Architecture](#5-architecture) |
 | 6 | [Internal Representation](#6-internal-representation) |
-| 7 | [Cross-Language Edge Detection (Illustrative Examples)](#7-cross-language-edge-detection-illustrative-examples) |
+| 7 | [Cross-Language Linkers](#7-cross-language-linkers) |
 | 8 | [Entrypoint Detection](#8-entrypoint-detection) |
 | 9 | [Output formats](#9-output-formats) |
 | 10 | [Slicing behavior](#10-slicing-behavior) |
@@ -399,9 +399,9 @@ Public outputs are **compiled views** from this IR — the IR defines the canoni
 
 **Design principle:** Strong passes (tsserver, pyright) added later will enhance the IR without breaking existing views.
 
-## 7) Cross-Language Edge Detection (Illustrative Examples)
+## 7) Cross-Language Linkers
 
-Hypergumbo provides **best-effort cross-language edge detection** for common integration patterns. These are AST-based heuristics with string literal matching, not type-resolved or dataflow analysis. This section illustrates the linker system with three representative mechanisms. For the full catalog of 20+ cross-language linkers, see [LINKERS.md](LINKERS.md).
+Hypergumbo provides **best-effort cross-language edge detection** for common integration patterns. These are AST-based heuristics with string literal matching, not type-resolved or dataflow analysis. This section specifies three linkers in detail (JNI, IPC, HTTP); for the full catalog of 20+ cross-language linkers, see [LINKERS.md](LINKERS.md).
 
 ### JNI Boundary Detection (Java ↔ C)
 
