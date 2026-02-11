@@ -609,9 +609,14 @@ def detect_entrypoints(
         if sym is None:
             continue  # pragma: no cover - symbol should always exist
 
-        # Penalty for test files (50% reduction)
+        # Penalty for test files (90% reduction).
+        # Must be aggressive: in repos like DMD where 98% of main()
+        # functions are in test files, a modest penalty (0.5) leaves
+        # test entrypoints at 0.40 confidence — high enough to dominate
+        # auto-slicing selections.  0.1 pushes them to 0.08, well below
+        # any production entrypoint.
         if sym.path and is_test_file(sym.path):
-            ep.confidence *= 0.5
+            ep.confidence *= 0.1
 
         # Penalty for utility/example/docs files (50% reduction)
         # These are demonstration code, not production entrypoints

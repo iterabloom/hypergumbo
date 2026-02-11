@@ -1728,8 +1728,64 @@ class TestEntrypointRankingPenalties:
     - The full graph data is preserved
     """
 
+    def test_aggressive_test_demotion_prevents_flooding(self) -> None:
+        """Test entrypoints must be aggressively deprioritized to prevent flooding.
+
+        In repos like DMD where 98% of main() functions are in test files,
+        a modest penalty (e.g. 50%) leaves test entrypoints at 0.40 confidence
+        — high enough to dominate auto-slicing selections.  The penalty must
+        push test entrypoints well below production ones so that auto-entry
+        selection picks production code by default.
+        """
+        # 3 production mains
+        prod_mains = [
+            make_symbol(
+                f"main_{i}",
+                path=f"src/app_{i}.py",
+                start_line=i * 100,
+                meta={"concepts": [{"concept": "main_function"}]},
+            )
+            for i in range(3)
+        ]
+        # 50 test mains (simulating DMD-like flooding)
+        test_mains = [
+            make_symbol(
+                f"test_main_{i}",
+                path=f"tests/test_mod_{i}.py",
+                start_line=i * 100,
+                meta={"concepts": [{"concept": "main_function"}]},
+            )
+            for i in range(50)
+        ]
+        nodes = prod_mains + test_mains
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # All should be detected
+        assert len(entrypoints) == 53
+
+        prod_eps = [ep for ep in entrypoints if "src/" in ep.symbol_id]
+        test_eps = [ep for ep in entrypoints if "tests/" in ep.symbol_id]
+
+        # Production entrypoints should be at base confidence
+        for ep in prod_eps:
+            assert ep.confidence == pytest.approx(0.80, rel=0.01)
+
+        # Test entrypoints must be aggressively demoted: below 0.15
+        # (This fails with a 50% penalty where test eps are 0.40)
+        for ep in test_eps:
+            assert ep.confidence < 0.15, (
+                f"Test entrypoint {ep.symbol_id} has confidence {ep.confidence:.2f}, "
+                f"expected < 0.15 for aggressive demotion"
+            )
+
+        # Top 10 should be all production
+        top_10 = entrypoints[:10]
+        for ep in top_10[:3]:
+            assert "src/" in ep.symbol_id
+
     def test_test_file_penalty(self) -> None:
-        """Entrypoints in test files receive a 50% confidence penalty."""
+        """Entrypoints in test files receive a 90% confidence penalty."""
         # Production main function
         prod_main = make_symbol(
             "main",
@@ -1755,9 +1811,9 @@ class TestEntrypointRankingPenalties:
         test_ep = next(e for e in entrypoints if "tests/test_app.py" in e.symbol_id)
 
         # Base confidence is 0.80 for main_function
-        # Test file gets 50% penalty: 0.80 * 0.5 = 0.40
+        # Test file gets 90% penalty: 0.80 * 0.1 = 0.08
         assert prod_ep.confidence == pytest.approx(0.80, rel=0.01)
-        assert test_ep.confidence == pytest.approx(0.40, rel=0.01)
+        assert test_ep.confidence == pytest.approx(0.08, rel=0.01)
 
         # Production should rank first
         assert entrypoints[0].symbol_id == prod_main.id
@@ -1824,9 +1880,9 @@ class TestEntrypointRankingPenalties:
         prod_ep = next(e for e in entrypoints if "src/main.py" in e.symbol_id)
         vendor_test_ep = next(e for e in entrypoints if "vendor/" in e.symbol_id)
 
-        # Base 0.80 * 0.5 (test penalty) * 0.3 (vendor penalty) = 0.12
+        # Base 0.80 * 0.1 (test penalty) * 0.3 (vendor penalty) = 0.024
         assert prod_ep.confidence == pytest.approx(0.80, rel=0.01)
-        assert vendor_test_ep.confidence == pytest.approx(0.12, rel=0.01)
+        assert vendor_test_ep.confidence == pytest.approx(0.024, rel=0.01)
 
     def test_http_route_test_penalty(self) -> None:
         """HTTP routes in test files also receive test penalty."""
@@ -1851,9 +1907,9 @@ class TestEntrypointRankingPenalties:
         test_ep = next(e for e in entrypoints if "tests/" in e.symbol_id)
 
         # Base confidence is 0.95 for HTTP routes
-        # Test file gets 50% penalty: 0.95 * 0.5 = 0.475
+        # Test file gets 90% penalty: 0.95 * 0.1 = 0.095
         assert prod_ep.confidence == pytest.approx(0.95, rel=0.01)
-        assert test_ep.confidence == pytest.approx(0.475, rel=0.01)
+        assert test_ep.confidence == pytest.approx(0.095, rel=0.01)
 
         # Production route should rank first
         assert entrypoints[0].symbol_id == prod_route.id
@@ -1915,12 +1971,11 @@ class TestEntrypointRankingPenalties:
         assert len(entrypoints) == 1
         ep = entrypoints[0]
 
-        # Base 0.80 * 0.5 (test penalty) = 0.40
-        # Plus connectivity boost: log(1 + 10) / 10 ≈ 0.24
-        # Total: 0.40 + 0.24 = 0.64 (capped at 0.25 boost)
-        # Actually: 0.40 + min(0.25, log(11)/10) = 0.40 + 0.24 = 0.64
-        assert ep.confidence > 0.40  # Should be boosted
-        assert ep.confidence < 0.80  # But still penalized
+        # Base 0.80 * 0.1 (test penalty) = 0.08
+        # Plus connectivity boost: min(0.25, log(1 + 10) / 10) ≈ 0.24
+        # Total: 0.08 + 0.24 = 0.32
+        assert ep.confidence > 0.08  # Should be boosted
+        assert ep.confidence < 0.50  # But still well below production
 
     def test_ranking_order_respects_penalties(self) -> None:
         """Final ranking correctly orders by penalized confidence."""
@@ -1953,12 +2008,12 @@ class TestEntrypointRankingPenalties:
 
         # Expected order after penalties:
         # 1. prod_route: 0.95 (no penalty)
-        # 2. test_main: 0.80 * 0.5 = 0.40
-        # 3. vendor_route: 0.95 * 0.3 = 0.285
+        # 2. vendor_route: 0.95 * 0.3 = 0.285
+        # 3. test_main: 0.80 * 0.1 = 0.08  (now below vendor)
         assert len(entrypoints) == 3
         assert entrypoints[0].symbol_id == prod_route.id
-        assert entrypoints[1].symbol_id == test_main.id
-        assert entrypoints[2].symbol_id == vendor_route.id
+        assert entrypoints[1].symbol_id == vendor_route.id
+        assert entrypoints[2].symbol_id == test_main.id
 
 
 class TestConnectivityFallback:

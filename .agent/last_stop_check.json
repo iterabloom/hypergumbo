@@ -1,10 +1,10 @@
 {
-  "last_completed_utc": "2026-02-11T16:40:00Z",
+  "last_completed_utc": "2026-02-11T17:12:00Z",
   "branch": "dev",
-  "last_pr": 1004,
+  "last_pr": 1005,
   "last_pr_state": "merged",
   "pending_hard_todos": 0,
   "pending_soft_todos": 0,
   "unfixed_invariants": 0,
-  "notes": "PR#1004 fix name-collision edge fanout in JS/TS and PHP merged. DEEP bakeoff-features-reflect completed for cohort 7 iter 3 (Django PARTIALLY_USEFUL, DMD NOT_USEFUL, NestJS PARTIALLY_USEFUL). Next priorities from reflection: (1) test entrypoint filtering/demotion (DMD 98% test mains), (2) inheritance-aware centrality (Django Model/View/Form underranked), (3) raise default min_confidence in slice to 0.5."
+  "notes": "PR#1005 preserve extends/implements edges in test-edge filtering merged. Django Model/View/Form underranking addressed. Next priorities from DEEP reflection: (1) test entrypoint filtering/demotion (DMD 98% test mains), (2) raise default min_confidence in slice to 0.5, (3) run bakeoff-features-reflect iteration 4 to validate improvements."
 }
