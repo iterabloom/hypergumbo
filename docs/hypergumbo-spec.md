@@ -1618,8 +1618,6 @@ crud.create_user()      # Resolve: app.crud.create_user()
 
 Currently, only Python and Go fully utilize import tracking for disambiguation. See **ADR-0007** for the roadmap to extend this to 30 additional analyzers with meaningful import semantics.
 
-> **Historical note:** The original v1.0 development milestones (Week 0-9 planning) have been archived to [docs/history/planning-v1.md](history/planning-v1.md). Original success criteria and validation gates have been archived to [docs/history/validation-gates-v1.md](history/validation-gates-v1.md).
-
 ## 18) Autonomous Governance (ADR-0008)
 
 🟩 Hypergumbo includes a vendor-agnostic governance system for AI agent contributors working in autonomous mode. This enforces structural thinking before stopping work, preventing "workaround" fixes that bypass root causes.
@@ -2036,3 +2034,5 @@ In practice, the general-purpose analyzer worked well enough that custom composi
 - `Pack` class from catalog (framework-specific behavior handled by linker activation conditions and `--frameworks` flag)
 
 **For historical reference**, see [history/capsule-system-v1.md](history/capsule-system-v1.md).
+
+**Other archived v1.0 materials:** The original development milestones (Week 0-9 planning) have been archived to [history/planning-v1.md](history/planning-v1.md). Original success criteria and validation gates have been archived to [history/validation-gates-v1.md](history/validation-gates-v1.md).
