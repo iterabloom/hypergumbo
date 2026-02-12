@@ -349,6 +349,87 @@ class TestRouteHandlerLinker:
         result = link_routes_to_handlers([route, handler], [])
         assert len(result.edges) == 1
 
+    def test_rails_deeply_namespaced_controller(self) -> None:
+        """Rails routes with short names link to deeply namespaced controllers.
+
+        In real Rails apps like Chatwoot, routes use short controller names
+        (e.g., 'users#index') but actual controller methods have full namespaces
+        (e.g., 'Api::V1::Accounts::UsersController#index'). The linker should
+        use suffix matching to resolve these.
+        """
+        route = Symbol(
+            id="ruby:/config/routes.rb:10-10:GET /users:route",
+            name="GET /users",
+            kind="route",
+            language="ruby",
+            path="/config/routes.rb",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
+            meta={"controller_action": "users#index"},
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+
+        # Controller method with deep namespace
+        handler = Symbol(
+            id="ruby:/app/controllers/api/v1/accounts/users_controller.rb:15-20:Api::V1::Accounts::UsersController#index:method",
+            name="Api::V1::Accounts::UsersController#index",
+            kind="method",
+            language="ruby",
+            path="/app/controllers/api/v1/accounts/users_controller.rb",
+            span=Span(start_line=15, end_line=20, start_col=2, end_col=5),
+            meta={"class": "Api::V1::Accounts::UsersController"},
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == handler.id
+
+    def test_rails_suffix_match_prefers_exact(self) -> None:
+        """When both exact match and suffix match exist, prefer exact."""
+        route = Symbol(
+            id="ruby:/config/routes.rb:10-10:GET /users:route",
+            name="GET /users",
+            kind="route",
+            language="ruby",
+            path="/config/routes.rb",
+            span=Span(start_line=10, end_line=10, start_col=0, end_col=50),
+            meta={"controller_action": "users#index"},
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+
+        # Exact match
+        exact_handler = Symbol(
+            id="ruby:/app/controllers/users_controller.rb:5-10:UsersController#index:method",
+            name="UsersController#index",
+            kind="method",
+            language="ruby",
+            path="/app/controllers/users_controller.rb",
+            span=Span(start_line=5, end_line=10, start_col=2, end_col=5),
+            meta={"class": "UsersController"},
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+
+        # Suffix match (deeper namespace)
+        namespaced_handler = Symbol(
+            id="ruby:/app/controllers/api/users_controller.rb:15-20:Api::UsersController#index:method",
+            name="Api::UsersController#index",
+            kind="method",
+            language="ruby",
+            path="/app/controllers/api/users_controller.rb",
+            span=Span(start_line=15, end_line=20, start_col=2, end_col=5),
+            meta={"class": "Api::UsersController"},
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, exact_handler, namespaced_handler], [])
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == exact_handler.id
+
     def test_phoenix_namespaced_controller_with_dot(self) -> None:
         """Phoenix handler with .Controller.action pattern is found."""
         route = Symbol(

@@ -114,6 +114,16 @@ def _resolve_rails_handler(
         if controller_class in sym_class or sym_class.endswith(controller_class):
             return sym
 
+    # Try suffix matching for deeply namespaced controllers.
+    # Rails routes use short names (e.g., "users#index" → "UsersController#index")
+    # but actual symbols may be deeply namespaced
+    # (e.g., "Api::V1::Accounts::UsersController#index").
+    hash_suffix = f"::{controller_class}#{action}"
+    dot_suffix = f"::{controller_class}.{action}"
+    for name, sym in symbol_by_name.items():
+        if name.endswith(hash_suffix) or name.endswith(dot_suffix):
+            return sym
+
     return None
 
 

@@ -125,6 +125,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Tiered view token budget compliance**: Was exceeding budget by up to 177x. Force-includes now sorted by centrality and capped. Non-essential fields stripped.
 - **Supply chain tier deserialization**: Cached nodes always had tier=1 due to flat-vs-nested key mismatch. Fixed via `Symbol.from_dict()`.
 - **Route-handler linking for same-name symbols**: Route symbols could overwrite handler functions in the lookup dict. Now preserves function/method/class symbols. Gin-realworld linking: 0% → 100%.
+- **Rails route-handler suffix matching**: Routes with short controller names (e.g., `users#index`) now resolve to deeply namespaced controller methods (e.g., `Api::V1::Accounts::UsersController#index`) via suffix matching. Exact matches still take priority. Previously, Chatwoot had 911/943 routes unlinked due to namespace mismatch.
 - **Django route-handler linking**: Added `view_name` support and fixed `.as_view()` class name extraction for CBVs.
 - **Rust impl method names**: Reference (`&'a M`) and generic (`Writer<'a, M, W>`) types now extract only the base identifier.
 - **Phoenix route entrypoint detection**: Route symbols now get the "route" concept via `symbol_kind` pattern.
