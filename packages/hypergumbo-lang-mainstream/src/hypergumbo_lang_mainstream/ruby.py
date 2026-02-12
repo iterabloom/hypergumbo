@@ -665,6 +665,76 @@ def _extract_symbols_from_file(
     return analysis
 
 
+def _try_receiver_call(
+    receiver_node: "tree_sitter.Node",
+    method_name: str,
+    source: bytes,
+    current_method: Symbol,
+    global_symbols: dict[str, Symbol],
+    resolver: NameResolver,
+    line: int,
+    edges: list[Edge],
+    run: AnalysisRun,
+) -> bool:
+    """Try to resolve a receiver-qualified method call.
+
+    Handles constant receivers (User.find) and scope_resolution receivers
+    (ActiveRecord::Base.connection). Extracts the receiver class name and
+    looks up ClassName#method or ClassName.method in global symbols.
+
+    Returns True if an edge was created, False to fall through to bare name lookup.
+    """
+    # Extract receiver class name from constant or scope_resolution
+    receiver_class: str | None = None
+    if receiver_node.type == "constant":
+        receiver_class = _node_text(receiver_node, source)
+    elif receiver_node.type == "scope_resolution":
+        # For ActiveRecord::Base, extract the rightmost constant ("Base")
+        name_node = _find_child_by_field(receiver_node, "name")
+        if name_node is not None:
+            receiver_class = _node_text(name_node, source)
+
+    if receiver_class is None:
+        return False
+
+    # Try Class#method (instance method convention) and Class.method (module method)
+    for sep in ("#", "."):
+        qualified = f"{receiver_class}{sep}{method_name}"
+        if qualified in global_symbols:
+            callee = global_symbols[qualified]
+            if callee.id != current_method.id:
+                edges.append(Edge.create(
+                    src=current_method.id,
+                    dst=callee.id,
+                    edge_type="calls",
+                    line=line,
+                    evidence_type="receiver_call",
+                    confidence=0.85,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                ))
+                return True
+
+    # Try resolver with class name as path hint for suffix matching
+    lookup_result = resolver.lookup(method_name, path_hint=receiver_class)
+    if lookup_result.found and lookup_result.symbol is not None:
+        callee = lookup_result.symbol
+        if callee.id != current_method.id:
+            edges.append(Edge.create(
+                src=current_method.id,
+                dst=callee.id,
+                edge_type="calls",
+                line=line,
+                evidence_type="receiver_call",
+                confidence=0.75 * lookup_result.confidence,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+            ))
+            return True
+
+    return False
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -736,8 +806,16 @@ def _extract_edges_from_file(
                 else:
                     current_method = _get_enclosing_method(node, source, local_symbols)
                     if current_method is not None:
+                        # Try receiver-qualified resolution first
+                        receiver_node = node.child_by_field_name("receiver")
+                        if receiver_node is not None and _try_receiver_call(
+                            receiver_node, callee_name, source,
+                            current_method, global_symbols, resolver,
+                            node.start_point[0] + 1, edges, run,
+                        ):
+                            pass  # Resolved via receiver
                         # Check local symbols first
-                        if callee_name in local_symbols:
+                        elif callee_name in local_symbols:
                             callee = local_symbols[callee_name]
                             # Skip self-referential edges (e.g., logger method
                             # calling Postal.logger where method name matches)

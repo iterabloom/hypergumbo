@@ -1348,3 +1348,219 @@ end
             None,
         )
         assert call_edge is not None, "Call inside nested blocks should be attributed to outermost method"
+
+
+class TestRubyReceiverCalls:
+    """Tests for method calls with explicit receivers.
+
+    Ruby method calls on receivers (e.g., User.find, obj.process) are common
+    in Rails. The key improvement is disambiguation: when multiple classes define
+    the same method, the receiver class name resolves to the correct target.
+    """
+
+    def test_receiver_disambiguates_same_name_methods(self, tmp_path: Path) -> None:
+        """When User and Post both have find(), User.find() resolves to User#find."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "user.rb").write_text("""
+class User
+  def find(id)
+    id
+  end
+end
+""")
+
+        (tmp_path / "post.rb").write_text("""
+class Post
+  def find(id)
+    id
+  end
+end
+""")
+
+        (tmp_path / "controller.rb").write_text("""
+class UsersController
+  def show
+    User.find(1)
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        show_edges = [
+            e for e in call_edges
+            if "show" in e.src and "find" in e.dst
+        ]
+        assert len(show_edges) >= 1, (
+            f"Expected at least 1 call edge for User.find, got {len(show_edges)}. "
+            f"All call edges: {[(e.src, e.dst, e.evidence_type) for e in call_edges]}"
+        )
+        # The edge must resolve to User#find, not Post#find
+        assert any("User" in e.dst for e in show_edges), (
+            f"Expected edge to User#find, but got: {[(e.dst, e.evidence_type) for e in show_edges]}"
+        )
+
+    def test_constant_receiver_creates_receiver_call(self, tmp_path: Path) -> None:
+        """Constant receiver (class name) creates edge with receiver_call evidence."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "service.rb").write_text("""
+class Service
+  def process(data)
+    data
+  end
+end
+""")
+
+        (tmp_path / "handler.rb").write_text("""
+class Handler
+  def handle
+    Service.process("data")
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        receiver_edges = [
+            e for e in call_edges
+            if "handle" in e.src and "process" in e.dst
+            and e.evidence_type == "receiver_call"
+        ]
+        assert len(receiver_edges) == 1, (
+            f"Expected 1 receiver_call edge, got {len(receiver_edges)}. "
+            f"All call edges: {[(e.src, e.dst, e.evidence_type) for e in call_edges]}"
+        )
+        assert receiver_edges[0].confidence == 0.85
+
+    def test_scope_resolution_receiver_call(self, tmp_path: Path) -> None:
+        """Scope resolution receiver ActiveRecord::Base.connection creates edge."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "base.rb").write_text("""
+module ActiveRecord
+  class Base
+    def connection
+      nil
+    end
+  end
+end
+""")
+
+        (tmp_path / "migrator.rb").write_text("""
+class Migrator
+  def migrate
+    ActiveRecord::Base.connection
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        scope_edges = [
+            e for e in call_edges
+            if "migrate" in e.src and "connection" in e.dst
+            and e.evidence_type == "receiver_call"
+        ]
+        assert len(scope_edges) >= 1, (
+            f"Expected at least 1 receiver_call edge, got {len(scope_edges)}. "
+            f"All call edges: {[(e.src, e.dst, e.evidence_type) for e in call_edges]}"
+        )
+
+    def test_receiver_call_no_match_falls_through(self, tmp_path: Path) -> None:
+        """When receiver class method not found, falls through to bare name lookup."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        # Only define process (no class wrapping) - won't have qualified name
+        (tmp_path / "helpers.rb").write_text("""
+def process(data)
+  data
+end
+""")
+
+        (tmp_path / "main.rb").write_text("""
+def run
+  obj.process("data")
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Should still find the edge via bare method name fallback
+        process_edges = [
+            e for e in call_edges
+            if "run" in e.src and "process" in e.dst
+        ]
+        assert len(process_edges) >= 1, (
+            f"Expected at least 1 edge for process via fallback, got {len(process_edges)}. "
+            f"All call edges: {[(e.src, e.dst, e.evidence_type) for e in call_edges]}"
+        )
+
+    def test_receiver_call_resolver_fallback(self, tmp_path: Path) -> None:
+        """Qualified name not found directly; resolver finds method by short name.
+
+        When a class uses a namespace prefix (Admin::UserFinder), its methods
+        are stored as "Admin::UserFinder#locate". A call like Finder.locate()
+        tries "Finder#locate" (not found) and falls to the resolver.
+        """
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        # Namespaced class: symbol stored as "Admin::UserFinder#locate"
+        (tmp_path / "finder.rb").write_text("""
+class Admin::UserFinder
+  def locate(id)
+    id
+  end
+end
+""")
+
+        # Caller uses short name Finder (not Admin::UserFinder)
+        (tmp_path / "app.rb").write_text("""
+class App
+  def run
+    Finder.locate(42)
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        resolver_edges = [
+            e for e in call_edges
+            if "run" in e.src and "locate" in e.dst
+            and e.evidence_type == "receiver_call"
+        ]
+        assert len(resolver_edges) == 1, (
+            f"Expected 1 resolver fallback edge, got {len(resolver_edges)}. "
+            f"All call edges: {[(e.src, e.dst, e.evidence_type) for e in call_edges]}"
+        )
+        assert resolver_edges[0].confidence == 0.75
+
+    def test_receiver_call_outside_method_ignored(self, tmp_path: Path) -> None:
+        """Receiver calls at module level (no enclosing method) produce no receiver_call edges."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "top.rb").write_text("""
+class Service
+  def work
+    true
+  end
+end
+
+# Module-level call, not inside a method
+Service.work
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        receiver_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.evidence_type == "receiver_call"
+        ]
+        assert len(receiver_edges) == 0
