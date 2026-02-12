@@ -307,6 +307,117 @@ members = ["crates/*"]
         assert lib_result.tier < example_result.tier
 
 
+class TestTestFileClassification:
+    """Test that test directories and files are classified as tier 2 (internal_dep).
+
+    Test code is not production code — it should not be tier 1 (first_party).
+    Common conventions across languages:
+    - Directory-based: tests/, test/, __tests__/, spec/, src/test/
+    - File suffix-based: _test.go, .test.js, .spec.ts, _spec.rb
+    """
+
+    def test_tests_dir_is_internal_dep(self, tmp_path):
+        """Top-level tests/ directory is tier 2."""
+        tests_dir = tmp_path / "tests"
+        tests_dir.mkdir()
+        (tests_dir / "test_main.py").write_text("def test_main(): pass")
+
+        result = classify_file(tests_dir / "test_main.py", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+        assert "test" in result.reason.lower()
+
+    def test_test_dir_singular_is_internal_dep(self, tmp_path):
+        """Top-level test/ directory is tier 2."""
+        test_dir = tmp_path / "test"
+        test_dir.mkdir()
+        (test_dir / "test_app.rb").write_text("require 'test'")
+
+        result = classify_file(test_dir / "test_app.rb", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_jest_tests_dir_is_internal_dep(self, tmp_path):
+        """Jest __tests__/ directory is tier 2."""
+        tests_dir = tmp_path / "src" / "__tests__"
+        tests_dir.mkdir(parents=True)
+        (tests_dir / "app.test.js").write_text("test('ok', () => {})")
+
+        result = classify_file(tests_dir / "app.test.js", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_spec_dir_is_internal_dep(self, tmp_path):
+        """Ruby spec/ directory is tier 2."""
+        spec_dir = tmp_path / "spec"
+        spec_dir.mkdir()
+        (spec_dir / "user_spec.rb").write_text("describe User do; end")
+
+        result = classify_file(spec_dir / "user_spec.rb", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_java_src_test_is_internal_dep(self, tmp_path):
+        """Maven/Gradle src/test/ directory is tier 2."""
+        test_dir = tmp_path / "src" / "test" / "java" / "com" / "example"
+        test_dir.mkdir(parents=True)
+        (test_dir / "AppTest.java").write_text("class AppTest {}")
+
+        result = classify_file(test_dir / "AppTest.java", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_go_test_file_suffix_is_internal_dep(self, tmp_path):
+        """Go _test.go files are tier 2 even in src/."""
+        src_dir = tmp_path / "pkg" / "handler"
+        src_dir.mkdir(parents=True)
+        (src_dir / "handler_test.go").write_text("package handler")
+
+        result = classify_file(src_dir / "handler_test.go", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_js_test_file_suffix_is_internal_dep(self, tmp_path):
+        """JavaScript .test.js files are tier 2."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "app.test.js").write_text("test('ok', () => {})")
+
+        result = classify_file(src_dir / "app.test.js", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_ts_spec_file_suffix_is_internal_dep(self, tmp_path):
+        """TypeScript .spec.ts files are tier 2."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "service.spec.ts").write_text("describe('Service', () => {})")
+
+        result = classify_file(src_dir / "service.spec.ts", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_ruby_spec_file_suffix_is_internal_dep(self, tmp_path):
+        """Ruby _spec.rb files are tier 2."""
+        src_dir = tmp_path / "lib"
+        src_dir.mkdir()
+        (src_dir / "user_spec.rb").write_text("RSpec.describe User do; end")
+
+        result = classify_file(src_dir / "user_spec.rb", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_production_code_in_src_stays_tier1(self, tmp_path):
+        """Production files next to test files stay tier 1."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "app.ts").write_text("export class App {}")
+
+        result = classify_file(src_dir / "app.ts", tmp_path, set())
+        assert result.tier == Tier.FIRST_PARTY
+
+    def test_test_dir_lower_priority_than_derived(self, tmp_path):
+        """Derived artifacts take priority over test classification."""
+        # dist/tests/ should still be tier 4 (derived), not tier 2 (test)
+        dist_tests = tmp_path / "dist" / "tests"
+        dist_tests.mkdir(parents=True)
+        (dist_tests / "test_main.js").write_text("// compiled test")
+
+        result = classify_file(dist_tests / "test_main.js", tmp_path, set())
+        assert result.tier == Tier.DERIVED
+
+
 class TestMinificationDetection:
     """Test content-based minification heuristics."""
 

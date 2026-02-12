@@ -22,7 +22,8 @@ checked in order; first match wins:
 4. Workspace package detection:
    - If file is in src/, lib/, or app/ within workspace → tier 1
    - Otherwise (tests, configs, etc.) → tier 2
-5. First-party detection (tier 1) - src/, lib/, app/ or default
+5. Test code detection (tier 2) - tests/, spec/, __tests__/, _test.go, .test.js, etc.
+6. First-party detection (tier 1) - src/, lib/, app/ or default
 
 This ensures library monorepos classify workspace source code as tier 1,
 while examples outside workspaces are tier 2 (lower priority).
@@ -148,6 +149,23 @@ EXAMPLE_PATTERNS = [
     r"^tutorials?/",  # tutorials/ or tutorial/
 ]
 
+# Patterns for test code (tier 2) — checked BEFORE first-party patterns so that
+# test files in src/ or pkg/ are correctly classified as tier 2, not tier 1.
+# Directory patterns: top-level or nested test directories
+TEST_DIR_PATTERNS = [
+    r"(?:^|/)tests?/",       # tests/ or test/ at any level
+    r"(?:^|/)__tests__/",    # __tests__/ (Jest convention) at any level
+    r"(?:^|/)specs?/",       # spec/ or specs/ (RSpec/Jasmine) at any level
+]
+
+# File suffix patterns: language-specific test naming conventions
+TEST_FILE_PATTERNS = [
+    r"_test\.go$",                # Go: handler_test.go
+    r"\.test\.[jt]sx?$",         # JS/TS: app.test.js, app.test.tsx
+    r"\.spec\.[jt]sx?$",         # JS/TS: service.spec.ts, component.spec.tsx
+    r"_spec\.rb$",               # Ruby: user_spec.rb
+]
+
 # Simple first-party patterns to check within workspaces
 WORKSPACE_FIRST_PARTY_PATTERNS = [
     r"^src/",
@@ -242,7 +260,16 @@ def classify_file(
             except (ValueError, TypeError):
                 continue
 
-    # 5b. Check custom first_party_patterns from config
+    # 5b. Check test directory and file patterns (before first-party so that
+    # src/test/, pkg/handler_test.go are classified as tier 2 not tier 1)
+    for pattern in TEST_DIR_PATTERNS:
+        if re.search(pattern, rel):
+            return FileClassification(Tier.INTERNAL_DEP, f"test path matches {pattern}")
+    for pattern in TEST_FILE_PATTERNS:
+        if re.search(pattern, rel):
+            return FileClassification(Tier.INTERNAL_DEP, f"test file matches {pattern}")
+
+    # 5c. Check custom first_party_patterns from config
     if config and config.first_party_patterns:
         for pattern in config.first_party_patterns:
             if rel.startswith(pattern) or re.match(f"^{re.escape(pattern)}", rel):
