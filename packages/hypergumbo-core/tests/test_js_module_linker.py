@@ -21,10 +21,13 @@ import pytest
 
 from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_core.linkers.js_module import (
+    _build_tsconfig_alias_index,
     _extract_import_path,
     _extract_path_from_id,
+    _get_aliases_for_file,
     _load_tsconfig_aliases,
     _load_vite_aliases,
+    _parse_tsconfig_paths,
     _probe_file,
     _resolve_alias,
     _strip_jsonc_comments,
@@ -1321,3 +1324,322 @@ class TestAliasIntegration:
         imports_module = [e for e in result.edges if e.edge_type == "imports_module"]
         assert len(imports_module) == 1
         assert imports_module[0].evidence_type == "alias_resolution"
+
+
+class TestParseTsconfigPaths:
+    """Tests for _parse_tsconfig_paths (config file → aliases)."""
+
+    def test_basic_config(self, tmp_path: Path) -> None:
+        """Parses a simple tsconfig.json with paths."""
+        tsconfig = {
+            "compilerOptions": {
+                "baseUrl": ".",
+                "paths": {"@/*": ["./src/*"]},
+            }
+        }
+        config = tmp_path / "tsconfig.json"
+        config.write_text(json.dumps(tsconfig))
+        (tmp_path / "src").mkdir()
+
+        aliases = _parse_tsconfig_paths(config)
+        assert len(aliases) == 1
+        assert aliases[0][0] == "@/"
+        assert aliases[0][1] == tmp_path / "src"
+
+    def test_nonexistent_file(self, tmp_path: Path) -> None:
+        """Nonexistent config returns empty list."""
+        aliases = _parse_tsconfig_paths(tmp_path / "nope.json")
+        assert aliases == []
+
+
+class TestBuildTsconfigAliasIndex:
+    """Tests for recursive tsconfig discovery in monorepos."""
+
+    def test_root_tsconfig(self, tmp_path: Path) -> None:
+        """Root tsconfig.json is included in index."""
+        tsconfig = {
+            "compilerOptions": {
+                "baseUrl": ".",
+                "paths": {"@/*": ["./src/*"]},
+            }
+        }
+        (tmp_path / "tsconfig.json").write_text(json.dumps(tsconfig))
+        (tmp_path / "src").mkdir()
+
+        index = _build_tsconfig_alias_index(tmp_path)
+        assert str(tmp_path) in index
+        assert len(index[str(tmp_path)]) == 1
+
+    def test_subdir_tsconfig(self, tmp_path: Path) -> None:
+        """tsconfig.json in subdirectory is discovered."""
+        frontend = tmp_path / "packages" / "frontend"
+        frontend.mkdir(parents=True)
+        tsconfig = {
+            "compilerOptions": {
+                "baseUrl": ".",
+                "paths": {"@/*": ["./*"]},
+            }
+        }
+        (frontend / "tsconfig.json").write_text(json.dumps(tsconfig))
+
+        index = _build_tsconfig_alias_index(tmp_path)
+        assert str(frontend) in index
+        aliases = index[str(frontend)]
+        assert len(aliases) == 1
+        assert aliases[0][0] == "@/"
+        assert aliases[0][1] == frontend
+
+    def test_multiple_subdirs(self, tmp_path: Path) -> None:
+        """Multiple subdirectory tsconfigs are all discovered."""
+        for pkg in ("frontend", "backend"):
+            pkg_dir = tmp_path / "packages" / pkg
+            pkg_dir.mkdir(parents=True)
+            tsconfig = {
+                "compilerOptions": {
+                    "baseUrl": ".",
+                    "paths": {"@/*": ["./*"]},
+                }
+            }
+            (pkg_dir / "tsconfig.json").write_text(json.dumps(tsconfig))
+
+        index = _build_tsconfig_alias_index(tmp_path)
+        assert len(index) == 2
+        assert str(tmp_path / "packages" / "frontend") in index
+        assert str(tmp_path / "packages" / "backend") in index
+
+    def test_node_modules_excluded(self, tmp_path: Path) -> None:
+        """tsconfig.json inside node_modules is ignored."""
+        nm = tmp_path / "node_modules" / "some-pkg"
+        nm.mkdir(parents=True)
+        tsconfig = {
+            "compilerOptions": {"baseUrl": ".", "paths": {"@/*": ["./*"]}},
+        }
+        (nm / "tsconfig.json").write_text(json.dumps(tsconfig))
+
+        index = _build_tsconfig_alias_index(tmp_path)
+        assert str(nm) not in index
+        assert len(index) == 0
+
+    def test_no_paths_skipped(self, tmp_path: Path) -> None:
+        """tsconfig without paths is not included in index."""
+        (tmp_path / "tsconfig.json").write_text(json.dumps({"compilerOptions": {}}))
+
+        index = _build_tsconfig_alias_index(tmp_path)
+        assert len(index) == 0
+
+    def test_jsconfig_discovered(self, tmp_path: Path) -> None:
+        """jsconfig.json in subdirectory is also found."""
+        frontend = tmp_path / "packages" / "frontend"
+        frontend.mkdir(parents=True)
+        (frontend / "jsconfig.json").write_text(json.dumps({
+            "compilerOptions": {"baseUrl": ".", "paths": {"~/*": ["./*"]}},
+        }))
+
+        index = _build_tsconfig_alias_index(tmp_path)
+        assert str(frontend) in index
+
+    def test_duplicate_configs_first_wins(self, tmp_path: Path) -> None:
+        """When both tsconfig.json and jsconfig.json exist, tsconfig wins."""
+        (tmp_path / "tsconfig.json").write_text(json.dumps({
+            "compilerOptions": {"baseUrl": ".", "paths": {"@/*": ["./src/*"]}},
+        }))
+        (tmp_path / "jsconfig.json").write_text(json.dumps({
+            "compilerOptions": {"baseUrl": ".", "paths": {"~/*": ["./lib/*"]}},
+        }))
+        (tmp_path / "src").mkdir()
+
+        index = _build_tsconfig_alias_index(tmp_path)
+        assert str(tmp_path) in index
+        # tsconfig.json found first, so @/ alias should be present
+        prefixes = {a[0] for a in index[str(tmp_path)]}
+        assert "@/" in prefixes
+
+
+class TestGetAliasesForFile:
+    """Tests for finding nearest ancestor tsconfig aliases."""
+
+    def test_exact_dir_match(self, tmp_path: Path) -> None:
+        """Source file in indexed directory gets those aliases."""
+        frontend = tmp_path / "packages" / "frontend"
+        expected = [("@/", frontend)]
+        index = {str(frontend): expected}
+
+        result = _get_aliases_for_file(
+            str(frontend / "index.ts"), index, tmp_path
+        )
+        assert result == expected
+
+    def test_ancestor_dir_match(self, tmp_path: Path) -> None:
+        """Source file nested under indexed dir gets ancestor aliases."""
+        frontend = tmp_path / "packages" / "frontend"
+        expected = [("@/", frontend)]
+        index = {str(frontend): expected}
+
+        result = _get_aliases_for_file(
+            str(frontend / "pages" / "features" / "index.tsx"),
+            index,
+            tmp_path,
+        )
+        assert result == expected
+
+    def test_no_match_returns_empty(self, tmp_path: Path) -> None:
+        """Source file with no ancestor tsconfig gets empty list."""
+        index: dict[str, list[tuple[str, Path]]] = {}
+
+        result = _get_aliases_for_file(
+            str(tmp_path / "src" / "app.ts"), index, tmp_path
+        )
+        assert result == []
+
+    def test_nearest_wins(self, tmp_path: Path) -> None:
+        """Most specific (nearest) tsconfig takes priority."""
+        root_aliases = [("~/*", tmp_path)]
+        child_aliases = [("@/", tmp_path / "packages" / "fe")]
+        index = {
+            str(tmp_path): root_aliases,
+            str(tmp_path / "packages" / "fe"): child_aliases,
+        }
+
+        result = _get_aliases_for_file(
+            str(tmp_path / "packages" / "fe" / "src" / "app.ts"),
+            index,
+            tmp_path,
+        )
+        assert result == child_aliases
+
+
+class TestMonorepoIntegration:
+    """Integration tests for monorepo alias resolution in link_js_modules."""
+
+    def _make_file_symbol(
+        self, path: str, lang: str = "typescript"
+    ) -> Symbol:
+        name = Path(path).name
+        return Symbol(
+            id=f"{lang}:{path}:1-1:{name}:file",
+            name=name,
+            kind="file",
+            language=lang,
+            path=path,
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+    def _make_import_edge(
+        self, src_id: str, module_path: str, lang: str = "typescript"
+    ) -> Edge:
+        return Edge.create(
+            src=src_id,
+            dst=f"{lang}:{module_path}:0-0:module:module",
+            edge_type="imports",
+            line=1,
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+            evidence_type="import_static",
+            confidence=0.95,
+        )
+
+    def _make_function_symbol(
+        self, path: str, name: str, lang: str = "typescript"
+    ) -> Symbol:
+        return Symbol(
+            id=f"{lang}:{path}:5-10:{name}:function",
+            name=name,
+            kind="function",
+            language=lang,
+            path=path,
+            span=Span(start_line=5, end_line=10, start_col=0, end_col=0),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+    def test_monorepo_subdirectory_tsconfig(self, tmp_path: Path) -> None:
+        """Import @/components/Button resolves via packages/frontend tsconfig."""
+        # Setup monorepo structure
+        frontend = tmp_path / "packages" / "frontend"
+        (frontend / "components").mkdir(parents=True)
+        (frontend / "components" / "Button.tsx").write_text("")
+        (frontend / "pages").mkdir()
+        (frontend / "pages" / "index.tsx").write_text("")
+
+        tsconfig = {
+            "compilerOptions": {
+                "baseUrl": ".",
+                "paths": {"@/*": ["./*"]},
+            }
+        }
+        (frontend / "tsconfig.json").write_text(json.dumps(tsconfig))
+
+        src_path = str(frontend / "pages" / "index.tsx")
+        btn_path = str(frontend / "components" / "Button.tsx")
+
+        file_sym = self._make_file_symbol(src_path)
+        import_edge = self._make_import_edge(file_sym.id, "@/components/Button")
+        btn_fn = self._make_function_symbol(btn_path, "Button")
+
+        result = link_js_modules(
+            repo_root=tmp_path,
+            symbols=[file_sym, btn_fn],
+            edges=[import_edge],
+        )
+
+        module_files = [s for s in result.symbols if s.kind == "module_file"]
+        assert len(module_files) == 1
+        assert "Button.tsx" in module_files[0].path
+
+        # Should NOT be treated as npm_package
+        npm = [s for s in result.symbols if s.kind == "npm_package"]
+        assert len(npm) == 0
+
+        imports_module = [e for e in result.edges if e.edge_type == "imports_module"]
+        assert len(imports_module) == 1
+        assert imports_module[0].evidence_type == "alias_resolution"
+
+        exports = [e for e in result.edges if e.edge_type == "module_exports"]
+        assert len(exports) == 1
+
+    def test_monorepo_two_packages_different_aliases(self, tmp_path: Path) -> None:
+        """Two packages with different tsconfigs resolve independently."""
+        # frontend: @/* -> ./*
+        frontend = tmp_path / "packages" / "frontend"
+        (frontend / "src").mkdir(parents=True)
+        (frontend / "src" / "utils.ts").write_text("")
+        (frontend / "tsconfig.json").write_text(json.dumps({
+            "compilerOptions": {"baseUrl": ".", "paths": {"@/*": ["./*"]}},
+        }))
+
+        # backend: ~/* -> ./src/*
+        backend = tmp_path / "packages" / "backend"
+        (backend / "src").mkdir(parents=True)
+        (backend / "src" / "db.ts").write_text("")
+        (backend / "tsconfig.json").write_text(json.dumps({
+            "compilerOptions": {"baseUrl": ".", "paths": {"~/*": ["./src/*"]}},
+        }))
+
+        # Frontend import: @/src/utils
+        fe_path = str(frontend / "app.ts")
+        (frontend / "app.ts").write_text("")
+        fe_sym = self._make_file_symbol(fe_path)
+        fe_edge = self._make_import_edge(fe_sym.id, "@/src/utils")
+
+        # Backend import: ~/db
+        be_path = str(backend / "index.ts")
+        (backend / "index.ts").write_text("")
+        be_sym = self._make_file_symbol(be_path)
+        be_edge = self._make_import_edge(be_sym.id, "~/db")
+
+        result = link_js_modules(
+            repo_root=tmp_path,
+            symbols=[fe_sym, be_sym],
+            edges=[fe_edge, be_edge],
+        )
+
+        module_files = [s for s in result.symbols if s.kind == "module_file"]
+        assert len(module_files) == 2
+        paths = {m.path for m in module_files}
+        assert any("utils.ts" in p for p in paths)
+        assert any("db.ts" in p for p in paths)
+
+        npm = [s for s in result.symbols if s.kind == "npm_package"]
+        assert len(npm) == 0

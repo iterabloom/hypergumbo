@@ -310,34 +310,25 @@ def _strip_jsonc_comments(text: str) -> str:
     return cleaned
 
 
-def _load_tsconfig_aliases(repo_root: Path) -> list[tuple[str, Path]]:
-    """Load path aliases from tsconfig.json (or jsconfig.json).
+def _parse_tsconfig_paths(config_path: Path) -> list[tuple[str, Path]]:
+    """Parse path aliases from a specific tsconfig.json file.
 
-    Parses compilerOptions.paths with baseUrl to produce a list of
-    (prefix, target_dir) tuples. Follows 'extends' chains up to
-    _MAX_EXTENDS_DEPTH to find inherited paths.
+    Follows 'extends' chains up to _MAX_EXTENDS_DEPTH to find inherited paths.
+    Resolves paths relative to the config file's baseUrl.
 
     For wildcard patterns like '@/*' → ['./src/*']:
-      Returns ("@/", repo_root / "src")
+      Returns ("@/", config_dir / "src")
     For exact patterns like 'shared' → ['./packages/shared/src/index']:
-      Returns ("shared", repo_root / "packages/shared/src/index")
+      Returns ("shared", config_dir / "packages/shared/src/index")
 
     Args:
-        repo_root: Repository root directory.
+        config_path: Path to a tsconfig.json or jsconfig.json file.
 
     Returns:
         List of (prefix, target_dir) tuples sorted by prefix length
         (longest first for most-specific matching).
     """
-    # Find the config file
-    config_path = None
-    for name in _TSCONFIG_NAMES:
-        candidate = repo_root / name
-        if candidate.is_file():
-            config_path = candidate
-            break
-
-    if config_path is None:
+    if not config_path.is_file():
         return []
 
     # Follow extends chain to find compilerOptions with paths
@@ -412,6 +403,98 @@ def _load_tsconfig_aliases(repo_root: Path) -> list[tuple[str, Path]]:
     # Sort by prefix length (longest first) for most-specific matching
     aliases.sort(key=lambda a: len(a[0]), reverse=True)
     return aliases
+
+
+def _load_tsconfig_aliases(repo_root: Path) -> list[tuple[str, Path]]:
+    """Load path aliases from root-level tsconfig.json (or jsconfig.json).
+
+    Convenience wrapper that searches for a config file at the repo root
+    and delegates to _parse_tsconfig_paths.
+
+    Args:
+        repo_root: Repository root directory.
+
+    Returns:
+        List of (prefix, target_dir) tuples sorted by prefix length
+        (longest first for most-specific matching).
+    """
+    for name in _TSCONFIG_NAMES:
+        candidate = repo_root / name
+        if candidate.is_file():
+            return _parse_tsconfig_paths(candidate)
+    return []
+
+
+def _build_tsconfig_alias_index(
+    repo_root: Path,
+) -> dict[str, list[tuple[str, Path]]]:
+    """Build directory→aliases index from ALL tsconfig.json files in the repo.
+
+    Recursively discovers tsconfig.json and jsconfig.json files (excluding
+    node_modules) and loads path aliases from each. The result maps each
+    config file's directory to its aliases.
+
+    This enables monorepo support: packages/frontend/tsconfig.json provides
+    aliases for files under packages/frontend/, while packages/backend/
+    may have different aliases.
+
+    Args:
+        repo_root: Repository root directory.
+
+    Returns:
+        Dict mapping directory path (str) → list of (prefix, target_dir) tuples.
+    """
+    index: dict[str, list[tuple[str, Path]]] = {}
+
+    for name in ("tsconfig.json", "jsconfig.json"):
+        for config_path in repo_root.rglob(name):
+            # Skip node_modules — contains thousands of unrelated configs
+            if "node_modules" in config_path.parts:
+                continue
+
+            dir_str = str(config_path.parent)
+            if dir_str in index:
+                continue  # First config found wins per directory
+
+            aliases = _parse_tsconfig_paths(config_path)
+            if aliases:
+                index[dir_str] = aliases
+
+    return index
+
+
+def _get_aliases_for_file(
+    src_path: str,
+    tsconfig_index: dict[str, list[tuple[str, Path]]],
+    repo_root: Path,
+) -> list[tuple[str, Path]]:
+    """Find the nearest ancestor tsconfig aliases for a source file.
+
+    Walks up from the source file's directory to the repo root, checking
+    each directory against the tsconfig index. Returns aliases from the
+    nearest ancestor that has a tsconfig with paths.
+
+    Args:
+        src_path: Absolute path to the source file.
+        tsconfig_index: Directory→aliases mapping from _build_tsconfig_alias_index.
+        repo_root: Repository root directory.
+
+    Returns:
+        Aliases from the nearest ancestor tsconfig, or empty list.
+    """
+    current = Path(src_path).parent
+    root_resolved = repo_root.resolve()
+    root_str = str(root_resolved)
+
+    while True:
+        cur_str = str(current)
+        if cur_str in tsconfig_index:
+            return tsconfig_index[cur_str]
+        if cur_str == root_str or current == current.parent:
+            break
+        current = current.parent
+
+    return []
 
 
 def _load_vite_aliases(repo_root: Path) -> list[tuple[str, Path]]:
@@ -585,8 +668,15 @@ def link_js_modules(
         run.duration_ms = int((time.time() - start_time) * 1000)
         return LinkerResult(symbols=[], edges=[], run=run)
 
-    # Load path aliases from tsconfig.json and vite.config.* (once per run)
-    aliases = _load_tsconfig_aliases(repo_root) + _load_vite_aliases(repo_root)
+    # Build alias indices (once per run)
+    # tsconfig index: maps directory → aliases from nearest tsconfig.json
+    # Supports monorepos where packages/frontend/ and packages/backend/
+    # have different tsconfig.json with different path aliases.
+    tsconfig_index = _build_tsconfig_alias_index(repo_root)
+    # Vite aliases are global (always at repo root)
+    vite_aliases = _load_vite_aliases(repo_root)
+    # Cache: source directory → combined sorted aliases (avoid re-sorting)
+    aliases_cache: dict[str, list[tuple[str, Path]]] = {}
 
     for edge in import_edges:
         # Parse the dst to extract import path
@@ -615,7 +705,17 @@ def link_js_modules(
             base_path = (source_dir / import_path).resolve()
             resolved = _probe_file(base_path)
         else:
-            # Non-relative: try alias resolution first, then npm package
+            # Non-relative: get per-file aliases (nearest tsconfig + Vite)
+            src_dir = str(Path(src_path).parent)
+            if src_dir not in aliases_cache:
+                file_aliases = _get_aliases_for_file(
+                    src_path, tsconfig_index, repo_root
+                )
+                combined = file_aliases + vite_aliases
+                combined.sort(key=lambda a: len(a[0]), reverse=True)
+                aliases_cache[src_dir] = combined
+            aliases = aliases_cache[src_dir]
+
             if aliases:
                 resolved = _resolve_alias(import_path, aliases)
                 if resolved is not None:
