@@ -1,10 +1,10 @@
 {
-  "last_completed_utc": "2026-02-11T17:12:00Z",
+  "last_completed_utc": "2026-02-12T01:32:38Z",
   "branch": "dev",
-  "last_pr": 1005,
+  "last_pr": 1017,
   "last_pr_state": "merged",
   "pending_hard_todos": 0,
   "pending_soft_todos": 0,
   "unfixed_invariants": 0,
-  "notes": "PR#1005 preserve extends/implements edges in test-edge filtering merged. Django Model/View/Form underranking addressed. Next priorities from DEEP reflection: (1) test entrypoint filtering/demotion (DMD 98% test mains), (2) raise default min_confidence in slice to 0.5, (3) run bakeoff-features-reflect iteration 4 to validate improvements."
+  "notes": "PR #1016 (Java extends collision) and PR #1017 (centralized linker collision) both merged. INV-015 is now fully fixed across all per-analyzer languages (Python, JS/TS, Ruby, Kotlin, Java) AND the centralized linker (C#, Scala, PHP, Groovy, Swift, C++, ObjC, Apex). No pending TODOs. Next: check DEEP mode priority queue \u2014 slice quality, reverse slice, centrality ranking, or run bakeoff-features."
 }

@@ -523,7 +523,12 @@ DEEP mode scripts:
 ./scripts/bakeoff-features init --pool ~/repos
 # → Creates ~/hypergumbo_lab_notebook/bakeoff_artifacts/deep-YYYYMMDD-HHMMSS/
 
+# Auto-select cohort by size/complexity
 ./scripts/bakeoff-features cohort --count 4 --min-size 20 --max-size 200
+
+# Or use explicit repos (for curriculum-based workflows)
+./scripts/bakeoff-features cohort --repos repo-a,repo-b,repo-c
+
 ./scripts/bakeoff-features run
 ./scripts/bakeoff-features diagnose
 
@@ -532,7 +537,9 @@ DEEP mode scripts:
 ./scripts/bakeoff-features-reflect aggregate
 ```
 
-See ADR-0009 for design rationale.
+**Curricula:** Pre-planned cohort sequences live in `~/hypergumbo_lab_notebook/curricula/`.
+Check there before auto-selecting — if a curriculum exists for the current work, follow its
+cohort commands in order. See ADR-0009 §2b for the curriculum concept.
 
 ### Bakeoff Artifacts
 

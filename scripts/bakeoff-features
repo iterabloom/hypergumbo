@@ -23,8 +23,11 @@ This is a **separate bakeoff loop**, not integrated into `scripts/bakeoff`:
     # Initialize a new feature bakeoff session (creates timestamped dir in canonical default)
     ./scripts/bakeoff-features init --pool ~/repos
 
-    # Select cohort (larger repos than regular bakeoff)
+    # Select cohort — auto-selection (larger repos than regular bakeoff)
     ./scripts/bakeoff-features cohort --count 4 --min-size 20 --max-size 200
+
+    # Or select cohort — explicit repos (for curriculum-based workflows)
+    ./scripts/bakeoff-features cohort --repos repo-a,repo-b,repo-c
 
     # Run feature battery on cohort
     ./scripts/bakeoff-features run
@@ -480,96 +483,142 @@ def cmd_cohort(args):
         return 1
 
     pool_path = os.environ.get("BAKEOFF_FEATURES_POOL", state.pool_path)
-    min_size_mb = args.min_size or DEFAULT_MIN_SIZE_MB
-    max_size_mb = args.max_size or DEFAULT_MAX_SIZE_MB
-    count = args.count or DEFAULT_COHORT_SIZE
 
-    print(f"Scanning pool: {pool_path}")
-    print(f"  Size range: {min_size_mb}MB - {max_size_mb}MB")
-    print()
+    explicit_repos = getattr(args, "repos", None)
+    if explicit_repos:
+        # Explicit repo selection: bypass size/complexity filters
+        repo_names = [n.strip() for n in explicit_repos.split(",") if n.strip()]
+        print(f"Pool: {pool_path}")
+        print(f"  Explicit repos: {', '.join(repo_names)}")
+        print()
 
-    available = []
+        cohort = []
+        missing = []
+        for name in repo_names:
+            repo_path = os.path.join(pool_path, name)
+            if not os.path.isdir(repo_path):
+                missing.append(name)
+                continue
+            size_bytes = get_dir_size(repo_path)
+            size_mb = size_bytes / (1024 * 1024)
+            file_count = count_files(repo_path)
+            languages = detect_languages(repo_path)
+            repo = RepoInfo(
+                name=name,
+                path=repo_path,
+                size_bytes=size_bytes,
+                size_mb=size_mb,
+                file_count=file_count,
+                languages=languages,
+            )
+            repo.complexity_score = compute_complexity_score(repo)
+            cohort.append(repo)
 
-    for entry in os.scandir(pool_path):
-        if not entry.is_dir():
-            continue
-        if entry.name.startswith("."):
-            continue
-        if entry.name in state.tested_repos:
-            continue
+        if missing:
+            print(f"Error: repos not found in pool: {', '.join(missing)}", file=sys.stderr)
+            return 1
 
-        size_bytes = get_dir_size(entry.path)
-        size_mb = size_bytes / (1024 * 1024)
+        if not cohort:
+            print("Error: no repos specified", file=sys.stderr)
+            return 1
+    else:
+        # Auto-selection: filter by size/complexity, pick for language diversity
+        min_size_mb = args.min_size or DEFAULT_MIN_SIZE_MB
+        max_size_mb = args.max_size or DEFAULT_MAX_SIZE_MB
+        count = args.count or DEFAULT_COHORT_SIZE
 
-        # Filter by size
-        if size_mb < min_size_mb or size_mb > max_size_mb:
-            continue
+        print(f"Scanning pool: {pool_path}")
+        print(f"  Size range: {min_size_mb}MB - {max_size_mb}MB")
+        print()
 
-        file_count = count_files(entry.path)
+        available = []
 
-        # Filter by file count (need enough complexity)
-        if file_count < MIN_FILE_COUNT:
-            continue
+        for entry in os.scandir(pool_path):
+            if not entry.is_dir():
+                continue
+            if entry.name.startswith("."):
+                continue
+            if entry.name in state.tested_repos:
+                continue
 
-        languages = detect_languages(entry.path)
+            size_bytes = get_dir_size(entry.path)
+            size_mb = size_bytes / (1024 * 1024)
 
-        repo = RepoInfo(
-            name=entry.name,
-            path=entry.path,
-            size_bytes=size_bytes,
-            size_mb=size_mb,
-            file_count=file_count,
-            languages=languages,
-        )
-        repo.complexity_score = compute_complexity_score(repo)
-        available.append(repo)
+            # Filter by size
+            if size_mb < min_size_mb or size_mb > max_size_mb:
+                continue
 
-    # Sort by complexity score (highest first), then by size
-    available.sort(key=lambda r: (-r.complexity_score, r.size_mb))
+            file_count = count_files(entry.path)
 
-    # Strategic selection: try to get language diversity
-    cohort = []
-    seen_langs = set()
+            # Filter by file count (need enough complexity)
+            if file_count < MIN_FILE_COUNT:
+                continue
 
-    # Phase 1: Pick repos that add new primary languages
-    for r in available:
-        if len(cohort) >= count:
-            break
-        primary_lang = r.languages[0] if r.languages else None
-        if primary_lang and primary_lang not in seen_langs:
-            cohort.append(r)
-            seen_langs.add(primary_lang)
+            languages = detect_languages(entry.path)
 
-    # Phase 2: Fill remaining slots with highest complexity repos
-    for r in available:
-        if len(cohort) >= count:
-            break
-        if r not in cohort:
-            cohort.append(r)
+            repo = RepoInfo(
+                name=entry.name,
+                path=entry.path,
+                size_bytes=size_bytes,
+                size_mb=size_mb,
+                file_count=file_count,
+                languages=languages,
+            )
+            repo.complexity_score = compute_complexity_score(repo)
+            available.append(repo)
 
-    if not cohort:
-        print("No repos matching criteria found in pool!")
-        print(f"  Criteria: {min_size_mb}MB - {max_size_mb}MB, {MIN_FILE_COUNT}+ files")
-        return 1
+        # Sort by complexity score (highest first), then by size
+        available.sort(key=lambda r: (-r.complexity_score, r.size_mb))
+
+        # Strategic selection: try to get language diversity
+        cohort = []
+        seen_langs = set()
+
+        # Phase 1: Pick repos that add new primary languages
+        for r in available:
+            if len(cohort) >= count:
+                break
+            primary_lang = r.languages[0] if r.languages else None
+            if primary_lang and primary_lang not in seen_langs:
+                cohort.append(r)
+                seen_langs.add(primary_lang)
+
+        # Phase 2: Fill remaining slots with highest complexity repos
+        for r in available:
+            if len(cohort) >= count:
+                break
+            if r not in cohort:
+                cohort.append(r)
+
+        if not cohort:
+            print("No repos matching criteria found in pool!")
+            print(f"  Criteria: {min_size_mb}MB - {max_size_mb}MB, {MIN_FILE_COUNT}+ files")
+            return 1
 
     # Update state
     state.cohort_number += 1
     state.iteration = 0
     state.current_cohort = [r.name for r in cohort]
+    state.tested_repos.extend(r.name for r in cohort)
     save_state(state)
 
     # Write cohort metadata
     cohort_dir = os.path.join(workdir, "cohorts", f"cohort-{state.cohort_number:03d}")
     os.makedirs(cohort_dir, exist_ok=True)
 
-    metadata = {
-        "cohort_number": state.cohort_number,
-        "created_at": datetime.datetime.now().isoformat(),
-        "criteria": {
+    if explicit_repos:
+        criteria = {"explicit": [r.name for r in cohort]}
+    else:
+        criteria = {
             "min_size_mb": min_size_mb,
             "max_size_mb": max_size_mb,
             "min_file_count": MIN_FILE_COUNT,
-        },
+        }
+
+    metadata = {
+        "cohort_number": state.cohort_number,
+        "created_at": datetime.datetime.now().isoformat(),
+        "criteria": criteria,
         "repos": [asdict(r) for r in cohort],
     }
     with open(os.path.join(cohort_dir, "metadata.json"), "w") as f:
@@ -581,8 +630,9 @@ def cmd_cohort(args):
         langs = ", ".join(r.languages[:2]) if r.languages else "unknown"
         print(f"  {r.name:40s} {r.size_mb:6.1f}MB  {r.file_count:5d} files  [{langs}]  (score: {r.complexity_score:.1f})")
 
-    print()
-    print(f"Remaining in pool: {len(available) - len(cohort)}")
+    if not explicit_repos:
+        print()
+        print(f"Remaining in pool: {len(available) - len(cohort)}")
     print()
     print("Next: Run `bakeoff-features run` to test features on these repos")
     return 0
@@ -1105,6 +1155,7 @@ def main():
     p_cohort.add_argument("--count", type=int, help=f"Number of repos (default: {DEFAULT_COHORT_SIZE})")
     p_cohort.add_argument("--min-size", type=int, help=f"Min repo size in MB (default: {DEFAULT_MIN_SIZE_MB})")
     p_cohort.add_argument("--max-size", type=int, help=f"Max repo size in MB (default: {DEFAULT_MAX_SIZE_MB})")
+    p_cohort.add_argument("--repos", help="Comma-separated list of repo names to use (bypasses auto-selection)")
     p_cohort.add_argument("--workdir", help="Override workdir")
 
     # run

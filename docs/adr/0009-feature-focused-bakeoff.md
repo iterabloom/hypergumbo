@@ -84,6 +84,41 @@ if len(languages) >= 2: score += 1.0
 if len(languages) >= 3: score += 0.5
 ```
 
+### 2b. Curriculum-Based Cohort Selection
+
+As an alternative to auto-selection, cohorts can be pre-planned as a **curriculum** — a
+sequence of cohorts chosen and ordered with intent (e.g., progression from easy to hard,
+or grouping by domain to isolate variables).
+
+A curriculum is a markdown file stored in `~/hypergumbo_lab_notebook/curricula/` containing:
+- The rationale for the cohort groupings and ordering
+- The `bakeoff-features cohort --repos` commands to run in sequence
+- Any per-cohort notes or hypotheses
+
+Example curriculum (repos are illustrative):
+````markdown
+# Curriculum: Widget Platform Stress Test
+
+## Rationale
+Progress from single-language repos to polyglot monoliths.
+
+## Cohorts
+
+```bash
+./scripts/bakeoff-features cohort --repos alpha-api,beta-service,gamma-lib
+./scripts/bakeoff-features cohort --repos delta-monolith,epsilon-gateway,zeta-dashboard
+./scripts/bakeoff-features cohort --repos eta-platform,theta-infra,iota-legacy
+```
+
+## Notes
+- Cohort 1: Pure Go services — baseline for graph quality
+- Cohort 2: Mixed Go/TypeScript — tests cross-language linkers
+- Cohort 3: Large polyglot monoliths — stress-tests slice limits
+````
+
+Run each cohort command followed by `bakeoff-features run` and `bakeoff-features diagnose`
+before proceeding to the next.
+
 ### 3. Feature Test Battery
 
 For each repo, run:
