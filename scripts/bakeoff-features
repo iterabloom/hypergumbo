@@ -99,12 +99,14 @@ SEVERITY_HIGH = "HIGH"
 SEVERITY_MEDIUM = "MEDIUM"
 SEVERITY_LOW = "LOW"
 
-# Node kinds that represent code symbols (for orphan rate calculation).
+# Node kinds that represent callable/structural code symbols (for orphan rate).
 # Excludes documentation (section, link, code_block), CSS (class_selector, rule_set),
-# and build config (dependency, devDependency, tsconfig, requirement, etc.).
+# build config (dependency, devDependency, tsconfig, requirement, etc.),
+# and data declarations (variable) — variables/fields/parameters are naturally
+# not connected by call edges and would inflate the orphan rate.
 _CODE_NODE_KINDS = frozenset({
     "function", "method", "class", "module", "struct", "interface", "type",
-    "enum", "trait", "constructor", "getter", "setter", "variable",
+    "enum", "trait", "constructor", "getter", "setter",
     "route", "export", "service", "scalar", "directive",
     "event_subscriber", "event_publisher", "websocket_endpoint",
     "http_client", "mq_subscriber", "mq_publisher", "rpc",
