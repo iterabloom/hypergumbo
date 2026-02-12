@@ -104,10 +104,12 @@ SEVERITY_LOW = "LOW"
 # build config (dependency, devDependency, tsconfig, requirement, etc.),
 # and data declarations (variable) — variables/fields/parameters are naturally
 # not connected by call edges and would inflate the orphan rate.
+# Also excludes: directive (Vue template annotations like v-if, @click, :src —
+# not callable code), scalar (GraphQL scalar types — no call edges).
 _CODE_NODE_KINDS = frozenset({
     "function", "method", "class", "module", "struct", "interface", "type",
     "enum", "trait", "constructor", "getter", "setter",
-    "route", "export", "service", "scalar", "directive",
+    "route", "export", "service",
     "event_subscriber", "event_publisher", "websocket_endpoint",
     "http_client", "mq_subscriber", "mq_publisher", "rpc",
     "subprocess_call", "graphql_resolver", "db_query",
