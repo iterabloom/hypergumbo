@@ -719,7 +719,115 @@ def _extract_edges_from_file(
                                     origin_run_id=run.execution_id,
                                 ))
 
+            # Module-qualified calls: Helper.greet(), App.Services.UserService.find()
+            # AST: call -> dot -> (alias, ".", identifier)
+            else:
+                dot_node = _find_child_by_type(node, "dot")
+                if dot_node:
+                    _handle_dot_call(
+                        node, dot_node, source, local_symbols,
+                        global_symbols, resolver, alias_hints, edges, run,
+                    )
+
     return edges
+
+
+def _handle_dot_call(
+    call_node: "tree_sitter.Node",
+    dot_node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+    global_symbols: dict[str, Symbol],
+    resolver: NameResolver,
+    alias_hints: dict[str, str],
+    edges: list[Edge],
+    run: AnalysisRun,
+) -> None:
+    """Handle module-qualified calls like Helper.greet() or App.Module.func().
+
+    Extracts the module alias and function name from a dot node, then resolves
+    the function using the module-qualified name (e.g., "Helper.greet") against
+    the global symbol registry.
+    """
+    # Extract module alias and function name from dot node
+    alias_node = _find_child_by_type(dot_node, "alias")
+    func_id_node = _find_child_by_type(dot_node, "identifier")
+    if alias_node is None or func_id_node is None:
+        return
+
+    module_name = _node_text(alias_node, source)
+    func_name = _node_text(func_id_node, source)
+
+    # Find the enclosing function (caller)
+    current_function = _get_enclosing_function(call_node, source, local_symbols)
+    if current_function is None:
+        return
+
+    # Build the fully-qualified function name: Module.func_name
+    qualified_name = f"{module_name}.{func_name}"
+
+    # Try to resolve the qualified name in global symbols
+    if qualified_name in global_symbols:
+        callee = global_symbols[qualified_name]
+        edges.append(Edge.create(
+            src=current_function.id,
+            dst=callee.id,
+            edge_type="calls",
+            line=call_node.start_point[0] + 1,
+            evidence_type="module_qualified_call",
+            confidence=0.90,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+        ))
+        return
+
+    # Try with alias hints: if module_name is an alias, resolve to full path
+    if module_name in alias_hints:
+        full_module = alias_hints[module_name]
+        full_qualified = f"{full_module}.{func_name}"
+        if full_qualified in global_symbols:
+            callee = global_symbols[full_qualified]
+            edges.append(Edge.create(
+                src=current_function.id,
+                dst=callee.id,
+                edge_type="calls",
+                line=call_node.start_point[0] + 1,
+                evidence_type="module_qualified_call",
+                confidence=0.85,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+            ))
+            return
+
+    # Try resolver lookup with the function name and module as path hint
+    path_hint = alias_hints.get(module_name, module_name)
+    lookup_result = resolver.lookup(func_name, path_hint=path_hint)
+    if lookup_result.found and lookup_result.symbol is not None:
+        edges.append(Edge.create(
+            src=current_function.id,
+            dst=lookup_result.symbol.id,
+            edge_type="calls",
+            line=call_node.start_point[0] + 1,
+            evidence_type="module_qualified_call",
+            confidence=0.75 * lookup_result.confidence,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+        ))
+        return
+
+    # Fallback: create an unresolved edge for cross-module calls
+    # This allows linkers to match across files/languages
+    dst_id = f"elixir:{module_name}:0-0:{func_name}:unresolved"
+    edges.append(Edge.create(
+        src=current_function.id,
+        dst=dst_id,
+        edge_type="calls",
+        line=call_node.start_point[0] + 1,
+        evidence_type="unresolved_module_call",
+        confidence=0.50,
+        origin=PASS_ID,
+        origin_run_id=run.execution_id,
+    ))
 
 
 @register_analyzer("elixir")

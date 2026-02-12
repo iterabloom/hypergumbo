@@ -1,10 +1,10 @@
 {
-  "last_completed_utc": "2026-02-12T07:06:58Z",
+  "last_completed_utc": "2026-02-12T07:42:36Z",
   "branch": "dev",
-  "last_pr": 1017,
+  "last_pr": 1019,
   "last_pr_state": "merged",
   "pending_hard_todos": 0,
   "pending_soft_todos": 0,
   "unfixed_invariants": 0,
-  "notes": "Completed 30-repo DEEP bakeoff (curriculum deep-30repo-20260211). 28/30 repos analyzed, 2 OOM (GitLab, OpenSearch). Results in notebookjournal_02112026_2200.md. Top actionable findings by priority: (1) Slice limit hit 85-100% on 22/28 repos \u2014 investigate raising default limit or adding graph-size-adaptive limits in slice.py. (2) Elixir cross-file ratio 1.8% (Livebook) \u2014 Elixir analyzer does not resolve cross-module calls, fix in analyze_elixir.py. (3) Ruby E/N ratio 1.0 (Chatwoot) \u2014 Ruby analyzer extracts symbols but barely connects them, fix in analyze_ruby.py. (4) Tier classification 97-100% tier1 on 27/28 repos \u2014 tier classifier does not detect node_modules/vendor patterns. (5) Test entrypoint ratio 0% everywhere \u2014 entrypoint detector does not recognize test files."
+  "notes": "PR #1019 merged (slice max_files 50->100, bakeoff 100->200). Next priority from 30-repo DEEP bakeoff: (1) Fix Elixir cross-file linking \u2014 Livebook shows 1.8% cross-file ratio and 53.9% orphan rate. The Elixir analyzer in analyze_elixir.py detects symbols within files but does not resolve cross-module function calls (alias/import/use). Fix: add cross-file call resolution to the Elixir analyzer by resolving module references from alias/import/use declarations. (2) Fix Ruby edge detection \u2014 Chatwoot shows 1.0 E/N ratio (37K nodes, 37K edges) and 61.1% orphan rate. The Ruby analyzer extracts symbols but barely connects them with call edges. (3) Tier classification is 97-100% tier1 on 27/28 repos \u2014 investigate why node_modules/vendor patterns are not triggering tier2+."
 }

@@ -389,6 +389,194 @@ end
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
 
+    def test_module_qualified_cross_file_call(self, tmp_path: Path) -> None:
+        """Detects module-qualified calls like Helper.greet() across files."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "helper.ex").write_text("""
+defmodule Helper do
+  def greet(name) do
+    "Hello, " <> name
+  end
+end
+""")
+
+        (tmp_path / "main.ex").write_text("""
+defmodule Main do
+  def run() do
+    Helper.greet("world")
+  end
+end
+""")
+
+        result = analyze_elixir(tmp_path)
+
+        # Should have a cross-file call edge from Main.run -> Helper.greet
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # Find the specific cross-file edge
+        cross_file = [
+            e for e in call_edges
+            if "Main.run" in e.src and "Helper.greet" in e.dst
+        ]
+        assert len(cross_file) == 1, (
+            f"Expected 1 cross-file edge Main.run->Helper.greet, got {len(cross_file)}. "
+            f"All call edges: {[(e.src, e.dst) for e in call_edges]}"
+        )
+
+    def test_nested_module_qualified_call(self, tmp_path: Path) -> None:
+        """Detects calls to nested modules like App.Services.UserService.find()."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "service.ex").write_text("""
+defmodule App.Services.UserService do
+  def find(id) do
+    id
+  end
+end
+""")
+
+        (tmp_path / "controller.ex").write_text("""
+defmodule App.Controller do
+  def show(id) do
+    App.Services.UserService.find(id)
+  end
+end
+""")
+
+        result = analyze_elixir(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        cross_file = [
+            e for e in call_edges
+            if "App.Controller.show" in e.src and "find" in e.dst
+        ]
+        assert len(cross_file) == 1, (
+            f"Expected 1 cross-file edge for App.Services.UserService.find(), "
+            f"got {len(cross_file)}. All call edges: {[(e.src, e.dst) for e in call_edges]}"
+        )
+
+    def test_dot_call_with_alias_hint(self, tmp_path: Path) -> None:
+        """Module-qualified call resolves through alias hint."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "deep_service.ex").write_text("""
+defmodule App.Deep.Service do
+  def process(x) do
+    x
+  end
+end
+""")
+
+        # Use alias to refer to the module by short name
+        (tmp_path / "caller.ex").write_text("""
+defmodule Caller do
+  alias App.Deep.Service
+
+  def run() do
+    Service.process(42)
+  end
+end
+""")
+
+        result = analyze_elixir(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        cross_file = [
+            e for e in call_edges
+            if "Caller.run" in e.src and "process" in e.dst
+        ]
+        assert len(cross_file) == 1, (
+            f"Expected 1 cross-file edge via alias hint, "
+            f"got {len(cross_file)}. All call edges: {[(e.src, e.dst) for e in call_edges]}"
+        )
+
+    def test_dot_call_unresolved_creates_edge(self, tmp_path: Path) -> None:
+        """Module-qualified call to unknown module creates unresolved edge."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "main.ex").write_text("""
+defmodule Main do
+  def run() do
+    ExternalLib.do_something()
+  end
+end
+""")
+
+        result = analyze_elixir(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        unresolved = [
+            e for e in call_edges
+            if "Main.run" in e.src
+            and "unresolved" in e.dst
+            and e.evidence_type == "unresolved_module_call"
+        ]
+        assert len(unresolved) == 1, (
+            f"Expected 1 unresolved edge, got {len(unresolved)}. "
+            f"All call edges: {[(e.src, e.dst, e.evidence_type) for e in call_edges]}"
+        )
+        assert unresolved[0].confidence == 0.50
+
+    def test_dot_call_resolver_fallback(self, tmp_path: Path) -> None:
+        """Partial module name resolved via NameResolver suffix/exact match.
+
+        When a call uses a short module alias (e.g., Greeter.greet) but the
+        symbol is stored under the full module path (App.Helpers.Greeter.greet),
+        the resolver falls back to looking up the function name with a path hint.
+        """
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        # Define function in a deeply nested module
+        (tmp_path / "greeter.ex").write_text("""
+defmodule App.Helpers.Greeter do
+  def greet(name) do
+    "Hello #{name}"
+  end
+end
+""")
+
+        # Call using only the short module name (no alias declaration)
+        (tmp_path / "caller.ex").write_text("""
+defmodule App.Main do
+  def run() do
+    Greeter.greet("world")
+  end
+end
+""")
+
+        result = analyze_elixir(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        resolver_edges = [
+            e for e in call_edges
+            if "Main.run" in e.src
+            and "greet" in e.dst
+            and e.evidence_type == "module_qualified_call"
+        ]
+        assert len(resolver_edges) == 1, (
+            f"Expected 1 resolver-fallback edge, got {len(resolver_edges)}. "
+            f"All call edges: {[(e.src, e.dst, e.evidence_type) for e in call_edges]}"
+        )
+        # Confidence = 0.75 * resolver confidence (1.0 for exact match)
+        assert resolver_edges[0].confidence == 0.75
+
+    def test_dot_call_outside_function_ignored(self, tmp_path: Path) -> None:
+        """Module-qualified call at module level (not inside def) is ignored."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "top_level.ex").write_text("""
+defmodule TopLevel do
+  # Module-level call, not inside a function
+  Logger.info("starting")
+end
+""")
+
+        result = analyze_elixir(tmp_path)
+
+        # Should not crash, and no call edges from module-level code
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) == 0
+
     def test_simple_function_definition(self, tmp_path: Path) -> None:
         """Extracts simple function definition without parentheses."""
         from hypergumbo_lang_common.elixir import analyze_elixir
