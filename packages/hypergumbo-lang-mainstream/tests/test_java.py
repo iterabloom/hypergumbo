@@ -374,6 +374,261 @@ class TestJavaMonorepoDuplicateNames:
 class TestJavaInheritanceEdges:
     """Tests for Java inheritance edge detection."""
 
+    def test_extends_prefers_imported_class_over_name_collision(
+        self, tmp_path: Path
+    ) -> None:
+        """When multiple classes share a name, extends resolves to the imported one.
+
+        INV-015: Same structural bug as Python/Kotlin. Two files define
+        class 'Model'; child file imports the one from models package.
+        Edge should resolve to the imported Model, not the test stub.
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # Real Model class in models package
+        (tmp_path / "models").mkdir()
+        (tmp_path / "models" / "Model.java").write_text(
+            "package com.example.models;\n"
+            "\n"
+            "public class Model {\n"
+            "    public void save() {}\n"
+            "}\n"
+        )
+
+        # Test stub Model class (different file, same name)
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "TestModel.java").write_text(
+            "package com.example.tests;\n"
+            "\n"
+            "public class Model {\n"
+            "    /* stub */\n"
+            "}\n"
+        )
+
+        # A file that imports com.example.models.Model and extends it
+        (tmp_path / "Article.java").write_text(
+            "package com.example;\n"
+            "\n"
+            "import com.example.models.Model;\n"
+            "\n"
+            "public class Article extends Model {\n"
+            "    public void publish() {}\n"
+            "}\n"
+        )
+
+        result = analyze_java(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        article_extends = [e for e in extends_edges if "Article" in e.src]
+        assert len(article_extends) == 1, (
+            f"Expected 1 extends edge from Article, got {len(article_extends)}"
+        )
+
+        # Edge should point to models/Model.java::Model, NOT tests/TestModel.java::Model
+        edge = article_extends[0]
+        assert "models/Model.java" in edge.dst or "models\\Model.java" in edge.dst, (
+            f"Article extends edge should point to models/Model.java::Model, "
+            f"but points to: {edge.dst}"
+        )
+
+    def test_extends_same_file_class_preferred_over_other_file(
+        self, tmp_path: Path
+    ) -> None:
+        """When base class is defined in the same file, prefer it over other files."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # Base defined in file A
+        (tmp_path / "A.java").write_text(
+            "public class Base {\n    public void run() {}\n}\n"
+        )
+
+        # Base defined in file B AND used as base in same file
+        (tmp_path / "B.java").write_text(
+            "class Base {\n    public void run() {}\n}\n"
+            "\n"
+            "class Child extends Base {\n    public void go() {}\n}\n"
+        )
+
+        result = analyze_java(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        child_extends = [e for e in extends_edges if "Child" in e.src]
+        assert len(child_extends) == 1
+
+        # Should resolve to B.java::Base (same file), not A.java::Base
+        edge = child_extends[0]
+        assert "B.java" in edge.dst, (
+            f"Child extends edge should prefer same-file Base (B.java), "
+            f"but points to: {edge.dst}"
+        )
+
+    def test_extends_deterministic_fallback_when_ambiguous(
+        self, tmp_path: Path
+    ) -> None:
+        """When no same-file or import match, extends uses deterministic fallback."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # Two files define 'Base', neither is imported
+        (tmp_path / "ModA.java").write_text(
+            "public class Base {\n    public void run() {}\n}\n"
+        )
+        (tmp_path / "ModB.java").write_text(
+            "public class Base {\n    public void run() {}\n}\n"
+        )
+        # A third file extends 'Base' without importing either
+        (tmp_path / "Child.java").write_text(
+            "public class Child extends Base {\n    public void go() {}\n}\n"
+        )
+
+        result = analyze_java(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        child_extends = [e for e in extends_edges if "Child" in e.src]
+        # Should still create an edge (deterministic fallback)
+        assert len(child_extends) == 1
+
+    def test_implements_prefers_imported_interface_over_collision(
+        self, tmp_path: Path
+    ) -> None:
+        """When multiple interfaces share a name, implements resolves to the imported one."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # Real Serializable interface
+        (tmp_path / "core").mkdir()
+        (tmp_path / "core" / "Serializable.java").write_text(
+            "package com.example.core;\n"
+            "\n"
+            "public interface Serializable {\n"
+            "    String serialize();\n"
+            "}\n"
+        )
+
+        # Test stub Serializable interface (different file, same name)
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "TestInterfaces.java").write_text(
+            "package com.example.tests;\n"
+            "\n"
+            "public interface Serializable {\n"
+            "    /* stub */\n"
+            "}\n"
+        )
+
+        # A file that imports com.example.core.Serializable and implements it
+        (tmp_path / "User.java").write_text(
+            "package com.example;\n"
+            "\n"
+            "import com.example.core.Serializable;\n"
+            "\n"
+            "public class User implements Serializable {\n"
+            "    public String serialize() { return \"\"; }\n"
+            "}\n"
+        )
+
+        result = analyze_java(tmp_path)
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        user_impl = [e for e in impl_edges if "User" in e.src]
+        assert len(user_impl) == 1, (
+            f"Expected 1 implements edge from User, got {len(user_impl)}"
+        )
+
+        # Edge should point to core/Serializable.java, NOT tests/TestInterfaces.java
+        edge = user_impl[0]
+        assert "core/Serializable.java" in edge.dst or "core\\Serializable.java" in edge.dst, (
+            f"User implements edge should point to core/Serializable.java, "
+            f"but points to: {edge.dst}"
+        )
+
+    def test_extends_import_matches_full_fqn_path(
+        self, tmp_path: Path
+    ) -> None:
+        """Import disambiguation via full FQN-to-path when directory mirrors package."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # Directory mirrors Java package: com/example/models/Model.java
+        (tmp_path / "com" / "example" / "models").mkdir(parents=True)
+        (tmp_path / "com" / "example" / "models" / "Model.java").write_text(
+            "package com.example.models;\n"
+            "\n"
+            "public class Model {\n"
+            "    public void save() {}\n"
+            "}\n"
+        )
+
+        # Test stub Model in a different package path
+        (tmp_path / "com" / "example" / "tests").mkdir(parents=True)
+        (tmp_path / "com" / "example" / "tests" / "Model.java").write_text(
+            "package com.example.tests;\n"
+            "\n"
+            "public class Model {\n"
+            "    /* stub */\n"
+            "}\n"
+        )
+
+        # Child imports the real Model via FQN
+        (tmp_path / "App.java").write_text(
+            "import com.example.models.Model;\n"
+            "\n"
+            "public class App extends Model {\n"
+            "    public void run() {}\n"
+            "}\n"
+        )
+
+        result = analyze_java(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        app_extends = [e for e in extends_edges if "App" in e.src]
+        assert len(app_extends) == 1
+
+        # Should resolve to com/example/models/Model.java
+        edge = app_extends[0]
+        assert "models/Model.java" in edge.dst or "models\\Model.java" in edge.dst, (
+            f"App extends edge should point to models/Model.java, "
+            f"but points to: {edge.dst}"
+        )
+
+    def test_single_file_extends_fallback(self, tmp_path: Path) -> None:
+        """Legacy _analyze_java_file path creates extends edges without multi-value lookup."""
+        from hypergumbo_lang_mainstream.java import _analyze_java_file
+        from hypergumbo_core.ir import AnalysisRun
+
+        java_file = tmp_path / "Child.java"
+        java_file.write_text(
+            "class Base {\n    void run() {}\n}\n"
+            "\n"
+            "class Child extends Base {\n    void go() {}\n}\n"
+        )
+
+        run = AnalysisRun.create(pass_id="java-v1", version="1.0")
+        symbols, edges, success = _analyze_java_file(java_file, run)
+        assert success
+
+        extends_edges = [e for e in edges if e.edge_type == "extends"]
+        assert len(extends_edges) == 1
+        assert "Base" in extends_edges[0].dst
+
+    def test_single_file_implements_fallback(self, tmp_path: Path) -> None:
+        """Legacy _analyze_java_file path creates implements edges without multi-value lookup."""
+        from hypergumbo_lang_mainstream.java import _analyze_java_file
+        from hypergumbo_core.ir import AnalysisRun
+
+        java_file = tmp_path / "Impl.java"
+        java_file.write_text(
+            "interface Runnable {\n    void run();\n}\n"
+            "\n"
+            "class Worker implements Runnable {\n"
+            "    public void run() {}\n"
+            "}\n"
+        )
+
+        run = AnalysisRun.create(pass_id="java-v1", version="1.0")
+        symbols, edges, success = _analyze_java_file(java_file, run)
+        assert success
+
+        impl_edges = [e for e in edges if e.edge_type == "implements"]
+        assert len(impl_edges) == 1
+        assert "Runnable" in impl_edges[0].dst
+
     def test_extracts_extends_edge(self, tmp_path: Path) -> None:
         """Extracts extends relationship edges."""
         from hypergumbo_lang_mainstream.java import analyze_java

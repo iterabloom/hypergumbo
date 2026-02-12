@@ -848,6 +848,74 @@ def _get_enclosing_method(
     return None
 
 
+def _resolve_base_class_java(
+    base_name: str,
+    child_sym: Symbol,
+    class_by_name: dict[str, list[Symbol]],
+    sym_file_imports: dict[str, dict[str, str]],
+) -> Symbol | None:
+    """Resolve a base class/interface name to a specific Symbol, disambiguating collisions.
+
+    When multiple classes share the same name (e.g., test stubs named 'Model'),
+    uses a priority cascade:
+
+    1. Same-file match: base class defined in the same file as the child
+    2. Import match: child's file has ``import com.example.models.Model`` and a
+       candidate's fully qualified name or file path matches
+    3. First by ID: deterministic fallback (sorted by symbol ID)
+
+    Args:
+        base_name: The base class/interface name to resolve (e.g., 'Model')
+        child_sym: The child class symbol (for file context)
+        class_by_name: Multi-value lookup: name -> list of Symbol candidates
+        sym_file_imports: Maps symbol ID -> file-level imports dict
+            (simple name -> fully qualified name)
+
+    Returns:
+        The resolved base class/interface Symbol, or None if no match found.
+    """
+    candidates = class_by_name.get(base_name)
+    if not candidates:
+        return None
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    child_path = child_sym.path or ""
+
+    # 1. Same-file match: prefer base defined in the same file
+    same_file = [c for c in candidates if c.path == child_path]
+    if len(same_file) == 1:
+        return same_file[0]
+
+    # 2. Import match: check if child's file imports resolve to a candidate
+    imports = sym_file_imports.get(child_sym.id, {})
+    if base_name in imports:
+        fqn = imports[base_name]
+        # Convert FQN to path segments for matching against file paths
+        # e.g., "com.example.models.Model" -> "com/example/models/Model"
+        fqn_as_path = fqn.replace(".", "/")
+        for cand in candidates:
+            cand_path = cand.path or ""
+            cand_no_ext = cand_path.rsplit(".java", 1)[0]
+            if cand_no_ext.endswith(fqn_as_path):
+                return cand
+        # Try matching just the last package segment + class name
+        # e.g., "com.example.models.Model" -> "models/Model"
+        fqn_parts = fqn.split(".")
+        if len(fqn_parts) >= 2:
+            short_path = "/".join(fqn_parts[-2:])
+            for cand in candidates:
+                cand_path = cand.path or ""
+                cand_no_ext = cand_path.rsplit(".java", 1)[0]
+                if cand_no_ext.endswith(short_path):
+                    return cand
+
+    # 3. Deterministic fallback: first by symbol ID (sorted for stability)
+    candidates_sorted = sorted(candidates, key=lambda c: c.id)
+    return candidates_sorted[0]
+
+
 def _extract_edges(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -859,6 +927,8 @@ def _extract_edges(
     resolver: NameResolver | None = None,
     class_resolver: NameResolver | None = None,
     symbol_by_position: dict[tuple[str, int, int], Symbol] | None = None,
+    class_by_name: dict[str, list[Symbol]] | None = None,
+    sym_file_imports: dict[str, dict[str, str]] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed Java tree (pass 2).
 
@@ -903,8 +973,16 @@ def _extract_edges(
                                 parent_name = _node_text(subchild, source)
                                 if current_class in class_symbols:
                                     src_sym = class_symbols[current_class]
-                                    if parent_name in class_symbols:
+                                    # Use multi-value resolver when available
+                                    dst_sym = None
+                                    if class_by_name is not None and sym_file_imports is not None:
+                                        dst_sym = _resolve_base_class_java(
+                                            parent_name, src_sym,
+                                            class_by_name, sym_file_imports,
+                                        )
+                                    elif parent_name in class_symbols:
                                         dst_sym = class_symbols[parent_name]
+                                    if dst_sym is not None and dst_sym.id != src_sym.id:
                                         edge = Edge.create(
                                             src=src_sym.id,
                                             dst=dst_sym.id,
@@ -927,8 +1005,16 @@ def _extract_edges(
                                         iface_name = _node_text(type_node, source)
                                         if current_class in class_symbols:
                                             src_sym = class_symbols[current_class]
-                                            if iface_name in class_symbols:
+                                            # Use multi-value resolver when available
+                                            dst_sym = None
+                                            if class_by_name is not None and sym_file_imports is not None:
+                                                dst_sym = _resolve_base_class_java(
+                                                    iface_name, src_sym,
+                                                    class_by_name, sym_file_imports,
+                                                )
+                                            elif iface_name in class_symbols:
                                                 dst_sym = class_symbols[iface_name]
+                                            if dst_sym is not None and dst_sym.id != src_sym.id:
                                                 edge = Edge.create(
                                                     src=src_sym.id,
                                                     dst=dst_sym.id,
@@ -1319,6 +1405,8 @@ def analyze_java(repo_root: Path) -> JavaAnalysisResult:
     # Build global symbol registries
     global_symbols: dict[str, Symbol] = {}
     class_symbols: dict[str, Symbol] = {}
+    # Multi-value lookup for extends/implements disambiguation (INV-015)
+    class_by_name: dict[str, list[Symbol]] = {}
 
     # Position-based lookup for enclosing method resolution in monorepos
     symbol_by_position: dict[tuple[str, int, int], Symbol] = {}
@@ -1328,6 +1416,19 @@ def analyze_java(repo_root: Path) -> JavaAnalysisResult:
         symbol_by_position[(sym.path, sym.span.start_line, sym.span.start_col)] = sym
         if sym.kind in ("class", "interface", "enum"):
             class_symbols[sym.name] = sym
+            if sym.name not in class_by_name:
+                class_by_name[sym.name] = []
+            class_by_name[sym.name].append(sym)
+
+    # Build per-symbol file imports for extends/implements disambiguation
+    # Maps symbol ID -> file-level imports (simple_name -> fqn)
+    sym_file_imports: dict[str, dict[str, str]] = {}
+    for pf in parsed_files:
+        file_imports = pf.imports or {}
+        if file_imports:
+            for sym in all_symbols:
+                if sym.path == str(pf.path):
+                    sym_file_imports[sym.id] = file_imports
 
     # Pass 2: Extract edges using global symbol registry
     all_edges: list[Edge] = []
@@ -1336,6 +1437,8 @@ def analyze_java(repo_root: Path) -> JavaAnalysisResult:
             pf.tree, pf.source, pf.path, run,
             global_symbols, class_symbols, pf.imports or {},
             symbol_by_position=symbol_by_position,
+            class_by_name=class_by_name,
+            sym_file_imports=sym_file_imports,
         )
         all_edges.extend(edges)
 

@@ -425,11 +425,11 @@ statements are reached; input diversity testing ensures they produce correct res
 
 ## INV-015: Extends Edge Name Collision Resolution
 - **Statement:** When multiple classes share the same name across files, `extends` edges must resolve to the imported/correct base class, not an arbitrary one
-- **Status:** FIXED (Python, JS/TS, Ruby, Kotlin all use multi-value lookups with import-aware disambiguation)
+- **Status:** FIXED (Python, JS/TS, Ruby, Kotlin, Java all use multi-value lookups with import-aware disambiguation)
 - **Root cause:** `_extract_inheritance_edges()` used a single-value `class_symbols: dict[str, Symbol]` with last-writer-wins semantics. In Django, 238 classes named `Model` caused ALL 2376 extends edges to point to a single test stub in `test_relative_fields.py` instead of `django.db.models.base.Model`.
-- **Fix:** All four language analyzers now use multi-value `class_by_name: dict[str, list[Symbol]]` and per-language `_resolve_base_class_*()` with 3-level disambiguation:
+- **Fix:** All five language analyzers now use multi-value `class_by_name: dict[str, list[Symbol]]` and per-language `_resolve_base_class_*()` with 3-level disambiguation:
   - (1) Same-file match (base class in same file as child)
-  - (2) Import-path match (Python: `from X import Y`; JS/TS: `import { Y } from './X'` via `_disambiguate_by_import`; Ruby: `require_relative 'path'` via require_hints; Kotlin: `import com.example.Model` via FQN-to-path matching)
+  - (2) Import-path match (Python: `from X import Y`; JS/TS: `import { Y } from './X'` via `_disambiguate_by_import`; Ruby: `require_relative 'path'` via require_hints; Kotlin/Java: `import com.example.Model` via FQN-to-path matching)
   - (3) Deterministic fallback (sorted by symbol ID for stability)
 - **Regression tests:**
   - `test_python_ast_analysis.py::TestPythonInheritanceEdges::test_extends_prefers_imported_class_over_name_collision`
@@ -446,6 +446,11 @@ statements are reached; input diversity testing ensures they produce correct res
   - `test_kotlin.py::TestKotlinInheritanceEdges::test_extends_same_file_class_preferred_over_other_file`
   - `test_kotlin.py::TestKotlinInheritanceEdges::test_extends_deterministic_fallback_when_ambiguous`
   - `test_kotlin.py::TestKotlinInheritanceEdges::test_implements_prefers_imported_interface_over_collision`
+  - `test_java.py::TestJavaInheritanceEdges::test_extends_prefers_imported_class_over_name_collision`
+  - `test_java.py::TestJavaInheritanceEdges::test_extends_same_file_class_preferred_over_other_file`
+  - `test_java.py::TestJavaInheritanceEdges::test_extends_deterministic_fallback_when_ambiguous`
+  - `test_java.py::TestJavaInheritanceEdges::test_implements_prefers_imported_interface_over_collision`
+  - `test_java.py::TestJavaInheritanceEdges::test_extends_import_matches_full_fqn_path`
 - **Pending Generalizations:** None
 
 ## INV-XXX: Template for New Invariants
