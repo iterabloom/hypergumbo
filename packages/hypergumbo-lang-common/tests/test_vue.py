@@ -179,7 +179,14 @@ class TestAnalyzeVue:
         slot_names = {s.name for s in slots}
         assert slot_names == {"default", "header", "footer"}
 
-    def test_extracts_methods(self, tmp_path: Path) -> None:
+    def test_no_method_symbols(self, tmp_path: Path) -> None:
+        """Vue analyzer does not emit method symbols (JS/TS analyzer handles these).
+
+        The JS/TS tree-sitter analyzer processes .vue <script> sections and emits
+        method symbols with language="javascript". The Vue analyzer should NOT
+        duplicate them — it focuses on Vue-specific constructs (template refs,
+        directives, slots, props, style blocks).
+        """
         make_vue_file(tmp_path, "App.vue", """<template>
   <div></div>
 </template>
@@ -199,11 +206,17 @@ export default {
 """)
         result = analyze_vue(tmp_path)
         methods = [s for s in result.symbols if s.kind == "method"]
-        assert len(methods) == 2
-        method_names = {m.name for m in methods}
-        assert method_names == {"handleClick", "fetchData"}
+        assert methods == [], (
+            "Vue analyzer should not emit method symbols — "
+            "JS/TS tree-sitter analyzer handles these"
+        )
 
-    def test_extracts_computed(self, tmp_path: Path) -> None:
+    def test_no_computed_symbols(self, tmp_path: Path) -> None:
+        """Vue analyzer does not emit computed symbols (JS/TS analyzer handles these).
+
+        Computed properties in the Options API look like methods to tree-sitter.
+        The JS/TS analyzer already extracts them as method/function symbols.
+        """
         make_vue_file(tmp_path, "App.vue", """<template>
   <div></div>
 </template>
@@ -223,9 +236,10 @@ export default {
 """)
         result = analyze_vue(tmp_path)
         computed = [s for s in result.symbols if s.kind == "computed"]
-        assert len(computed) == 2
-        computed_names = {c.name for c in computed}
-        assert computed_names == {"fullName", "isValid"}
+        assert computed == [], (
+            "Vue analyzer should not emit computed symbols — "
+            "JS/TS tree-sitter analyzer handles these"
+        )
 
     def test_extracts_props_array_syntax(self, tmp_path: Path) -> None:
         make_vue_file(tmp_path, "Button.vue", """<template>
@@ -508,16 +522,12 @@ export default {
         slot_names = {s.name for s in slots}
         assert slot_names == {"default", "actions"}
 
-        # Check methods
+        # Methods and computed are NOT emitted by Vue analyzer
+        # (JS/TS tree-sitter analyzer handles these from the <script> section)
         methods = [s for s in result.symbols if s.kind == "method"]
-        assert len(methods) == 1
-        assert methods[0].name == "handleError"
-
-        # Check computed
+        assert methods == []
         computed = [s for s in result.symbols if s.kind == "computed"]
-        assert len(computed) == 2
-        computed_names = {c.name for c in computed}
-        assert computed_names == {"fullName", "details"}
+        assert computed == []
 
         # Check props
         props = [s for s in result.symbols if s.kind == "prop"]

@@ -6,12 +6,13 @@ by the main test suite. Focuses on:
 - Component reference extraction
 - Directive extraction
 - Slot extraction
-- Method extraction
-- Computed property extraction
 - Props extraction
 - Style block extraction
 - Import edge extraction
 - File discovery patterns
+
+Note: Methods and computed properties are NOT extracted by the Vue analyzer.
+The JS/TS tree-sitter analyzer handles <script> sections with full precision.
 """
 from pathlib import Path
 
@@ -204,11 +205,16 @@ class TestSlotExtraction:
         assert "default" in names
 
 
-class TestMethodExtraction:
-    """Branch coverage for method extraction."""
+class TestNoMethodComputedExtraction:
+    """Verify Vue analyzer does NOT emit method/computed symbols.
 
-    def test_simple_method(self, tmp_path: Path) -> None:
-        """Test method extraction from methods object."""
+    Methods and computed properties are handled by the JS/TS tree-sitter
+    analyzer which processes .vue <script> sections with full precision.
+    The Vue analyzer focuses on Vue-specific constructs only.
+    """
+
+    def test_no_methods_emitted(self, tmp_path: Path) -> None:
+        """Vue analyzer does not emit method symbols from methods: { ... }."""
         make_vue_file(tmp_path, "App.vue", """
 <template>
     <button @click="handleClick">Click</button>
@@ -226,35 +232,10 @@ export default {
 """)
         result = analyze_vue(tmp_path)
         methods = [s for s in result.symbols if s.kind == "method"]
-        assert len(methods) >= 1
-        assert any(m.name == "handleClick" for m in methods)
+        assert methods == []
 
-    def test_multiple_methods(self, tmp_path: Path) -> None:
-        """Test multiple methods extraction."""
-        make_vue_file(tmp_path, "App.vue", """
-<template>
-    <div></div>
-</template>
-
-<script>
-export default {
-    methods: {
-        methodOne() { return 1; },
-        methodTwo() { return 2; }
-    }
-}
-</script>
-""")
-        result = analyze_vue(tmp_path)
-        methods = [s for s in result.symbols if s.kind == "method"]
-        assert len(methods) >= 2
-
-
-class TestComputedExtraction:
-    """Branch coverage for computed property extraction."""
-
-    def test_simple_computed(self, tmp_path: Path) -> None:
-        """Test computed property extraction."""
+    def test_no_computed_emitted(self, tmp_path: Path) -> None:
+        """Vue analyzer does not emit computed symbols from computed: { ... }."""
         make_vue_file(tmp_path, "App.vue", """
 <template>
     <span>{{ fullName }}</span>
@@ -275,8 +256,7 @@ export default {
 """)
         result = analyze_vue(tmp_path)
         computed = [s for s in result.symbols if s.kind == "computed"]
-        assert len(computed) >= 1
-        assert any(c.name == "fullName" for c in computed)
+        assert computed == []
 
 
 class TestPropsExtraction:

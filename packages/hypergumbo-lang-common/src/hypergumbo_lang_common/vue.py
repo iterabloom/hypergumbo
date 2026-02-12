@@ -16,9 +16,12 @@ Symbols Extracted
 - **Components**: Imported components used in template (capitalized tags)
 - **Directives**: Vue directives (v-if, v-for, v-model, @click, :prop)
 - **Slots**: Named and default slot definitions
-- **Methods**: Component methods from script section
-- **Computed**: Computed properties
 - **Props**: Component props definitions
+
+Note: Methods and computed properties are NOT extracted here. The JS/TS
+tree-sitter analyzer handles ``<script>`` sections with full tree-sitter
+precision, emitting these as ``language="javascript"`` symbols. Duplicating
+them here with regex would create orphaned ``language="vue"`` symbols.
 
 Edges Extracted
 ---------------
@@ -315,78 +318,11 @@ class VueAnalyzer:
                             if name and name[0].isupper():
                                 self._current_imports[name] = import_path
 
-        # Extract methods - find method definitions in methods: { ... }
-        methods_start = re.search(r"methods\s*:\s*\{", script)
-        if methods_start:
-            # Find the matching closing brace
-            methods_content = self._extract_braced_content(
-                script, methods_start.end() - 1
-            )
-            if methods_content:
-                method_pattern = re.compile(r"(\w+)\s*\([^)]*\)\s*\{")
-                for match in method_pattern.finditer(methods_content):
-                    method_name = match.group(1)
-                    # Find line number
-                    method_start_pos = methods_start.start() + match.start()
-                    line_num = base_line + script[:method_start_pos].count("\n")
-
-                    symbol_id = _make_symbol_id(rel_path, method_name, "method", line_num)
-                    span = Span(
-                        start_line=line_num,
-                        start_col=0,
-                        end_line=line_num,
-                        end_col=len(method_name),
-                    )
-
-                    symbol = Symbol(
-                        id=symbol_id,
-                        stable_id=symbol_id,
-                        name=method_name,
-                        kind="method",
-                        language="vue",
-                        path=str(rel_path),
-                        span=span,
-                        origin=PASS_ID,
-                        signature=f"{method_name}()",
-                        meta={"section": "methods"},
-                    )
-                    self._symbols.append(symbol)
-
-        # Extract computed properties
-        computed_start = re.search(r"computed\s*:\s*\{", script)
-        if computed_start:
-            computed_content = self._extract_braced_content(
-                script, computed_start.end() - 1
-            )
-            if computed_content:
-                computed_pattern = re.compile(r"(\w+)\s*\([^)]*\)\s*\{")
-                for match in computed_pattern.finditer(computed_content):
-                    computed_name = match.group(1)
-                    # Find line number
-                    computed_start_pos = computed_start.start() + match.start()
-                    line_num = base_line + script[:computed_start_pos].count("\n")
-
-                    symbol_id = _make_symbol_id(rel_path, computed_name, "computed", line_num)
-                    span = Span(
-                        start_line=line_num,
-                        start_col=0,
-                        end_line=line_num,
-                        end_col=len(computed_name),
-                    )
-
-                    symbol = Symbol(
-                        id=symbol_id,
-                        stable_id=symbol_id,
-                        name=computed_name,
-                        kind="computed",
-                        language="vue",
-                        path=str(rel_path),
-                        span=span,
-                        origin=PASS_ID,
-                        signature=f"computed {computed_name}",
-                        meta={"section": "computed"},
-                    )
-                    self._symbols.append(symbol)
+        # NOTE: Methods and computed properties are NOT extracted here.
+        # The JS/TS tree-sitter analyzer processes .vue <script> sections and
+        # emits these as language="javascript" symbols with full tree-sitter
+        # precision. Extracting them here with regex would create duplicates
+        # (1,093 orphaned vue/method symbols observed on Chatwoot).
 
         # Extract props (Options API)
         # First try to find props: [ ... ] (array syntax)

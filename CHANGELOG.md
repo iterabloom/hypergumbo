@@ -94,6 +94,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Increase default `--max-files` for slice from 20 to 50**: Previous default was too restrictive for large codebases.
 - **Django route method accuracy**: `path()`/`re_path()`/`url()` no longer hardcode `GET`. Django routing doesn't specify methods.
 - **TypeScript decorator kind filtering**: Decorator resolution rejects class/interface/type symbols as targets. Non-function matches produce unresolved edges (confidence 0.50).
+- **Vue analyzer deduplication fix**: Removed method and computed property extraction from the Vue analyzer. The JS/TS tree-sitter analyzer already processes `.vue` `<script>` sections with full precision, so the Vue analyzer's regex-based extraction created duplicate symbols (1,093 orphaned `language="vue"` method symbols on Chatwoot, 54% of remaining orphans). The Vue analyzer now focuses exclusively on Vue-specific constructs: component refs, directives, slots, props, and style blocks.
 
 #### Dependencies & configuration
 
