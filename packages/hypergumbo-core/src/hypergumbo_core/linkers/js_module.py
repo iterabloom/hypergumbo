@@ -19,6 +19,15 @@ Together these create a traversable path:
 For npm packages (bare/scoped imports like 'lodash', '@vue/test-utils'),
 the linker creates `npm_package` symbols and `imports_module` edges to them.
 
+Path Alias Resolution
+---------------------
+Non-relative imports that aren't npm packages may be project aliases:
+- **tsconfig.json paths**: `@/*` -> `./src/*` (Next.js, Vite, Angular)
+- **Vite resolve.alias**: `dashboard` -> `./app/javascript/dashboard`
+The linker reads these config files at startup and expands aliases before
+resolving to files. This handles 68% of GrowthBook's TS imports and 33%
+of Chatwoot's JS imports.
+
 File Extension Probing
 ----------------------
 When an import path has no extension (e.g., './utils'), we probe in order:
@@ -35,6 +44,7 @@ creates the cross-file edge chain needed to de-orphan them.
 
 from __future__ import annotations
 
+import json as json_module
 import re
 import time
 from collections import defaultdict
@@ -69,6 +79,41 @@ _JS_LANGUAGES = frozenset({"javascript", "typescript"})
 # Regex to parse file symbol IDs: {lang}:{path}:{start}-{end}:{name}:{kind}
 # Works with absolute paths (/foo/bar.js) and relative paths (src/bar.js).
 _FILE_ID_RE = re.compile(r"^[^:]+:(.+?):\d+-\d+:[^:]+:[^:]+$")
+
+# Config file search order for tsconfig-style path aliases.
+_TSCONFIG_NAMES = ("tsconfig.json", "tsconfig.base.json", "jsconfig.json")
+
+# Vite config file names in search priority order.
+_VITE_CONFIG_NAMES = (
+    "vite.config.ts", "vite.config.js",
+    "vite.config.mts", "vite.config.mjs",
+)
+
+# Regex for extracting alias entries from Vite config files.
+# Matches patterns like:
+#   dashboard: resolve('./app/javascript/dashboard'),
+#   '@': path.resolve(__dirname, 'src'),
+#   'utils': resolve("./src/utils"),
+_VITE_ALIAS_RE = re.compile(
+    r"""
+    ['"]?                           # optional quotes around key
+    ([\w@][\w@/.-]*)                # alias name (group 1)
+    ['"]?                           # optional closing quote
+    \s*:\s*                         # colon separator
+    (?:                             # value alternatives:
+        (?:path\.)?resolve\s*\(     #   resolve( or path.resolve(
+        (?:__dirname\s*,\s*)?       #   optional __dirname,
+        ['"`]([^'"`]+)['"`]         #   quoted path (group 2)
+        \s*\)                       #   closing paren
+    |                               # OR:
+        ['"`](\./[^'"`]+)['"`]      #   plain quoted relative path (group 3)
+    )
+    """,
+    re.VERBOSE,
+)
+
+# Maximum depth for following tsconfig extends chains (prevents infinite loops).
+_MAX_EXTENDS_DEPTH = 5
 
 
 def _extract_path_from_id(symbol_id: str) -> str | None:
@@ -209,6 +254,263 @@ def _is_npm_package(import_path: str) -> bool:
     return True
 
 
+def _strip_jsonc_comments(text: str) -> str:
+    """Strip JSONC comments (// and /* */) and trailing commas from text.
+
+    tsconfig.json files commonly use JSONC format with single-line comments,
+    block comments, and trailing commas. Python's json module can't parse these,
+    so we strip them before parsing.
+
+    Handles strings correctly: // inside "..." is preserved (not a comment).
+
+    Args:
+        text: JSONC text content.
+
+    Returns:
+        JSON-compatible text with comments and trailing commas removed.
+    """
+    result: list[str] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        # String literal — pass through unchanged
+        if text[i] in ('"', "'"):
+            quote = text[i]
+            result.append(quote)
+            i += 1
+            while i < n and text[i] != quote:
+                if text[i] == "\\" and i + 1 < n:
+                    result.append(text[i : i + 2])
+                    i += 2
+                else:
+                    result.append(text[i])
+                    i += 1
+            if i < n:
+                result.append(text[i])
+                i += 1
+        # Single-line comment
+        elif text[i : i + 2] == "//":
+            # Skip until end of line
+            while i < n and text[i] != "\n":
+                i += 1
+        # Block comment
+        elif text[i : i + 2] == "/*":
+            i += 2
+            while i < n - 1 and text[i : i + 2] != "*/":
+                i += 1
+            if i < n - 1:
+                i += 2  # skip */
+        else:
+            result.append(text[i])
+            i += 1
+
+    cleaned = "".join(result)
+    # Remove trailing commas before } or ]
+    cleaned = re.sub(r",\s*([\]}])", r"\1", cleaned)
+    return cleaned
+
+
+def _load_tsconfig_aliases(repo_root: Path) -> list[tuple[str, Path]]:
+    """Load path aliases from tsconfig.json (or jsconfig.json).
+
+    Parses compilerOptions.paths with baseUrl to produce a list of
+    (prefix, target_dir) tuples. Follows 'extends' chains up to
+    _MAX_EXTENDS_DEPTH to find inherited paths.
+
+    For wildcard patterns like '@/*' → ['./src/*']:
+      Returns ("@/", repo_root / "src")
+    For exact patterns like 'shared' → ['./packages/shared/src/index']:
+      Returns ("shared", repo_root / "packages/shared/src/index")
+
+    Args:
+        repo_root: Repository root directory.
+
+    Returns:
+        List of (prefix, target_dir) tuples sorted by prefix length
+        (longest first for most-specific matching).
+    """
+    # Find the config file
+    config_path = None
+    for name in _TSCONFIG_NAMES:
+        candidate = repo_root / name
+        if candidate.is_file():
+            config_path = candidate
+            break
+
+    if config_path is None:
+        return []
+
+    # Follow extends chain to find compilerOptions with paths
+    base_url = "."
+    paths: dict[str, list[str]] = {}
+    visited: set[str] = set()
+
+    current = config_path
+    for _ in range(_MAX_EXTENDS_DEPTH):
+        current_str = str(current)
+        if current_str in visited or not current.is_file():
+            break
+        visited.add(current_str)
+
+        try:
+            raw = current.read_text(encoding="utf-8")
+            data = json_module.loads(_strip_jsonc_comments(raw))
+        except (json_module.JSONDecodeError, OSError):
+            break
+
+        compiler_opts = data.get("compilerOptions", {})
+
+        # Inherit baseUrl and paths from this level if present
+        if "baseUrl" in compiler_opts and not paths:
+            base_url = compiler_opts["baseUrl"]
+        if "paths" in compiler_opts and not paths:
+            paths = compiler_opts["paths"]
+
+        # Follow extends chain
+        extends = data.get("extends")
+        if extends and isinstance(extends, str):
+            # Resolve relative to current config file's directory
+            parent_dir = current.parent
+            ext_path = (parent_dir / extends).resolve()
+            # Add .json if no extension
+            if not ext_path.suffix:
+                ext_path = ext_path.with_suffix(".json")
+            current = ext_path
+        else:
+            break
+
+    if not paths:
+        return []
+
+    # Resolve baseUrl relative to the original config file's directory
+    base_dir = (config_path.parent / base_url).resolve()
+
+    aliases: list[tuple[str, Path]] = []
+    for pattern, targets in paths.items():
+        if not targets:
+            continue
+        target = targets[0]  # TypeScript supports fallbacks; use first
+
+        if pattern.endswith("/*") and target.endswith("/*"):
+            # Wildcard: @/* → ./src/*
+            prefix = pattern[:-1]  # "@/" (strip trailing *)
+            target_rel = target[:-1]  # "./src/" (strip trailing *)
+            # Strip leading ./ for path resolution
+            if target_rel.startswith("./"):
+                target_rel = target_rel[2:]
+            target_dir = (base_dir / target_rel).resolve()
+            aliases.append((prefix, target_dir))
+        else:
+            # Exact: shared → ./packages/shared/src/index
+            prefix = pattern
+            target_rel = target
+            if target_rel.startswith("./"):
+                target_rel = target_rel[2:]
+            target_path = (base_dir / target_rel).resolve()
+            aliases.append((prefix, target_path))
+
+    # Sort by prefix length (longest first) for most-specific matching
+    aliases.sort(key=lambda a: len(a[0]), reverse=True)
+    return aliases
+
+
+def _load_vite_aliases(repo_root: Path) -> list[tuple[str, Path]]:
+    """Load path aliases from Vite config files (vite.config.ts/js).
+
+    Uses regex to extract alias definitions from the JavaScript/TypeScript
+    config file. Handles common patterns:
+    - resolve('./path') and resolve("./path")
+    - path.resolve(__dirname, 'path')
+    - Quoted and unquoted alias keys
+
+    Args:
+        repo_root: Repository root directory.
+
+    Returns:
+        List of (alias_name, target_dir) tuples.
+    """
+    config_path = None
+    for name in _VITE_CONFIG_NAMES:
+        candidate = repo_root / name
+        if candidate.is_file():
+            config_path = candidate
+            break
+
+    if config_path is None:
+        return []
+
+    try:
+        content = config_path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+
+    aliases: list[tuple[str, Path]] = []
+    for match in _VITE_ALIAS_RE.finditer(content):
+        alias_name = match.group(1)
+        # group(2) is from resolve() call, group(3) is plain string
+        raw_path = match.group(2) or match.group(3)
+        if not raw_path:
+            continue  # pragma: no cover
+
+        # Strip leading ./ for path resolution
+        clean_path = raw_path
+        if clean_path.startswith("./"):
+            clean_path = clean_path[2:]
+
+        target_dir = (repo_root / clean_path).resolve()
+        aliases.append((alias_name, target_dir))
+
+    return aliases
+
+
+def _resolve_alias(
+    import_path: str,
+    aliases: list[tuple[str, Path]],
+) -> Path | None:
+    """Try to resolve an import path using project aliases.
+
+    Supports two alias types:
+    1. Wildcard (prefix ends with '/'): '@/' matches '@/foo/bar'
+       - Strips prefix, appends remainder to target directory
+    2. Exact: 'dashboard' matches 'dashboard' and 'dashboard/foo'
+       - Exact match resolves to target directory itself
+       - Subpath match appends the path after alias name
+
+    Aliases should be sorted by prefix length (longest first) so that
+    more specific aliases take priority over general ones.
+
+    Args:
+        import_path: The non-relative import path to resolve.
+        aliases: List of (prefix, target_dir) tuples.
+
+    Returns:
+        Resolved file Path if found, None otherwise.
+    """
+    for prefix, target_dir in aliases:
+        if prefix.endswith("/"):
+            # Wildcard alias: @/ matches @/foo
+            if import_path.startswith(prefix):
+                remainder = import_path[len(prefix):]
+                base_path = target_dir / remainder if remainder else target_dir
+                resolved = _probe_file(base_path)
+                if resolved is not None:
+                    return resolved
+        else:
+            # Exact alias: 'dashboard' matches 'dashboard' and 'dashboard/foo'
+            if import_path == prefix:
+                resolved = _probe_file(target_dir)
+                if resolved is not None:
+                    return resolved
+            elif import_path.startswith(prefix + "/"):
+                remainder = import_path[len(prefix) + 1:]
+                base_path = target_dir / remainder
+                resolved = _probe_file(base_path)
+                if resolved is not None:
+                    return resolved
+
+    return None
+
+
 def _get_npm_package_name(import_path: str) -> str:
     """Extract the npm package name from an import path.
 
@@ -283,6 +585,9 @@ def link_js_modules(
         run.duration_ms = int((time.time() - start_time) * 1000)
         return LinkerResult(symbols=[], edges=[], run=run)
 
+    # Load path aliases from tsconfig.json and vite.config.* (once per run)
+    aliases = _load_tsconfig_aliases(repo_root) + _load_vite_aliases(repo_root)
+
     for edge in import_edges:
         # Parse the dst to extract import path
         parsed = _extract_import_path(edge.dst)
@@ -299,14 +604,25 @@ def link_js_modules(
         if not src_path:
             continue
 
+        # Resolve import path to actual file on disk
+        resolved: Path | None = None
+        evidence_type = "import_resolution"
+        import_confidence = 0.90
+
         if _is_relative_import(import_path):
-            # Resolve relative import to actual file
+            # Relative import: resolve from source file's directory
             source_dir = Path(src_path).parent
             base_path = (source_dir / import_path).resolve()
             resolved = _probe_file(base_path)
-            if resolved is None:
-                continue
+        else:
+            # Non-relative: try alias resolution first, then npm package
+            if aliases:
+                resolved = _resolve_alias(import_path, aliases)
+                if resolved is not None:
+                    evidence_type = "alias_resolution"
+                    import_confidence = 0.85
 
+        if resolved is not None:
             # Compute path relative to repo_root for the symbol
             try:
                 rel_path = str(resolved.relative_to(repo_root))
@@ -344,8 +660,8 @@ def link_js_modules(
                 line=edge.line,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
-                evidence_type="import_resolution",
-                confidence=0.90,
+                evidence_type=evidence_type,
+                confidence=import_confidence,
             ))
 
             # Create module_exports edges (only once per module_file)
@@ -367,8 +683,8 @@ def link_js_modules(
                         confidence=0.75,
                     ))
 
-        elif _is_npm_package(import_path):
-            # npm package import
+        elif not _is_relative_import(import_path):
+            # Non-relative import that didn't resolve via alias → npm package
             pkg_name = _get_npm_package_name(import_path)
 
             if pkg_name not in npm_package_cache:

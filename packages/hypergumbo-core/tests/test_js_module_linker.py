@@ -8,8 +8,13 @@ from module_file to the functions/methods/classes defined in the target file.
 
 This enables cross-file graph traversal through imports:
   file_A --imports_module--> module_file_B --module_exports--> functionInB
+
+Path alias resolution (tsconfig.json paths, Vite resolve.alias) expands
+non-relative imports like '@/utils' or 'dashboard/Header' to actual file paths
+before falling back to npm_package creation.
 """
 
+import json
 from pathlib import Path
 
 import pytest
@@ -18,7 +23,11 @@ from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_core.linkers.js_module import (
     _extract_import_path,
     _extract_path_from_id,
+    _load_tsconfig_aliases,
+    _load_vite_aliases,
     _probe_file,
+    _resolve_alias,
+    _strip_jsonc_comments,
     link_js_modules,
 )
 from hypergumbo_core.linkers.registry import LinkerContext
@@ -759,3 +768,556 @@ class TestEdgeCases:
         assert len(result.symbols) == 0
         assert len(result.edges) == 0
         assert result.run is not None
+
+
+class TestStripJsoncComments:
+    """Tests for JSONC comment stripping (tsconfig.json uses JSONC)."""
+
+    def test_single_line_comment(self) -> None:
+        text = '{\n  "key": "value" // comment\n}'
+        result = _strip_jsonc_comments(text)
+        parsed = json.loads(result)
+        assert parsed == {"key": "value"}
+
+    def test_multiline_comment(self) -> None:
+        text = '{\n  /* block comment */\n  "key": "value"\n}'
+        result = _strip_jsonc_comments(text)
+        parsed = json.loads(result)
+        assert parsed == {"key": "value"}
+
+    def test_url_in_string_preserved(self) -> None:
+        """Double slashes inside strings are NOT treated as comments."""
+        text = '{"url": "https://example.com"}'
+        result = _strip_jsonc_comments(text)
+        parsed = json.loads(result)
+        assert parsed == {"url": "https://example.com"}
+
+    def test_no_comments(self) -> None:
+        text = '{"key": "value"}'
+        assert _strip_jsonc_comments(text) == text
+
+    def test_trailing_comma_removed(self) -> None:
+        """Trailing commas (common in JSONC) are removed."""
+        text = '{"a": 1, "b": 2,}'
+        result = _strip_jsonc_comments(text)
+        parsed = json.loads(result)
+        assert parsed == {"a": 1, "b": 2}
+
+    def test_escaped_chars_in_string(self) -> None:
+        """Escaped characters inside strings are preserved."""
+        text = r'{"key": "value with \"quotes\""}'
+        result = _strip_jsonc_comments(text)
+        parsed = json.loads(result)
+        assert parsed == {"key": 'value with "quotes"'}
+
+
+class TestLoadTsconfigAliases:
+    """Tests for tsconfig.json path alias loading."""
+
+    def test_basic_wildcard_paths(self, tmp_path: Path) -> None:
+        """Loads @/* -> ./src/* from tsconfig.json."""
+        tsconfig = {
+            "compilerOptions": {
+                "baseUrl": ".",
+                "paths": {"@/*": ["./src/*"]},
+            }
+        }
+        (tmp_path / "tsconfig.json").write_text(json.dumps(tsconfig))
+        (tmp_path / "src").mkdir()
+
+        aliases = _load_tsconfig_aliases(tmp_path)
+        assert len(aliases) == 1
+        prefix, target = aliases[0]
+        assert prefix == "@/"
+        assert target == tmp_path / "src"
+
+    def test_multiple_paths(self, tmp_path: Path) -> None:
+        tsconfig = {
+            "compilerOptions": {
+                "baseUrl": ".",
+                "paths": {
+                    "@/*": ["./src/*"],
+                    "@components/*": ["./src/components/*"],
+                },
+            }
+        }
+        (tmp_path / "tsconfig.json").write_text(json.dumps(tsconfig))
+        (tmp_path / "src" / "components").mkdir(parents=True)
+
+        aliases = _load_tsconfig_aliases(tmp_path)
+        assert len(aliases) == 2
+        prefixes = {a[0] for a in aliases}
+        assert "@/" in prefixes
+        assert "@components/" in prefixes
+
+    def test_no_tsconfig(self, tmp_path: Path) -> None:
+        aliases = _load_tsconfig_aliases(tmp_path)
+        assert aliases == []
+
+    def test_no_paths_key(self, tmp_path: Path) -> None:
+        tsconfig = {"compilerOptions": {"target": "es6"}}
+        (tmp_path / "tsconfig.json").write_text(json.dumps(tsconfig))
+        aliases = _load_tsconfig_aliases(tmp_path)
+        assert aliases == []
+
+    def test_jsconfig_fallback(self, tmp_path: Path) -> None:
+        """Falls back to jsconfig.json when tsconfig.json doesn't exist."""
+        jsconfig = {
+            "compilerOptions": {
+                "baseUrl": ".",
+                "paths": {"@/*": ["./src/*"]},
+            }
+        }
+        (tmp_path / "jsconfig.json").write_text(json.dumps(jsconfig))
+        (tmp_path / "src").mkdir()
+
+        aliases = _load_tsconfig_aliases(tmp_path)
+        assert len(aliases) == 1
+
+    def test_extends_chain(self, tmp_path: Path) -> None:
+        """Follows extends to load paths from parent config."""
+        base = {
+            "compilerOptions": {
+                "baseUrl": ".",
+                "paths": {"@/*": ["./src/*"]},
+            }
+        }
+        child = {"extends": "./tsconfig.base.json"}
+        (tmp_path / "tsconfig.base.json").write_text(json.dumps(base))
+        (tmp_path / "tsconfig.json").write_text(json.dumps(child))
+        (tmp_path / "src").mkdir()
+
+        aliases = _load_tsconfig_aliases(tmp_path)
+        assert len(aliases) == 1
+        assert aliases[0][0] == "@/"
+
+    def test_jsonc_comments_handled(self, tmp_path: Path) -> None:
+        text = """{
+  // TypeScript config
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"] // main alias
+    }
+  }
+}"""
+        (tmp_path / "tsconfig.json").write_text(text)
+        (tmp_path / "src").mkdir()
+
+        aliases = _load_tsconfig_aliases(tmp_path)
+        assert len(aliases) == 1
+
+    def test_baseurl_subdir(self, tmp_path: Path) -> None:
+        """baseUrl pointing to a subdirectory offsets path targets."""
+        tsconfig = {
+            "compilerOptions": {
+                "baseUrl": "./src",
+                "paths": {"@/*": ["./*"]},
+            }
+        }
+        (tmp_path / "tsconfig.json").write_text(json.dumps(tsconfig))
+        (tmp_path / "src").mkdir()
+
+        aliases = _load_tsconfig_aliases(tmp_path)
+        assert len(aliases) == 1
+        _, target = aliases[0]
+        assert target == tmp_path / "src"
+
+    def test_non_wildcard_exact_path(self, tmp_path: Path) -> None:
+        """Non-wildcard paths (exact module aliases) use exact prefix."""
+        tsconfig = {
+            "compilerOptions": {
+                "baseUrl": ".",
+                "paths": {"shared": ["./packages/shared/src/index"]},
+            }
+        }
+        (tmp_path / "tsconfig.json").write_text(json.dumps(tsconfig))
+
+        aliases = _load_tsconfig_aliases(tmp_path)
+        assert len(aliases) == 1
+        prefix, _ = aliases[0]
+        # No trailing slash for non-wildcard exact alias
+        assert prefix == "shared"
+
+    def test_malformed_json(self, tmp_path: Path) -> None:
+        (tmp_path / "tsconfig.json").write_text("{invalid json")
+        aliases = _load_tsconfig_aliases(tmp_path)
+        assert aliases == []
+
+    def test_no_compiler_options(self, tmp_path: Path) -> None:
+        (tmp_path / "tsconfig.json").write_text("{}")
+        aliases = _load_tsconfig_aliases(tmp_path)
+        assert aliases == []
+
+    def test_extends_depth_limit(self, tmp_path: Path) -> None:
+        """Circular or deep extends chains don't cause infinite loops."""
+        a = {"extends": "./b.json"}
+        b = {"extends": "./a.json", "compilerOptions": {"paths": {"@/*": ["./src/*"]}, "baseUrl": "."}}
+        (tmp_path / "a.json").write_text(json.dumps(a))
+        (tmp_path / "b.json").write_text(json.dumps(b))
+        (tmp_path / "tsconfig.json").write_text(json.dumps({"extends": "./a.json"}))
+        (tmp_path / "src").mkdir()
+
+        aliases = _load_tsconfig_aliases(tmp_path)
+        assert isinstance(aliases, list)
+
+    def test_extends_without_json_suffix(self, tmp_path: Path) -> None:
+        """Extends path without .json extension gets .json appended."""
+        base = {
+            "compilerOptions": {
+                "baseUrl": ".",
+                "paths": {"~/*": ["./lib/*"]},
+            }
+        }
+        child = {"extends": "./base"}  # no .json suffix
+        (tmp_path / "base.json").write_text(json.dumps(base))
+        (tmp_path / "tsconfig.json").write_text(json.dumps(child))
+        (tmp_path / "lib").mkdir()
+
+        aliases = _load_tsconfig_aliases(tmp_path)
+        assert len(aliases) == 1
+        assert aliases[0][0] == "~/"
+
+    def test_empty_targets_array(self, tmp_path: Path) -> None:
+        """Path with empty targets array is skipped."""
+        tsconfig = {
+            "compilerOptions": {
+                "baseUrl": ".",
+                "paths": {
+                    "@/*": [],  # empty targets
+                    "~/*": ["./src/*"],
+                },
+            }
+        }
+        (tmp_path / "tsconfig.json").write_text(json.dumps(tsconfig))
+        (tmp_path / "src").mkdir()
+
+        aliases = _load_tsconfig_aliases(tmp_path)
+        assert len(aliases) == 1
+        assert aliases[0][0] == "~/"
+
+
+class TestLoadViteAliases:
+    """Tests for vite.config.* alias loading."""
+
+    def test_resolve_style(self, tmp_path: Path) -> None:
+        """Parses resolve('./path') style aliases from Vite config."""
+        config = """import { resolve } from 'path';
+export default defineConfig({
+  resolve: {
+    alias: {
+      dashboard: resolve('./app/javascript/dashboard'),
+      shared: resolve('./app/javascript/shared'),
+    },
+  },
+});
+"""
+        (tmp_path / "vite.config.js").write_text(config)
+
+        aliases = _load_vite_aliases(tmp_path)
+        assert len(aliases) == 2
+        names = {a[0] for a in aliases}
+        assert "dashboard" in names
+        assert "shared" in names
+
+    def test_path_resolve_style(self, tmp_path: Path) -> None:
+        """Parses path.resolve(__dirname, 'path') style."""
+        config = """
+const path = require('path');
+module.exports = {
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, 'src'),
+    },
+  },
+};
+"""
+        (tmp_path / "vite.config.js").write_text(config)
+
+        aliases = _load_vite_aliases(tmp_path)
+        assert len(aliases) == 1
+        assert aliases[0][0] == "@"
+        assert aliases[0][1] == tmp_path / "src"
+
+    def test_no_vite_config(self, tmp_path: Path) -> None:
+        aliases = _load_vite_aliases(tmp_path)
+        assert aliases == []
+
+    def test_vite_config_ts(self, tmp_path: Path) -> None:
+        """Finds vite.config.ts (TypeScript variant)."""
+        config = """
+export default defineConfig({
+  resolve: {
+    alias: {
+      utils: resolve('./src/utils'),
+    },
+  },
+});
+"""
+        (tmp_path / "vite.config.ts").write_text(config)
+
+        aliases = _load_vite_aliases(tmp_path)
+        assert len(aliases) == 1
+        assert aliases[0][0] == "utils"
+
+    def test_quoted_keys(self, tmp_path: Path) -> None:
+        config = """export default {
+  resolve: {
+    alias: {
+      'dashboard': resolve('./app/dashboard'),
+    },
+  },
+};
+"""
+        (tmp_path / "vite.config.js").write_text(config)
+
+        aliases = _load_vite_aliases(tmp_path)
+        assert len(aliases) == 1
+        assert aliases[0][0] == "dashboard"
+
+    def test_no_alias_section(self, tmp_path: Path) -> None:
+        """Vite config without resolve.alias returns empty."""
+        config = "export default defineConfig({});\n"
+        (tmp_path / "vite.config.js").write_text(config)
+
+        aliases = _load_vite_aliases(tmp_path)
+        assert aliases == []
+
+    def test_unreadable_config(self, tmp_path: Path) -> None:
+        """Returns empty list when vite config can't be read."""
+        from unittest.mock import patch
+
+        (tmp_path / "vite.config.js").write_text("content")
+
+        with patch("pathlib.Path.read_text", side_effect=OSError("perm denied")):
+            aliases = _load_vite_aliases(tmp_path)
+        assert aliases == []
+
+
+class TestResolveAlias:
+    """Tests for alias path expansion."""
+
+    def test_wildcard_match(self, tmp_path: Path) -> None:
+        """@/components/Button resolves via @/ wildcard alias."""
+        (tmp_path / "src" / "components").mkdir(parents=True)
+        (tmp_path / "src" / "components" / "Button.tsx").write_text("")
+
+        aliases = [("@/", tmp_path / "src")]
+        result = _resolve_alias("@/components/Button", aliases)
+        assert result is not None
+        assert result.name == "Button.tsx"
+
+    def test_exact_match_directory(self, tmp_path: Path) -> None:
+        """Exact alias 'dashboard' resolves to directory index."""
+        (tmp_path / "app" / "dashboard").mkdir(parents=True)
+        (tmp_path / "app" / "dashboard" / "index.js").write_text("")
+
+        aliases = [("dashboard", tmp_path / "app" / "dashboard")]
+        result = _resolve_alias("dashboard", aliases)
+        assert result is not None
+        assert result.name == "index.js"
+
+    def test_exact_with_subpath(self, tmp_path: Path) -> None:
+        """'dashboard/Header' resolves via exact alias + subpath."""
+        (tmp_path / "app" / "dashboard").mkdir(parents=True)
+        (tmp_path / "app" / "dashboard" / "Header.vue").write_text("")
+
+        aliases = [("dashboard", tmp_path / "app" / "dashboard")]
+        result = _resolve_alias("dashboard/Header", aliases)
+        assert result is not None
+        assert result.name == "Header.vue"
+
+    def test_no_match(self, tmp_path: Path) -> None:
+        aliases = [("@/", tmp_path / "src")]
+        result = _resolve_alias("lodash", aliases)
+        assert result is None
+
+    def test_alias_file_not_found(self, tmp_path: Path) -> None:
+        """Matched alias but no file on disk returns None."""
+        (tmp_path / "src").mkdir()
+        aliases = [("@/", tmp_path / "src")]
+        result = _resolve_alias("@/nonexistent", aliases)
+        assert result is None
+
+    def test_empty_aliases(self) -> None:
+        result = _resolve_alias("@/foo", [])
+        assert result is None
+
+    def test_longest_prefix_wins(self, tmp_path: Path) -> None:
+        """More specific alias takes priority (sorted by length)."""
+        (tmp_path / "components").mkdir()
+        (tmp_path / "components" / "Button.tsx").write_text("specific")
+        (tmp_path / "src" / "components").mkdir(parents=True)
+        (tmp_path / "src" / "components" / "Button.tsx").write_text("general")
+
+        # Longer prefix first → @components/ matches before @/
+        aliases = [
+            ("@components/", tmp_path / "components"),
+            ("@/", tmp_path / "src"),
+        ]
+        result = _resolve_alias("@components/Button", aliases)
+        assert result is not None
+        # Should resolve to the specific components dir, not src/components
+        assert str(result) == str(tmp_path / "components" / "Button.tsx")
+
+
+class TestAliasIntegration:
+    """Tests for alias resolution integrated with link_js_modules."""
+
+    def _make_file_symbol(
+        self, path: str, lang: str = "javascript"
+    ) -> Symbol:
+        name = Path(path).name
+        return Symbol(
+            id=f"{lang}:{path}:1-1:{name}:file",
+            name=name,
+            kind="file",
+            language=lang,
+            path=path,
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+    def _make_import_edge(
+        self, src_id: str, module_path: str, lang: str = "javascript"
+    ) -> Edge:
+        return Edge.create(
+            src=src_id,
+            dst=f"{lang}:{module_path}:0-0:module:module",
+            edge_type="imports",
+            line=1,
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+            evidence_type="import_static",
+            confidence=0.95,
+        )
+
+    def _make_function_symbol(
+        self, path: str, name: str, lang: str = "javascript"
+    ) -> Symbol:
+        return Symbol(
+            id=f"{lang}:{path}:5-10:{name}:function",
+            name=name,
+            kind="function",
+            language=lang,
+            path=path,
+            span=Span(start_line=5, end_line=10, start_col=0, end_col=0),
+            origin="js-ts-v1",
+            origin_run_id="test-run",
+        )
+
+    def test_tsconfig_alias_resolves(self, tmp_path: Path) -> None:
+        """Import '@/utils' resolves via tsconfig @/* alias."""
+        tsconfig = {
+            "compilerOptions": {
+                "baseUrl": ".",
+                "paths": {"@/*": ["./src/*"]},
+            }
+        }
+        (tmp_path / "tsconfig.json").write_text(json.dumps(tsconfig))
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.ts").write_text("")
+        (tmp_path / "src" / "utils.ts").write_text("")
+
+        app_path = str(tmp_path / "src" / "app.ts")
+        utils_path = str(tmp_path / "src" / "utils.ts")
+
+        file_sym = self._make_file_symbol(app_path, "typescript")
+        import_edge = self._make_import_edge(file_sym.id, "@/utils", "typescript")
+        helper_fn = self._make_function_symbol(utils_path, "helper", "typescript")
+
+        result = link_js_modules(
+            repo_root=tmp_path,
+            symbols=[file_sym, helper_fn],
+            edges=[import_edge],
+        )
+
+        module_files = [s for s in result.symbols if s.kind == "module_file"]
+        assert len(module_files) == 1
+        assert "utils.ts" in module_files[0].path
+
+        imports_module = [e for e in result.edges if e.edge_type == "imports_module"]
+        assert len(imports_module) == 1
+
+        exports_edges = [e for e in result.edges if e.edge_type == "module_exports"]
+        assert len(exports_edges) == 1
+
+    def test_vite_alias_resolves(self, tmp_path: Path) -> None:
+        """Import 'dashboard/Header' resolves via Vite alias."""
+        config = """export default defineConfig({
+  resolve: {
+    alias: {
+      dashboard: resolve('./app/javascript/dashboard'),
+    },
+  },
+});
+"""
+        (tmp_path / "vite.config.js").write_text(config)
+        js_dir = tmp_path / "app" / "javascript"
+        (js_dir / "dashboard").mkdir(parents=True)
+        (js_dir / "dashboard" / "Header.vue").write_text("")
+        (js_dir / "src").mkdir(parents=True)
+        (js_dir / "src" / "App.js").write_text("")
+
+        app_path = str(js_dir / "src" / "App.js")
+        file_sym = self._make_file_symbol(app_path)
+        import_edge = self._make_import_edge(file_sym.id, "dashboard/Header")
+
+        result = link_js_modules(
+            repo_root=tmp_path,
+            symbols=[file_sym],
+            edges=[import_edge],
+        )
+
+        module_files = [s for s in result.symbols if s.kind == "module_file"]
+        assert len(module_files) == 1
+        assert "Header.vue" in module_files[0].path
+
+        # Should NOT create npm_package for 'dashboard'
+        npm_packages = [s for s in result.symbols if s.kind == "npm_package"]
+        assert len(npm_packages) == 0
+
+    def test_unresolved_alias_falls_to_npm(self, tmp_path: Path) -> None:
+        """Import with no matching alias still creates npm_package."""
+        app_path = str(tmp_path / "app.js")
+        (tmp_path / "app.js").write_text("")
+        file_sym = self._make_file_symbol(app_path)
+        import_edge = self._make_import_edge(file_sym.id, "lodash")
+
+        result = link_js_modules(
+            repo_root=tmp_path,
+            symbols=[file_sym],
+            edges=[import_edge],
+        )
+
+        npm_packages = [s for s in result.symbols if s.kind == "npm_package"]
+        assert len(npm_packages) == 1
+        assert npm_packages[0].name == "lodash"
+
+    def test_alias_evidence_type(self, tmp_path: Path) -> None:
+        """Alias-resolved imports use 'alias_resolution' evidence type."""
+        tsconfig = {
+            "compilerOptions": {
+                "baseUrl": ".",
+                "paths": {"@/*": ["./src/*"]},
+            }
+        }
+        (tmp_path / "tsconfig.json").write_text(json.dumps(tsconfig))
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.ts").write_text("")
+        (tmp_path / "src" / "utils.ts").write_text("")
+
+        app_path = str(tmp_path / "src" / "app.ts")
+        file_sym = self._make_file_symbol(app_path, "typescript")
+        import_edge = self._make_import_edge(file_sym.id, "@/utils", "typescript")
+
+        result = link_js_modules(
+            repo_root=tmp_path,
+            symbols=[file_sym],
+            edges=[import_edge],
+        )
+
+        imports_module = [e for e in result.edges if e.edge_type == "imports_module"]
+        assert len(imports_module) == 1
+        assert imports_module[0].evidence_type == "alias_resolution"
