@@ -569,3 +569,92 @@ export default {
         button = next((s for s in result.symbols if s.name == "Button"), None)
         assert button is not None
         assert button.meta.get("has_slot_attr") is True
+
+    def test_event_directive_captures_handler_expression(self, tmp_path: Path) -> None:
+        """v-on directives store the handler expression in metadata."""
+        make_vue_file(tmp_path, "App.vue", """<template>
+  <button @click="handleClick">Click</button>
+</template>
+""")
+        result = analyze_vue(tmp_path)
+        directive = next((s for s in result.symbols if s.kind == "directive"), None)
+        assert directive is not None
+        assert directive.meta.get("handler_expression") == "handleClick"
+
+    def test_event_directive_strips_arguments(self, tmp_path: Path) -> None:
+        """Handler expression strips function call arguments."""
+        make_vue_file(tmp_path, "App.vue", """<template>
+  <button @click="handleDelete(item)">Delete</button>
+</template>
+""")
+        result = analyze_vue(tmp_path)
+        directive = next((s for s in result.symbols if s.kind == "directive"), None)
+        assert directive is not None
+        assert directive.meta.get("handler_expression") == "handleDelete"
+
+    def test_bind_directive_no_handler_expression(self, tmp_path: Path) -> None:
+        """v-bind directives don't get handler_expression (not event handlers)."""
+        make_vue_file(tmp_path, "App.vue", """<template>
+  <img :src="imageUrl"/>
+</template>
+""")
+        result = analyze_vue(tmp_path)
+        directive = next((s for s in result.symbols if s.kind == "directive"), None)
+        assert directive is not None
+        assert "handler_expression" not in (directive.meta or {})
+
+    def test_event_directive_skips_inline_expressions(self, tmp_path: Path) -> None:
+        """Inline expressions (assignments, $emit) don't produce handler_expression."""
+        make_vue_file(tmp_path, "App.vue", """<template>
+  <button @click="$emit('close')">Close</button>
+</template>
+""")
+        result = analyze_vue(tmp_path)
+        directive = next((s for s in result.symbols if s.kind == "directive"), None)
+        assert directive is not None
+        assert "handler_expression" not in (directive.meta or {})
+
+    def test_v_on_longform_captures_handler(self, tmp_path: Path) -> None:
+        """v-on:click="method" long-form syntax also captures handler."""
+        make_vue_file(tmp_path, "App.vue", """<template>
+  <button v-on:click="toggleMenu">Menu</button>
+</template>
+""")
+        result = analyze_vue(tmp_path)
+        directive = next((s for s in result.symbols if s.kind == "directive"), None)
+        assert directive is not None
+        assert directive.name == "v-on:click"
+        assert directive.meta.get("handler_expression") == "toggleMenu"
+
+    def test_directive_without_value_no_handler(self, tmp_path: Path) -> None:
+        """Directive without = value has no handler_expression."""
+        make_vue_file(tmp_path, "App.vue", """<template>
+  <div v-once></div>
+</template>
+""")
+        result = analyze_vue(tmp_path)
+        directive = next((s for s in result.symbols if s.kind == "directive"), None)
+        assert directive is not None
+        assert "handler_expression" not in (directive.meta or {})
+
+    def test_directive_empty_value_no_handler(self, tmp_path: Path) -> None:
+        """Directive with empty value has no handler_expression."""
+        make_vue_file(tmp_path, "App.vue", """<template>
+  <button @click="">Click</button>
+</template>
+""")
+        result = analyze_vue(tmp_path)
+        directive = next((s for s in result.symbols if s.kind == "directive"), None)
+        assert directive is not None
+        assert "handler_expression" not in (directive.meta or {})
+
+    def test_directive_non_identifier_value_no_handler(self, tmp_path: Path) -> None:
+        """Directive with non-identifier value (e.g., !flag) has no handler."""
+        make_vue_file(tmp_path, "App.vue", """<template>
+  <button @click="!isOpen">Toggle</button>
+</template>
+""")
+        result = analyze_vue(tmp_path)
+        directive = next((s for s in result.symbols if s.kind == "directive"), None)
+        assert directive is not None
+        assert "handler_expression" not in (directive.meta or {})

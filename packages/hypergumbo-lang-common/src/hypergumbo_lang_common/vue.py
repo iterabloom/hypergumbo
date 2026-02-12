@@ -97,6 +97,43 @@ def _make_symbol_id(path: Path, name: str, kind: str, line: int) -> str:
     return f"vue:{path}:{kind}:{line}:{name}"
 
 
+# Identifiers that are Vue runtime built-ins, not component methods.
+_VUE_RUNTIME_NAMES = frozenset({
+    "$emit", "$event", "$refs", "$el", "$nextTick", "$parent", "$root",
+    "$data", "$options", "$slots", "$attrs", "$forceUpdate", "$destroy",
+    "$watch", "$set", "$delete", "$on", "$off", "$once",
+    "true", "false", "null", "undefined",
+    "console", "window", "document", "Math", "Date", "Object", "Array",
+    "String", "Number", "Boolean", "JSON", "parseInt", "parseFloat",
+    "isNaN", "typeof", "instanceof", "new", "delete",
+})
+
+# Matches the first JS identifier in a handler expression.
+_HANDLER_IDENT_RE = re.compile(r"[a-zA-Z_$][a-zA-Z0-9_$]*")
+
+
+def _extract_handler_name(directive_text: str) -> str:
+    """Extract the method name from a v-on directive expression.
+
+    Given ``@click="handleDelete(item)"`` returns ``"handleDelete"``.
+    Returns empty string for inline expressions, Vue built-ins, or
+    when the handler name cannot be determined.
+    """
+    parts = directive_text.split("=", 1)
+    if len(parts) < 2:
+        return ""
+    value = parts[1].strip().strip("\"'")
+    if not value:
+        return ""
+    m = _HANDLER_IDENT_RE.match(value)
+    if not m:
+        return ""
+    name = m.group(0)
+    if name in _VUE_RUNTIME_NAMES:
+        return ""
+    return name
+
+
 # Built-in HTML elements should not be treated as components
 HTML_ELEMENTS = {
     "a", "abbr", "address", "area", "article", "aside", "audio", "b", "base",
@@ -506,6 +543,8 @@ class VueAnalyzer:
         """Process a tag node (start_tag or self_closing_tag)."""
         tag_name = ""
         directives: list[str] = []
+        # Handler expressions for v-on directives (parallel to directives list)
+        handler_expressions: list[str] = []
         has_slot_attr = False
 
         for child in node.children:
@@ -516,10 +555,20 @@ class VueAnalyzer:
                 # Extract directive name
                 if directive_text.startswith("@"):
                     directives.append(f"v-on:{directive_text[1:].split('=')[0]}")
+                    handler_expressions.append(
+                        _extract_handler_name(directive_text)
+                    )
                 elif directive_text.startswith(":"):
                     directives.append(f"v-bind:{directive_text[1:].split('=')[0]}")
+                    handler_expressions.append("")
                 elif directive_text.startswith("v-"):
                     directives.append(directive_text.split("=")[0])
+                    if directive_text.startswith("v-on"):
+                        handler_expressions.append(
+                            _extract_handler_name(directive_text)
+                        )
+                    else:
+                        handler_expressions.append("")
             elif child.type == "attribute":
                 attr_name = ""
                 for attr_child in child.children:
@@ -596,7 +645,7 @@ class VueAnalyzer:
                 self._edges.append(edge)
 
         # Record directives
-        for directive in directives:
+        for i, directive in enumerate(directives):
             directive_name = directive.split(":")[0] if ":" in directive else directive
             symbol_id = _make_symbol_id(rel_path, f"{tag_name}:{directive}", "directive", line)
             span = Span(
@@ -605,6 +654,14 @@ class VueAnalyzer:
                 end_line=node.end_point[0] + 1,
                 end_col=node.end_point[1],
             )
+
+            meta: dict[str, str | bool] = {
+                "element": tag_name,
+                "directive_type": directive_name,
+            }
+            handler = handler_expressions[i] if i < len(handler_expressions) else ""
+            if handler:
+                meta["handler_expression"] = handler
 
             symbol = Symbol(
                 id=symbol_id,
@@ -616,7 +673,7 @@ class VueAnalyzer:
                 span=span,
                 origin=PASS_ID,
                 signature=directive,
-                meta={"element": tag_name, "directive_type": directive_name},
+                meta=meta,
             )
             self._symbols.append(symbol)
 
