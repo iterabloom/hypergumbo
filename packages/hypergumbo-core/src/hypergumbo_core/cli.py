@@ -68,6 +68,7 @@ import hypergumbo_core.linkers.subprocess_cli as _subprocess_linker  # noqa: F40
 import hypergumbo_core.linkers.swift_objc as _swift_objc_linker  # noqa: F401
 import hypergumbo_core.linkers.websocket as _websocket_linker  # noqa: F401
 import hypergumbo_core.linkers.inheritance as _inheritance_linker  # noqa: F401
+import hypergumbo_core.linkers.js_module as _js_module_linker  # noqa: F401
 import hypergumbo_core.linkers.orm as _orm_linker  # noqa: F401
 import hypergumbo_core.linkers.pyffi as _pyffi_linker  # noqa: F401
 import hypergumbo_core.linkers.ruby_ffi as _ruby_ffi_linker  # noqa: F401
