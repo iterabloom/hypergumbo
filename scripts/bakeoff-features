@@ -105,9 +105,13 @@ SEVERITY_LOW = "LOW"
 # and data declarations (variable) — variables/fields/parameters are naturally
 # not connected by call edges and would inflate the orphan rate.
 # Also excludes: directive (Vue template annotations like v-if, @click, :src —
-# not callable code), scalar (GraphQL scalar types — no call edges).
+# not callable code), scalar (GraphQL scalar types — no call edges),
+# type (TypeScript type aliases — type-level declarations, not callable),
+# interface (TypeScript/Java interface declarations — structural types, may have
+# implements/extends edges but are not callable code themselves; on GrowthBook
+# 2,133 type+interface nodes were 100% orphaned, inflating rate from ~23% to 39%).
 _CODE_NODE_KINDS = frozenset({
-    "function", "method", "class", "module", "struct", "interface", "type",
+    "function", "method", "class", "module", "struct",
     "enum", "trait", "constructor", "getter", "setter",
     "route", "export", "service",
     "event_subscriber", "event_publisher", "websocket_endpoint",
