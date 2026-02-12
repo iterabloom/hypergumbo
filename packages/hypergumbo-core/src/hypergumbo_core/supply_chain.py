@@ -156,6 +156,7 @@ TEST_DIR_PATTERNS = [
     r"(?:^|/)tests?/",       # tests/ or test/ at any level
     r"(?:^|/)__tests__/",    # __tests__/ (Jest convention) at any level
     r"(?:^|/)specs?/",       # spec/ or specs/ (RSpec/Jasmine) at any level
+    r"(?:^|/)unit_tests?/",  # unit_tests/ or unit_test/ (C++ GTest convention)
 ]
 
 # File suffix patterns: language-specific test naming conventions
@@ -164,6 +165,7 @@ TEST_FILE_PATTERNS = [
     r"\.test\.[jt]sx?$",         # JS/TS: app.test.js, app.test.tsx
     r"\.spec\.[jt]sx?$",         # JS/TS: service.spec.ts, component.spec.tsx
     r"_spec\.rb$",               # Ruby: user_spec.rb
+    r"/test_[^/]+\.(?:cpp|cc|cxx|c|h|hpp)$",  # C/C++: test_utils.cpp (GTest convention)
 ]
 
 # Simple first-party patterns to check within workspaces

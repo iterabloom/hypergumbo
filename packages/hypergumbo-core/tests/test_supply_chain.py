@@ -398,6 +398,51 @@ class TestTestFileClassification:
         result = classify_file(src_dir / "user_spec.rb", tmp_path, set())
         assert result.tier == Tier.INTERNAL_DEP
 
+    def test_unit_tests_dir_is_internal_dep(self, tmp_path):
+        """C++ unit_tests/ directory is tier 2."""
+        test_dir = tmp_path / "unit_tests" / "engine"
+        test_dir.mkdir(parents=True)
+        (test_dir / "test_utils.cpp").write_text("TEST(Utils, Parse) {}")
+
+        result = classify_file(test_dir / "test_utils.cpp", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_nested_unit_tests_dir_is_internal_dep(self, tmp_path):
+        """Nested unit_tests/ directory (e.g., src/unit_tests/) is tier 2."""
+        test_dir = tmp_path / "src" / "unit_tests"
+        test_dir.mkdir(parents=True)
+        (test_dir / "test_main.cpp").write_text("TEST(Main, Run) {}")
+
+        result = classify_file(test_dir / "test_main.cpp", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_cpp_test_prefix_is_internal_dep(self, tmp_path):
+        """C++ test_*.cpp files are tier 2 (GTest convention)."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "test_parser.cpp").write_text("TEST(Parser, Basic) {}")
+
+        result = classify_file(src_dir / "test_parser.cpp", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_cpp_test_prefix_cc_is_internal_dep(self, tmp_path):
+        """C++ test_*.cc files are tier 2."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "test_server.cc").write_text("TEST(Server, Start) {}")
+
+        result = classify_file(src_dir / "test_server.cc", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_cpp_production_code_stays_tier1(self, tmp_path):
+        """C++ production code with 'test' in the name stays tier 1."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "attestation.cpp").write_text("void attest() {}")
+
+        result = classify_file(src_dir / "attestation.cpp", tmp_path, set())
+        assert result.tier == Tier.FIRST_PARTY
+
     def test_production_code_in_src_stays_tier1(self, tmp_path):
         """Production files next to test files stay tier 1."""
         src_dir = tmp_path / "src"
