@@ -384,6 +384,79 @@ def _extract_namespace_aliases(
     return aliases
 
 
+def _find_class_or_struct(
+    type_name: str,
+    local_symbols: dict[str, Symbol],
+    global_symbols: dict[str, Symbol],
+    resolver: NameResolver,
+) -> Symbol | None:
+    """Find a class or struct symbol by name.
+
+    In C++, constructors share the class name (``Config::Config()``) and may
+    overwrite the class in the ``symbol_by_name`` dict.  This helper checks
+    local symbols first, then global, and finally the resolver — returning
+    the first match whose ``kind`` is ``class`` or ``struct``.
+    """
+    for pool in (local_symbols, global_symbols):
+        candidate = pool.get(type_name)
+        if candidate and candidate.kind in ("class", "struct"):
+            return candidate
+    # Resolver fallback for cross-file types not in the simple dicts.
+    # In practice, global_symbols already includes all class/struct names,
+    # so the resolver is only needed for edge cases (e.g., suffix matching).
+    lookup_result = resolver.lookup(type_name)  # pragma: no cover
+    if (  # pragma: no cover
+        lookup_result.found
+        and lookup_result.symbol is not None
+        and lookup_result.symbol.kind in ("class", "struct")
+    ):
+        return lookup_result.symbol  # pragma: no cover
+    return None  # pragma: no cover
+
+
+def _try_instantiation_edge(
+    type_name: str,
+    current_function: Symbol,
+    node: "tree_sitter.Node",
+    evidence_type: str,
+    base_confidence: float,
+    local_symbols: dict[str, Symbol],
+    resolver: NameResolver,
+    edges: list[Edge],
+    run: AnalysisRun,
+) -> None:
+    """Emit an instantiates edge if type_name resolves to a known symbol.
+
+    Checks local symbols first (higher confidence), then falls back to
+    the NameResolver for cross-file resolution.
+    """
+    if type_name in local_symbols:
+        target = local_symbols[type_name]
+        edges.append(Edge.create(
+            src=current_function.id,
+            dst=target.id,
+            edge_type="instantiates",
+            line=node.start_point[0] + 1,
+            evidence_type=evidence_type,
+            confidence=base_confidence,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+        ))
+    else:
+        lookup_result = resolver.lookup(type_name)
+        if lookup_result.found and lookup_result.symbol is not None:
+            edges.append(Edge.create(
+                src=current_function.id,
+                dst=lookup_result.symbol.id,
+                edge_type="instantiates",
+                line=node.start_point[0] + 1,
+                evidence_type=evidence_type,
+                confidence=(base_confidence - 0.05) * lookup_result.confidence,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+            ))
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -583,32 +656,64 @@ def _extract_edges_from_file(
                         if inner_type:
                             type_name = _node_text(inner_type, source)
                 if type_name:
-                    # Check if it's a known class
-                    if type_name in local_symbols:
-                        target = local_symbols[type_name]
+                    _try_instantiation_edge(
+                        type_name, current_function, node, "new_expression",
+                        0.90, local_symbols, resolver, edges, run,
+                    )
+
+        # Stack object construction: Widget w; / Widget w(args); / Widget w{};
+        elif node.type == "declaration":
+            if current_function is not None:
+                type_name = None
+                type_node = _find_child_by_type(node, "type_identifier")
+                if type_node:
+                    type_name = _node_text(type_node, source)
+                else:
+                    # Namespace-qualified type: ui::Button btn;
+                    qual_node = _find_child_by_type(node, "qualified_identifier")
+                    if qual_node:
+                        inner_type = _find_child_by_type(qual_node, "type_identifier")
+                        if inner_type:
+                            type_name = _node_text(inner_type, source)
+                if type_name:
+                    # Only emit for known class/struct types, not primitives.
+                    # symbol_by_name may map to the constructor instead of the
+                    # class, so check kind of both local and global candidates.
+                    target = _find_class_or_struct(
+                        type_name, local_symbols, global_symbols, resolver,
+                    )
+                    if target is not None:
                         edges.append(Edge.create(
                             src=current_function.id,
                             dst=target.id,
                             edge_type="instantiates",
                             line=node.start_point[0] + 1,
-                            evidence_type="new_expression",
-                            confidence=0.90,
+                            evidence_type="stack_construction",
+                            confidence=0.85,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
-                    else:
-                        lookup_result = resolver.lookup(type_name)
-                        if lookup_result.found and lookup_result.symbol is not None:
-                            edges.append(Edge.create(
-                                src=current_function.id,
-                                dst=lookup_result.symbol.id,
-                                edge_type="instantiates",
-                                line=node.start_point[0] + 1,
-                                evidence_type="new_expression",
-                                confidence=0.85 * lookup_result.confidence,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                            ))
+
+        # Compound literal expression: Widget{42} as expression
+        elif node.type == "compound_literal_expression":
+            if current_function is not None:
+                type_node = _find_child_by_type(node, "type_identifier")
+                if type_node:
+                    type_name = _node_text(type_node, source)
+                    target = _find_class_or_struct(
+                        type_name, local_symbols, global_symbols, resolver,
+                    )
+                    if target is not None:
+                        edges.append(Edge.create(
+                            src=current_function.id,
+                            dst=target.id,
+                            edge_type="instantiates",
+                            line=node.start_point[0] + 1,
+                            evidence_type="stack_construction",
+                            confidence=0.85,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                        ))
 
         # Add children to stack with updated context
         for child in reversed(node.children):

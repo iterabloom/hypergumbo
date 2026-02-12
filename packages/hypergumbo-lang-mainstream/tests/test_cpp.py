@@ -905,3 +905,147 @@ void process() {
         # Should resolve to util.cpp definition, not main.cpp declaration
         assert any("clamp" in e.dst for e in call_edges)
 
+
+class TestCppStackConstruction:
+    """Tests for stack object construction detection.
+
+    In C++, stack-allocated objects like ``Widget w;`` or ``Widget w(42);``
+    invoke constructors but don't produce ``call_expression`` or
+    ``new_expression`` nodes. Only explicit ``new`` was previously detected.
+    """
+
+    def test_default_construction(self, tmp_path: Path) -> None:
+        """``Widget w;`` should create an instantiates edge to Widget."""
+        (tmp_path / "stack.cpp").write_text("""
+class Widget {};
+
+void caller() {
+    Widget w;
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst_edges) == 1
+        assert "Widget" in inst_edges[0].dst
+        assert inst_edges[0].evidence_type == "stack_construction"
+
+    def test_direct_construction_with_args(self, tmp_path: Path) -> None:
+        """``Config c(1, 2);`` should create an instantiates edge."""
+        (tmp_path / "direct.cpp").write_text("""
+class Config {
+public:
+    Config(int a, int b) {}
+};
+
+void caller() {
+    Config c(1, 2);
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst_edges) == 1
+        assert "Config" in inst_edges[0].dst
+        assert inst_edges[0].evidence_type == "stack_construction"
+
+    def test_brace_initialization(self, tmp_path: Path) -> None:
+        """``Widget w{};`` should create an instantiates edge."""
+        (tmp_path / "brace.cpp").write_text("""
+class Widget {};
+
+void caller() {
+    Widget w{};
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst_edges) == 1
+        assert "Widget" in inst_edges[0].dst
+
+    def test_compound_literal(self, tmp_path: Path) -> None:
+        """``Widget{42}`` as an expression should create an instantiates edge."""
+        (tmp_path / "compound.cpp").write_text("""
+class Widget {};
+
+void process(Widget w) {}
+
+void caller() {
+    process(Widget{42});
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert any("Widget" in e.dst for e in inst_edges)
+
+    def test_no_false_positive_primitive(self, tmp_path: Path) -> None:
+        """``int x;`` should NOT create an instantiates edge."""
+        (tmp_path / "prim.cpp").write_text("""
+void caller() {
+    int x = 0;
+    double y = 1.0;
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst_edges) == 0
+
+    def test_cross_file_construction(self, tmp_path: Path) -> None:
+        """Stack construction should resolve to class in another file."""
+        (tmp_path / "service.cpp").write_text("""
+class Service {
+public:
+    void run() {}
+};
+""")
+        (tmp_path / "main.cpp").write_text("""
+class Service;
+
+void start() {
+    Service svc;
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst_edges) >= 1
+        assert any("Service" in e.dst for e in inst_edges)
+
+    def test_qualified_type_construction(self, tmp_path: Path) -> None:
+        """``ui::Button btn;`` should create an instantiates edge.
+
+        Namespace-qualified types in declarations use ``qualified_identifier``
+        instead of ``type_identifier``. The handler must extract the
+        inner type_identifier from the qualified node.
+        """
+        (tmp_path / "widgets.cpp").write_text("""
+namespace ui {
+class Button {
+public:
+    void click() {}
+};
+}
+""")
+        (tmp_path / "main.cpp").write_text("""
+namespace ui { class Button; }
+
+void test() {
+    ui::Button btn;
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert len(inst_edges) >= 1
+        assert any("Button" in e.dst for e in inst_edges)
+
