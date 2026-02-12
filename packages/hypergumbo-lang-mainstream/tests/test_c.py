@@ -768,3 +768,152 @@ class TestCSignatureExtraction:
         assert process_sym is not None
         assert process_sym.signature == "(int x, int y)"
 
+
+class TestHeaderDedup:
+    """Tests for .h file deduplication when C++ files are present.
+
+    When a repo contains C++ source files (*.cpp, *.cc, *.cxx) or C++ headers
+    (*.hpp, *.hxx), the C analyzer skips .h files to avoid duplication with
+    the C++ analyzer which also processes them.
+    """
+
+    def test_skips_h_files_when_cpp_sources_exist(self, tmp_path: Path) -> None:
+        """C analyzer skips .h files when .cpp files exist in the repo."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "utils.h").write_text("void helper();")
+        (tmp_path / "impl.c").write_text("void helper() {}")
+        (tmp_path / "main.cpp").write_text("int main() { return 0; }")
+
+        result = analyze_c(tmp_path)
+
+        # Should only analyze impl.c, not utils.h
+        paths = {s.path for s in result.symbols}
+        assert any("impl.c" in p for p in paths), "Should include .c file symbols"
+        assert not any(p.endswith(".h") for p in paths), (
+            "Should NOT include .h file symbols when C++ files exist"
+        )
+
+    def test_skips_h_files_when_cc_sources_exist(self, tmp_path: Path) -> None:
+        """C analyzer skips .h files when .cc files exist in the repo."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "types.h").write_text("struct Point { int x; int y; };")
+        (tmp_path / "impl.c").write_text("void process() {}")
+        (tmp_path / "main.cc").write_text("int main() { return 0; }")
+
+        result = analyze_c(tmp_path)
+
+        paths = {s.path for s in result.symbols}
+        assert not any(p.endswith(".h") for p in paths), (
+            "Should NOT include .h file symbols when .cc files exist"
+        )
+
+    def test_skips_h_files_when_hpp_exists(self, tmp_path: Path) -> None:
+        """C analyzer skips .h files when .hpp files exist (header-only C++)."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "config.h").write_text("void init();")
+        (tmp_path / "impl.c").write_text("void init() {}")
+        (tmp_path / "utils.hpp").write_text("// C++ header-only lib")
+
+        result = analyze_c(tmp_path)
+
+        paths = {s.path for s in result.symbols}
+        assert not any(p.endswith(".h") for p in paths), (
+            "Should NOT include .h file symbols when .hpp files exist"
+        )
+
+    def test_includes_h_files_in_pure_c_repo(self, tmp_path: Path) -> None:
+        """C analyzer includes .h files in pure-C repos (no C++ files)."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "utils.h").write_text("void helper();")
+        (tmp_path / "main.c").write_text("""
+void helper() {}
+void main_func() { helper(); }
+""")
+
+        result = analyze_c(tmp_path)
+
+        # Both .h and .c files should be analyzed
+        paths = {s.path for s in result.symbols}
+        assert any(p.endswith(".h") for p in paths), (
+            "Should include .h file symbols in pure-C repos"
+        )
+        assert any(p.endswith(".c") for p in paths), (
+            "Should include .c file symbols in pure-C repos"
+        )
+
+    def test_find_c_files_skips_headers(self, tmp_path: Path) -> None:
+        """find_c_files with include_headers=False yields only .c files."""
+        from hypergumbo_lang_mainstream.c import find_c_files
+
+        (tmp_path / "main.c").write_text("int main() { return 0; }")
+        (tmp_path / "utils.h").write_text("void helper();")
+        (tmp_path / "lib.c").write_text("void helper() {}")
+
+        files = list(find_c_files(tmp_path, include_headers=False))
+
+        suffixes = {f.suffix for f in files}
+        assert ".c" in suffixes
+        assert ".h" not in suffixes
+        assert len(files) == 2
+
+    def test_find_c_files_includes_headers_by_default(self, tmp_path: Path) -> None:
+        """find_c_files includes .h files by default (backward compatible)."""
+        from hypergumbo_lang_mainstream.c import find_c_files
+
+        (tmp_path / "main.c").write_text("int main() { return 0; }")
+        (tmp_path / "utils.h").write_text("void helper();")
+
+        files = list(find_c_files(tmp_path))
+
+        suffixes = {f.suffix for f in files}
+        assert ".c" in suffixes
+        assert ".h" in suffixes
+
+    def test_has_cpp_files_detects_cpp(self, tmp_path: Path) -> None:
+        """_has_cpp_files detects .cpp, .cc, .cxx, .hpp, .hxx files."""
+        from hypergumbo_lang_mainstream.c import _has_cpp_files
+
+        # No C++ files
+        (tmp_path / "main.c").write_text("int main() {}")
+        (tmp_path / "utils.h").write_text("void f();")
+        assert _has_cpp_files(tmp_path) is False
+
+        # Add a .cpp file
+        (tmp_path / "app.cpp").write_text("int main() {}")
+        assert _has_cpp_files(tmp_path) is True
+
+    def test_has_cpp_files_detects_cxx(self, tmp_path: Path) -> None:
+        """_has_cpp_files detects .cxx files."""
+        from hypergumbo_lang_mainstream.c import _has_cpp_files
+
+        (tmp_path / "main.c").write_text("int main() {}")
+        (tmp_path / "lib.cxx").write_text("void f() {}")
+        assert _has_cpp_files(tmp_path) is True
+
+    def test_has_cpp_files_detects_hxx(self, tmp_path: Path) -> None:
+        """_has_cpp_files detects .hxx files."""
+        from hypergumbo_lang_mainstream.c import _has_cpp_files
+
+        (tmp_path / "main.c").write_text("int main() {}")
+        (tmp_path / "lib.hxx").write_text("// header")
+        assert _has_cpp_files(tmp_path) is True
+
+    def test_files_analyzed_count_excludes_headers(self, tmp_path: Path) -> None:
+        """files_analyzed count reflects skipped .h files."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "a.h").write_text("void a();")
+        (tmp_path / "b.h").write_text("void b();")
+        (tmp_path / "impl.c").write_text("void a() {} void b() {}")
+        (tmp_path / "app.cpp").write_text("int main() {}")
+
+        result = analyze_c(tmp_path)
+
+        assert result.run is not None
+        # Only impl.c should be analyzed (2 headers skipped, .cpp not a C file)
+        assert result.run.files_analyzed == 1
+

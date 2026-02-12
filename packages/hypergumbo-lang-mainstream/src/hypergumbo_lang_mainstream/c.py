@@ -15,10 +15,12 @@ How It Works
 ------------
 1. Check if tree-sitter and tree-sitter-c are available
 2. If not available, return empty result (not an error, just no C analysis)
-3. Two-pass analysis:
+3. Check for C++ files in the repo; if present, skip .h files (the C++
+   analyzer handles them with tree-sitter-cpp to avoid duplicate symbols)
+4. Two-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry
    - Pass 2: Detect calls and resolve against global symbol registry
-4. Detect function calls and JNI export patterns
+5. Detect function calls and JNI export patterns
 
 Why This Design
 ---------------
@@ -26,6 +28,9 @@ Why This Design
 - C support is separate from other languages to keep modules focused
 - Two-pass allows cross-file call resolution
 - Same pattern as PHP/JS analyzers for consistency
+- .h dedup: Both C and C++ analyzers process .h files, creating 2x symbols.
+  On Falco (C/C++ repo), 44/50 .h files were duplicated and C orphan rate
+  was 92.1%. Fix: skip .h in C analyzer when C++ files exist.
 """
 from __future__ import annotations
 
@@ -49,13 +54,34 @@ PASS_ID = "c-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
 
 
-def find_c_files(repo_root: Path) -> Iterator[Path]:
+def _has_cpp_files(repo_root: Path) -> bool:
+    """Check if the repository contains C++ files.
+
+    Checks for C++ source extensions (.cpp, .cc, .cxx) and C++-specific
+    header extensions (.hpp, .hxx). When any of these exist, .h files
+    are presumed to be C++ headers and should be processed by the C++
+    analyzer, not the C analyzer.
+    """
+    return any(find_files(repo_root, ["*.cpp", "*.cc", "*.cxx", "*.hpp", "*.hxx"]))
+
+
+def find_c_files(
+    repo_root: Path, *, include_headers: bool = True
+) -> Iterator[Path]:
     """Yield all C files in the repository.
 
-    Headers (.h) are yielded before source files (.c) so that
-    definitions can replace declarations when building the symbol registry.
+    When include_headers is True (default), headers (.h) are yielded before
+    source files (.c) so that definitions can replace declarations when
+    building the symbol registry.
+
+    When include_headers is False, only .c files are yielded. This is used
+    when C++ files exist in the repo, since the C++ analyzer already
+    processes .h files with the C++ grammar.
     """
-    yield from find_files(repo_root, ["*.h", "*.c"])
+    if include_headers:
+        yield from find_files(repo_root, ["*.h", "*.c"])
+    else:
+        yield from find_files(repo_root, ["*.c"])
 
 
 def is_c_tree_sitter_available() -> bool:
@@ -474,13 +500,19 @@ def analyze_c(repo_root: Path) -> CAnalysisResult:
             skip_reason=skip_reason,
         )
 
+    # Skip .h files when C++ files exist in the repo. The C++ analyzer
+    # already processes .h files with tree-sitter-cpp, so including them
+    # here creates duplicate symbols (e.g., 44/50 .h files duplicated on
+    # Falco, causing 92.1% C orphan rate).
+    include_headers = not _has_cpp_files(repo_root)
+
     # Pass 1: Parse all files and extract symbols
     parsed_files: list[_ParsedFile] = []
     all_symbols: list[Symbol] = []
     files_analyzed = 0
     files_skipped = 0
 
-    for file_path in find_c_files(repo_root):
+    for file_path in find_c_files(repo_root, include_headers=include_headers):
         try:
             source = file_path.read_bytes()
             tree = parser.parse(source)

@@ -95,6 +95,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Django route method accuracy**: `path()`/`re_path()`/`url()` no longer hardcode `GET`. Django routing doesn't specify methods.
 - **TypeScript decorator kind filtering**: Decorator resolution rejects class/interface/type symbols as targets. Non-function matches produce unresolved edges (confidence 0.50).
 - **Vue analyzer deduplication fix**: Removed method and computed property extraction from the Vue analyzer. The JS/TS tree-sitter analyzer already processes `.vue` `<script>` sections with full precision, so the Vue analyzer's regex-based extraction created duplicate symbols (1,093 orphaned `language="vue"` method symbols on Chatwoot, 54% of remaining orphans). The Vue analyzer now focuses exclusively on Vue-specific constructs: component refs, directives, slots, props, and style blocks.
+- **C/C++ `.h` file deduplication**: C analyzer now skips `.h` files when C++ files exist in the repo (`.cpp`, `.cc`, `.cxx`, `.hpp`, `.hxx`). Both C and C++ analyzers processed `.h` files independently, creating 2x symbols. On Falco (C/C++ repo): 44/50 `.h` files were duplicated, C orphan rate was 92.1%. The C++ analyzer's tree-sitter-cpp grammar handles `.h` files correctly; the C analyzer now yields only `.c` files in mixed repos. Pure-C repos (no C++ files) are unaffected.
 
 #### Dependencies & configuration
 
