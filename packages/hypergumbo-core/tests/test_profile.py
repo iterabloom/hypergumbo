@@ -2078,3 +2078,34 @@ dependencies {
 
     data = json.loads(out_path.read_text())
     assert "ratpack" in data["profile"]["frameworks"]
+
+
+def test_bottleneck_does_not_trigger_bottle_detection(tmp_path: Path) -> None:
+    """The package 'bottleneck' should not cause 'bottle' framework detection.
+
+    Substring matching on 'bottle' in 'bottleneck' caused false Bottle
+    framework detection, which then applied Bottle's bare @patch/@get
+    decorator patterns to non-Bottle repos (e.g., Superset).
+    """
+    (tmp_path / "app.py").write_text("import bottleneck\nx = bottleneck.nanmean([1])\n")
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "myapp"\ndependencies = ["bottleneck", "pandas"]\n'
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "bottle" not in data["profile"]["frameworks"]
+
+
+def test_bottle_detected_when_actual_dependency(tmp_path: Path) -> None:
+    """The actual 'bottle' package should still be detected."""
+    (tmp_path / "app.py").write_text("from bottle import route, run\n")
+    (tmp_path / "requirements.txt").write_text("bottle==0.12.25\nrequests\n")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "bottle" in data["profile"]["frameworks"]

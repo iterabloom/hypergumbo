@@ -51,6 +51,7 @@ Why This Design
 - Results are used by sketch generation for the language breakdown
 """
 import json
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -751,6 +752,33 @@ def _read_all_manifest_files(repo_root: Path, filename: str, max_depth: int = 3)
     return "\n".join(content_parts)
 
 
+def _manifest_has_package(content: str, package: str) -> bool:
+    """Check if a package name appears as a distinct token in manifest content.
+
+    Uses conditional word boundaries to avoid false positives from substring
+    collisions. For example, 'bottle' should NOT match in 'bottleneck',
+    but SHOULD match in 'bottle==0.12' or '"bottle"'.
+
+    Word boundaries are only added at positions where the pattern starts/ends
+    with a word character (alphanumeric or underscore). Patterns ending with
+    non-word characters like ':' or '{' (e.g., 'shelf:', 'android {') don't
+    get a trailing boundary, since the non-word character itself provides
+    sufficient delimitation.
+
+    Args:
+        content: Lowercased concatenated manifest file content.
+        package: Package/library name to search for (case-insensitive).
+
+    Returns:
+        True if the package name appears as a distinct token in the content.
+    """
+    escaped = re.escape(package.lower())
+    # Add word boundary only where pattern starts/ends with a word character
+    prefix = r"\b" if re.match(r"\w", package) else ""
+    suffix = r"\b" if re.search(r"\w$", package) else ""
+    return bool(re.search(prefix + escaped + suffix, content))
+
+
 def _detect_python_frameworks(repo_root: Path) -> list[str]:
     """Detect Python frameworks from dependency files.
 
@@ -768,7 +796,7 @@ def _detect_python_frameworks(repo_root: Path) -> list[str]:
 
     for framework, patterns in PYTHON_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in content:
+            if _manifest_has_package(content, pattern):
                 detected.append(framework)
                 break
 
@@ -819,7 +847,7 @@ def _detect_rust_frameworks(repo_root: Path) -> list[str]:
     for framework, patterns in RUST_FRAMEWORKS.items():
         for pattern in patterns:
             # Check for crate in dependencies section
-            if pattern.lower() in content:
+            if _manifest_has_package(content, pattern):
                 detected.append(framework)
                 break
 
@@ -838,7 +866,7 @@ def _detect_go_frameworks(repo_root: Path) -> list[str]:
 
     for framework, patterns in GO_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in content:
+            if _manifest_has_package(content, pattern):
                 detected.append(framework)
                 break
 
@@ -887,7 +915,7 @@ def _detect_java_frameworks(repo_root: Path) -> list[str]:
     content = _read_all_manifest_files(repo_root, "pom.xml")
     for framework, patterns in JAVA_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in content:
+            if _manifest_has_package(content, pattern):
                 if framework not in detected_set:
                     detected.append(framework)
                     detected_set.add(framework)
@@ -899,7 +927,7 @@ def _detect_java_frameworks(repo_root: Path) -> list[str]:
         for framework, patterns in JAVA_FRAMEWORKS.items():
             if framework not in detected_set:
                 for pattern in patterns:
-                    if pattern.lower() in content:
+                    if _manifest_has_package(content, pattern):
                         detected.append(framework)
                         detected_set.add(framework)
                         break
@@ -927,7 +955,7 @@ def _detect_swift_frameworks(repo_root: Path) -> list[str]:
 
     for framework, patterns in SWIFT_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in content:
+            if _manifest_has_package(content, pattern):
                 detected.append(framework)
                 break
 
@@ -946,7 +974,7 @@ def _detect_scala_frameworks(repo_root: Path) -> list[str]:
 
     for framework, patterns in SCALA_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in content:
+            if _manifest_has_package(content, pattern):
                 detected.append(framework)
                 break
 
@@ -1008,7 +1036,7 @@ def _detect_ruby_frameworks(repo_root: Path) -> list[str]:
 
     for framework, patterns in RUBY_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in content:
+            if _manifest_has_package(content, pattern):
                 detected.append(framework)
                 break
 
@@ -1115,7 +1143,7 @@ def _detect_r_frameworks(repo_root: Path) -> list[str]:
 
     for framework, patterns in R_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in content:
+            if _manifest_has_package(content, pattern):
                 detected.append(framework)
                 break
 
@@ -1256,7 +1284,7 @@ def _detect_kotlin_frameworks(repo_root: Path) -> list[str]:
 
     for framework, patterns in KOTLIN_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in content:
+            if _manifest_has_package(content, pattern):
                 detected.append(framework)
                 break
 
@@ -1304,7 +1332,7 @@ def _detect_dart_web_frameworks(repo_root: Path) -> list[str]:
 
     for framework, patterns in DART_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in content:
+            if _manifest_has_package(content, pattern):
                 detected.append(framework)
                 break
 
@@ -1324,7 +1352,7 @@ def _detect_julia_frameworks(repo_root: Path) -> list[str]:
 
     for framework, patterns in JULIA_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in content:
+            if _manifest_has_package(content, pattern):
                 detected.append(framework)
                 break
 
@@ -1447,7 +1475,7 @@ def _detect_groovy_frameworks(repo_root: Path) -> list[str]:
 
     for framework, patterns in GROOVY_FRAMEWORKS.items():
         for pattern in patterns:
-            if pattern.lower() in content:
+            if _manifest_has_package(content, pattern):
                 detected.append(framework)
                 break
 

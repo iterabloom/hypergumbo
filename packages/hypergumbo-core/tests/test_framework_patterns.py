@@ -1555,6 +1555,63 @@ class TestFlaskPatterns:
 class TestBottlePatterns:
     """Tests for Bottle framework pattern matching."""
 
+    def test_bare_patch_does_not_match_bottle_route(self) -> None:
+        """Bare @patch decorator (e.g., unittest.mock.patch) must not match as route.
+
+        Bottle's bare decorator patterns (^(get|post|put|delete|patch)$)
+        matched @mock.patch() and @patch(), causing 76% false positive
+        routes in Superset. Fixed by removing bare decorator patterns.
+        """
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("bottle")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:tests/test_api.py:50:test_create_user:function",
+            name="test_create_user",
+            kind="function",
+            language="python",
+            path="tests/test_api.py",
+            span=Span(50, 60, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "patch", "args": ["myapp.services.UserService"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        route_results = [r for r in results if r.get("concept") == "route"]
+        assert len(route_results) == 0, (
+            "Bare @patch should not match as a Bottle route"
+        )
+
+    def test_bare_get_does_not_match_bottle_route(self) -> None:
+        """Bare @get decorator should not match as route (too ambiguous)."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("bottle")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:utils.py:10:fetch_data:function",
+            name="fetch_data",
+            kind="function",
+            language="python",
+            path="utils.py",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "get", "args": ["/data"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        route_results = [r for r in results if r.get("concept") == "route"]
+        assert len(route_results) == 0, (
+            "Bare @get should not match as a Bottle route"
+        )
+
     def test_bottle_get_route_pattern(self) -> None:
         """Bottle @app.get decorator matches route pattern."""
         clear_pattern_cache()
