@@ -339,6 +339,221 @@ class UserController : AbstractController() {
         extends_edges = [e for e in result.edges if e.edge_type in ("extends", "implements")]
         assert len(extends_edges) == 0
 
+    def test_extends_prefers_imported_class_over_name_collision(
+        self, tmp_path: Path
+    ) -> None:
+        """When multiple classes share a name, extends resolves to the imported one.
+
+        INV-015: Same bug as Python (Django 238 Model stubs). Two files define
+        class 'Model'; child file imports from specific package. Edge should
+        resolve to the imported Model.
+        """
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        # Real Model class in models package
+        (tmp_path / "models").mkdir()
+        (tmp_path / "models" / "Model.kt").write_text(
+            "package com.example.models\n"
+            "\n"
+            "open class Model {\n"
+            "    fun save() {}\n"
+            "}\n"
+        )
+
+        # Test stub Model class (different file, same name)
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "Helpers.kt").write_text(
+            "package com.example.tests\n"
+            "\n"
+            "open class Model {\n"
+            "    /* stub */\n"
+            "}\n"
+        )
+
+        # A file that imports com.example.models.Model and extends it
+        (tmp_path / "App.kt").write_text(
+            "package com.example\n"
+            "\n"
+            "import com.example.models.Model\n"
+            "\n"
+            "class Article : Model() {\n"
+            "    fun publish() {}\n"
+            "}\n"
+        )
+
+        result = analyze_kotlin(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        article_extends = [e for e in extends_edges if "Article" in e.src]
+        assert len(article_extends) == 1, (
+            f"Expected 1 extends edge from Article, got {len(article_extends)}"
+        )
+
+        # Edge should point to models/Model.kt::Model, NOT tests/Helpers.kt::Model
+        edge = article_extends[0]
+        assert "models/Model.kt" in edge.dst or "models\\Model.kt" in edge.dst, (
+            f"Article extends edge should point to models/Model.kt::Model, "
+            f"but points to: {edge.dst}"
+        )
+
+    def test_extends_same_file_class_preferred_over_other_file(
+        self, tmp_path: Path
+    ) -> None:
+        """When base class is defined in the same file, prefer it over other files."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        # Base defined in file A
+        (tmp_path / "A.kt").write_text(
+            "open class Base {\n    fun run() {}\n}\n"
+        )
+
+        # Base defined in file B AND used as base in same file
+        (tmp_path / "B.kt").write_text(
+            "open class Base {\n    fun run() {}\n}\n"
+            "\n"
+            "class Child : Base() {\n    fun go() {}\n}\n"
+        )
+
+        result = analyze_kotlin(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        child_extends = [e for e in extends_edges if "Child" in e.src]
+        assert len(child_extends) == 1
+
+        # Should resolve to B.kt::Base (same file), not A.kt::Base
+        edge = child_extends[0]
+        assert "B.kt" in edge.dst, (
+            f"Child extends edge should prefer same-file Base (B.kt), "
+            f"but points to: {edge.dst}"
+        )
+
+    def test_extends_deterministic_fallback_when_ambiguous(
+        self, tmp_path: Path
+    ) -> None:
+        """When no same-file or import match, extends uses deterministic fallback."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        # Two files define 'Base', neither is imported
+        (tmp_path / "ModA.kt").write_text(
+            "open class Base {\n    fun run() {}\n}\n"
+        )
+        (tmp_path / "ModB.kt").write_text(
+            "open class Base {\n    fun run() {}\n}\n"
+        )
+        # A third file extends 'Base' without importing either
+        (tmp_path / "Child.kt").write_text(
+            "class Child : Base() {\n    fun go() {}\n}\n"
+        )
+
+        result = analyze_kotlin(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        child_extends = [e for e in extends_edges if "Child" in e.src]
+        # Should still create an edge (deterministic fallback)
+        assert len(child_extends) == 1
+
+    def test_extends_import_matches_full_fqn_path(
+        self, tmp_path: Path
+    ) -> None:
+        """Import disambiguation via full FQN-to-path when directory mirrors package."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        # Gradle-style deep directory that mirrors FQN: com/example/models/Model.kt
+        deep = tmp_path / "com" / "example" / "models"
+        deep.mkdir(parents=True)
+        (deep / "Model.kt").write_text(
+            "package com.example.models\n"
+            "\n"
+            "open class Model {\n"
+            "    fun save() {}\n"
+            "}\n"
+        )
+
+        # Another Model at a flat path (e.g. test stub)
+        (tmp_path / "StubModel.kt").write_text(
+            "package com.example.tests\n"
+            "\n"
+            "open class Model {\n"
+            "    /* stub */\n"
+            "}\n"
+        )
+
+        # Child imports the FQN that matches the deep path exactly
+        (tmp_path / "App.kt").write_text(
+            "package com.example\n"
+            "\n"
+            "import com.example.models.Model\n"
+            "\n"
+            "class Article : Model() {\n"
+            "    fun publish() {}\n"
+            "}\n"
+        )
+
+        result = analyze_kotlin(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        article_extends = [e for e in extends_edges if "Article" in e.src]
+        assert len(article_extends) == 1
+
+        # Should resolve to com/example/models/Model.kt (full FQN match)
+        edge = article_extends[0]
+        assert "com/example/models/Model.kt" in edge.dst or "com\\example\\models\\Model.kt" in edge.dst, (
+            f"Article extends should resolve to com/example/models/Model.kt, "
+            f"but points to: {edge.dst}"
+        )
+
+    def test_implements_prefers_imported_interface_over_collision(
+        self, tmp_path: Path
+    ) -> None:
+        """Interface disambiguation: implements resolves to imported interface."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        # Real Validator interface
+        (tmp_path / "core").mkdir()
+        (tmp_path / "core" / "Validator.kt").write_text(
+            "package com.example.core\n"
+            "\n"
+            "interface Validator {\n"
+            "    fun validate(): Boolean\n"
+            "}\n"
+        )
+
+        # Stub Validator interface (different file, same name)
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "Mock.kt").write_text(
+            "package com.example.tests\n"
+            "\n"
+            "interface Validator {\n"
+            "    fun validate(): Boolean\n"
+            "}\n"
+        )
+
+        # A file that imports com.example.core.Validator and implements it
+        (tmp_path / "Form.kt").write_text(
+            "package com.example\n"
+            "\n"
+            "import com.example.core.Validator\n"
+            "\n"
+            "class FormValidator : Validator {\n"
+            "    override fun validate(): Boolean = true\n"
+            "}\n"
+        )
+
+        result = analyze_kotlin(tmp_path)
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        form_impl = [e for e in impl_edges if "FormValidator" in e.src]
+        assert len(form_impl) == 1, (
+            f"Expected 1 implements edge from FormValidator, got {len(form_impl)}"
+        )
+
+        # Edge should point to core/Validator.kt::Validator
+        edge = form_impl[0]
+        assert "core/Validator.kt" in edge.dst or "core\\Validator.kt" in edge.dst, (
+            f"FormValidator implements edge should point to core/Validator.kt::Validator, "
+            f"but points to: {edge.dst}"
+        )
+
 
 class TestKotlinFunctionCalls:
     """Tests for detecting function calls in Kotlin."""

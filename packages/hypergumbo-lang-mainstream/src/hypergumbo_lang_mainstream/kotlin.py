@@ -836,10 +836,80 @@ def _extract_edges_from_file(
     return edges
 
 
+def _resolve_base_class_kotlin(
+    base_name: str,
+    child_sym: Symbol,
+    candidates_by_name: dict[str, list[Symbol]],
+    sym_file_imports: dict[str, dict[str, str]],
+) -> Symbol | None:
+    """Resolve a base class/interface name to a specific Symbol, disambiguating collisions.
+
+    When multiple classes or interfaces share the same name (e.g., test stubs named
+    'Model'), uses a priority cascade:
+
+    1. Same-file match: base class defined in the same file as the child
+    2. Import match: child's file has ``import com.example.models.Model`` and a
+       candidate's fully qualified name or file path matches
+    3. First by ID: deterministic fallback (sorted by symbol ID)
+
+    Args:
+        base_name: The base class/interface name to resolve (e.g., 'Model')
+        child_sym: The child class symbol (for file context)
+        candidates_by_name: Multi-value lookup: name -> list of Symbol candidates
+        sym_file_imports: Maps symbol ID -> file-level imports dict
+            (simple name -> fully qualified name)
+
+    Returns:
+        The resolved base class/interface Symbol, or None if no match found.
+    """
+    candidates = candidates_by_name.get(base_name)
+    if not candidates:
+        return None
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    child_path = child_sym.path or ""
+
+    # 1. Same-file match: prefer base defined in the same file
+    same_file = [c for c in candidates if c.path == child_path]
+    if len(same_file) == 1:
+        return same_file[0]
+
+    # 2. Import match: check if child's file imports resolve to a candidate
+    imports = sym_file_imports.get(child_sym.id, {})
+    if base_name in imports:
+        fqn = imports[base_name]
+        # Convert FQN to path segments for matching against file paths
+        # e.g., "com.example.models.Model" -> try "com/example/models/Model",
+        # then progressively shorter suffixes
+        fqn_as_path = fqn.replace(".", "/")
+        for cand in candidates:
+            cand_path = cand.path or ""
+            cand_no_ext = cand_path.rsplit(".kt", 1)[0]
+            if cand_no_ext.endswith(fqn_as_path):
+                return cand
+        # Try matching just the last package segment + class name
+        # e.g., "com.example.models.Model" -> "models/Model" matches ".../models/Model.kt"
+        fqn_parts = fqn.split(".")
+        if len(fqn_parts) >= 2:
+            short_path = "/".join(fqn_parts[-2:])
+            for cand in candidates:
+                cand_path = cand.path or ""
+                cand_no_ext = cand_path.rsplit(".kt", 1)[0]
+                if cand_no_ext.endswith(short_path):
+                    return cand
+
+    # 3. Deterministic fallback: first by symbol ID (sorted for stability)
+    candidates_sorted = sorted(candidates, key=lambda c: c.id)
+    return candidates_sorted[0]
+
+
 def _extract_inheritance_edges(
     symbols: list[Symbol],
-    class_symbols: dict[str, Symbol],
-    interface_symbols: dict[str, Symbol],
+    class_by_name: dict[str, list[Symbol]],
+    interface_by_name: dict[str, list[Symbol]],
+    sym_file_imports: dict[str, dict[str, str]],
     run: AnalysisRun,
 ) -> list[Edge]:
     """Extract extends/implements edges from class inheritance (META-001).
@@ -848,10 +918,15 @@ def _extract_inheritance_edges(
     - extends edges to base classes
     - implements edges to interfaces
 
+    When multiple classes or interfaces share the same name (common in repos with
+    test stubs), uses import-aware disambiguation via ``_resolve_base_class_kotlin()``
+    to find the correct target.
+
     Args:
         symbols: All extracted symbols
-        class_symbols: Map of class name -> Symbol for class lookup
-        interface_symbols: Map of interface name -> Symbol for interface lookup
+        class_by_name: Multi-value lookup: class name -> list of Symbol candidates
+        interface_by_name: Multi-value lookup: interface name -> list of Symbol candidates
+        sym_file_imports: Maps symbol ID -> file-level imports dict
         run: Current analysis run for provenance
 
     Returns:
@@ -872,14 +947,22 @@ def _extract_inheritance_edges(
             base_name = base_class_name.split("<")[0] if "<" in base_class_name else base_class_name
 
             # Determine edge type based on whether target is interface or class
-            if base_name in interface_symbols:
-                base_sym = interface_symbols[base_name]
+            # Try interface first, then class, using disambiguation
+            iface_sym = _resolve_base_class_kotlin(
+                base_name, sym, interface_by_name, sym_file_imports
+            )
+            if iface_sym is not None and iface_sym.id != sym.id:
                 edge_type = "implements"
-            elif base_name in class_symbols:
-                base_sym = class_symbols[base_name]
-                edge_type = "extends"
+                base_sym = iface_sym
             else:
-                continue  # External type, no edge
+                class_sym = _resolve_base_class_kotlin(
+                    base_name, sym, class_by_name, sym_file_imports
+                )
+                if class_sym is not None and class_sym.id != sym.id:
+                    edge_type = "extends"
+                    base_sym = class_sym
+                else:
+                    continue  # External type, no edge
 
             edge = Edge.create(
                 src=sym.id,
@@ -970,10 +1053,25 @@ def analyze_kotlin(repo_root: Path) -> KotlinAnalysisResult:
     run.duration_ms = int((time.time() - start_time) * 1000)
 
     # Extract inheritance edges (META-001: base_classes metadata -> extends/implements edges)
-    class_symbols = {s.name: s for s in all_symbols if s.kind == "class"}
-    interface_symbols = {s.name: s for s in all_symbols if s.kind == "interface"}
+    # Build multi-value lookups for disambiguation (INV-015)
+    class_by_name: dict[str, list[Symbol]] = {}
+    interface_by_name: dict[str, list[Symbol]] = {}
+    for s in all_symbols:
+        if s.kind == "class":
+            if s.name not in class_by_name:
+                class_by_name[s.name] = []
+            class_by_name[s.name].append(s)
+        elif s.kind == "interface":
+            if s.name not in interface_by_name:
+                interface_by_name[s.name] = []
+            interface_by_name[s.name].append(s)
+    # Build per-symbol imports mapping for disambiguation
+    sym_file_imports: dict[str, dict[str, str]] = {}
+    for _kt_file, analysis in file_analyses.items():
+        for sym in analysis.symbols:
+            sym_file_imports[sym.id] = analysis.imports
     inheritance_edges = _extract_inheritance_edges(
-        all_symbols, class_symbols, interface_symbols, run
+        all_symbols, class_by_name, interface_by_name, sym_file_imports, run
     )
     all_edges.extend(inheritance_edges)
 

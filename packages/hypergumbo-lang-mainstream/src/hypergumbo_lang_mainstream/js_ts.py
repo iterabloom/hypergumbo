@@ -1380,9 +1380,72 @@ def _extract_library_export_contexts(
     return contexts
 
 
+def _resolve_base_class_js(
+    base_name: str,
+    child_sym: Symbol,
+    candidates_by_name: dict[str, list[Symbol]],
+    parsed_files: list["_ParsedFile"],
+) -> Symbol | None:
+    """Resolve a base class/interface name to a specific Symbol, disambiguating collisions.
+
+    When multiple classes or interfaces share the same name (e.g., NestJS monorepo
+    with multiple CatsService, or test stubs named 'Model'), uses a priority cascade:
+
+    1. Same-file match: base class defined in the same file as the child
+    2. Import-path match: child's file has ``import { Name } from './path'`` matching
+       a candidate's file path (via ``_disambiguate_by_import``)
+    3. First by ID: deterministic fallback (sorted by symbol ID)
+
+    Args:
+        base_name: The base class/interface name to resolve (e.g., 'Model')
+        child_sym: The child class symbol (for file context)
+        candidates_by_name: Multi-value lookup: name -> list of Symbol candidates
+        parsed_files: All parsed files (for named_imports lookup)
+
+    Returns:
+        The resolved base class/interface Symbol, or None if no match found.
+    """
+    candidates = candidates_by_name.get(base_name)
+    if not candidates:
+        return None
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    child_path = child_sym.path or ""
+
+    # 1. Same-file match: prefer base defined in the same file
+    same_file = [c for c in candidates if c.path == child_path]
+    if len(same_file) == 1:
+        return same_file[0]
+
+    # 2. Import-path match: check if child's file imports resolve to a candidate
+    # Find the parsed file for the child symbol to get its named_imports
+    child_file_path = Path(child_path) if child_path else None
+    if child_file_path is not None:
+        for pf in parsed_files:
+            if pf.path == child_file_path:
+                named_imports = pf.named_imports or {}
+                if base_name in named_imports:
+                    import_path = named_imports[base_name]
+                    # Build a symbols_by_name with just our candidates for disambiguation
+                    cand_by_name: dict[str, list[Symbol]] = {base_name: candidates}
+                    match = _disambiguate_by_import(
+                        import_path, pf.path, base_name, cand_by_name
+                    )
+                    if match is not None:
+                        return match
+                break
+
+    # 3. Deterministic fallback: first by symbol ID (sorted for stability)
+    candidates_sorted = sorted(candidates, key=lambda c: c.id)
+    return candidates_sorted[0]
+
+
 def _extract_inheritance_edges(
     symbols: list[Symbol],
-    class_symbols: dict[str, Symbol],
+    classes_by_name: dict[str, list[Symbol]],
+    parsed_files: list["_ParsedFile"],
     run: AnalysisRun,
 ) -> list[Edge]:
     """Extract extends/implements edges from class inheritance.
@@ -1391,9 +1454,14 @@ def _extract_inheritance_edges(
     to base classes/interfaces that exist in the analyzed codebase. This enables
     the type hierarchy linker to create dispatches_to edges for polymorphic dispatch.
 
+    When multiple classes or interfaces share the same name (common in monorepos
+    and repos with test stubs), uses import-aware disambiguation via
+    ``_resolve_base_class_js()`` to find the correct target.
+
     Args:
         symbols: All extracted symbols
-        class_symbols: Map of class name -> Symbol for class lookup
+        classes_by_name: Multi-value lookup: class name -> list of Symbol candidates
+        parsed_files: All parsed files (for named_imports lookup during disambiguation)
         run: Current analysis run for provenance
 
     Returns:
@@ -1401,11 +1469,13 @@ def _extract_inheritance_edges(
     """
     edges: list[Edge] = []
 
-    # Also build interface symbol lookup
-    interface_symbols: dict[str, Symbol] = {}
+    # Build multi-value interface lookup
+    interfaces_by_name: dict[str, list[Symbol]] = {}
     for sym in symbols:
         if sym.kind == "interface":
-            interface_symbols[sym.name] = sym
+            if sym.name not in interfaces_by_name:
+                interfaces_by_name[sym.name] = []
+            interfaces_by_name[sym.name].append(sym)
 
     for sym in symbols:
         if sym.kind != "class":
@@ -1422,9 +1492,11 @@ def _extract_inheritance_edges(
             if "." in base_name:
                 base_name = base_name.split(".")[-1]
 
-            # Check if it's a class (extends) or interface (implements)
-            if base_name in class_symbols:
-                base_sym = class_symbols[base_name]
+            # Try class first, then interface, using disambiguation
+            base_sym = _resolve_base_class_js(
+                base_name, sym, classes_by_name, parsed_files
+            )
+            if base_sym is not None and base_sym.id != sym.id:
                 edge = Edge.create(
                     src=sym.id,
                     dst=base_sym.id,
@@ -1436,19 +1508,23 @@ def _extract_inheritance_edges(
                     evidence_type="ast_extends",
                 )
                 edges.append(edge)
-            elif base_name in interface_symbols:
-                iface_sym = interface_symbols[base_name]
-                edge = Edge.create(
-                    src=sym.id,
-                    dst=iface_sym.id,
-                    edge_type="implements",
-                    line=sym.span.start_line if sym.span else 0,
-                    confidence=0.95,
-                    origin=PASS_ID,
-                    origin_run_id=run.execution_id,
-                    evidence_type="ast_implements",
+            else:
+                # Check interfaces
+                iface_sym = _resolve_base_class_js(
+                    base_name, sym, interfaces_by_name, parsed_files
                 )
-                edges.append(edge)
+                if iface_sym is not None and iface_sym.id != sym.id:
+                    edge = Edge.create(
+                        src=sym.id,
+                        dst=iface_sym.id,
+                        edge_type="implements",
+                        line=sym.span.start_line if sym.span else 0,
+                        confidence=0.95,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        evidence_type="ast_implements",
+                    )
+                    edges.append(edge)
 
     return edges
 
@@ -3019,7 +3095,16 @@ def analyze_javascript(
         all_usage_contexts.extend(library_contexts)
 
     # Extract inheritance edges (META-001: base_classes metadata -> extends/implements edges)
-    inheritance_edges = _extract_inheritance_edges(all_symbols, global_classes, run)
+    # Build multi-value class lookup for disambiguation (INV-015)
+    classes_by_name: dict[str, list[Symbol]] = {}
+    for sym in all_symbols:
+        if sym.kind == "class":
+            if sym.name not in classes_by_name:
+                classes_by_name[sym.name] = []
+            classes_by_name[sym.name].append(sym)
+    inheritance_edges = _extract_inheritance_edges(
+        all_symbols, classes_by_name, parsed_files, run
+    )
     all_edges.extend(inheritance_edges)
 
     # Extract decorator edges (INV-012: decorators metadata -> decorated_by edges)

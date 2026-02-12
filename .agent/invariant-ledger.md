@@ -425,18 +425,28 @@ statements are reached; input diversity testing ensures they produce correct res
 
 ## INV-015: Extends Edge Name Collision Resolution
 - **Statement:** When multiple classes share the same name across files, `extends` edges must resolve to the imported/correct base class, not an arbitrary one
-- **Status:** PARTIALLY ADDRESSED (Python fixed; JS/TS, Ruby, Kotlin have same structural bug)
+- **Status:** FIXED (Python, JS/TS, Ruby, Kotlin all use multi-value lookups with import-aware disambiguation)
 - **Root cause:** `_extract_inheritance_edges()` used a single-value `class_symbols: dict[str, Symbol]` with last-writer-wins semantics. In Django, 238 classes named `Model` caused ALL 2376 extends edges to point to a single test stub in `test_relative_fields.py` instead of `django.db.models.base.Model`.
-- **Fix (Python):** Changed to multi-value `class_by_name: dict[str, list[Symbol]]` and added `_resolve_base_class()` with import-aware disambiguation: (1) same-file match, (2) import-path match, (3) deterministic fallback (sorted by ID).
-- **Limitation:** JS/TS, Ruby, Kotlin analyzers still use single-value `class_symbols` dict.
+- **Fix:** All four language analyzers now use multi-value `class_by_name: dict[str, list[Symbol]]` and per-language `_resolve_base_class_*()` with 3-level disambiguation:
+  - (1) Same-file match (base class in same file as child)
+  - (2) Import-path match (Python: `from X import Y`; JS/TS: `import { Y } from './X'` via `_disambiguate_by_import`; Ruby: `require_relative 'path'` via require_hints; Kotlin: `import com.example.Model` via FQN-to-path matching)
+  - (3) Deterministic fallback (sorted by symbol ID for stability)
 - **Regression tests:**
   - `test_python_ast_analysis.py::TestPythonInheritanceEdges::test_extends_prefers_imported_class_over_name_collision`
   - `test_python_ast_analysis.py::TestPythonInheritanceEdges::test_extends_same_file_class_preferred_over_other_file`
   - `test_python_ast_analysis.py::TestPythonInheritanceEdges::test_extends_deterministic_fallback_when_ambiguous`
-- **Pending Generalizations:**
-  - **DEFERRED** JS/TS `_extract_inheritance_edges` (js_ts.py:1383): uses `global_classes: dict[str, Symbol]` — same last-writer-wins bug. NestJS monorepos have duplicate class names. Deferred: requires adapting import resolution from JS/TS module system (different from Python's `from X import Y`); will fix in follow-up PR.
-  - **DEFERRED** Ruby `_extract_inheritance_edges` (ruby.py:818): uses `class_symbols = {s.name: s ...}` — same bug. Deferred: Ruby `require` patterns differ from Python imports; will fix in follow-up PR.
-  - **DEFERRED** Kotlin `_extract_inheritance_edges` (kotlin.py:839): uses `class_symbols = {s.name: s ...}` — same bug. Deferred: Kotlin import resolution differs; will fix in follow-up PR.
+  - `test_js_ts.py::TestJsTsInheritanceEdges::test_extends_prefers_imported_class_over_name_collision`
+  - `test_js_ts.py::TestJsTsInheritanceEdges::test_extends_same_file_class_preferred_over_other_file`
+  - `test_js_ts.py::TestJsTsInheritanceEdges::test_extends_deterministic_fallback_when_ambiguous`
+  - `test_js_ts.py::TestJsTsInheritanceEdges::test_implements_prefers_imported_interface_over_collision`
+  - `test_ruby.py::TestRubyInheritanceEdges::test_extends_prefers_required_class_over_name_collision`
+  - `test_ruby.py::TestRubyInheritanceEdges::test_extends_same_file_class_preferred_over_other_file`
+  - `test_ruby.py::TestRubyInheritanceEdges::test_extends_deterministic_fallback_when_ambiguous`
+  - `test_kotlin.py::TestKotlinInheritanceEdges::test_extends_prefers_imported_class_over_name_collision`
+  - `test_kotlin.py::TestKotlinInheritanceEdges::test_extends_same_file_class_preferred_over_other_file`
+  - `test_kotlin.py::TestKotlinInheritanceEdges::test_extends_deterministic_fallback_when_ambiguous`
+  - `test_kotlin.py::TestKotlinInheritanceEdges::test_implements_prefers_imported_interface_over_collision`
+- **Pending Generalizations:** None
 
 ## INV-XXX: Template for New Invariants
 - **Statement:** [What must always be true]

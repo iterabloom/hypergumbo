@@ -262,6 +262,115 @@ end
         # No base_classes metadata when there's no superclass
         assert user.meta is None or user.meta.get("base_classes") is None
 
+    def test_extends_prefers_required_class_over_name_collision(
+        self, tmp_path: Path
+    ) -> None:
+        """When multiple classes share a name, extends resolves via require_relative hint.
+
+        INV-015: Same bug as Python (Django 238 Model stubs). Two files define
+        class 'Model'; child file uses require_relative to specify which one.
+        Edge should resolve to the required Model.
+        """
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        # Real Model class in models/model.rb
+        (tmp_path / "models").mkdir()
+        (tmp_path / "models" / "model.rb").write_text(
+            "class Model\n"
+            "  def save\n"
+            "  end\n"
+            "end\n"
+        )
+
+        # Test stub Model class (different file, same name)
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "helpers.rb").write_text(
+            "class Model\n"
+            "  # test stub\n"
+            "end\n"
+        )
+
+        # A file that require_relative models/model and extends Model
+        (tmp_path / "app.rb").write_text(
+            "require_relative 'models/model'\n"
+            "\n"
+            "class Article < Model\n"
+            "  def publish\n"
+            "  end\n"
+            "end\n"
+        )
+
+        result = analyze_ruby(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        article_extends = [e for e in extends_edges if "Article" in e.src]
+        assert len(article_extends) == 1, (
+            f"Expected 1 extends edge from Article, got {len(article_extends)}"
+        )
+
+        # Edge should point to models/model.rb::Model, NOT tests/helpers.rb::Model
+        edge = article_extends[0]
+        assert "models/model.rb" in edge.dst or "models\\model.rb" in edge.dst, (
+            f"Article extends edge should point to models/model.rb::Model, "
+            f"but points to: {edge.dst}"
+        )
+
+    def test_extends_same_file_class_preferred_over_other_file(
+        self, tmp_path: Path
+    ) -> None:
+        """When base class is defined in the same file, prefer it over other files."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        # Base defined in file A
+        (tmp_path / "a.rb").write_text(
+            "class Base\n  def run\n  end\nend\n"
+        )
+
+        # Base defined in file B AND used as base in same file
+        (tmp_path / "b.rb").write_text(
+            "class Base\n  def run\n  end\nend\n"
+            "\n"
+            "class Child < Base\n  def go\n  end\nend\n"
+        )
+
+        result = analyze_ruby(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        child_extends = [e for e in extends_edges if "Child" in e.src]
+        assert len(child_extends) == 1
+
+        # Should resolve to b.rb::Base (same file), not a.rb::Base
+        edge = child_extends[0]
+        assert "b.rb" in edge.dst, (
+            f"Child extends edge should prefer same-file Base (b.rb), "
+            f"but points to: {edge.dst}"
+        )
+
+    def test_extends_deterministic_fallback_when_ambiguous(
+        self, tmp_path: Path
+    ) -> None:
+        """When no same-file or require match, extends uses deterministic fallback."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        # Two files define 'Base', neither is required
+        (tmp_path / "mod_a.rb").write_text(
+            "class Base\n  def run\n  end\nend\n"
+        )
+        (tmp_path / "mod_b.rb").write_text(
+            "class Base\n  def run\n  end\nend\n"
+        )
+        # A third file extends 'Base' without requiring either
+        (tmp_path / "child.rb").write_text(
+            "class Child < Base\n  def go\n  end\nend\n"
+        )
+
+        result = analyze_ruby(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        child_extends = [e for e in extends_edges if "Child" in e.src]
+        # Should still create an edge (deterministic fallback)
+        assert len(child_extends) == 1
+
 
 class TestRubyModuleExtraction:
     """Tests for extracting Ruby modules."""

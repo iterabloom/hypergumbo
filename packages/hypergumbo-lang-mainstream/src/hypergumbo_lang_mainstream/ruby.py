@@ -815,9 +815,69 @@ def _extract_edges_from_file(
     return edges
 
 
+def _resolve_base_class_ruby(
+    base_name: str,
+    child_sym: Symbol,
+    class_by_name: dict[str, list[Symbol]],
+    sym_file_require_hints: dict[str, dict[str, str]],
+) -> Symbol | None:
+    """Resolve a base class name to a specific Symbol, disambiguating collisions.
+
+    When multiple classes share the same name (e.g., test stubs named 'Model'),
+    uses a priority cascade:
+
+    1. Same-file match: base class defined in the same file as the child
+    2. Require-hint match: child's file has ``require_relative 'path/to/model'``
+       and the inferred PascalCase class name matches the base_name; then match
+       the require path against candidate file paths
+    3. First by ID: deterministic fallback (sorted by symbol ID)
+
+    Args:
+        base_name: The base class name to resolve (e.g., 'Model')
+        child_sym: The child class symbol (for file context)
+        class_by_name: Multi-value lookup: class name -> list of Symbol candidates
+        sym_file_require_hints: Maps symbol ID -> file-level require_hints dict
+            (PascalCase class name -> require path)
+
+    Returns:
+        The resolved base class Symbol, or None if no match found.
+    """
+    candidates = class_by_name.get(base_name)
+    if not candidates:
+        return None
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    child_path = child_sym.path or ""
+
+    # 1. Same-file match: prefer base class in the same file
+    same_file = [c for c in candidates if c.path == child_path]
+    if len(same_file) == 1:
+        return same_file[0]
+
+    # 2. Require-hint match: check if child's file requires match a candidate
+    require_hints = sym_file_require_hints.get(child_sym.id, {})
+    if base_name in require_hints:
+        require_path = require_hints[base_name]
+        # Match require path against candidate file paths
+        # e.g., require_path="models/model" matches candidate path "models/model.rb"
+        for cand in candidates:
+            cand_path = cand.path or ""
+            # Strip .rb extension for comparison
+            cand_no_ext = cand_path.rsplit(".rb", 1)[0]
+            if cand_no_ext.endswith(require_path):
+                return cand
+
+    # 3. Deterministic fallback: first by symbol ID (sorted for stability)
+    candidates_sorted = sorted(candidates, key=lambda c: c.id)
+    return candidates_sorted[0]
+
+
 def _extract_inheritance_edges(
     symbols: list[Symbol],
-    class_symbols: dict[str, Symbol],
+    class_by_name: dict[str, list[Symbol]],
+    sym_file_require_hints: dict[str, dict[str, str]],
     run: AnalysisRun,
 ) -> list[Edge]:
     """Extract extends edges from class inheritance (META-001).
@@ -826,9 +886,14 @@ def _extract_inheritance_edges(
     base classes that exist in the analyzed codebase. This enables the
     type hierarchy linker to create dispatches_to edges for polymorphic dispatch.
 
+    When multiple classes share the same name (common in large repos with test stubs),
+    uses require-hint-aware disambiguation via ``_resolve_base_class_ruby()`` to find
+    the correct target.
+
     Args:
         symbols: All extracted symbols
-        class_symbols: Map of class name -> Symbol for class lookup
+        class_by_name: Multi-value lookup: class name -> list of Symbol candidates
+        sym_file_require_hints: Maps symbol ID -> file-level require_hints dict
         run: Current analysis run for provenance
 
     Returns:
@@ -848,13 +913,16 @@ def _extract_inheritance_edges(
             # Handle qualified names like "ActiveRecord::Base" -> look for last segment too
             base_name = base_class_name.split("::")[-1] if "::" in base_class_name else base_class_name
 
-            # Try exact match first, then last segment
-            if base_class_name in class_symbols:
-                base_sym = class_symbols[base_class_name]
-            elif base_name in class_symbols:
-                base_sym = class_symbols[base_name]
-            else:
-                continue  # External class, no edge
+            # Try exact match first (for fully qualified names), then last segment
+            base_sym = _resolve_base_class_ruby(
+                base_class_name, sym, class_by_name, sym_file_require_hints
+            )
+            if base_sym is None and base_name != base_class_name:
+                base_sym = _resolve_base_class_ruby(
+                    base_name, sym, class_by_name, sym_file_require_hints
+                )
+            if base_sym is None or base_sym.id == sym.id:
+                continue
 
             edge = Edge.create(
                 src=sym.id,
@@ -963,8 +1031,21 @@ def analyze_ruby(repo_root: Path) -> RubyAnalysisResult:
     run.duration_ms = int((time.time() - start_time) * 1000)
 
     # Extract inheritance edges (META-001: base_classes metadata -> extends edges)
-    class_symbols = {s.name: s for s in all_symbols if s.kind == "class"}
-    inheritance_edges = _extract_inheritance_edges(all_symbols, class_symbols, run)
+    # Build multi-value class lookup for disambiguation (INV-015)
+    class_by_name: dict[str, list[Symbol]] = {}
+    for s in all_symbols:
+        if s.kind == "class":
+            if s.name not in class_by_name:
+                class_by_name[s.name] = []
+            class_by_name[s.name].append(s)
+    # Build per-symbol require_hints mapping for import disambiguation
+    sym_file_require_hints: dict[str, dict[str, str]] = {}
+    for _rb_file, analysis in file_analyses.items():
+        for sym in analysis.symbols:
+            sym_file_require_hints[sym.id] = analysis.require_hints
+    inheritance_edges = _extract_inheritance_edges(
+        all_symbols, class_by_name, sym_file_require_hints, run
+    )
     all_edges.extend(inheritance_edges)
 
     return RubyAnalysisResult(

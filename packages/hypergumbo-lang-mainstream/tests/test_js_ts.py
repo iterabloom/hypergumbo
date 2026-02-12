@@ -5331,3 +5331,156 @@ class MyComponent extends React.Component {
         # But no extends edge since React.Component is external
         extends_edges = [e for e in result.edges if e.edge_type == "extends"]
         assert len(extends_edges) == 0
+
+    def test_extends_prefers_imported_class_over_name_collision(
+        self, tmp_path: Path
+    ) -> None:
+        """When multiple classes share a name, extends resolves to the imported one.
+
+        INV-015: Same bug as Python (Django 238 Model stubs). Two files define
+        class 'Model'; child file imports from specific path and extends 'Model'.
+        Edge should resolve to the imported Model, not the other one.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # Real Model class
+        (tmp_path / "db").mkdir()
+        (tmp_path / "db" / "model.ts").write_text(
+            "export class Model {\n"
+            "    save() {}\n"
+            "}\n"
+        )
+
+        # Test stub Model class (different file, same name)
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "helpers.ts").write_text(
+            "export class Model {\n"
+            "    /* stub */\n"
+            "}\n"
+        )
+
+        # A file that imports from ./db/model and extends Model
+        (tmp_path / "app.ts").write_text(
+            "import { Model } from './db/model';\n"
+            "\n"
+            "class Article extends Model {\n"
+            "    publish() {}\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        article_extends = [e for e in extends_edges if "Article" in e.src]
+        assert len(article_extends) == 1, (
+            f"Expected 1 extends edge from Article, got {len(article_extends)}"
+        )
+
+        # Edge should point to db/model.ts::Model, NOT tests/helpers.ts::Model
+        edge = article_extends[0]
+        assert "db/model.ts" in edge.dst or "db\\model.ts" in edge.dst, (
+            f"Article extends edge should point to db/model.ts::Model, "
+            f"but points to: {edge.dst}"
+        )
+
+    def test_extends_same_file_class_preferred_over_other_file(
+        self, tmp_path: Path
+    ) -> None:
+        """When base class is defined in the same file, prefer it over other files."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # Base defined in file A
+        (tmp_path / "a.ts").write_text(
+            "export class Base {\n    run() {}\n}\n"
+        )
+
+        # Base defined in file B AND used as base in same file
+        (tmp_path / "b.ts").write_text(
+            "class Base {\n    run() {}\n}\n"
+            "\n"
+            "class Child extends Base {\n    go() {}\n}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        child_extends = [e for e in extends_edges if "Child" in e.src]
+        assert len(child_extends) == 1
+
+        # Should resolve to b.ts::Base (same file), not a.ts::Base
+        edge = child_extends[0]
+        assert "b.ts" in edge.dst, (
+            f"Child extends edge should prefer same-file Base (b.ts), "
+            f"but points to: {edge.dst}"
+        )
+
+    def test_extends_deterministic_fallback_when_ambiguous(
+        self, tmp_path: Path
+    ) -> None:
+        """When no same-file or import match, extends uses deterministic fallback."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # Two files define 'Base', neither is imported
+        (tmp_path / "mod_a.ts").write_text(
+            "export class Base {\n    run() {}\n}\n"
+        )
+        (tmp_path / "mod_b.ts").write_text(
+            "export class Base {\n    run() {}\n}\n"
+        )
+        # A third file extends 'Base' without importing either
+        (tmp_path / "child.ts").write_text(
+            "class Child extends Base {\n    go() {}\n}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+
+        extends_edges = [e for e in result.edges if e.edge_type == "extends"]
+        child_extends = [e for e in extends_edges if "Child" in e.src]
+        # Should still create an edge (deterministic fallback)
+        assert len(child_extends) == 1
+
+    def test_implements_prefers_imported_interface_over_collision(
+        self, tmp_path: Path
+    ) -> None:
+        """Interface disambiguation: implements resolves to imported interface."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # Real Validator interface
+        (tmp_path / "core").mkdir()
+        (tmp_path / "core" / "validator.ts").write_text(
+            "export interface Validator {\n"
+            "    validate(): boolean;\n"
+            "}\n"
+        )
+
+        # Stub Validator interface (different file, same name)
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "mock.ts").write_text(
+            "export interface Validator {\n"
+            "    /* mock */\n"
+            "}\n"
+        )
+
+        # A file that imports from ./core/validator and implements Validator
+        (tmp_path / "form.ts").write_text(
+            "import { Validator } from './core/validator';\n"
+            "\n"
+            "class FormValidator implements Validator {\n"
+            "    validate(): boolean { return true; }\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        form_impl = [e for e in impl_edges if "FormValidator" in e.src]
+        assert len(form_impl) == 1, (
+            f"Expected 1 implements edge from FormValidator, got {len(form_impl)}"
+        )
+
+        # Edge should point to core/validator.ts::Validator
+        edge = form_impl[0]
+        assert "core/validator.ts" in edge.dst or "core\\validator.ts" in edge.dst, (
+            f"FormValidator implements edge should point to core/validator.ts::Validator, "
+            f"but points to: {edge.dst}"
+        )
