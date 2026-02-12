@@ -50,6 +50,44 @@ PASS_VERSION = "hypergumbo-0.1.0"
 # HTTP methods for Rails/Sinatra route detection (used by UsageContext extraction)
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "match"}
 
+# Directories that contain test files where get/post/delete are HTTP test helpers,
+# not route definitions.
+_TEST_DIR_NAMES = frozenset({"spec", "test", "tests", "features", "test-suite"})
+
+
+def _is_test_directory(file_path: Path, repo_root: Path) -> bool:
+    """Check if file is inside a test/spec directory.
+
+    Returns True for files under spec/, test/, tests/, features/, test-suite/.
+    These directories use HTTP method helpers (get, post, delete) for making
+    test requests, NOT for defining routes.
+    """
+    try:
+        rel = file_path.relative_to(repo_root)
+    except ValueError:  # pragma: no cover — files always under repo_root
+        return False  # pragma: no cover
+    return bool(_TEST_DIR_NAMES & set(rel.parts))
+
+
+def _is_route_definition_file(file_path: Path, repo_root: Path) -> bool:
+    """Check if file is a route definition file.
+
+    Returns True for:
+    - Files named routes.rb (e.g., config/routes.rb)
+    - Files inside a routes/ directory (e.g., config/routes/api.rb)
+
+    Rails routes are defined in config/routes.rb and optionally split into
+    config/routes/*.rb partials. Matching by name/directory catches both
+    standard and non-standard layouts.
+    """
+    if file_path.name == "routes.rb":
+        return True
+    try:
+        rel = file_path.relative_to(repo_root)
+    except ValueError:  # pragma: no cover — files always under repo_root
+        return False  # pragma: no cover
+    return "routes" in rel.parts
+
 
 def find_ruby_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Ruby files in the repository."""
@@ -509,6 +547,13 @@ def _extract_rails_routes(
                 name=route_name,
                 kind="route",
             )
+            route_meta: dict[str, str | bool] = {
+                "http_method": http_method,
+                "route_path": normalized_path,
+                "has_block": has_block,
+            }
+            if controller_action:
+                route_meta["controller_action"] = controller_action
             route_symbol = Symbol(
                 id=route_id,
                 name=route_name,
@@ -516,16 +561,10 @@ def _extract_rails_routes(
                 language="ruby",
                 path=str(file_path),
                 span=span,
-                meta={
-                    "http_method": http_method,
-                    "route_path": normalized_path,
-                },
+                meta=route_meta,
                 origin=run.pass_id,
                 origin_run_id=run.execution_id,
             )
-            # Add controller_action to route symbol meta (from explicit to:)
-            if controller_action:
-                route_symbol.meta["controller_action"] = controller_action
             route_symbols.append(route_symbol)
 
     return contexts, route_symbols
@@ -1089,9 +1128,15 @@ def analyze_ruby(repo_root: Path) -> RubyAnalysisResult:
         )
         all_edges.extend(edges)
 
-    # Pass 3: Extract usage contexts AND route symbols from ALL files
-    # Route symbols enable route detection and entrypoint detection for Rails apps
+    # Pass 3: Extract usage contexts and route symbols with file-path filtering.
+    # Test files (spec/, test/, etc.) use get/post/delete as HTTP test helpers,
+    # NOT route definitions. Only detect routes in:
+    # 1. Route definition files (routes.rb, config/routes/*.rb)
+    # 2. Non-test app files with Sinatra-style do-block routes
     for rb_file in all_rb_files:
+        is_test = _is_test_directory(rb_file, repo_root)
+        if is_test:
+            continue  # Skip test files entirely — HTTP methods are test helpers
         try:
             source = rb_file.read_bytes()
             tree = parser.parse(source)
@@ -1099,8 +1144,19 @@ def analyze_ruby(repo_root: Path) -> RubyAnalysisResult:
             usage_contexts, route_symbols = _extract_rails_routes(
                 tree.root_node, source, rb_file, symbol_by_name, run
             )
-            all_usage_contexts.extend(usage_contexts)
-            all_symbols.extend(route_symbols)
+            if _is_route_definition_file(rb_file, repo_root):
+                # Route definition files: include all detected routes
+                all_usage_contexts.extend(usage_contexts)
+                all_symbols.extend(route_symbols)
+            else:
+                # Non-route app files: only Sinatra-style routes (with do blocks)
+                # Bare get/post calls without blocks are likely HTTP client calls
+                for ctx in usage_contexts:
+                    if ctx.metadata.get("has_block"):
+                        all_usage_contexts.append(ctx)
+                for sym in route_symbols:
+                    if sym.meta.get("has_block"):
+                        all_symbols.append(sym)
         except (OSError, IOError):  # pragma: no cover
             pass
 

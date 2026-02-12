@@ -1213,6 +1213,130 @@ end
         assert "sessions#begin_password_reset" in by_action
 
 
+class TestRouteDetectionFileFiltering:
+    """Tests for route detection false positive prevention.
+
+    Route detection should only create route symbols from files that are
+    actually route definition files, not test files or arbitrary app code.
+    This prevents test HTTP helpers (get '/path') from being misclassified
+    as route definitions.
+    """
+
+    def test_test_files_do_not_produce_route_symbols(self, tmp_path: Path) -> None:
+        """HTTP method calls in spec/ files are test helpers, not route defs."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        spec_dir = tmp_path / "spec" / "requests"
+        spec_dir.mkdir(parents=True)
+        (spec_dir / "users_spec.rb").write_text("""
+describe 'Users API' do
+  it 'lists users' do
+    get '/api/v1/users'
+    expect(response).to have_http_status(:ok)
+  end
+
+  it 'creates a user' do
+    post '/api/v1/users', params: { name: 'Alice' }
+    expect(response).to have_http_status(:created)
+  end
+
+  it 'deletes a user' do
+    delete '/api/v1/users/1'
+    expect(response).to have_http_status(:no_content)
+  end
+end
+""")
+        result = analyze_ruby(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 0, (
+            f"Test file should not produce route symbols, got: "
+            f"{[s.name for s in route_symbols]}"
+        )
+
+    def test_test_directory_variants_filtered(self, tmp_path: Path) -> None:
+        """All common test directory names are filtered."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        for test_dir_name in ("test", "tests", "features"):
+            test_dir = tmp_path / test_dir_name
+            test_dir.mkdir(exist_ok=True)
+            (test_dir / "api_test.rb").write_text("""
+get '/health'
+post '/login', params: { user: 'admin' }
+""")
+        result = analyze_ruby(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 0
+
+    def test_route_file_still_produces_symbols(self, tmp_path: Path) -> None:
+        """Files named routes.rb still produce route symbols normally."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  get '/users', to: 'users#index'
+  post '/sessions', to: 'sessions#create'
+end
+""")
+        result = analyze_ruby(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 2
+
+    def test_config_routes_directory(self, tmp_path: Path) -> None:
+        """Files in config/routes/ directory produce route symbols."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        routes_dir = tmp_path / "config" / "routes"
+        routes_dir.mkdir(parents=True)
+        (routes_dir / "api.rb").write_text("""
+get '/api/v1/health', to: 'health#check'
+""")
+        result = analyze_ruby(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 1
+
+    def test_sinatra_routes_in_app_files(self, tmp_path: Path) -> None:
+        """Sinatra-style routes (with do blocks) detected in non-test files."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "app.rb").write_text("""
+require 'sinatra'
+
+get '/users' do
+  json users
+end
+
+post '/users' do
+  create_user(params)
+end
+""")
+        result = analyze_ruby(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 2
+
+    def test_bare_http_calls_in_app_files_not_routes(self, tmp_path: Path) -> None:
+        """Bare get/post calls without blocks or to: are not route definitions."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "client.rb").write_text("""
+class ApiClient
+  def fetch_users
+    get '/api/v1/users'
+  end
+
+  def create_user(data)
+    post '/api/v1/users', body: data
+  end
+end
+""")
+        result = analyze_ruby(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 0, (
+            f"Bare HTTP calls without blocks should not produce routes, got: "
+            f"{[s.name for s in route_symbols]}"
+        )
+
+
 class TestRubyBlockCallAttribution:
     """Tests for call edge attribution inside Ruby blocks.
 
