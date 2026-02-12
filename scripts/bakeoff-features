@@ -979,8 +979,8 @@ def cmd_diagnose(args):
         if total_slice_edges > 0:
             metrics.cross_file_ratio = cross_file_edges / total_slice_edges * 100
 
-        # Entrypoint test ratio
-        test_entrypoints = sum(1 for e in entrypoints if "test" in e.get("file", "").lower())
+        # Entrypoint test ratio — count entrypoints with test_function kind
+        test_entrypoints = sum(1 for e in entrypoints if e.get("kind") == "test_function")
         metrics.entrypoints_in_tests = test_entrypoints
         metrics.entrypoints_test_ratio = (test_entrypoints / len(entrypoints) * 100) if entrypoints else 0
 

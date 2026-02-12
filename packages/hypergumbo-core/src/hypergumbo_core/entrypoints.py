@@ -105,6 +105,8 @@ class EntrypointKind(Enum):
     SCHEDULED_TASK = "scheduled_task"  # Cron/scheduled job
     # Library entry points (exported API)
     LIBRARY_EXPORT = "library_export"  # Exported function/class (library entry)
+    # Test/benchmark entry points (from test-frameworks.yaml patterns)
+    TEST_FUNCTION = "test_function"  # Test function/method (pytest, JUnit, etc.)
     # Connectivity-based fallback (no patterns matched)
     CONNECTIVITY_BASED = "connectivity_based"  # High-connectivity callable
 
@@ -164,6 +166,9 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
 
     Detected concepts (language conventions, confidence=0.80):
     - "main_function" -> MAIN_FUNCTION (Go, Java, Python, C, etc.)
+    - "test_function" -> TEST_FUNCTION (pytest, JUnit, Go testing, etc.)
+    - "benchmark_function" -> TEST_FUNCTION (Go Benchmark*, Rust #[bench])
+    - "example_function" -> TEST_FUNCTION (Go Example*)
 
     Args:
         symbols: All symbols with potential concept metadata.
@@ -489,6 +494,28 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 # Services are not entrypoints by default, but we track
                 # them for potential future use. Skip for now.
                 pass
+
+            # Test/benchmark concepts -> TEST_FUNCTION
+            # Confidence is moderate (0.80) since test functions are real
+            # entry points for test runners. The test-file penalty (0.1x)
+            # applied later ensures they don't dominate --entry auto.
+            elif concept_type in (
+                "test_function", "benchmark_function", "example_function",
+            ):
+                if EntrypointKind.TEST_FUNCTION in added_kinds:
+                    continue
+                label_prefix = {
+                    "test_function": "Test",
+                    "benchmark_function": "Benchmark",
+                    "example_function": "Example",
+                }.get(concept_type, "Test")
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.TEST_FUNCTION,
+                    confidence=0.80,
+                    label=f"{label_prefix}: {sym.name}",
+                ))
+                added_kinds.add(EntrypointKind.TEST_FUNCTION)
 
     return entrypoints
 

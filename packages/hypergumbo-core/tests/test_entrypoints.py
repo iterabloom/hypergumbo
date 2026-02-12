@@ -2227,3 +2227,63 @@ class TestConnectivityFallback:
             prod_ep = next(ep for ep in entrypoints if ep.symbol_id == prod_func.id)
             test_ep = next(ep for ep in entrypoints if ep.symbol_id == test_func.id)
             assert prod_ep.confidence > test_ep.confidence
+
+
+class TestTestFunctionConceptDetection:
+    """Tests for test_function concept -> TEST_FUNCTION entrypoint mapping."""
+
+    def test_test_function_concept_creates_entrypoint(self) -> None:
+        """test_function concept produces a TEST_FUNCTION entrypoint."""
+        sym = make_symbol(
+            "test_user_login", kind="function", path="tests/test_auth.py",
+            meta={"concepts": [{"concept": "test_function", "framework": "pytest"}]},
+        )
+
+        entrypoints = detect_entrypoints([sym], [])
+
+        test_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.TEST_FUNCTION]
+        assert len(test_eps) == 1
+        assert test_eps[0].symbol_id == sym.id
+        assert "test" in test_eps[0].label.lower()
+
+    def test_benchmark_function_concept_creates_entrypoint(self) -> None:
+        """benchmark_function concept produces a TEST_FUNCTION entrypoint."""
+        sym = make_symbol(
+            "BenchmarkSort", kind="function", path="sort_test.go",
+            meta={"concepts": [{"concept": "benchmark_function", "framework": "go-testing"}]},
+        )
+
+        entrypoints = detect_entrypoints([sym], [])
+
+        test_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.TEST_FUNCTION]
+        assert len(test_eps) == 1
+        assert "benchmark" in test_eps[0].label.lower()
+
+    def test_test_function_penalized_in_test_file(self) -> None:
+        """TEST_FUNCTION entrypoints in test files get the 90% confidence penalty."""
+        sym = make_symbol(
+            "test_login", kind="function", path="tests/test_auth.py",
+            meta={"concepts": [{"concept": "test_function", "framework": "pytest"}]},
+        )
+
+        entrypoints = detect_entrypoints([sym], [])
+
+        test_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.TEST_FUNCTION]
+        assert len(test_eps) == 1
+        # Base confidence * 0.1 test penalty
+        assert test_eps[0].confidence < 0.15
+
+    def test_test_function_does_not_duplicate(self) -> None:
+        """Multiple test concepts on same symbol produce only one TEST_FUNCTION."""
+        sym = make_symbol(
+            "test_api", kind="function", path="tests/test_api.py",
+            meta={"concepts": [
+                {"concept": "test_function", "framework": "pytest"},
+                {"concept": "test_function", "framework": "unittest"},
+            ]},
+        )
+
+        entrypoints = detect_entrypoints([sym], [])
+
+        test_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.TEST_FUNCTION]
+        assert len(test_eps) == 1

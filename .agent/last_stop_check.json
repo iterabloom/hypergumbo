@@ -1,10 +1,10 @@
 {
-  "last_completed_utc": "2026-02-12T07:42:36Z",
+  "last_completed_utc": "2026-02-12T09:59:04Z",
   "branch": "dev",
-  "last_pr": 1019,
+  "last_pr": 1022,
   "last_pr_state": "merged",
   "pending_hard_todos": 0,
   "pending_soft_todos": 0,
   "unfixed_invariants": 0,
-  "notes": "PR #1019 merged (slice max_files 50->100, bakeoff 100->200). Next priority from 30-repo DEEP bakeoff: (1) Fix Elixir cross-file linking \u2014 Livebook shows 1.8% cross-file ratio and 53.9% orphan rate. The Elixir analyzer in analyze_elixir.py detects symbols within files but does not resolve cross-module function calls (alias/import/use). Fix: add cross-file call resolution to the Elixir analyzer by resolving module references from alias/import/use declarations. (2) Fix Ruby edge detection \u2014 Chatwoot shows 1.0 E/N ratio (37K nodes, 37K edges) and 61.1% orphan rate. The Ruby analyzer extracts symbols but barely connects them with call edges. (3) Tier classification is 97-100% tier1 on 27/28 repos \u2014 investigate why node_modules/vendor patterns are not triggering tier2+."
+  "notes": "PRs #1020-1022 merged addressing all 3 DEEP bakeoff priorities: (1) Elixir cross-file module-qualified call linking (dot-call detection with alias hints and resolver fallback), (2) Ruby receiver-qualified call linking (constant/scope_resolution receiver disambiguation), (3) Test file tier 2 classification (tests/, spec/, __tests__/, _test.go, .test.js, .spec.ts, _spec.rb). Next: run another DEEP bakeoff to measure improvement, or continue with lab notebook insights (OOM protection, test entrypoint detection)."
 }
