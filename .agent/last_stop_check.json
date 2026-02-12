@@ -1,10 +1,10 @@
 {
-  "last_completed_utc": "2026-02-12T01:32:38Z",
+  "last_completed_utc": "2026-02-12T07:06:58Z",
   "branch": "dev",
   "last_pr": 1017,
   "last_pr_state": "merged",
   "pending_hard_todos": 0,
   "pending_soft_todos": 0,
   "unfixed_invariants": 0,
-  "notes": "PR #1016 (Java extends collision) and PR #1017 (centralized linker collision) both merged. INV-015 is now fully fixed across all per-analyzer languages (Python, JS/TS, Ruby, Kotlin, Java) AND the centralized linker (C#, Scala, PHP, Groovy, Swift, C++, ObjC, Apex). No pending TODOs. Next: check DEEP mode priority queue \u2014 slice quality, reverse slice, centrality ranking, or run bakeoff-features."
+  "notes": "Completed 30-repo DEEP bakeoff (curriculum deep-30repo-20260211). 28/30 repos analyzed, 2 OOM (GitLab, OpenSearch). Results in notebookjournal_02112026_2200.md. Top actionable findings by priority: (1) Slice limit hit 85-100% on 22/28 repos \u2014 investigate raising default limit or adding graph-size-adaptive limits in slice.py. (2) Elixir cross-file ratio 1.8% (Livebook) \u2014 Elixir analyzer does not resolve cross-module calls, fix in analyze_elixir.py. (3) Ruby E/N ratio 1.0 (Chatwoot) \u2014 Ruby analyzer extracts symbols but barely connects them, fix in analyze_ruby.py. (4) Tier classification 97-100% tier1 on 27/28 repos \u2014 tier classifier does not detect node_modules/vendor patterns. (5) Test entrypoint ratio 0% everywhere \u2014 entrypoint detector does not recognize test files."
 }

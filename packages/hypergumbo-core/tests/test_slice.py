@@ -737,7 +737,7 @@ class TestSliceQuery:
         query = SliceQuery(entrypoint="foo")
 
         assert query.max_hops == 3
-        assert query.max_files == 50
+        assert query.max_files == 100
         assert query.min_confidence == 0.0
         assert query.exclude_tests is False
         assert query.method == "bfs"

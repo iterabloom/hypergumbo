@@ -107,7 +107,7 @@ class SliceQuery:
     Attributes:
         entrypoint: Symbol name, file path, or node ID to start from.
         max_hops: Maximum traversal depth (default: 3).
-        max_files: Maximum number of files to include (default: 50).
+        max_files: Maximum number of files to include (default: 100).
         min_confidence: Minimum edge confidence to follow (default: 0.0).
         exclude_tests: Whether to exclude test files (default: False).
         exclude_utility: Whether to exclude utility files (docs, examples, scripts).
@@ -124,7 +124,7 @@ class SliceQuery:
 
     entrypoint: str
     max_hops: int = 3
-    max_files: int = 50
+    max_files: int = 100
     min_confidence: float = 0.0
     exclude_tests: bool = False
     exclude_utility: bool = False

@@ -716,10 +716,10 @@ def cmd_run(args):
         # Use --exclude-tests to focus on production dependencies
         # Note: Don't use --exclude-utility here - entry points may be in utility
         # dirs (e.g., docs_src for FastAPI) but their dependencies are still useful
-        # Use --max-hops 10 and --max-files 100 for quality assessment.
+        # Use --max-hops 10 and --max-files 200 for quality assessment.
         # Default 3 hops is too shallow for large repos (10K+ nodes), and the
-        # default 50-file limit naturally constrains output size even at high
-        # hop counts. Using 100 files in bakeoff to measure quality potential.
+        # default 100-file limit naturally constrains output size even at high
+        # hop counts. Using 200 files in bakeoff to measure quality potential.
         for i, entry in enumerate(entries[:5]):
             safe_name = entry.replace("/", "_").replace(":", "_")[:50]
             print(f"  slice[{entry[:30]}]...", end=" ", flush=True)
@@ -730,7 +730,7 @@ def cmd_run(args):
                 "--inline",
                 "--exclude-tests",
                 "--max-hops", "10",
-                "--max-files", "100",
+                "--max-files", "200",
                 "--hub-threshold", "30",
                 "--out", os.path.join(repo_out, f"slice.{i}.json"),
             ])
@@ -752,7 +752,7 @@ def cmd_run(args):
                 "--reverse",
                 "--inline",
                 "--max-hops", "10",
-                "--max-files", "100",
+                "--max-files", "200",
                 "--out", os.path.join(repo_out, f"rslice.{i}.json"),
             ])
             with open(os.path.join(repo_out, f"rslice.{i}.exit"), "w") as f:
