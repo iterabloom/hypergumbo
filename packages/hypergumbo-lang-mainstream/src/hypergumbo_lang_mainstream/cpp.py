@@ -124,8 +124,16 @@ def _extract_cpp_signature(
     if node.type not in ("function_definition", "declaration"):
         return None  # pragma: no cover
 
-    # Find function_declarator
+    # Find function_declarator (may be wrapped in pointer_declarator or reference_declarator)
     declarator = _find_child_by_type(node, "function_declarator")
+    if not declarator:
+        ptr_decl = _find_child_by_type(node, "pointer_declarator")
+        if ptr_decl:
+            declarator = _find_child_by_type(ptr_decl, "function_declarator")
+    if not declarator:
+        ref_decl = _find_child_by_type(node, "reference_declarator")
+        if ref_decl:
+            declarator = _find_child_by_type(ref_decl, "function_declarator")
     if not declarator:
         return None  # pragma: no cover
 
@@ -168,8 +176,20 @@ def _extract_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[
     """Extract function name and kind from function_definition or field_declaration.
 
     Returns (name, kind) tuple where kind is 'function' or 'method'.
+    Handles pointer return types where function_declarator is wrapped
+    inside pointer_declarator (e.g., ``T* create()``).
     """
     declarator = _find_child_by_type(node, "function_declarator")
+    if not declarator:
+        # Pointer return types: function_definition → pointer_declarator → function_declarator
+        ptr_decl = _find_child_by_type(node, "pointer_declarator")
+        if ptr_decl:
+            declarator = _find_child_by_type(ptr_decl, "function_declarator")
+    if not declarator:
+        # Reference return types: function_definition → reference_declarator → function_declarator
+        ref_decl = _find_child_by_type(node, "reference_declarator")
+        if ref_decl:
+            declarator = _find_child_by_type(ref_decl, "function_declarator")
     if not declarator:
         return None  # pragma: no cover - defensive
 
@@ -394,18 +414,49 @@ def _extract_edges_from_file(
     file_id = _make_file_id(str(file_path))
 
     def get_callee_name(node: "tree_sitter.Node") -> Optional[str]:
-        """Extract the function name being called from a call_expression."""
-        # Check for field_expression (obj.method())
+        """Extract the function name being called from a call_expression.
+
+        Handles plain calls, qualified calls, field (method) calls,
+        and template instantiation variants of each:
+          - process<int>(42)       → template_function → identifier
+          - obj.get<int>()         → field_expression → template_method → field_identifier
+          - NS::make<T>()          → qualified_identifier (contains template_function)
+        """
+        # Check for field_expression (obj.method() or obj.method<T>())
         field_expr = _find_child_by_type(node, "field_expression")
         if field_expr:
+            # Plain method: field_identifier is a direct child
             field_ident = _find_child_by_type(field_expr, "field_identifier")
             if field_ident:
                 return _node_text(field_ident, source)
+            # Template method: field_expression → template_method → field_identifier
+            tmpl_method = _find_child_by_type(field_expr, "template_method")
+            if tmpl_method:
+                field_ident = _find_child_by_type(tmpl_method, "field_identifier")
+                if field_ident:
+                    return _node_text(field_ident, source)
 
-        # Check for qualified_identifier (Class::method())
+        # Check for qualified_identifier (Class::method() or NS::func<T>())
         qualified = _find_child_by_type(node, "qualified_identifier")
         if qualified:
+            # If the qualified name contains a template_function,
+            # reconstruct without template args: NS::func<T> → NS::func
+            tmpl_in_qual = _find_child_by_type(qualified, "template_function")
+            if tmpl_in_qual:
+                ident = _find_child_by_type(tmpl_in_qual, "identifier")
+                if ident:
+                    ns_node = _find_child_by_type(qualified, "namespace_identifier")
+                    if ns_node:
+                        return _node_text(ns_node, source) + "::" + _node_text(ident, source)
+                    return _node_text(ident, source)  # pragma: no cover - defensive
             return _node_text(qualified, source)
+
+        # Check for template_function (process<int>(42))
+        tmpl_func = _find_child_by_type(node, "template_function")
+        if tmpl_func:
+            ident = _find_child_by_type(tmpl_func, "identifier")
+            if ident:
+                return _node_text(ident, source)
 
         # Check for simple identifier (function())
         ident = _find_child_by_type(node, "identifier")

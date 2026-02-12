@@ -760,3 +760,148 @@ class Standalone {
         if standalone.meta:
             assert "base_classes" not in standalone.meta or standalone.meta["base_classes"] == []
 
+
+class TestCppTemplateFunctionCalls:
+    """Tests for C++ template function call detection.
+
+    Template function calls like process<int>(42) produce a
+    call_expression with a template_function child, which the
+    current get_callee_name() doesn't handle.
+    """
+
+    def test_simple_template_call(self, tmp_path: Path) -> None:
+        """process<int>(42) should create a call edge to process."""
+        (tmp_path / "tmpl.cpp").write_text("""
+template<typename T>
+T process(T value) { return value; }
+
+void caller() {
+    int result = process<int>(42);
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        assert "process" in call_edges[0].dst
+        assert call_edges[0].confidence >= 0.80
+
+    def test_template_method_on_object(self, tmp_path: Path) -> None:
+        """c.get<int>() should create a call edge to get.
+
+        field_expression contains template_method which contains
+        field_identifier. get_callee_name must look through template_method.
+        """
+        (tmp_path / "tmpl_method.cpp").write_text("""
+class Container {
+public:
+    int get() { return 0; }
+};
+
+void caller() {
+    Container c;
+    int val = c.get<int>();
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+        dst_names = [e.dst for e in call_edges]
+        assert any("get" in d for d in dst_names)
+
+    def test_qualified_template_call(self, tmp_path: Path) -> None:
+        """NS::create<Widget>() should resolve via qualified_identifier."""
+        (tmp_path / "ns_tmpl.cpp").write_text("""
+namespace Factory {
+    template<typename T>
+    T create() { return T(); }
+}
+
+class Widget {};
+
+void caller() {
+    Widget w = Factory::create<Widget>();
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+        assert any("create" in e.dst for e in call_edges)
+
+    def test_pointer_return_template_call(self, tmp_path: Path) -> None:
+        """Template function returning pointer (T*) should be extracted and resolved.
+
+        Pointer return types wrap function_declarator inside pointer_declarator,
+        which requires descending through the wrapper to find the name.
+        """
+        (tmp_path / "ptr.cpp").write_text("""
+template<typename T>
+T* make() { return new T(); }
+
+class Obj {};
+
+void caller() {
+    Obj* o = make<Obj>();
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        func_names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "make" in func_names, f"make not found in symbols: {func_names}"
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert any("make" in e.dst for e in call_edges)
+
+    def test_reference_return_function(self, tmp_path: Path) -> None:
+        """Functions returning references (T&) should be extracted as symbols."""
+        (tmp_path / "ref.cpp").write_text("""
+class Config {};
+Config global_config;
+
+Config& get_config() { return global_config; }
+
+void caller() {
+    Config& c = get_config();
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        func_names = {s.name for s in result.symbols if s.kind == "function"}
+        assert "get_config" in func_names
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert any("get_config" in e.dst for e in call_edges)
+
+    def test_template_call_cross_file(self, tmp_path: Path) -> None:
+        """Template calls should resolve across files."""
+        (tmp_path / "util.cpp").write_text("""
+template<typename T>
+T clamp(T val, T lo, T hi) {
+    if (val < lo) return lo;
+    if (val > hi) return hi;
+    return val;
+}
+""")
+        (tmp_path / "main.cpp").write_text("""
+template<typename T>
+T clamp(T val, T lo, T hi);
+
+void process() {
+    int x = clamp<int>(50, 0, 100);
+}
+""")
+
+        result = analyze_cpp(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        assert len(call_edges) >= 1
+        # Should resolve to util.cpp definition, not main.cpp declaration
+        assert any("clamp" in e.dst for e in call_edges)
+
