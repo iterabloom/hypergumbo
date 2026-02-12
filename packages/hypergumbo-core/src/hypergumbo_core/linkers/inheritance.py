@@ -35,28 +35,81 @@ PASS_ID = "inheritance-linker-v1"
 
 def _build_symbol_maps(
     symbols: list[Symbol],
-) -> tuple[dict[str, Symbol], dict[str, Symbol]]:
-    """Build lookup maps for classes and interfaces.
+) -> tuple[dict[str, list[Symbol]], dict[str, list[Symbol]]]:
+    """Build multi-value lookup maps for classes and interfaces.
+
+    Uses list values to handle name collisions (e.g., multiple classes named
+    'Model' across different files). Resolution is done by
+    ``_resolve_target_symbol`` using same-file preference and deterministic
+    fallback.
 
     Returns:
-        Tuple of (class_symbols, interface_symbols) dicts mapping name to Symbol.
+        Tuple of (class_by_name, interface_by_name) dicts mapping name to
+        list of Symbol candidates.
     """
-    class_symbols: dict[str, Symbol] = {}
-    interface_symbols: dict[str, Symbol] = {}
+    class_by_name: dict[str, list[Symbol]] = {}
+    interface_by_name: dict[str, list[Symbol]] = {}
 
     for sym in symbols:
         if sym.kind == "class":
-            class_symbols[sym.name] = sym
+            if sym.name not in class_by_name:
+                class_by_name[sym.name] = []
+            class_by_name[sym.name].append(sym)
         elif sym.kind == "interface":
-            interface_symbols[sym.name] = sym
+            if sym.name not in interface_by_name:
+                interface_by_name[sym.name] = []
+            interface_by_name[sym.name].append(sym)
 
-    return class_symbols, interface_symbols
+    return class_by_name, interface_by_name
+
+
+def _resolve_target_symbol(
+    name: str,
+    child_sym: Symbol,
+    candidates_by_name: dict[str, list[Symbol]],
+) -> Symbol | None:
+    """Resolve a base class/interface name to a specific Symbol.
+
+    When multiple symbols share the same name (e.g., test stubs named 'Model'),
+    uses a priority cascade:
+
+    1. Same-file match: prefer the candidate defined in the same file as the child
+    2. Deterministic fallback: first by sorted symbol ID
+
+    The centralized linker does not have per-file import context (unlike
+    per-analyzer resolvers), so import-based disambiguation is not available.
+
+    Args:
+        name: The base class/interface name to resolve
+        child_sym: The child symbol (for file context)
+        candidates_by_name: Multi-value lookup: name -> list of candidates
+
+    Returns:
+        The resolved Symbol, or None if no match found.
+    """
+    candidates = candidates_by_name.get(name)
+    if not candidates:
+        return None
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    child_path = child_sym.path or ""
+
+    # 1. Same-file match: prefer candidate in the same file
+    same_file = [c for c in candidates if c.path == child_path]
+    if len(same_file) == 1:
+        return same_file[0]
+
+    # 2. Deterministic fallback: first by symbol ID (sorted for stability)
+    candidates_sorted = sorted(candidates, key=lambda c: c.id)
+    return candidates_sorted[0]
 
 
 def _create_inheritance_edges(
     symbols: list[Symbol],
-    class_symbols: dict[str, Symbol],
-    interface_symbols: dict[str, Symbol],
+    class_by_name: dict[str, list[Symbol]],
+    interface_by_name: dict[str, list[Symbol]],
     existing_edges: list[Edge],
     run: AnalysisRun,
 ) -> list[Edge]:
@@ -68,10 +121,13 @@ def _create_inheritance_edges(
     - If base is not found (external) -> no edge
     - If edge already exists (from analyzer) -> skip to avoid duplicates
 
+    Uses ``_resolve_target_symbol`` to disambiguate when multiple classes or
+    interfaces share the same name.
+
     Args:
         symbols: All symbols to process
-        class_symbols: Map of class name -> Symbol
-        interface_symbols: Map of interface name -> Symbol
+        class_by_name: Multi-value map of class name -> list of Symbol candidates
+        interface_by_name: Multi-value map of interface name -> list of candidates
         existing_edges: Edges already created by analyzers
         run: Analysis run for provenance
 
@@ -120,17 +176,27 @@ def _create_inheritance_edges(
             edge_type = None
 
             for lookup_name in lookup_names:
-                if lookup_name in interface_symbols:
-                    target_sym = interface_symbols[lookup_name]
+                resolved = _resolve_target_symbol(
+                    lookup_name, sym, interface_by_name,
+                )
+                if resolved is not None:
+                    target_sym = resolved
                     edge_type = "implements"
                     break
-                elif lookup_name in class_symbols:
-                    target_sym = class_symbols[lookup_name]
+                resolved = _resolve_target_symbol(
+                    lookup_name, sym, class_by_name,
+                )
+                if resolved is not None:
+                    target_sym = resolved
                     edge_type = "extends"
                     break
 
             if target_sym is None:
                 continue  # External base class, no edge
+
+            # Skip self-inheritance
+            if target_sym.id == sym.id:
+                continue
 
             # Skip if edge already exists (from analyzer)
             edge_key = (sym.id, target_sym.id, edge_type)
@@ -170,12 +236,12 @@ def link_inheritance(ctx: LinkerContext) -> LinkerResult:
 
     run = AnalysisRun.create(pass_id=PASS_ID, version="hypergumbo-0.1.0")
 
-    # Build lookup maps
-    class_symbols, interface_symbols = _build_symbol_maps(ctx.symbols)
+    # Build multi-value lookup maps (INV-015: handles name collisions)
+    class_by_name, interface_by_name = _build_symbol_maps(ctx.symbols)
 
     # Create edges (skipping any that already exist from analyzers)
     edges = _create_inheritance_edges(
-        ctx.symbols, class_symbols, interface_symbols, ctx.edges, run
+        ctx.symbols, class_by_name, interface_by_name, ctx.edges, run
     )
 
     run.duration_ms = int((time.time() - start_time) * 1000)
