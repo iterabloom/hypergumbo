@@ -1160,6 +1160,37 @@ end
         assert "profiles#update" in routes_by_action
         assert "profiles#destroy" in routes_by_action
 
+    def test_route_symbols_singular_resource_already_plural(self, tmp_path: Path) -> None:
+        """Singular resource whose name already ends in 's' doesn't double the 's'.
+
+        resource :audit_logs should pluralize to audit_logs (not audit_logss).
+        resource :settings should pluralize to settings (not settingss).
+        """
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  resource :audit_logs
+  resource :settings
+end
+""")
+        result = analyze_ruby(tmp_path)
+
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        controller_actions = {s.meta["controller_action"] for s in route_symbols}
+
+        # Should NOT have double-s
+        assert not any("audit_logss" in ca for ca in controller_actions), (
+            f"Double-s bug: found {[ca for ca in controller_actions if 'audit_log' in ca]}"
+        )
+        assert not any("settingss" in ca for ca in controller_actions), (
+            f"Double-s bug: found {[ca for ca in controller_actions if 'setting' in ca]}"
+        )
+
+        # Should have correctly pluralized names
+        assert "audit_logs#show" in controller_actions
+        assert "settings#show" in controller_actions
+
     def test_route_symbols_include_controller_action(self, tmp_path: Path) -> None:
         """Route symbols include controller_action in metadata when specified."""
         from hypergumbo_lang_mainstream.ruby import analyze_ruby

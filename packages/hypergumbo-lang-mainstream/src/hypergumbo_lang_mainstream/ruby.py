@@ -511,7 +511,8 @@ def _extract_rails_routes(
                 ("DELETE", normalized_path, "destroy"),  # DELETE /profile
             ]
             # Rails convention: resource :profile → ProfilesController (pluralized)
-            controller_name = f"{route_path}s"  # Simple pluralization
+            # Don't double the 's' if name already ends in 's' (audit_logs, settings)
+            controller_name = route_path if route_path.endswith("s") else f"{route_path}s"
             for http_meth, route_pth, action in restful_routes:
                 route_name = f"{http_meth} {route_pth}"
                 route_id = _make_symbol_id(
