@@ -1307,3 +1307,134 @@ end
             if e.edge_type == "invokes_callback" and e.src == module_sym.id
         ]
         assert len(callback_edges) == 3  # mount, update, render
+
+
+class TestElixirMultiClauseEdges:
+    """Tests for multi-clause function edge resolution.
+
+    Elixir functions can have multiple clauses with pattern matching:
+        def handle_call(:get, _from, state), do: {:reply, state, state}
+        def handle_call(:put, _from, state), do: {:noreply, state}
+
+    Each clause is a separate symbol. When function X calls handle_call,
+    edges should target ALL clauses, not just the last one.
+    """
+
+    def test_call_to_multi_clause_function_targets_all_clauses(self, tmp_path: Path) -> None:
+        """Call to a function with multiple clauses creates edges to all clauses."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "server.ex").write_text('''
+defmodule MyApp.Server do
+  def handle_call(:get, _from, state) do
+    {:reply, state, state}
+  end
+
+  def handle_call(:put, _from, state) do
+    {:noreply, state}
+  end
+
+  def handle_call(:delete, _from, _state) do
+    {:noreply, %{}}
+  end
+
+  def dispatch(msg) do
+    handle_call(msg, nil, %{})
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        dispatch_sym = next((s for s in result.symbols if "dispatch" in s.name), None)
+        handle_call_syms = [s for s in result.symbols if "handle_call" in s.name]
+
+        assert dispatch_sym is not None
+        assert len(handle_call_syms) == 3, f"Should find 3 handle_call clauses, got {len(handle_call_syms)}"
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == dispatch_sym.id
+        ]
+        # Should create edges to ALL 3 handle_call clauses
+        edge_dsts = {e.dst for e in call_edges}
+        for clause_sym in handle_call_syms:
+            assert clause_sym.id in edge_dsts, (
+                f"Missing edge to clause at line {clause_sym.span.start_line}. "
+                f"Edge dsts: {edge_dsts}"
+            )
+
+    def test_cross_file_call_to_multi_clause(self, tmp_path: Path) -> None:
+        """Cross-file calls also target all clauses."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "handler.ex").write_text('''
+defmodule MyApp.Handler do
+  def process(:ok) do
+    :done
+  end
+
+  def process(:error) do
+    :failed
+  end
+end
+''')
+
+        (tmp_path / "caller.ex").write_text('''
+defmodule MyApp.Caller do
+  def run do
+    process(:ok)
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        run_sym = next((s for s in result.symbols if "run" in s.name), None)
+        process_syms = [s for s in result.symbols if "process" in s.name]
+
+        assert run_sym is not None
+        assert len(process_syms) == 2
+
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == run_sym.id
+        ]
+        edge_dsts = {e.dst for e in call_edges}
+        for clause_sym in process_syms:
+            assert clause_sym.id in edge_dsts, (
+                f"Missing cross-file edge to clause at line {clause_sym.span.start_line}"
+            )
+
+    def test_behaviour_callback_targets_all_clauses(self, tmp_path: Path) -> None:
+        """invokes_callback edges also target all clauses of a callback function."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "server.ex").write_text('''
+defmodule MyApp.MultiServer do
+  use GenServer
+
+  def init(:default) do
+    {:ok, %{}}
+  end
+
+  def init(custom_state) do
+    {:ok, custom_state}
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        module_sym = next((s for s in result.symbols if s.name == "MyApp.MultiServer" and s.kind == "module"), None)
+        init_syms = [s for s in result.symbols if "init" in s.name and s.kind == "function"]
+
+        assert module_sym is not None
+        assert len(init_syms) == 2, f"Should find 2 init clauses, got {len(init_syms)}"
+
+        callback_edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback" and e.src == module_sym.id
+        ]
+        edge_dsts = {e.dst for e in callback_edges}
+        for clause_sym in init_syms:
+            assert clause_sym.id in edge_dsts, (
+                f"Missing callback edge to init clause at line {clause_sym.span.start_line}"
+            )

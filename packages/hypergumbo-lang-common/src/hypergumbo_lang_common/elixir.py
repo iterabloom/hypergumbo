@@ -513,6 +513,8 @@ def _extract_behaviour_callbacks(
     file_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
     run: AnalysisRun,
+    file_symbols_multi: dict[str, list[Symbol]] | None = None,
+    global_symbols_multi: dict[str, list[Symbol]] | None = None,
 ) -> list[Edge]:
     """Extract invokes_callback edges from OTP/Phoenix behaviour declarations.
 
@@ -564,37 +566,53 @@ def _extract_behaviour_callbacks(
         if module_sym is None:
             continue  # pragma: no cover — module always in file symbols
 
-        # Create edges for each implemented callback
+        # Create edges for each implemented callback (all clauses)
         for callback_name in expected_callbacks:
             qualified = f"{module_name}.{callback_name}"
-            callee = (
-                file_symbols.get(qualified)
-                or global_symbols.get(qualified)
-                or file_symbols.get(callback_name)
+            # Multi-clause: find all clauses of the callback function
+            callees = (
+                (file_symbols_multi.get(qualified) if file_symbols_multi else None)
+                or (global_symbols_multi.get(qualified) if global_symbols_multi else None)
+                or (file_symbols_multi.get(callback_name) if file_symbols_multi else None)
             )
-            if callee is None:
+            if not callees:
+                # Fallback to single-match index
+                single = (
+                    file_symbols.get(qualified)
+                    or global_symbols.get(qualified)
+                    or file_symbols.get(callback_name)
+                )
+                callees = [single] if single else []
+            if not callees:
                 continue
 
-            edges.append(Edge.create(
-                src=module_sym.id,
-                dst=callee.id,
-                edge_type="invokes_callback",
-                line=node.start_point[0] + 1,
-                evidence_type="behaviour_callback",
-                confidence=0.9,
-                origin=PASS_ID,
-                origin_run_id=run.execution_id,
-            ))
+            for callee in callees:
+                edges.append(Edge.create(
+                    src=module_sym.id,
+                    dst=callee.id,
+                    edge_type="invokes_callback",
+                    line=node.start_point[0] + 1,
+                    evidence_type="behaviour_callback",
+                    confidence=0.9,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                ))
 
     return edges
 
 
 @dataclass
 class FileAnalysis:
-    """Intermediate analysis result for a single file."""
+    """Intermediate analysis result for a single file.
+
+    symbol_by_name maps short names to the most recent symbol (for primary lookups).
+    symbols_by_name maps short names to ALL symbols with that name (for multi-clause
+    Elixir functions where the same name has multiple clauses with pattern matching).
+    """
 
     symbols: list[Symbol] = field(default_factory=list)
     symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
+    symbols_by_name: dict[str, list[Symbol]] = field(default_factory=dict)
     current_module: str = ""
     alias_hints: dict[str, str] = field(default_factory=dict)
 
@@ -683,6 +701,8 @@ def _extract_symbols_from_file(
                         )
                         analysis.symbols.append(symbol)
                         analysis.symbol_by_name[func_name] = symbol  # Store by short name for local calls
+                        # Multi-clause index: all symbols with the same short name
+                        analysis.symbols_by_name.setdefault(func_name, []).append(symbol)
 
                 elif target_name in ("defmacro", "defmacrop"):
                     macro_name = _get_function_name(node, source)
@@ -731,6 +751,8 @@ def _extract_edges_from_file(
     run: AnalysisRun,
     resolver: NameResolver | None = None,
     alias_hints: dict[str, str] | None = None,
+    local_symbols_multi: dict[str, list[Symbol]] | None = None,
+    global_symbols_multi: dict[str, list[Symbol]] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -795,8 +817,22 @@ def _extract_edges_from_file(
                 elif target_name not in ("def", "defp", "defmacro", "defmacrop", "defmodule"):
                     current_function = _get_enclosing_function(node, source, local_symbols)
                     if current_function is not None:
-                        # Check if this is a call to a known local function
-                        if target_name in local_symbols:
+                        # Multi-clause: check local file for all clauses with this name
+                        local_multi = local_symbols_multi.get(target_name) if local_symbols_multi else None
+                        if local_multi:
+                            for callee in local_multi:
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=callee.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="function_call",
+                                    confidence=0.85,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                ))
+                        # Fallback: single-match local lookup (modules, macros)
+                        elif target_name in local_symbols:
                             callee = local_symbols[target_name]
                             edges.append(Edge.create(
                                 src=current_function.id,
@@ -808,22 +844,36 @@ def _extract_edges_from_file(
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                             ))
-                        # Check global symbols via resolver
+                        # Cross-file: multi-clause global lookup, then resolver
                         else:
-                            # Use alias hints for disambiguation
-                            path_hint = alias_hints.get(target_name)
-                            lookup_result = resolver.lookup(target_name, path_hint=path_hint)
-                            if lookup_result.found and lookup_result.symbol is not None:
-                                edges.append(Edge.create(
-                                    src=current_function.id,
-                                    dst=lookup_result.symbol.id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    evidence_type="function_call",
-                                    confidence=0.80 * lookup_result.confidence,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                ))
+                            global_multi = global_symbols_multi.get(target_name) if global_symbols_multi else None
+                            if global_multi:
+                                for callee in global_multi:
+                                    edges.append(Edge.create(
+                                        src=current_function.id,
+                                        dst=callee.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1,
+                                        evidence_type="function_call",
+                                        confidence=0.80,
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                    ))
+                            else:  # pragma: no cover — multi-index has same keys as resolver
+                                # Use alias hints for disambiguation
+                                path_hint = alias_hints.get(target_name)
+                                lookup_result = resolver.lookup(target_name, path_hint=path_hint)
+                                if lookup_result.found and lookup_result.symbol is not None:
+                                    edges.append(Edge.create(
+                                        src=current_function.id,
+                                        dst=lookup_result.symbol.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1,
+                                        evidence_type="function_call",
+                                        confidence=0.80 * lookup_result.confidence,
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                    ))
 
             # Module-qualified calls: Helper.greet(), App.Services.UserService.find()
             # AST: call -> dot -> (alias, ".", identifier)
@@ -988,6 +1038,17 @@ def analyze_elixir(repo_root: Path) -> ElixirAnalysisResult:
             global_symbols[short_name] = symbol
             global_symbols[symbol.name] = symbol
 
+    # Multi-clause index: maps name to ALL symbols with that name.
+    # Elixir functions with pattern matching have multiple clauses (same name,
+    # different patterns). The single-value global_symbols uses last-writer-wins,
+    # losing N-1 clauses. This index preserves all of them.
+    global_symbols_multi: dict[str, list[Symbol]] = {}
+    for analysis in file_analyses.values():
+        for symbol in analysis.symbols:
+            short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
+            global_symbols_multi.setdefault(short_name, []).append(symbol)
+            global_symbols_multi.setdefault(symbol.name, []).append(symbol)
+
     # Pass 2: Extract edges and usage contexts
     resolver = NameResolver(global_symbols)
     all_symbols: list[Symbol] = []
@@ -1000,6 +1061,8 @@ def analyze_elixir(repo_root: Path) -> ElixirAnalysisResult:
         edges = _extract_edges_from_file(
             ex_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
             alias_hints=analysis.alias_hints,
+            local_symbols_multi=analysis.symbols_by_name,
+            global_symbols_multi=global_symbols_multi,
         )
         all_edges.extend(edges)
 
@@ -1026,6 +1089,8 @@ def analyze_elixir(repo_root: Path) -> ElixirAnalysisResult:
             continue
         callback_edges = _extract_behaviour_callbacks(
             tree, source, ex_file, analysis.symbol_by_name, global_symbols, run,
+            file_symbols_multi=analysis.symbols_by_name,
+            global_symbols_multi=global_symbols_multi,
         )
         all_edges.extend(callback_edges)
 

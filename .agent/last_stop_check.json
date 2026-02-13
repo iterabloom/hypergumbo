@@ -1,10 +1,10 @@
 {
-  "last_completed_utc": "2026-02-12T22:30:00Z",
+  "last_completed_utc": "2026-02-13T04:00:00Z",
   "branch": "dev",
-  "last_pr": 1039,
+  "last_pr": 1046,
   "last_pr_state": "merged",
   "pending_hard_todos": 0,
   "pending_soft_todos": 0,
   "unfixed_invariants": 0,
-  "notes": "PR #1039: Framework detection word-boundary matching + Bottle bare decorator removal (Superset 618/814 false routes). Curriculum: cohorts 1-3 complete, cohort 4b complete (chatwoot/killbill/jenkins; gitlab/keycloak too large), cohort 5 running (kong done, git-bug done, livebook running, postal/opensearch pending). Cohort 6 created (growthbook, unleash, podman-desktop, plausible-analytics, beads). KillBill 8.0% orphan, Jenkins 10.8%, Chatwoot 9.0% adjusted. No pending TODOs. Next: finish cohorts 5-6, aggregate assessment, consider Vue directive→data linking."
+  "notes": "PRs #1042-1046 merged: Gorilla mux routes, routes CLI kind=route fix, Rails double-s fix, Rails callback edges (Ruby), OTP/Phoenix behaviour callbacks (Elixir). DEEP mode active. Bakeoff results: Chatwoot 6.2% orphan rate (excellent), git-bug 9.0%, Livebook 37.9% (Elixir cross-module resolution is the bottleneck, not callbacks). Slice limit hit frequency 85-100% across all repos. Next: consider slice quality improvements (hub pruning defaults), Elixir import-based function resolution, or supply chain tier classification."
 }
