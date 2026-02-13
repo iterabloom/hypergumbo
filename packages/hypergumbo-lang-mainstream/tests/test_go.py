@@ -768,6 +768,249 @@ func main() {
         assert routes[0].name == "handlers.GetAPI"
 
 
+class TestGoGorillaMuxRoutes:
+    """Tests for Gorilla mux route detection.
+
+    Gorilla mux uses two patterns not covered by Gin/Echo/Fiber:
+    1. HandleFunc/Handle: router.HandleFunc("/path", handler)
+    2. Builder chain: router.Path("/path").Methods("GET").Handler(handler)
+    """
+
+    def test_handlefunc_pattern(self, tmp_path: Path) -> None:
+        """Detects router.HandleFunc("/path", handler) pattern."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+import "github.com/gorilla/mux"
+
+func main() {
+    r := mux.NewRouter()
+    r.HandleFunc("/users", listUsers)
+    r.HandleFunc("/users/{id}", getUser)
+}
+
+func listUsers(w http.ResponseWriter, r *http.Request) {}
+func getUser(w http.ResponseWriter, r *http.Request) {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_names = {s.name for s in routes}
+
+        assert "listUsers" in route_names
+        assert "getUser" in route_names
+
+        # Check metadata
+        users_route = next(s for s in routes if s.name == "listUsers")
+        assert users_route.meta["route_path"] == "/users"
+        assert users_route.meta["http_method"] == "ANY"
+        assert users_route.meta["handler_name"] == "listUsers"
+
+    def test_handle_pattern(self, tmp_path: Path) -> None:
+        """Detects router.Handle("/path", handler) pattern."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+import "github.com/gorilla/mux"
+
+func main() {
+    r := mux.NewRouter()
+    r.Handle("/api", apiHandler)
+}
+
+func apiHandler() {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        assert routes[0].name == "apiHandler"
+        assert routes[0].meta["route_path"] == "/api"
+        assert routes[0].meta["http_method"] == "ANY"
+
+    def test_path_handler_builder_chain(self, tmp_path: Path) -> None:
+        """Detects router.Path("/path").Handler(handler) pattern (2-level chain)."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+import "github.com/gorilla/mux"
+
+func main() {
+    r := mux.NewRouter()
+    r.Path("/api/v1").Handler(apiV1Handler)
+}
+
+func apiV1Handler() {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        assert routes[0].name == "apiV1Handler"
+        assert routes[0].meta["route_path"] == "/api/v1"
+        assert routes[0].meta["http_method"] == "ANY"
+
+    def test_path_methods_handler_builder_chain(self, tmp_path: Path) -> None:
+        """Detects router.Path("/path").Methods("GET").Handler(h) (3-level chain)."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+import "github.com/gorilla/mux"
+
+func main() {
+    r := mux.NewRouter()
+    r.Path("/users").Methods("GET").Handler(listUsers)
+    r.Path("/users").Methods("POST").HandlerFunc(createUser)
+}
+
+func listUsers() {}
+func createUser() {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_by_name = {s.name: s for s in routes}
+
+        assert "listUsers" in route_by_name
+        assert "createUser" in route_by_name
+
+        assert route_by_name["listUsers"].meta["route_path"] == "/users"
+        assert route_by_name["listUsers"].meta["http_method"] == "GET"
+        assert route_by_name["createUser"].meta["route_path"] == "/users"
+        assert route_by_name["createUser"].meta["http_method"] == "POST"
+
+    def test_path_prefix_handler(self, tmp_path: Path) -> None:
+        """Detects router.PathPrefix("/").Handler(handler) pattern."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+import "github.com/gorilla/mux"
+
+func main() {
+    r := mux.NewRouter()
+    r.PathPrefix("/static/").Handler(fileServer)
+}
+
+func fileServer() {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        assert routes[0].name == "fileServer"
+        assert routes[0].meta["route_path"] == "/static/"
+
+    def test_handler_from_call_expression(self, tmp_path: Path) -> None:
+        """Handler from function call: httpapi.NewHandler(arg)."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+import "github.com/gorilla/mux"
+
+func main() {
+    r := mux.NewRouter()
+    r.Path("/api").Handler(httpapi.NewHandler(env))
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        assert routes[0].meta["route_path"] == "/api"
+        # Handler name extracted from the function call
+        assert routes[0].meta["handler_name"] == "httpapi.NewHandler"
+
+    def test_selector_handler_in_handlefunc(self, tmp_path: Path) -> None:
+        """Detects HandleFunc with package-qualified handler: handlers.GetAPI."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+import "github.com/gorilla/mux"
+
+func main() {
+    r := mux.NewRouter()
+    r.HandleFunc("/api", handlers.GetAPI)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        assert routes[0].name == "handlers.GetAPI"
+        assert routes[0].meta["route_path"] == "/api"
+
+    def test_handlefunc_stable_id(self, tmp_path: Path) -> None:
+        """Gorilla mux HandleFunc routes have stable_id set to 'any'."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func main() {
+    r.HandleFunc("/test", handler)
+}
+
+func handler() {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        assert routes[0].stable_id == "any"
+
+    def test_builder_chain_stable_id_with_method(self, tmp_path: Path) -> None:
+        """Builder chain with .Methods("GET") has stable_id = 'get'."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func main() {
+    r.Path("/test").Methods("GET").Handler(handler)
+}
+
+func handler() {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        assert routes[0].stable_id == "get"
+        assert routes[0].meta["http_method"] == "GET"
+
+
 class TestGoSignatureExtraction:
     """Tests for extracting function signatures from Go code."""
 

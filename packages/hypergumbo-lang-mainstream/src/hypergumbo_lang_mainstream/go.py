@@ -7,7 +7,7 @@ This analyzer uses tree-sitter to parse Go files and extract:
 - Interface declarations (type X interface)
 - Function call relationships
 - Import relationships (import statements)
-- Web framework routes (Gin, Echo, Fiber)
+- Web framework routes (Gin, Echo, Fiber, Gorilla mux)
 
 If tree-sitter with Go support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -22,6 +22,8 @@ How It Works
 4. Route detection:
    - Gin/Echo: r.GET("/path", handler), e.POST("/path", handler)
    - Fiber: app.Get("/path", handler) (lowercase methods)
+   - Gorilla mux: router.HandleFunc("/path", handler), router.Handle("/path", handler)
+   - Gorilla mux builder: router.Path("/path").Methods("GET").Handler(handler)
    - Creates route symbols with stable_id = HTTP method
 
 Why This Design
@@ -72,6 +74,15 @@ GO_HTTP_METHODS = {
     "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS",
     "Get", "Post", "Put", "Delete", "Patch", "Head", "Options",
 }
+
+# Gorilla mux simple methods: router.HandleFunc("/path", handler)
+GORILLA_HANDLE_METHODS = {"HandleFunc", "Handle"}
+
+# Gorilla mux builder chain terminators: .Handler(h) or .HandlerFunc(h)
+GORILLA_CHAIN_TERMINATORS = {"Handler", "HandlerFunc"}
+
+# Gorilla mux builder chain path methods: .Path("/x") or .PathPrefix("/x")
+GORILLA_PATH_METHODS = {"Path", "PathPrefix"}
 
 
 def find_go_files(repo_root: Path) -> Iterator[Path]:
@@ -537,6 +548,116 @@ def _extract_edges_from_file(
     return edges
 
 
+def _extract_handler_name(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> str | None:
+    """Extract handler name from a call argument node.
+
+    Handles three cases:
+    - identifier: ``listUsers`` -> ``"listUsers"``
+    - selector_expression: ``handlers.GetAPI`` -> ``"handlers.GetAPI"``
+    - call_expression: ``httpapi.NewHandler(env)`` -> ``"httpapi.NewHandler"``
+
+    Returns None if the node type is not recognized.
+    """
+    if node.type == "identifier":
+        return node_text(node, source)
+    elif node.type == "selector_expression":
+        return node_text(node, source)
+    elif node.type == "call_expression":
+        func_node = find_child_by_field(node, "function")
+        if func_node:
+            return node_text(func_node, source)
+    return None
+
+
+def _extract_first_string_arg(
+    args_node: "tree_sitter.Node",
+    source: bytes,
+) -> str | None:
+    """Extract the first string literal from an argument list.
+
+    Returns the string content without quotes, or None if no string arg found.
+    """
+    for arg in args_node.children:
+        if arg.type == "interpreted_string_literal":
+            content_node = find_child_by_type(arg, "interpreted_string_literal_content")
+            if content_node:
+                return node_text(content_node, source)
+            return node_text(arg, source).strip('"')  # pragma: no cover
+    return None  # pragma: no cover - only called with argument lists containing strings
+
+
+def _extract_gorilla_chain_route(
+    call_node: "tree_sitter.Node",
+    source: bytes,
+) -> tuple[str | None, str | None, str | None]:
+    """Walk a Gorilla mux builder chain to extract route path, HTTP method, and handler.
+
+    Given an outermost call_expression whose method is Handler/HandlerFunc,
+    walks the chain backwards to find Path/PathPrefix and optional Methods calls.
+
+    Example chains:
+    - ``router.Path("/api").Handler(h)`` -> ("/api", None, "h")
+    - ``router.Path("/api").Methods("GET").Handler(h)`` -> ("/api", "GET", "h")
+    - ``router.PathPrefix("/").Handler(h)`` -> ("/", None, "h")
+
+    Returns:
+        Tuple of (route_path, http_method, handler_name).
+        Any element may be None if not found.
+    """
+    # Step 1: Extract handler from the outermost call's arguments
+    args_node = find_child_by_field(call_node, "arguments")
+    handler_name = None
+    if args_node:
+        for arg in args_node.children:
+            handler_name = _extract_handler_name(arg, source)
+            if handler_name is not None:
+                break
+
+    # Step 2: Walk the chain backwards through the selector/call nesting
+    route_path = None
+    http_method = None
+
+    # The function field of the outer call is a selector_expression
+    # e.g., for .Handler(h), the operand of that selector is the previous call
+    func_node = find_child_by_field(call_node, "function")
+    if not func_node or func_node.type != "selector_expression":
+        return (None, None, handler_name)  # pragma: no cover - defensive for malformed AST
+
+    # Walk the chain: operand is the inner call_expression
+    current = find_child_by_field(func_node, "operand")
+
+    while current is not None and current.type == "call_expression":
+        # Get this call's method name from its function (selector_expression)
+        inner_func = find_child_by_field(current, "function")
+        if not inner_func or inner_func.type != "selector_expression":
+            break  # pragma: no cover - defensive for malformed AST
+
+        inner_field = find_child_by_field(inner_func, "field")
+        if not inner_field:
+            break  # pragma: no cover
+
+        method_name = node_text(inner_field, source)
+
+        inner_args = find_child_by_field(current, "arguments")
+
+        if method_name in GORILLA_PATH_METHODS and inner_args:
+            route_path = _extract_first_string_arg(inner_args, source)
+            break  # Path/PathPrefix is the start of the chain
+
+        if method_name == "Methods" and inner_args:
+            method_str = _extract_first_string_arg(inner_args, source)
+            if method_str:
+                http_method = method_str.upper()
+
+        # Continue walking: the operand of this selector is the next inner call
+        current = find_child_by_field(inner_func, "operand")
+
+    return (route_path, http_method, handler_name)
+
+
 def _extract_go_routes(
     node: "tree_sitter.Node",
     source: bytes,
@@ -548,6 +669,8 @@ def _extract_go_routes(
     Detects patterns like:
     - Gin/Echo: r.GET("/path", handler), e.POST("/users", createUser)
     - Fiber: app.Get("/path", handler) (lowercase methods)
+    - Gorilla mux: router.HandleFunc("/path", handler), router.Handle("/path", handler)
+    - Gorilla mux builder: router.Path("/path").Methods("GET").Handler(handler)
 
     Creates symbols with stable_id = HTTP method for route discovery.
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
@@ -567,37 +690,21 @@ def _extract_go_routes(
                     method_name = node_text(field_node, source)
 
                     if method_name in GO_HTTP_METHODS:
-                        # Extract arguments
+                        # Gin/Echo/Fiber: r.GET("/path", handler)
                         args_node = find_child_by_field(n, "arguments")
                         if args_node:
-                            route_path = None
+                            route_path = _extract_first_string_arg(args_node, source)
                             handler_name = None
 
-                            for arg in args_node.children:
-                                # First string literal is the route path
-                                if arg.type == "interpreted_string_literal" and route_path is None:
-                                    # Get the content without quotes
-                                    content_node = find_child_by_type(
-                                        arg, "interpreted_string_literal_content"
-                                    )
-                                    if content_node:
-                                        route_path = node_text(content_node, source)
-                                    else:  # pragma: no cover
-                                        # Fallback: strip quotes manually
-                                        route_path = node_text(arg, source).strip('"')
-
-                                # Handler is usually an identifier after the path
-                                elif arg.type == "identifier" and route_path is not None:
-                                    handler_name = node_text(arg, source)
-                                    break
-
-                                # Handler could also be a selector (pkg.Handler)
-                                elif arg.type == "selector_expression" and route_path is not None:
-                                    handler_name = node_text(arg, source)
-                                    break
+                            if route_path:
+                                for arg in args_node.children:
+                                    if arg.type == "interpreted_string_literal":
+                                        continue  # Skip the path arg
+                                    handler_name = _extract_handler_name(arg, source)
+                                    if handler_name is not None:
+                                        break
 
                             if route_path and handler_name:
-                                # Normalize method name to uppercase for stable_id
                                 normalized_method = method_name.upper()
                                 start_line = n.start_point[0] + 1
                                 end_line = n.end_point[0] + 1
@@ -627,6 +734,88 @@ def _extract_go_routes(
                                     },
                                 )
                                 routes.append(route_sym)
+
+                    elif method_name in GORILLA_HANDLE_METHODS:
+                        # Gorilla mux simple: router.HandleFunc("/path", handler)
+                        args_node = find_child_by_field(n, "arguments")
+                        if args_node:
+                            route_path = _extract_first_string_arg(args_node, source)
+                            handler_name = None
+
+                            if route_path:
+                                for arg in args_node.children:
+                                    if arg.type == "interpreted_string_literal":
+                                        continue
+                                    handler_name = _extract_handler_name(arg, source)
+                                    if handler_name is not None:
+                                        break
+
+                            if route_path and handler_name:
+                                start_line = n.start_point[0] + 1
+                                end_line = n.end_point[0] + 1
+
+                                route_sym = Symbol(
+                                    id=make_symbol_id(
+                                        "go", str(file_path), start_line, end_line,
+                                        f"ANY {route_path}", "route"
+                                    ),
+                                    stable_id="any",
+                                    name=handler_name,
+                                    kind="route",
+                                    language="go",
+                                    path=str(file_path),
+                                    span=Span(
+                                        start_line=start_line,
+                                        end_line=end_line,
+                                        start_col=n.start_point[1],
+                                        end_col=n.end_point[1],
+                                    ),
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    meta={
+                                        "route_path": route_path,
+                                        "http_method": "ANY",
+                                        "handler_name": handler_name,
+                                    },
+                                )
+                                routes.append(route_sym)
+
+                    elif method_name in GORILLA_CHAIN_TERMINATORS:
+                        # Gorilla mux builder: router.Path("/x").Methods("GET").Handler(h)
+                        route_path, http_method, handler_name = (
+                            _extract_gorilla_chain_route(n, source)
+                        )
+
+                        if route_path and handler_name:
+                            normalized_method = http_method or "ANY"
+                            start_line = n.start_point[0] + 1
+                            end_line = n.end_point[0] + 1
+
+                            route_sym = Symbol(
+                                id=make_symbol_id(
+                                    "go", str(file_path), start_line, end_line,
+                                    f"{normalized_method} {route_path}", "route"
+                                ),
+                                stable_id=normalized_method.lower(),
+                                name=handler_name,
+                                kind="route",
+                                language="go",
+                                path=str(file_path),
+                                span=Span(
+                                    start_line=start_line,
+                                    end_line=end_line,
+                                    start_col=n.start_point[1],
+                                    end_col=n.end_point[1],
+                                ),
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                meta={
+                                    "route_path": route_path,
+                                    "http_method": normalized_method,
+                                    "handler_name": handler_name,
+                                },
+                            )
+                            routes.append(route_sym)
 
     return routes
 
@@ -830,7 +1019,7 @@ def analyze_go(repo_root: Path, max_files: int | None = None) -> AnalysisResult:
         )
         all_edges.extend(edges)
 
-        # Extract web framework routes (Gin, Echo, Fiber)
+        # Extract web framework routes (Gin, Echo, Fiber, Gorilla mux)
         try:
             source = go_file.read_bytes()
             tree = parser.parse(source)
