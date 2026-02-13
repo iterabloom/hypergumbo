@@ -51,7 +51,7 @@ def _build_symbol_maps(
     interface_by_name: dict[str, list[Symbol]] = {}
 
     for sym in symbols:
-        if sym.kind == "class":
+        if sym.kind in ("class", "struct"):
             if sym.name not in class_by_name:
                 class_by_name[sym.name] = []
             class_by_name[sym.name].append(sym)
@@ -144,7 +144,7 @@ def _create_inheritance_edges(
     edges: list[Edge] = []
 
     for sym in symbols:
-        if sym.kind not in ("class", "interface"):
+        if sym.kind not in ("class", "interface", "struct"):
             continue
 
         base_classes = sym.meta.get("base_classes", []) if sym.meta else []

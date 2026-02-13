@@ -1,10 +1,10 @@
 {
-  "last_completed_utc": "2026-02-13T04:00:00Z",
+  "last_completed_utc": "2026-02-13T08:35:00Z",
   "branch": "dev",
-  "last_pr": 1046,
+  "last_pr": 1055,
   "last_pr_state": "merged",
   "pending_hard_todos": 0,
   "pending_soft_todos": 0,
   "unfixed_invariants": 0,
-  "notes": "PRs #1042-1046 merged: Gorilla mux routes, routes CLI kind=route fix, Rails double-s fix, Rails callback edges (Ruby), OTP/Phoenix behaviour callbacks (Elixir). DEEP mode active. Bakeoff results: Chatwoot 6.2% orphan rate (excellent), git-bug 9.0%, Livebook 37.9% (Elixir cross-module resolution is the bottleneck, not callbacks). Slice limit hit frequency 85-100% across all repos. Next: consider slice quality improvements (hub pruning defaults), Elixir import-based function resolution, or supply chain tier classification."
+  "notes": "Merged PR #1055: Go interface-implementation assertion detection (var _ Interface = &Struct{} and (*Struct)(nil)). All four DEEP cohort 035 gaps now addressed: CSS variables, npm_package centrality, Ruby service objects, Go interfaces. Next: run DEEP bakeoff-features on git-bug to validate Go interface improvement, or start new cohort."
 }

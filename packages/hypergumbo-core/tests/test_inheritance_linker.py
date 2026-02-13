@@ -445,3 +445,125 @@ class TestInheritanceLinker:
 
         # Should not create any edge
         assert len(result.edges) == 0
+
+    def test_go_struct_implements_interface(self) -> None:
+        """Go struct with base_classes creates implements edge to interface."""
+        iface = Symbol(
+            id="sym:Reader",
+            name="Reader",
+            kind="interface",
+            language="go",
+            path="/reader.go",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="go-v1",
+            origin_run_id="test-run",
+            meta=None,
+        )
+        struct = Symbol(
+            id="sym:MyReader",
+            name="MyReader",
+            kind="struct",
+            language="go",
+            path="/reader.go",
+            span=Span(start_line=10, end_line=12, start_col=0, end_col=0),
+            origin="go-v1",
+            origin_run_id="test-run",
+            meta={"base_classes": ["Reader"]},
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[iface, struct],
+            edges=[],
+        )
+        result = link_inheritance(ctx)
+
+        assert len(result.edges) == 1
+        assert result.edges[0].src == "sym:MyReader"
+        assert result.edges[0].dst == "sym:Reader"
+        assert result.edges[0].edge_type == "implements"
+
+    def test_go_struct_as_embedding_target(self) -> None:
+        """Go struct can be resolved as a target for struct embedding."""
+        base_struct = Symbol(
+            id="sym:BaseModel",
+            name="BaseModel",
+            kind="struct",
+            language="go",
+            path="/models.go",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="go-v1",
+            origin_run_id="test-run",
+            meta=None,
+        )
+        derived_struct = Symbol(
+            id="sym:User",
+            name="User",
+            kind="struct",
+            language="go",
+            path="/models.go",
+            span=Span(start_line=5, end_line=7, start_col=0, end_col=0),
+            origin="go-v1",
+            origin_run_id="test-run",
+            meta={"base_classes": ["BaseModel"]},
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[base_struct, derived_struct],
+            edges=[],
+        )
+        result = link_inheritance(ctx)
+
+        assert len(result.edges) == 1
+        assert result.edges[0].src == "sym:User"
+        assert result.edges[0].dst == "sym:BaseModel"
+        assert result.edges[0].edge_type == "extends"
+
+    def test_go_struct_multiple_interfaces(self) -> None:
+        """Go struct implementing multiple interfaces creates multiple edges."""
+        reader = Symbol(
+            id="sym:Reader",
+            name="Reader",
+            kind="interface",
+            language="go",
+            path="/io.go",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="go-v1",
+            origin_run_id="test-run",
+            meta=None,
+        )
+        closer = Symbol(
+            id="sym:Closer",
+            name="Closer",
+            kind="interface",
+            language="go",
+            path="/io.go",
+            span=Span(start_line=5, end_line=7, start_col=0, end_col=0),
+            origin="go-v1",
+            origin_run_id="test-run",
+            meta=None,
+        )
+        my_file = Symbol(
+            id="sym:MyFile",
+            name="MyFile",
+            kind="struct",
+            language="go",
+            path="/file.go",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="go-v1",
+            origin_run_id="test-run",
+            meta={"base_classes": ["Reader", "Closer"]},
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[reader, closer, my_file],
+            edges=[],
+        )
+        result = link_inheritance(ctx)
+
+        assert len(result.edges) == 2
+        edge_types = {(e.dst, e.edge_type) for e in result.edges}
+        assert ("sym:Reader", "implements") in edge_types
+        assert ("sym:Closer", "implements") in edge_types

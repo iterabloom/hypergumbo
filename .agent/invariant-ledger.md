@@ -140,8 +140,8 @@ high-level, their status is expressed as a percentage indicating confidence they
 
 - **Status:** 100%
 - **Notes:**
-  - **DONE (create edges from base_classes):** Java, JS/TS, Python, Ruby, Kotlin, C#, Scala, PHP, Groovy, Swift, C++, Objective-C, Apex
-  - All 13 languages with class inheritance now extract `base_classes` metadata
+  - **DONE (create edges from base_classes):** Java, JS/TS, Python, Ruby, Kotlin, C#, Scala, PHP, Groovy, Swift, C++, Objective-C, Apex, Go (interface assertions)
+  - All 14 languages with class inheritance / interface satisfaction now extract `base_classes` metadata
   - The centralized inheritance linker (`linkers/inheritance.py`) creates extends/implements edges for all languages
 
 **Unified by:**
