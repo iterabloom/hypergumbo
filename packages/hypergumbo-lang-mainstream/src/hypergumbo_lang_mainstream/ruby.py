@@ -6,6 +6,7 @@ This analyzer uses tree-sitter to parse Ruby files and extract:
 - Module declarations (module)
 - Method call relationships
 - Require/require_relative statements
+- Rails callback edges (before_action, after_action, around_action)
 
 If tree-sitter with Ruby support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -49,6 +50,13 @@ PASS_VERSION = "hypergumbo-0.1.0"
 
 # HTTP methods for Rails/Sinatra route detection (used by UsageContext extraction)
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "match"}
+
+# Rails callback methods that create implicit call edges from controller to method.
+# Includes modern (before_action) and legacy (before_filter) Rails API names.
+RAILS_CALLBACK_METHODS = frozenset({
+    "before_action", "after_action", "around_action",
+    "before_filter", "after_filter", "around_filter",
+})
 
 # Directories that contain test files where get/post/delete are HTTP test helpers,
 # not route definitions.
@@ -569,6 +577,117 @@ def _extract_rails_routes(
             route_symbols.append(route_symbol)
 
     return contexts, route_symbols
+
+
+def _extract_rails_callbacks(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    file_symbols: dict[str, Symbol],
+    global_symbols: dict[str, Symbol],
+    resolver: NameResolver,
+    run: AnalysisRun,
+) -> list[Edge]:
+    """Extract invokes_callback edges from Rails controller callback declarations.
+
+    Rails controllers declare callbacks at class level:
+        before_action :authenticate!
+        after_action :log_request, :track_metrics
+        around_action :measure_time
+
+    These create implicit calls from the controller class to the named method.
+    The callback method may be in the same class (private method) or inherited
+    from a parent class (e.g., ApplicationController#authenticate!).
+
+    Also handles legacy Rails 3 API: before_filter, after_filter, around_filter.
+
+    Returns edges with type 'invokes_callback' from the class symbol to each
+    callback method symbol.
+    """
+    edges: list[Edge] = []
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "call":
+            continue
+
+        # Get method name via the 'method' field
+        method_node = node.child_by_field_name("method")
+        if method_node is None:  # pragma: no cover
+            continue
+
+        method_name = _node_text(method_node, source)
+        if method_name not in RAILS_CALLBACK_METHODS:
+            continue
+
+        # Must be at class body level (not inside a method)
+        enclosing_class_name, enclosing_type = _get_enclosing_class_or_module(node, source)
+        if enclosing_type != "class" or enclosing_class_name is None:
+            continue
+
+        # Must not be inside a method (class-level declaration)
+        current = node.parent
+        inside_method = False
+        while current is not None:
+            if current.type == "method":
+                inside_method = True
+                break
+            if current.type in ("class", "module"):
+                break
+            current = current.parent
+        if inside_method:
+            continue  # pragma: no cover — unusual but defensive
+
+        # Find the class symbol
+        class_sym = file_symbols.get(enclosing_class_name)
+        if class_sym is None:  # pragma: no cover — class always in file symbols
+            continue
+
+        # Extract callback method names from symbol arguments
+        args_node = _find_child_by_field(node, "arguments")
+        if args_node is None:  # pragma: no cover — callbacks always have arguments
+            continue
+
+        for arg in args_node.children:
+            if arg.type != "simple_symbol":
+                continue
+
+            callback_name = _node_text(arg, source).lstrip(":")
+
+            # Resolve the callback method:
+            # 1. Try qualified name in same class (ClassName#callback)
+            qualified = f"{enclosing_class_name}#{callback_name}"
+            callee = file_symbols.get(qualified) or global_symbols.get(qualified)
+
+            # 2. Try bare name in file-local symbols
+            if callee is None:
+                callee = file_symbols.get(callback_name)
+
+            # 3. Try bare name in global symbols (parent class)
+            if callee is None:
+                callee = global_symbols.get(callback_name)
+
+            # 4. Try resolver for fuzzy matching (steps 1-3 cover all normal cases;
+            #    this handles edge cases where method name differs from symbol key)
+            if callee is None:  # pragma: no cover — steps 1-3 resolve all known patterns
+                lookup = resolver.lookup(callback_name)
+                if lookup.found and lookup.symbol is not None:
+                    callee = lookup.symbol
+
+            if callee is None:
+                continue
+
+            edges.append(Edge.create(
+                src=class_sym.id,
+                dst=callee.id,
+                edge_type="invokes_callback",
+                line=node.start_point[0] + 1,
+                evidence_type="rails_callback",
+                confidence=0.9,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+            ))
+
+    return edges
 
 
 @dataclass
@@ -1128,6 +1247,20 @@ def analyze_ruby(repo_root: Path) -> RubyAnalysisResult:
             require_hints=analysis.require_hints,
         )
         all_edges.extend(edges)
+
+    # Pass 2b: Extract Rails callback edges (before_action, after_action, etc.)
+    # These create invokes_callback edges from controller class → callback method.
+    for rb_file, analysis in file_analyses.items():
+        try:
+            source = rb_file.read_bytes()
+            tree = parser.parse(source)
+        except (OSError, IOError):  # pragma: no cover
+            continue
+        callback_edges = _extract_rails_callbacks(
+            tree, source, rb_file, analysis.symbol_by_name, global_symbols,
+            resolver, run,
+        )
+        all_edges.extend(callback_edges)
 
     # Pass 3: Extract usage contexts and route symbols with file-path filtering.
     # Test files (spec/, test/, etc.) use get/post/delete as HTTP test helpers,

@@ -1719,3 +1719,298 @@ Service.work
             if e.edge_type == "calls" and e.evidence_type == "receiver_call"
         ]
         assert len(receiver_edges) == 0
+
+
+class TestRailsCallbackEdges:
+    """Tests for Rails before_action/after_action/around_action callback detection.
+
+    Rails controllers use class-level callback declarations (e.g., before_action :authenticate!)
+    that create implicit call edges from the class to the callback method. Without these edges,
+    callback methods appear as orphans in the behavior map.
+    """
+
+    def test_before_action_creates_callback_edge(self, tmp_path: Path) -> None:
+        """before_action :method creates invokes_callback edge from class to method."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "controller.rb").write_text("""
+class UsersController
+  before_action :authenticate!
+
+  def authenticate!
+    true
+  end
+
+  def index
+    []
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        class_sym = next((s for s in result.symbols if s.name == "UsersController"), None)
+        auth_method = next((s for s in result.symbols if s.name == "UsersController#authenticate!"), None)
+
+        assert class_sym is not None, "Should find UsersController class"
+        assert auth_method is not None, "Should find authenticate! method"
+
+        callback_edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback"
+            and e.src == class_sym.id
+            and e.dst == auth_method.id
+        ]
+        assert len(callback_edges) == 1, (
+            f"Expected 1 invokes_callback edge, got {len(callback_edges)}. "
+            f"All edges: {[(e.edge_type, e.src, e.dst) for e in result.edges]}"
+        )
+        assert callback_edges[0].confidence == 0.9
+
+    def test_after_action_creates_callback_edge(self, tmp_path: Path) -> None:
+        """after_action :method creates invokes_callback edge."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "controller.rb").write_text("""
+class LoggingController
+  after_action :log_request
+
+  def log_request
+    true
+  end
+
+  def index
+    []
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        class_sym = next((s for s in result.symbols if s.name == "LoggingController"), None)
+        log_method = next((s for s in result.symbols if s.name == "LoggingController#log_request"), None)
+
+        assert class_sym is not None
+        assert log_method is not None
+
+        callback_edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback"
+            and e.src == class_sym.id
+            and e.dst == log_method.id
+        ]
+        assert len(callback_edges) == 1
+
+    def test_around_action_creates_callback_edge(self, tmp_path: Path) -> None:
+        """around_action :method creates invokes_callback edge."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "controller.rb").write_text("""
+class TimingController
+  around_action :measure_time
+
+  def measure_time
+    yield
+  end
+
+  def show
+    nil
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        class_sym = next((s for s in result.symbols if s.name == "TimingController"), None)
+        measure_method = next((s for s in result.symbols if s.name == "TimingController#measure_time"), None)
+
+        assert class_sym is not None
+        assert measure_method is not None
+
+        callback_edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback"
+            and e.src == class_sym.id
+            and e.dst == measure_method.id
+        ]
+        assert len(callback_edges) == 1
+
+    def test_multiple_callbacks_in_one_declaration(self, tmp_path: Path) -> None:
+        """before_action :method1, :method2 creates edges for both methods."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "controller.rb").write_text("""
+class OrdersController
+  before_action :authenticate!, :set_order
+
+  def authenticate!
+    true
+  end
+
+  def set_order
+    nil
+  end
+
+  def show
+    nil
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        class_sym = next((s for s in result.symbols if s.name == "OrdersController"), None)
+        auth_method = next((s for s in result.symbols if s.name == "OrdersController#authenticate!"), None)
+        set_method = next((s for s in result.symbols if s.name == "OrdersController#set_order"), None)
+
+        assert class_sym is not None
+        assert auth_method is not None
+        assert set_method is not None
+
+        callback_edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback" and e.src == class_sym.id
+        ]
+        dst_ids = {e.dst for e in callback_edges}
+        assert auth_method.id in dst_ids, "Should have edge to authenticate!"
+        assert set_method.id in dst_ids, "Should have edge to set_order"
+        assert len(callback_edges) == 2
+
+    def test_callback_resolves_cross_file(self, tmp_path: Path) -> None:
+        """Callback method defined in parent class (different file) still creates edge."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "base.rb").write_text("""
+class ApplicationController
+  def authenticate!
+    true
+  end
+end
+""")
+
+        (tmp_path / "users_controller.rb").write_text("""
+class UsersController < ApplicationController
+  before_action :authenticate!
+
+  def index
+    []
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        class_sym = next((s for s in result.symbols if s.name == "UsersController"), None)
+        auth_method = next((s for s in result.symbols if s.name == "ApplicationController#authenticate!"), None)
+
+        assert class_sym is not None, "Should find UsersController"
+        assert auth_method is not None, "Should find ApplicationController#authenticate!"
+
+        callback_edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback"
+            and e.src == class_sym.id
+            and e.dst == auth_method.id
+        ]
+        assert len(callback_edges) == 1, (
+            f"Expected cross-file callback edge, got {len(callback_edges)}. "
+            f"All edges: {[(e.edge_type, e.src, e.dst) for e in result.edges]}"
+        )
+
+    def test_callback_outside_class_ignored(self, tmp_path: Path) -> None:
+        """Bare before_action at top level (outside class) creates no edges."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "config.rb").write_text("""
+before_action :something
+
+def something
+  nil
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        assert len(callback_edges) == 0
+
+    def test_legacy_before_filter(self, tmp_path: Path) -> None:
+        """before_filter (Rails 3 API) creates callback edge same as before_action."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "controller.rb").write_text("""
+class LegacyController
+  before_filter :check_auth
+
+  def check_auth
+    true
+  end
+
+  def index
+    []
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        class_sym = next((s for s in result.symbols if s.name == "LegacyController"), None)
+        check_method = next((s for s in result.symbols if s.name == "LegacyController#check_auth"), None)
+
+        assert class_sym is not None
+        assert check_method is not None
+
+        callback_edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback"
+            and e.src == class_sym.id
+            and e.dst == check_method.id
+        ]
+        assert len(callback_edges) == 1
+
+    def test_callback_unresolvable_no_edge(self, tmp_path: Path) -> None:
+        """Callback method that doesn't exist in codebase creates no edge."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "controller.rb").write_text("""
+class SomeController
+  before_action :nonexistent_method
+
+  def index
+    []
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        assert len(callback_edges) == 0
+
+    def test_callback_inside_method_body_ignored(self, tmp_path: Path) -> None:
+        """before_action inside a method body (not class-level) creates no callback edge."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "controller.rb").write_text("""
+class DynamicController
+  def setup_callbacks
+    before_action :do_something
+  end
+
+  def do_something
+    true
+  end
+
+  def index
+    []
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        assert len(callback_edges) == 0, (
+            f"Callback inside method body should not create edge, got: "
+            f"{[(e.src, e.dst) for e in callback_edges]}"
+        )
