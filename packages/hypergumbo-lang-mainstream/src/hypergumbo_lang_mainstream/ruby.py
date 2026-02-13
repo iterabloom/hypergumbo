@@ -1351,6 +1351,36 @@ def _try_receiver_call(
             global_symbols, resolver, line, edges, run,
         )
 
+    # Ruby constructor: SomeClass.new → SomeClass#initialize
+    # In Ruby, .new is the class-level allocator that delegates to #initialize.
+    # A Rails controller ``def new`` is an instance method (action), not the
+    # constructor.  Matching ``SomeClass.new`` to ``SomeClass#new`` would create
+    # massive false-positive edges (e.g. RoutesController#new with 130 false
+    # in-edges in chatwoot).  Redirect to #initialize instead.
+    if method_name == "new":
+        candidates = [receiver_class]
+        if receiver_node.type == "scope_resolution" and short_name and short_name != receiver_class:
+            candidates.append(short_name)
+        for candidate in candidates:
+            init_key = f"{candidate}#initialize"
+            if init_key in global_symbols:
+                callee = global_symbols[init_key]
+                if callee.id != current_method.id:
+                    edges.append(Edge.create(
+                        src=current_method.id,
+                        dst=callee.id,
+                        edge_type="calls",
+                        line=line,
+                        evidence_type="constructor_call",
+                        confidence=0.90,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                    ))
+                    return True
+        # No user-defined #initialize found — inherits Object#initialize (not
+        # in user code), so no edge to create.
+        return True
+
     # Build list of candidate class names to try
     # For scope_resolution: try full name first, then short name as fallback
     candidates = [receiver_class]

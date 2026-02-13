@@ -3234,3 +3234,151 @@ end
         assert len(call_edges) >= 1, (
             "Constant receiver User.find should still resolve"
         )
+
+
+class TestRubyNewConstructorResolution:
+    """Tests that SomeClass.new resolves to SomeClass#initialize, not a method named 'new'.
+
+    In Ruby, .new is the constructor class method that allocates and calls #initialize.
+    A Rails controller action ``def new`` is an instance method, not the constructor.
+    Calling ``SomeClass.new(args)`` should NOT resolve to a controller's ``def new``
+    action — it should resolve to ``SomeClass#initialize`` if it exists.
+    """
+
+    def test_new_does_not_match_controller_new_action(self, tmp_path: Path) -> None:
+        """RoutesController.new should NOT create edge to RoutesController#new action.
+
+        Rails controllers define ``def new`` as an action (instance method) exposed
+        via routes. But ``RoutesController.new`` is a constructor call, not an
+        invocation of the ``new`` action.
+        """
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "routes_controller.rb").write_text("""
+class RoutesController
+  def new
+    @route = Route.new
+  end
+
+  def create
+    # ...
+  end
+end
+""")
+
+        (tmp_path / "service.rb").write_text("""
+class RouteService
+  def build
+    controller = RoutesController.new
+    controller.create
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        build = next(
+            (s for s in result.symbols if s.name == "RouteService#build"), None
+        )
+        new_action = next(
+            (s for s in result.symbols if s.name == "RoutesController#new"), None
+        )
+        assert build is not None, "Should find RouteService#build"
+        assert new_action is not None, "Should find RoutesController#new"
+
+        # RoutesController.new is a constructor call, NOT the new action
+        false_edges = [
+            e for e in result.edges
+            if e.src == build.id and e.dst == new_action.id
+        ]
+        assert len(false_edges) == 0, (
+            "RoutesController.new should NOT match the #new controller action"
+        )
+
+    def test_new_resolves_to_initialize(self, tmp_path: Path) -> None:
+        """SomeClass.new should create an edge to SomeClass#initialize."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "widget.rb").write_text("""
+class Widget
+  def initialize(name)
+    @name = name
+  end
+
+  def display
+    puts @name
+  end
+end
+""")
+
+        (tmp_path / "factory.rb").write_text("""
+class Factory
+  def create_widget
+    Widget.new("test")
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        create_widget = next(
+            (s for s in result.symbols if s.name == "Factory#create_widget"), None
+        )
+        initialize = next(
+            (s for s in result.symbols if s.name == "Widget#initialize"), None
+        )
+        assert create_widget is not None, "Should find Factory#create_widget"
+        assert initialize is not None, "Should find Widget#initialize"
+
+        # .new should resolve to #initialize
+        init_edges = [
+            e for e in result.edges
+            if e.src == create_widget.id and e.dst == initialize.id
+        ]
+        assert len(init_edges) >= 1, (
+            "Widget.new should create edge to Widget#initialize"
+        )
+
+    def test_new_without_initialize_no_edge(self, tmp_path: Path) -> None:
+        """SomeClass.new with no #initialize defined creates no edge.
+
+        If the class has no user-defined #initialize, the .new call invokes
+        Object#initialize (which is not in user code), so no edge should be created.
+        """
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "simple.rb").write_text("""
+class Simple
+  def hello
+    puts "hello"
+  end
+end
+""")
+
+        (tmp_path / "caller.rb").write_text("""
+class Caller
+  def run
+    Simple.new
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        run = next(
+            (s for s in result.symbols if s.name == "Caller#run"), None
+        )
+        hello = next(
+            (s for s in result.symbols if s.name == "Simple#hello"), None
+        )
+        assert run is not None, "Should find Caller#run"
+        assert hello is not None, "Should find Simple#hello"
+
+        # .new with no initialize should NOT create an edge to Simple#hello
+        false_edges = [
+            e for e in result.edges
+            if e.src == run.id and e.dst == hello.id
+        ]
+        assert len(false_edges) == 0, (
+            "Simple.new should NOT create false edges to arbitrary methods"
+        )
