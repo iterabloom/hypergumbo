@@ -919,6 +919,90 @@ def test_cmd_symbols_exclude_tests_affects_degree_counts(tmp_path: Path, capsys)
             break
 
 
+def test_cmd_symbols_excludes_excluded_kinds(tmp_path: Path, capsys) -> None:
+    """Symbols command filters out EXCLUDED_KINDS (CSS variables, etc.)."""
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/main.py:1-10:main_func:function",
+                "name": "main_func",
+                "kind": "function",
+                "language": "python",
+                "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "css:src/styles.css:1-5:--main-color:variable",
+                "name": "--main-color",
+                "kind": "variable",
+                "language": "css",
+                "path": "src/styles.css",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "css:src/styles.css:10-15:fadeIn:keyframes",
+                "name": "fadeIn",
+                "kind": "keyframes",
+                "language": "css",
+                "path": "src/styles.css",
+                "span": {"start_line": 10, "end_line": 15, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "css:src/styles.css:20-25:mobile:media",
+                "name": "mobile",
+                "kind": "media",
+                "language": "css",
+                "path": "src/styles.css",
+                "span": {"start_line": 20, "end_line": 25, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "css:src/styles.css:30-35:CustomFont:font_face",
+                "name": "CustomFont",
+                "kind": "font_face",
+                "language": "css",
+                "path": "src/styles.css",
+                "span": {"start_line": 30, "end_line": 35, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "css:src/styles.css:40-45:.header:class_selector",
+                "name": ".header",
+                "kind": "class_selector",
+                "language": "css",
+                "path": "src/styles.css",
+                "span": {"start_line": 40, "end_line": 45, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 200
+    args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
+
+    result = cmd_symbols(args)
+
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Production function should be visible
+    assert "main_func" in out
+    # All excluded CSS kinds should be filtered out
+    assert "--main-color" not in out
+    assert "fadeIn" not in out
+    assert "mobile" not in out
+    assert "CustomFont" not in out
+    assert ".header" not in out
+
+
 def test_main_with_symbols(tmp_path: Path, capsys) -> None:
     """Main with symbols command."""
     behavior_map = {

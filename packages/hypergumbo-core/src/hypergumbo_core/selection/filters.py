@@ -41,6 +41,10 @@ EXCLUDED_KINDS = frozenset({
     "event_subscriber", # CSS/JS event handlers (less useful in isolation)
     "class_selector",   # CSS class selectors
     "id_selector",      # CSS id selectors
+    "variable",         # CSS custom properties / SCSS variables (zero edges)
+    "keyframes",        # CSS @keyframes animation definitions
+    "media",            # CSS @media query blocks
+    "font_face",        # CSS @font-face declarations
 })
 
 # Path patterns indicating example/demo code

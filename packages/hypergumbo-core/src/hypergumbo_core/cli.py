@@ -83,6 +83,7 @@ from .profile import detect_profile
 from .schema import new_behavior_map
 from .sketch import generate_sketch, ConfigExtractionMode, SketchStats, display_representativeness_table
 from .slice import SliceQuery, slice_graph, AmbiguousEntryError, rank_slice_nodes
+from .selection.filters import EXCLUDED_KINDS
 from .supply_chain import classify_file, detect_package_roots
 from .ranking import (
     rank_symbols, _is_test_path, compute_transitive_test_coverage,
@@ -2430,6 +2431,8 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         degree = ind + outd
 
         # Apply filters
+        if kind in EXCLUDED_KINDS:
+            continue
         if args.kind and kind != args.kind:
             continue
         if args.language and lang != args.language:
