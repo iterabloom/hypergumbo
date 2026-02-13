@@ -2382,3 +2382,215 @@ end
         )
         edge = enqueue_edges[0]
         assert "SyncJob" in edge.dst
+
+
+class TestActiveRecordAssociationEdges:
+    """Tests for ActiveRecord has_many/belongs_to/has_one association detection.
+
+    Rails models use class-level association macros (has_many, belongs_to, etc.)
+    that define relationships between models. These create association edges
+    from the declaring class to the target model class.
+    """
+
+    def test_has_many_creates_association_edge(self, tmp_path: Path) -> None:
+        """has_many :comments creates association edge from Post to Comment."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "post.rb").write_text("""
+class Post < ApplicationRecord
+  has_many :comments
+end
+""")
+        (tmp_path / "comment.rb").write_text("""
+class Comment < ApplicationRecord
+  belongs_to :post
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        post_sym = next((s for s in result.symbols if s.name == "Post"), None)
+        comment_sym = next((s for s in result.symbols if s.name == "Comment"), None)
+        assert post_sym is not None, "Should find Post class"
+        assert comment_sym is not None, "Should find Comment class"
+
+        assoc_edges = [
+            e for e in result.edges
+            if e.edge_type == "association"
+            and e.src == post_sym.id
+            and e.dst == comment_sym.id
+        ]
+        assert len(assoc_edges) == 1, (
+            f"Expected 1 association edge from Post to Comment, "
+            f"got {len(assoc_edges)}. "
+            f"All edges: {[(e.edge_type, e.src, e.dst) for e in result.edges]}"
+        )
+        assert assoc_edges[0].evidence_type == "activerecord_association"
+        assert assoc_edges[0].confidence == 0.90
+
+    def test_belongs_to_creates_association_edge(self, tmp_path: Path) -> None:
+        """belongs_to :account creates association edge from User to Account."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "user.rb").write_text("""
+class User < ApplicationRecord
+  belongs_to :account
+end
+""")
+        (tmp_path / "account.rb").write_text("""
+class Account < ApplicationRecord
+  has_many :users
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        user_sym = next((s for s in result.symbols if s.name == "User"), None)
+        account_sym = next((s for s in result.symbols if s.name == "Account"), None)
+        assert user_sym is not None
+        assert account_sym is not None
+
+        assoc_edges = [
+            e for e in result.edges
+            if e.edge_type == "association"
+            and e.src == user_sym.id
+            and e.dst == account_sym.id
+        ]
+        assert len(assoc_edges) == 1, (
+            f"Expected 1 association edge from User to Account, "
+            f"got {len(assoc_edges)}. "
+            f"All edges: {[(e.edge_type, e.src, e.dst) for e in result.edges]}"
+        )
+
+    def test_has_one_creates_association_edge(self, tmp_path: Path) -> None:
+        """has_one :profile creates association edge from User to Profile."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "user.rb").write_text("""
+class User < ApplicationRecord
+  has_one :profile
+end
+""")
+        (tmp_path / "profile.rb").write_text("""
+class Profile < ApplicationRecord
+  belongs_to :user
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        user_sym = next((s for s in result.symbols if s.name == "User"), None)
+        profile_sym = next((s for s in result.symbols if s.name == "Profile"), None)
+        assert user_sym is not None
+        assert profile_sym is not None
+
+        assoc_edges = [
+            e for e in result.edges
+            if e.edge_type == "association"
+            and e.src == user_sym.id
+            and e.dst == profile_sym.id
+        ]
+        assert len(assoc_edges) == 1
+
+    def test_association_with_class_name_option(self, tmp_path: Path) -> None:
+        """has_many :messages, class_name: 'ChatMessage' uses explicit class name."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "conversation.rb").write_text("""
+class Conversation < ApplicationRecord
+  has_many :messages, class_name: "ChatMessage"
+end
+""")
+        (tmp_path / "chat_message.rb").write_text("""
+class ChatMessage < ApplicationRecord
+  belongs_to :conversation
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        conv_sym = next((s for s in result.symbols if s.name == "Conversation"), None)
+        msg_sym = next((s for s in result.symbols if s.name == "ChatMessage"), None)
+        assert conv_sym is not None
+        assert msg_sym is not None
+
+        assoc_edges = [
+            e for e in result.edges
+            if e.edge_type == "association"
+            and e.src == conv_sym.id
+            and e.dst == msg_sym.id
+        ]
+        assert len(assoc_edges) == 1, (
+            f"Expected edge from Conversation to ChatMessage, "
+            f"got {len(assoc_edges)}. "
+            f"All edges: {[(e.edge_type, e.src, e.dst) for e in result.edges]}"
+        )
+
+    def test_association_target_not_found_creates_unresolved(self, tmp_path: Path) -> None:
+        """Association to class not in repo creates unresolved edge."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "order.rb").write_text("""
+class Order < ApplicationRecord
+  belongs_to :customer
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        order_sym = next((s for s in result.symbols if s.name == "Order"), None)
+        assert order_sym is not None
+
+        assoc_edges = [
+            e for e in result.edges
+            if e.edge_type == "association"
+            and e.src == order_sym.id
+        ]
+        assert len(assoc_edges) == 1, (
+            f"Expected unresolved association edge, got {len(assoc_edges)}"
+        )
+        assert "unresolved" in assoc_edges[0].dst
+        assert assoc_edges[0].confidence == 0.70
+
+    def test_has_many_pluralization_ies(self, tmp_path: Path) -> None:
+        """has_many :categories correctly singularizes to Category (ies → y)."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "product.rb").write_text("""
+class Product < ApplicationRecord
+  has_many :categories
+end
+""")
+        (tmp_path / "category.rb").write_text("""
+class Category < ApplicationRecord
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        product_sym = next((s for s in result.symbols if s.name == "Product"), None)
+        category_sym = next((s for s in result.symbols if s.name == "Category"), None)
+        assert product_sym is not None
+        assert category_sym is not None
+
+        assoc_edges = [
+            e for e in result.edges
+            if e.edge_type == "association"
+            and e.src == product_sym.id
+            and e.dst == category_sym.id
+        ]
+        assert len(assoc_edges) == 1
+
+    def test_singularization_sses(self) -> None:
+        """Plurals ending in sses (addresses) singularize correctly."""
+        from hypergumbo_lang_mainstream.ruby import _association_name_to_class
+
+        assert _association_name_to_class("addresses") == "Address"
+        assert _association_name_to_class("mattresses") == "Mattress"
+
+    def test_singularization_ses(self) -> None:
+        """Plurals ending in ses (statuses, buses) singularize correctly."""
+        from hypergumbo_lang_mainstream.ruby import _association_name_to_class
+
+        assert _association_name_to_class("statuses") == "Status"
+        assert _association_name_to_class("buses") == "Bus"

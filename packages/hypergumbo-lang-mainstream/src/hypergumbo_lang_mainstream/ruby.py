@@ -7,6 +7,7 @@ This analyzer uses tree-sitter to parse Ruby files and extract:
 - Method call relationships
 - Require/require_relative statements
 - Rails callback edges (before_action, after_action, around_action)
+- ActiveRecord association edges (has_many, belongs_to, has_one)
 
 If tree-sitter with Ruby support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -56,6 +57,11 @@ HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "mat
 RAILS_CALLBACK_METHODS = frozenset({
     "before_action", "after_action", "around_action",
     "before_filter", "after_filter", "around_filter",
+})
+
+# ActiveRecord association macros that create model-to-model relationships.
+_ASSOCIATION_METHODS = frozenset({
+    "has_many", "belongs_to", "has_one", "has_and_belongs_to_many",
 })
 
 # Directories that contain test files where get/post/delete are HTTP test helpers,
@@ -683,6 +689,167 @@ def _extract_rails_callbacks(
                 line=node.start_point[0] + 1,
                 evidence_type="rails_callback",
                 confidence=0.9,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+            ))
+
+    return edges
+
+
+def _association_name_to_class(name: str) -> str:
+    """Convert an ActiveRecord association name to a PascalCase class name.
+
+    Singularizes plural association names (has_many :comments → Comment)
+    and converts snake_case to PascalCase (order_item → OrderItem).
+
+    Handles common English pluralization rules:
+    - ies → y (categories → Category)
+    - ses → s (addresses → Address)
+    - s → '' (comments → Comment)
+
+    Singular names (belongs_to :user) are just capitalized.
+    """
+    # Singularize: ies → y, ses → s, s → ''
+    if name.endswith("ies"):
+        name = name[:-3] + "y"
+    elif name.endswith("sses"):
+        name = name[:-2]
+    elif name.endswith("ses"):
+        name = name[:-2]
+    elif name.endswith("s") and not name.endswith("ss"):
+        name = name[:-1]
+
+    # PascalCase: split on _ and capitalize each segment
+    return "".join(part.capitalize() for part in name.split("_"))
+
+
+def _extract_class_name_option(
+    args_node: "tree_sitter.Node",
+    source: bytes,
+) -> str | None:
+    """Extract class_name: value from association keyword arguments.
+
+    Parses ``has_many :messages, class_name: "ChatMessage"`` to return
+    ``"ChatMessage"``. Returns None if no class_name option is present.
+    """
+    for child in args_node.children:
+        if child.type == "pair":
+            key_node = child.child_by_field_name("key")
+            val_node = child.child_by_field_name("value")
+            if key_node is None or val_node is None:
+                continue  # pragma: no cover — defensive against malformed AST
+            key_text = _node_text(key_node, source).lstrip(":")
+            if key_text == "class_name":
+                raw = _node_text(val_node, source)
+                # Strip surrounding quotes: "ChatMessage" or 'ChatMessage'
+                return raw.strip("\"'")
+    return None
+
+
+def _extract_activerecord_associations(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    file_symbols: dict[str, Symbol],
+    global_symbols: dict[str, Symbol],
+    run: AnalysisRun,
+) -> list[Edge]:
+    """Extract association edges from ActiveRecord model declarations.
+
+    Rails models declare associations at class level:
+        has_many :comments
+        belongs_to :user
+        has_one :profile
+        has_many :messages, class_name: "ChatMessage"
+
+    These create ``association`` edges from the declaring model class to the
+    target model class. The target class is inferred from the association name
+    by singularizing and converting to PascalCase, or from an explicit
+    ``class_name:`` option.
+
+    Returns edges with type ``association`` from class symbol to target class.
+    """
+    edges: list[Edge] = []
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "call":
+            continue
+
+        method_node = node.child_by_field_name("method")
+        if method_node is None:  # pragma: no cover
+            continue
+
+        method_name = _node_text(method_node, source)
+        if method_name not in _ASSOCIATION_METHODS:
+            continue
+
+        # Must be at class body level (not inside a method)
+        enclosing_class_name, enclosing_type = _get_enclosing_class_or_module(
+            node, source,
+        )
+        if enclosing_type != "class" or enclosing_class_name is None:
+            continue  # pragma: no cover — defensive, associations at module level
+
+        # Must not be inside a method
+        current = node.parent
+        inside_method = False
+        while current is not None:
+            if current.type == "method":
+                inside_method = True  # pragma: no cover — defensive
+                break  # pragma: no cover — defensive
+            if current.type in ("class", "module"):
+                break
+            current = current.parent
+        if inside_method:
+            continue  # pragma: no cover — defensive
+
+        # Find the class symbol
+        class_sym = file_symbols.get(enclosing_class_name)
+        if class_sym is None:  # pragma: no cover
+            continue
+
+        # Extract the association name (first symbol argument)
+        args_node = _find_child_by_field(node, "arguments")
+        if args_node is None:  # pragma: no cover
+            continue
+
+        assoc_name = None
+        for arg in args_node.children:
+            if arg.type == "simple_symbol":
+                assoc_name = _node_text(arg, source).lstrip(":")
+                break
+
+        if assoc_name is None:
+            continue  # pragma: no cover — associations always have symbol arg
+
+        # Determine target class name: explicit class_name option or convention
+        target_class = _extract_class_name_option(args_node, source)
+        if target_class is None:
+            target_class = _association_name_to_class(assoc_name)
+
+        # Look up target class in global symbols
+        target_sym = global_symbols.get(target_class)
+
+        if target_sym is not None:
+            edges.append(Edge.create(
+                src=class_sym.id,
+                dst=target_sym.id,
+                edge_type="association",
+                line=node.start_point[0] + 1,
+                evidence_type="activerecord_association",
+                confidence=0.90,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+            ))
+        else:
+            # Unresolved: target model not found (may be in a gem)
+            edges.append(Edge.create(
+                src=class_sym.id,
+                dst=f"ruby:?:0-0:{target_class}:unresolved",
+                edge_type="association",
+                line=node.start_point[0] + 1,
+                evidence_type="activerecord_association",
+                confidence=0.70,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
             ))
@@ -1409,6 +1576,19 @@ def analyze_ruby(repo_root: Path) -> RubyAnalysisResult:
             resolver, run,
         )
         all_edges.extend(callback_edges)
+
+    # Pass 2c: Extract ActiveRecord association edges (has_many, belongs_to, etc.)
+    # These create association edges from model class → target model class.
+    for rb_file, analysis in file_analyses.items():
+        try:
+            source = rb_file.read_bytes()
+            tree = parser.parse(source)
+        except (OSError, IOError):  # pragma: no cover
+            continue
+        assoc_edges = _extract_activerecord_associations(
+            tree, source, rb_file, analysis.symbol_by_name, global_symbols, run,
+        )
+        all_edges.extend(assoc_edges)
 
     # Pass 3: Extract usage contexts and route symbols with file-path filtering.
     # Test files (spec/, test/, etc.) use get/post/delete as HTTP test helpers,
