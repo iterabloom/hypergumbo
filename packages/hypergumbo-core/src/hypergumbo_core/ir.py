@@ -412,6 +412,37 @@ class Edge:
         )
 
 
+def deduplicate_edges(
+    edges: list[Edge],
+    *,
+    remove_self_loops: bool = False,
+) -> list[Edge]:
+    """Deduplicate edges by edge_key (src + dst + edge_type, ignoring line).
+
+    Multiple call sites from the same function to the same target produce
+    edges with distinct ``id`` values (line-sensitive) but identical
+    ``edge_key`` values (line-insensitive).  For a call graph, one edge
+    per (src, dst, type) relationship is the correct model.
+
+    When *remove_self_loops* is True, also drops edges where src == dst.
+    Self-loops inflate centrality without adding useful connectivity;
+    common sources include visitor patterns and name collisions.
+
+    Preserves encounter order: the first edge for each key is kept.
+    """
+    seen: set[str | None] = set()
+    result: list[Edge] = []
+    for edge in edges:
+        key = edge.edge_key
+        if key in seen:
+            continue
+        if remove_self_loops and edge.src == edge.dst:
+            continue
+        seen.add(key)
+        result.append(edge)
+    return result
+
+
 def _compute_usage_context_id(
     path: str, start_line: int, context_name: str, position: str
 ) -> str:

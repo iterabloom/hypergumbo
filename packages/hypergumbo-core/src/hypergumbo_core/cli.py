@@ -77,7 +77,7 @@ import hypergumbo_core.linkers.type_hierarchy as _type_hierarchy_linker  # noqa:
 import hypergumbo_core.linkers.vue_component as _vue_component_linker  # noqa: F401
 import hypergumbo_core.linkers.vue_template_method as _vue_template_method_linker  # noqa: F401
 from .entrypoints import detect_entrypoints
-from .ir import Symbol, Edge
+from .ir import Symbol, Edge, deduplicate_edges
 from .metrics import compute_metrics
 from .profile import detect_profile
 from .schema import new_behavior_map
@@ -3998,17 +3998,13 @@ def run_behavior_map(
 
     del linker_ctx, captured_symbols  # Free linker data structures
 
-    # Deduplicate edges by ID (linkers may create duplicate edges) and
+    # Deduplicate edges by edge_key (src + dst + type, ignoring line) and
     # remove self-loops (src == dst) which inflate centrality without adding
     # useful connectivity. Common sources: visitor patterns, name collisions.
-    seen_edge_ids: set[str] = set()
-    unique_edges: list[Edge] = []
-    for edge in all_edges:
-        if edge.id not in seen_edge_ids and edge.src != edge.dst:
-            seen_edge_ids.add(edge.id)
-            unique_edges.append(edge)
-    all_edges = unique_edges
-    del seen_edge_ids, unique_edges
+    # Using edge_key instead of edge.id catches duplicate relationships at
+    # different call sites (e.g., 24 calls from InitialSchema#up to
+    # Provisioner#create_table in postal).
+    all_edges = deduplicate_edges(all_edges, remove_self_loops=True)
     _log_memory("after linkers")
 
     # Apply supply chain classification to all symbols

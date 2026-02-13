@@ -238,6 +238,86 @@ def test_edge_id_unique_per_line() -> None:
     assert edge1.edge_key == edge2.edge_key
 
 
+def test_deduplicate_edges_collapses_same_key() -> None:
+    """deduplicate_edges keeps first edge per edge_key, discards rest.
+
+    Multiple call sites from the same function to the same target produce
+    edges with different IDs (line-sensitive) but identical edge_keys
+    (line-insensitive).  For a call graph, one edge per (src, dst, type)
+    is the correct model.
+    """
+    from hypergumbo_core.ir import deduplicate_edges
+
+    edge1 = Edge.create(
+        src="ruby:a.rb:1-2:Foo#bar:method",
+        dst="ruby:b.rb:3-4:Baz#qux:method",
+        edge_type="calls",
+        line=10,
+    )
+    edge2 = Edge.create(
+        src="ruby:a.rb:1-2:Foo#bar:method",
+        dst="ruby:b.rb:3-4:Baz#qux:method",
+        edge_type="calls",
+        line=20,
+    )
+    edge3 = Edge.create(
+        src="ruby:a.rb:1-2:Foo#bar:method",
+        dst="ruby:c.rb:5-6:Other#func:method",
+        edge_type="calls",
+        line=15,
+    )
+
+    result = deduplicate_edges([edge1, edge2, edge3])
+
+    # Two unique relationships, first occurrence kept for duplicates
+    assert len(result) == 2
+    assert result[0].id == edge1.id  # First occurrence kept
+    assert result[1].id == edge3.id  # Different relationship kept
+
+
+def test_deduplicate_edges_removes_self_loops() -> None:
+    """deduplicate_edges with remove_self_loops=True drops src==dst edges."""
+    from hypergumbo_core.ir import deduplicate_edges
+
+    normal = Edge.create(
+        src="python:a.py:1-2:foo:function",
+        dst="python:b.py:3-4:bar:function",
+        edge_type="calls",
+        line=10,
+    )
+    self_loop = Edge.create(
+        src="python:a.py:1-2:foo:function",
+        dst="python:a.py:1-2:foo:function",
+        edge_type="calls",
+        line=20,
+    )
+
+    result = deduplicate_edges([normal, self_loop], remove_self_loops=True)
+    assert len(result) == 1
+    assert result[0].id == normal.id
+
+
+def test_deduplicate_edges_preserves_different_types() -> None:
+    """Edges with same src/dst but different edge_types are distinct."""
+    from hypergumbo_core.ir import deduplicate_edges
+
+    calls_edge = Edge.create(
+        src="python:a.py:1-2:foo:function",
+        dst="python:b.py:3-4:bar:function",
+        edge_type="calls",
+        line=10,
+    )
+    imports_edge = Edge.create(
+        src="python:a.py:1-2:foo:function",
+        dst="python:b.py:3-4:bar:function",
+        edge_type="imports",
+        line=10,
+    )
+
+    result = deduplicate_edges([calls_edge, imports_edge])
+    assert len(result) == 2
+
+
 def test_edge_has_quality() -> None:
     """Edge should have quality field with score and reason."""
     edge = Edge.create(
