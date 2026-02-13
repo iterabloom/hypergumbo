@@ -1995,6 +1995,106 @@ public class App {
         assert result.run is not None
 
 
+class TestJpaInheritedMethodFallback:
+    """Tests for JPA repository inherited method resolution.
+
+    Spring Data JPA repositories extend framework interfaces like JpaRepository
+    which provide methods (save, findById, findAll, deleteById) not defined in
+    user code. When a controller calls repo.save(entity), the analyzer can
+    infer the type (OwnerRepository) but can't find OwnerRepository.save as a
+    symbol. The analyzer should fall back to linking to the repository
+    interface/class itself.
+    """
+
+    def test_jpa_inherited_method_falls_back_to_type(self, tmp_path: Path) -> None:
+        """repo.save() on JPA repository creates edge to the repository interface."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "OwnerRepository.java").write_text("""
+public interface OwnerRepository {
+    Owner findByLastName(String lastName);
+}
+""")
+        (tmp_path / "OwnerController.java").write_text("""
+public class OwnerController {
+    private OwnerRepository owners;
+
+    public void processCreation(Owner owner) {
+        this.owners.save(owner);
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        controller_method = next(
+            (s for s in result.symbols if "processCreation" in s.name), None
+        )
+        repo_iface = next(
+            (s for s in result.symbols if s.name == "OwnerRepository" and s.kind == "interface"), None
+        )
+
+        assert controller_method is not None, "Should find processCreation"
+        assert repo_iface is not None, "Should find OwnerRepository interface"
+
+        # Should have an edge from processCreation to OwnerRepository
+        # (fallback when specific method not found)
+        call_edges = [
+            e for e in result.edges
+            if e.src == controller_method.id
+            and e.dst == repo_iface.id
+            and e.edge_type == "calls"
+        ]
+        assert len(call_edges) == 1, (
+            f"Expected fallback edge to OwnerRepository, got {len(call_edges)}. "
+            f"All edges from controller: "
+            f"{[(e.edge_type, e.dst) for e in result.edges if e.src == controller_method.id]}"
+        )
+        assert call_edges[0].evidence_type == "ast_call_inherited_method"
+        assert call_edges[0].confidence < 0.85  # Lower than direct resolution
+
+    def test_jpa_declared_method_resolves_normally(self, tmp_path: Path) -> None:
+        """Methods defined in the repository resolve normally, no fallback."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "OwnerRepository.java").write_text("""
+public interface OwnerRepository {
+    Owner findByLastName(String lastName);
+}
+""")
+        (tmp_path / "OwnerController.java").write_text("""
+public class OwnerController {
+    private OwnerRepository owners;
+
+    public void search() {
+        this.owners.findByLastName("Smith");
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        controller_method = next(
+            (s for s in result.symbols if "search" in s.name), None
+        )
+        find_method = next(
+            (s for s in result.symbols if "findByLastName" in s.name), None
+        )
+
+        assert controller_method is not None
+        assert find_method is not None
+
+        # Normal resolution to the actual method
+        call_edges = [
+            e for e in result.edges
+            if e.src == controller_method.id
+            and e.dst == find_method.id
+            and e.edge_type == "calls"
+        ]
+        assert len(call_edges) == 1
+        assert call_edges[0].evidence_type == "ast_call_type_inferred"
+
+
 class TestJavaImportResolution:
     """Tests for import-based method call resolution."""
 

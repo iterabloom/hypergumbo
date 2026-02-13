@@ -1153,6 +1153,25 @@ def _extract_edges(
                             edges.append(edge)
                             edge_added = True
                             resolved_sym = lookup_result.symbol
+                        else:
+                            # Fallback: method not found on type (likely
+                            # inherited from a framework base class, e.g.
+                            # JpaRepository.save). Link to the type's
+                            # class/interface symbol instead.
+                            type_sym = class_symbols.get(type_class_name)
+                            if type_sym is not None:
+                                edge = Edge.create(
+                                    src=current_method.id,
+                                    dst=type_sym.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    confidence=0.70,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    evidence_type="ast_call_inherited_method",
+                                )
+                                edges.append(edge)
+                                edge_added = True
 
                     # Return type inference: if the resolved method has
                     # a return type and the call is in a variable assignment,
