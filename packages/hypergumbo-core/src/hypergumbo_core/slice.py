@@ -21,7 +21,9 @@ Forward vs Reverse Slicing
 --------------------------
 Forward slicing (reverse=False, default) answers "what does this function call?"
 by following edges from caller to callee. Useful for understanding dependencies
-and downstream effects.
+and downstream effects. Structural IS-A edges (extends, implements) are excluded
+from forward BFS to prevent explosion through shared ancestors (e.g., all
+controllers sharing ApplicationController as a base class).
 
 Reverse slicing (reverse=True) answers "what calls this function?" by following
 edges from callee to caller. Useful for impact analysis - understanding what
@@ -69,6 +71,14 @@ from typing import Dict, List, Set
 from .ir import Symbol, Edge
 from .paths import normalize_path, path_ends_with, is_test_file, is_utility_file
 from .ranking import compute_centrality, apply_tier_weights, apply_test_weights
+
+# Structural IS-A edges excluded from forward slice BFS traversal.
+# These cause BFS explosion through shared ancestors: forward-slicing from
+# VoiceController would follow "extends" to ApplicationController, then fan out
+# to all other controllers and their dependencies. Behavioral dependencies are
+# already captured by calls/dispatches_to/contains edges.
+# Reverse slices still follow these (useful for "who inherits from this?").
+_STRUCTURAL_EDGE_TYPES = frozenset({"extends", "implements"})
 
 
 class AmbiguousEntryError(Exception):
@@ -419,6 +429,12 @@ def slice_graph(
         for edge in relevant_edges:
             # Filter by confidence
             if edge.confidence < query.min_confidence:
+                continue
+
+            # Skip structural IS-A edges in forward slices to prevent
+            # BFS explosion through shared ancestors (e.g., all controllers
+            # sharing ApplicationController as a base class).
+            if not query.reverse and edge.edge_type in _STRUCTURAL_EDGE_TYPES:
                 continue
 
             # Get the node at the other end of the edge

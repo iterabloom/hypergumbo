@@ -1744,3 +1744,197 @@ class TestReverseSliceClassExpansion:
         prod_rank = ranked.index(prod_caller.id)
         test_rank = ranked.index(test_caller.id)
         assert prod_rank < test_rank
+
+
+class TestForwardSliceInheritanceEdges:
+    """Forward slices should NOT traverse extends/implements edges.
+
+    These structural IS-A edges cause BFS explosion through shared ancestors.
+    For example, if VoiceController extends ApplicationController, a forward
+    slice from VoiceController should NOT traverse to ApplicationController
+    and then fan out to ALL other controllers that also extend it.
+
+    Behavioral dependencies are captured by calls/dispatches_to/contains edges.
+    """
+
+    def test_forward_slice_skips_extends_edge(self) -> None:
+        """Forward slice should not follow extends edges to parent class."""
+        child = make_symbol(
+            "VoiceController", kind="class",
+            path="src/voice.py", start_line=1, end_line=50, language="python",
+        )
+        parent = make_symbol(
+            "ApplicationController", kind="class",
+            path="src/base.py", start_line=1, end_line=30, language="python",
+        )
+        # A sibling class that also extends the parent
+        sibling = make_symbol(
+            "UserController", kind="class",
+            path="src/user.py", start_line=1, end_line=40, language="python",
+        )
+        # Direct dependency of child (via calls)
+        service = make_symbol(
+            "VoiceService", kind="class",
+            path="src/voice_svc.py", start_line=1, end_line=30, language="python",
+        )
+
+        edges = [
+            make_edge(child, parent, "extends"),          # child -> parent
+            make_edge(sibling, parent, "extends"),        # sibling -> parent
+            make_edge(child, service, "calls"),           # child -> service
+        ]
+
+        query = SliceQuery(entrypoint="VoiceController", max_hops=3)
+        result = slice_graph(
+            [child, parent, sibling, service], edges, query,
+        )
+
+        # Service should be reachable (via calls edge)
+        assert service.id in result.node_ids
+        # Parent should NOT be reachable (extends edge skipped in forward)
+        assert parent.id not in result.node_ids
+        # Sibling should NOT be reachable
+        assert sibling.id not in result.node_ids
+
+    def test_forward_slice_skips_implements_edge(self) -> None:
+        """Forward slice should not follow implements edges to interface."""
+        struct = make_symbol(
+            "MyServer", kind="struct",
+            path="src/server.go", start_line=1, end_line=50, language="go",
+        )
+        iface = make_symbol(
+            "Handler", kind="interface",
+            path="src/handler.go", start_line=1, end_line=10, language="go",
+        )
+        # Another struct implementing same interface
+        other_impl = make_symbol(
+            "OtherServer", kind="struct",
+            path="src/other.go", start_line=1, end_line=30, language="go",
+        )
+        # Direct dependency
+        db = make_symbol(
+            "Database", kind="struct",
+            path="src/db.go", start_line=1, end_line=20, language="go",
+        )
+
+        edges = [
+            make_edge(struct, iface, "implements"),       # struct -> interface
+            make_edge(other_impl, iface, "implements"),   # other -> interface
+            make_edge(struct, db, "calls"),               # struct -> db
+        ]
+
+        query = SliceQuery(entrypoint="MyServer", max_hops=3)
+        result = slice_graph(
+            [struct, iface, other_impl, db], edges, query,
+        )
+
+        # DB should be reachable (via calls)
+        assert db.id in result.node_ids
+        # Interface should NOT be reachable (implements edge skipped)
+        assert iface.id not in result.node_ids
+        # Other impl should NOT be reachable
+        assert other_impl.id not in result.node_ids
+
+    def test_reverse_slice_still_follows_extends(self) -> None:
+        """Reverse slice should still follow extends edges."""
+        parent = make_symbol(
+            "BaseModel", kind="class",
+            path="src/base.py", start_line=1, end_line=30, language="python",
+        )
+        child = make_symbol(
+            "UserModel", kind="class",
+            path="src/user.py", start_line=1, end_line=40, language="python",
+        )
+
+        edges = [
+            make_edge(child, parent, "extends"),
+        ]
+
+        query = SliceQuery(entrypoint="BaseModel", max_hops=3, reverse=True)
+        result = slice_graph([parent, child], edges, query)
+
+        # In reverse slice, extends edge (child -> parent) should be followed
+        # backwards: from parent, find child as a source
+        assert child.id in result.node_ids
+
+    def test_reverse_slice_still_follows_implements(self) -> None:
+        """Reverse slice should still follow implements edges."""
+        iface = make_symbol(
+            "Repository", kind="interface",
+            path="src/repo.go", start_line=1, end_line=10, language="go",
+        )
+        impl = make_symbol(
+            "SqlRepo", kind="struct",
+            path="src/sql_repo.go", start_line=1, end_line=50, language="go",
+        )
+
+        edges = [
+            make_edge(impl, iface, "implements"),
+        ]
+
+        query = SliceQuery(entrypoint="Repository", max_hops=3, reverse=True)
+        result = slice_graph([iface, impl], edges, query)
+
+        # In reverse slice, implements edge should be followed backwards
+        assert impl.id in result.node_ids
+
+    def test_forward_slice_ancestor_explosion_prevented(self) -> None:
+        """Forward slice should not explode through shared ancestor.
+
+        This tests the specific scenario reported in bakeoff assessments:
+        VoiceController extends ApplicationController, which is also extended
+        by 3 other controllers. Without the fix, forward slicing from
+        VoiceController would traverse to ApplicationController and then
+        discover all sibling controllers through the reverse direction of
+        their extends edges — producing a massively inflated slice.
+        """
+        app_ctrl = make_symbol(
+            "ApplicationController", kind="class",
+            path="src/base_ctrl.rb", start_line=1, end_line=50, language="ruby",
+        )
+        voice_ctrl = make_symbol(
+            "VoiceController", kind="class",
+            path="src/voice_ctrl.rb", start_line=1, end_line=30, language="ruby",
+        )
+        user_ctrl = make_symbol(
+            "UserController", kind="class",
+            path="src/user_ctrl.rb", start_line=1, end_line=30, language="ruby",
+        )
+        admin_ctrl = make_symbol(
+            "AdminController", kind="class",
+            path="src/admin_ctrl.rb", start_line=1, end_line=30, language="ruby",
+        )
+        # VoiceController's actual dependency
+        voice_svc = make_symbol(
+            "VoiceService", kind="class",
+            path="src/voice_svc.rb", start_line=1, end_line=40, language="ruby",
+        )
+        # ApplicationController's dependency (should NOT be in slice)
+        auth_svc = make_symbol(
+            "AuthService", kind="class",
+            path="src/auth_svc.rb", start_line=1, end_line=30, language="ruby",
+        )
+
+        edges = [
+            make_edge(voice_ctrl, app_ctrl, "extends"),
+            make_edge(user_ctrl, app_ctrl, "extends"),
+            make_edge(admin_ctrl, app_ctrl, "extends"),
+            make_edge(voice_ctrl, voice_svc, "calls"),
+            make_edge(app_ctrl, auth_svc, "calls"),  # parent's dependency
+        ]
+
+        query = SliceQuery(entrypoint="VoiceController", max_hops=3)
+        result = slice_graph(
+            [app_ctrl, voice_ctrl, user_ctrl, admin_ctrl, voice_svc, auth_svc],
+            edges, query,
+        )
+
+        # VoiceController's direct dependency should be found
+        assert voice_svc.id in result.node_ids
+        # Shared ancestor should NOT be reached
+        assert app_ctrl.id not in result.node_ids
+        # Sibling controllers should NOT be reached
+        assert user_ctrl.id not in result.node_ids
+        assert admin_ctrl.id not in result.node_ids
+        # Parent's dependency should NOT be reached
+        assert auth_svc.id not in result.node_ids
