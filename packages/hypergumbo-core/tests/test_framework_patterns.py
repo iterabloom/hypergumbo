@@ -2152,6 +2152,71 @@ class TestSpringPatterns:
         assert results[0]["concept"] == "route"
         assert results[0]["method"] == "POST"
 
+    def test_spring_get_mapping_array_initializer(self) -> None:
+        """@GetMapping({ "/vets" }) with array initializer should extract path.
+
+        Java's annotation array syntax ``{"/vets"}`` is parsed by the Java
+        analyzer as ``args: [["/vets"]]`` (a list within the args list).
+        The path extractor must unwrap single-element lists.
+        """
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("spring-boot")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:VetController.java:69:showResourcesVetList:method",
+            name="showResourcesVetList",
+            kind="method",
+            language="java",
+            path="VetController.java",
+            span=Span(69, 76, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "GetMapping", "args": [["/vets"]], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["matched_decorator"] == "GetMapping"
+        assert results[0]["method"] == "GET"
+        assert results[0]["path"] == "/vets"
+
+    def test_spring_request_mapping_kwargs_array(self) -> None:
+        """@RequestMapping(value = {"/api"}) with kwargs array extracts path.
+
+        Java annotation ``value = {"/api"}`` is parsed as
+        ``kwargs: {"value": ["/api"]}``. The extractor must unwrap.
+        """
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("spring-boot")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:ApiController.java:10:ApiController:class",
+            name="ApiController",
+            kind="class",
+            language="java",
+            path="ApiController.java",
+            span=Span(10, 100, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "RequestMapping", "args": [], "kwargs": {"value": ["/api"]}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+        assert results[0]["path"] == "/api"
+
     def test_spring_rest_controller_pattern(self) -> None:
         """Spring @RestController annotation matches controller pattern."""
         clear_pattern_cache()

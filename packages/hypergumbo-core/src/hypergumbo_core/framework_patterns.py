@@ -404,21 +404,34 @@ class Pattern:
         return self._extract_single_value(metadata, path)
 
     def _extract_single_value(self, metadata: dict[str, Any], path: str) -> str | None:
-        """Extract a value from metadata using a single path expression."""
+        """Extract a value from metadata using a single path expression.
+
+        Unwraps single-element lists — Java array initializer syntax like
+        ``@GetMapping({ "/vets" })`` produces ``args: [["/vets"]]``, so
+        ``args[0]`` yields ``["/vets"]`` which must be unwrapped to ``"/vets"``.
+        """
         if path.startswith("args["):
             # Extract array index
             try:
                 idx = int(path[5:].rstrip("]"))
                 args = metadata.get("args", [])
                 if idx < len(args):
-                    return str(args[idx])
+                    val = args[idx]
+                    # Unwrap single-element lists (Java array initializers)
+                    if isinstance(val, list) and len(val) == 1:
+                        val = val[0]
+                    return str(val)
             except (ValueError, IndexError):
                 pass
         elif path.startswith("kwargs."):
             key = path[7:]
             kwargs = metadata.get("kwargs", {})
             if key in kwargs:
-                return str(kwargs[key])
+                val = kwargs[key]
+                # Unwrap single-element lists (Java array initializers)
+                if isinstance(val, list) and len(val) == 1:
+                    val = val[0]
+                return str(val)
         else:
             if path in metadata:
                 return str(metadata[path])
