@@ -6243,7 +6243,11 @@ class TestMicronautPatterns:
     """Tests for Micronaut framework pattern matching."""
 
     def test_micronaut_controller_annotation(self) -> None:
-        """@Controller annotation matches with path extraction."""
+        """@Controller annotation matches with path extraction.
+
+        Java analyzer stores annotations in meta["decorators"] with path in
+        args[0], not meta["annotations"] with annotation_value.
+        """
         clear_pattern_cache()
         pattern_def = load_framework_patterns("micronaut")
         assert pattern_def is not None
@@ -6256,11 +6260,10 @@ class TestMicronautPatterns:
             path="UserController.java",
             span=Span(10, 100, 0, 0),
             meta={
-                "annotations": [
+                "decorators": [
                     {
                         "name": "Controller",
-                        "annotation_value": "/api",
-                        "args": [],
+                        "args": ["/api"],
                         "kwargs": {},
                     },
                 ],
@@ -6276,7 +6279,11 @@ class TestMicronautPatterns:
         assert controller["path"] == "/api"
 
     def test_micronaut_route_annotations(self) -> None:
-        """@Get, @Post etc. match route patterns."""
+        """@Get, @Post etc. match route patterns.
+
+        Java analyzer stores annotations in meta["decorators"] with path in
+        args[0], not meta["annotations"] with annotation_value.
+        """
         clear_pattern_cache()
         pattern_def = load_framework_patterns("micronaut")
         assert pattern_def is not None
@@ -6289,11 +6296,10 @@ class TestMicronautPatterns:
             path="UserController.java",
             span=Span(20, 30, 0, 0),
             meta={
-                "annotations": [
+                "decorators": [
                     {
                         "name": "Get",
-                        "annotation_value": "/users",
-                        "args": [],
+                        "args": ["/users"],
                         "kwargs": {},
                     },
                 ],
@@ -6305,12 +6311,16 @@ class TestMicronautPatterns:
         route = next((r for r in results if r["concept"] == "route"), None)
         assert route is not None
         assert route["path"] == "/users"
+        assert route["method"] == "GET"
 
     def test_micronaut_prefix_from_parent_controller(self) -> None:
         """@Get on method inherits path prefix from class-level @Controller.
 
         Micronaut pattern: @Controller("/api") on class + @Get("/users") on
         method should combine paths to /api/users.
+
+        Java analyzer stores annotations in meta["decorators"] with path in
+        args[0], not meta["annotations"] with annotation_value.
         """
         clear_pattern_cache()
 
@@ -6323,11 +6333,10 @@ class TestMicronautPatterns:
             path="UserController.java",
             span=Span(10, 100, 0, 0),
             meta={
-                "annotations": [
+                "decorators": [
                     {
                         "name": "Controller",
-                        "annotation_value": "/api",
-                        "args": [],
+                        "args": ["/api"],
                         "kwargs": {},
                     },
                 ],
@@ -6343,11 +6352,10 @@ class TestMicronautPatterns:
             path="UserController.java",
             span=Span(20, 30, 0, 0),
             meta={
-                "annotations": [
+                "decorators": [
                     {
                         "name": "Get",
-                        "annotation_value": "/users",
-                        "args": [],
+                        "args": ["/users"],
                         "kwargs": {},
                     },
                 ],

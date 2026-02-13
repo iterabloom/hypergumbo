@@ -686,7 +686,7 @@ def cmd_run(args):
         print("  run...", end=" ", flush=True)
         rc, stdout, stderr = run_cmd(
             ["hypergumbo", "run", repo_path, "--out", hg_json],
-            timeout=3600,  # 1 hour for large repos
+            timeout=None,  # No timeout — large repos (100MB+) can take hours
         )
         with open(os.path.join(repo_out, "run.exit"), "w") as f:
             f.write(str(rc))
