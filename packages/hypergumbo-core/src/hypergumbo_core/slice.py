@@ -21,21 +21,23 @@ Forward vs Reverse Slicing
 --------------------------
 Forward slicing (reverse=False, default) answers "what does this function call?"
 by following edges from caller to callee. Useful for understanding dependencies
-and downstream effects. Structural IS-A edges (extends, implements) are excluded
-from forward BFS to prevent explosion through shared ancestors (e.g., all
-controllers sharing ApplicationController as a base class).
+and downstream effects. Structural edges (extends, implements, contains) are
+excluded from forward BFS to prevent explosion through shared ancestors and
+containment hierarchies (e.g., reaching a class via forward BFS would otherwise
+fan out to ALL its member methods via "contains" edges).
 
 Reverse slicing (reverse=True) answers "what calls this function?" by following
 edges from callee to caller. Useful for impact analysis - understanding what
 code might be affected by changes to a function.
 
-Class-Level Reverse Slice Expansion
-------------------------------------
-When reverse-slicing from a class/interface entry point, the slicer automatically
-expands the starting set to include all member methods (discovered via "contains"
-edges). This way ``--reverse --entry OwnerRepository`` finds callers of
-``findById``, ``search``, etc., rather than returning an empty result (since
-call edges connect methods to methods, not classes).
+Class-Level Slice Expansion
+----------------------------
+When slicing from a class/interface entry point (either forward or reverse),
+the slicer automatically expands the starting set to include all member methods
+(discovered via "contains" edges). For reverse slices, this finds callers of
+``findById``, ``search``, etc. For forward slices, this is necessary because
+"contains" edges are excluded from BFS traversal, so without expansion a class
+entry would not reach its own methods.
 
 The result is a "feature" - a subgraph with a stable ID derived from
 the query parameters (sha256 of JSON-serialized query). Same query
@@ -72,13 +74,17 @@ from .ir import Symbol, Edge
 from .paths import normalize_path, path_ends_with, is_test_file, is_utility_file
 from .ranking import compute_centrality, apply_tier_weights, apply_test_weights
 
-# Structural IS-A edges excluded from forward slice BFS traversal.
-# These cause BFS explosion through shared ancestors: forward-slicing from
-# VoiceController would follow "extends" to ApplicationController, then fan out
-# to all other controllers and their dependencies. Behavioral dependencies are
-# already captured by calls/dispatches_to/contains edges.
-# Reverse slices still follow these (useful for "who inherits from this?").
-_STRUCTURAL_EDGE_TYPES = frozenset({"extends", "implements"})
+# Structural edges excluded from forward slice BFS traversal.
+# These cause BFS explosion through shared ancestors or containment:
+# - extends/implements: forward-slicing from VoiceController would follow
+#   "extends" to ApplicationController, then fan out to ALL other controllers.
+# - contains: reaching a class via forward BFS would fan out to ALL member
+#   methods, even siblings unrelated to the slice entry point.
+# Reverse slices still follow these (useful for "who inherits from this?"
+# and "who contains this?").
+# When the entry point IS a container type, forward slice class expansion
+# seeds the BFS with member methods so they are still reachable.
+_STRUCTURAL_EDGE_TYPES = frozenset({"extends", "implements", "contains"})
 
 
 class AmbiguousEntryError(Exception):
@@ -373,29 +379,33 @@ def slice_graph(
         if not query.reverse:
             add_file_imports(entry.path)
 
-    # Reverse slice class expansion: when entry nodes include container types
-    # (class, interface, etc.), auto-expand to include member methods as
-    # additional starting points. This way --reverse --entry OwnerRepository
-    # finds callers of findById, search, etc.
-    if query.reverse:
-        for entry in entry_nodes:
-            if entry.kind not in _CONTAINER_KINDS:
+    # Class expansion: when entry nodes include container types (class,
+    # interface, etc.), auto-expand to include member methods as additional
+    # starting points. For reverse slices, this finds callers of member
+    # methods (e.g., --reverse --entry OwnerRepository finds callers of
+    # findById, search, etc.). For forward slices, this is needed because
+    # 'contains' edges are excluded from forward BFS traversal, so without
+    # expansion the class entry would not reach its own methods.
+    for entry in entry_nodes:
+        if entry.kind not in _CONTAINER_KINDS:
+            continue
+        # Follow 'contains' edges FROM this class to find member methods
+        for edge in edges_from.get(entry.id, []):
+            if edge.edge_type != "contains":
                 continue
-            # Follow 'contains' edges FROM this class to find member methods
-            for edge in edges_from.get(entry.id, []):
-                if edge.edge_type != "contains":
-                    continue
-                member = node_by_id.get(edge.dst)
-                if member is None:  # pragma: no cover - edge dst always in node_by_id
-                    continue
-                if query.exclude_tests and is_test_file(member.path):
-                    continue
-                if query.exclude_utility and is_utility_file(member.path):
-                    continue
-                if member.id not in visited_nodes:
-                    visited_nodes.add(member.id)
-                    files_seen.add(member.path)
-                    queue.append((member.id, 0))
+            member = node_by_id.get(edge.dst)
+            if member is None:  # pragma: no cover - edge dst always in node_by_id
+                continue
+            if query.exclude_tests and is_test_file(member.path):
+                continue
+            if query.exclude_utility and is_utility_file(member.path):
+                continue
+            if member.id not in visited_nodes:
+                visited_nodes.add(member.id)
+                files_seen.add(member.path)
+                queue.append((member.id, 0))
+                if not query.reverse:
+                    add_file_imports(member.path)
 
     # BFS traversal
     while queue:

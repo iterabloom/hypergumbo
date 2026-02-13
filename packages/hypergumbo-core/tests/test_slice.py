@@ -1535,8 +1535,8 @@ class TestReverseSliceClassExpansion:
         assert find_method.id in result.node_ids
         assert caller.id not in result.node_ids
 
-    def test_forward_slice_from_class_not_affected(self) -> None:
-        """Forward slice from class should NOT trigger method expansion."""
+    def test_forward_slice_from_class_expands_to_methods(self) -> None:
+        """Forward slice from class expands to member methods via class expansion."""
         svc_class = make_symbol(
             "UserService", kind="class",
             path="src/svc.py", start_line=1, end_line=30, language="python",
@@ -1557,16 +1557,17 @@ class TestReverseSliceClassExpansion:
         nodes = [svc_class, get_user, helper]
         edges = [contains, call]
 
-        # Forward slice from class - should follow contains edges normally
-        # but NOT expand to member methods for BFS starting points
+        # Forward slice from class — class expansion seeds get_user,
+        # then BFS follows calls to helper
         query = SliceQuery(
             entrypoint="UserService", max_hops=3, reverse=False,
         )
         result = slice_graph(nodes, edges, query)
 
-        # Forward from class follows contains to get_user, then calls to helper
+        # Class entry and its expanded method both in slice
         assert svc_class.id in result.node_ids
         assert get_user.id in result.node_ids
+        # Method's dependency reachable via calls edge
         assert helper.id in result.node_ids
 
     def test_expansion_respects_exclude_tests(self) -> None:
@@ -1938,3 +1939,183 @@ class TestForwardSliceInheritanceEdges:
         assert admin_ctrl.id not in result.node_ids
         # Parent's dependency should NOT be reached
         assert auth_svc.id not in result.node_ids
+
+
+class TestForwardSliceContainsEdges:
+    """Forward slices should NOT traverse 'contains' edges.
+
+    When forward BFS reaches a class node (e.g., through a route edge or
+    entrypoint expansion), following 'contains' edges would fan out to ALL
+    methods of that class — even sibling methods unrelated to the slice.
+
+    For example, forward-slicing from Owner.getPet should NOT pull in
+    Owner.getAddress, Owner.setCity, etc. just because they are all
+    contained in the Owner class.
+
+    When the *entry point* is a container type (class/interface/etc.),
+    forward slice class expansion automatically seeds the BFS with member
+    methods, so they are still reachable as starting points.
+    """
+
+    def test_forward_slice_skips_contains_edge(self) -> None:
+        """Forward slice should not follow 'contains' edges to sibling methods."""
+        owner_class = make_symbol(
+            "Owner", kind="class",
+            path="src/owner.py", start_line=1, end_line=100, language="python",
+        )
+        get_pet = make_symbol(
+            "Owner.getPet", kind="method",
+            path="src/owner.py", start_line=10, end_line=20, language="python",
+        )
+        get_address = make_symbol(
+            "Owner.getAddress", kind="method",
+            path="src/owner.py", start_line=30, end_line=40, language="python",
+        )
+        set_city = make_symbol(
+            "Owner.setCity", kind="method",
+            path="src/owner.py", start_line=50, end_line=60, language="python",
+        )
+        # A real dependency of getPet (via calls)
+        pet_repo = make_symbol(
+            "PetRepository.findById", kind="method",
+            path="src/pet_repo.py", start_line=1, end_line=10, language="python",
+        )
+
+        edges = [
+            make_edge(owner_class, get_pet, "contains"),
+            make_edge(owner_class, get_address, "contains"),
+            make_edge(owner_class, set_city, "contains"),
+            make_edge(get_pet, pet_repo, "calls"),
+        ]
+
+        query = SliceQuery(entrypoint="Owner.getPet", max_hops=3)
+        result = slice_graph(
+            [owner_class, get_pet, get_address, set_city, pet_repo], edges, query,
+        )
+
+        # getPet's direct dependency should be reachable
+        assert pet_repo.id in result.node_ids
+        # Owner class should NOT be pulled in (no edge from getPet -> Owner)
+        assert owner_class.id not in result.node_ids
+        # Sibling methods should NOT be pulled in
+        assert get_address.id not in result.node_ids
+        assert set_city.id not in result.node_ids
+
+    def test_forward_slice_class_reaches_method_then_no_sibling_explosion(self) -> None:
+        """Even if BFS reaches a class via calls, it should not fan out via contains."""
+        # A controller that calls a method on a service class
+        controller = make_symbol(
+            "PetController", kind="class",
+            path="src/ctrl.py", start_line=1, end_line=50, language="python",
+        )
+        # The service class (reached through some edge)
+        service_class = make_symbol(
+            "PetService", kind="class",
+            path="src/svc.py", start_line=1, end_line=80, language="python",
+        )
+        svc_create = make_symbol(
+            "PetService.create", kind="method",
+            path="src/svc.py", start_line=10, end_line=30, language="python",
+        )
+        svc_delete = make_symbol(
+            "PetService.delete", kind="method",
+            path="src/svc.py", start_line=40, end_line=60, language="python",
+        )
+        svc_list = make_symbol(
+            "PetService.list", kind="method",
+            path="src/svc.py", start_line=65, end_line=75, language="python",
+        )
+
+        edges = [
+            # Controller calls create on the service
+            make_edge(controller, svc_create, "calls"),
+            # Service class contains all its methods
+            make_edge(service_class, svc_create, "contains"),
+            make_edge(service_class, svc_delete, "contains"),
+            make_edge(service_class, svc_list, "contains"),
+            # Controller also has a calls edge to service class (e.g., import)
+            make_edge(controller, service_class, "calls"),
+        ]
+
+        query = SliceQuery(entrypoint="PetController", max_hops=3)
+        result = slice_graph(
+            [controller, service_class, svc_create, svc_delete, svc_list],
+            edges, query,
+        )
+
+        # svc_create should be reachable (via direct calls edge)
+        assert svc_create.id in result.node_ids
+        # service_class is reachable (via calls edge from controller)
+        assert service_class.id in result.node_ids
+        # But sibling methods should NOT be reached (contains edge skipped)
+        assert svc_delete.id not in result.node_ids
+        assert svc_list.id not in result.node_ids
+
+    def test_forward_slice_class_entry_expands_to_methods(self) -> None:
+        """When entry point is a class, forward slice should expand to member methods."""
+        owner_class = make_symbol(
+            "Owner", kind="class",
+            path="src/owner.py", start_line=1, end_line=100, language="python",
+        )
+        get_pet = make_symbol(
+            "Owner.getPet", kind="method",
+            path="src/owner.py", start_line=10, end_line=20, language="python",
+        )
+        get_address = make_symbol(
+            "Owner.getAddress", kind="method",
+            path="src/owner.py", start_line=30, end_line=40, language="python",
+        )
+        # Dependency of getPet
+        pet_repo = make_symbol(
+            "PetRepository.findById", kind="method",
+            path="src/pet_repo.py", start_line=1, end_line=10, language="python",
+        )
+
+        edges = [
+            make_edge(owner_class, get_pet, "contains"),
+            make_edge(owner_class, get_address, "contains"),
+            make_edge(get_pet, pet_repo, "calls"),
+        ]
+
+        # Entry is the class itself
+        query = SliceQuery(entrypoint="Owner", max_hops=3)
+        result = slice_graph(
+            [owner_class, get_pet, get_address, pet_repo], edges, query,
+        )
+
+        # Both methods should be in the slice (expanded from class entry)
+        assert get_pet.id in result.node_ids
+        assert get_address.id in result.node_ids
+        # getPet's dependency should be reachable
+        assert pet_repo.id in result.node_ids
+
+    def test_reverse_slice_still_follows_contains(self) -> None:
+        """Reverse slice should still follow contains edges."""
+        owner_class = make_symbol(
+            "Owner", kind="class",
+            path="src/owner.py", start_line=1, end_line=100, language="python",
+        )
+        get_pet = make_symbol(
+            "Owner.getPet", kind="method",
+            path="src/owner.py", start_line=10, end_line=20, language="python",
+        )
+        caller = make_symbol(
+            "show_owner", kind="function",
+            path="src/views.py", start_line=1, end_line=10, language="python",
+        )
+
+        edges = [
+            make_edge(owner_class, get_pet, "contains"),
+            make_edge(caller, get_pet, "calls"),
+        ]
+
+        # Reverse slice from getPet should still see the class via contains
+        query = SliceQuery(entrypoint="Owner.getPet", max_hops=3, reverse=True)
+        result = slice_graph(
+            [owner_class, get_pet, caller], edges, query,
+        )
+
+        # caller should be found (calls edge reversed)
+        assert caller.id in result.node_ids
+        # owner_class should be found (contains edge reversed)
+        assert owner_class.id in result.node_ids
