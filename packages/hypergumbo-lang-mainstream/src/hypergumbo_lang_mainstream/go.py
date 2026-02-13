@@ -236,10 +236,15 @@ def _detect_interface_assertion(
 ) -> None:
     """Detect Go interface-implementation assertions in var specs.
 
-    Parses patterns like ``var _ Interface = &Struct{}`` and
-    ``var _ Interface = (*Struct)(nil)`` which are compile-time
+    Parses patterns like ``var _ Interface = &Struct{}``,
+    ``var _ Interface = (*Struct)(nil)``, and generic forms like
+    ``var _ Cache[string] = &StringCache{}`` which are compile-time
     assertions that a struct satisfies an interface. Populates
     impl_assertions mapping struct names to interface names.
+
+    Interface type forms: ``type_identifier`` (simple), ``qualified_type``
+    (e.g., ``io.Reader``), ``generic_type`` (e.g., ``Cache[string]`` or
+    ``entity.Interface[T]``).
 
     Two RHS forms are recognized:
     1. ``&Struct{}`` — unary_expression(&) → composite_literal → type_identifier
@@ -261,6 +266,18 @@ def _detect_interface_assertion(
     elif type_node.type == "qualified_type":
         # e.g., io.Writer → use "io.Writer"
         iface_name = node_text(type_node, source)
+    elif type_node.type == "generic_type":
+        # e.g., Cache[string] or entity.Interface[T]
+        # The base type is a child type_identifier or qualified_type
+        base_tid = find_child_by_type(type_node, "type_identifier")
+        if base_tid:
+            iface_name = node_text(base_tid, source)
+        else:
+            qual = find_child_by_type(type_node, "qualified_type")
+            if qual:
+                iface_name = node_text(qual, source)
+            else:
+                return  # pragma: no cover — generic_type always has a base type
     else:
         return
 
@@ -602,8 +619,11 @@ def _extract_edges_from_file(
                                 import_path_hint = import_aliases[alias]
 
                     if callee_name:
-                        # Check local symbols first
-                        if callee_name in local_symbols:
+                        # Check local symbols first — but NOT when the call
+                        # is package-qualified (import_path_hint set), because
+                        # e.g. bug.AddComment() should resolve to the imported
+                        # package, not a local method named AddComment.
+                        if callee_name in local_symbols and import_path_hint is None:
                             callee = local_symbols[callee_name]
                             edges.append(Edge.create(
                                 src=current_function.id,

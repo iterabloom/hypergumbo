@@ -717,3 +717,21 @@ class TestListNameResolverDisambiguation:
         assert result.found is True
         assert result.symbol is sym_grpc  # Falls back to first
         assert result.confidence == ListNameResolver.CONFIDENCE_AMBIGUOUS
+
+    def test_short_path_hint_uses_full_path(self) -> None:
+        """Short path hint like 'entities/bug' disambiguates via full path match.
+
+        When the last segment alone is ambiguous (both paths contain
+        'bug'), the full path 'entities/bug' should uniquely match.
+        """
+        sym_pkg = make_symbol("AddComment", "/entities/bug/op_add_comment.go", "go")
+        sym_local = make_symbol("AddComment", "/cache/bug_cache.go", "go")
+        registry = {"AddComment": [sym_pkg, sym_local]}
+        resolver = ListNameResolver(registry)
+
+        result = resolver.lookup("AddComment", path_hint="entities/bug")
+
+        assert result.found is True
+        assert result.symbol is sym_pkg
+        assert result.confidence == ListNameResolver.CONFIDENCE_PATH_HINT
+        assert result.match_type == "path_hint"

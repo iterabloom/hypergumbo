@@ -625,9 +625,9 @@ class ListNameResolver:
             #   3. "genproto" (shortest)
             path_parts = path_hint.rstrip("/").split("/")
 
-            # Start from second-to-last segment (skip domain parts like github.com)
-            # and try progressively shorter suffixes
-            for i in range(len(path_parts) - 1, 0, -1):
+            # Try progressively longer suffixes of the path hint.
+            # Start with just the last segment, extend toward the full path.
+            for i in range(len(path_parts) - 1, -1, -1):
                 suffix = "/".join(path_parts[i:])
                 matching = [c for c in candidates if suffix in c.path]
                 if len(matching) == 1:
@@ -637,17 +637,6 @@ class ListNameResolver:
                         match_type="path_hint",
                         candidates=candidates,
                     )
-
-            # Fallback: try just the last segment
-            dir_hint = path_parts[-1]
-            matching = [c for c in candidates if dir_hint in c.path]
-            if len(matching) == 1:
-                return LookupResult(
-                    symbol=matching[0],
-                    confidence=self.CONFIDENCE_PATH_HINT,
-                    match_type="path_hint",
-                    candidates=candidates,
-                )
 
         # Ambiguous - sort for deterministic ordering, return first with low confidence
         sorted_candidates = sorted(candidates, key=lambda s: s.path)

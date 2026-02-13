@@ -1641,3 +1641,167 @@ var _ Configurer = &settings.Config{}
         assert struct_sym is not None
         assert struct_sym.meta is not None
         assert "Configurer" in struct_sym.meta["base_classes"]
+
+
+class TestGoPackageQualifiedCallResolution:
+    """Tests for correct resolution of package-qualified calls.
+
+    When a call like ``bug.AddComment()`` uses a package alias (``bug``
+    mapping to an import path), the resolver should NOT match a local
+    method with the same short name (e.g., ``BugCache.AddComment``).
+    Instead, it should use the import path hint to resolve to the
+    correct package-level function.
+    """
+
+    def test_package_call_not_hijacked_by_local_method(self, tmp_path: Path) -> None:
+        """bug.AddComment() resolves to the imported package, not a local method.
+
+        Regression: the local-first check matched ``AddComment`` in local
+        symbols (from ``BugCache.AddComment``), ignoring the import alias.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        # File 1: entities/bug package with AddComment function
+        bug_dir = tmp_path / "entities" / "bug"
+        bug_dir.mkdir(parents=True)
+        (bug_dir / "op_add_comment.go").write_text("""package bug
+
+func AddComment(text string) error {
+    return nil
+}
+""")
+
+        # File 2: cache package imports entities/bug and also has a method named AddComment
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir(parents=True)
+        (cache_dir / "bug_cache.go").write_text("""package cache
+
+import bug "entities/bug"
+
+type BugCache struct{}
+
+func (bc *BugCache) AddComment(text string) error {
+    return bug.AddComment(text)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        # Find the call edge from BugCache.AddComment
+        bc_add = next(
+            (s for s in result.symbols if s.name == "BugCache.AddComment"), None
+        )
+        assert bc_add is not None, "Should find BugCache.AddComment method"
+
+        pkg_add = next(
+            (s for s in result.symbols if s.name == "AddComment"
+             and "entities" in s.id), None
+        )
+        assert pkg_add is not None, "Should find bug.AddComment function"
+
+        # The edge from BugCache.AddComment should point to bug.AddComment
+        # (the package function), NOT to itself (the local method)
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and e.src == bc_add.id
+        ]
+        assert len(call_edges) >= 1, (
+            f"Should have at least one call edge from BugCache.AddComment, "
+            f"got edges: {[(e.src, e.dst) for e in result.edges if e.edge_type == 'calls']}"
+        )
+        # The target should be the package-level AddComment, not the local method
+        targets = [e.dst for e in call_edges]
+        assert pkg_add.id in targets, (
+            f"Call should resolve to package-level bug.AddComment ({pkg_add.id}), "
+            f"not local BugCache.AddComment. Got targets: {targets}"
+        )
+        assert bc_add.id not in targets, (
+            "Call should NOT self-resolve to BugCache.AddComment"
+        )
+
+
+class TestGoGenericInterfaceAssertions:
+    """Tests for generic interface assertion detection.
+
+    Go generics (1.18+) allow type parameters in interfaces:
+    ``var _ Interface[T] = &Struct{}``. These should produce the same
+    ``base_classes`` metadata as non-generic assertions.
+    """
+
+    def test_simple_generic_interface(self, tmp_path: Path) -> None:
+        """var _ Cache[string] = &StringCache{} detects implementation."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""package main
+
+type Cache[T any] interface {
+    Get(key string) T
+    Set(key string, value T)
+}
+
+type StringCache struct{}
+
+var _ Cache[string] = &StringCache{}
+""")
+
+        result = analyze_go(tmp_path)
+
+        struct_sym = next((s for s in result.symbols if s.name == "StringCache"), None)
+        assert struct_sym is not None, "Should find StringCache struct"
+        assert struct_sym.meta is not None, "StringCache should have meta"
+        assert "base_classes" in struct_sym.meta, (
+            f"StringCache should have base_classes, got: {struct_sym.meta}"
+        )
+        assert "Cache" in struct_sym.meta["base_classes"]
+
+    def test_multi_param_generic_interface(self, tmp_path: Path) -> None:
+        """var _ SubCache[A, B, C] = &BugSubCache{} detects implementation."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""package main
+
+type SubCache[K comparable, V any, E any] interface {
+    Get(key K) (V, error)
+}
+
+type BugSubCache struct{}
+
+var _ SubCache[string, int, float64] = &BugSubCache{}
+""")
+
+        result = analyze_go(tmp_path)
+
+        struct_sym = next((s for s in result.symbols if s.name == "BugSubCache"), None)
+        assert struct_sym is not None, "Should find BugSubCache struct"
+        assert struct_sym.meta is not None, "BugSubCache should have meta"
+        assert "base_classes" in struct_sym.meta, (
+            f"BugSubCache should have base_classes, got: {struct_sym.meta}"
+        )
+        assert "SubCache" in struct_sym.meta["base_classes"]
+
+    def test_qualified_generic_interface(self, tmp_path: Path) -> None:
+        """var _ entity.Interface[T] = &Struct{} uses qualified name."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""package main
+
+import "entity"
+
+type MyImpl struct{}
+
+var _ entity.Interface[string] = &MyImpl{}
+""")
+
+        result = analyze_go(tmp_path)
+
+        struct_sym = next((s for s in result.symbols if s.name == "MyImpl"), None)
+        assert struct_sym is not None, "Should find MyImpl struct"
+        assert struct_sym.meta is not None, "MyImpl should have meta"
+        assert "base_classes" in struct_sym.meta, (
+            f"MyImpl should have base_classes, got: {struct_sym.meta}"
+        )
+        # Should use the full qualified name from the generic_type
+        bases = struct_sym.meta["base_classes"]
+        assert any("Interface" in b for b in bases), (
+            f"Should have Interface in base_classes, got: {bases}"
+        )
