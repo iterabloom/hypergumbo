@@ -1368,19 +1368,23 @@ def cmd_routes(args: argparse.Namespace) -> int:
     from .paths import is_test_file
 
     # Find route handlers - symbols with route concepts in meta.concepts
-    # Routes are ONLY detected via concepts (FRAMEWORK_PATTERNS enrichment).
-    # If routes aren't showing up, check that YAML patterns are being applied.
+    # OR symbols with kind="route" (Go analyzer creates route symbols directly).
     exclude_tests = getattr(args, "exclude_tests", False)
     routes: list[dict] = []
     for node in nodes:
         is_route = False
 
+        # Check 1: concept enrichment (YAML patterns)
         meta = node.get("meta") or {}
         concepts = meta.get("concepts", [])
         for concept in concepts:
             if isinstance(concept, dict) and concept.get("concept") == "route":
                 is_route = True
                 break
+
+        # Check 2: symbol kind (analyzers create kind="route" symbols directly)
+        if not is_route and node.get("kind") == "route":
+            is_route = True
 
         if is_route:
             # Apply language filter
@@ -1424,8 +1428,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
             meta = route.get("meta", {}) or {}
 
             # Extract route info from concept metadata (YAML pattern enrichment)
-            # No fallback to legacy fields - if enrichment fails, routes should
-            # appear with missing info to make the failure visible.
+            # or from direct meta fields (kind="route" symbols from analyzers)
             route_path = None
             method = None
             concepts = meta.get("concepts", [])
@@ -1434,6 +1437,11 @@ def cmd_routes(args: argparse.Namespace) -> int:
                     route_path = concept.get("path")
                     method = concept.get("method")
                     break
+
+            # Fallback: kind="route" symbols store route info in meta directly
+            if route_path is None and route.get("kind") == "route":
+                route_path = meta.get("route_path")
+                method = method or meta.get("http_method")
 
             method = method.upper() if method else ""
             if route_path:

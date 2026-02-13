@@ -549,6 +549,78 @@ def test_cmd_routes_includes_test_routes_by_default(tmp_path: Path, capsys) -> N
     assert "Found 2 API route" in out
 
 
+def test_cmd_routes_shows_kind_route_symbols(tmp_path: Path, capsys) -> None:
+    """Route symbols (kind='route') are shown even without concept enrichment.
+
+    Go analyzers create route symbols with kind='route' and route metadata
+    in meta (route_path, http_method, handler_name) without concept enrichment.
+    The routes command should detect these based on symbol kind.
+    """
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "go:cmd/webui.go:10-10:ANY /graphql:route",
+                "name": "graphqlHandler",
+                "kind": "route",
+                "language": "go",
+                "path": "cmd/webui.go",
+                "span": {"start_line": 10, "end_line": 10, "start_col": 0, "end_col": 50},
+                "stable_id": "any",
+                "meta": {
+                    "route_path": "/graphql",
+                    "http_method": "ANY",
+                    "handler_name": "graphqlHandler",
+                },
+            },
+            {
+                "id": "go:cmd/webui.go:12-12:POST /upload:route",
+                "name": "uploadHandler",
+                "kind": "route",
+                "language": "go",
+                "path": "cmd/webui.go",
+                "span": {"start_line": 12, "end_line": 12, "start_col": 0, "end_col": 60},
+                "stable_id": "post",
+                "meta": {
+                    "route_path": "/upload/{repo}",
+                    "http_method": "POST",
+                    "handler_name": "uploadHandler",
+                },
+            },
+            {
+                "id": "go:cmd/server.go:5-20:main:function",
+                "name": "main",
+                "kind": "function",
+                "language": "go",
+                "path": "cmd/server.go",
+                "span": {"start_line": 5, "end_line": 20},
+                # Not a route - no concept, not kind=route
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+
+    result = cmd_routes(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    assert "graphqlHandler" in out
+    assert "uploadHandler" in out
+    assert "/graphql" in out
+    assert "/upload/{repo}" in out
+    assert "ANY" in out
+    assert "POST" in out
+    assert "main" not in out  # Non-route should not appear
+    assert "Found 2 API route" in out
+
+
 def test_cmd_routes_excludes_test_routes_with_flag(tmp_path: Path, capsys) -> None:
     """Routes from test files are excluded when --exclude-tests is used.
 

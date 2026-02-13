@@ -92,6 +92,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Self-loop edge filtering**: Filtered from output, adjacency lists, and connectivity scoring. Removes wasted token budget and inflated centrality.
 - **Symbol ranking by individual degree**: `hypergumbo symbols` sorts by per-symbol degree instead of file-total-degree.
 - **Route test filtering**: `hypergumbo routes` supports `-x`/`--exclude-tests` to filter test-file routes (consistent with `sketch`, `slice`, `explain`, `symbols`).
+- **Routes command shows kind=route symbols**: `hypergumbo routes` now displays route symbols created directly by analyzers (kind="route") in addition to concept-enriched routes. Route path and HTTP method are read from `meta.route_path` and `meta.http_method` as fallback. Previously, Gorilla mux routes were invisible in `hypergumbo routes` output despite being present in the behavior map.
 - **Exclude derived/minified files by default**: Tier 4 symbols excluded from output. Use `--max-tier 4` to include them.
 - **Increase default `--max-files` for slice from 20 to 50**: Previous default was too restrictive for large codebases.
 - **Django route method accuracy**: `path()`/`re_path()`/`url()` no longer hardcode `GET`. Django routing doesn't specify methods.
