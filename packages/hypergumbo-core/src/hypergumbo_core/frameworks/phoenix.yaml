@@ -33,6 +33,16 @@ patterns:
       path: "metadata.route_path"
       method: "literal:RESOURCES"
 
+  # Phoenix LiveView routes - live "/path", LiveViewModule
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^live$"
+      position: "^args\\[0\\]$"
+    extract:
+      path: "metadata.route_path"
+      method: "literal:LIVE"
+
   # ==================== DEFINITION-BASED PATTERNS (v1.0.x) ====================
   # Keep symbol_kind pattern for backwards compatibility with route symbols
   # created directly by the Elixir analyzer (v1.0.x convention)

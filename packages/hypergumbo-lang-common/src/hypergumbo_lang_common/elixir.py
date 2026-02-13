@@ -340,6 +340,13 @@ def _extract_phoenix_routes(
     - get "/", PageController, :index
     - post "/users", UserController, :create
     - resources "/posts", PostController
+    - live "/dashboard", DashboardLive
+    - live "/users/:id", UserLive.Show, :show
+
+    The ``live`` macro creates LiveView routes (WebSocket-based server-rendered
+    views). These get ``http_method="LIVE"`` to distinguish them from traditional
+    HTTP routes.  For handler linking, live routes without an explicit action
+    default to ``action="mount"`` (the LiveView entry callback).
 
     Returns:
         Tuple of (UsageContext list, Symbol list) for YAML pattern matching.
@@ -360,7 +367,10 @@ def _extract_phoenix_routes(
         method_name = _node_text(target_node, source).lower()
 
         # Check if it's a Phoenix route macro
-        if method_name not in PHOENIX_HTTP_METHODS and method_name != "resources":
+        if (
+            method_name not in PHOENIX_HTTP_METHODS
+            and method_name not in ("resources", "live")
+        ):
             continue
 
         # Find arguments
@@ -389,8 +399,9 @@ def _extract_phoenix_routes(
                     if not route_path:  # pragma: no cover
                         route_path = _node_text(child, source).strip('"\'')
             elif arg_index == 1:
-                # Second arg is the controller (alias/identifier)
-                if child.type == "alias":
+                # Second arg is the controller/module (alias, identifier, or
+                # dotted alias like UserLive.Show)
+                if child.type in ("alias", "dot"):
                     controller = _node_text(child, source)
                 elif child.type == "identifier":  # pragma: no cover
                     controller = _node_text(child, source)
@@ -406,12 +417,22 @@ def _extract_phoenix_routes(
 
         # Build metadata
         normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
+        if method_name in PHOENIX_HTTP_METHODS:
+            http_method = method_name.upper()
+        elif method_name == "live":
+            http_method = "LIVE"
+        else:
+            http_method = "RESOURCES"
         metadata: dict[str, str | None] = {
             "route_path": normalized_path,
-            "http_method": method_name.upper() if method_name in PHOENIX_HTTP_METHODS else "RESOURCES",
+            "http_method": http_method,
         }
         if controller:
             metadata["controller"] = controller
+        if method_name == "live" and not action:
+            # LiveView routes without explicit action default to "mount"
+            # (the entry callback for all LiveView modules)
+            action = "mount"
         if action:
             metadata["action"] = action
 
@@ -473,8 +494,7 @@ def _extract_phoenix_routes(
                 )
                 route_symbols.append(route_symbol)
         else:
-            # Single HTTP method route
-            http_method = method_name.upper()
+            # Single route (HTTP method or LiveView)
             route_name = f"{http_method} {normalized_path}"
             route_id = _make_symbol_id(
                 path=str(file_path),

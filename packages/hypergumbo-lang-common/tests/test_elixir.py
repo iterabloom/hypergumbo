@@ -1048,6 +1048,132 @@ end
             assert route.meta["controller"] == "PostController"
 
 
+class TestPhoenixLiveViewRoutes:
+    """Tests for Phoenix LiveView `live` route macro detection.
+
+    Phoenix LiveView routes use the `live` macro in routers:
+        live "/path", LiveViewModule
+        live "/path", LiveViewModule, :action
+    These should be detected as routes with LIVE http_method and linked
+    to the LiveView module's mount callback.
+    """
+
+    def test_live_route_usage_context(self, tmp_path: Path) -> None:
+        """The `live` macro creates a UsageContext with LIVE http_method."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "router.ex").write_text('''
+defmodule MyAppWeb.Router do
+  use Phoenix.Router
+
+  live "/dashboard", DashboardLive
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        live_ctx = next(
+            (c for c in result.usage_contexts if c.context_name == "live"), None
+        )
+        assert live_ctx is not None
+        assert live_ctx.kind == "call"
+        assert live_ctx.metadata["route_path"] == "/dashboard"
+        assert live_ctx.metadata["http_method"] == "LIVE"
+        assert live_ctx.metadata["controller"] == "DashboardLive"
+
+    def test_live_route_with_action(self, tmp_path: Path) -> None:
+        """The `live` macro with an action atom captures the live_action."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "router.ex").write_text('''
+defmodule MyAppWeb.Router do
+  use Phoenix.Router
+
+  live "/users/:id", UserLive.Show, :show
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        live_ctx = next(
+            (c for c in result.usage_contexts if c.context_name == "live"), None
+        )
+        assert live_ctx is not None
+        assert live_ctx.metadata["route_path"] == "/users/:id"
+        assert live_ctx.metadata["controller"] == "UserLive.Show"
+        assert live_ctx.metadata["action"] == "show"
+
+    def test_live_route_symbol_created(self, tmp_path: Path) -> None:
+        """The `live` macro creates a route Symbol with kind='route'."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "router.ex").write_text('''
+defmodule MyAppWeb.Router do
+  live "/settings", SettingsLive
+  live "/users", UserLive.Index, :index
+  live "/users/new", UserLive.Index, :new
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 3
+
+        settings_route = next(
+            (s for s in route_symbols if "/settings" in s.name), None
+        )
+        assert settings_route is not None
+        assert settings_route.name == "LIVE /settings"
+        assert settings_route.meta["http_method"] == "LIVE"
+        assert settings_route.meta["route_path"] == "/settings"
+        assert settings_route.meta["controller"] == "SettingsLive"
+        # Default action is "mount" for LiveView routes without explicit action
+        assert settings_route.meta["action"] == "mount"
+
+        users_route = next(
+            (s for s in route_symbols if s.name == "LIVE /users"), None
+        )
+        assert users_route is not None
+        assert users_route.meta["controller"] == "UserLive.Index"
+        assert users_route.meta["action"] == "index"
+
+    def test_live_route_with_dotted_module(self, tmp_path: Path) -> None:
+        """LiveView routes with dotted module names (UserLive.Show) are captured."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "router.ex").write_text('''
+defmodule MyAppWeb.Router do
+  live "/users/:id/edit", UserLive.Edit, :edit
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 1
+        route = route_symbols[0]
+        assert route.meta["controller"] == "UserLive.Edit"
+        assert route.meta["action"] == "edit"
+
+    def test_live_and_http_routes_coexist(self, tmp_path: Path) -> None:
+        """LiveView and HTTP routes coexist in the same router."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "router.ex").write_text('''
+defmodule MyAppWeb.Router do
+  use Phoenix.Router
+
+  get "/api/health", HealthController, :check
+  live "/dashboard", DashboardLive
+  post "/api/users", UserController, :create
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 3
+
+        methods = {s.meta["http_method"] for s in route_symbols}
+        assert methods == {"GET", "LIVE", "POST"}
+
+
 class TestElixirBehaviourCallbacks:
     """Tests for OTP/Phoenix behaviour callback detection.
 

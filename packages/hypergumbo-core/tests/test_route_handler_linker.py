@@ -232,6 +232,44 @@ class TestRouteHandlerLinker:
         assert edge.src == route.id
         assert edge.dst == handler.id
 
+    def test_elixir_phoenix_liveview_route(self) -> None:
+        """Phoenix LiveView routes link to the module's mount callback."""
+        route = Symbol(
+            id="elixir:/lib/app_web/router.ex:20-20:LIVE /dashboard:route",
+            name="LIVE /dashboard",
+            kind="route",
+            language="elixir",
+            path="/lib/app_web/router.ex",
+            span=Span(start_line=20, end_line=20, start_col=0, end_col=50),
+            meta={
+                "http_method": "LIVE",
+                "route_path": "/dashboard",
+                "controller": "DashboardLive",
+                "action": "mount",
+            },
+            origin="elixir-v1",
+            origin_run_id="test-run",
+        )
+
+        handler = Symbol(
+            id="elixir:/lib/app_web/live/dashboard_live.ex:10-20:DashboardLive.mount:function",
+            name="DashboardLive.mount",
+            kind="function",
+            language="elixir",
+            path="/lib/app_web/live/dashboard_live.ex",
+            span=Span(start_line=10, end_line=20, start_col=2, end_col=5),
+            origin="elixir-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == route.id
+        assert edge.dst == handler.id
+        assert edge.edge_type == "routes_to"
+
     def test_malformed_controller_action_no_hash(self) -> None:
         """Malformed controller_action without # doesn't match."""
         route = Symbol(
