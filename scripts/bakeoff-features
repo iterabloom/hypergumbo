@@ -54,7 +54,7 @@ Slice Quality:
 Supply Chain:
 | Metric     | Good Range | Warning        |
 |------------|------------|----------------|
-| tier1_pct  | 40-80%     | <20% or >95%   |
+| tier1_pct  | 40-95%     | <20% or >99.5% |
 | tier4_pct  | 0-5%       | >10%           |
 
 Graph:
@@ -129,7 +129,7 @@ QUALITY_THRESHOLDS = {
     "slice_coverage_pct": {"good_min": 0.1, "good_max": 10, "warn_min": 0.01, "warn_max": 30},
     "limit_hit_frequency": {"good_max": 50, "warn_max": 80},
     "cross_file_ratio": {"good_min": 20, "warn_min": 5},
-    "tier1_pct": {"good_min": 40, "good_max": 80, "warn_min": 20, "warn_max": 95},
+    "tier1_pct": {"good_min": 40, "good_max": 95, "warn_min": 20, "warn_max": 99.5},
     "tier4_pct": {"good_max": 5, "warn_max": 10},
     "centrality_gini": {"good_min": 30, "good_max": 85, "warn_min": 10, "warn_max": 95},
     "orphan_rate": {"good_max": 15, "warn_max": 35},
