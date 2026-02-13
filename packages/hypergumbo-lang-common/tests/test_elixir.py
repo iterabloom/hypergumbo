@@ -1046,3 +1046,264 @@ end
         # All should reference the controller
         for route in route_symbols:
             assert route.meta["controller"] == "PostController"
+
+
+class TestElixirBehaviourCallbacks:
+    """Tests for OTP/Phoenix behaviour callback detection.
+
+    When a module uses `use GenServer`, `use Phoenix.LiveView`, etc., the OTP/Phoenix
+    framework calls specific callback functions. Without callback edge detection, these
+    functions appear as orphans in the behavior map.
+    """
+
+    def test_genserver_callbacks(self, tmp_path: Path) -> None:
+        """use GenServer creates invokes_callback edges for init, handle_call, etc."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "server.ex").write_text('''
+defmodule MyApp.Server do
+  use GenServer
+
+  def start_link(opts) do
+    GenServer.start_link(__MODULE__, opts)
+  end
+
+  def init(opts) do
+    {:ok, opts}
+  end
+
+  def handle_call(:get, _from, state) do
+    {:reply, state, state}
+  end
+
+  def handle_cast(:reset, _state) do
+    {:noreply, %{}}
+  end
+
+  def handle_info(:tick, state) do
+    {:noreply, state}
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        module_sym = next((s for s in result.symbols if s.name == "MyApp.Server" and s.kind == "module"), None)
+        assert module_sym is not None, "Should find MyApp.Server module"
+
+        callback_edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback" and e.src == module_sym.id
+        ]
+
+        # Should have edges for init, handle_call, handle_cast, handle_info
+        dst_names = set()
+        for e in callback_edges:
+            # Extract function name from dst ID
+            for s in result.symbols:
+                if s.id == e.dst:
+                    dst_names.add(s.name.split(".")[-1])
+        assert "init" in dst_names, f"Should link init, got: {dst_names}"
+        assert "handle_call" in dst_names, f"Should link handle_call, got: {dst_names}"
+        assert "handle_cast" in dst_names, f"Should link handle_cast, got: {dst_names}"
+        assert "handle_info" in dst_names, f"Should link handle_info, got: {dst_names}"
+        assert len(callback_edges) >= 4
+
+    def test_phoenix_liveview_callbacks(self, tmp_path: Path) -> None:
+        """use Phoenix.LiveView creates invokes_callback edges for mount, handle_event, render."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "live.ex").write_text('''
+defmodule MyAppWeb.IndexLive do
+  use Phoenix.LiveView
+
+  def mount(_params, _session, socket) do
+    {:ok, socket}
+  end
+
+  def handle_event("click", _params, socket) do
+    {:noreply, socket}
+  end
+
+  def render(assigns) do
+    ~H"""
+    <div>Hello</div>
+    """
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        module_sym = next((s for s in result.symbols if s.name == "MyAppWeb.IndexLive" and s.kind == "module"), None)
+        assert module_sym is not None
+
+        callback_edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback" and e.src == module_sym.id
+        ]
+
+        dst_names = set()
+        for e in callback_edges:
+            for s in result.symbols:
+                if s.id == e.dst:
+                    dst_names.add(s.name.split(".")[-1])
+
+        assert "mount" in dst_names, f"Should link mount, got: {dst_names}"
+        assert "handle_event" in dst_names, f"Should link handle_event, got: {dst_names}"
+        assert "render" in dst_names, f"Should link render, got: {dst_names}"
+
+    def test_supervisor_init_callback(self, tmp_path: Path) -> None:
+        """use Supervisor creates invokes_callback edge for init."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "sup.ex").write_text('''
+defmodule MyApp.Supervisor do
+  use Supervisor
+
+  def start_link(opts) do
+    Supervisor.start_link(__MODULE__, opts)
+  end
+
+  def init(opts) do
+    children = []
+    Supervisor.init(children, strategy: :one_for_one)
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        module_sym = next((s for s in result.symbols if s.name == "MyApp.Supervisor" and s.kind == "module"), None)
+        assert module_sym is not None
+
+        callback_edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback" and e.src == module_sym.id
+        ]
+        dst_names = set()
+        for e in callback_edges:
+            for s in result.symbols:
+                if s.id == e.dst:
+                    dst_names.add(s.name.split(".")[-1])
+
+        assert "init" in dst_names, f"Should link init, got: {dst_names}"
+
+    def test_plug_callbacks(self, tmp_path: Path) -> None:
+        """use Plug.Builder creates invokes_callback edges for init, call."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "plug.ex").write_text('''
+defmodule MyApp.AuthPlug do
+  use Plug.Builder
+
+  def init(opts) do
+    opts
+  end
+
+  def call(conn, _opts) do
+    conn
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        module_sym = next((s for s in result.symbols if s.name == "MyApp.AuthPlug" and s.kind == "module"), None)
+        assert module_sym is not None
+
+        callback_edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback" and e.src == module_sym.id
+        ]
+        dst_names = set()
+        for e in callback_edges:
+            for s in result.symbols:
+                if s.id == e.dst:
+                    dst_names.add(s.name.split(".")[-1])
+
+        assert "init" in dst_names, f"Should link init, got: {dst_names}"
+        assert "call" in dst_names, f"Should link call, got: {dst_names}"
+
+    def test_no_behaviour_no_callback_edges(self, tmp_path: Path) -> None:
+        """Module without use directive creates no callback edges."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "plain.ex").write_text('''
+defmodule MyApp.Plain do
+  def hello do
+    :world
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        assert len(callback_edges) == 0
+
+    def test_callback_not_implemented_no_edge(self, tmp_path: Path) -> None:
+        """Callback functions that aren't implemented create no edges."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "partial.ex").write_text('''
+defmodule MyApp.PartialServer do
+  use GenServer
+
+  def init(state) do
+    {:ok, state}
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        # Only init is implemented, handle_call/cast/info are NOT
+        assert len(callback_edges) == 1
+
+    def test_callback_edge_confidence(self, tmp_path: Path) -> None:
+        """Callback edges have 0.9 confidence."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "server.ex").write_text('''
+defmodule MyApp.Worker do
+  use GenServer
+
+  def init(state) do
+    {:ok, state}
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        assert len(callback_edges) == 1
+        assert callback_edges[0].confidence == 0.9
+
+    def test_phoenix_live_component_callbacks(self, tmp_path: Path) -> None:
+        """use Phoenix.LiveComponent creates invokes_callback for mount, update, render."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "component.ex").write_text('''
+defmodule MyAppWeb.ModalComponent do
+  use Phoenix.LiveComponent
+
+  def mount(socket) do
+    {:ok, socket}
+  end
+
+  def update(assigns, socket) do
+    {:ok, assign(socket, assigns)}
+  end
+
+  def render(assigns) do
+    ~H"""
+    <div>Modal</div>
+    """
+  end
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        module_sym = next((s for s in result.symbols if s.name == "MyAppWeb.ModalComponent" and s.kind == "module"), None)
+        assert module_sym is not None
+
+        callback_edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback" and e.src == module_sym.id
+        ]
+        assert len(callback_edges) == 3  # mount, update, render

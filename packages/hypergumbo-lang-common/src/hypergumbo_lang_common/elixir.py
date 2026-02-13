@@ -6,6 +6,7 @@ This analyzer uses tree-sitter to parse Elixir files and extract:
 - Macro declarations (defmacro/defmacrop)
 - Function call relationships
 - Import relationships (use/import/alias)
+- OTP/Phoenix behaviour callback edges (use GenServer, use Phoenix.LiveView, etc.)
 
 If tree-sitter with Elixir support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -43,6 +44,28 @@ from hypergumbo_core.analyze.registry import register_analyzer
 
 # Phoenix HTTP method macros for route detection
 PHOENIX_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
+
+# OTP/Phoenix behaviour callback mappings.
+# When a module does `use GenServer`, these callbacks may be implemented.
+# The framework invokes them; without edges they appear as orphans.
+BEHAVIOUR_CALLBACKS: dict[str, list[str]] = {
+    "GenServer": [
+        "init", "handle_call", "handle_cast", "handle_info",
+        "terminate", "code_change", "handle_continue",
+    ],
+    "Supervisor": ["init"],
+    "Agent": ["init"],
+    "Task": ["run"],
+    "Phoenix.LiveView": [
+        "mount", "handle_event", "render", "handle_params",
+        "handle_async", "handle_info", "terminate",
+    ],
+    "Phoenix.LiveComponent": ["mount", "update", "render", "handle_event"],
+    "Phoenix.Component": ["render"],
+    "Plug": ["init", "call"],
+    "Plug.Builder": ["init", "call"],
+    "Plug.Router": ["init", "call"],
+}
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -483,6 +506,89 @@ def _extract_phoenix_routes(
     return contexts, route_symbols
 
 
+def _extract_behaviour_callbacks(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    file_symbols: dict[str, Symbol],
+    global_symbols: dict[str, Symbol],
+    run: AnalysisRun,
+) -> list[Edge]:
+    """Extract invokes_callback edges from OTP/Phoenix behaviour declarations.
+
+    When a module uses `use GenServer`, `use Phoenix.LiveView`, etc., the framework
+    invokes specific callback functions (init, handle_call, mount, render, ...).
+    Without these edges, callback functions appear as orphans.
+
+    Detects `use Module` directives, maps to known behaviours via BEHAVIOUR_CALLBACKS,
+    and creates edges from the enclosing module to each implemented callback function.
+    """
+    edges: list[Edge] = []
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "call":
+            continue
+
+        target = _find_child_by_type(node, "identifier")
+        if target is None or _node_text(target, source) != "use":
+            continue
+
+        # Extract the used module name from arguments
+        args = _find_child_by_type(node, "arguments")
+        if args is None:  # pragma: no cover — use always has arguments
+            continue
+
+        used_module = None
+        for child in args.children:
+            if child.type == "alias":
+                used_module = _node_text(child, source)
+                break
+
+        if used_module is None:  # pragma: no cover — use always takes alias arg
+            continue
+
+        # Check if used module matches a known behaviour
+        expected_callbacks = BEHAVIOUR_CALLBACKS.get(used_module)
+        if expected_callbacks is None:
+            continue
+
+        # Find the enclosing module
+        enclosing_modules = _get_enclosing_modules(node, source)
+        if not enclosing_modules:
+            continue  # pragma: no cover — use is always inside a module
+
+        module_name = ".".join(enclosing_modules)
+
+        # Find the module symbol
+        module_sym = file_symbols.get(module_name) or global_symbols.get(module_name)
+        if module_sym is None:
+            continue  # pragma: no cover — module always in file symbols
+
+        # Create edges for each implemented callback
+        for callback_name in expected_callbacks:
+            qualified = f"{module_name}.{callback_name}"
+            callee = (
+                file_symbols.get(qualified)
+                or global_symbols.get(qualified)
+                or file_symbols.get(callback_name)
+            )
+            if callee is None:
+                continue
+
+            edges.append(Edge.create(
+                src=module_sym.id,
+                dst=callee.id,
+                edge_type="invokes_callback",
+                line=node.start_point[0] + 1,
+                evidence_type="behaviour_callback",
+                confidence=0.9,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+            ))
+
+    return edges
+
+
 @dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file."""
@@ -908,6 +1014,20 @@ def analyze_elixir(repo_root: Path) -> ElixirAnalysisResult:
             all_symbols.extend(route_symbols)
         except (OSError, IOError):  # pragma: no cover
             pass
+
+    # Pass 2b: Extract OTP/Phoenix behaviour callback edges.
+    # `use GenServer`, `use Phoenix.LiveView`, etc. create invokes_callback edges
+    # from the module to its callback functions (init, mount, handle_event, ...).
+    for ex_file, analysis in file_analyses.items():
+        try:
+            source = ex_file.read_bytes()
+            tree = parser.parse(source)
+        except (OSError, IOError):  # pragma: no cover
+            continue
+        callback_edges = _extract_behaviour_callbacks(
+            tree, source, ex_file, analysis.symbol_by_name, global_symbols, run,
+        )
+        all_edges.extend(callback_edges)
 
     run.files_analyzed = len(file_analyses)
     run.files_skipped = files_skipped
