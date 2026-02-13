@@ -119,7 +119,8 @@ class SliceQuery:
         language: Filter entry point matches to this language (e.g., "python").
         hub_threshold: Maximum out-degree (forward) or in-degree (reverse) a
                        node may have before it is pruned: included in the slice
-                       but NOT traversed through. None means no pruning.
+                       but NOT traversed through. Default 50 prunes only the
+                       top ~1% of nodes by degree. None disables pruning.
     """
 
     entrypoint: str
@@ -132,7 +133,7 @@ class SliceQuery:
     reverse: bool = False
     max_tier: int | None = None
     language: str | None = None
-    hub_threshold: int | None = None
+    hub_threshold: int | None = 50
 
     def to_dict(self) -> dict:
         """Serialize query to dict for feature output."""

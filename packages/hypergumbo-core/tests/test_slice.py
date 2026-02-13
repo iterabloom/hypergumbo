@@ -489,9 +489,10 @@ class TestHubNodePruning:
 
         all_nodes = [entry, hub] + callees
 
-        # Without hub_threshold: BFS expands through hub to all 30 callees
+        # With hub_threshold=None: BFS expands through hub to all 30 callees
         query_no_prune = SliceQuery(
             entrypoint="entry", max_hops=5, max_files=100,
+            hub_threshold=None,
         )
         result_no_prune = slice_graph(all_nodes, edges_list, query_no_prune)
         assert len(result_no_prune.node_ids) == 32  # entry + hub + 30 callees
@@ -538,7 +539,7 @@ class TestHubNodePruning:
         assert callee_b.id in result.node_ids
 
     def test_hub_threshold_none_disables_pruning(self) -> None:
-        """Default hub_threshold=None means no pruning."""
+        """Explicit hub_threshold=None disables pruning entirely."""
         entry = make_symbol("entry", path="src/entry.py")
         hub = make_symbol("hub", path="src/hub.py", start_line=10, end_line=15)
         callees = [
@@ -554,6 +555,7 @@ class TestHubNodePruning:
 
         query = SliceQuery(
             entrypoint="entry", max_hops=5, max_files=100,
+            hub_threshold=None,
         )
         result = slice_graph(all_nodes, edges_list, query)
 
@@ -587,6 +589,34 @@ class TestHubNodePruning:
         assert entry.id in result.node_ids
         for callee in callees:
             assert callee.id in result.node_ids
+
+    def test_default_hub_threshold_prunes_large_hubs(self) -> None:
+        """Default hub_threshold=50 prunes nodes with >50 outgoing edges."""
+        entry = make_symbol("entry", path="src/entry.py")
+        hub = make_symbol("mega_hub", path="src/utils.py", start_line=10, end_line=15)
+        callees = [
+            make_symbol(f"callee_{i}", path=f"src/mod_{i}.py", start_line=1, end_line=5)
+            for i in range(60)
+        ]
+
+        edges_list: List[Edge] = [make_edge(entry, hub)]
+        for callee in callees:
+            edges_list.append(make_edge(hub, callee))
+
+        all_nodes = [entry, hub] + callees
+
+        # Default hub_threshold=50: hub has 60 outgoing edges (> 50), pruned
+        query = SliceQuery(
+            entrypoint="entry", max_hops=5, max_files=100,
+        )
+        result = slice_graph(all_nodes, edges_list, query)
+
+        # Entry and hub are included, but hub's 60 callees are NOT reached
+        assert entry.id in result.node_ids
+        assert hub.id in result.node_ids
+        for callee in callees:
+            assert callee.id not in result.node_ids
+        assert "hub_pruned" in result.limits_hit
 
     def test_hub_threshold_uses_forward_degree_only(self) -> None:
         """Hub threshold counts outgoing edges, not incoming for forward slice."""
@@ -741,6 +771,7 @@ class TestSliceQuery:
         assert query.min_confidence == 0.0
         assert query.exclude_tests is False
         assert query.method == "bfs"
+        assert query.hub_threshold == 50
 
     def test_query_to_dict(self) -> None:
         """Query serializes to dict for feature output."""
@@ -765,11 +796,17 @@ class TestSliceQuery:
         d = query.to_dict()
         assert d["hub_threshold"] == 25
 
-    def test_query_to_dict_omits_hub_threshold_when_none(self) -> None:
-        """Hub threshold is omitted from dict when None."""
-        query = SliceQuery(entrypoint="bar")
+    def test_query_to_dict_omits_hub_threshold_when_explicit_none(self) -> None:
+        """Hub threshold is omitted from dict when explicitly set to None."""
+        query = SliceQuery(entrypoint="bar", hub_threshold=None)
         d = query.to_dict()
         assert "hub_threshold" not in d
+
+    def test_query_to_dict_includes_default_hub_threshold(self) -> None:
+        """Default hub_threshold (50) is included in dict."""
+        query = SliceQuery(entrypoint="bar")
+        d = query.to_dict()
+        assert d["hub_threshold"] == 50
 
 
 class TestIsTestFile:
