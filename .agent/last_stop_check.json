@@ -1,10 +1,10 @@
 {
-  "last_completed_utc": "2026-02-13T08:35:00Z",
+  "last_completed_utc": "2026-02-13T15:05:00Z",
   "branch": "dev",
-  "last_pr": 1055,
+  "last_pr": 1067,
   "last_pr_state": "merged",
   "pending_hard_todos": 0,
   "pending_soft_todos": 0,
   "unfixed_invariants": 0,
-  "notes": "Merged PR #1055: Go interface-implementation assertion detection (var _ Interface = &Struct{} and (*Struct)(nil)). All four DEEP cohort 035 gaps now addressed: CSS variables, npm_package centrality, Ruby service objects, Go interfaces. Next: run DEEP bakeoff-features on git-bug to validate Go interface improvement, or start new cohort."
+  "notes": "Merged PR #1067: Go same-package method resolution fix and generic interface assertions. All Tier 1 gaps from cohort 039 addressed (PRs #1064-1067). Remaining Tier 2 gaps: Ruby method name collisions (chatwoot), Rails event dispatcher edges, custom background job patterns (postal), Spring lifecycle method ordering, Cobra command tree (git-bug). Next: run new DEEP bakeoff cohort to validate fixes and identify new gaps."
 }

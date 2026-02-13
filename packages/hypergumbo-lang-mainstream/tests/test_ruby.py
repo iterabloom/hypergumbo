@@ -1820,8 +1820,13 @@ end
             f"{[(e.src, e.dst, e.evidence_type) for e in call_edges]}"
         )
 
-    def test_receiver_call_no_match_falls_through(self, tmp_path: Path) -> None:
-        """When receiver class method not found, falls through to bare name lookup."""
+    def test_receiver_call_no_match_no_false_fallthrough(self, tmp_path: Path) -> None:
+        """Variable-receiver call should NOT fall through to bare name lookup.
+
+        ``obj.process("data")`` calls a method on ``obj``, which is a different
+        dispatch from the top-level ``process`` function. The analyzer should
+        not create a false edge.
+        """
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         # Only define process (no class wrapping) - won't have qualified name
@@ -1840,14 +1845,15 @@ end
         result = analyze_ruby(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        # Should still find the edge via bare method name fallback
+        # Should NOT match the top-level process function
+        # because obj is a variable receiver with unknown type
         process_edges = [
             e for e in call_edges
             if "run" in e.src and "process" in e.dst
         ]
-        assert len(process_edges) >= 1, (
-            f"Expected at least 1 edge for process via fallback, got {len(process_edges)}. "
-            f"All call edges: {[(e.src, e.dst, e.evidence_type) for e in call_edges]}"
+        assert len(process_edges) == 0, (
+            f"Variable-receiver call 'obj.process' should NOT match top-level "
+            f"process. Got: {[(e.src, e.dst, e.evidence_type) for e in process_edges]}"
         )
 
     def test_receiver_call_resolver_fallback(self, tmp_path: Path) -> None:
@@ -3086,3 +3092,145 @@ end
             e for e in result.edges if e.edge_type == "delegates_to"
         ]
         assert len(delegate_edges) == 0
+
+
+class TestRubyVariableReceiverNoFalsePositive:
+    """Tests that variable-receiver calls don't produce false positive edges.
+
+    When a call like ``user.account`` has a local variable receiver, the
+    analyzer should NOT fall through to bare-name global lookup, which
+    would match an arbitrary ``account`` method from a different class.
+    """
+
+    def test_variable_receiver_does_not_match_unrelated_method(self, tmp_path: Path) -> None:
+        """user.account should NOT create an edge to Billing#account.
+
+        Previously, when ``user`` is a local variable (not a constant),
+        _try_receiver_call returned False, and the code fell through to
+        bare-name lookup, matching whatever method named ``account``
+        happened to be last in global_symbols.
+        """
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        # File 1: Billing class with an account method
+        (tmp_path / "billing.rb").write_text("""
+class Billing
+  def account
+    @account
+  end
+end
+""")
+
+        # File 2: User class with a show method that calls user.account
+        (tmp_path / "users_controller.rb").write_text("""
+class UsersController
+  def show
+    user = User.find(1)
+    user.account
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        # Find the show method
+        show = next(
+            (s for s in result.symbols if s.name == "UsersController#show"), None
+        )
+        assert show is not None, "Should find UsersController#show"
+
+        billing_account = next(
+            (s for s in result.symbols if s.name == "Billing#account"), None
+        )
+        assert billing_account is not None, "Should find Billing#account"
+
+        # There should NOT be an edge from show -> Billing#account
+        # because `user` is a local variable with unknown type
+        false_edges = [
+            e for e in result.edges
+            if e.src == show.id and e.dst == billing_account.id
+        ]
+        assert len(false_edges) == 0, (
+            f"Variable receiver call 'user.account' should NOT create edge "
+            f"to Billing#account. Got: {false_edges}"
+        )
+
+    def test_same_class_method_still_resolves(self, tmp_path: Path) -> None:
+        """A bare call (no receiver) within a class should still resolve.
+
+        ``process`` called inside ``Worker#run`` should resolve to
+        ``Worker#process`` when both are in the same file.
+        """
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "worker.rb").write_text("""
+class Worker
+  def run
+    process
+  end
+
+  def process
+    # do work
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        run_sym = next(
+            (s for s in result.symbols if s.name == "Worker#run"), None
+        )
+        process_sym = next(
+            (s for s in result.symbols if s.name == "Worker#process"), None
+        )
+        assert run_sym is not None
+        assert process_sym is not None
+
+        # Bare call (no receiver) should still resolve via local symbols
+        call_edges = [
+            e for e in result.edges
+            if e.src == run_sym.id and e.dst == process_sym.id
+        ]
+        assert len(call_edges) >= 1, (
+            "Bare call 'process' inside Worker#run should resolve to Worker#process"
+        )
+
+    def test_constant_receiver_still_resolves(self, tmp_path: Path) -> None:
+        """User.find should still resolve when User is a constant receiver."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "user.rb").write_text("""
+class User
+  def self.find(id)
+    # find user
+  end
+end
+""")
+
+        (tmp_path / "controller.rb").write_text("""
+class Controller
+  def show
+    User.find(1)
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        show = next(
+            (s for s in result.symbols if s.name == "Controller#show"), None
+        )
+        find = next(
+            (s for s in result.symbols if s.name == "User.find"), None
+        )
+        assert show is not None
+        assert find is not None
+
+        # Constant receiver should still resolve
+        call_edges = [
+            e for e in result.edges
+            if e.src == show.id and e.dst == find.id
+        ]
+        assert len(call_edges) >= 1, (
+            "Constant receiver User.find should still resolve"
+        )

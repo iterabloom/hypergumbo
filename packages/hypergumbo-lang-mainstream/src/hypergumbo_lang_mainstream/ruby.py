@@ -1564,8 +1564,13 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                 ))
-                        # Check global symbols via resolver
-                        else:
+                        # Check global symbols via resolver (only for bare calls)
+                        # Skip when receiver is a variable — _try_receiver_call
+                        # only handles constant receivers (e.g., User.find), so a
+                        # variable receiver like ``user.account`` would fall through
+                        # to bare-name lookup and match an arbitrary ``account``
+                        # method from a different class.
+                        elif receiver_node is None:
                             # Use require hints for disambiguation
                             path_hint = require_hints.get(callee_name)
                             lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
