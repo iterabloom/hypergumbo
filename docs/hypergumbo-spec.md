@@ -700,7 +700,7 @@ Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenan
 * `defines_target` — definition relationship
 * ⬜ `renders` — template rendering (not implemented)
 * `script_src` — script tag src attribute
-* `implements` — class implements interface (Java, TypeScript)
+* `implements` — class implements interface (Java, TypeScript, Go via `var _ Interface = &Struct{}`)
 * `extends` — class extends base class
 * `native_bridge` — Java native method → C implementation (JNI)
 * `message_send` — sends IPC/protocol message

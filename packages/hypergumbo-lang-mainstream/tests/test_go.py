@@ -1384,3 +1384,260 @@ func main() {
             f"RegisterFooServer should have outgoing call edge for s.RegisterService(), "
             f"but found {len(register_foo_calls)} edges"
         )
+
+
+class TestGoInterfaceImplementation:
+    """Tests for Go interface-implementation assertion detection.
+
+    Go uses compile-time assertions like ``var _ Interface = &Struct{}``
+    to verify interface satisfaction. These should produce base_classes
+    metadata on the struct symbol, which the inheritance linker then
+    converts to ``implements`` edges.
+    """
+
+    def test_address_of_composite_literal(self, tmp_path: Path) -> None:
+        """var _ Reader = &MyReader{} detects implementation."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""package main
+
+type Reader interface {
+    Read(p []byte) (int, error)
+}
+
+type MyReader struct{}
+
+func (r *MyReader) Read(p []byte) (int, error) {
+    return 0, nil
+}
+
+var _ Reader = &MyReader{}
+""")
+
+        result = analyze_go(tmp_path)
+
+        struct_sym = next((s for s in result.symbols if s.name == "MyReader"), None)
+        assert struct_sym is not None, "Should find MyReader struct"
+        assert struct_sym.meta is not None, "MyReader should have meta"
+        assert "base_classes" in struct_sym.meta, (
+            f"MyReader should have base_classes metadata, got: {struct_sym.meta}"
+        )
+        assert "Reader" in struct_sym.meta["base_classes"]
+
+    def test_nil_cast_pattern(self, tmp_path: Path) -> None:
+        """var _ Writer = (*MyWriter)(nil) detects implementation."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""package main
+
+type Writer interface {
+    Write(p []byte) (int, error)
+}
+
+type MyWriter struct{}
+
+var _ Writer = (*MyWriter)(nil)
+""")
+
+        result = analyze_go(tmp_path)
+
+        struct_sym = next((s for s in result.symbols if s.name == "MyWriter"), None)
+        assert struct_sym is not None
+        assert struct_sym.meta is not None
+        assert "base_classes" in struct_sym.meta
+        assert "Writer" in struct_sym.meta["base_classes"]
+
+    def test_multiple_interfaces_same_struct(self, tmp_path: Path) -> None:
+        """Struct implementing multiple interfaces collects all."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""package main
+
+type Reader interface {
+    Read(p []byte) (int, error)
+}
+
+type Closer interface {
+    Close() error
+}
+
+type MyFile struct{}
+
+var _ Reader = &MyFile{}
+var _ Closer = &MyFile{}
+""")
+
+        result = analyze_go(tmp_path)
+
+        struct_sym = next((s for s in result.symbols if s.name == "MyFile"), None)
+        assert struct_sym is not None
+        assert struct_sym.meta is not None
+        bases = struct_sym.meta["base_classes"]
+        assert "Reader" in bases
+        assert "Closer" in bases
+
+    def test_assertion_across_files(self, tmp_path: Path) -> None:
+        """Interface assertion in different file than struct definition."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "iface.go").write_text("""package main
+
+type Handler interface {
+    Handle() error
+}
+""")
+
+        (tmp_path / "impl.go").write_text("""package main
+
+type MyHandler struct{}
+
+func (h *MyHandler) Handle() error {
+    return nil
+}
+
+var _ Handler = &MyHandler{}
+""")
+
+        result = analyze_go(tmp_path)
+
+        struct_sym = next((s for s in result.symbols if s.name == "MyHandler"), None)
+        assert struct_sym is not None
+        assert struct_sym.meta is not None
+        assert "Handler" in struct_sym.meta["base_classes"]
+
+    def test_qualified_interface_type(self, tmp_path: Path) -> None:
+        """var _ io.Reader = &MyReader{} uses qualified type name."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""package main
+
+import "io"
+
+type MyReader struct{}
+
+func (r *MyReader) Read(p []byte) (int, error) {
+    return 0, nil
+}
+
+var _ io.Reader = &MyReader{}
+""")
+
+        result = analyze_go(tmp_path)
+
+        struct_sym = next((s for s in result.symbols if s.name == "MyReader"), None)
+        assert struct_sym is not None
+        assert struct_sym.meta is not None
+        assert "io.Reader" in struct_sym.meta["base_classes"]
+
+    def test_non_blank_identifier_ignored(self, tmp_path: Path) -> None:
+        """var x Interface = &Struct{} is NOT an assertion (name != _)."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""package main
+
+type Doer interface {
+    Do()
+}
+
+type MyDoer struct{}
+
+var x Doer = &MyDoer{}
+""")
+
+        result = analyze_go(tmp_path)
+
+        struct_sym = next((s for s in result.symbols if s.name == "MyDoer"), None)
+        assert struct_sym is not None
+        # Non-blank identifier — should NOT have base_classes
+        assert struct_sym.meta is None or "base_classes" not in struct_sym.meta
+
+    def test_unrecognized_rhs_pattern_ignored(self, tmp_path: Path) -> None:
+        """var _ Interface = someFunc() — unrecognized RHS is safely ignored."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""package main
+
+type Doer interface {
+    Do()
+}
+
+type MyDoer struct{}
+
+func newDoer() Doer { return &MyDoer{} }
+
+var _ Doer = newDoer()
+""")
+
+        result = analyze_go(tmp_path)
+
+        struct_sym = next((s for s in result.symbols if s.name == "MyDoer"), None)
+        assert struct_sym is not None
+        # RHS is a function call, not &Struct{} or (*Struct)(nil)
+        assert struct_sym.meta is None or "base_classes" not in struct_sym.meta
+
+    def test_var_blank_no_type_annotation(self, tmp_path: Path) -> None:
+        """var _ = expr — blank identifier without type annotation is ignored."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""package main
+
+type MyStruct struct{}
+
+var _ = &MyStruct{}
+""")
+
+        result = analyze_go(tmp_path)
+
+        struct_sym = next((s for s in result.symbols if s.name == "MyStruct"), None)
+        assert struct_sym is not None
+        # No type annotation → not an interface assertion
+        assert struct_sym.meta is None or "base_classes" not in struct_sym.meta
+
+    def test_pointer_type_annotation_ignored(self, tmp_path: Path) -> None:
+        """var _ *Iface = ... — pointer type annotation is not an interface assertion."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""package main
+
+type Doer interface {
+    Do()
+}
+
+type MyDoer struct{}
+
+var _ *Doer = nil
+""")
+
+        result = analyze_go(tmp_path)
+
+        struct_sym = next((s for s in result.symbols if s.name == "MyDoer"), None)
+        assert struct_sym is not None
+        assert struct_sym.meta is None or "base_classes" not in struct_sym.meta
+
+    def test_qualified_composite_literal(self, tmp_path: Path) -> None:
+        """var _ Interface = &pkg.Struct{} extracts the qualified struct name."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        # Simulate a file with a qualified composite literal on the RHS.
+        # We use a sub-package style: the struct name in the type_spec is
+        # "Config" but the assertion uses &settings.Config{}.
+        # Since both are in the same analysis pass, the struct name from
+        # the composite literal's qualified_type ("Config") should match.
+        (tmp_path / "types.go").write_text("""package main
+
+type Configurer interface {
+    Configure()
+}
+
+type Config struct{}
+
+var _ Configurer = &settings.Config{}
+""")
+
+        result = analyze_go(tmp_path)
+
+        # The qualified composite literal extracts "Config" from qualified_type
+        struct_sym = next((s for s in result.symbols if s.name == "Config"), None)
+        assert struct_sym is not None
+        assert struct_sym.meta is not None
+        assert "Configurer" in struct_sym.meta["base_classes"]

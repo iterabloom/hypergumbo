@@ -229,6 +229,95 @@ def _import_path_to_dir_hint(import_path: str) -> str | None:
     return None
 
 
+def _detect_interface_assertion(
+    var_spec: "tree_sitter.Node",
+    source: bytes,
+    impl_assertions: dict[str, list[str]],
+) -> None:
+    """Detect Go interface-implementation assertions in var specs.
+
+    Parses patterns like ``var _ Interface = &Struct{}`` and
+    ``var _ Interface = (*Struct)(nil)`` which are compile-time
+    assertions that a struct satisfies an interface. Populates
+    impl_assertions mapping struct names to interface names.
+
+    Two RHS forms are recognized:
+    1. ``&Struct{}`` — unary_expression(&) → composite_literal → type_identifier
+    2. ``(*Struct)(nil)`` — call_expression → parenthesized_expression →
+       pointer_type → type_identifier
+    """
+    # Check that the variable name is "_" (blank identifier)
+    name_node = find_child_by_field(var_spec, "name")
+    if name_node is None or node_text(name_node, source) != "_":
+        return
+
+    # Extract the interface type from the type annotation
+    type_node = find_child_by_field(var_spec, "type")
+    if type_node is None:
+        return
+
+    if type_node.type == "type_identifier":
+        iface_name = node_text(type_node, source)
+    elif type_node.type == "qualified_type":
+        # e.g., io.Writer → use "io.Writer"
+        iface_name = node_text(type_node, source)
+    else:
+        return
+
+    # Extract the implementing struct from the RHS expression
+    value_node = find_child_by_field(var_spec, "value")
+    if value_node is None:  # pragma: no cover — Go syntax requires RHS for var _ T = ...
+        return
+
+    struct_name = _extract_struct_from_assertion_rhs(value_node, source)
+    if struct_name is None:
+        return
+
+    if struct_name not in impl_assertions:
+        impl_assertions[struct_name] = []
+    impl_assertions[struct_name].append(iface_name)
+
+
+def _extract_struct_from_assertion_rhs(
+    expr_list: "tree_sitter.Node",
+    source: bytes,
+) -> Optional[str]:
+    """Extract struct name from the RHS of a var _ Interface = ... assertion.
+
+    Handles two patterns:
+    1. ``&Struct{}`` — expression_list → unary_expression → composite_literal
+    2. ``(*Struct)(nil)`` — expression_list → call_expression →
+       parenthesized_expression → pointer_type → type_identifier
+    """
+    # The value is wrapped in an expression_list
+    for child in expr_list.children:
+        if child.type == "unary_expression":
+            # Pattern: &Struct{} or &pkg.Struct{}
+            for sub in child.children:
+                if sub.type == "composite_literal":
+                    type_node = find_child_by_type(sub, "type_identifier")
+                    if type_node:
+                        return node_text(type_node, source)
+                    # qualified: &pkg.Struct{}
+                    qual_node = find_child_by_type(sub, "qualified_type")
+                    if qual_node:
+                        tid = find_child_by_type(qual_node, "type_identifier")
+                        if tid:
+                            return node_text(tid, source)
+        elif child.type == "call_expression":
+            # Pattern: (*Struct)(nil)
+            # call_expression → function: parenthesized_expression, arguments: argument_list
+            func_node = find_child_by_field(child, "function")
+            if func_node and func_node.type == "parenthesized_expression":
+                # Inside parenthesized_expression: unary_expression(*) → identifier
+                for sub in func_node.children:
+                    if sub.type == "unary_expression":
+                        tid = find_child_by_type(sub, "identifier")
+                        if tid:
+                            return node_text(tid, source)
+    return None
+
+
 def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -248,6 +337,10 @@ def _extract_symbols_from_file(
 
     # Extract import aliases for this file (used later in edge extraction)
     analysis.import_aliases = _extract_import_aliases(tree.root_node, source)
+
+    # Collect interface-implementation assertions: struct_name -> [interface_names]
+    # Populated during tree walk, applied to struct symbols after extraction.
+    impl_assertions: dict[str, list[str]] = {}
 
     for node in iter_tree(tree.root_node):
         # Function declaration (including methods with receivers)
@@ -367,6 +460,21 @@ def _extract_symbols_from_file(
                         )
                         analysis.symbols.append(symbol)
                         analysis.symbol_by_name[type_name] = symbol
+
+        # Interface implementation assertion: var _ Interface = &Struct{}
+        elif node.type == "var_declaration":
+            for child in node.children:
+                if child.type == "var_spec":
+                    _detect_interface_assertion(child, source, impl_assertions)
+
+    # Apply interface assertions to struct symbols as base_classes metadata
+    for sym in analysis.symbols:
+        if sym.kind == "struct" and sym.name in impl_assertions:
+            if sym.meta is None:
+                sym.meta = {}
+            sym.meta.setdefault("base_classes", []).extend(
+                impl_assertions[sym.name]
+            )
 
     return analysis
 
