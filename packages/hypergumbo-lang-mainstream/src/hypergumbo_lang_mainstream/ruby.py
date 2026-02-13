@@ -52,11 +52,26 @@ PASS_VERSION = "hypergumbo-0.1.0"
 # HTTP methods for Rails/Sinatra route detection (used by UsageContext extraction)
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "match"}
 
-# Rails callback methods that create implicit call edges from controller to method.
-# Includes modern (before_action) and legacy (before_filter) Rails API names.
+# Rails callback methods that create implicit call edges from class to method.
+# Covers both controller callbacks (before_action) and model lifecycle callbacks
+# (before_save, after_create, validate, etc.). Includes legacy Rails 3 API names.
 RAILS_CALLBACK_METHODS = frozenset({
+    # Controller callbacks
     "before_action", "after_action", "around_action",
     "before_filter", "after_filter", "around_filter",
+    # Model lifecycle callbacks (ActiveRecord::Callbacks)
+    "before_save", "after_save", "around_save",
+    "before_create", "after_create", "around_create",
+    "before_update", "after_update", "around_update",
+    "before_destroy", "after_destroy", "around_destroy",
+    "before_validation", "after_validation",
+    "after_initialize", "after_find", "after_touch",
+    # Transaction callbacks (ActiveRecord::Transactions)
+    "after_commit", "after_rollback",
+    "after_create_commit", "after_update_commit", "after_destroy_commit",
+    "after_save_commit",
+    # Custom validation method registration
+    "validate",
 })
 
 # ActiveRecord association macros that create model-to-model relationships.

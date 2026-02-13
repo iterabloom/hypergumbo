@@ -2210,6 +2210,131 @@ end
         )
 
 
+class TestRailsModelCallbackEdges:
+    """Tests for Rails model lifecycle callbacks (before_save, after_create, validate, etc.).
+
+    Rails models use class-level callbacks similar to controller callbacks.
+    These create invokes_callback edges from the model class to the callback method.
+    """
+
+    def test_before_save_creates_callback_edge(self, tmp_path: Path) -> None:
+        """before_save :method creates invokes_callback edge from model to method."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "user.rb").write_text("""
+class User < ApplicationRecord
+  before_save :normalize_email
+
+  def normalize_email
+    self.email = email.downcase
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        class_sym = next((s for s in result.symbols if s.name == "User"), None)
+        callback = next((s for s in result.symbols if s.name == "User#normalize_email"), None)
+        assert class_sym is not None
+        assert callback is not None
+
+        edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback"
+            and e.src == class_sym.id
+            and e.dst == callback.id
+        ]
+        assert len(edges) == 1
+        assert edges[0].evidence_type == "rails_callback"
+
+    def test_after_create_creates_callback_edge(self, tmp_path: Path) -> None:
+        """after_create :method creates invokes_callback edge."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "account.rb").write_text("""
+class Account < ApplicationRecord
+  after_create :send_welcome
+
+  def send_welcome
+    Mailer.welcome(self).deliver_later
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        class_sym = next((s for s in result.symbols if s.name == "Account"), None)
+        callback = next((s for s in result.symbols if s.name == "Account#send_welcome"), None)
+        assert class_sym is not None
+        assert callback is not None
+
+        edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback"
+            and e.src == class_sym.id
+            and e.dst == callback.id
+        ]
+        assert len(edges) == 1
+
+    def test_validate_creates_callback_edge(self, tmp_path: Path) -> None:
+        """validate :method creates invokes_callback edge for custom validation."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "order.rb").write_text("""
+class Order < ApplicationRecord
+  validate :must_have_items
+
+  def must_have_items
+    errors.add(:items, "can't be empty") if items.empty?
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        class_sym = next((s for s in result.symbols if s.name == "Order"), None)
+        callback = next((s for s in result.symbols if s.name == "Order#must_have_items"), None)
+        assert class_sym is not None
+        assert callback is not None
+
+        edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback"
+            and e.src == class_sym.id
+            and e.dst == callback.id
+        ]
+        assert len(edges) == 1
+
+    def test_after_commit_creates_callback_edge(self, tmp_path: Path) -> None:
+        """after_commit :method creates invokes_callback edge."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "payment.rb").write_text("""
+class Payment < ApplicationRecord
+  after_commit :process_payment
+
+  def process_payment
+    PaymentGateway.charge(self)
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        class_sym = next((s for s in result.symbols if s.name == "Payment"), None)
+        callback = next((s for s in result.symbols if s.name == "Payment#process_payment"), None)
+        assert class_sym is not None
+        assert callback is not None
+
+        edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback"
+            and e.src == class_sym.id
+            and e.dst == callback.id
+        ]
+        assert len(edges) == 1
+
+
 class TestRubyJobEnqueueDetection:
     """Tests for ActiveJob perform_later / Sidekiq perform_async detection."""
 
