@@ -8,6 +8,7 @@ This analyzer uses tree-sitter to parse Ruby files and extract:
 - Require/require_relative statements
 - Rails callback edges (before_action, after_action, around_action)
 - ActiveRecord association edges (has_many, belongs_to, has_one)
+- Ruby delegate macro edges (delegate :method, to: :association)
 
 If tree-sitter with Ruby support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -872,6 +873,163 @@ def _extract_activerecord_associations(
     return edges
 
 
+# Special pseudo-associations in delegate that should be skipped.
+_DELEGATE_SKIP_TARGETS = frozenset({"class"})
+
+
+def _extract_to_option(
+    args_node: "tree_sitter.Node",
+    source: bytes,
+) -> str | None:
+    """Extract to: value from delegate keyword arguments.
+
+    Parses ``delegate :foo, to: :account`` to return ``"account"``.
+    Returns None if no ``to:`` option is present.
+    """
+    for child in args_node.children:
+        if child.type == "pair":
+            key_node = child.child_by_field_name("key")
+            val_node = child.child_by_field_name("value")
+            if key_node is None or val_node is None:
+                continue  # pragma: no cover — defensive against malformed AST
+            key_text = _node_text(key_node, source).lstrip(":")
+            if key_text == "to":
+                raw = _node_text(val_node, source)
+                return raw.lstrip(":").strip("\"'")
+    return None  # pragma: no cover — delegate without to: is invalid Ruby
+
+
+def _extract_ruby_delegates(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: Path,
+    file_symbols: dict[str, Symbol],
+    global_symbols: dict[str, Symbol],
+    run: AnalysisRun,
+) -> list[Edge]:
+    """Extract delegate edges from Ruby class declarations.
+
+    Rails/Ruby classes use ``delegate`` to forward method calls::
+
+        delegate :auto_resolve_after, to: :account
+        delegate :name, :email, to: :user
+
+    This creates ``delegates_to`` edges from the declaring class to the
+    target method on the associated class. The target class is inferred
+    by PascalCasing the ``to:`` symbol name (e.g., ``:account`` → ``Account``).
+
+    Special targets like ``:class`` are skipped as they don't create
+    meaningful cross-class edges.
+    """
+    edges: list[Edge] = []
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "call":
+            continue
+
+        method_node = node.child_by_field_name("method")
+        if method_node is None:  # pragma: no cover
+            continue
+
+        method_name = _node_text(method_node, source)
+        if method_name != "delegate":
+            continue
+
+        # Must be at class body level (not inside a method)
+        enclosing_class_name, enclosing_type = _get_enclosing_class_or_module(
+            node, source,
+        )
+        if enclosing_type != "class" or enclosing_class_name is None:
+            continue  # pragma: no cover — delegate outside class is rare
+
+        # Must not be inside a method
+        current = node.parent
+        inside_method = False
+        while current is not None:
+            if current.type == "method":
+                inside_method = True
+                break
+            if current.type in ("class", "module"):
+                break
+            current = current.parent
+        if inside_method:
+            continue
+
+        # Find the class symbol
+        class_sym = file_symbols.get(enclosing_class_name)
+        if class_sym is None:  # pragma: no cover
+            continue
+
+        # Extract arguments
+        args_node = _find_child_by_field(node, "arguments")
+        if args_node is None:  # pragma: no cover
+            continue
+
+        # Extract the to: target
+        to_target = _extract_to_option(args_node, source)
+        if to_target is None:
+            continue  # pragma: no cover — delegate without to: is invalid Ruby
+
+        # Skip special pseudo-associations
+        if to_target in _DELEGATE_SKIP_TARGETS:
+            continue
+
+        # Resolve target class from to: symbol (e.g., :account → Account)
+        target_class_name = _association_name_to_class(to_target)
+        target_class_sym = global_symbols.get(target_class_name)
+
+        # Extract all delegated method names (symbol arguments before to:)
+        delegated_methods: list[str] = []
+        for arg in args_node.children:
+            if arg.type == "simple_symbol":
+                delegated_methods.append(_node_text(arg, source).lstrip(":"))
+
+        # Create edges for each delegated method
+        for method in delegated_methods:
+            if target_class_sym is not None:
+                # Try to find the specific method on the target class
+                qualified = f"{target_class_name}#{method}"
+                target_method = global_symbols.get(qualified)
+                if target_method is not None:
+                    edges.append(Edge.create(
+                        src=class_sym.id,
+                        dst=target_method.id,
+                        edge_type="delegates_to",
+                        line=node.start_point[0] + 1,
+                        evidence_type="ruby_delegate",
+                        confidence=0.85,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                    ))
+                else:
+                    # Target class exists but method not found
+                    edges.append(Edge.create(
+                        src=class_sym.id,
+                        dst=f"ruby:?:0-0:{qualified}:unresolved",
+                        edge_type="delegates_to",
+                        line=node.start_point[0] + 1,
+                        evidence_type="ruby_delegate",
+                        confidence=0.65,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                    ))
+            else:
+                # Target class not found at all
+                qualified = f"{target_class_name}#{method}"
+                edges.append(Edge.create(
+                    src=class_sym.id,
+                    dst=f"ruby:?:0-0:{qualified}:unresolved",
+                    edge_type="delegates_to",
+                    line=node.start_point[0] + 1,
+                    evidence_type="ruby_delegate",
+                    confidence=0.65,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                ))
+
+    return edges
+
+
 @dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file."""
@@ -1604,6 +1762,19 @@ def analyze_ruby(repo_root: Path) -> RubyAnalysisResult:
             tree, source, rb_file, analysis.symbol_by_name, global_symbols, run,
         )
         all_edges.extend(assoc_edges)
+
+    # Pass 2d: Extract Ruby delegate edges (delegate :method, to: :association)
+    # These create delegates_to edges from class → target method.
+    for rb_file, analysis in file_analyses.items():
+        try:
+            source = rb_file.read_bytes()
+            tree = parser.parse(source)
+        except (OSError, IOError):  # pragma: no cover
+            continue
+        delegate_edges = _extract_ruby_delegates(
+            tree, source, rb_file, analysis.symbol_by_name, global_symbols, run,
+        )
+        all_edges.extend(delegate_edges)
 
     # Pass 3: Extract usage contexts and route symbols with file-path filtering.
     # Test files (spec/, test/, etc.) use get/post/delete as HTTP test helpers,

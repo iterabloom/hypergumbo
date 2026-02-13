@@ -2719,3 +2719,188 @@ end
 
         assert _association_name_to_class("statuses") == "Status"
         assert _association_name_to_class("buses") == "Bus"
+
+
+class TestRubyDelegateEdges:
+    """Tests for Ruby 'delegate' macro edge detection.
+
+    Rails models and classes use `delegate :method, to: :association` to forward
+    method calls to associated objects. These create `delegates_to` edges from
+    the delegating class to the target method on the associated class.
+    """
+
+    def test_delegate_creates_edge_to_target_method(self, tmp_path: Path) -> None:
+        """delegate :auto_resolve_after, to: :account creates edge."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "conversation.rb").write_text("""
+class Conversation < ApplicationRecord
+  belongs_to :account
+  delegate :auto_resolve_after, to: :account
+end
+""")
+        (tmp_path / "account.rb").write_text("""
+class Account < ApplicationRecord
+  def auto_resolve_after
+    24.hours
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        conv_sym = next((s for s in result.symbols if s.name == "Conversation"), None)
+        method_sym = next(
+            (s for s in result.symbols if s.name == "Account#auto_resolve_after"), None,
+        )
+        assert conv_sym is not None, "Should find Conversation class"
+        assert method_sym is not None, "Should find Account#auto_resolve_after method"
+
+        delegate_edges = [
+            e for e in result.edges
+            if e.edge_type == "delegates_to"
+            and e.src == conv_sym.id
+            and e.dst == method_sym.id
+        ]
+        assert len(delegate_edges) == 1, (
+            f"Expected 1 delegates_to edge, got {len(delegate_edges)}. "
+            f"All edges: {[(e.edge_type, e.src, e.dst) for e in result.edges]}"
+        )
+        assert delegate_edges[0].evidence_type == "ruby_delegate"
+        assert delegate_edges[0].confidence == 0.85
+
+    def test_delegate_multiple_methods(self, tmp_path: Path) -> None:
+        """delegate :name, :email, to: :user creates edges for both methods."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "profile.rb").write_text("""
+class Profile < ApplicationRecord
+  belongs_to :user
+  delegate :name, :email, to: :user
+end
+""")
+        (tmp_path / "user.rb").write_text("""
+class User < ApplicationRecord
+  def name
+    first_name + " " + last_name
+  end
+
+  def email
+    @email
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        profile_sym = next((s for s in result.symbols if s.name == "Profile"), None)
+        assert profile_sym is not None
+
+        delegate_edges = [
+            e for e in result.edges
+            if e.edge_type == "delegates_to" and e.src == profile_sym.id
+        ]
+        assert len(delegate_edges) == 2, (
+            f"Expected 2 delegates_to edges, got {len(delegate_edges)}"
+        )
+
+    def test_delegate_target_not_found_creates_unresolved(
+        self, tmp_path: Path,
+    ) -> None:
+        """When target class or method not found, creates unresolved edge."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "conversation.rb").write_text("""
+class Conversation < ApplicationRecord
+  delegate :timezone, to: :account
+end
+""")
+        # No account.rb file — target class not in codebase
+
+        result = analyze_ruby(tmp_path)
+
+        conv_sym = next((s for s in result.symbols if s.name == "Conversation"), None)
+        assert conv_sym is not None
+
+        delegate_edges = [
+            e for e in result.edges
+            if e.edge_type == "delegates_to" and e.src == conv_sym.id
+        ]
+        assert len(delegate_edges) == 1
+        assert "unresolved" in delegate_edges[0].dst
+        assert delegate_edges[0].confidence == 0.65
+
+    def test_delegate_to_class(self, tmp_path: Path) -> None:
+        """delegate :name, to: :class is a valid pattern (delegates to class)."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "widget.rb").write_text("""
+class Widget < ApplicationRecord
+  delegate :name, to: :class
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        widget_sym = next((s for s in result.symbols if s.name == "Widget"), None)
+        assert widget_sym is not None
+
+        # :class delegates to the class itself — no meaningful edge needed
+        delegate_edges = [
+            e for e in result.edges
+            if e.edge_type == "delegates_to" and e.src == widget_sym.id
+        ]
+        # :class is a special pseudo-association, skip it
+        assert len(delegate_edges) == 0
+
+    def test_delegate_target_class_exists_but_method_missing(
+        self, tmp_path: Path,
+    ) -> None:
+        """When target class exists but delegated method not found, unresolved edge."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "conversation.rb").write_text("""
+class Conversation < ApplicationRecord
+  delegate :nonexistent_method, to: :account
+end
+""")
+        (tmp_path / "account.rb").write_text("""
+class Account < ApplicationRecord
+  def timezone
+    "UTC"
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        conv_sym = next((s for s in result.symbols if s.name == "Conversation"), None)
+        assert conv_sym is not None
+
+        delegate_edges = [
+            e for e in result.edges
+            if e.edge_type == "delegates_to" and e.src == conv_sym.id
+        ]
+        assert len(delegate_edges) == 1
+        assert "unresolved" in delegate_edges[0].dst
+        assert "Account#nonexistent_method" in delegate_edges[0].dst
+        assert delegate_edges[0].confidence == 0.65
+
+    def test_delegate_inside_method_ignored(self, tmp_path: Path) -> None:
+        """delegate inside a method body should be ignored (only class-level)."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "service.rb").write_text("""
+class Service
+  def setup
+    delegate :foo, to: :bar
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        delegate_edges = [
+            e for e in result.edges if e.edge_type == "delegates_to"
+        ]
+        assert len(delegate_edges) == 0
