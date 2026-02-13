@@ -739,7 +739,6 @@ def cmd_run(args):
                 "--exclude-tests",
                 "--max-hops", "10",
                 "--max-files", "200",
-                "--hub-threshold", "30",
                 "--out", os.path.join(repo_out, f"slice.{i}.json"),
             ])
             with open(os.path.join(repo_out, f"slice.{i}.exit"), "w") as f:
@@ -946,7 +945,13 @@ def cmd_diagnose(args):
         cross_file_edges = 0
         total_slice_edges = 0
         slices_with_limits = 0
+        slices_with_truncation = 0
         total_slices = 0
+        # Truncation limits indicate the slice was cut short before
+        # exploring all reachable nodes.  hop_limit and hub_pruned are
+        # benign stopping conditions (natural depth boundary / intentional
+        # quality pruning), not truncation.
+        _TRUNCATION_LIMITS = {"file_limit", "tier_limit"}
 
         for sf in slice_files:
             try:
@@ -960,6 +965,8 @@ def cmd_diagnose(args):
                     total_slices += 1
                     if limits_hit:
                         slices_with_limits += 1
+                    if _TRUNCATION_LIMITS & set(limits_hit):
+                        slices_with_truncation += 1
 
                     # Count cross-file edges
                     # Edge format: "lang:/path/to/file.py:lines:name:kind"
@@ -981,8 +988,8 @@ def cmd_diagnose(args):
             metrics.slice_coverage_pct = (avg_slice_size / len(nodes) * 100) if nodes else 0
 
         if total_slices > 0:
-            metrics.limit_hit_count = slices_with_limits
-            metrics.limit_hit_frequency = (slices_with_limits / total_slices * 100)
+            metrics.limit_hit_count = slices_with_truncation
+            metrics.limit_hit_frequency = (slices_with_truncation / total_slices * 100)
 
         if total_slice_edges > 0:
             metrics.cross_file_ratio = cross_file_edges / total_slice_edges * 100
