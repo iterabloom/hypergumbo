@@ -601,6 +601,74 @@ def _extract_rails_routes(
     return contexts, route_symbols
 
 
+def _extract_block_callback_edges(
+    block_node: "tree_sitter.Node",
+    source: bytes,
+    enclosing_class_name: str,
+    class_sym: "Symbol",
+    file_symbols: dict[str, "Symbol"],
+    global_symbols: dict[str, "Symbol"],
+    line: int,
+    run: "AnalysisRun",
+    edges: list["Edge"],
+) -> None:
+    """Extract method calls from a block-style callback body.
+
+    Block-style callbacks like ``after_commit do ... end`` or
+    ``before_save { ... }`` contain inline code rather than symbol
+    references. We walk the block body looking for bare method calls
+    (identifiers that resolve to methods in the enclosing class) and
+    create ``invokes_callback`` edges for each.
+
+    Args:
+        block_node: The ``do_block`` or ``block`` AST node.
+        source: Raw source bytes.
+        enclosing_class_name: Name of the class containing the callback.
+        class_sym: The Symbol for the enclosing class.
+        file_symbols: File-local symbol lookup dict.
+        global_symbols: Global symbol lookup dict.
+        line: Source line of the callback declaration (for edge metadata).
+        run: Current AnalysisRun for edge provenance.
+        edges: List to append new edges to (mutated in place).
+    """
+    for child in iter_tree(block_node):
+        # Look for bare method calls: identifiers used as call targets
+        if child.type == "call":
+            callee_node = child.child_by_field_name("method")
+            if callee_node is None:
+                continue  # pragma: no cover
+            call_name = _node_text(callee_node, source)
+        elif child.type == "identifier":
+            # Bare identifiers at statement level may be method calls
+            # (Ruby allows calling methods without parens)
+            # Only consider identifiers that are direct children of
+            # body_statement / block_body (statement-level)
+            if child.parent is None or child.parent.type not in (
+                "body_statement", "block_body",
+            ):
+                continue  # pragma: no cover — identifiers nested in expressions
+            call_name = _node_text(child, source)
+        else:
+            continue
+
+        # Resolve to a method in the enclosing class
+        qualified = f"{enclosing_class_name}#{call_name}"
+        callee = file_symbols.get(qualified) or global_symbols.get(qualified)
+        if callee is None:
+            continue
+
+        edges.append(Edge.create(
+            src=class_sym.id,
+            dst=callee.id,
+            edge_type="invokes_callback",
+            line=line,
+            evidence_type="rails_block_callback",
+            confidence=0.85,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+        ))
+
+
 def _extract_rails_callbacks(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -610,21 +678,27 @@ def _extract_rails_callbacks(
     resolver: NameResolver,
     run: AnalysisRun,
 ) -> list[Edge]:
-    """Extract invokes_callback edges from Rails controller callback declarations.
+    """Extract invokes_callback edges from Rails callback declarations.
 
-    Rails controllers declare callbacks at class level:
+    Rails controllers and models declare callbacks at class level in two forms:
+
+    **Named-method callbacks** (symbol arguments):
         before_action :authenticate!
         after_action :log_request, :track_metrics
-        around_action :measure_time
+        before_save :normalize_email
 
-    These create implicit calls from the controller class to the named method.
-    The callback method may be in the same class (private method) or inherited
-    from a parent class (e.g., ApplicationController#authenticate!).
+    **Block-style callbacks** (do...end or braces):
+        after_commit do
+          provision_database
+        end
+        before_save { normalize_name }
+
+    Named-method callbacks create edges from the class to the named method
+    (confidence 0.90, evidence ``rails_callback``). Block-style callbacks
+    extract method calls from the block body and create edges for each
+    (confidence 0.85, evidence ``rails_block_callback``).
 
     Also handles legacy Rails 3 API: before_filter, after_filter, around_filter.
-
-    Returns edges with type 'invokes_callback' from the class symbol to each
-    callback method symbol.
     """
     edges: list[Edge] = []
 
@@ -666,48 +740,61 @@ def _extract_rails_callbacks(
 
         # Extract callback method names from symbol arguments
         args_node = _find_child_by_field(node, "arguments")
-        if args_node is None:  # pragma: no cover — callbacks always have arguments
-            continue
+        if args_node is not None:
+            for arg in args_node.children:
+                if arg.type != "simple_symbol":
+                    continue
 
-        for arg in args_node.children:
-            if arg.type != "simple_symbol":
-                continue
+                callback_name = _node_text(arg, source).lstrip(":")
 
-            callback_name = _node_text(arg, source).lstrip(":")
+                # Resolve the callback method:
+                # 1. Try qualified name in same class (ClassName#callback)
+                qualified = f"{enclosing_class_name}#{callback_name}"
+                callee = file_symbols.get(qualified) or global_symbols.get(qualified)
 
-            # Resolve the callback method:
-            # 1. Try qualified name in same class (ClassName#callback)
-            qualified = f"{enclosing_class_name}#{callback_name}"
-            callee = file_symbols.get(qualified) or global_symbols.get(qualified)
+                # 2. Try bare name in file-local symbols
+                if callee is None:
+                    callee = file_symbols.get(callback_name)
 
-            # 2. Try bare name in file-local symbols
-            if callee is None:
-                callee = file_symbols.get(callback_name)
+                # 3. Try bare name in global symbols (parent class)
+                if callee is None:
+                    callee = global_symbols.get(callback_name)
 
-            # 3. Try bare name in global symbols (parent class)
-            if callee is None:
-                callee = global_symbols.get(callback_name)
+                # 4. Try resolver for fuzzy matching (steps 1-3 cover all normal cases;
+                #    this handles edge cases where method name differs from symbol key)
+                if callee is None:  # pragma: no cover — steps 1-3 resolve all known patterns
+                    lookup = resolver.lookup(callback_name)
+                    if lookup.found and lookup.symbol is not None:
+                        callee = lookup.symbol
 
-            # 4. Try resolver for fuzzy matching (steps 1-3 cover all normal cases;
-            #    this handles edge cases where method name differs from symbol key)
-            if callee is None:  # pragma: no cover — steps 1-3 resolve all known patterns
-                lookup = resolver.lookup(callback_name)
-                if lookup.found and lookup.symbol is not None:
-                    callee = lookup.symbol
+                if callee is None:
+                    continue
 
-            if callee is None:
-                continue
+                edges.append(Edge.create(
+                    src=class_sym.id,
+                    dst=callee.id,
+                    edge_type="invokes_callback",
+                    line=node.start_point[0] + 1,
+                    evidence_type="rails_callback",
+                    confidence=0.9,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                ))
 
-            edges.append(Edge.create(
-                src=class_sym.id,
-                dst=callee.id,
-                edge_type="invokes_callback",
-                line=node.start_point[0] + 1,
-                evidence_type="rails_callback",
-                confidence=0.9,
-                origin=PASS_ID,
-                origin_run_id=run.execution_id,
-            ))
+        # Block-style callbacks: after_commit do...end or before_save { ... }
+        # Extract method calls from the block body and create edges.
+        block_node = None
+        for child in node.children:
+            if child.type in ("do_block", "block"):
+                block_node = child
+                break
+
+        if block_node is not None:
+            _extract_block_callback_edges(
+                block_node, source, enclosing_class_name,
+                class_sym, file_symbols, global_symbols,
+                node.start_point[0] + 1, run, edges,
+            )
 
     return edges
 

@@ -2335,6 +2335,188 @@ end
         assert len(edges) == 1
 
 
+class TestBlockStyleCallbacks:
+    """Tests for block-style Rails callbacks (do...end and lambda blocks).
+
+    Rails callbacks support both named-method and block-style invocations.
+    Block-style callbacks like:
+        after_commit do
+          provision_database
+        end
+    should create invokes_callback edges from the class to the methods
+    called within the block body.
+    """
+
+    def test_do_block_callback_creates_edge(self, tmp_path: Path) -> None:
+        """after_commit do...end creates invokes_callback edges for calls in block."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "server.rb").write_text("""
+class Server < ApplicationRecord
+  after_commit do
+    provision_database
+  end
+
+  def provision_database
+    true
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        class_sym = next((s for s in result.symbols if s.name == "Server"), None)
+        provision = next((s for s in result.symbols if s.name == "Server#provision_database"), None)
+
+        assert class_sym is not None, "Should find Server class"
+        assert provision is not None, "Should find provision_database method"
+
+        callback_edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback"
+            and e.src == class_sym.id
+            and e.dst == provision.id
+        ]
+        assert len(callback_edges) == 1, (
+            f"Expected 1 invokes_callback edge for block callback, got {len(callback_edges)}. "
+            f"All edges: {[(e.edge_type, e.src, e.dst) for e in result.edges]}"
+        )
+        assert callback_edges[0].evidence_type == "rails_block_callback"
+
+    def test_do_block_callback_multiple_calls(self, tmp_path: Path) -> None:
+        """Block with multiple method calls creates edges for each."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "server.rb").write_text("""
+class Server < ApplicationRecord
+  after_create do
+    provision_database
+    send_welcome_email
+  end
+
+  def provision_database
+    true
+  end
+
+  def send_welcome_email
+    true
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        class_sym = next((s for s in result.symbols if s.name == "Server"), None)
+        provision = next((s for s in result.symbols if s.name == "Server#provision_database"), None)
+        welcome = next((s for s in result.symbols if s.name == "Server#send_welcome_email"), None)
+
+        assert class_sym is not None
+        assert provision is not None
+        assert welcome is not None
+
+        callback_edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback" and e.src == class_sym.id
+        ]
+        dst_ids = {e.dst for e in callback_edges}
+        assert provision.id in dst_ids, "Should have edge to provision_database"
+        assert welcome.id in dst_ids, "Should have edge to send_welcome_email"
+
+    def test_brace_block_callback_creates_edge(self, tmp_path: Path) -> None:
+        """after_save { method_call } creates invokes_callback edge."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "model.rb").write_text("""
+class Account < ApplicationRecord
+  before_save { normalize_name }
+
+  def normalize_name
+    self.name = name.strip
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        class_sym = next((s for s in result.symbols if s.name == "Account"), None)
+        normalize = next((s for s in result.symbols if s.name == "Account#normalize_name"), None)
+
+        assert class_sym is not None
+        assert normalize is not None
+
+        callback_edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback"
+            and e.src == class_sym.id
+            and e.dst == normalize.id
+        ]
+        assert len(callback_edges) == 1
+
+    def test_do_block_callback_with_parens(self, tmp_path: Path) -> None:
+        """Method calls with parentheses in block are also detected."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "model.rb").write_text("""
+class Invoice < ApplicationRecord
+  after_commit do
+    send_notification()
+  end
+
+  def send_notification
+    true
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        class_sym = next((s for s in result.symbols if s.name == "Invoice"), None)
+        notify = next((s for s in result.symbols if s.name == "Invoice#send_notification"), None)
+
+        assert class_sym is not None
+        assert notify is not None
+
+        callback_edges = [
+            e for e in result.edges
+            if e.edge_type == "invokes_callback"
+            and e.src == class_sym.id
+            and e.dst == notify.id
+        ]
+        assert len(callback_edges) == 1
+
+    def test_block_callback_unresolvable_no_edge(self, tmp_path: Path) -> None:
+        """Block calling a method that doesn't exist creates no edge."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "model.rb").write_text("""
+class Thing < ApplicationRecord
+  after_save do
+    nonexistent_method
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        assert len(callback_edges) == 0
+
+    def test_block_callback_empty_block_no_crash(self, tmp_path: Path) -> None:
+        """Empty block callback doesn't crash."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "model.rb").write_text("""
+class Thing < ApplicationRecord
+  after_save do
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+        # No crash, no callback edges
+        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        assert len(callback_edges) == 0
+
+
 class TestRubyJobEnqueueDetection:
     """Tests for ActiveJob perform_later / Sidekiq perform_async detection."""
 
