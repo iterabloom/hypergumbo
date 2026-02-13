@@ -13,6 +13,7 @@ Hypergumbo includes linkers that connect symbols across language boundaries. Lin
 | IPC | Electron IPC, Web Workers, `postMessage` patterns |
 | WebSocket | Socket.io, native WebSocket, Django Channels, FastAPI WebSocket |
 | Phoenix | Phoenix Channels (`broadcast!`, `push`, `handle_in`) and LiveView |
+| OTP | Elixir GenServer.call/cast → handle_call/handle_cast dispatch |
 | Swift/ObjC | `@objc` annotations, `#selector()`, bridging headers |
 | gRPC | Protobuf services, stubs, and servicer implementations |
 | HTTP | `fetch()`, `axios`, `requests` → route handlers (URL pattern matching) |
