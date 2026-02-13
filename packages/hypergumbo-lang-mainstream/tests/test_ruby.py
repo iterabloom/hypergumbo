@@ -2208,3 +2208,177 @@ end
             f"Callback inside method body should not create edge, got: "
             f"{[(e.src, e.dst) for e in callback_edges]}"
         )
+
+
+class TestRubyJobEnqueueDetection:
+    """Tests for ActiveJob perform_later / Sidekiq perform_async detection."""
+
+    def test_perform_later_creates_enqueues_edge(self, tmp_path: Path) -> None:
+        """SomeJob.perform_later(args) should create an enqueues edge to perform."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "send_email_job.rb").write_text("""
+class SendEmailJob < ApplicationJob
+  def perform(user_id)
+    UserMailer.welcome(user_id).deliver_now
+  end
+end
+""")
+        (tmp_path / "controller.rb").write_text("""
+class UsersController
+  def create
+    SendEmailJob.perform_later(user.id)
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        enqueue_edges = [e for e in result.edges if e.edge_type == "enqueues"]
+        assert len(enqueue_edges) >= 1, (
+            f"Expected enqueues edge from create to SendEmailJob#perform, "
+            f"got edge types: {[e.edge_type for e in result.edges]}"
+        )
+
+        # Verify the edge targets the perform method
+        edge = enqueue_edges[0]
+        assert "SendEmailJob" in edge.dst
+        assert "perform" in edge.dst
+
+    def test_perform_async_creates_enqueues_edge(self, tmp_path: Path) -> None:
+        """SomeWorker.perform_async(args) should create an enqueues edge."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "cleanup_worker.rb").write_text("""
+class CleanupWorker
+  include Sidekiq::Worker
+
+  def perform(batch_id)
+    Batch.find(batch_id).cleanup!
+  end
+end
+""")
+        (tmp_path / "scheduler.rb").write_text("""
+class Scheduler
+  def run_cleanup
+    CleanupWorker.perform_async(batch.id)
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        enqueue_edges = [e for e in result.edges if e.edge_type == "enqueues"]
+        assert len(enqueue_edges) >= 1, (
+            "Expected enqueues edge from run_cleanup to CleanupWorker#perform"
+        )
+        edge = enqueue_edges[0]
+        assert "CleanupWorker" in edge.dst
+        assert "perform" in edge.dst
+
+    def test_perform_later_chained_set(self, tmp_path: Path) -> None:
+        """SomeJob.set(wait: 1.hour).perform_later(args) should create enqueues edge."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "notify_job.rb").write_text("""
+class NotifyJob < ApplicationJob
+  def perform(message_id)
+    Message.find(message_id).notify!
+  end
+end
+""")
+        (tmp_path / "service.rb").write_text("""
+class MessageService
+  def send_notification
+    NotifyJob.set(wait: 2.seconds).perform_later(message.id)
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        enqueue_edges = [e for e in result.edges if e.edge_type == "enqueues"]
+        assert len(enqueue_edges) >= 1, (
+            "Expected enqueues edge for chained set().perform_later() pattern"
+        )
+        edge = enqueue_edges[0]
+        assert "NotifyJob" in edge.dst
+        assert "perform" in edge.dst
+
+    def test_perform_later_no_perform_method_still_creates_edge(self, tmp_path: Path) -> None:
+        """If job class has no perform method in repo, edge targets the class."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        # Only caller file, no job definition
+        (tmp_path / "controller.rb").write_text("""
+class OrderController
+  def process
+    ShipmentJob.perform_later(order.id)
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        # Even without the job class, we should still detect the pattern
+        # and create an enqueues edge (may be unresolved)
+        enqueue_edges = [e for e in result.edges if e.edge_type == "enqueues"]
+        assert len(enqueue_edges) >= 1, (
+            "Expected enqueues edge even when job class is not in repo"
+        )
+
+    def test_namespaced_job_enqueue(self, tmp_path: Path) -> None:
+        """Namespace::SomeJob.perform_later should resolve to perform method."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "batch_job.rb").write_text("""
+module Processing
+  class BatchJob < ApplicationJob
+    def perform(items)
+      items.each { |i| process(i) }
+    end
+  end
+end
+""")
+        (tmp_path / "controller.rb").write_text("""
+class ImportController
+  def start
+    Processing::BatchJob.perform_later(items)
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        enqueue_edges = [e for e in result.edges if e.edge_type == "enqueues"]
+        assert len(enqueue_edges) >= 1, (
+            "Expected enqueues edge for namespaced job"
+        )
+        edge = enqueue_edges[0]
+        assert "perform" in edge.dst
+
+    def test_job_class_without_perform_method(self, tmp_path: Path) -> None:
+        """If job class exists but has no perform method, edge targets the class."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "sync_job.rb").write_text("""
+class SyncJob < ApplicationJob
+  # perform method defined in parent (not in repo)
+end
+""")
+        (tmp_path / "service.rb").write_text("""
+class SyncService
+  def trigger
+    SyncJob.perform_later(account.id)
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        enqueue_edges = [e for e in result.edges if e.edge_type == "enqueues"]
+        assert len(enqueue_edges) >= 1, (
+            "Expected enqueues edge targeting job class"
+        )
+        edge = enqueue_edges[0]
+        assert "SyncJob" in edge.dst

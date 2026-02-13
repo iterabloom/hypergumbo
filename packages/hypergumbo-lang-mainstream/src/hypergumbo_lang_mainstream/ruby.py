@@ -859,6 +859,12 @@ def _extract_symbols_from_file(
     return analysis
 
 
+# ActiveJob/Sidekiq class-method names that enqueue a job.
+# When we see SomeJob.perform_later(args), we redirect to SomeJob#perform.
+_JOB_ENQUEUE_METHODS = frozenset({"perform_later", "perform_async", "perform_in",
+                                   "perform_at"})
+
+
 def _try_receiver_call(
     receiver_node: "tree_sitter.Node",
     method_name: str,
@@ -876,10 +882,15 @@ def _try_receiver_call(
     (ActiveRecord::Base.connection). Extracts the receiver class name and
     looks up ClassName#method or ClassName.method in global symbols.
 
+    Special case: ActiveJob/Sidekiq enqueue methods (perform_later, perform_async,
+    perform_in, perform_at) are redirected to the job class's ``perform`` instance
+    method and emit ``enqueues`` edges instead of ``calls``.
+
     Returns True if an edge was created, False to fall through to bare name lookup.
     """
     # Extract receiver class name from constant, scope_resolution, or chained call
     receiver_class: str | None = None
+    short_name: str | None = None
     if receiver_node.type == "constant":
         receiver_class = _node_text(receiver_node, source)
     elif receiver_node.type == "scope_resolution":
@@ -892,6 +903,7 @@ def _try_receiver_call(
         receiver_class = full_name
     elif receiver_node.type == "call":
         # Handle chained calls: ClassName.new(args).method()
+        # or ClassName.set(wait: 1.hour).perform_later(args)
         # Extract class from the inner call's receiver
         inner_receiver = receiver_node.child_by_field_name("receiver")
         if inner_receiver is not None:
@@ -902,6 +914,15 @@ def _try_receiver_call(
 
     if receiver_class is None:
         return False
+
+    # Detect ActiveJob/Sidekiq enqueue patterns:
+    # SomeJob.perform_later(args) -> enqueues SomeJob#perform
+    # SomeJob.set(wait: 1.hour).perform_later(args) -> enqueues SomeJob#perform
+    if method_name in _JOB_ENQUEUE_METHODS:
+        return _try_job_enqueue(
+            receiver_class, short_name, current_method,
+            global_symbols, resolver, line, edges, run,
+        )
 
     # Build list of candidate class names to try
     # For scope_resolution: try full name first, then short name as fallback
@@ -946,6 +967,79 @@ def _try_receiver_call(
             return True
 
     return False
+
+
+def _try_job_enqueue(
+    receiver_class: str,
+    short_name: str | None,
+    current_method: Symbol,
+    global_symbols: dict[str, Symbol],
+    resolver: NameResolver,
+    line: int,
+    edges: list[Edge],
+    run: AnalysisRun,
+) -> bool:
+    """Create an enqueues edge from current method to a job's perform method.
+
+    When SomeJob.perform_later(args) is called, the actual work is done by
+    SomeJob#perform at runtime. This function resolves the job class and creates
+    an ``enqueues`` edge to its ``perform`` instance method.
+
+    Falls back to an unresolved edge targeting the job class symbol if
+    the ``perform`` method is not found (e.g., job defined in a gem).
+    """
+    candidates = [receiver_class]
+    if short_name and short_name != receiver_class:
+        candidates.append(short_name)
+
+    # Try to find JobClass#perform or JobClass.perform
+    for candidate in candidates:
+        for sep in ("#", "."):
+            qualified = f"{candidate}{sep}perform"
+            if qualified in global_symbols:
+                callee = global_symbols[qualified]
+                if callee.id != current_method.id:
+                    edges.append(Edge.create(
+                        src=current_method.id,
+                        dst=callee.id,
+                        edge_type="enqueues",
+                        line=line,
+                        evidence_type="job_enqueue",
+                        confidence=0.90,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                    ))
+                    return True
+
+    # Fallback: try to find the job class symbol itself
+    for candidate in candidates:
+        if candidate in global_symbols:
+            callee = global_symbols[candidate]
+            if callee.id != current_method.id:
+                edges.append(Edge.create(
+                    src=current_method.id,
+                    dst=callee.id,
+                    edge_type="enqueues",
+                    line=line,
+                    evidence_type="job_enqueue",
+                    confidence=0.85,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                ))
+                return True
+
+    # Last resort: unresolved edge to the job class name
+    edges.append(Edge.create(
+        src=current_method.id,
+        dst=f"ruby:?:0-0:{receiver_class}:unresolved",
+        edge_type="enqueues",
+        line=line,
+        evidence_type="job_enqueue",
+        confidence=0.70,
+        origin=PASS_ID,
+        origin_run_id=run.execution_id,
+    ))
+    return True
 
 
 def _extract_edges_from_file(
