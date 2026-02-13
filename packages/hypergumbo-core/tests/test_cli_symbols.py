@@ -972,6 +972,22 @@ def test_cmd_symbols_excludes_excluded_kinds(tmp_path: Path, capsys) -> None:
                 "path": "src/styles.css",
                 "span": {"start_line": 40, "end_line": 45, "start_col": 0, "end_col": 10},
             },
+            {
+                "id": "javascript:npm:vue:npm_package",
+                "name": "vue",
+                "kind": "npm_package",
+                "language": "javascript",
+                "path": "",
+                "span": {"start_line": 0, "end_line": 0, "start_col": 0, "end_col": 0},
+            },
+            {
+                "id": "javascript:src/utils.js:module_file:1:utils",
+                "name": "utils",
+                "kind": "module_file",
+                "language": "javascript",
+                "path": "src/utils.js",
+                "span": {"start_line": 0, "end_line": 0, "start_col": 0, "end_col": 0},
+            },
         ],
         "edges": [],
     }
@@ -1001,6 +1017,9 @@ def test_cmd_symbols_excludes_excluded_kinds(tmp_path: Path, capsys) -> None:
     assert "mobile" not in out
     assert "CustomFont" not in out
     assert ".header" not in out
+    # npm_package and module_file should be filtered out
+    assert "vue" not in out
+    assert "utils" not in out
 
 
 def test_main_with_symbols(tmp_path: Path, capsys) -> None:

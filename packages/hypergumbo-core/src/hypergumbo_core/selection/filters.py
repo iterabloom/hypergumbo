@@ -45,6 +45,8 @@ EXCLUDED_KINDS = frozenset({
     "keyframes",        # CSS @keyframes animation definitions
     "media",            # CSS @media query blocks
     "font_face",        # CSS @font-face declarations
+    "npm_package",      # external npm dependencies (inflate centrality)
+    "module_file",      # synthetic JS/TS module resolution nodes
 })
 
 # Path patterns indicating example/demo code

@@ -172,6 +172,11 @@ class TestExcludedKinds:
         assert "media" in EXCLUDED_KINDS
         assert "font_face" in EXCLUDED_KINDS
 
+    def test_npm_and_module_file_excluded(self):
+        """npm_package and module_file kinds are in the set."""
+        assert "npm_package" in EXCLUDED_KINDS
+        assert "module_file" in EXCLUDED_KINDS
+
     def test_code_kinds_not_excluded(self):
         """Actual code kinds are NOT in the set."""
         assert "function" not in EXCLUDED_KINDS
