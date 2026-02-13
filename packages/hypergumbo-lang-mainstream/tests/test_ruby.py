@@ -98,6 +98,82 @@ end
         assert "helper" in method_names
 
 
+    def test_extracts_singleton_method(self, tmp_path: Path) -> None:
+        """Extracts Ruby class methods (def self.method_name)."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        rb_file = tmp_path / "service.rb"
+        rb_file.write_text("""
+class MyService
+  def self.call(args)
+    new(args).perform
+  end
+
+  def self.perform!(data)
+    data
+  end
+
+  def perform
+    nil
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        method_names = [s.name for s in methods]
+        # Class methods use dot separator
+        assert "MyService.call" in method_names
+        assert "MyService.perform!" in method_names
+        # Instance method uses hash separator
+        assert "MyService#perform" in method_names
+
+    def test_singleton_method_call_edges(self, tmp_path: Path) -> None:
+        """Calls inside singleton methods produce call edges."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "service.rb").write_text("""
+class Builder
+  def self.build(data)
+    process(data)
+  end
+
+  def process(data)
+    data
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        build_calls = [
+            e for e in call_edges
+            if "build" in e.src and "process" in e.dst
+        ]
+        assert len(build_calls) >= 1, (
+            f"Expected call edge from self.build to process, got {len(build_calls)}. "
+            f"All call edges: {[(e.src, e.dst) for e in call_edges]}"
+        )
+
+    def test_singleton_method_at_top_level(self, tmp_path: Path) -> None:
+        """Singleton method at top level (no enclosing class) uses bare name."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "top.rb").write_text("""
+def self.standalone_helper(x)
+  x + 1
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        methods = [s for s in result.symbols if s.kind == "method"]
+        method_names = [s.name for s in methods]
+        assert "standalone_helper" in method_names
+
+
 class TestRubyClassExtraction:
     """Tests for extracting Ruby classes."""
 
@@ -1624,6 +1700,124 @@ end
         assert len(scope_edges) >= 1, (
             f"Expected at least 1 receiver_call edge, got {len(scope_edges)}. "
             f"All call edges: {[(e.src, e.dst, e.evidence_type) for e in call_edges]}"
+        )
+
+    def test_scope_resolution_full_namespace_receiver(self, tmp_path: Path) -> None:
+        """Full namespace in scope resolution receiver resolves call edge.
+
+        When class is defined with inline namespace (class Voice::InboundCallBuilder),
+        the method is registered as Voice::InboundCallBuilder#perform!. A call like
+        Voice::InboundCallBuilder.perform!() must extract the full namespace to match.
+        """
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "builder.rb").write_text("""
+class Voice::InboundCallBuilder
+  def self.perform!(params)
+    new(params).build
+  end
+
+  def build
+    nil
+  end
+end
+""")
+
+        (tmp_path / "controller.rb").write_text("""
+class VoiceController
+  def create
+    Voice::InboundCallBuilder.perform!(request_params)
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        ns_edges = [
+            e for e in call_edges
+            if "create" in e.src and "perform!" in e.dst
+            and e.evidence_type == "receiver_call"
+        ]
+        assert len(ns_edges) >= 1, (
+            f"Expected receiver_call edge for Voice::InboundCallBuilder.perform!(), "
+            f"got {len(ns_edges)}. All call edges: "
+            f"{[(e.src, e.dst, e.evidence_type) for e in call_edges]}"
+        )
+
+    def test_chained_new_method_call(self, tmp_path: Path) -> None:
+        """Service.new(args).perform creates a call edge to the instance method.
+
+        The pattern ClassName.new(...).method() is standard Rails service object style.
+        The outer call has a 'call' node as receiver (the .new() call), which must be
+        recognized and the class extracted from the inner call's receiver.
+        """
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "service.rb").write_text("""
+class StatusUpdateService
+  def perform
+    update_records
+  end
+
+  def update_records
+    nil
+  end
+end
+""")
+
+        (tmp_path / "handler.rb").write_text("""
+class Handler
+  def process
+    StatusUpdateService.new(data).perform
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        chained_edges = [
+            e for e in call_edges
+            if "process" in e.src and "perform" in e.dst
+        ]
+        assert len(chained_edges) >= 1, (
+            f"Expected call edge for StatusUpdateService.new(data).perform, "
+            f"got {len(chained_edges)}. All call edges: "
+            f"{[(e.src, e.dst, e.evidence_type) for e in call_edges]}"
+        )
+
+    def test_chained_namespaced_new_method_call(self, tmp_path: Path) -> None:
+        """Voice::Builder.new(args).build creates call edge with namespaced receiver."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "builder.rb").write_text("""
+class Voice::Builder
+  def build
+    nil
+  end
+end
+""")
+
+        (tmp_path / "controller.rb").write_text("""
+class Controller
+  def handle
+    Voice::Builder.new(params).build
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        chained_edges = [
+            e for e in call_edges
+            if "handle" in e.src and "build" in e.dst
+        ]
+        assert len(chained_edges) >= 1, (
+            f"Expected call edge for Voice::Builder.new(params).build, "
+            f"got {len(chained_edges)}. All call edges: "
+            f"{[(e.src, e.dst, e.evidence_type) for e in call_edges]}"
         )
 
     def test_receiver_call_no_match_falls_through(self, tmp_path: Path) -> None:

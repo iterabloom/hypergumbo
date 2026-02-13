@@ -242,10 +242,10 @@ def _get_enclosing_method(
     source: bytes,
     local_symbols: dict[str, Symbol],
 ) -> Optional[Symbol]:
-    """Walk up the tree to find the enclosing method."""
+    """Walk up the tree to find the enclosing method (instance or class method)."""
     current = node.parent
     while current is not None:
-        if current.type == "method":
+        if current.type in ("method", "singleton_method"):
             name_node = _find_child_by_field(current, "name")
             if name_node:
                 method_name = _node_text(name_node, source)
@@ -714,7 +714,7 @@ def _extract_symbols_from_file(
     analysis = FileAnalysis()
 
     for node in iter_tree(tree.root_node):
-        # Method definition
+        # Method definition (instance methods)
         if node.type == "method":
             name_node = _find_child_by_field(node, "name")
             if name_node:
@@ -724,6 +724,41 @@ def _extract_symbols_from_file(
                 if enclosing_type == "class" and enclosing_name:
                     full_name = f"{enclosing_name}#{method_name}"
                 elif enclosing_type == "module" and enclosing_name:
+                    full_name = f"{enclosing_name}.{method_name}"
+                else:
+                    full_name = method_name
+
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+
+                symbol = Symbol(
+                    id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "method"),
+                    name=full_name,
+                    kind="method",
+                    language="ruby",
+                    path=str(file_path),
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    signature=_extract_ruby_signature(node, source),
+                )
+                analysis.symbols.append(symbol)
+                analysis.symbol_by_name[method_name] = symbol
+                analysis.symbol_by_name[full_name] = symbol
+
+        # Singleton method definition (class methods: def self.method_name)
+        elif node.type == "singleton_method":
+            name_node = _find_child_by_field(node, "name")
+            if name_node:
+                method_name = _node_text(name_node, source)
+                # Class methods use dot separator: ClassName.method_name
+                enclosing_name, _ = _get_enclosing_class_or_module(node, source)
+                if enclosing_name:
                     full_name = f"{enclosing_name}.{method_name}"
                 else:
                     full_name = method_name
@@ -843,36 +878,55 @@ def _try_receiver_call(
 
     Returns True if an edge was created, False to fall through to bare name lookup.
     """
-    # Extract receiver class name from constant or scope_resolution
+    # Extract receiver class name from constant, scope_resolution, or chained call
     receiver_class: str | None = None
     if receiver_node.type == "constant":
         receiver_class = _node_text(receiver_node, source)
     elif receiver_node.type == "scope_resolution":
-        # For ActiveRecord::Base, extract the rightmost constant ("Base")
+        # Extract full qualified name (e.g., "Voice::InboundCallBuilder")
+        # for inline-namespace class definitions
+        full_name = _node_text(receiver_node, source)
+        # Also extract rightmost segment as fallback (e.g., "InboundCallBuilder")
         name_node = _find_child_by_field(receiver_node, "name")
-        if name_node is not None:
-            receiver_class = _node_text(name_node, source)
+        short_name = _node_text(name_node, source) if name_node is not None else None
+        receiver_class = full_name
+    elif receiver_node.type == "call":
+        # Handle chained calls: ClassName.new(args).method()
+        # Extract class from the inner call's receiver
+        inner_receiver = receiver_node.child_by_field_name("receiver")
+        if inner_receiver is not None:
+            if inner_receiver.type == "constant":
+                receiver_class = _node_text(inner_receiver, source)
+            elif inner_receiver.type == "scope_resolution":
+                receiver_class = _node_text(inner_receiver, source)
 
     if receiver_class is None:
         return False
 
+    # Build list of candidate class names to try
+    # For scope_resolution: try full name first, then short name as fallback
+    candidates = [receiver_class]
+    if receiver_node.type == "scope_resolution" and short_name and short_name != receiver_class:
+        candidates.append(short_name)
+
     # Try Class#method (instance method convention) and Class.method (module method)
-    for sep in ("#", "."):
-        qualified = f"{receiver_class}{sep}{method_name}"
-        if qualified in global_symbols:
-            callee = global_symbols[qualified]
-            if callee.id != current_method.id:
-                edges.append(Edge.create(
-                    src=current_method.id,
-                    dst=callee.id,
-                    edge_type="calls",
-                    line=line,
-                    evidence_type="receiver_call",
-                    confidence=0.85,
-                    origin=PASS_ID,
-                    origin_run_id=run.execution_id,
-                ))
-                return True
+    for candidate in candidates:
+        for sep in ("#", "."):
+            qualified = f"{candidate}{sep}{method_name}"
+            if qualified in global_symbols:
+                callee = global_symbols[qualified]
+                if callee.id != current_method.id:
+                    edges.append(Edge.create(
+                        src=current_method.id,
+                        dst=callee.id,
+                        edge_type="calls",
+                        line=line,
+                        evidence_type="receiver_call",
+                        confidence=0.85,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                    ))
+                    return True
 
     # Try resolver with class name as path hint for suffix matching
     lookup_result = resolver.lookup(method_name, path_hint=receiver_class)
