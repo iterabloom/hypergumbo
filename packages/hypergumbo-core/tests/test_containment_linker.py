@@ -584,3 +584,94 @@ class TestContainmentNameCollision:
             assert edge.src == real_model.id, (
                 f"Expected src={real_model.id}, got src={edge.src}"
             )
+
+
+class TestModuleContainment:
+    """Tests for module → class containment in Ruby.
+
+    Ruby modules serve as namespaces: `module Postal; module MessageDB; class Database`.
+    Classes inside modules have qualified names with `::` separator.
+    The containment linker should create `contains` edges from modules to their
+    classes and from parent modules to child modules.
+    """
+
+    def test_module_contains_class(self) -> None:
+        """Ruby module should contain a nested class."""
+        mod = _sym(
+            "ruby:lib/postal.rb:1-100:Postal:module",
+            "Postal", "module", language="ruby", path="lib/postal.rb",
+        )
+        cls = _sym(
+            "ruby:lib/postal/http.rb:1-50:Postal::HTTP:class",
+            "Postal::HTTP", "class", language="ruby", path="lib/postal/http.rb",
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[mod, cls],
+            edges=[],
+        )
+        result = link_containment(ctx)
+
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 1
+        assert contains[0].src == mod.id
+        assert contains[0].dst == cls.id
+
+    def test_nested_module_contains_class(self) -> None:
+        """Nested module should contain its class."""
+        outer = _sym(
+            "ruby:lib/postal.rb:1-200:Postal:module",
+            "Postal", "module", language="ruby", path="lib/postal.rb",
+        )
+        inner = _sym(
+            "ruby:lib/postal/msg_db.rb:1-100:Postal::MessageDB:module",
+            "Postal::MessageDB", "module", language="ruby",
+            path="lib/postal/msg_db.rb",
+        )
+        cls = _sym(
+            "ruby:lib/postal/msg_db/db.rb:1-50:Postal::MessageDB::Database:class",
+            "Postal::MessageDB::Database", "class", language="ruby",
+            path="lib/postal/msg_db/db.rb",
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[outer, inner, cls],
+            edges=[],
+        )
+        result = link_containment(ctx)
+
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        # outer → inner, inner → cls
+        assert len(contains) == 2
+
+        outer_to_inner = [e for e in contains if e.dst == inner.id]
+        inner_to_cls = [e for e in contains if e.dst == cls.id]
+        assert len(outer_to_inner) == 1
+        assert outer_to_inner[0].src == outer.id
+        assert len(inner_to_cls) == 1
+        assert inner_to_cls[0].src == inner.id
+
+    def test_module_contains_method(self) -> None:
+        """Module should contain module-level methods (mixin methods)."""
+        mod = _sym(
+            "ruby:lib/helpers.rb:1-30:Helpers:module",
+            "Helpers", "module", language="ruby", path="lib/helpers.rb",
+        )
+        method = _sym(
+            "ruby:lib/helpers.rb:5-10:Helpers#format:method",
+            "Helpers#format", "method", language="ruby", path="lib/helpers.rb",
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[mod, method],
+            edges=[],
+        )
+        result = link_containment(ctx)
+
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 1
+        assert contains[0].src == mod.id
+        assert contains[0].dst == method.id

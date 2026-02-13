@@ -1,23 +1,26 @@
-"""Containment linker for creating class-to-method `contains` edges.
+"""Containment linker for creating `contains` edges between containers and members.
 
-This linker connects class/interface symbols to their method symbols
-based on naming conventions, creating `contains` edges. Without these
-edges, methods are orphaned in the graph — disconnected from their
-parent classes — which inflates orphan rates and hides the class
-structure from slice traversal.
+This linker connects container symbols (classes, interfaces, structs, traits,
+enums, modules) to their member symbols (methods, getters, setters, and nested
+containers) based on naming conventions, creating `contains` edges. Without
+these edges, members are orphaned in the graph — disconnected from their parent
+types — which inflates orphan rates and hides hierarchical structure from slice
+traversal.
 
 How It Works
 ------------
-1. Builds a map of class/interface names to their symbols
-2. For each method/getter/setter symbol, extracts the parent name
-   using language-specific separators (`.`, `#`, `::`)
+1. Builds a multimap of container names to their symbols
+2. For each member symbol, extracts the parent name using
+   language-specific separators (`.`, `#`, `::`)
 3. Looks up the parent symbol and creates a `contains` edge
-4. Handles nested classes: Outer.Inner.method → Inner contains method
+4. Handles nested types: Outer.Inner.method → Inner contains method
+5. Handles module nesting: Postal::MessageDB → Postal contains MessageDB
 
 Naming Conventions by Language
 ------------------------------
 - Most languages use `.`: ClassName.methodName (Python, Java, JS/TS, etc.)
 - Ruby instance methods use `#`: ClassName#method_name
+- Ruby/Elixir modules use `::`: Postal::HTTP, MyApp.Repo
 - Rust uses `::`: ImplTarget::method_name
 
 Why a Linker Instead of Per-Analyzer Logic
@@ -45,7 +48,7 @@ CONTAINABLE_KINDS = frozenset({"method", "getter", "setter"})
 
 # Symbol kinds that can "contain" other symbols.
 # Includes struct/trait/enum for Rust (and Go/C/Zig structs).
-CONTAINER_KINDS = frozenset({"class", "interface", "struct", "trait", "enum"})
+CONTAINER_KINDS = frozenset({"class", "interface", "struct", "trait", "enum", "module"})
 
 # Separators used in method names, ordered by specificity
 # Ruby `#` and Rust `::` are checked before `.` to avoid
