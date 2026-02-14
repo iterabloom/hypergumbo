@@ -94,9 +94,9 @@ The store reads all three tiers transparently via `TrackerSet` — agents and hu
 
 The repo tracks a **template** (`config.yaml.template`). The actual config (`config.yaml`) is gitignored and human-owned via OS file permissions — the standard `.env.example` → `.env` pattern (see [Security Model](#security-model)).
 
-`scripts/tracker init` (run by the human user) copies the template, lets the human configure per-deployment fields, and sets ownership: `chown <human_user> config.yaml && chmod 644 config.yaml`. The agent can read config (needs to, for validation) but cannot write it — the OS enforces this.
+`scripts/tracker init` (run by the human user) copies the full template to `config.yaml`, appends the per-deployment fields (see below), and sets ownership: `chown <human_user> config.yaml && chmod 644 config.yaml`. The result is a **complete** config file — not just overrides. The agent can read config (needs to, for validation) but cannot write it — the OS enforces this.
 
-The validation code loads config from a chain: `config.yaml` if it exists, otherwise `config.yaml.template`. CI uses the template directly. `validate` warns when `config.yaml` contains kinds or statuses not present in `config.yaml.template` — this catches local-only additions that would fail in CI.
+The validation code loads config from a chain: `config.yaml` if it exists, otherwise `config.yaml.template` (fallback, not merge). CI uses the template directly (which contains all governance rules but no per-deployment fields — `actor_resolution` and `stop_hook.scope` use built-in defaults when absent). `validate` warns in both directions: when `config.yaml` contains kinds or statuses not present in `config.yaml.template` (local-only additions that would fail in CI), and when `config.yaml.template` has been updated with new kinds or statuses that `config.yaml` doesn't have (stale local config — re-run `init` to regenerate).
 
 **`config.yaml.template`** (tracked, shared governance rules):
 
@@ -183,6 +183,11 @@ statuses:
 # resolved_statuses are what the `before` soft-blocking filter treats
 # as "done" (predecessor resolved). These sets must not overlap, and
 # blocking_statuses must be non-empty (otherwise the stop hook is toothless).
+# Statuses in neither set (like in_progress) are "neutral": they don't
+# block stopping and don't satisfy `before` soft-blocking. This is
+# intentional — in_progress items are actively being worked on, so
+# they shouldn't block the stop hook (the agent is already on it),
+# but they also aren't "done" for dependency purposes.
 stop_hook:
   blocking_statuses: [todo_hard, todo_soft]
   resolved_statuses: [done, deferred, wont_do]
@@ -198,19 +203,20 @@ well_known_tags:
   - framework_patterns
 ```
 
-**Per-deployment fields** (set during `init`, in `config.yaml` only — not in the template):
+**Per-deployment fields** (appended to the template copy by `init` — `config.yaml` is a complete file, not just overrides). These fields have built-in defaults when absent, so the template works standalone in CI:
 
 ```yaml
 # Actor resolution. Usernames matching these patterns are resolved as "agent".
-# All other usernames resolve as "human". Default: ["*_agent"].
+# All other usernames resolve as "human". Default (when absent): ["*_agent"].
 # See [Security Model](#security-model).
 actor_resolution:
   agent_usernames: ["*_agent"]
 
-# Stop hook scoping. Controls which tiers count-todos aggregates.
+# Stop hook scoping (merged into the stop_hook block from the template).
 # On upstream repos, "all" counts canonical + workspace.
 # On forks, "workspace" so the fork agent isn't blocked by
 # upstream's canonical items (which it can read but not close).
+# Default (when absent): "all".
 # Detected automatically by scripts/tracker fork-setup.
 stop_hook:
   scope: all                   # "all" | "workspace"
@@ -309,6 +315,8 @@ Each op log file (`.ops`) is an **append-only list of operations**. The store ne
 | `unlock` | `unlock: [field, ...]` | Remove fields from locked set |
 | `promote` | *(none)* | Record promotion (workspace → canonical; file also moves) |
 | `demote` | *(none)* | Record demotion (canonical → workspace; file also moves) |
+| `stealth` | *(none)* | Record move to stealth (workspace → stealth; file moves to gitignored dir) |
+| `unstealth` | *(none)* | Record move from stealth (stealth → workspace; file moves back) |
 | `reconcile` | `from_tier: "...", reason: "..."` | Record automated cross-tier duplicate resolution (see [Self-Healing Reconciliation](#self-healing-reconciliation)) |
 
 Every op carries `at` (ISO 8601 UTC timestamp), `by` (`agent` or `human`), `clock` (Lamport clock — monotonically increasing integer per op log file), and `nonce` (4 random hex chars). The nonce appears as an inline `# <nonce>` comment on **every line** of each op — not just the first line. This is load-bearing for `merge=union` correctness: it makes every line globally unique, preventing git's line-level union driver from deduplicating or stripping shared lines across ops. See [Compile Rules](#compile-rules-conflict-resolution).
@@ -699,7 +707,7 @@ op (with nonce comment), at, by, clock, nonce, [op-specific fields: data/set/mes
 
 Within the `create` op's `data`, fields are ordered:
 ```
-kind, title, status, priority, parent, tags, before, pr_ref, justification, description, fields
+kind, title, status, priority, parent, tags, before, duplicate_of, not_duplicate_of, pr_ref, justification, description, fields
 ```
 
 **Sole-writer invariant.** The store is the sole writer of op log files. Agents and humans use the CLI/TUI — they never edit `.ops` files directly. Agents should never *read* op log files either — they use `scripts/tracker show <ID>` for compiled state (see [Agent Context Protection](#agent-context-protection)).
@@ -1085,7 +1093,7 @@ The tracker package declares `console_scripts` entry points (`hypergumbo-tracker
 | `log <ID>` | Print raw operation log | both |
 | `migrate` | Convert existing markdown → YAML (one-time, into canonical) | human/agent |
 | `guidance` | Generate guidance markdown for stop hook (scope-aware) | stop_logic.sh |
-| `fork-setup` | Detect fork (upstream remote), set workspace `stop_hook.scope: workspace` in config | human/agent |
+| `fork-setup` | Detect fork (upstream remote), set workspace `stop_hook.scope: workspace` in config. Writes to `config.yaml` (human-owned), so must be run by the human user. If run by the agent, prints the required config change and exits with a message asking the human to run it. | human |
 | `cache-rebuild` | Delete and rebuild cache from YAML source of truth | human/agent |
 | `textconv <FILE>` | Emit compiled one-line-per-field text representation of an op log file (used by git's textconv diff driver — see [textconv](#local-diff-declutter-textconv)) | git diff |
 | `tui` | Launch Textual TUI (human-authority context — `os.getuid()` resolves as human) | human |
@@ -1200,7 +1208,7 @@ Validation catches:
 
 `scripts/tracker migrate` performs one-time conversion of the existing markdown files:
 
-1. Write default `config.yaml` with 3 kinds (invariant, meta_invariant, work_item)
+1. Write default `config.yaml.template` with 3 kinds (invariant, meta_invariant, work_item)
 2. Parse `.agent/invariant-ledger.md` — regex on `## INV-NNN:` headers and `- **Status:**` fields
 3. Parse `~/hypergumbo_lab_notebook/guidance_log/work_items.md` — regex on category headers and `- **STATUS**` items
 4. Map to unified status:
@@ -1213,7 +1221,7 @@ Validation catches:
    - `**DONE**` → `done`
    - `**DEFERRED**` → `deferred`
 5. Assign priorities: old P1 → 1, P2 → 2, P3 → 3; invariants with todo_hard → 0, todo_soft → 1, done/deferred → 4
-6. Generate hash-based 10-hex-char IDs by hashing each `create` op's canonicalized `data` dict (SHA-256, first 10 chars), with kind-appropriate prefixes
+6. Generate hash-based proquint IDs by hashing each `create` op's canonicalized `data` dict (SHA-256, first 128 bits, proquint-encoded), with kind-appropriate prefixes
 7. Convert `pending_generalizations` embedded lists into child items with `parent: <parent-ID>`
 8. Map work item categories to tags (e.g., "Developer Experience" → tag `developer_experience`)
 9. Write each item as an op log file in `.agent/tracker/.ops/` (canonical tier — migrated items are upstream's institutional memory), using dotfile naming (`.INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit.ops`)
@@ -1286,7 +1294,7 @@ Migration is idempotent: re-running produces the same IDs (same content → same
 - `add --tier`: defaults to workspace; `--tier canonical` writes to canonical tier. Emits SimHash similarity warning if near-duplicates detected (see [Key Design Decisions](#key-design-decisions)). Supports `--duplicate-of` and `--not-duplicate-of` flags.
 - `promote`/`demote`: delegates to `TrackerSet.promote()`/`demote()` (append op + file move)
 - `stealth`/`unstealth`: delegates to `TrackerSet.stealth()`/`unstealth()` (workspace ↔ stealth)
-- `fork-setup`: detects upstream remote, sets `stop_hook.scope: workspace` in workspace config
+- `fork-setup`: detects upstream remote, sets `stop_hook.scope: workspace` in workspace config (human-only — writes to human-owned `config.yaml`; if run by agent, prints required change and exits)
 - `list --tier`: filter by tier; default shows all with `[C]`/`[W]`/`[S]` indicators
 - `ready`: always shows all tiers (scope only affects `count-todos`)
 - `discuss --summarize`: appends `discuss_summarize` op
