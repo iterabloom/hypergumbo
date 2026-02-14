@@ -16,9 +16,17 @@ Key features:
   for scalars and accumulation for set-valued fields.
 - **Lock enforcement:** Human-locked fields reject agent writes, enforced
   cross-branch via the same Lamport peek mechanism.
+- **TrackerSet:** Multi-tier unified view merging canonical, workspace, and
+  stealth Stores with write routing, tier movement, and reconciliation.
+- **Cache:** Per-tier SQLite read cache with incremental invalidation,
+  write-through on mutations, and corruption recovery.
 
 See ADR-0013 for the full design specification.
 """
 
-__all__ = ["__version__"]
+from hypergumbo_tracker.cache import Cache
+from hypergumbo_tracker.models import Tier
+from hypergumbo_tracker.trackerset import TrackerSet
+
+__all__ = ["Cache", "Tier", "TrackerSet", "__version__"]
 __version__ = "0.1.0"

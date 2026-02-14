@@ -379,6 +379,7 @@ class CompiledItem:
     updated_at: str = ""
     cross_tier_conflict: bool = False
     simhash: int | None = None
+    tier: Tier | None = None
 
 
 # ---------------------------------------------------------------------------

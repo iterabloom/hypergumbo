@@ -1573,6 +1573,27 @@ class TestStoreProperties:
         result = store._id_from_filename(Path("plain_file.txt"))
         assert result == "plain_file.txt"
 
+    def test_item_path_public(self, ops_dir: Path, mock_agent_uid: None) -> None:
+        """item_path (public) returns correct path for item ID."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Public Path Test")
+        path = store.item_path(item_id)
+        assert path == ops_dir / f".{item_id}.ops"
+        assert path.exists()
+
+    def test_item_ids(self, ops_dir: Path, mock_agent_uid: None) -> None:
+        """item_ids() returns all item IDs in the store."""
+        store = Store(ops_dir, config=_make_config())
+        id1 = store.add(kind="invariant", title="First Item")
+        id2 = store.add(kind="work_item", title="Second Item", not_duplicate_of=[id1])
+        ids = store.item_ids()
+        assert set(ids) == {id1, id2}
+
+    def test_item_ids_empty(self, ops_dir: Path, mock_agent_uid: None) -> None:
+        """item_ids() returns empty list when no items exist."""
+        store = Store(ops_dir, config=_make_config())
+        assert store.item_ids() == []
+
 
 # ---------------------------------------------------------------------------
 # Coverage: Store update/discuss/lock agent enforcement

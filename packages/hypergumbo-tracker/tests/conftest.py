@@ -119,7 +119,6 @@ def sample_create_data() -> dict[str, Any]:
 def mock_agent_uid(monkeypatch: pytest.MonkeyPatch) -> None:
     """Monkeypatch os.getuid to return a UID whose username ends in _agent."""
     import pwd
-    import struct
 
     # Use a UID that maps to a fake passwd entry
     fake_uid = 60000

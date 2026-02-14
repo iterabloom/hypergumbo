@@ -314,6 +314,14 @@ class TestCompiledItem:
         assert item.updated_at == ""
         assert item.cross_tier_conflict is False
         assert item.simhash is None
+        assert item.tier is None
+
+    def test_construction_with_tier(self) -> None:
+        item = CompiledItem(
+            id="INV-test", kind="invariant", title="Test",
+            status="todo_hard", tier=Tier.CANONICAL,
+        )
+        assert item.tier is Tier.CANONICAL
 
     def test_mutable(self) -> None:
         item = CompiledItem(id="INV-test", kind="invariant", title="Test", status="todo_hard")

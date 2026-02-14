@@ -766,9 +766,13 @@ class Store:
     # File operations
     # -----------------------------------------------------------------------
 
-    def _item_path(self, item_id: str) -> Path:
+    def item_path(self, item_id: str) -> Path:
         """Get the filesystem path for an item's ops file."""
         return self._ops_dir / f".{item_id}.ops"
+
+    def item_ids(self) -> list[str]:
+        """Return all item IDs in this store."""
+        return [self._id_from_filename(p) for p in self._list_item_files()]
 
     def _list_item_files(self) -> list[Path]:
         """List all item ops files in the directory."""
@@ -848,7 +852,7 @@ class Store:
         item_id = _compute_id(kind_config.prefix, data)
 
         # Check for existing item with same ID
-        item_path = self._item_path(item_id)
+        item_path = self.item_path(item_id)
         if item_path.exists():
             # Same data → refuse, report existing
             existing_ops = _parse_ops_file(item_path)
@@ -861,7 +865,7 @@ class Store:
                 )
             # Different data but same hash → collision, auto-salt
             item_id = _compute_id(kind_config.prefix, data, salt=nonce)
-            item_path = self._item_path(item_id)
+            item_path = self.item_path(item_id)
 
         # Compute SimHash
         simhash = _compute_simhash(_item_text_for_simhash(data))
@@ -917,7 +921,7 @@ class Store:
             CorruptFileError: If the ops file is corrupt.
         """
         item_id = self._resolve_id(item_id)
-        item_path = self._item_path(item_id)
+        item_path = self.item_path(item_id)
 
         if not item_path.exists():
             raise ItemNotFoundError(f"Item not found: {item_id}")
@@ -991,7 +995,7 @@ class Store:
             DiscussionRateLimitError: If daily rate limit exceeded.
         """
         item_id = self._resolve_id(item_id)
-        item_path = self._item_path(item_id)
+        item_path = self.item_path(item_id)
 
         if not item_path.exists():
             raise ItemNotFoundError(f"Item not found: {item_id}")
@@ -1076,7 +1080,7 @@ class Store:
             ItemNotFoundError: If item doesn't exist.
         """
         item_id = self._resolve_id(item_id)
-        item_path = self._item_path(item_id)
+        item_path = self.item_path(item_id)
 
         if not item_path.exists():
             raise ItemNotFoundError(f"Item not found: {item_id}")
@@ -1104,7 +1108,7 @@ class Store:
             ItemNotFoundError: If item doesn't exist.
         """
         item_id = self._resolve_id(item_id)
-        item_path = self._item_path(item_id)
+        item_path = self.item_path(item_id)
 
         if not item_path.exists():
             raise ItemNotFoundError(f"Item not found: {item_id}")
@@ -1320,7 +1324,7 @@ class Store:
             )
 
         # Check for exact match first
-        exact_path = self._item_path(prefix)
+        exact_path = self.item_path(prefix)
         if exact_path.exists():
             return prefix
 
@@ -1482,7 +1486,7 @@ class Store:
             AmbiguousPrefixError: If prefix is ambiguous.
         """
         item_id = self._resolve_id(item_id)
-        item_path = self._item_path(item_id)
+        item_path = self.item_path(item_id)
         if not item_path.exists():
             raise ItemNotFoundError(f"Item not found: {item_id}")
         ops = _parse_ops_file(item_path)
