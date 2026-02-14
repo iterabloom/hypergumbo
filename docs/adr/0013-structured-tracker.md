@@ -222,6 +222,12 @@ actor_resolution:
 # Detected automatically by scripts/tracker fork-setup.
 stop_hook:
   scope: all                   # "all" | "workspace"
+
+# Lamport clock branch set. The clock peeks at these branches (plus HEAD
+# and any unmerged branches) to compute cross-branch causal ordering.
+# Default (when absent): ["dev", "main"].
+# Override for repos using different branch conventions (e.g., ["master"]).
+lamport_branches: ["dev", "main"]
 ```
 
 Validation enforces:
@@ -229,6 +235,7 @@ Validation enforces:
 - `blocking_statuses` and `resolved_statuses` don't overlap.
 - `blocking_statuses` is non-empty (otherwise the stop hook is toothless).
 - `actor_resolution.agent_usernames` is a non-empty list of glob patterns.
+- `lamport_branches` is a non-empty list of branch name strings.
 
 #### Item Schema (Operation Log)
 
@@ -240,6 +247,7 @@ Each op log file (`.ops`) is an **append-only list of operations**. The store ne
 - op: create  # f7a2
   at: "2026-02-11T18:00:00Z"  # f7a2
   by: agent  # f7a2
+  actor: jgstern_agent  # f7a2
   clock: 1  # f7a2
   nonce: f7a2  # f7a2
   data:  # f7a2
@@ -269,6 +277,7 @@ Each op log file (`.ops`) is an **append-only list of operations**. The store ne
 - op: discuss  # b3c1
   at: "2026-02-11T18:30:00Z"  # b3c1
   by: human  # b3c1
+  actor: jgstern  # b3c1
   clock: 2  # b3c1
   nonce: b3c1  # b3c1
   message: "I think this should be higher priority because it affects CI."  # b3c1
@@ -276,6 +285,7 @@ Each op log file (`.ops`) is an **append-only list of operations**. The store ne
 - op: update  # d4e5
   at: "2026-02-11T18:31:00Z"  # d4e5
   by: agent  # d4e5
+  actor: jgstern_agent  # d4e5
   clock: 3  # d4e5
   nonce: d4e5  # d4e5
   set:  # d4e5
@@ -284,6 +294,7 @@ Each op log file (`.ops`) is an **append-only list of operations**. The store ne
 - op: discuss  # a1b2
   at: "2026-02-11T18:32:00Z"  # a1b2
   by: agent  # a1b2
+  actor: jgstern_agent  # a1b2
   clock: 4  # a1b2
   nonce: a1b2  # a1b2
   message: "Agreed. Bumping to P0."  # a1b2
@@ -291,6 +302,7 @@ Each op log file (`.ops`) is an **append-only list of operations**. The store ne
 - op: lock  # c8d9
   at: "2026-02-11T18:33:00Z"  # c8d9
   by: human  # c8d9
+  actor: jgstern  # c8d9
   clock: 5  # c8d9
   nonce: c8d9  # c8d9
   lock: [priority]  # c8d9
@@ -298,6 +310,7 @@ Each op log file (`.ops`) is an **append-only list of operations**. The store ne
 - op: update  # e6f7
   at: "2026-02-11T19:30:00Z"  # e6f7
   by: agent  # e6f7
+  actor: jgstern_agent  # e6f7
   clock: 6  # e6f7
   nonce: e6f7  # e6f7
   set:  # e6f7
@@ -309,7 +322,7 @@ Each op log file (`.ops`) is an **append-only list of operations**. The store ne
 | Op type | Fields | Effect |
 |---|---|---|
 | `create` | `data: {kind, title, status, priority, ...}` | Initialize item with all fields |
-| `update` | `set: {field: value, ...}` | Overwrite one or more fields |
+| `update` | `set: {field: value, ...}`, optional `add: {field: [value, ...]}`, optional `remove: {field: [value, ...]}` | `set`: overwrite scalar fields (LWW). `add`/`remove`: incremental modification of set-valued fields (`tags`, `before`, `duplicate_of`, `not_duplicate_of`) — see [Compile Rules](#compile-rules-conflict-resolution). |
 | `discuss` | `message: "..."` | Append a discussion entry |
 | `discuss_clear` | *(none)* | Clear all previous discussion entries |
 | `discuss_summarize` | `message: "..."` | Replace discussion with a single summary |
@@ -321,7 +334,7 @@ Each op log file (`.ops`) is an **append-only list of operations**. The store ne
 | `unstealth` | *(none)* | Record move from stealth (stealth → workspace; file moves back) |
 | `reconcile` | `from_tier: "...", reason: "..."` | Record automated cross-tier duplicate resolution (see [Self-Healing Reconciliation](#self-healing-reconciliation)) |
 
-Every op carries `at` (ISO 8601 UTC timestamp), `by` (`agent` or `human`), `clock` (Lamport clock — monotonically increasing integer per op log file), and `nonce` (4 random hex chars). The nonce appears as an inline `# <nonce>` comment on **every line** of each op — not just the first line. This is load-bearing for `merge=union` correctness: it makes every line globally unique, preventing git's line-level union driver from deduplicating or stripping shared lines across ops. See [Compile Rules](#compile-rules-conflict-resolution).
+Every op carries `at` (ISO 8601 UTC timestamp), `by` (`agent` or `human`), `actor` (the OS username that performed the operation, e.g., `jgstern_agent` — preserved for audit trail and multi-agent debugging; see [Security Model](#security-model)), `clock` (Lamport clock — monotonically increasing integer per op log file), and `nonce` (4 random hex chars). The nonce appears as an inline `# <nonce>` comment on **every line** of each op — not just the first line. This is load-bearing for `merge=union` correctness: it makes every line globally unique, preventing git's line-level union driver from deduplicating or stripping shared lines across ops. See [Compile Rules](#compile-rules-conflict-resolution).
 
 **The operation log IS the audit trail.** There is no separate `audit_trail` field — the file itself is a complete, ordered record of every change. `scripts/tracker log <ID>` prints the raw ops; `scripts/tracker show <ID>` prints the compiled current state.
 
@@ -338,6 +351,13 @@ Every op carries `at` (ISO 8601 UTC timestamp), `by` (`agent` or `human`), `cloc
 This ensures causal ordering across the active branch frontier: if agent B can see agent A's ops on any active branch (even without merging), B's next op gets a strictly higher clock — correctly ordered regardless of wall-clock skew between machines. For truly concurrent ops (written on branches not locally visible to each other — e.g., one agent hasn't fetched the other's remote), both sides may produce the same clock value; the tiebreaker `(clock, timestamp, actor_rank)` resolves these deterministically. The guarantee boundary is honest: **causally ordered relative to everything locally visible, tiebreaker for everything else** — the strongest guarantee possible without a centralized server.
 
 Inspired by git-bug's Lamport clock system (`util/lamport/`), but requiring no separate clock files or git object storage — just one integer field per op and a cross-branch `max()` call on append.
+
+**Branch assumptions and fallbacks.** The scoped branch set assumes `dev` and `main` exist. For repos using different conventions or degraded environments:
+
+- If `dev` is missing, fall back to `main`; if both are missing, use `HEAD` only.
+- Shallow clones (`git clone --depth N`): `git cat-file --batch` may fail to resolve objects for branches referencing commits outside the shallow history. The clock still works but loses cross-branch ordering; the `(clock, timestamp, actor_rank)` tiebreaker applies — same as the cross-branch concurrency guarantee, honestly degraded.
+- The branch names (`dev`, `main`) are documented constants in the store. For repos using `master` or trunk-based development without `dev`, override via a `lamport_branches` list in `config.yaml` (default: `[dev, main]`).
+- Performance expectation: the scoped set should be ≤5 branches. `git branch --no-merged dev` is the only potentially expensive call; on repos with hundreds of stale branches, this could take tens of milliseconds. Branch hygiene (below) keeps this small in practice.
 
 **Branch hygiene.** Stale feature branches (already merged into `dev`) are useless for the Lamport clock — they contain no ops that aren't already on `dev`. To prevent accumulation, `scripts/auto-pr` deletes feature branches (local and remote) after successful merge. For manual PRs, AGENTS.md documents the expectation: delete your feature branch after merge. This keeps the scoped branch set small (typically 2–3 branches) and eliminates the risk of degraded performance from branch accumulation.
 
@@ -367,15 +387,16 @@ The stop hook counts items whose status is in `blocking_statuses` (see [Config F
 
 If `--priority` is omitted on `add`, the CLI assigns a default of 2 (P2). Items are sorted by `(priority, before-ordering, created_at)` — see below.
 
-**`before` field for enforced ordering.** To express "this item should be worked on before that one" without changing priority tiers, an item can declare `before: [<ID>, ...]`:
+**`before` field for enforced ordering.** To express "this item should be worked on before that one" without changing priority tiers, an item can declare `before: [<ID>, ...]`. Read `before: [Y]` as "I block Y — finish me before starting Y":
 
 ```yaml
 - op: update  # b2c3
   at: "2026-02-12T10:00:00Z"  # b2c3
   by: human  # b2c3
+  actor: jgstern  # b2c3
   clock: 7  # b2c3
   nonce: b2c3  # b2c3
-  set:  # b2c3
+  add:  # b2c3
     before: [INV-dabop-firuz-hadol-jikam-losib-mufad-nokap-pidul]  # b2c3
 ```
 
@@ -426,15 +447,20 @@ scripts/tracker update :1 --status done   # "item #1 from last list output"
 
 The last-displayed ID list is stashed in `$XDG_CACHE_HOME/hypergumbo-tracker/<repo-fingerprint>/` (see [Storage Layout](#storage-layout)). The `:N` syntax is unambiguous (colon distinguishes it from an ID prefix). Positional aliases are ephemeral — never stored in op log files, just a CLI convenience.
 
-**Advisory file locking (`flock()`) around appends.** Even append-only files can get corrupted by concurrent writes from multiple processes (agent CLI + human TUI, or two agent tasks running in parallel). The store wraps the critical section — compute Lamport clock, serialize op, append to file, fsync — in an advisory file lock, then updates the cache outside the lock (the cache update is idempotent and reads the file, so it's safe to run unlocked):
+**Advisory file locking (`flock()`) around appends.** Even append-only files can get corrupted by concurrent writes from multiple processes (agent CLI + human TUI, or two agent tasks running in parallel). The store wraps the critical section — **acquire lock, compute Lamport clock, serialize op, append, fsync, release lock** — in an advisory file lock, then updates the cache outside the lock (the cache update is idempotent and reads the file, so it's safe to run unlocked). The Lamport clock computation is inside the lock to prevent two concurrent processes from reading the same max clock and producing duplicate clock values on the same branch:
 
 ```python
 import fcntl
 
-def _append_op(filepath: Path, op_bytes: bytes, cache: Cache) -> None:
+def _append_op(filepath: Path, build_op: Callable[..., bytes], cache: Cache) -> None:
     with open(filepath, "a") as f:
         fcntl.flock(f.fileno(), fcntl.LOCK_EX)
         try:
+            # Clock computation inside the lock: read current max clock
+            # from the file (and cross-branch peek), then build the op
+            # with clock = max + 1. This prevents two concurrent processes
+            # from computing the same clock value on the same branch.
+            op_bytes = build_op(filepath)
             f.write(op_bytes.decode())
             f.flush()
             os.fsync(f.fileno())
@@ -449,7 +475,7 @@ Contention is expected to be rare (two processes appending to the *same item* at
 
 **Tier 1 — SimHash (fast, always runs on `add`).** SimHash computes a locality-sensitive fingerprint over tokenized `title` + `description` + `fields` text. The algorithm is ~30 lines of pure Python (hash each token, accumulate bit-position votes, threshold), runs in microseconds, and requires no external dependencies. SimHash has a useful formal guarantee: for inputs with cosine similarity S, the probability of a k-bit fingerprint collision is `(1 - arccos(S)/π)^k`. At 40 bits, unrelated items (cosine similarity ~0) have a collision probability of ~10⁻¹² — identical to a random 40-bit hash. The "cost" of locality sensitivity appears only in the moderate-similarity zone (cosine ~0.5: ~10⁻⁸ collision probability at 40 bits), which is precisely where you *want* detection.
 
-On `add`, the store computes the new item's SimHash and compares it (by Hamming distance) against existing items' cached SimHash fingerprints. If the distance is below a threshold (e.g., ≤5 bits out of 40), a warning is emitted:
+On `add`, the store computes the new item's SimHash and compares it (by Hamming distance) against existing items' cached SimHash fingerprints. If the distance is below a threshold (e.g., ≤3 bits out of 40), a warning is emitted:
 
 ```
 WARNING: INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit is similar to existing INV-fodak-humit-kobap-linud-rasib-sufag-tohim-vukad
@@ -629,6 +655,8 @@ Until resolved, the item appears in `list` and `show` with a conflict indicator 
 
 **Self-healing attempt cap.** If the same item triggers reconciliation more than 3 times (tracked via `reconcile` op count in the compiled history), the store stops attempting automatic repair, flags the item with a persistent error in the compiled snapshot, and surfaces it to the human via `validate` and TUI. This prevents repair loops from degenerate merge scenarios.
 
+**Recovery from capped items.** When an item hits the reconciliation cap, the human resolves it via `scripts/tracker reconcile-reset <ID>`, which: (1) presents the current state of all tier copies, (2) asks the human to choose the surviving tier, (3) merges all ops into a single file in the chosen tier, (4) deletes the other copies, and (5) appends a `reconcile` op with `reason: "manual-reset"` that resets the reconciliation counter. This is a human-authority operation (see [Security Model](#security-model)).
+
 #### Compile Rules (Conflict Resolution)
 
 The `compile()` function is a pure function: it takes a list of ops from an op log file, sorts them by Lamport clock, and folds them into a snapshot. This is where concurrent edits are resolved — not in a merge driver, but in the read path.
@@ -642,10 +670,10 @@ The `compile()` function is a pure function: it takes a list of ops from an op l
 | Field / op type | Compile behavior |
 |---|---|
 | Scalar fields (`status`, `priority`, `title`, `parent`, `description`, `justification`, `pr_ref`) | Last write wins |
-| `tags` | Last write wins (replaced wholesale by each `update` that sets it) |
-| `before` | Last write wins (replaced wholesale) |
-| `duplicate_of` | Last write wins (replaced wholesale) |
-| `not_duplicate_of` | Last write wins (replaced wholesale) |
+| `tags` | Accumulated: `add` ops union into the set, `remove` ops subtract. `set` replaces wholesale (use sparingly — concurrent `set` ops lose one side's intent). |
+| `before` | Accumulated: `add` ops union, `remove` ops subtract. `set` replaces wholesale. |
+| `duplicate_of` | Accumulated: `add` ops union, `remove` ops subtract. `set` replaces wholesale. |
+| `not_duplicate_of` | Accumulated: `add` ops union, `remove` ops subtract. `set` replaces wholesale. |
 | `fields` (dict) | Per-key last write wins (merge, not replace — updating `fields.root_cause` does not clobber `fields.statement`) |
 | `locked_fields` | Accumulated: `lock` ops add to the set, `unlock` ops remove |
 | Discussion | Accumulated: `discuss` ops append, `discuss_clear` resets to empty, `discuss_summarize` replaces with single summary |
@@ -668,6 +696,7 @@ The `compile()` function is a pure function: it takes a list of ops from an op l
 - op: update  # d4e5
   at: "2026-02-11T18:31:00Z"  # d4e5
   by: agent  # d4e5
+  actor: jgstern_agent  # d4e5
   clock: 3  # d4e5
   nonce: d4e5  # d4e5
   set:  # d4e5
@@ -675,6 +704,7 @@ The `compile()` function is a pure function: it takes a list of ops from an op l
 - op: update  # e6f7
   at: "2026-02-11T19:30:00Z"  # e6f7
   by: agent  # e6f7
+  actor: jgstern_agent  # e6f7
   clock: 6  # e6f7
   nonce: e6f7  # e6f7
   set:  # e6f7
@@ -701,10 +731,11 @@ This split means the hot path — `compile()`, `list`, `ready`, `count-todos` �
 - String fields that could be misinterpreted are always double-quoted: `title`, `description`, `justification`, `message` (in discuss ops), all `fields.*` string values
 - `op`, `status`, `kind`, `by` are unquoted (controlled vocabulary, known-safe values)
 - Multiline strings use block scalar (`|`) style
+- **List-valued fields in `update` ops** (`add`/`remove` dicts): always use YAML flow-style (e.g., `tags: [ci_infrastructure, analysis_quality]`). Flow-style keeps the entire list on one line, making it atomic under `merge=union` — git cannot interleave lines from different ops within a single-line value. Lists inside `create` ops' `data.fields` (e.g., `regression_tests`) may use block-style safely, since each `create` op has a unique nonce namespace and interleaving across ops cannot occur.
 
 **Canonical op field order.** Each op is serialized with fields in this order:
 ```
-op (with nonce comment), at, by, clock, nonce, [op-specific fields: data/set/message/lock/unlock]
+op (with nonce comment), at, by, actor, clock, nonce, [op-specific fields: data/set/add/remove/message/lock/unlock]
 ```
 
 **Every line** of every op carries an inline `# <nonce>` comment that duplicates the `nonce` field value. This is load-bearing for `merge=union` correctness (see [Compile Rules](#compile-rules-conflict-resolution)): it makes every line globally unique, preventing the union driver from fusing same-type ops (first-line deduplication) or stripping shared internal lines (payload deduplication). The comments are invisible to YAML parsers but visible to git's line-level merge. `ruamel.yaml`'s comment-preservation support handles nonce-on-every-line naturally on the write path.
@@ -963,6 +994,7 @@ See [Config File](#config-file) for the template-based config design. The key se
 - **Refuse to write to items that can't compile.** If an op log is corrupted beyond what self-healing can fix, the store refuses to append rather than making it worse. The item is frozen until a human looks at it.
 - **Cap self-healing attempts.** If the same item triggers reconciliation more than 3 times, stop trying and escalate (see [Self-Healing Reconciliation](#self-healing-reconciliation)). Prevents repair loops.
 - **Discussion rate limit.** Token-based daily cap per item (see [Discussion Threads](#discussion-threads)). Prevents runaway agent loops from bloating op logs.
+- **Fail-closed stop hook.** If `scripts/tracker count-todos` exits non-zero (crash, corrupt cache, missing config), the stop hook treats this as blocking — the agent cannot stop. This eliminates the class of failure that motivated ADR-0013: governance tooling that silently gives wrong answers. A stopped agent is a loud signal that gets investigated; a churning agent with silently-broken governance is invisible.
 
 **The security guarantee, stated honestly:** On a two-user deployment, human authority over ops is enforced by the OS (getuid). Human authority over config is enforced by file permissions. The agent cannot forge human-authority ops or redefine governance rules without privilege escalation. On a single-user deployment, both are enforced by convention (AGENTS.md rules, CLI design). The tracker does not claim cryptographic non-repudiation. The real backstop for all deployments is external: VM snapshots, limited forge permissions, and a read-only mirror.
 
@@ -1077,11 +1109,11 @@ The tracker package declares `console_scripts` entry points (`hypergumbo-tracker
 | Subcommand | Purpose | Primary Consumer |
 |---|---|---|
 | `init` | Create `.agent/tracker/` and `.agent/tracker-workspace/` dirs (with `.ops/` dotdirs), copy `config.yaml.template` → `config.yaml` (human-owned, mode 644), set up `.gitignore` entries (config.yaml, stealth/). See [Config File](#config-file), [Security Model](#security-model). | human |
-| `count-todos [--hard\|--soft]` | Print integer count of blocking items (respects `stop_hook.scope` config, uses `blocking_statuses` from config) | stop_logic.sh |
-| `hash-todos` | Print SHA256 of all TODO content (circuit breaker) | stop_logic.sh |
-| `validate [FILE...] [--similar] [--deep-similar]` | Exit 0 if all op log files valid, exit 1 with errors/warnings. When called with file paths, validates only those files (but still checks cross-file constraints like duplicate IDs and dangling parent refs against the full set). No args = validate all. Warns on cross-tier duplicates. Warns when `config.yaml` has kinds/statuses not in `config.yaml.template` (CI fallback gap). `--similar`: surface near-duplicate pairs via SimHash (skips pairs in `not_duplicate_of`). `--deep-similar`: additionally uses embedding-based semantic tags for discrimination (requires `onnxruntime` + `tokenizers`; falls back to SimHash-only if unavailable). | pre-commit hook, CI |
+| `count-todos [--hard\|--soft]` | Print integer count of blocking items (respects `stop_hook.scope` config, uses `blocking_statuses` from config). Exit 0 on success; exit 1 on error (stop hook treats non-zero as blocking — see [Safety Model](#safety-model-three-layers)). | stop_logic.sh |
+| `hash-todos` | Print SHA256 of the circuit breaker input. **Input specification:** for each item with status in `blocking_statuses` (respecting `stop_hook.scope`), concatenate `id + "\t" + status + "\t" + title + "\n"`, sorted by ID. Hash the resulting UTF-8 bytes with SHA-256. Discussion and `fields` are excluded — only identity and blocking status affect the hash. This ensures the circuit breaker fires when the agent is making no *governance-relevant* progress, not when discussions or field details change. | stop_logic.sh |
+| `validate [FILE...] [--similar] [--deep-similar] [--strict]` | Validate op log files. **Exit codes:** 0 = valid (warnings emitted to stderr), 1 = validation errors found, 2 = tracker internal failure (corrupt state, missing config, unreadable files). When called with file paths, validates only those files (but still checks cross-file constraints like duplicate IDs and dangling parent refs against the full set). No args = validate all. Warns on cross-tier duplicates. Warns when `config.yaml` has kinds/statuses not in `config.yaml.template` (CI fallback gap). `--similar`: surface near-duplicate pairs via SimHash (skips pairs in `not_duplicate_of`). `--deep-similar`: additionally uses embedding-based semantic tags for discrimination (requires `onnxruntime` + `tokenizers`; falls back to SimHash-only if unavailable). `--strict`: promote warnings to errors (exit 1). Pre-commit hook blocks on exit ≥ 1. Stop hook treats exit ≥ 1 as blocking. | pre-commit hook, CI |
 | `add --kind <kind> --title "..." [--tier canonical\|workspace\|stealth]` | Create new item (appends `create` op; default tier: workspace). Computes SimHash on creation and warns if similar items exist (see [Key Design Decisions](#key-design-decisions)). Accepts prefix or positional alias (`:N`) for `--duplicate-of`/`--not-duplicate-of` flags. | agent |
-| `update <ID> --status\|--priority\|...` | Update fields (appends `update` op; respects locked_fields and actor authority) | agent |
+| `update <ID> --status\|--priority\|...` | Update fields (appends `update` op; respects locked_fields and actor authority). Scalar fields use `--status`, `--priority`, etc. Set-valued fields use `--add-tag`, `--remove-tag`, `--add-before`, `--remove-before`, `--add-duplicate-of`, `--remove-duplicate-of`, `--add-not-duplicate-of`, `--remove-not-duplicate-of` (mapped to `add`/`remove` dicts in the op). | agent |
 | `discuss <ID> "msg"` | Append `discuss` op (actor resolved from `os.getuid()` — no `--as` flag; see [Security Model](#security-model)) | both |
 | `discuss <ID> --clear` | Append `discuss_clear` op (human-authority only) | human |
 | `discuss <ID> --summarize "summary"` | Append `discuss_summarize` op | both |
@@ -1098,6 +1130,7 @@ The tracker package declares `console_scripts` entry points (`hypergumbo-tracker
 | `migrate` | Convert existing markdown → YAML (one-time, into canonical) | human/agent |
 | `guidance` | Generate guidance markdown for stop hook (scope-aware) | stop_logic.sh |
 | `fork-setup` | Detect fork (upstream remote), set workspace `stop_hook.scope: workspace` in config. Writes to `config.yaml` (human-owned), so must be run by the human user. If run by the agent, prints the required config change and exits with a message asking the human to run it. | human |
+| `reconcile-reset <ID>` | Resolve a capped cross-tier duplicate: present tier copies, ask human to choose surviving tier, merge ops, delete other copy, reset reconciliation counter. Human-authority only. See [Self-Healing Reconciliation](#self-healing-reconciliation). | human |
 | `cache-rebuild` | Delete and rebuild cache from YAML source of truth | human/agent |
 | `textconv <FILE>` | Emit compiled one-line-per-field text representation of an op log file (used by git's textconv diff driver — see [textconv](#local-diff-declutter-textconv)) | git diff |
 | `tui` | Launch Textual TUI (human-authority context — `os.getuid()` resolves as human) | human |
@@ -1143,10 +1176,18 @@ if [[ -x "$REPO_ROOT/scripts/tracker" && -d "$REPO_ROOT/.agent/tracker" ]]; then
   # count-todos respects stop_hook.scope from config.yaml:
   # - "all" (default, upstream): counts canonical + workspace + stealth
   # - "workspace" (forks): counts workspace + stealth only
-  TOTAL_HARD=$(scripts/tracker count-todos --hard)
-  TOTAL_SOFT=$(scripts/tracker count-todos --soft)
+  # Fail-closed: if the tracker errors, treat as blocking.
+  # A stopped agent is a loud signal; silently-broken governance is invisible.
+  if ! TOTAL_HARD=$(scripts/tracker count-todos --hard); then
+    echo "tracker: count-todos --hard failed (exit $?). Treating as blocking." >&2
+    TOTAL_HARD=999
+  fi
+  if ! TOTAL_SOFT=$(scripts/tracker count-todos --soft); then
+    echo "tracker: count-todos --soft failed (exit $?). Treating as blocking." >&2
+    TOTAL_SOFT=999
+  fi
   TOTAL_TODOS=$((TOTAL_HARD + TOTAL_SOFT))
-  CURRENT_HASH=$(scripts/tracker hash-todos)
+  CURRENT_HASH=$(scripts/tracker hash-todos) || CURRENT_HASH="tracker-error-$(date +%s)"
   # ... existing hash file / circuit breaker logic unchanged ...
 else
   # Legacy grep patterns (existing code, no changes)
@@ -1268,24 +1309,29 @@ Migration is idempotent: re-running produces the same IDs (same content → same
 
 ### Implementation Sequence
 
-#### PR 1: Package scaffold + data model + store + cache + validation + serialization + licensing
+#### PR 1a: Package scaffold + data model + store + serialization + licensing
 - Create `packages/hypergumbo-tracker/` with pyproject.toml (including `console_scripts` entry points: `hypergumbo-tracker` → `hypergumbo_tracker.cli:main`, `hypergumbo-tracker-textconv` → `hypergumbo_tracker.cli:textconv_main`), LICENSE (MPL-2.0), src layout, tests dir. All source files carry `# SPDX-License-Identifier: MPL-2.0` headers
 - Update root `LICENSE` with preamble noting per-package licensing
 - Update `CONTRIBUTING.md` to document dual-license structure (MPL-2.0 for tracker, AGPL-3.0-or-later for everything else), SPDX header convention, and that DCO sign-off covers both licenses per-file
-- `models.py`: Op dataclasses (including `promote`/`demote`/`reconcile` op types), Tier enum (`canonical`/`workspace`/`stealth`), config loading from chain (`config.yaml` → `config.yaml.template` fallback, including `fields_schema` per kind — supported types: `text`, `integer` with optional `min`/`max`, `list`, `boolean`; `blocking_statuses`/`resolved_statuses`; `actor_resolution.agent_usernames` patterns). Status vocabulary loaded from config at startup (no Python enum). Actor resolution via `os.getuid()` + configurable agent username patterns (see [Security Model](#security-model))
-- `store.py`: YAML write (ruamel.yaml) and read (PyYAML `CSafeLoader` — see [YAML Serialization Rules](#yaml-serialization-rules)), hash-based ID generation (SHA-256 of canonicalized `create` op `data` dict, first 128 bits proquint-encoded — see [Key Design Decisions](#key-design-decisions)), **same-branch existence check on `add()`** (refuse to create if file with computed ID already exists in the target tier — see [Key Design Decisions](#key-design-decisions)), SimHash computation on item content (40-bit fingerprint, cached in SQLite), prefix matching resolver (shortest unambiguous prefix), positional alias support (stash file in XDG cache dir), scoped cross-branch Lamport clock (peek `dev` + `main` + `HEAD` + unmerged branches via `git cat-file --batch` — see [Key Design Decisions](#key-design-decisions)), cross-branch lock enforcement (same scoped peek, union of `locked_fields`), human-authority enforcement via `_resolve_actor()` (see [Security Model](#security-model)), nonce generation (4 random hex chars per op, serialized as inline `# <nonce>` comment on every line for `merge=union` correctness — see [Compile Rules](#compile-rules-conflict-resolution)), **`flock()` around append-fsync-cache-update critical section** (per-file advisory lock — see [Key Design Decisions](#key-design-decisions)), **discussion rate limit** (token-based daily cap per item, `len(message) / 4.4` as estimate — see [Discussion Threads](#discussion-threads)), `compile()` function (**tolerates duplicate `create` ops from cross-branch merges** — lowest-clock `create` wins, subsequent identical-data `create` ops ignored — see [Compile Rules](#compile-rules-conflict-resolution)), list/filter, `ready()` filter (soft-blocking via `before` links, uses `resolved_statuses` from config), tree traversal (children/ancestors), canonical op field ordering, `before` topological sort, **refuse to write to items that can't compile** (frozen until human intervention — see [Safety Model](#safety-model-three-layers)). Store operates on a single directory (one tier) — multi-tier merging is handled by `TrackerSet`
-- `trackerset.py`: Multi-tier wrapper that instantiates a `Store` per tier (canonical, workspace, stealth), merges reads transparently, resolves cross-tier `parent`/`before` references, routes writes to the correct tier, implements `promote()`/`demote()`/`stealth()`/`unstealth()` (append op + physical file move between directories), **self-healing cross-tier duplicate reconciliation** (follows last tier-movement op when deterministic, flags ambiguous cases with derived `cross_tier_conflict` field, caps reconciliation attempts at 3 per item — see [Self-Healing Reconciliation](#self-healing-reconciliation)), provides unified `ready()` (excludes items with cross-tier conflicts) and scope-aware `count_todos()` (respects `stop_hook.scope` and `blocking_statuses` from config)
-- `cache.py`: SQLite read cache (see [Read Cache](#read-cache-sqlite)) — one cache database per tier in `$XDG_CACHE_HOME/hypergumbo-tracker/<repo-fingerprint>/`. Schema creation (including `source_size` and `tier` columns), incremental byte-offset invalidation (seek to stored `source_size`, parse only new bytes, skip data re-compile for discussion-only appends), write-through upsert on local ops, cold-start rebuild, `cache-rebuild` entry point, `TRACKER_CACHE_DIR` override. All read operations (`list`, `ready`, `count-todos`, `show`) query the cache; writes go to YAML and update the cache row in one step
-- `validation.py`: schema checks, status validation against config (not a hardcoded enum), dedup (across all tiers), cross-tier duplicate detection, parent ref checks (cross-tier), `before` cycle detection (cross-tier), compiled-state checks (deferred justification, etc.), per-kind `fields_schema` validation (required fields present, type/range checks on known fields, edit-distance typo warnings for unknown fields), **config-vs-template divergence warning** (warn when `config.yaml` has kinds/statuses not in `config.yaml.template`). Must support optional file-path arguments from the start (for incremental pre-commit validation — see [Pre-Commit Validation](#pre-commit-validation))
+- `models.py`: Op dataclasses (including `promote`/`demote`/`reconcile`/`reconcile-reset` op types, `update` ops with `set`/`add`/`remove` dicts, `actor` field on all ops), Tier enum (`canonical`/`workspace`/`stealth`), config loading from chain (`config.yaml` → `config.yaml.template` fallback, including `fields_schema` per kind — supported types: `text`, `integer` with optional `min`/`max`, `list`, `boolean`; `blocking_statuses`/`resolved_statuses`; `actor_resolution.agent_usernames` patterns; `lamport_branches` list with default `[dev, main]`). Status vocabulary loaded from config at startup (no Python enum). Actor resolution via `os.getuid()` + configurable agent username patterns (see [Security Model](#security-model))
+- `store.py`: YAML write (ruamel.yaml, flow-style for list-valued fields in `update` ops) and read (PyYAML `CSafeLoader` — see [YAML Serialization Rules](#yaml-serialization-rules)), hash-based ID generation (SHA-256 of canonicalized `create` op `data` dict, first 128 bits proquint-encoded — see [Key Design Decisions](#key-design-decisions)), **same-branch existence check on `add()`** (refuse to create if file with computed ID already exists in the target tier — see [Key Design Decisions](#key-design-decisions)), SimHash computation on item content (40-bit fingerprint, cached in SQLite), prefix matching resolver (shortest unambiguous prefix), positional alias support (stash file in XDG cache dir), scoped cross-branch Lamport clock (peek configurable branches + `HEAD` + unmerged branches via `git cat-file --batch`, with fallbacks for missing branches and shallow clones — see [Key Design Decisions](#key-design-decisions)), cross-branch lock enforcement (same scoped peek, union of `locked_fields`), human-authority enforcement via `_resolve_actor()` (see [Security Model](#security-model)), nonce generation (4 random hex chars per op, serialized as inline `# <nonce>` comment on every line for `merge=union` correctness — see [Compile Rules](#compile-rules-conflict-resolution)), **`flock()` with clock computation inside the lock** (per-file advisory lock — see [Key Design Decisions](#key-design-decisions)), **discussion rate limit** (token-based daily cap per item, `len(message) / 4.4` as estimate — see [Discussion Threads](#discussion-threads)), `compile()` function (**tolerates duplicate `create` ops from cross-branch merges** — lowest-clock `create` wins, subsequent identical-data `create` ops ignored — see [Compile Rules](#compile-rules-conflict-resolution); set-valued fields compiled via accumulated `add`/`remove` ops — see [Compile Rules](#compile-rules-conflict-resolution)), list/filter, `ready()` filter (soft-blocking via `before` links, uses `resolved_statuses` from config), tree traversal (children/ancestors), canonical op field ordering, `before` topological sort, **refuse to write to items that can't compile** (frozen until human intervention — see [Safety Model](#safety-model-three-layers)). Store operates on a single directory (one tier) — multi-tier merging is handled by `TrackerSet`
 - `__init__.py`: public API
 - Create `.gitattributes` with `linguist-generated` and `merge=union` for both `.agent/tracker/.ops/.*.ops` and `.agent/tracker-workspace/.ops/.*.ops` (see [.gitattributes](#gitattributes))
 - Add `.agent/tracker/config.yaml`, `.agent/tracker-workspace/config.yaml`, and `.agent/tracker-workspace/stealth/` to `.gitignore`
 - Update `scripts/check-package-coverage` and `scripts/dev-install`
-- Tests: model construction, validation pass/fail (including `fields_schema`: required field missing → error, wrong type → error, unknown field with close edit distance → warning with suggestion, unknown field on kind without schema → no warning), store CRUD (append ops), hash-based ID generation (same content → same ID, different content → different ID, IDs are valid proquint-encoded), proquint round-trip (encode → decode → encode produces same result), **`add()` same-branch existence check** (create item, attempt `add()` with identical content → `ItemExistsError` with existing item's title; verify the original file is not overwritten; verify different content producing a different ID succeeds normally; verify hash collision — create item, then `add()` with different content that produces the same ID via mocked hash → auto-salts and creates under a different ID), prefix matching (unique prefix resolves, ambiguous prefix errors with candidates, kind-prefix-less matching works), positional aliases (`:1` resolves to first item in last list, stale alias file warns), SimHash computation (identical text → identical fingerprint, similar text → low Hamming distance, unrelated text → high Hamming distance), SimHash similarity warning on `add` (mock store with existing items, verify warning emitted when distance below threshold, verify no warning when above threshold, verify `not_duplicate_of` suppresses warning), `duplicate_of` exclusion (items with non-empty `duplicate_of` excluded from `ready` and `count_todos`), scoped cross-branch Lamport clock (mock `git cat-file --batch` to simulate peek across `dev`/`main`/`HEAD`/unmerged branches, verify clock > max across scoped set, verify merged branches are excluded), cross-branch lock enforcement (mock `git cat-file --batch` to simulate lock on another branch in the scoped set, verify agent update rejected), nonce uniqueness (two ops with identical content/clock/timestamp produce byte-different serializations), `compile()` with interleaved ops from simulated concurrent branches (same clock values, clock-skewed timestamps), **`compile()` with duplicate `create` ops** (two `create` ops with same `data` but different nonces/clocks → lowest-clock `create` used for `created_at`, subsequent `create` ignored, all non-`create` ops from both branches folded normally; two `create` ops with same ID but different `data` → compile uses lowest-clock `create`, logs warning), tree traversal, `ready()` filter (items blocked by incomplete `before` predecessors excluded, transitive blocking, stale/cross-tier links ignored), `before` sorting, `before` cycle rejection
-- `test_trackerset.py`: multi-tier merged reads (items from canonical + workspace + stealth appear in unified list with correct tier indicators), cross-tier `parent` resolution (workspace item with `parent` pointing to canonical item resolves correctly), cross-tier `before` resolution, `promote` (workspace → canonical: op appended, file physically moved, cache updated in both tiers, ID unchanged), `demote` (canonical → workspace: reverse), `stealth` (workspace → stealth: file moves to gitignored dir), `unstealth` (stealth → workspace), scope-aware `count_todos` (scope=`all` counts canonical + workspace + stealth; scope=`workspace` counts workspace + stealth only; uses `blocking_statuses` from config), `ready` always shows all tiers regardless of scope, **self-healing reconciliation** (cross-tier duplicate with `promote` op → auto-reconciled to canonical with `reconcile` op appended; cross-tier duplicate with `demote` op → auto-reconciled to workspace; cross-tier duplicate with no tier-movement ops → `cross_tier_conflict` flag set, item excluded from `ready`; reconciliation attempt cap: item with 3+ prior `reconcile` ops → stops trying, surfaces persistent error; self-healing is append-only: verify no ops deleted or rewritten during reconciliation), **human-authority enforcement** (agent UID rejected for `lock`, `unlock`, `discuss_clear`, `stealth`, `unstealth`; agent UID accepted for `promote`, `demote`, `discuss_summarize`, `discuss`, `update`)
+- Tests: model construction, store CRUD (append ops with `actor` field preserved), hash-based ID generation (same content → same ID, different content → different ID, IDs are valid proquint-encoded), proquint round-trip (encode → decode → encode produces same result), **`add()` same-branch existence check** (create item, attempt `add()` with identical content → `ItemExistsError` with existing item's title; verify the original file is not overwritten; verify different content producing a different ID succeeds normally; verify hash collision — create item, then `add()` with different content that produces the same ID via mocked hash → auto-salts and creates under a different ID), prefix matching (unique prefix resolves, ambiguous prefix errors with candidates, kind-prefix-less matching works), positional aliases (`:1` resolves to first item in last list, stale alias file warns), SimHash computation (identical text → identical fingerprint, similar text → low Hamming distance, unrelated text → high Hamming distance), SimHash similarity warning on `add` (mock store with existing items, verify warning emitted when distance below threshold, verify no warning when above threshold, verify `not_duplicate_of` suppresses warning), `duplicate_of` exclusion (items with non-empty `duplicate_of` excluded from `ready` and `count_todos`), scoped cross-branch Lamport clock (mock `git cat-file --batch` to simulate peek across configured branches/`HEAD`/unmerged branches, verify clock > max across scoped set, verify merged branches are excluded, **verify fallback when `dev`/`main` missing** — uses `HEAD` only), cross-branch lock enforcement (mock `git cat-file --batch` to simulate lock on another branch in the scoped set, verify agent update rejected), nonce uniqueness (two ops with identical content/clock/timestamp produce byte-different serializations), `compile()` with interleaved ops from simulated concurrent branches (same clock values, clock-skewed timestamps), **`compile()` with duplicate `create` ops** (two `create` ops with same `data` but different nonces/clocks → lowest-clock `create` used for `created_at`, subsequent `create` ignored, all non-`create` ops from both branches folded normally; two `create` ops with same ID but different `data` → compile uses lowest-clock `create`, logs warning), **`compile()` with `add`/`remove` ops on set-valued fields** (two concurrent `add` ops for `tags` → union of both; `add` followed by `remove` → correct set difference; `set` followed by `add` → set replaces base then add accumulates; concurrent `set` ops → LWW with warning), tree traversal, `ready()` filter (items blocked by incomplete `before` predecessors excluded, transitive blocking, stale/cross-tier links ignored), `before` sorting, `before` cycle rejection
+- `test_yaml_roundtrip.py`: adversarial inputs (`"yes"`, `"null"`, `"3.0"`, `"*bold*"`, strings with colons, leading whitespace, emoji), canonical field order verification (including `actor` field), nonce field presence verification, **nonce-on-every-line verification** (every line of every serialized op carries a `# <nonce>` inline comment matching the `nonce` field value), **flow-style enforcement for list-valued fields in `update` ops** (`add`/`remove` dicts), **CSafeLoader/ruamel.yaml parity** (verify both parsers produce identical Python objects for all op types including adversarial inputs — note: CSafeLoader strips comments, so the nonce-on-every-line comments are not visible on the read path; comments are verified via raw string inspection of the serialized output, not via parsed data)
+- `test_compile_properties.py`: property-based tests using `hypothesis` — generate random op sequences (create followed by random update/discuss/lock/unlock ops with random clocks and timestamps) and verify: (1) idempotency (`compile(ops) == compile(ops)`), (2) permutation invariance (`compile(shuffle(ops)) == compile(ops)`), (3) terminal status consistency (compiled status = status from highest-clock update op that sets it), (4) **duplicate-create resilience** (generate op sequence with two `create` ops sharing the same `data` but different clocks/nonces, verify `compile()` produces the same result as with a single `create` op followed by the same non-`create` ops), (5) **additive-op commutativity** (generate random sequences of `add`/`remove` ops on `tags` with random clocks, verify `compile(shuffle(ops))` produces the same tag set regardless of op order)
+
+#### PR 1b: TrackerSet (multi-tier) + cache
+- `trackerset.py`: Multi-tier wrapper that instantiates a `Store` per tier (canonical, workspace, stealth), merges reads transparently, resolves cross-tier `parent`/`before` references, routes writes to the correct tier, implements `promote()`/`demote()`/`stealth()`/`unstealth()` (append op + physical file move between directories), `reconcile_reset()` (human-authority — merge ops, delete duplicate, reset counter), **self-healing cross-tier duplicate reconciliation** (follows last tier-movement op when deterministic, flags ambiguous cases with derived `cross_tier_conflict` field, caps reconciliation attempts at 3 per item — see [Self-Healing Reconciliation](#self-healing-reconciliation)), provides unified `ready()` (excludes items with cross-tier conflicts) and scope-aware `count_todos()` (respects `stop_hook.scope` and `blocking_statuses` from config)
+- `cache.py`: SQLite read cache (see [Read Cache](#read-cache-sqlite)) — one cache database per tier in `$XDG_CACHE_HOME/hypergumbo-tracker/<repo-fingerprint>/`. Schema creation (including `source_size` and `tier` columns), incremental byte-offset invalidation (seek to stored `source_size`, parse only new bytes, skip data re-compile for discussion-only appends), write-through upsert on local ops, cold-start rebuild, `cache-rebuild` entry point, `TRACKER_CACHE_DIR` override. All read operations (`list`, `ready`, `count-todos`, `show`) query the cache; writes go to YAML and update the cache row in one step
+- `test_trackerset.py`: multi-tier merged reads (items from canonical + workspace + stealth appear in unified list with correct tier indicators), cross-tier `parent` resolution (workspace item with `parent` pointing to canonical item resolves correctly), cross-tier `before` resolution, `promote` (workspace → canonical: op appended, file physically moved, cache updated in both tiers, ID unchanged), `demote` (canonical → workspace: reverse), `stealth` (workspace → stealth: file moves to gitignored dir), `unstealth` (stealth → workspace), scope-aware `count_todos` (scope=`all` counts canonical + workspace + stealth; scope=`workspace` counts workspace + stealth only; uses `blocking_statuses` from config), `ready` always shows all tiers regardless of scope, **self-healing reconciliation** (cross-tier duplicate with `promote` op → auto-reconciled to canonical with `reconcile` op appended; cross-tier duplicate with `demote` op → auto-reconciled to workspace; cross-tier duplicate with no tier-movement ops → `cross_tier_conflict` flag set, item excluded from `ready`; reconciliation attempt cap: item with 3+ prior `reconcile` ops → stops trying, surfaces persistent error; `reconcile-reset` resets counter and resolves capped items; self-healing is append-only: verify no ops deleted or rewritten during reconciliation), **human-authority enforcement** (agent UID rejected for `lock`, `unlock`, `discuss_clear`, `stealth`, `unstealth`, `reconcile-reset`; agent UID accepted for `promote`, `demote`, `discuss_summarize`, `discuss`, `update`)
 - `test_cache.py`: SQLite cache correctness — write-through (append op, verify cache row updated without re-parse, verify `source_size` updated), mtime invalidation (touch YAML file, verify re-parse on next read), cold start (delete `.cache.db`, verify rebuilt from YAML), corruption recovery (corrupt `.cache.db`, verify rebuilt transparently), stale cache (simulate `git pull` changing file mtimes, verify only changed items re-parsed), cache-vs-YAML consistency (compile from YAML and compare against cache row for all items), **incremental invalidation** (append discuss op to file, verify only new bytes parsed and data fields not re-compiled; append update op to file, verify full re-compile triggered; simulate `merge=union` by appending ops from two simulated branches, verify incremental parse finds all new ops; simulate file truncation/rewrite, verify fallback to full re-parse; verify `source_size` tracking is accurate across append/merge/rewrite scenarios)
-- `test_compile_properties.py`: property-based tests using `hypothesis` — generate random op sequences (create followed by random update/discuss/lock/unlock ops with random clocks and timestamps) and verify: (1) idempotency (`compile(ops) == compile(ops)`), (2) permutation invariance (`compile(shuffle(ops)) == compile(ops)`), (3) terminal status consistency (compiled status = status from highest-clock update op that sets it), (4) **duplicate-create resilience** (generate op sequence with two `create` ops sharing the same `data` but different clocks/nonces, verify `compile()` produces the same result as with a single `create` op followed by the same non-`create` ops)
-- `test_yaml_roundtrip.py`: adversarial inputs (`"yes"`, `"null"`, `"3.0"`, `"*bold*"`, strings with colons, leading whitespace, emoji), canonical field order verification, nonce field presence verification, **nonce-on-every-line verification** (every line of every serialized op carries a `# <nonce>` inline comment matching the `nonce` field value), **CSafeLoader/ruamel.yaml parity** (verify both parsers produce identical Python objects for all op types including adversarial inputs — note: CSafeLoader strips comments, so the nonce-on-every-line comments are not visible on the read path; comments are verified via raw string inspection of the serialized output, not via parsed data)
+
+#### PR 1c: Validation
+- `validation.py`: schema checks, status validation against config (not a hardcoded enum), dedup (across all tiers), cross-tier duplicate detection, parent ref checks (cross-tier), `before` cycle detection (cross-tier), compiled-state checks (deferred justification, etc.), per-kind `fields_schema` validation (required fields present, type/range checks on known fields, edit-distance typo warnings for unknown fields), **config-vs-template divergence warning** (warn when `config.yaml` has kinds/statuses not in `config.yaml.template`), **flow-style enforcement for list-valued fields in `update` ops**. Must support optional file-path arguments from the start (for incremental pre-commit validation — see [Pre-Commit Validation](#pre-commit-validation)). **Exit codes:** 0 = valid (warnings to stderr), 1 = validation errors, 2 = internal failure
+- Tests: validation pass/fail (including `fields_schema`: required field missing → error, wrong type → error, unknown field with close edit distance → warning with suggestion, unknown field on kind without schema → no warning), **exit code verification** (errors → exit 1, warnings only → exit 0, internal failure → exit 2, `--strict` promotes warnings to exit 1)
 
 #### PR 2: Migration script
 - `migration.py`: markdown parser, status normalizer, priority assigner (integer tiers), hash-based ID generator (SHA-256 of canonicalized `create` op `data` dict, first 128 bits proquint-encoded), writer
@@ -1296,7 +1342,8 @@ Migration is idempotent: re-running produces the same IDs (same content → same
 - Tests: parse each markdown format, normalize all status variants, verify parent-child links
 
 #### PR 3: CLI + textconv diff driver
-- `cli.py`: argparse-based CLI with all subcommands (init, add, update, discuss, lock, unlock, promote, demote, stealth, unstealth, show, list, ready, log, validate, migrate, fork-setup, cache-rebuild, textconv). No `--as` flag — actor resolved internally via `os.getuid()` (see [Security Model](#security-model)). All `<ID>` arguments accept proquint prefix matching and positional aliases (`:N`). Human-authority ops (`lock`, `unlock`, `discuss --clear`, `stealth`, `unstealth`) refuse to execute under agent UIDs.
+- `cli.py`: argparse-based CLI with all subcommands (init, add, update, discuss, lock, unlock, promote, demote, stealth, unstealth, show, list, ready, log, validate, migrate, fork-setup, reconcile-reset, cache-rebuild, textconv). No `--as` flag — actor resolved internally via `os.getuid()` (see [Security Model](#security-model)). All `<ID>` arguments accept proquint prefix matching and positional aliases (`:N`). Human-authority ops (`lock`, `unlock`, `discuss --clear`, `stealth`, `unstealth`, `reconcile-reset`) refuse to execute under agent UIDs.
+- `update` subcommand uses `--add-tag`/`--remove-tag`, `--add-before`/`--remove-before`, etc. for set-valued fields (mapped to `add`/`remove` dicts in the op). Scalar fields use `--status`, `--priority`, etc. (mapped to `set` dict).
 - `init`: creates both `.agent/tracker/` and `.agent/tracker-workspace/` with `.ops/` dotdirs, `stealth/` dir; copies `config.yaml.template` → `config.yaml` with human ownership (mode 644); sets up shared group if two-user deployment detected; sets up `.gitignore` entries
 - `add --tier`: defaults to workspace; `--tier canonical` writes to canonical tier. Emits SimHash similarity warning if near-duplicates detected (see [Key Design Decisions](#key-design-decisions)). Supports `--duplicate-of` and `--not-duplicate-of` flags.
 - `promote`/`demote`: delegates to `TrackerSet.promote()`/`demote()` (append op + file move)
@@ -1314,14 +1361,14 @@ Migration is idempotent: re-running produces the same IDs (same content → same
 - `validate --similar`: runs SimHash comparison across all items, reports unflagged pairs, skips `not_duplicate_of` pairs
 - `validate --deep-similar`: additionally runs embedding-based tier 2 if available, falls back gracefully
 - `list` and `ready`: output numbered rows, stash ID list to `.last_list` for positional alias resolution
-- Tests: each subcommand with fixture YAML files, locked field rejection, tier routing (add defaults to workspace, add --tier canonical routes to canonical), promote/demote (verify file moves between directories, op appended, ID unchanged), stealth/unstealth (verify file moves to/from gitignored dir), discussion summarization, discussion soft cap warning, `before` ordering in `list` output, `ready` excludes items with incomplete `before` predecessors and items with non-empty `duplicate_of`, `ready --limit` returns top N, `list --tier workspace` filters correctly, fork-setup detection and config write, textconv output format (verify one-line-per-field structure, verify diff of two compiled states is human-readable), textconv graceful fallback when file is malformed, prefix matching via CLI (unique prefix resolves, ambiguous prefix shows candidates), positional alias via CLI (`:1` after `list` resolves correctly, stale `.last_list` warns), `add` similarity warning (create item similar to existing, verify warning on stderr), `validate --similar` (fixture with known similar pairs, verify flagged; fixture with `not_duplicate_of`, verify suppressed)
+- Tests: each subcommand with fixture YAML files, locked field rejection, tier routing (add defaults to workspace, add --tier canonical routes to canonical), promote/demote (verify file moves between directories, op appended, ID unchanged), stealth/unstealth (verify file moves to/from gitignored dir), reconcile-reset (capped item resolved, counter reset, human-authority required), discussion summarization, discussion soft cap warning, `before` ordering in `list` output, `ready` excludes items with incomplete `before` predecessors and items with non-empty `duplicate_of`, `ready --limit` returns top N, `list --tier workspace` filters correctly, fork-setup detection and config write, textconv output format (verify one-line-per-field structure, verify diff of two compiled states is human-readable), textconv graceful fallback when file is malformed, prefix matching via CLI (unique prefix resolves, ambiguous prefix shows candidates), positional alias via CLI (`:1` after `list` resolves correctly, stale `.last_list` warns), `add` similarity warning (create item similar to existing, verify warning on stderr), `validate --similar` (fixture with known similar pairs, verify flagged; fixture with `not_duplicate_of`, verify suppressed), **`update --add-tag`/`--remove-tag`** (verify `add`/`remove` dicts in op, compile produces correct set), `validate` exit codes (exit 0 with warnings, exit 1 with errors, exit 2 on internal failure, `--strict` promotes warnings to errors)
 
 #### PR 4: Stop hook integration + CI workflow updates
-- `stop_hook.py`: scope-aware count_todos() (reads `stop_hook.scope` and `blocking_statuses` from config), hash_todos(), generate_guidance()
-- Update `stop_logic.sh` with dual-mode (tracker-first with scope-aware counting, grep-fallback)
+- `stop_hook.py`: scope-aware count_todos() (reads `stop_hook.scope` and `blocking_statuses` from config; exit 0 on success, exit 1 on error — stop hook treats non-zero as blocking), hash_todos() (**input spec:** for each item with status in `blocking_statuses` respecting scope, concatenate `id + "\t" + status + "\t" + title + "\n"` sorted by ID, SHA-256 hash the UTF-8 bytes — discussion and fields excluded), generate_guidance()
+- Update `stop_logic.sh` with dual-mode (tracker-first with fail-closed error handling and scope-aware counting, grep-fallback for Phase 1 transition only)
 - Update `.github/workflows/ci.yml`: fix `CODE_PATTERNS` to exclude `.agent/tracker/.ops/` and `.agent/tracker-workspace/.ops/`; add `tracker_data` output to `changes` job; add `tracker-validate` job; update `ci-complete` gate; add concurrency group (see [CI Integration](#ci-integration))
 - Update `.github/workflows/full-suite.yml`: fix `CODE_PATTERNS`; add `test-tracker` job; update `aggregate` (see [CI Integration](#ci-integration))
-- Tests: stop_hook functions match expected counts on fixture data (test both scope=`all` and scope=`workspace`), hash stability, scope=`workspace` excludes canonical items from count
+- Tests: stop_hook functions match expected counts on fixture data (test both scope=`all` and scope=`workspace`), hash stability (verify hash input spec: IDs sorted, only blocking items, fields/discussion excluded), scope=`workspace` excludes canonical items from count, **fail-closed behavior** (mock `count_todos` to raise exception → stop hook treats as blocking; mock corrupt cache → rebuild attempted, if rebuild fails → blocking)
 
 #### PR 5: Pre-commit + AGENTS.md + commit convention + branch hygiene + contribute
 - Update `.githooks/pre-commit` with incremental tracker validation (staged `.ops` files only from both tiers, before Ruff — see [Pre-Commit Validation](#pre-commit-validation))
@@ -1334,7 +1381,7 @@ Migration is idempotent: re-running produces the same IDs (same content → same
 
 #### PR 6: TUI
 - `tui.py`: Textual app with table/tree toggle, detail panel (schema-aware field rendering: known fields in declared order with description tooltips, unknown fields in "Other" section), filter chips (including tier filter), tier indicator column (`[C]`/`[W]`/`[S]`), tier move dialog (`m` key: promote/demote/stealth/unstealth), lock/discussion UI, `before` ordering UI, operation log display, discussion warning badge (`[20+ msgs]`), schema-aware edit form (type-appropriate widgets for known fields: text area, integer spinner with min/max, list editor; generic key-value row for unknown fields), cross-tier conflict indicator for items with unresolved duplicates (see [Self-Healing Reconciliation](#self-healing-reconciliation))
-- `textual~=3.0` declared as optional dep in PR 1's pyproject.toml
+- `textual~=3.0` declared as optional dep in PR 1a's pyproject.toml
 - Tests use Textual's `App.run_test()`/`Pilot` (headless, async via `pytest-asyncio`). All tests use `run_test(size=(80, 24))` for deterministic layout. Two test tiers:
   - **Pilot-driven flow tests:** Launch → table loads with tier indicators → selection updates detail pane; toggle table/tree (`t`) → selection stays consistent; open filter (`f`) → apply status filter → table updates; filter by tier → only matching items shown; edit (`e`) → change status → assert op appended to YAML + UI refreshes; lock toggle (`l`) → verify agent write rejected on locked field; discussion panel (`d`) → submit message → assert `discuss` op appended; `shift+d` → clear discussion; tier move (`m`) → promote item → verify file moves from workspace `.ops/` to canonical `.ops/` dir + op appended + tier indicator updates. Uses `run_before` callbacks to reach multi-keystroke states before assertions.
   - **Snapshot tests (visual regression, added once layout stabilizes):** `pytest-textual-snapshot` SVG baselines for: main screen at 80x24 and 120x40 (showing tier indicators); filter panel open; discussion panel with >20 entries badge; locked-field item with lock icon; tree view with parent-child hierarchy; detail panel for kind with `fields_schema` (known fields in order, "Other" section for unknowns) vs. kind without schema (flat key-value list); tier move dialog. Update with `pytest --snapshot-update`. Compatible with `pytest-xdist`.
@@ -1583,6 +1630,7 @@ git config diff.tracker.textconv scripts/tracker-textconv
 # Git textconv driver for tracker op log files.
 # Delegates to the MPL-2.0 entry point; falls back to raw YAML if not installed.
 hypergumbo-tracker-textconv "$1" 2>/dev/null && exit 0
+echo "# hypergumbo-tracker not installed — run dev-install for compiled diffs"
 cat "$1"
 ```
 
@@ -1648,6 +1696,9 @@ Instead of the raw YAML op that was appended:
 - Humans get a TUI for browsing, triage, field locking, and async discussion
 - Fork-safe three-tier visibility enables contributor workflows without governance conflicts
 - `merge=union` with nonce-on-every-line eliminates merge conflicts for concurrent agent edits and is safe under both merge and rebase
+- Additive ops for set-valued fields (`tags`, `before`, `duplicate_of`, `not_duplicate_of`) eliminate silent data loss under concurrency — consistent with the accumulated semantics already used for `locked_fields` and discussion
+- Fail-closed stop hook ensures tracker errors surface as loud agent stops rather than silent governance failures
+- Per-op `actor` field preserves full identity for audit trail and multi-agent debugging
 - Append-only operation log provides a complete audit trail with no additional infrastructure
 - Self-healing cross-tier reconciliation handles interrupted tier moves and merge artifacts without agent involvement
 - Reusable across projects — standalone MPL-2.0 package with no hypergumbo-core dependency; MPL's file-level copyleft removes the AGPL adoption barrier for projects that want agent governance without code analysis
