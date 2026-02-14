@@ -27,6 +27,7 @@ declare -A PACKAGES=(
     ["mainstream"]="packages/hypergumbo-lang-mainstream/tests packages/hypergumbo-lang-mainstream/src"
     ["common"]="packages/hypergumbo-lang-common/tests packages/hypergumbo-lang-common/src"
     ["extended"]="packages/hypergumbo-lang-extended1/tests packages/hypergumbo-lang-extended1/src"
+    ["tracker"]="packages/hypergumbo-tracker/tests packages/hypergumbo-tracker/src"
 )
 
 # Parse args
@@ -37,14 +38,14 @@ for arg in "$@"; do
     case $arg in
         --quick) QUICK=true ;;
         --serial) SERIAL=true ;;
-        core|mainstream|common|extended) TARGETS+=("$arg") ;;
+        core|mainstream|common|extended|tracker) TARGETS+=("$arg") ;;
         *) echo "Unknown argument: $arg"; exit 1 ;;
     esac
 done
 
 # Default to all packages
 if [[ ${#TARGETS[@]} -eq 0 ]]; then
-    TARGETS=("core" "mainstream" "common" "extended")
+    TARGETS=("core" "mainstream" "common" "extended" "tracker")
 fi
 
 # Skip extended in quick mode

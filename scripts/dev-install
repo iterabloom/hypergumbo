@@ -17,6 +17,7 @@ python -m pip install \
   -e packages/hypergumbo-lang-mainstream \
   -e packages/hypergumbo-lang-common \
   -e packages/hypergumbo-lang-extended1 \
+  -e "packages/hypergumbo-tracker[dev]" \
   -e packages/hypergumbo
 
 hash -r

@@ -1,0 +1,67 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hypergumbo-tracker"
+version = "0.1.0"
+description = "YAML-backed structured tracker for agent governance"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MPL-2.0" }
+authors = [{ name = "Hypergumbo contributors" }]
+keywords = ["tracker", "agent-governance", "yaml", "cli"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+]
+dependencies = [
+  "ruamel.yaml>=0.18",
+  "pyyaml~=6.0.3",
+  "proquint~=0.2.1",
+  "rich~=14.3.2",
+]
+
+[project.optional-dependencies]
+tui = ["textual~=3.0"]
+dedup = ["onnxruntime~=1.17", "tokenizers~=0.21"]
+dev = [
+  "pytest~=9.0.2",
+  "pytest-cov~=7.0.0",
+  "pytest-xdist~=3.8.0",
+  "hypothesis~=6.100",
+]
+
+[project.scripts]
+hypergumbo-tracker = "hypergumbo_tracker.cli:main"
+hypergumbo-tracker-textconv = "hypergumbo_tracker.cli:textconv_main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hypergumbo_tracker"]
+
+[tool.pytest.ini_options]
+filterwarnings = []
+
+[tool.coverage.run]
+omit = []
+
+[tool.coverage.report]
+show_missing = true
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "B", "C4", "S", "RUF"]
+ignore = ["E501", "S101", "S105", "S106", "S110", "RUF059", "RUF005", "B028"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "S105", "S106", "S603", "S108", "E741", "F401", "F841", "RUF005"]
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]
+skips = ["B101", "B105", "B110"]

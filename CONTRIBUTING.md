@@ -88,6 +88,27 @@ If you prefer manual control without installing CLI tools like `tea`:
 3. **Wait for CI** (Status check: `CI / pytest (pull_request)`).
 4. **Merge** via the Codeberg web UI.
 
+## Licensing
+
+This repository uses dual licensing:
+
+- **AGPL-3.0** for the core hypergumbo tool (`packages/hypergumbo-core/`, `packages/hypergumbo-lang-*/`)
+- **MPL-2.0** for the tracker package (`packages/hypergumbo-tracker/`)
+
+**SPDX headers:** Every `.py` source file must include a license header as its first line:
+
+```python
+# SPDX-License-Identifier: AGPL-3.0-or-later
+```
+
+or for the tracker package:
+
+```python
+# SPDX-License-Identifier: MPL-2.0
+```
+
+**DCO covers both licenses.** Your `Signed-off-by` line certifies you have the right to submit under the applicable license. No CLA is required.
+
 ## Canonical forge
 Codeberg is the source of truth for issues/PRs. GitHub is a mirror.
 

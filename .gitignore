@@ -11,6 +11,7 @@ build/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.hypothesis/
 
 # hypergumbo
 .hypergumbo/
@@ -44,3 +45,8 @@ package-lock.json
 # Hypergumbo cache
 .hypergumbo_cache/
 .ci/pytest-output.log
+
+# Tracker
+**/config.yaml
+!**/config.yaml.template
+**/.stealth/

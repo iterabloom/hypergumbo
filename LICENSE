@@ -1,3 +1,16 @@
+This repository uses dual licensing:
+
+- The core hypergumbo tool and language analyzers are licensed under the
+  GNU Affero General Public License v3.0 (AGPL-3.0), reproduced below.
+
+- The `packages/hypergumbo-tracker/` package is licensed under the
+  Mozilla Public License 2.0 (MPL-2.0). See `packages/hypergumbo-tracker/LICENSE`
+  for the full MPL-2.0 text.
+
+Each source file declares its applicable license via an SPDX header comment.
+
+================================================================================
+
 GNU AFFERO GENERAL PUBLIC LICENSE
 Version 3, 19 November 2007
 

@@ -1,0 +1,6 @@
+# Tracker ops files: merge=union makes concurrent appends conflict-free.
+# diff=tracker enables custom textconv for human-readable diffs.
+**/.ops/*.ops merge=union diff=tracker
+
+# Linguist: mark generated files
+**/.ops/*.ops linguist-generated

@@ -110,7 +110,8 @@ jobs:
           pip install -e packages/hypergumbo-core \
                       -e packages/hypergumbo-lang-mainstream \
                       -e packages/hypergumbo-lang-common \
-                      -e packages/hypergumbo-lang-extended1
+                      -e packages/hypergumbo-lang-extended1 \
+                      -e "packages/hypergumbo-tracker[dev]"
           ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
 
   # Run each package's tests in parallel (after prep is done)
@@ -149,7 +150,8 @@ jobs:
           pip install -e packages/hypergumbo-core \
                       -e packages/hypergumbo-lang-mainstream \
                       -e packages/hypergumbo-lang-common \
-                      -e packages/hypergumbo-lang-extended1
+                      -e packages/hypergumbo-lang-extended1 \
+                      -e "packages/hypergumbo-tracker[dev]"
           ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
 
       - name: Check for sentence-transformers
@@ -215,7 +217,8 @@ jobs:
           pip install -e packages/hypergumbo-core \
                       -e packages/hypergumbo-lang-mainstream \
                       -e packages/hypergumbo-lang-common \
-                      -e packages/hypergumbo-lang-extended1
+                      -e packages/hypergumbo-lang-extended1 \
+                      -e "packages/hypergumbo-tracker[dev]"
           ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
       - name: Check for sentence-transformers
         run: |
@@ -280,7 +283,8 @@ jobs:
           pip install -e packages/hypergumbo-core \
                       -e packages/hypergumbo-lang-mainstream \
                       -e packages/hypergumbo-lang-common \
-                      -e packages/hypergumbo-lang-extended1
+                      -e packages/hypergumbo-lang-extended1 \
+                      -e "packages/hypergumbo-tracker[dev]"
           ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
       - name: Check for sentence-transformers
         run: |
@@ -345,7 +349,8 @@ jobs:
           pip install -e packages/hypergumbo-core \
                       -e packages/hypergumbo-lang-mainstream \
                       -e packages/hypergumbo-lang-common \
-                      -e packages/hypergumbo-lang-extended1
+                      -e packages/hypergumbo-lang-extended1 \
+                      -e "packages/hypergumbo-tracker[dev]"
           ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
       - name: Check for sentence-transformers
         run: |
@@ -381,9 +386,51 @@ jobs:
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
+  test-tracker:
+    needs: [changes, prep]
+    if: needs.changes.outputs.code == 'true'
+    runs-on: codeberg-small-lazy
+    outputs:
+      coverage: ${{ steps.tests.outputs.coverage }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Restore pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/lib/python3.11/site-packages
+          key: pip-packages-${{ hashFiles('packages/*/pyproject.toml') }}
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pytest pytest-cov pytest-xdist
+          pip install -e "packages/hypergumbo-tracker[dev]"
+      - name: Run tests
+        id: tests
+        run: |
+          # Detect available CPUs from cgroup limits
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
+
+          pytest packages/hypergumbo-tracker/tests/ -n "$WORKERS" --tb=short \
+            --cov=packages/hypergumbo-tracker/src --cov-report=term | tee coverage-output.txt
+          COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
+          echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
+
   # Aggregate results after all test jobs complete
   aggregate:
-    needs: [changes, test-core, test-mainstream, test-common, test-extended]
+    needs: [changes, test-core, test-mainstream, test-common, test-extended, test-tracker]
     if: always()
     runs-on: codeberg-small-lazy
     steps:
@@ -408,12 +455,14 @@ jobs:
           echo "  test-mainstream: ${{ needs.test-mainstream.result }} (coverage: ${{ needs.test-mainstream.outputs.coverage }}%)"
           echo "  test-common: ${{ needs.test-common.result }} (coverage: ${{ needs.test-common.outputs.coverage }}%)"
           echo "  test-extended: ${{ needs.test-extended.result }} (coverage: ${{ needs.test-extended.outputs.coverage }}%)"
+          echo "  test-tracker: ${{ needs.test-tracker.result }} (coverage: ${{ needs.test-tracker.outputs.coverage }}%)"
 
           # Determine overall result
           if [[ "${{ needs.test-core.result }}" == "success" ]] && \
              [[ "${{ needs.test-mainstream.result }}" == "success" ]] && \
              [[ "${{ needs.test-common.result }}" == "success" ]] && \
-             [[ "${{ needs.test-extended.result }}" == "success" ]]; then
+             [[ "${{ needs.test-extended.result }}" == "success" ]] && \
+             [[ "${{ needs.test-tracker.result }}" == "success" ]]; then
             echo "conclusion=success" >> "$GITHUB_OUTPUT"
             echo "✅ All test jobs passed"
           else
@@ -426,15 +475,17 @@ jobs:
           COV_MAINSTREAM="${{ needs.test-mainstream.outputs.coverage }}"
           COV_COMMON="${{ needs.test-common.outputs.coverage }}"
           COV_EXTENDED="${{ needs.test-extended.outputs.coverage }}"
+          COV_TRACKER="${{ needs.test-tracker.outputs.coverage }}"
 
           # Default to 0 if empty
           COV_CORE="${COV_CORE:-0}"
           COV_MAINSTREAM="${COV_MAINSTREAM:-0}"
           COV_COMMON="${COV_COMMON:-0}"
           COV_EXTENDED="${COV_EXTENDED:-0}"
+          COV_TRACKER="${COV_TRACKER:-0}"
 
           # Calculate average (integer math)
-          AVG=$(( (COV_CORE + COV_MAINSTREAM + COV_COMMON + COV_EXTENDED) / 4 ))
+          AVG=$(( (COV_CORE + COV_MAINSTREAM + COV_COMMON + COV_EXTENDED + COV_TRACKER) / 5 ))
           echo "coverage=$AVG" >> "$GITHUB_OUTPUT"
           echo "Average coverage: $AVG%"
 
@@ -453,7 +504,8 @@ jobs:
               \"core\": \"${{ needs.test-core.result }}\",
               \"mainstream\": \"${{ needs.test-mainstream.result }}\",
               \"common\": \"${{ needs.test-common.result }}\",
-              \"extended\": \"${{ needs.test-extended.result }}\"
+              \"extended\": \"${{ needs.test-extended.result }}\",
+              \"tracker\": \"${{ needs.test-tracker.result }}\"
             }
           }"
 
@@ -465,6 +517,7 @@ jobs:
           COV_MAINSTREAM="${{ needs.test-mainstream.outputs.coverage }}"
           COV_COMMON="${{ needs.test-common.outputs.coverage }}"
           COV_EXTENDED="${{ needs.test-extended.outputs.coverage }}"
+          COV_TRACKER="${{ needs.test-tracker.outputs.coverage }}"
 
           # Determine badge color based on coverage
           if [ "$COV" -ge 90 ]; then
@@ -480,12 +533,13 @@ jobs:
           # Check if all packages have 100% coverage
           ALL_100="false"
           if [ "$COV_CORE" = "100" ] && [ "$COV_MAINSTREAM" = "100" ] && \
-             [ "$COV_COMMON" = "100" ] && [ "$COV_EXTENDED" = "100" ]; then
+             [ "$COV_COMMON" = "100" ] && [ "$COV_EXTENDED" = "100" ] && \
+             [ "$COV_TRACKER" = "100" ]; then
             ALL_100="true"
             echo "All packages at 100% coverage - updating last-green-sha marker"
             echo "${{ github.sha }}" > /tmp/last-green-sha.txt
           else
-            echo "Not all packages at 100%: core=$COV_CORE, mainstream=$COV_MAINSTREAM, common=$COV_COMMON, extended=$COV_EXTENDED"
+            echo "Not all packages at 100%: core=$COV_CORE, mainstream=$COV_MAINSTREAM, common=$COV_COMMON, extended=$COV_EXTENDED, tracker=$COV_TRACKER"
           fi
 
           git config user.name "CI Bot"
