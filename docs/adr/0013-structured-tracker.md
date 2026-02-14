@@ -192,70 +192,70 @@ Each op log file (`.ops`) is an **append-only list of operations**. The store ne
 # .INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit.ops — append-only operation log (in .agent/tracker/.ops/)
 
 - op: create  # f7a2
-  at: "2026-02-11T18:00:00Z"
-  by: agent
-  clock: 1
-  nonce: f7a2
-  data:
-    kind: invariant
-    title: "Call Attribution Completeness"
-    status: todo_hard
-    priority: 2                          # integer 0–4 (P0 most urgent, P4 least)
-    parent: null                         # optional: ID of parent item
-    tags: [analysis_quality]             # freeform list
-    before: []                           # IDs this item soft-blocks (resolve this before those — see [Key Design Decisions](#key-design-decisions))
-    duplicate_of: []                     # IDs of items this is a duplicate of (see [Duplicate Detection](#duplicate-detection-and-correction))
-    not_duplicate_of: []                 # IDs explicitly confirmed as non-duplicates (see [Duplicate Detection](#duplicate-detection-and-correction))
-    pr_ref: null                         # optional PR reference (e.g., "PR#922")
-    justification: null                  # required when status is "deferred"
-    description: ""                      # freeform body text
-    fields:                              # kind-specific open-ended dict
-      statement: "Every emitted `calls` edge has a non-null caller symbol"
-      root_cause: "JS/TS arrow function early-return in _get_enclosing_function()"
-      fix: "Position-based lookup for arrow functions"
-      verification: "Kotlin and Scala lambdas work correctly..."
-      regression_tests:
-        - "test_js_ts.py::TestCallbackCallAttribution"
-        - "test_kotlin.py::TestKotlinLambdaCallAttribution"
-      scope: null
-      progress_pct: null
+  at: "2026-02-11T18:00:00Z"  # f7a2
+  by: agent  # f7a2
+  clock: 1  # f7a2
+  nonce: f7a2  # f7a2
+  data:  # f7a2
+    kind: invariant  # f7a2
+    title: "Call Attribution Completeness"  # f7a2
+    status: todo_hard  # f7a2
+    priority: 2  # f7a2
+    parent: null  # f7a2
+    tags: [analysis_quality]  # f7a2
+    before: []  # f7a2
+    duplicate_of: []  # f7a2
+    not_duplicate_of: []  # f7a2
+    pr_ref: null  # f7a2
+    justification: null  # f7a2
+    description: ""  # f7a2
+    fields:  # f7a2
+      statement: "Every emitted `calls` edge has a non-null caller symbol"  # f7a2
+      root_cause: "JS/TS arrow function early-return in _get_enclosing_function()"  # f7a2
+      fix: "Position-based lookup for arrow functions"  # f7a2
+      verification: "Kotlin and Scala lambdas work correctly..."  # f7a2
+      regression_tests:  # f7a2
+        - "test_js_ts.py::TestCallbackCallAttribution"  # f7a2
+        - "test_kotlin.py::TestKotlinLambdaCallAttribution"  # f7a2
+      scope: null  # f7a2
+      progress_pct: null  # f7a2
 
 - op: discuss  # b3c1
-  at: "2026-02-11T18:30:00Z"
-  by: human
-  clock: 2
-  nonce: b3c1
-  message: "I think this should be higher priority because it affects CI."
+  at: "2026-02-11T18:30:00Z"  # b3c1
+  by: human  # b3c1
+  clock: 2  # b3c1
+  nonce: b3c1  # b3c1
+  message: "I think this should be higher priority because it affects CI."  # b3c1
 
 - op: update  # d4e5
-  at: "2026-02-11T18:31:00Z"
-  by: agent
-  clock: 3
-  nonce: d4e5
-  set:
-    priority: 0
+  at: "2026-02-11T18:31:00Z"  # d4e5
+  by: agent  # d4e5
+  clock: 3  # d4e5
+  nonce: d4e5  # d4e5
+  set:  # d4e5
+    priority: 0  # d4e5
 
 - op: discuss  # a1b2
-  at: "2026-02-11T18:32:00Z"
-  by: agent
-  clock: 4
-  nonce: a1b2
-  message: "Agreed. Bumping to P0."
+  at: "2026-02-11T18:32:00Z"  # a1b2
+  by: agent  # a1b2
+  clock: 4  # a1b2
+  nonce: a1b2  # a1b2
+  message: "Agreed. Bumping to P0."  # a1b2
 
 - op: lock  # c8d9
-  at: "2026-02-11T18:33:00Z"
-  by: human
-  clock: 5
-  nonce: c8d9
-  lock: [priority]
+  at: "2026-02-11T18:33:00Z"  # c8d9
+  by: human  # c8d9
+  clock: 5  # c8d9
+  nonce: c8d9  # c8d9
+  lock: [priority]  # c8d9
 
 - op: update  # e6f7
-  at: "2026-02-11T19:30:00Z"
-  by: agent
-  clock: 6
-  nonce: e6f7
-  set:
-    status: done
+  at: "2026-02-11T19:30:00Z"  # e6f7
+  by: agent  # e6f7
+  clock: 6  # e6f7
+  nonce: e6f7  # e6f7
+  set:  # e6f7
+    status: done  # e6f7
 ```
 
 **Operation types:**
@@ -272,13 +272,13 @@ Each op log file (`.ops`) is an **append-only list of operations**. The store ne
 | `promote` | *(none)* | Record promotion (workspace → canonical; file also moves) |
 | `demote` | *(none)* | Record demotion (canonical → workspace; file also moves) |
 
-Every op carries `at` (ISO 8601 UTC timestamp), `by` (`agent` or `human`), `clock` (Lamport clock — monotonically increasing integer per op log file), and `nonce` (4 random hex chars). The nonce appears in two places: as a YAML comment on the list-item marker line (`- op: update  # d4e5`) and as a regular field (`nonce: d4e5`). This is load-bearing for `merge=union` correctness — see [Compile Rules](#compile-rules-conflict-resolution).
+Every op carries `at` (ISO 8601 UTC timestamp), `by` (`agent` or `human`), `clock` (Lamport clock — monotonically increasing integer per op log file), and `nonce` (4 random hex chars). The nonce appears as an inline `# <nonce>` comment on **every line** of each op — not just the first line. This is load-bearing for `merge=union` correctness: it makes every line globally unique, preventing git's line-level union driver from deduplicating or stripping shared lines across ops. See [Compile Rules](#compile-rules-conflict-resolution).
 
 **The operation log IS the audit trail.** There is no separate `audit_trail` field — the file itself is a complete, ordered record of every change. `scripts/tracker log <ID>` prints the raw ops; `scripts/tracker show <ID>` prints the compiled current state.
 
 #### Key Design Decisions
 
-**Append-only operation log.** Instead of storing a mutable snapshot (read-modify-write), each change appends an immutable op to the file. This is a simplified version of git-bug's operation-sourced model, adapted to plain YAML files instead of git objects. The key benefit: **concurrent edits to the same item never produce git conflicts**. Op log files are marked `merge=union` in `.gitattributes` (see [.gitattributes](#gitattributes)), which tells git to keep lines from both sides on conflict. Combined with the **nonce-on-first-line** serialization format (see [Compile Rules](#compile-rules-conflict-resolution)), this guarantees all ops are preserved as distinct YAML list items without conflict markers or data loss. The `compile()` function sorts ops by Lamport clock and applies them deterministically, regardless of the order they appear in the file (see [Compile Rules](#compile-rules-conflict-resolution)).
+**Append-only operation log.** Instead of storing a mutable snapshot (read-modify-write), each change appends an immutable op to the file. This is a simplified version of git-bug's operation-sourced model, adapted to plain YAML files instead of git objects. The key benefit: **concurrent edits to the same item never produce git conflicts**. Op log files are marked `merge=union` in `.gitattributes` (see [.gitattributes](#gitattributes)), which tells git to keep lines from both sides on conflict. Combined with the **nonce-on-every-line** serialization format (see [Compile Rules](#compile-rules-conflict-resolution)), this guarantees all ops are preserved as distinct YAML list items without conflict markers or data loss. The `compile()` function sorts ops by Lamport clock and applies them deterministically, regardless of the order they appear in the file (see [Compile Rules](#compile-rules-conflict-resolution)).
 
 **Lamport clock for causal ordering.** Each op carries a `clock` field — an integer that captures causal ordering across branches. When appending an op, the store peeks at the op log file on a **scoped set of branches** (via `git cat-file --batch`), computes `max(clock)` across all of them, and sets the new op's clock to `max + 1`. This is a genuine Lamport clock: the cross-branch peek is the "message receive" step in the classic algorithm (`clock = max(local, received) + 1`). All reads are from the local git object store — no network calls, sub-millisecond per branch, works fully offline.
 
@@ -292,9 +292,7 @@ Inspired by git-bug's Lamport clock system (`util/lamport/`), but requiring no s
 
 **Branch hygiene.** Stale feature branches (already merged into `dev`) are useless for the Lamport clock — they contain no ops that aren't already on `dev`. To prevent accumulation, `scripts/auto-pr` deletes feature branches (local and remote) after successful merge. For manual PRs, AGENTS.md documents the expectation: delete your feature branch after merge. This keeps the scoped branch set small (typically 2–3 branches) and eliminates the risk of degraded performance from branch accumulation.
 
-**No-rebase invariant for branches with tracker ops.** `merge=union` is safe for concurrent appends but **breaks under rebase**. If a branch containing tracker ops is rebased, its ops get new commits while the pre-rebase lineage may still exist (remote tracking branch, reflog, another local branch that forked before the rebase). A subsequent merge between the rebased and pre-rebase lineages can produce duplicate ops: `merge=union` sees identical lines from both sides and deduplicates them (correct for truly duplicated lines, but wrong if the "duplicates" are ops that should each appear once). Worse, if intermediate lines differ slightly due to rebase rewriting (e.g., timestamp changes from conflict resolution during rebase), the union driver may interleave ops from both lineages in an order that produces malformed YAML.
-
-**Hard rule: never rebase branches containing tracker ops; always merge.** This is documented in AGENTS.md alongside the branch hygiene expectation and enforced by convention. `scripts/auto-pr` already uses merge (not rebase) for its automated flow. For manual workflows, the rule is: if you have uncommitted tracker ops on a feature branch, merge `dev` into your branch — do not rebase your branch onto `dev`. Violations are not automatically detected (detecting a rebase after the fact is non-trivial), but the symptom is obvious: `compile()` produces incorrect state or `validate` reports duplicate nonces. The fix is to rebuild the op log file from the correct branch's history. The sequential workflow (auto-pr blocks new work while CI runs) makes this constraint easy to follow — there's rarely a reason to rebase at all.
+**Rebase-safe by design.** The nonce-on-every-line serialization format (see [Compile Rules](#compile-rules-conflict-resolution)) makes `merge=union` safe under both merge and rebase. Because every line carries a unique `# <nonce>` suffix, git's line-level union driver cannot match or deduplicate lines across different ops — even when two ops share the same structure (e.g., both are `update` ops setting `status: done`). This was validated empirically: 9/9 adversarial scenarios (including identical ops, cascade diamonds, and 8-way concurrent ops) produce correct results with nonce-on-every-line, for both merge and rebase strategies. See `~/hypergumbo_lab_notebook/adr-0013-prototyping-scripts/rebase_nonce_every_line.py` for the reproduction scripts. The tracker imposes no constraints on git workflow — teams can freely use merge, rebase, squash-merge, or any combination.
 
 **`status` field:**
 - UNFIXED → `todo_hard`
@@ -324,12 +322,12 @@ If `--priority` is omitted on `add`, the CLI assigns a default of 2 (P2). Items 
 
 ```yaml
 - op: update  # b2c3
-  at: "2026-02-12T10:00:00Z"
-  by: human
-  clock: 7
-  nonce: b2c3
-  set:
-    before: [INV-dabop-firuz-hadol-jikam-losib-mufad-nokap-pidul]
+  at: "2026-02-12T10:00:00Z"  # b2c3
+  by: human  # b2c3
+  clock: 7  # b2c3
+  nonce: b2c3  # b2c3
+  set:  # b2c3
+    before: [INV-dabop-firuz-hadol-jikam-losib-mufad-nokap-pidul]  # b2c3
 ```
 
 Unlike a display-order hint, `before` is **enforced as a soft-blocking relationship**. If item X has `before: [Y]`, then Y is not ready until X is resolved (status is `done`, `deferred`, or `wont_do`). This is transitive: if X has `before: [Y]` and Y has `before: [Z]`, then Z is blocked until both X and Y are resolved. The `scripts/tracker ready` command (see [CLI](#cli)) returns only items that are actionable (`todo_hard` or `todo_soft`) **and** unblocked — this is what agents use for task selection.
@@ -559,22 +557,34 @@ The `compile()` function is a pure function: it takes a list of ops from an op l
 
 **Why `merge=union` and not git's default merge.** When two branches both append multi-line ops to the end of the same file, git's default (ort) merge strategy produces a **conflict** — even when the appended ops are completely different. Simulation confirms this: default merge conflicts in 7 of 8 tested scenarios, including the trivial case of appending one `update` op on branch A and one `discuss` op on branch B. Conflicts block the autonomous agent workflow (the agent can't resolve `<<<<<<<` markers in YAML), so default merge is not viable for concurrent append-only files.
 
-`merge=union` eliminates these conflicts by keeping lines from both sides. However, `merge=union` operates at the **line level**, not the YAML-block level. This creates a subtle hazard: when two branches append ops that share the same first line (e.g., both start with `- op: update`), the union driver deduplicates that shared line, **fusing two ops into one malformed YAML mapping** with duplicate keys. Simulation confirms this: without mitigation, `merge=union` garbles the result in 4 of 8 tested scenarios (every case where both branches append the same op type).
+`merge=union` eliminates these conflicts by keeping lines from both sides. However, `merge=union` operates at the **line level**, not the YAML-block level. This creates two hazards:
 
-**Nonce-on-first-line: the fix.** Every op's YAML list-item marker line includes the nonce as an inline comment:
+1. **Op fusion.** When two branches append ops that share the same first line (e.g., both start with `- op: update`), the union driver deduplicates that shared line, **fusing two ops into one malformed YAML mapping** with duplicate keys. Simulation confirms this: without mitigation, `merge=union` garbles the result in 4 of 8 tested scenarios (every case where both branches append the same op type).
+
+2. **Line stripping.** Even when first lines differ (e.g., different nonces on the `- op:` line), ops that share identical *internal* lines (e.g., `  set:` / `    status: done`) can have those shared lines deduplicated by the union driver's diff algorithm. This silently strips payload from earlier ops, producing valid YAML with correct op counts but **empty op bodies** — silent data loss. Empirical testing showed this affects 10/12 adversarial scenarios when only the first line carries a nonce, including a merge-only control (proving this is a `merge=union` property, not rebase-specific). See `~/hypergumbo_lab_notebook/adr-0013-prototyping-scripts/rebase_duplication_v2.py`.
+
+**Nonce-on-every-line: the fix.** Every line of every op carries the nonce as an inline `# <nonce>` comment:
 
 ```yaml
 - op: update  # d4e5
-  at: "2026-02-11T18:31:00Z"
-  ...
+  at: "2026-02-11T18:31:00Z"  # d4e5
+  by: agent  # d4e5
+  clock: 3  # d4e5
+  nonce: d4e5  # d4e5
+  set:  # d4e5
+    priority: 0  # d4e5
 - op: update  # e6f7
-  at: "2026-02-11T19:30:00Z"
-  ...
+  at: "2026-02-11T19:30:00Z"  # e6f7
+  by: agent  # e6f7
+  clock: 6  # e6f7
+  nonce: e6f7  # e6f7
+  set:  # e6f7
+    status: done  # e6f7
 ```
 
-Since each op has a unique nonce, each `- op:` line is globally unique (e.g., `- op: update  # d4e5` vs. `- op: update  # e6f7`). The union driver cannot deduplicate them, so each op remains a separate YAML list item after merge. The nonce also appears as a regular field (`nonce: d4e5`) for programmatic access — the comment is purely for merge correctness and is stripped by YAML parsers.
+Since each op has a unique nonce and every line carries it, **every line in the file is globally unique**. The union driver cannot match or deduplicate any line across ops — neither first lines (preventing fusion) nor internal lines (preventing stripping). The nonce also appears as a regular field (`nonce: d4e5`) for programmatic access — the comments are purely for merge correctness and are stripped by YAML parsers. `ruamel.yaml`'s comment-preservation support handles nonce-on-every-line naturally on the write path.
 
-**Simulation results.** With nonce-on-first-line, `merge=union` passes 9 of 10 tested scenarios (up from 3 of 8 without it), including all realistic cases: same op type with different content, same clock values, multiple ops per branch, and three-way merges with all-`update` ops. The sole remaining failure is byte-identical ops (same nonce, same everything) — which cannot occur in practice because the nonce is randomly generated.
+**Simulation results.** With nonce-on-every-line, `merge=union` passes **all tested scenarios** — 9/9 adversarial cases including: identical ops (same `set:` block), cascade diamonds, 8-way concurrent ops, three-way merges with all-`update` ops, and post-rebase merges with pre-rebase lineages. Every scenario that failed with nonce-on-first-line (10/12 in the adversarial suite) passes cleanly with nonce-on-every-line. See `~/hypergumbo_lab_notebook/adr-0013-prototyping-scripts/rebase_nonce_every_line.py` for the reproduction scripts. The format is more verbose than nonce-on-first-line, but buys complete merge-strategy independence: the tracker is safe under merge, rebase, squash-merge, or any combination.
 
 #### YAML Serialization Rules
 
@@ -598,7 +608,7 @@ This split means the hot path — `compile()`, `list`, `ready`, `count-todos` �
 op (with nonce comment), at, by, clock, nonce, [op-specific fields: data/set/message/lock/unlock]
 ```
 
-The first line of every op is `- op: <type>  # <nonce>`, where the inline comment duplicates the `nonce` field value. This is load-bearing for `merge=union` correctness (see [Compile Rules](#compile-rules-conflict-resolution)): it ensures the list-item marker line is globally unique, preventing the union driver from fusing same-type ops into one malformed mapping. The comment is invisible to YAML parsers but visible to git's line-level merge. `ruamel.yaml`'s comment-preservation support handles this naturally on the write path.
+**Every line** of every op carries an inline `# <nonce>` comment that duplicates the `nonce` field value. This is load-bearing for `merge=union` correctness (see [Compile Rules](#compile-rules-conflict-resolution)): it makes every line globally unique, preventing the union driver from fusing same-type ops (first-line deduplication) or stripping shared internal lines (payload deduplication). The comments are invisible to YAML parsers but visible to git's line-level merge. `ruamel.yaml`'s comment-preservation support handles nonce-on-every-line naturally on the write path.
 
 Within the `create` op's `data`, fields are ordered:
 ```
@@ -609,8 +619,8 @@ kind, title, status, priority, parent, tags, before, pr_ref, justification, desc
 
 **Enforcement.** The pre-commit hook ([Pre-Commit Validation](#pre-commit-validation)) validates all staged tracker files, catching malformed YAML regardless of how it was written. Additionally, `validate` checks for:
 - Ops missing the `nonce` field (the CLI always generates one)
-- Ops missing the nonce-on-first-line comment (`- op: <type>  # <nonce>`) — this is load-bearing for `merge=union` correctness ([Compile Rules](#compile-rules-conflict-resolution))
-- Nonce comment not matching the `nonce` field value (detects copy-paste errors)
+- Ops with lines missing the `# <nonce>` inline comment — nonce-on-every-line is load-bearing for `merge=union` correctness ([Compile Rules](#compile-rules-conflict-resolution))
+- Nonce comments not matching the `nonce` field value on any line (detects copy-paste errors)
 - Non-canonical field ordering (the CLI always serializes in canonical order)
 
 These pre-commit hook checks make it difficult for invalid YAML to get committed.
@@ -1005,7 +1015,7 @@ Migration is idempotent: re-running produces the same IDs (same content → same
 #### PR 1: Package scaffold + data model + store + cache + validation + serialization
 - Create `packages/hypergumbo-tracker/` with pyproject.toml, src layout, tests dir
 - `models.py`: Op dataclasses (including `promote`/`demote` op types), Status enum, Tier enum (`canonical`/`workspace`/`stealth`), config loading (including `fields_schema` per kind — supported types: `text`, `integer` with optional `min`/`max`, `list`, `boolean`, and `stop_hook.scope` config)
-- `store.py`: YAML write (ruamel.yaml) and read (PyYAML `CSafeLoader` — see [YAML Serialization Rules](#yaml-serialization-rules)), hash-based ID generation (SHA-256 of canonicalized `create` op `data` dict, first 128 bits proquint-encoded — see [Key Design Decisions](#key-design-decisions)), **same-branch existence check on `add()`** (refuse to create if file with computed ID already exists in the target tier — see [Key Design Decisions](#key-design-decisions)), SimHash computation on item content (40-bit fingerprint, cached in SQLite), prefix matching resolver (shortest unambiguous prefix), positional alias support (`.last_list` stash file), scoped cross-branch Lamport clock (peek `dev` + `main` + `HEAD` + unmerged branches via `git cat-file --batch` — see [Key Design Decisions](#key-design-decisions)), cross-branch lock enforcement (same scoped peek, union of `locked_fields`), nonce generation (4 random hex chars per op, serialized as inline comment on `- op:` line for `merge=union` correctness — see [Compile Rules](#compile-rules-conflict-resolution)), `compile()` function (**tolerates duplicate `create` ops from cross-branch merges** — lowest-clock `create` wins, subsequent identical-data `create` ops ignored — see [Compile Rules](#compile-rules-conflict-resolution)), list/filter, `ready()` filter (soft-blocking via `before` links), tree traversal (children/ancestors), canonical op field ordering, `before` topological sort. Store operates on a single directory (one tier) — multi-tier merging is handled by `TrackerSet`
+- `store.py`: YAML write (ruamel.yaml) and read (PyYAML `CSafeLoader` — see [YAML Serialization Rules](#yaml-serialization-rules)), hash-based ID generation (SHA-256 of canonicalized `create` op `data` dict, first 128 bits proquint-encoded — see [Key Design Decisions](#key-design-decisions)), **same-branch existence check on `add()`** (refuse to create if file with computed ID already exists in the target tier — see [Key Design Decisions](#key-design-decisions)), SimHash computation on item content (40-bit fingerprint, cached in SQLite), prefix matching resolver (shortest unambiguous prefix), positional alias support (`.last_list` stash file), scoped cross-branch Lamport clock (peek `dev` + `main` + `HEAD` + unmerged branches via `git cat-file --batch` — see [Key Design Decisions](#key-design-decisions)), cross-branch lock enforcement (same scoped peek, union of `locked_fields`), nonce generation (4 random hex chars per op, serialized as inline `# <nonce>` comment on every line for `merge=union` correctness — see [Compile Rules](#compile-rules-conflict-resolution)), `compile()` function (**tolerates duplicate `create` ops from cross-branch merges** — lowest-clock `create` wins, subsequent identical-data `create` ops ignored — see [Compile Rules](#compile-rules-conflict-resolution)), list/filter, `ready()` filter (soft-blocking via `before` links), tree traversal (children/ancestors), canonical op field ordering, `before` topological sort. Store operates on a single directory (one tier) — multi-tier merging is handled by `TrackerSet`
 - `trackerset.py`: Multi-tier wrapper that instantiates a `Store` per tier (canonical, workspace, stealth), merges reads transparently, resolves cross-tier `parent`/`before` references, routes writes to the correct tier, implements `promote()`/`demote()`/`stealth()`/`unstealth()` (append op + physical file move between directories), provides unified `ready()` and scope-aware `count_todos()` (respects `stop_hook.scope` from config)
 - `cache.py`: SQLite read cache (see [Read Cache](#read-cache-sqlite)) — one `.cache.db` per tier directory. Schema creation (including `source_size` and `tier` columns), incremental byte-offset invalidation (seek to stored `source_size`, parse only new bytes, skip data re-compile for discussion-only appends), write-through upsert on local ops, cold-start rebuild, `cache-rebuild` entry point, `TRACKER_CACHE_DIR` override. All read operations (`list`, `ready`, `count-todos`, `show`) query the cache; writes go to YAML and update the cache row in one step
 - `validation.py`: schema checks, enum enforcement, dedup (across all tiers), parent ref checks (cross-tier), `before` cycle detection (cross-tier), compiled-state checks (deferred justification, etc.), per-kind `fields_schema` validation (required fields present, type/range checks on known fields, edit-distance typo warnings for unknown fields). Must support optional file-path arguments from the start (for incremental pre-commit validation — see [Pre-Commit Validation](#pre-commit-validation))
@@ -1017,7 +1027,7 @@ Migration is idempotent: re-running produces the same IDs (same content → same
 - `test_trackerset.py`: multi-tier merged reads (items from canonical + workspace + stealth appear in unified list with correct tier indicators), cross-tier `parent` resolution (workspace item with `parent` pointing to canonical item resolves correctly), cross-tier `before` resolution, `promote` (workspace → canonical: op appended, file physically moved, cache updated in both tiers, ID unchanged), `demote` (canonical → workspace: reverse), `stealth` (workspace → stealth: file moves to gitignored dir), `unstealth` (stealth → workspace), scope-aware `count_todos` (scope=`all` counts canonical + workspace; scope=`workspace` counts workspace only; stealth always counted in both modes), `ready` always shows all tiers regardless of scope
 - `test_cache.py`: SQLite cache correctness — write-through (append op, verify cache row updated without re-parse, verify `source_size` updated), mtime invalidation (touch YAML file, verify re-parse on next read), cold start (delete `.cache.db`, verify rebuilt from YAML), corruption recovery (corrupt `.cache.db`, verify rebuilt transparently), stale cache (simulate `git pull` changing file mtimes, verify only changed items re-parsed), cache-vs-YAML consistency (compile from YAML and compare against cache row for all items), **incremental invalidation** (append discuss op to file, verify only new bytes parsed and data fields not re-compiled; append update op to file, verify full re-compile triggered; simulate `merge=union` by appending ops from two simulated branches, verify incremental parse finds all new ops; simulate file truncation/rewrite, verify fallback to full re-parse; verify `source_size` tracking is accurate across append/merge/rewrite scenarios)
 - `test_compile_properties.py`: property-based tests using `hypothesis` — generate random op sequences (create followed by random update/discuss/lock/unlock ops with random clocks and timestamps) and verify: (1) idempotency (`compile(ops) == compile(ops)`), (2) permutation invariance (`compile(shuffle(ops)) == compile(ops)`), (3) terminal status consistency (compiled status = status from highest-clock update op that sets it), (4) **duplicate-create resilience** (generate op sequence with two `create` ops sharing the same `data` but different clocks/nonces, verify `compile()` produces the same result as with a single `create` op followed by the same non-`create` ops)
-- `test_yaml_roundtrip.py`: adversarial inputs (`"yes"`, `"null"`, `"3.0"`, `"*bold*"`, strings with colons, leading whitespace, emoji), canonical field order verification, nonce field presence verification, **nonce-on-first-line verification** (every serialized op's first line matches `- op: <type>  # <nonce>`, comment value matches `nonce` field), **CSafeLoader/ruamel.yaml parity** (verify both parsers produce identical Python objects for all op types including adversarial inputs — note: CSafeLoader strips comments, so the nonce comment is not visible on the read path; the comment is verified via raw string inspection of the serialized output, not via parsed data)
+- `test_yaml_roundtrip.py`: adversarial inputs (`"yes"`, `"null"`, `"3.0"`, `"*bold*"`, strings with colons, leading whitespace, emoji), canonical field order verification, nonce field presence verification, **nonce-on-every-line verification** (every line of every serialized op carries a `# <nonce>` inline comment matching the `nonce` field value), **CSafeLoader/ruamel.yaml parity** (verify both parsers produce identical Python objects for all op types including adversarial inputs — note: CSafeLoader strips comments, so the nonce-on-every-line comments are not visible on the read path; comments are verified via raw string inspection of the serialized output, not via parsed data)
 
 #### PR 2: Migration script
 - `migration.py`: markdown parser, status normalizer, priority assigner (integer tiers), hash-based ID generator (SHA-256 of canonicalized `create` op `data` dict, first 128 bits proquint-encoded), writer
@@ -1056,7 +1066,7 @@ Migration is idempotent: re-running produces the same IDs (same content → same
 
 #### PR 5: Pre-commit + AGENTS.md + commit convention + branch hygiene + contribute
 - Update `.githooks/pre-commit` with incremental tracker validation (staged `.ops` files only from both tiers, before Ruff — see [Pre-Commit Validation](#pre-commit-validation))
-- Update AGENTS.md: replace grep pattern instructions with `scripts/tracker` equivalents; add `tracker:` commit prefix convention and batching guidance (see [Commit Convention](#commit-convention-and-git-history-hygiene)); add task-selection guidance instructing agents to use `scripts/tracker ready` (not `list`) to pick their next work item; **add agent context protection rules: "Always use `scripts/tracker show <ID>` or `scripts/tracker show <ID> --json` to read tracker item state. Always refuse to read files ending in `.ops`."** (see [Agent Context Protection](#agent-context-protection)); add branch hygiene expectation (delete feature branches after merge); **add no-rebase rule: never rebase branches containing tracker ops, always merge** (see [Key Design Decisions](#key-design-decisions) — rebase breaks `merge=union` correctness for append-only op log files); update contributor workflow to reference `fork-setup` and explain three-tier model for forks
+- Update AGENTS.md: replace grep pattern instructions with `scripts/tracker` equivalents; add `tracker:` commit prefix convention and batching guidance (see [Commit Convention](#commit-convention-and-git-history-hygiene)); add task-selection guidance instructing agents to use `scripts/tracker ready` (not `list`) to pick their next work item; **add agent context protection rules: "Always use `scripts/tracker show <ID>` or `scripts/tracker show <ID> --json` to read tracker item state. Always refuse to read files ending in `.ops`."** (see [Agent Context Protection](#agent-context-protection)); add branch hygiene expectation (delete feature branches after merge); update contributor workflow to reference `fork-setup` and explain three-tier model for forks
 - Update `scripts/auto-pr`: delete local and remote feature branch after successful merge (keeps the scoped Lamport clock branch set small — see [Key Design Decisions](#key-design-decisions))
 - Update `scripts/contribute`: add workspace exclusion (~15 lines) to strip `.agent/tracker-workspace/` from upstream PRs
 - Update stop_reflect.md, cooldown_prompt.md references
@@ -1091,7 +1101,8 @@ After each PR:
 End-to-end after PR 4:
 - Trigger stop hook, verify it uses the tracker CLI path (not the grep fallback)
 - Verify circuit breaker hash from `hash-todos` matches the old grep-based hash (regression test for migration correctness)
-- **Critical: end-to-end `merge=union` test.** In a temporary git repo: (1) create branches A and B from a common base with an existing op log file, (2) on branch A, append an `update` op via `scripts/tracker update`, (3) on branch B, append a *different* `update` op (same op type — the scenario that fails without nonce-on-first-line) to the same item, (4) merge B into A, (5) verify no conflict markers, both ops present as distinct YAML list items, `compile()` produces correct state reflecting both updates, (6) verify Lamport clocks are correctly ordered, (7) verify the nonce comments on each op's first line survived the merge intact. This test validates the nonce-on-first-line + `merge=union` design — the specific scenario (concurrent same-type ops) that simulation showed fails without it. Add to `test_store.py` as an integration test using `subprocess` to run actual git commands in a temp repo.
+- **Critical: end-to-end `merge=union` test.** In a temporary git repo: (1) create branches A and B from a common base with an existing op log file, (2) on branch A, append an `update` op via `scripts/tracker update`, (3) on branch B, append a *different* `update` op (same op type — the scenario that fails without nonce-on-every-line) to the same item, (4) merge B into A, (5) verify no conflict markers, both ops present as distinct YAML list items, `compile()` produces correct state reflecting both updates, (6) verify Lamport clocks are correctly ordered, (7) verify the `# <nonce>` comments on every line of each op survived the merge intact. Additionally test with identical `set:` blocks across ops (the scenario where nonce-on-first-line fails due to line stripping). This test validates the nonce-on-every-line + `merge=union` design. Add to `test_store.py` as an integration test using `subprocess` to run actual git commands in a temp repo.
+- **End-to-end rebase safety test.** Same setup as the merge test, but (4a) rebase branch A onto B instead of merging, (4b) then merge the pre-rebase lineage with the post-rebase result. Verify no duplicate ops, no stripped fields, correct `compile()` output. This validates that nonce-on-every-line makes the tracker rebase-safe.
 - **Cross-branch duplicate creation test.** In a temporary git repo: (1) create branches A and B from a common base with *no* op log file, (2) on branch A, `scripts/tracker add` with specific title/fields, (3) on branch B, `scripts/tracker add` with *identical* title/fields (producing the same content-hash ID and same filename), (4) on each branch, append a different `update` op to the item (A sets status to `in_progress`, B adds a field), (5) merge B into A, (6) verify no conflict markers, file contains two `create` ops and both `update` ops, (7) `compile()` produces correct state: `created_at` from the lowest-clock `create`, status and fields reflect both updates, (8) `validate` emits informational notice about duplicate `create` ops but does not error. This validates the duplicate-`create`-op tolerance described in [Compile Rules](#compile-rules-conflict-resolution).
 
 End-to-end after PR 5:
@@ -1345,12 +1356,12 @@ Instead of the raw YAML op that was appended:
 
 ```diff
 +- op: update  # e6f7
-+  at: "2026-02-12T10:00:00Z"
-+  by: agent
-+  clock: 7
-+  nonce: e6f7
-+  set:
-+    status: done
++  at: "2026-02-12T10:00:00Z"  # e6f7
++  by: agent  # e6f7
++  clock: 7  # e6f7
++  nonce: e6f7  # e6f7
++  set:  # e6f7
++    status: done  # e6f7
 ```
 
 **Bypass.** `git log -p --no-textconv` (or `git diff --no-textconv`) shows the raw `.ops` file content when needed. This is the standard git escape hatch — no custom flags required.
@@ -1372,7 +1383,7 @@ Instead of the raw YAML op that was appended:
 - Agents get structured task selection via `scripts/tracker ready` instead of fragile grep patterns
 - Humans get a TUI for browsing, triage, field locking, and async discussion
 - Fork-safe three-tier visibility enables contributor workflows without governance conflicts
-- `merge=union` with nonce-on-first-line eliminates merge conflicts for concurrent agent edits
+- `merge=union` with nonce-on-every-line eliminates merge conflicts for concurrent agent edits and is safe under both merge and rebase
 - Append-only operation log provides a complete audit trail with no additional infrastructure
 - Reusable across projects — standalone package with no hypergumbo-core dependency
 - Content-hash IDs provide natural deduplication without coordination
@@ -1380,7 +1391,7 @@ Instead of the raw YAML op that was appended:
 
 ### Negative
 - New package adds maintenance surface (~10 source modules, ~11 test modules)
-- `merge=union` + no-rebase constraint must be respected by all contributors
+- Nonce-on-every-line makes op log files more verbose (every line carries `# <nonce>` suffix)
 - Two YAML libraries (ruamel.yaml for writes, PyYAML/CSafeLoader for reads) in the dependency tree
 - Migration is a one-way door — reverting to markdown after migration loses op-log history
 - Cross-branch Lamport clock adds coupling between the tracker store and git internals
