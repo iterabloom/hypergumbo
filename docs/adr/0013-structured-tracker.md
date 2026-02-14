@@ -47,7 +47,7 @@ Replace both markdown files with a **YAML-backed structured tracker** that provi
 - **Discussion threads** — Each item has an async discussion field where human and agent exchange messages.
 - **Parent-child relationships** — Items can form trees via an optional `parent` field.
 - **Configurable kinds** — Item types are defined in `config.yaml`, not hardcoded. Users can add new kinds (with custom ID prefixes) without changing code.
-- **SQLite read cache** — A gitignored SQLite database caches compiled snapshots for fast queries. The op log files remain the source of truth; the cache accelerates the read path (`list`, `ready`, `count-todos`) so agents can query the tracker on every task-selection cycle without parsing hundreds of op log files.
+- **SQLite read cache** — An out-of-tree SQLite database (in `$XDG_CACHE_HOME`) caches compiled snapshots for fast queries. The op log files remain the source of truth; the cache accelerates the read path (`list`, `ready`, `count-todos`) so agents can query the tracker on every task-selection cycle without parsing hundreds of op log files.
 
 ### Data Model
 
@@ -790,7 +790,7 @@ The fix exploits the append-only invariant: old bytes are never modified, new op
    a. Seek to `source_size`, read only the new bytes.
    b. Parse the new bytes as a YAML fragment (they are complete op list items because the store always writes trailing newlines — see [YAML Serialization Rules](#yaml-serialization-rules)).
    c. If **all** new ops are `discuss`, `discuss_clear`, or `discuss_summarize` → **discussion-only change**: update only the `discussion`, `updated_at`, `source_mtime`, and `source_size` columns in the cache. Skip data re-compile entirely.
-   d. If any new ops are `update`, `lock`, `unlock`, `promote`, or `demote` → **data change**: full re-parse and re-compile.
+   d. Otherwise (any new op is not a discussion op — `update`, `lock`, `unlock`, `promote`, `demote`, `create`, `stealth`, `unstealth`, `reconcile`) → **data change**: full re-parse and re-compile.
 4. If mtime changed and current size < stored `source_size` → **file was rewritten** (compaction, manual edit, or unusual merge): full re-parse and re-compile.
 
 This works reliably after `merge=union` merges: when two branches both append ops, `merge=union` preserves the original bytes verbatim and appends both sides' new lines at the end. The first `source_size` bytes are unchanged, so seeking to `source_size` produces exactly the new ops from both branches.
