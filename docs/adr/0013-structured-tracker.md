@@ -41,7 +41,7 @@ Replace both markdown files with a **YAML-backed structured tracker** that provi
 - **CLI for agents** (`scripts/tracker`) — Replaces grep patterns. The stop hook calls `scripts/tracker count-todos --hard` instead of grepping markdown.
 - **TUI for humans** (`scripts/tracker tui`) — A [Textual](https://textual.textualize.io/)-based terminal UI for browsing, editing, filtering, and discussing items.
 - **Append-only operation log** — Each item's history is stored as a hidden YAML file (`.ops` extension, dotfile naming) in a dotdir, containing an ordered list of immutable operations. Current state is derived by replaying ops. The append-only format means git can always auto-merge concurrent edits — no custom merge driver needed. The op log files are deliberately hidden from agents via dotdir + dotfile + explicit AGENTS.md rules (see [Agent Context Protection](#agent-context-protection)).
-- **Three-tier visibility** — Items live in one of three tiers: **canonical** (committed, shared with upstream), **workspace** (committed, backed up to fork remote, excluded from upstream PRs), or **stealth** (gitignored, never leaves the machine). Visibility only moves up via `promote` (workspace → canonical) or down via `demote` / `stealth`. This replaces the old per-item stealth model with a directory-level separation that cleanly handles the fork workflow (see [Three-Tier Visibility](#three-tier-visibility)).
+- **Three-tier visibility** — Items live in one of three tiers: **canonical** (committed, shared with upstream), **workspace** (committed, backed up to fork remote, excluded from upstream PRs), or **stealth** (gitignored, never leaves the machine). Visibility only moves up via `promote` (workspace → canonical) or down via `demote` / `stealth`. This directory-level separation cleanly handles the fork workflow (see [Three-Tier Visibility](#three-tier-visibility)).
 - **Fork-safe by design** — Contributors fork the repo and get upstream's canonical tracker as read-only context. Their agent writes to workspace (committed to the fork, backed up to the fork's remote). `scripts/contribute` automatically excludes workspace from upstream PRs. Canonical items can be promoted as separate, intentional PRs (see [Three-Tier Visibility](#three-tier-visibility)).
 - **Field locking** — Humans can lock any field to prevent agent modification.
 - **Discussion threads** — Each item has an async discussion field where human and agent exchange messages.
@@ -53,7 +53,7 @@ Replace both markdown files with a **YAML-backed structured tracker** that provi
 
 #### Design Principle: One Item Type, Configurable Kinds
 
-Instead of hardcoding separate types for invariants, meta-invariants, and work items, all items share a single universal schema. The `kind` field determines what type of item it is, and valid kinds are defined in `config.yaml`. To add a new kind (say, "latke"), you edit the config — no code changes. Each kind can optionally declare a `fields_schema` that names the known fields for its `fields` dict, their types, and whether they're required (see [Key Design Decisions](#key-design-decisions)). Kinds without a schema have fully open-ended fields.
+Instead of hardcoding separate types like invariants, work items, issues, bugs, etc, all items share a single universal schema. The `kind` field determines what type of item it is, and valid kinds are defined in `config.yaml`. To add a new kind (say, "latke"), you edit the config — no code changes. Each kind can optionally declare a `fields_schema` that names the known fields for its `fields` dict, their types, and whether they're required (see [Key Design Decisions](#key-design-decisions)). Kinds without a schema have fully open-ended fields.
 
 #### Storage Layout
 
@@ -64,21 +64,21 @@ Instead of hardcoding separate types for invariants, meta-invariants, and work i
 │   ├── .cache.db                    # gitignored SQLite read cache (see [Read Cache](#read-cache-sqlite))
 │   ├── .last_list                   # gitignored positional alias stash
 │   └── .ops/                        # committed op logs (dotdir — agents should not read)
-│       ├── .INV-lusab-bired.ops
-│       ├── .META-dabop-firuz.ops
-│       └── .WI-fodak-humit.ops
+│       ├── .INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit.ops
+│       ├── .META-dabop-firuz-hadol-jikam-losib-mufad-nokap-pidul.ops
+│       └── .WI-fodak-humit-kobap-linud-rasib-sufag-tohim-vukad.ops
 └── tracker-workspace/                # workspace tier (committed, fork-local)
     ├── config.yaml                  # optional overrides (e.g., stop_hook scope)
     ├── .cache.db                    # gitignored SQLite read cache
     ├── .last_list                   # gitignored positional alias stash
     ├── .ops/                        # committed op logs (backed up to fork remote)
-    │   ├── .WI-gutob-kinap.ops
-    │   └── .INV-hamoj-libud.ops
+    │   ├── .WI-gutob-kinap-sifad-tuhom-badol-fikam-gusib-hilap.ops
+    │   └── .INV-hamoj-libud-mifog-nakip-rosab-sudol-tifag-vukim.ops
     └── stealth/                     # stealth tier (gitignored, never leaves machine)
-        └── .WI-julad-mifog.ops
+        └── .WI-julad-mifog-vakob-zikap-bomud-diral-fusob-gihap.ops
 ```
 
-Two tracker directories, each containing op log files in a `.ops/` dotdir. One file per item, flat within each dotdir. Each file is a dotfile (`.INV-lusab-bired.ops`) containing an append-only operation log (see [Item Schema](#item-schema-operation-log)). The kind is inside the YAML content, not encoded in the path. The `.ops` extension and dotfile naming are deliberate — they prevent agents from casually reading the raw operation history (see [Agent Context Protection](#agent-context-protection)).
+Two tracker directories, each containing op log files in a `.ops/` dotdir. One file per item, flat within each dotdir. Each file is a dotfile (`.INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit.ops`) containing an append-only operation log (see [Item Schema](#item-schema-operation-log)). The kind is inside the YAML content, not encoded in the path. The `.ops` extension and dotfile naming are deliberate — they prevent agents from casually reading the raw operation history (see [Agent Context Protection](#agent-context-protection)).
 
 **Canonical** (`.agent/tracker/`) is the repo's institutional memory — committed, shared across forks, included in upstream PRs. **Workspace** (`.agent/tracker-workspace/`) is the agent's personal working memory — committed and pushed to the fork's remote for backup, but excluded from upstream PRs by `scripts/contribute`. **Stealth** (`.agent/tracker-workspace/stealth/`) is gitignored and never leaves the machine.
 
@@ -148,7 +148,7 @@ kinds:
   # Add new kinds freely — no code changes needed:
   # latke:
   #   prefix: LTK
-  #   description: "Whatever you want"
+  #   description: "Free Palestine"
   #   fields_schema:
   #     filling:
   #       type: text
@@ -189,7 +189,7 @@ well_known_tags:
 Each op log file (`.ops`) is an **append-only list of operations**. The store never mutates existing ops — it only appends new ones. Current state is derived by `compile()`, a pure function that replays all ops in Lamport clock order (see [Compile Rules](#compile-rules-conflict-resolution)).
 
 ```yaml
-# .INV-lusab-bired.ops — append-only operation log (in .agent/tracker/.ops/)
+# .INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit.ops — append-only operation log (in .agent/tracker/.ops/)
 
 - op: create  # f7a2
   at: "2026-02-11T18:00:00Z"
@@ -296,7 +296,7 @@ Inspired by git-bug's Lamport clock system (`util/lamport/`), but requiring no s
 
 **Hard rule: never rebase branches containing tracker ops; always merge.** This is documented in AGENTS.md alongside the branch hygiene expectation and enforced by convention. `scripts/auto-pr` already uses merge (not rebase) for its automated flow. For manual workflows, the rule is: if you have uncommitted tracker ops on a feature branch, merge `dev` into your branch — do not rebase your branch onto `dev`. Violations are not automatically detected (detecting a rebase after the fact is non-trivial), but the symptom is obvious: `compile()` produces incorrect state or `validate` reports duplicate nonces. The fix is to rebuild the op log file from the correct branch's history. The sequential workflow (auto-pr blocks new work while CI runs) makes this constraint easy to follow — there's rarely a reason to rebase at all.
 
-**Single `status` field.** The old system had separate status conventions for invariants ("FIXED", "UNFIXED") and work items ("TODO!", "DONE", "DEFERRED"). In the unified model, these map to a single field:
+**`status` field:**
 - UNFIXED → `todo_hard`
 - PARTIALLY ADDRESSED → `in_progress`
 - FIXED → `done`
@@ -308,7 +308,7 @@ Inspired by git-bug's Lamport clock system (`util/lamport/`), but requiring no s
 
 The stop hook simply counts items where `status ∈ {todo_hard, todo_soft}`.
 
-**Integer priority tiers (0–4).** Priority is a simple integer, not a float:
+**Integer priority tiers (0–4).** Priority is an integer:
 
 | Value | Meaning |
 |---|---|
@@ -329,7 +329,7 @@ If `--priority` is omitted on `add`, the CLI assigns a default of 2 (P2). Items 
   clock: 7
   nonce: b2c3
   set:
-    before: [INV-dabop-firuz]
+    before: [INV-dabop-firuz-hadol-jikam-losib-mufad-nokap-pidul]
 ```
 
 Unlike a display-order hint, `before` is **enforced as a soft-blocking relationship**. If item X has `before: [Y]`, then Y is not ready until X is resolved (status is `done`, `deferred`, or `wont_do`). This is transitive: if X has `before: [Y]` and Y has `before: [Z]`, then Z is blocked until both X and Y are resolved. The `scripts/tracker ready` command (see [CLI](#cli)) returns only items that are actionable (`todo_hard` or `todo_soft`) **and** unblocked — this is what agents use for task selection.
@@ -340,17 +340,17 @@ Within the ready set, items are sorted by `(priority, created_at)`. For display 
 
 **`Status` is the only Python enum.** The stop hook's blocking semantics (`todo_hard` and `todo_soft` block stopping) are load-bearing behavior that should be explicit in code, not buried in a config file. `kind` is validated against config.yaml at runtime — adding a new kind is purely a config change.
 
-**Hash-based IDs with kind prefix and proquint encoding.** IDs are `<kind prefix>-<proquint>` (e.g., `INV-lusab-bired`), where the proquint suffix is a [proquint](https://github.com/dsw/proquint) encoding of the first 32 bits of the SHA-256 hash of the **canonicalized `create` op content** — specifically the `data` dict, serialized with sorted keys. The hash input excludes `at`, `by`, `clock`, and `nonce` — so the same logical item created at different times by different actors produces the same ID.
+**Hash-based IDs with kind prefix and proquint encoding.** IDs are `<kind prefix>-<proquint>` (e.g., `INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit`), where the proquint suffix is a [proquint](https://github.com/dsw/proquint) encoding of the first 128 bits of the SHA-256 hash of the **canonicalized `create` op content** — specifically the `data` dict, serialized with sorted keys. The hash input excludes `at`, `by`, `clock`, and `nonce` — so the same logical item created at different times by different actors produces the same ID.
 
-Proquint encoding maps 16 bits to a 5-letter pronounceable syllable (CVCVC pattern: 16 consonants × 4 vowels × 16 consonants × 4 vowels × 16 consonants = 2^16). Two syllables encode 32 bits ≈ 4.3 billion values; birthday collision probability is negligible below ~65,000 items per kind (well beyond expected scale). IDs are pronounceable and memorable — "the lusab-bired invariant" — unlike hex strings. The `proquint` Python package is pure Python with no dependencies (~30 lines of encode/decode logic; can be vendored if preferred).
+Proquint encoding maps 16 bits to a 5-letter pronounceable syllable (CVCVC pattern: 16 consonants × 4 vowels × 16 consonants × 4 vowels × 16 consonants = 2^16). Eight syllables encode 128 bits ≈ 3.4 × 10^38 values; birthday collision probability is negligible even at planetary scale (8 billion users × 256 agents × 10 items/day × 100 years ≈ 7.5 × 10^17 items yields <0.001 expected collisions). IDs are long but rarely typed in full — prefix matching means `INV-lusab` suffices in practice. The `proquint` Python package is pure Python with no dependencies (~30 lines of encode/decode logic; can be vendored).
 
 This gives **natural deduplication**: if two agents independently discover the same invariant with the same title, description, and fields, they get the same ID. Inspired by both git-bug's entity ID scheme (SHA-256 of the first operation) and beads' hash-based short IDs (UUID → truncated SHA-256).
 
-**Same-branch existence check.** When `add()` computes an ID, it checks whether a file with that ID already exists in the target tier. If so, the item has already been created — `add()` refuses and reports the existing item: `"INV-lusab-bired already exists (title: 'Call Attribution Completeness'). Use 'update' to modify it."` This prevents silent overwrites when two agents on the same branch independently discover the same invariant. The agent learns the item exists and can `update` it instead (e.g., to add fields the first agent didn't fill in). **Cross-branch duplicate creation** (two agents on different branches creating the same-ID item before merging) is handled differently — see [Compile Rules](#compile-rules-conflict-resolution).
+**Same-branch existence check.** When `add()` computes an ID, it checks whether a file with that ID already exists in the target tier. If the existing item has identical `data`, the item has already been created — `add()` refuses and reports the existing item: `"INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit already exists (title: 'Call Attribution Completeness'). Use 'update' to modify it."` This prevents silent overwrites when two agents on the same branch independently discover the same invariant. The agent learns the item exists and can `update` it instead (e.g., to add fields the first agent didn't fill in). If the existing item has *different* `data` (a hash collision), `add()` appends a salt to the hash input and recomputes — the item is created under a different ID transparently. **Cross-branch duplicate creation** (two agents on different branches creating the same-ID item before merging) is handled differently — see [Compile Rules](#compile-rules-conflict-resolution).
 
-No sequential counter, no lockfile, no single-writer assumption. The `validate` command checks for duplicate IDs as a backstop. In the astronomically unlikely event of a true hash collision (same ID, different content), `validate` reports an error; the fix is to slightly alter the title or description to produce a different hash.
+No sequential counter, no lockfile, no single-writer assumption.
 
-**Prefix matching and positional aliases.** Full proquint IDs are short enough to type (`INV-lusab-bired`), but the CLI also accepts any unambiguous prefix for convenience:
+**Prefix matching and positional aliases.** Full proquint IDs are pronounceable but long (`INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit`), so the CLI accepts any unambiguous prefix for convenience:
 
 ```bash
 scripts/tracker update INV-lus --status done    # resolves if unique
@@ -362,8 +362,8 @@ Ambiguous prefix → error listing matches:
 
 ```
 error: INV-lus is ambiguous. Did you mean:
-  INV-lusab-bired  Call Attribution Completeness
-  INV-lusod-fikam  Symbol Resolution Consistency
+  INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit  Call Attribution Completeness
+  INV-lusod-fikam-gobad-hilun-jomab-kifud-losip-murad  Symbol Resolution Consistency
 ```
 
 The `list` and `ready` commands display the shortest unambiguous prefix per item (computed at render time, never stored). Additionally, output rows are numbered, and the CLI accepts positional aliases via `:N` syntax:
@@ -371,8 +371,8 @@ The `list` and `ready` commands display the shortest unambiguous prefix per item
 ```bash
 scripts/tracker ready
 #  ID               Status     Title
-1  INV-lusab-bired  todo_hard  Call Attribution Completeness
-2  WI-fodak-humit   todo_soft  Add Dart framework patterns
+1  INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit  todo_hard  Call Attribution Completeness
+2  WI-fodak-humit-kobap-linud-rasib-sufag-tohim-vukad   todo_soft  Add Dart framework patterns
 
 scripts/tracker update :1 --status done   # "item #1 from last list output"
 ```
@@ -386,11 +386,11 @@ The last-displayed ID list is stashed in `.agent/tracker/.last_list` (gitignored
 On `add`, the store computes the new item's SimHash and compares it (by Hamming distance) against existing items' cached SimHash fingerprints. If the distance is below a threshold (e.g., ≤5 bits out of 40), a warning is emitted:
 
 ```
-WARNING: INV-lusab-bired is similar to existing INV-fodak-humit
+WARNING: INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit is similar to existing INV-fodak-humit-kobap-linud-rasib-sufag-tohim-vukad
   (SimHash distance: 3 bits, title overlap: 82%)
-  Creating anyway. Run `scripts/tracker show INV-fodak-humit` to compare.
-  To mark as duplicate: scripts/tracker update INV-lusab-bired --duplicate-of INV-fodak-humit
-  To suppress: scripts/tracker update INV-lusab-bired --not-duplicate-of INV-fodak-humit
+  Creating anyway. Run `scripts/tracker show INV-fodak-humit-kobap-linud-rasib-sufag-tohim-vukad` to compare.
+  To mark as duplicate: scripts/tracker update INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit --duplicate-of INV-fodak-humit-kobap-linud-rasib-sufag-tohim-vukad
+  To suppress: scripts/tracker update INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit --not-duplicate-of INV-fodak-humit-kobap-linud-rasib-sufag-tohim-vukad
 ```
 
 The item is created regardless — no blocking. `validate --similar` resurfaces unflagged pairs on demand.
@@ -412,7 +412,7 @@ Both are set via `scripts/tracker update` or from the TUI. The human can lock `d
 **Per-kind `fields_schema` (open schema pattern).** The `fields` dict is an open-ended key-value store, but each kind can optionally declare a `fields_schema` in `config.yaml` that names the known fields, their types, and whether they're required. Three rules govern validation:
 
 1. **Known fields are validated strictly.** If the schema declares `progress_pct` as `type: integer, min: 0, max: 100`, then `validate` rejects `progress_pct: "half done"`. Required fields (e.g., `statement` for invariants) must be present in the `create` op's `data.fields`.
-2. **Unknown fields produce a warning, not an error.** An invariant with `fields.rout_cause` passes validation but emits: `WARNING: INV-lusab-bired has unknown field 'rout_cause' (did you mean 'root_cause'?)` — edit-distance suggestion against the declared field names. The pre-commit hook shows the warning; the agent or human can fix it or ignore it.
+2. **Unknown fields produce a warning, not an error.** An invariant with `fields.rout_cause` passes validation but emits: `WARNING: INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit has unknown field 'rout_cause' (did you mean 'root_cause'?)` — edit-distance suggestion against the declared field names. The pre-commit hook shows the warning; the agent or human can fix it or ignore it.
 3. **No `fields_schema` means anything goes.** Work items have no structured fields — they use `title` and `description` only. Omitting `fields_schema` (or setting it to `{}`) disables field validation for that kind entirely.
 
 Supported types are minimal: `text` (string), `integer` (with optional `min`/`max`), `list` (of strings), `boolean`. No nested objects, no foreign-key references. If a kind needs more complex validation, add it as a custom check in `validation.py` — don't extend the type system.
@@ -424,9 +424,9 @@ This gives the TUI concrete improvements: with a schema, the detail panel render
 Any item can point to a parent via `parent: <ID>`, forming a tree:
 
 ```
-INV-lusab-bired (parent: null)                    ← root invariant
-├── INV-hamoj-libud (parent: INV-lusab-bired)     ← child: a specific generalization
-└── INV-kipod-nafug (parent: INV-lusab-bired)     ← child: another generalization
+INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit (parent: null)                    ← root invariant
+├── INV-hamoj-libud-mifog-nakip-rosab-sudol-tifag-vukim (parent: INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit)     ← child: a specific generalization
+└── INV-kipod-nafug-posab-ridol-safim-tuhob-vikad-zulip (parent: INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit)     ← child: another generalization
 ```
 
 This replaces the old `pending_generalizations` embedded list — each generalization becomes a first-class item with its own ID, status, priority, and history.
@@ -435,7 +435,7 @@ The store provides `children(id)` and `ancestors(id)` traversal methods. The TUI
 
 #### Field Locking
 
-The human can lock any field (or the `discussion` channel) on any item to prevent agent modification. Locks are enforced at write time: the store compiles current state, checks `locked_fields`, and refuses to append `update` or `discuss` ops from agents that touch locked fields. The error message is clear: `"Field 'priority' on INV-lusab-bired is locked. Ask the human to unlock it."`
+The human can lock any field (or the `discussion` channel) on any item to prevent agent modification. Locks are enforced at write time: the store compiles current state, checks `locked_fields`, and refuses to append `update` or `discuss` ops from agents that touch locked fields. The error message is clear: `"Field 'priority' on INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit is locked. Ask the human to unlock it."`
 
 Locks are toggled from the TUI (`l` key) or via CLI (`scripts/tracker lock <ID> <field>`). The agent can always *read* locked fields — it just can't *write* them.
 
@@ -538,7 +538,7 @@ The `compile()` function is a pure function: it takes a list of ops from an op l
 
 **Sort order:** Ops are sorted by `(clock, timestamp, actor_rank)` where `human` ranks higher than `agent`. The Lamport clock captures causal ordering via cross-branch peek (see [Key Design Decisions](#key-design-decisions)): if agent B could see agent A's ops on any local branch before writing, B's clock is strictly higher. For truly concurrent ops (same clock value, from branches not locally visible to each other), timestamp breaks ties. For same-clock-same-timestamp ops, human wins. This ensures deterministic output regardless of the order ops appear in the file after a git merge.
 
-**Duplicate `create` ops (cross-branch merge of independently-created items).** Content-hash IDs ([Key Design Decisions](#key-design-decisions)) mean that two agents on different branches who independently create the same item produce the same ID and write to the same `.ops` dotfile. On the same branch, `add()` detects the existing file and refuses (see [Key Design Decisions](#key-design-decisions)). But across branches, both files exist independently until merge. After `merge=union`, the merged file contains **two `create` ops** (with different nonces and clocks, since each agent generated its own). `compile()` handles this gracefully: it takes the `create` op with the **lowest clock** (the causally earliest creation) as the canonical creation event and **ignores subsequent `create` ops with identical `data`**. The `created_at` derived field uses the earliest `create` op's timestamp. All subsequent `update`, `discuss`, `lock`, etc. ops from both branches are folded normally — the item's compiled state reflects the combined work of both agents. `validate` emits an informational notice ("INV-lusab-bired has 2 create ops — likely independent creation on separate branches, merged cleanly") but does not error. If two `create` ops have the same ID but **different `data`** (a true 32-bit hash collision, astronomically unlikely), `validate` reports an error — this requires human intervention to alter one item's content and assign it a new ID.
+**Duplicate `create` ops (cross-branch merge of independently-created items).** Content-hash IDs ([Key Design Decisions](#key-design-decisions)) mean that two agents on different branches who independently create the same item produce the same ID and write to the same `.ops` dotfile. On the same branch, `add()` detects the existing file and refuses (see [Key Design Decisions](#key-design-decisions)). But across branches, both files exist independently until merge. After `merge=union`, the merged file contains **two `create` ops** (with different nonces and clocks, since each agent generated its own). `compile()` handles this gracefully: it takes the `create` op with the **lowest clock** (the causally earliest creation) as the canonical creation event and **ignores subsequent `create` ops with identical `data`**. The `created_at` derived field uses the earliest `create` op's timestamp. All subsequent `update`, `discuss`, `lock`, etc. ops from both branches are folded normally — the item's compiled state reflects the combined work of both agents. `validate` emits an informational notice ("INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit has 2 create ops — likely independent creation on separate branches, merged cleanly") but does not error.
 
 **Per-field resolution during fold:**
 
@@ -576,8 +576,6 @@ Since each op has a unique nonce, each `- op:` line is globally unique (e.g., `-
 
 **Simulation results.** With nonce-on-first-line, `merge=union` passes 9 of 10 tested scenarios (up from 3 of 8 without it), including all realistic cases: same op type with different content, same clock values, multiple ops per branch, and three-way merges with all-`update` ops. The sole remaining failure is byte-identical ops (same nonce, same everything) — which cannot occur in practice because the nonce is randomly generated.
 
-**Why not default merge + no `merge=union`?** To reiterate: git's default merge conflicts on concurrent appends to the same file, even when the appended content is completely different. This is not a theoretical concern — simulation shows conflicts in 7 of 8 scenarios. `merge=union` with nonce-on-first-line is required to keep merges non-blocking for the autonomous workflow.
-
 #### YAML Serialization Rules
 
 YAML's implicit type coercion (`yes`→`true`, `3.0`→float, bare `null`) makes agent-written content error-prone. To prevent data corruption, all YAML I/O flows through the store using strict serialization conventions.
@@ -588,7 +586,7 @@ YAML's implicit type coercion (`yes`→`true`, `3.0`→float, bare `null`) makes
 
 This split means the hot path — `compile()`, `list`, `ready`, `count-todos` — benefits from C-speed parsing, while the write path retains ruamel.yaml's strict serialization guarantees. The cache layer ([Read Cache](#read-cache-sqlite)) further reduces how often even the C loader is invoked.
 
-**Benchmark-confirmed performance gap.** Testing with realistic op log files (180–12,000 ops) shows CSafeLoader is consistently 3–10× faster than both SafeLoader and ruamel.yaml's parser. At 3,000 ops (~750KB file), CSafeLoader parses in ~200ms vs. ~1,000ms for SafeLoader and ~1,170ms for ruamel.yaml. The dual-library split is not premature optimization — it's a measured 5× improvement on the hot path.
+**Benchmark-confirmed performance gap.** Testing with realistic op log files (180–12,000 ops) shows CSafeLoader is consistently 3–10× faster than both SafeLoader and ruamel.yaml's parser. At 3,000 ops (~750KB file), CSafeLoader parses in ~200ms vs. ~1,000ms for SafeLoader and ~1,170ms for ruamel.yaml. This dual-library split improves the hot path speed by 5×.
 
 **Quoting rules:**
 - String fields that could be misinterpreted are always double-quoted: `title`, `description`, `justification`, `message` (in discuss ops), all `fields.*` string values
@@ -610,12 +608,12 @@ kind, title, status, priority, parent, tags, before, pr_ref, justification, desc
 **Sole-writer invariant.** The store is the sole writer of op log files. Agents and humans use the CLI/TUI — they never edit `.ops` files directly. Agents should never *read* op log files either — they use `scripts/tracker show <ID>` for compiled state (see [Agent Context Protection](#agent-context-protection)).
 
 **Enforcement.** The pre-commit hook ([Pre-Commit Validation](#pre-commit-validation)) validates all staged tracker files, catching malformed YAML regardless of how it was written. Additionally, `validate` checks for:
-- Ops missing the `nonce` field (the CLI always generates one; hand-edited YAML won't have it)
-- Ops missing the nonce-on-first-line comment (`- op: <type>  # <nonce>`) — this is load-bearing for `merge=union` correctness ([Compile Rules](#compile-rules-conflict-resolution)); hand-edited YAML won't have it
+- Ops missing the `nonce` field (the CLI always generates one)
+- Ops missing the nonce-on-first-line comment (`- op: <type>  # <nonce>`) — this is load-bearing for `merge=union` correctness ([Compile Rules](#compile-rules-conflict-resolution))
 - Nonce comment not matching the `nonce` field value (detects copy-paste errors)
-- Non-canonical field ordering (the CLI always serializes in canonical order; hand-edits typically don't)
+- Non-canonical field ordering (the CLI always serializes in canonical order)
 
-These checks don't *prevent* direct edits, but they make hand-written ops fail validation at commit time. The pre-commit hook is the enforcement mechanism — the sole-writer invariant is "enforced by convention, caught by validation."
+These pre-commit hook checks make it difficult for invalid YAML to get committed.
 
 **Round-trip invariant.** `load(dump(load(file))) == load(file)` — enforced by a dedicated test (`test_yaml_roundtrip.py`) with adversarial inputs (`"yes"`, `"null"`, `"3.0"`, `"*bold*"`, strings with colons, leading whitespace, emoji, etc.).
 
@@ -642,7 +640,7 @@ The read path (`list`, `ready`, `count-todos`) must load and compile all items. 
 **Schema:**
 ```sql
 CREATE TABLE items (
-    id          TEXT PRIMARY KEY,   -- e.g., "INV-lusab-bired"
+    id          TEXT PRIMARY KEY,   -- e.g., "INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit"
     kind        TEXT NOT NULL,
     title       TEXT NOT NULL,
     status      TEXT NOT NULL,
@@ -725,7 +723,7 @@ Op log files contain the full operation history for each item — every `create`
 Three layers of defense prevent agents from reading op logs directly:
 
 1. **Dotdir** (`.ops/`) — Agents are trained to skip dotdirs by convention. The op log directory is hidden from `ls`, file explorers, and casual glob patterns.
-2. **Dotfile** (`.INV-lusab-bired.ops`) — Each op log file is itself a dotfile, doubly hidden. Even if an agent navigates into `.ops/`, the files don't appear in standard directory listings.
+2. **Dotfile** (`.INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit.ops`) — Each op log file is itself a dotfile, doubly hidden. Even if an agent navigates into `.ops/`, the files don't appear in standard directory listings.
 3. **Explicit instruction in AGENTS.md** — The following rules are added:
    - "Always use `scripts/tracker show <ID>` or `scripts/tracker show <ID> --json` to read tracker item state."
    - "Always refuse to read files ending in `.ops`. These are internal operation logs that will pollute your context window with historical data you don't need."
@@ -971,7 +969,7 @@ Validation catches:
 6. Generate hash-based 10-hex-char IDs by hashing each `create` op's canonicalized `data` dict (SHA-256, first 10 chars), with kind-appropriate prefixes
 7. Convert `pending_generalizations` embedded lists into child items with `parent: <parent-ID>`
 8. Map work item categories to tags (e.g., "Developer Experience" → tag `developer_experience`)
-9. Write each item as an op log file in `.agent/tracker/.ops/` (canonical tier — migrated items are upstream's institutional memory), using dotfile naming (`.INV-lusab-bired.ops`)
+9. Write each item as an op log file in `.agent/tracker/.ops/` (canonical tier — migrated items are upstream's institutional memory), using dotfile naming (`.INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit.ops`)
 10. Create empty `.agent/tracker-workspace/` with default config (including `.ops/` and `stealth/` dirs)
 11. Validate all written files
 12. Print summary: N items migrated (by kind), N parent-child links created
@@ -1007,7 +1005,7 @@ Migration is idempotent: re-running produces the same IDs (same content → same
 #### PR 1: Package scaffold + data model + store + cache + validation + serialization
 - Create `packages/hypergumbo-tracker/` with pyproject.toml, src layout, tests dir
 - `models.py`: Op dataclasses (including `promote`/`demote` op types), Status enum, Tier enum (`canonical`/`workspace`/`stealth`), config loading (including `fields_schema` per kind — supported types: `text`, `integer` with optional `min`/`max`, `list`, `boolean`, and `stop_hook.scope` config)
-- `store.py`: YAML write (ruamel.yaml) and read (PyYAML `CSafeLoader` — see [YAML Serialization Rules](#yaml-serialization-rules)), hash-based ID generation (SHA-256 of canonicalized `create` op `data` dict, first 32 bits proquint-encoded — see [Key Design Decisions](#key-design-decisions)), **same-branch existence check on `add()`** (refuse to create if file with computed ID already exists in the target tier — see [Key Design Decisions](#key-design-decisions)), SimHash computation on item content (40-bit fingerprint, cached in SQLite), prefix matching resolver (shortest unambiguous prefix), positional alias support (`.last_list` stash file), scoped cross-branch Lamport clock (peek `dev` + `main` + `HEAD` + unmerged branches via `git cat-file --batch` — see [Key Design Decisions](#key-design-decisions)), cross-branch lock enforcement (same scoped peek, union of `locked_fields`), nonce generation (4 random hex chars per op, serialized as inline comment on `- op:` line for `merge=union` correctness — see [Compile Rules](#compile-rules-conflict-resolution)), `compile()` function (**tolerates duplicate `create` ops from cross-branch merges** — lowest-clock `create` wins, subsequent identical-data `create` ops ignored — see [Compile Rules](#compile-rules-conflict-resolution)), list/filter, `ready()` filter (soft-blocking via `before` links), tree traversal (children/ancestors), canonical op field ordering, `before` topological sort. Store operates on a single directory (one tier) — multi-tier merging is handled by `TrackerSet`
+- `store.py`: YAML write (ruamel.yaml) and read (PyYAML `CSafeLoader` — see [YAML Serialization Rules](#yaml-serialization-rules)), hash-based ID generation (SHA-256 of canonicalized `create` op `data` dict, first 128 bits proquint-encoded — see [Key Design Decisions](#key-design-decisions)), **same-branch existence check on `add()`** (refuse to create if file with computed ID already exists in the target tier — see [Key Design Decisions](#key-design-decisions)), SimHash computation on item content (40-bit fingerprint, cached in SQLite), prefix matching resolver (shortest unambiguous prefix), positional alias support (`.last_list` stash file), scoped cross-branch Lamport clock (peek `dev` + `main` + `HEAD` + unmerged branches via `git cat-file --batch` — see [Key Design Decisions](#key-design-decisions)), cross-branch lock enforcement (same scoped peek, union of `locked_fields`), nonce generation (4 random hex chars per op, serialized as inline comment on `- op:` line for `merge=union` correctness — see [Compile Rules](#compile-rules-conflict-resolution)), `compile()` function (**tolerates duplicate `create` ops from cross-branch merges** — lowest-clock `create` wins, subsequent identical-data `create` ops ignored — see [Compile Rules](#compile-rules-conflict-resolution)), list/filter, `ready()` filter (soft-blocking via `before` links), tree traversal (children/ancestors), canonical op field ordering, `before` topological sort. Store operates on a single directory (one tier) — multi-tier merging is handled by `TrackerSet`
 - `trackerset.py`: Multi-tier wrapper that instantiates a `Store` per tier (canonical, workspace, stealth), merges reads transparently, resolves cross-tier `parent`/`before` references, routes writes to the correct tier, implements `promote()`/`demote()`/`stealth()`/`unstealth()` (append op + physical file move between directories), provides unified `ready()` and scope-aware `count_todos()` (respects `stop_hook.scope` from config)
 - `cache.py`: SQLite read cache (see [Read Cache](#read-cache-sqlite)) — one `.cache.db` per tier directory. Schema creation (including `source_size` and `tier` columns), incremental byte-offset invalidation (seek to stored `source_size`, parse only new bytes, skip data re-compile for discussion-only appends), write-through upsert on local ops, cold-start rebuild, `cache-rebuild` entry point, `TRACKER_CACHE_DIR` override. All read operations (`list`, `ready`, `count-todos`, `show`) query the cache; writes go to YAML and update the cache row in one step
 - `validation.py`: schema checks, enum enforcement, dedup (across all tiers), parent ref checks (cross-tier), `before` cycle detection (cross-tier), compiled-state checks (deferred justification, etc.), per-kind `fields_schema` validation (required fields present, type/range checks on known fields, edit-distance typo warnings for unknown fields). Must support optional file-path arguments from the start (for incremental pre-commit validation — see [Pre-Commit Validation](#pre-commit-validation))
@@ -1015,14 +1013,14 @@ Migration is idempotent: re-running produces the same IDs (same content → same
 - Create `.gitattributes` with `linguist-generated` and `merge=union` for both `.agent/tracker/.ops/.*.ops` and `.agent/tracker-workspace/.ops/.*.ops` (see [.gitattributes](#gitattributes))
 - Add `.agent/tracker/.cache.db`, `.agent/tracker-workspace/.cache.db`, and `.agent/tracker-workspace/stealth/` to `.gitignore`
 - Update `scripts/check-package-coverage` and `scripts/dev-install`
-- Tests: model construction, validation pass/fail (including `fields_schema`: required field missing → error, wrong type → error, unknown field with close edit distance → warning with suggestion, unknown field on kind without schema → no warning), store CRUD (append ops), hash-based ID generation (same content → same ID, different content → different ID, IDs are valid proquint-encoded), proquint round-trip (encode → decode → encode produces same result), **`add()` same-branch existence check** (create item, attempt `add()` with identical content → `ItemExistsError` with existing item's title; verify the original file is not overwritten; verify different content producing a different ID succeeds normally), prefix matching (unique prefix resolves, ambiguous prefix errors with candidates, kind-prefix-less matching works), positional aliases (`:1` resolves to first item in last list, stale alias file warns), SimHash computation (identical text → identical fingerprint, similar text → low Hamming distance, unrelated text → high Hamming distance), SimHash similarity warning on `add` (mock store with existing items, verify warning emitted when distance below threshold, verify no warning when above threshold, verify `not_duplicate_of` suppresses warning), `duplicate_of` exclusion (items with non-empty `duplicate_of` excluded from `ready` and `count_todos`), scoped cross-branch Lamport clock (mock `git cat-file --batch` to simulate peek across `dev`/`main`/`HEAD`/unmerged branches, verify clock > max across scoped set, verify merged branches are excluded), cross-branch lock enforcement (mock `git cat-file --batch` to simulate lock on another branch in the scoped set, verify agent update rejected), nonce uniqueness (two ops with identical content/clock/timestamp produce byte-different serializations), `compile()` with interleaved ops from simulated concurrent branches (same clock values, clock-skewed timestamps), **`compile()` with duplicate `create` ops** (two `create` ops with same `data` but different nonces/clocks → lowest-clock `create` used for `created_at`, subsequent `create` ignored, all non-`create` ops from both branches folded normally; two `create` ops with same ID but different `data` → compile raises error), tree traversal, `ready()` filter (items blocked by incomplete `before` predecessors excluded, transitive blocking, stale/cross-tier links ignored), `before` sorting, `before` cycle rejection
+- Tests: model construction, validation pass/fail (including `fields_schema`: required field missing → error, wrong type → error, unknown field with close edit distance → warning with suggestion, unknown field on kind without schema → no warning), store CRUD (append ops), hash-based ID generation (same content → same ID, different content → different ID, IDs are valid proquint-encoded), proquint round-trip (encode → decode → encode produces same result), **`add()` same-branch existence check** (create item, attempt `add()` with identical content → `ItemExistsError` with existing item's title; verify the original file is not overwritten; verify different content producing a different ID succeeds normally; verify hash collision — create item, then `add()` with different content that produces the same ID via mocked hash → auto-salts and creates under a different ID), prefix matching (unique prefix resolves, ambiguous prefix errors with candidates, kind-prefix-less matching works), positional aliases (`:1` resolves to first item in last list, stale alias file warns), SimHash computation (identical text → identical fingerprint, similar text → low Hamming distance, unrelated text → high Hamming distance), SimHash similarity warning on `add` (mock store with existing items, verify warning emitted when distance below threshold, verify no warning when above threshold, verify `not_duplicate_of` suppresses warning), `duplicate_of` exclusion (items with non-empty `duplicate_of` excluded from `ready` and `count_todos`), scoped cross-branch Lamport clock (mock `git cat-file --batch` to simulate peek across `dev`/`main`/`HEAD`/unmerged branches, verify clock > max across scoped set, verify merged branches are excluded), cross-branch lock enforcement (mock `git cat-file --batch` to simulate lock on another branch in the scoped set, verify agent update rejected), nonce uniqueness (two ops with identical content/clock/timestamp produce byte-different serializations), `compile()` with interleaved ops from simulated concurrent branches (same clock values, clock-skewed timestamps), **`compile()` with duplicate `create` ops** (two `create` ops with same `data` but different nonces/clocks → lowest-clock `create` used for `created_at`, subsequent `create` ignored, all non-`create` ops from both branches folded normally; two `create` ops with same ID but different `data` → compile uses lowest-clock `create`, logs warning), tree traversal, `ready()` filter (items blocked by incomplete `before` predecessors excluded, transitive blocking, stale/cross-tier links ignored), `before` sorting, `before` cycle rejection
 - `test_trackerset.py`: multi-tier merged reads (items from canonical + workspace + stealth appear in unified list with correct tier indicators), cross-tier `parent` resolution (workspace item with `parent` pointing to canonical item resolves correctly), cross-tier `before` resolution, `promote` (workspace → canonical: op appended, file physically moved, cache updated in both tiers, ID unchanged), `demote` (canonical → workspace: reverse), `stealth` (workspace → stealth: file moves to gitignored dir), `unstealth` (stealth → workspace), scope-aware `count_todos` (scope=`all` counts canonical + workspace; scope=`workspace` counts workspace only; stealth always counted in both modes), `ready` always shows all tiers regardless of scope
 - `test_cache.py`: SQLite cache correctness — write-through (append op, verify cache row updated without re-parse, verify `source_size` updated), mtime invalidation (touch YAML file, verify re-parse on next read), cold start (delete `.cache.db`, verify rebuilt from YAML), corruption recovery (corrupt `.cache.db`, verify rebuilt transparently), stale cache (simulate `git pull` changing file mtimes, verify only changed items re-parsed), cache-vs-YAML consistency (compile from YAML and compare against cache row for all items), **incremental invalidation** (append discuss op to file, verify only new bytes parsed and data fields not re-compiled; append update op to file, verify full re-compile triggered; simulate `merge=union` by appending ops from two simulated branches, verify incremental parse finds all new ops; simulate file truncation/rewrite, verify fallback to full re-parse; verify `source_size` tracking is accurate across append/merge/rewrite scenarios)
 - `test_compile_properties.py`: property-based tests using `hypothesis` — generate random op sequences (create followed by random update/discuss/lock/unlock ops with random clocks and timestamps) and verify: (1) idempotency (`compile(ops) == compile(ops)`), (2) permutation invariance (`compile(shuffle(ops)) == compile(ops)`), (3) terminal status consistency (compiled status = status from highest-clock update op that sets it), (4) **duplicate-create resilience** (generate op sequence with two `create` ops sharing the same `data` but different clocks/nonces, verify `compile()` produces the same result as with a single `create` op followed by the same non-`create` ops)
 - `test_yaml_roundtrip.py`: adversarial inputs (`"yes"`, `"null"`, `"3.0"`, `"*bold*"`, strings with colons, leading whitespace, emoji), canonical field order verification, nonce field presence verification, **nonce-on-first-line verification** (every serialized op's first line matches `- op: <type>  # <nonce>`, comment value matches `nonce` field), **CSafeLoader/ruamel.yaml parity** (verify both parsers produce identical Python objects for all op types including adversarial inputs — note: CSafeLoader strips comments, so the nonce comment is not visible on the read path; the comment is verified via raw string inspection of the serialized output, not via parsed data)
 
 #### PR 2: Migration script
-- `migration.py`: markdown parser, status normalizer, priority assigner (integer tiers), hash-based ID generator (SHA-256 of canonicalized `create` op `data` dict, first 32 bits proquint-encoded), writer
+- `migration.py`: markdown parser, status normalizer, priority assigner (integer tiers), hash-based ID generator (SHA-256 of canonicalized `create` op `data` dict, first 128 bits proquint-encoded), writer
 - Test against actual current content of both markdown files
 - Creates `.agent/tracker/.ops/` (canonical tier) with migrated op log files (each dotfile containing a single `create` op)
 - Creates empty `.agent/tracker-workspace/` with default config (including `.ops/`, `stealth/` dirs, and `stop_hook.scope: all`)
@@ -1248,7 +1246,7 @@ Document in `AGENTS.md`:
 
 **Commit prefix.** Tracker-only changes use a `tracker:` conventional-commit prefix:
 ```
-tracker: close INV-lusab-bired, update 3 work items
+tracker: close INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit, update 3 work items
 tracker: batch status updates for completed invariants
 ```
 
@@ -1320,7 +1318,7 @@ cat "$1"
 **`scripts/tracker textconv <FILE>`** — CLI subcommand that compiles the item and emits a compact, one-line-per-field text representation designed for readable diffs:
 
 ```
-INV-lusab-bired  Call Attribution Completeness
+INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit  Call Attribution Completeness
   status: todo_hard  priority: P0  tags: [analysis_quality]
   parent: null  before: []  pr_ref: null
   fields.statement: Every emitted `calls` edge has a non-null caller symbol
@@ -1334,7 +1332,7 @@ INV-lusab-bired  Call Attribution Completeness
 When a field changes, `git log -p` shows a clean diff of the compiled states:
 
 ```diff
- INV-lusab-bired  Call Attribution Completeness
+ INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit  Call Attribution Completeness
 -  status: todo_hard  priority: P0  tags: [analysis_quality]
 +  status: done       priority: P0  tags: [analysis_quality]
    parent: null  before: []  pr_ref: null
@@ -1403,3 +1401,4 @@ Instead of the raw YAML op that was appended:
 - [proquint](https://arxiv.org/html/0901.4016) — Pronounceable hash encoding
 - `.agent/invariant-ledger.md` — Current invariant tracking (replaced by tracker)
 - `~/hypergumbo_lab_notebook/guidance_log/work_items.md` — Current work item tracking (replaced by tracker)
+
