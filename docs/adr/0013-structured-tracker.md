@@ -79,7 +79,9 @@ $XDG_CACHE_HOME/hypergumbo-tracker/<repo-fingerprint>/
 ├── canonical.cache.db               # SQLite read cache for canonical tier
 ├── canonical.last_list              # positional alias stash for canonical
 ├── workspace.cache.db               # SQLite read cache for workspace tier
-└── workspace.last_list              # positional alias stash for workspace
+├── workspace.last_list              # positional alias stash for workspace
+├── stealth.cache.db                 # SQLite read cache for stealth tier
+└── stealth.last_list                # positional alias stash for stealth
 ```
 
 Two tracker directories, each containing op log files in a `.ops/` dotdir. One file per item, flat within each dotdir. Each file is a dotfile (`.INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit.ops`) containing an append-only operation log (see [Item Schema](#item-schema-operation-log)). The kind is inside the YAML content, not encoded in the path. The `.ops` extension and dotfile naming are deliberate — they prevent agents from casually reading the raw operation history (see [Agent Context Protection](#agent-context-protection)).
@@ -94,7 +96,7 @@ The store reads all three tiers transparently via `TrackerSet` — agents and hu
 
 The repo tracks a **template** (`config.yaml.template`). The actual config (`config.yaml`) is gitignored and human-owned via OS file permissions — the standard `.env.example` → `.env` pattern (see [Security Model](#security-model)).
 
-`scripts/tracker init` (run by the human user) copies the full template to `config.yaml`, appends the per-deployment fields (see below), and sets ownership: `chown <human_user> config.yaml && chmod 644 config.yaml`. The result is a **complete** config file — not just overrides. The agent can read config (needs to, for validation) but cannot write it — the OS enforces this.
+`scripts/tracker init` (run by the human user) copies the full template to `config.yaml`, then performs a YAML-aware merge of the per-deployment fields (see below) into the copy — for example, `stop_hook.scope` is merged into the existing `stop_hook` block alongside `blocking_statuses` and `resolved_statuses`, not appended as a duplicate top-level key. Finally, it sets ownership: `chown <human_user> config.yaml && chmod 644 config.yaml`. The result is a **complete** config file — not just overrides. The agent can read config (needs to, for validation) but cannot write it — the OS enforces this.
 
 The validation code loads config from a chain: `config.yaml` if it exists, otherwise `config.yaml.template` (fallback, not merge). CI uses the template directly (which contains all governance rules but no per-deployment fields — `actor_resolution` and `stop_hook.scope` use built-in defaults when absent). `validate` warns in both directions: when `config.yaml` contains kinds or statuses not present in `config.yaml.template` (local-only additions that would fail in CI), and when `config.yaml.template` has been updated with new kinds or statuses that `config.yaml` doesn't have (stale local config — re-run `init` to regenerate).
 
@@ -203,7 +205,7 @@ well_known_tags:
   - framework_patterns
 ```
 
-**Per-deployment fields** (appended to the template copy by `init` — `config.yaml` is a complete file, not just overrides). These fields have built-in defaults when absent, so the template works standalone in CI:
+**Per-deployment fields** (merged into the template copy by `init` via YAML-aware merge — `config.yaml` is a complete file, not just overrides). These fields have built-in defaults when absent, so the template works standalone in CI:
 
 ```yaml
 # Actor resolution. Usernames matching these patterns are resolved as "agent".
@@ -583,10 +585,12 @@ This separates "here's my code contribution" from "here's an invariant I discove
 
 | Context | `count-todos` scope | `ready` scope |
 |---|---|---|
-| Upstream | canonical + workspace (`all`) | canonical + workspace |
-| Fork | workspace only | canonical + workspace |
+| Upstream | canonical + workspace + stealth (`all`) | canonical + workspace + stealth |
+| Fork | workspace + stealth (`workspace`) | canonical + workspace + stealth |
 
-Fork detection and scope configuration happen automatically during `scripts/fork-setup` (or first `scripts/contribute` run), which checks for the presence of an `upstream` remote and sets `stop_hook.scope: workspace` in the workspace `config.yaml` (gitignored, human-owned — see [Config File](#config-file)).
+Stealth items are always counted regardless of scope — they're local to the machine and always relevant to the local agent's stopping decision.
+
+Fork detection and scope configuration are performed by `scripts/tracker fork-setup` (human-only — see [CLI](#cli)), which checks for the presence of an `upstream` remote and sets `stop_hook.scope: workspace` in the workspace `config.yaml` (gitignored, human-owned — see [Config File](#config-file)). `scripts/contribute` checks whether `fork-setup` has been run (by reading `stop_hook.scope` from config); if not, it prints a reminder and exits rather than proceeding with a misconfigured scope.
 
 **Workspace starts empty on forks.** When a contributor forks and clones, workspace has no items. The fork's agent creates items as it works. It doesn't get copies of canonical items — that would create duplicates in the merged read view and diverge immediately. Canonical is read-only context, not a starting point to be cloned.
 
@@ -1201,6 +1205,9 @@ Validation catches:
 - Cycles in `before` links
 - Required `fields` keys missing (per kind's `fields_schema`, if defined)
 - `fields` values failing type/range checks (e.g., `progress_pct: "half done"` when schema says `type: integer`)
+- Cross-tier duplicates (same ID exists in multiple tier directories — see [Self-Healing Reconciliation](#self-healing-reconciliation))
+- **Warning** (non-blocking): `config.yaml` contains kinds or statuses not present in `config.yaml.template` (local-only additions that would fail in CI)
+- **Warning** (non-blocking): `config.yaml.template` has kinds or statuses that `config.yaml` doesn't have (stale local config — re-run `init`)
 - **Warning** (non-blocking): unknown `fields` keys with edit-distance suggestion (e.g., `'rout_cause' — did you mean 'root_cause'?`), only for kinds with a `fields_schema`
 - **Warning** (non-blocking): agent `update` ops touching fields that were locked at the time (by timestamp)
 
@@ -1225,7 +1232,7 @@ Validation catches:
 7. Convert `pending_generalizations` embedded lists into child items with `parent: <parent-ID>`
 8. Map work item categories to tags (e.g., "Developer Experience" → tag `developer_experience`)
 9. Write each item as an op log file in `.agent/tracker/.ops/` (canonical tier — migrated items are upstream's institutional memory), using dotfile naming (`.INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit.ops`)
-10. Create empty `.agent/tracker-workspace/` with default config (including `.ops/` and `stealth/` dirs)
+10. Create empty `.agent/tracker-workspace/` with `config.yaml.template` (including `.ops/` and `stealth/` dirs)
 11. Validate all written files
 12. Print summary: N items migrated (by kind), N parent-child links created
 
