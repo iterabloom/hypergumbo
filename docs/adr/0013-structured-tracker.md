@@ -764,7 +764,8 @@ This keeps CI fast: tracker tests run in their own isolated job, not bloating th
 
 ```
 packages/hypergumbo-tracker/
-├── pyproject.toml                        # ruamel.yaml, rich required; textual optional
+├── pyproject.toml                        # deps, console_scripts entry points, MPL-2.0 license
+├── LICENSE                              # MPL-2.0 full text
 ├── README.md
 ├── src/
 │   └── hypergumbo_tracker/
@@ -775,7 +776,7 @@ packages/hypergumbo-tracker/
 │       ├── cache.py                      # SQLite read cache: schema, invalidation, write-through, rebuild
 │       ├── validation.py                 # Schema validation, enum enforcement, parent refs, cycle detection
 │       ├── migration.py                  # One-time markdown → YAML converter
-│       ├── cli.py                        # CLI entry points (scripts/tracker calls this)
+│       ├── cli.py                        # CLI (console_scripts: hypergumbo-tracker, hypergumbo-tracker-textconv)
 │       ├── stop_hook.py                  # count_todos, hash_todos, generate_guidance (scope-aware)
 │       └── tui.py                        # Textual TUI application
 └── tests/
@@ -821,9 +822,35 @@ Dev:
 - **pytest-textual-snapshot** — official Textual snapshot plugin for SVG-based visual regression testing
 - **hypothesis** — property-based testing for `compile()` invariants (see [Verification](#verification))
 
+#### Licensing
+
+The tracker package is licensed under **MPL-2.0**, while the rest of hypergumbo is **AGPL-3.0-or-later**. This dual-license structure enables standalone adoption: projects that want structured agent governance can `pip install hypergumbo-tracker` without AGPL obligations on their own code. MPL-2.0's copyleft is file-level (modifications to tracker source files must be shared), not program-level (the tracker can be embedded in proprietary projects without infecting them). AGPL's copyleft protects hypergumbo's core analysis tooling from unreciprocated SaaS use.
+
+**SPDX headers.** Every source file in the repo carries an SPDX license identifier:
+
+```python
+# SPDX-License-Identifier: MPL-2.0          # in packages/hypergumbo-tracker/
+# SPDX-License-Identifier: AGPL-3.0-or-later  # everywhere else
+```
+
+```bash
+# SPDX-License-Identifier: AGPL-3.0-or-later  # shell scripts outside the tracker package
+```
+
+The FSFE's [REUSE](https://reuse.software/) tool validates compliance in CI (`reuse lint`). Contributors see the applicable license at the top of the file they're editing — no need to reason about directory boundaries. The DCO sign-off (`git commit -s`) is license-agnostic (it defers to "the open source license indicated in the file"), so the existing sign-off process requires no changes.
+
+**Integration glue.** This ADR modifies files outside `packages/hypergumbo-tracker/` (stop hook, pre-commit, CI workflows, AGENTS.md, `scripts/tracker` wrapper). Those files remain AGPL-3.0-or-later — they are hypergumbo-specific integration that is not useful standalone. MPL-2.0 is AGPL-3.0-compatible (MPL Section 3.3), so the AGPL host can depend on the MPL tracker without license conflict.
+
+**Entry points as the license boundary for executables.** The tracker declares two `console_scripts` entry points in its `pyproject.toml`:
+
+- **`hypergumbo-tracker`** — Main CLI (all subcommands)
+- **`hypergumbo-tracker-textconv`** — Git textconv driver for `.ops` files (see [textconv](#local-diff-declutter-textconv))
+
+Both are installed to `$PATH` by `pip install hypergumbo-tracker` and are MPL-2.0 as part of the tracker package. The repo's `scripts/tracker` is a thin AGPL-3.0 wrapper that delegates to the installed `hypergumbo-tracker` command — it exists for consistency with other repo scripts (`scripts/auto-pr`, `scripts/contribute`, etc.), not because the tracker needs it. Standalone users interact exclusively with the MPL entry points.
+
 ### CLI
 
-A thin bash wrapper calling `python -m hypergumbo_tracker.cli`. All subcommands except `tui` produce plain text (or `--json` for machine consumption). All `<ID>` arguments accept proquint prefix matching (e.g., `INV-lus` or just `lus`) and positional aliases (`:N` referring to the Nth item from the last `list`/`ready` output).
+The tracker package declares `console_scripts` entry points (`hypergumbo-tracker` and `hypergumbo-tracker-textconv`) in its `pyproject.toml`. `pip install hypergumbo-tracker` makes both available on `$PATH`. Within the hypergumbo repo, `scripts/tracker` is a thin wrapper that delegates to the installed `hypergumbo-tracker` command (or falls back to `python -m hypergumbo_tracker.cli`), maintaining consistency with other repo scripts. All subcommands except `tui` produce plain text (or `--json` for machine consumption). All `<ID>` arguments accept proquint prefix matching (e.g., `INV-lus` or just `lus`) and positional aliases (`:N` referring to the Nth item from the last `list`/`ready` output).
 
 | Subcommand | Purpose | Primary Consumer |
 |---|---|---|
@@ -990,8 +1017,9 @@ Migration is idempotent: re-running produces the same IDs (same content → same
 
 | File | Change |
 |---|---|
-| `packages/hypergumbo-tracker/` (NEW) | Entire new package: pyproject.toml, 10 src modules, 11 test modules |
-| `scripts/tracker` (NEW) | Bash wrapper calling `python -m hypergumbo_tracker.cli` |
+| `packages/hypergumbo-tracker/` (NEW) | Entire new package: pyproject.toml (with `console_scripts` entry points), LICENSE (MPL-2.0), 10 src modules (all with `SPDX-License-Identifier: MPL-2.0` headers), 11 test modules |
+| `packages/hypergumbo-tracker/LICENSE` (NEW) | MPL-2.0 full text |
+| `scripts/tracker` (NEW) | Thin AGPL-3.0 bash wrapper delegating to installed `hypergumbo-tracker` entry point (falls back to `python -m hypergumbo_tracker.cli`) |
 | `scripts/check-package-coverage` | Add `tracker` to PACKAGES map for per-package CI isolation |
 | `scripts/dev-install` | Add `pip install -e packages/hypergumbo-tracker[tui]` |
 | `.agent/hooks/_shared/stop_logic.sh` | Add tracker-first path with grep fallback (scope-aware via config) |
@@ -999,7 +1027,7 @@ Migration is idempotent: re-running produces the same IDs (same content → same
 | `scripts/contribute` | Add workspace exclusion (~15 lines): exclude `.agent/tracker-workspace/` from upstream PRs |
 | `.agent/tracker/` (NEW) | Canonical tier: `.ops/` dotdir with op log files from migration + config.yaml |
 | `.agent/tracker-workspace/` (NEW) | Workspace tier: empty `.ops/`, `stealth/` dirs + config.yaml |
-| `scripts/tracker-textconv` (NEW) | Bash shim for git textconv diff driver — calls `scripts/tracker textconv`, falls back to `cat` (see [textconv](#local-diff-declutter-textconv)) |
+| `scripts/tracker-textconv` (NEW) | AGPL-3.0 bash shim for git textconv diff driver — delegates to `hypergumbo-tracker-textconv` entry point, falls back to `cat` (see [textconv](#local-diff-declutter-textconv)) |
 | `.gitattributes` (NEW) | `linguist-generated` + `merge=union` + `diff=tracker` for both canonical and workspace `.ops/.*.ops` files (see [.gitattributes](#gitattributes), [textconv](#local-diff-declutter-textconv)) |
 | `.gitignore` | Add `.agent/tracker/.cache.db`, `.agent/tracker/.last_list`, `.agent/tracker-workspace/.cache.db`, `.agent/tracker-workspace/.last_list`, `.agent/tracker-workspace/stealth/` |
 | `AGENTS.md` | Update grep pattern instructions → `scripts/tracker` equivalents; add `tracker:` commit prefix convention and batching guidance (see [Commit Convention](#commit-convention-and-git-history-hygiene)); add task-selection guidance: use `scripts/tracker ready` (not `list`) to pick next work item; **add agent context protection rules: always use `scripts/tracker show` or `--json`, always refuse to read `.ops` files** (see [Agent Context Protection](#agent-context-protection)); add branch hygiene expectation (delete feature branches after merge); update contributor workflow to reference `fork-setup` |
@@ -1009,11 +1037,15 @@ Migration is idempotent: re-running produces the same IDs (same content → same
 | `.githooks/pre-commit` | Add incremental `scripts/tracker validate` step (staged files only from both tiers, before Ruff) |
 | `.github/workflows/ci.yml` | Fix `CODE_PATTERNS` to exclude tracker `.ops` files; add `tracker_data` output; add `tracker-validate` job; update `ci-complete` gate; add concurrency group (see [CI Integration](#ci-integration)) |
 | `.github/workflows/full-suite.yml` | Fix `CODE_PATTERNS` to exclude tracker `.ops` files; add `test-tracker` job; update `aggregate` (see [CI Integration](#ci-integration)) |
+| `LICENSE` | Add preamble noting per-package licensing: `packages/hypergumbo-tracker/` is MPL-2.0, everything else AGPL-3.0-or-later |
+| `CONTRIBUTING.md` | Document dual-license structure (MPL-2.0 for tracker, AGPL-3.0-or-later for everything else), SPDX header convention, and that DCO sign-off covers both licenses per-file |
 
 ### Implementation Sequence
 
-#### PR 1: Package scaffold + data model + store + cache + validation + serialization
-- Create `packages/hypergumbo-tracker/` with pyproject.toml, src layout, tests dir
+#### PR 1: Package scaffold + data model + store + cache + validation + serialization + licensing
+- Create `packages/hypergumbo-tracker/` with pyproject.toml (including `console_scripts` entry points: `hypergumbo-tracker` → `hypergumbo_tracker.cli:main`, `hypergumbo-tracker-textconv` → `hypergumbo_tracker.cli:textconv_main`), LICENSE (MPL-2.0), src layout, tests dir. All source files carry `# SPDX-License-Identifier: MPL-2.0` headers
+- Update root `LICENSE` with preamble noting per-package licensing
+- Update `CONTRIBUTING.md` to document dual-license structure (MPL-2.0 for tracker, AGPL-3.0-or-later for everything else), SPDX header convention, and that DCO sign-off covers both licenses per-file
 - `models.py`: Op dataclasses (including `promote`/`demote` op types), Status enum, Tier enum (`canonical`/`workspace`/`stealth`), config loading (including `fields_schema` per kind — supported types: `text`, `integer` with optional `min`/`max`, `list`, `boolean`, and `stop_hook.scope` config)
 - `store.py`: YAML write (ruamel.yaml) and read (PyYAML `CSafeLoader` — see [YAML Serialization Rules](#yaml-serialization-rules)), hash-based ID generation (SHA-256 of canonicalized `create` op `data` dict, first 128 bits proquint-encoded — see [Key Design Decisions](#key-design-decisions)), **same-branch existence check on `add()`** (refuse to create if file with computed ID already exists in the target tier — see [Key Design Decisions](#key-design-decisions)), SimHash computation on item content (40-bit fingerprint, cached in SQLite), prefix matching resolver (shortest unambiguous prefix), positional alias support (`.last_list` stash file), scoped cross-branch Lamport clock (peek `dev` + `main` + `HEAD` + unmerged branches via `git cat-file --batch` — see [Key Design Decisions](#key-design-decisions)), cross-branch lock enforcement (same scoped peek, union of `locked_fields`), nonce generation (4 random hex chars per op, serialized as inline `# <nonce>` comment on every line for `merge=union` correctness — see [Compile Rules](#compile-rules-conflict-resolution)), `compile()` function (**tolerates duplicate `create` ops from cross-branch merges** — lowest-clock `create` wins, subsequent identical-data `create` ops ignored — see [Compile Rules](#compile-rules-conflict-resolution)), list/filter, `ready()` filter (soft-blocking via `before` links), tree traversal (children/ancestors), canonical op field ordering, `before` topological sort. Store operates on a single directory (one tier) — multi-tier merging is handled by `TrackerSet`
 - `trackerset.py`: Multi-tier wrapper that instantiates a `Store` per tier (canonical, workspace, stealth), merges reads transparently, resolves cross-tier `parent`/`before` references, routes writes to the correct tier, implements `promote()`/`demote()`/`stealth()`/`unstealth()` (append op + physical file move between directories), provides unified `ready()` and scope-aware `count_todos()` (respects `stop_hook.scope` from config)
@@ -1049,8 +1081,8 @@ Migration is idempotent: re-running produces the same IDs (same content → same
 - `log <ID>`: prints raw operation log
 - `show <ID>`: prints compiled current state with tier indicator
 - `textconv <FILE>`: emit compact one-line-per-field text representation for git textconv (see [textconv](#local-diff-declutter-textconv))
-- `scripts/tracker`: bash wrapper
-- `scripts/tracker-textconv`: bash shim for git textconv driver — calls `scripts/tracker textconv`, falls back to `cat` if tracker package not installed
+- `scripts/tracker`: thin AGPL-3.0 bash wrapper delegating to installed `hypergumbo-tracker` entry point (falls back to `python -m hypergumbo_tracker.cli`). Carries `SPDX-License-Identifier: AGPL-3.0-or-later` header
+- `scripts/tracker-textconv`: thin AGPL-3.0 bash shim delegating to `hypergumbo-tracker-textconv` entry point, falls back to `cat` if tracker package not installed. Carries `SPDX-License-Identifier: AGPL-3.0-or-later` header
 - Update `scripts/install-hooks`: add `git config diff.tracker.textconv scripts/tracker-textconv`
 - `validate --similar`: runs SimHash comparison across all items, reports unflagged pairs, skips `not_duplicate_of` pairs
 - `validate --deep-similar`: additionally runs embedding-based tier 2 if available, falls back gracefully
@@ -1316,13 +1348,13 @@ When `packages/hypergumbo-tracker/` code changes, `code=true` fires and the exis
 git config diff.tracker.textconv scripts/tracker-textconv
 ```
 
-**`scripts/tracker-textconv`** — a thin bash shim with graceful fallback:
+**`scripts/tracker-textconv`** — a thin AGPL-3.0 bash shim that delegates to the MPL-2.0 `hypergumbo-tracker-textconv` entry point, with graceful fallback:
 ```bash
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Git textconv driver for tracker op log files.
-# Shows compiled item state instead of raw YAML ops.
-# Falls back to raw YAML if the tracker package isn't installed.
-python -m hypergumbo_tracker.cli textconv "$1" 2>/dev/null && exit 0
+# Delegates to the MPL-2.0 entry point; falls back to raw YAML if not installed.
+hypergumbo-tracker-textconv "$1" 2>/dev/null && exit 0
 cat "$1"
 ```
 
@@ -1366,13 +1398,14 @@ Instead of the raw YAML op that was appended:
 
 **Bypass.** `git log -p --no-textconv` (or `git diff --no-textconv`) shows the raw `.ops` file content when needed. This is the standard git escape hatch — no custom flags required.
 
-**Bootstrapping.** On a fresh clone before `dev-install`, the tracker package isn't installed. The `cat "$1"` fallback in `scripts/tracker-textconv` ensures diffs still work — they just show raw ops until the package is installed. No broken state, just degraded display.
+**Bootstrapping.** On a fresh clone before `dev-install`, the `hypergumbo-tracker-textconv` entry point isn't available. The `cat "$1"` fallback in `scripts/tracker-textconv` ensures diffs still work — they just show raw ops until the package is installed. No broken state, just degraded display.
 
 | | smart-test | tracker-textconv |
 |---|---|---|
 | Wraps | pytest | git diff rendering for `.ops` |
 | Shows | ~20-line compact summary | compiled item state |
 | Full output | `.ci/pytest-output.log` | raw `.ops` content (via `--no-textconv`) |
+| License | AGPL-3.0 (part of hypergumbo) | Entry point is MPL-2.0; `scripts/tracker-textconv` shim is AGPL-3.0 |
 | Setup | alias in `.venv/bin/pytest` | `diff=tracker` in `.gitattributes` + config in `install-hooks` |
 | Transparent | yes (alias) | yes (git attribute) |
 
@@ -1385,7 +1418,7 @@ Instead of the raw YAML op that was appended:
 - Fork-safe three-tier visibility enables contributor workflows without governance conflicts
 - `merge=union` with nonce-on-every-line eliminates merge conflicts for concurrent agent edits and is safe under both merge and rebase
 - Append-only operation log provides a complete audit trail with no additional infrastructure
-- Reusable across projects — standalone package with no hypergumbo-core dependency
+- Reusable across projects — standalone MPL-2.0 package with no hypergumbo-core dependency; MPL's file-level copyleft removes the AGPL adoption barrier for projects that want agent governance without code analysis
 - Content-hash IDs provide natural deduplication without coordination
 - SQLite read cache makes frequent agent queries (count-todos, ready) sub-millisecond
 
@@ -1393,6 +1426,7 @@ Instead of the raw YAML op that was appended:
 - New package adds maintenance surface (~10 source modules, ~11 test modules)
 - Nonce-on-every-line makes op log files more verbose (every line carries `# <nonce>` suffix)
 - Two YAML libraries (ruamel.yaml for writes, PyYAML/CSafeLoader for reads) in the dependency tree
+- Dual-license repo (AGPL + MPL) requires SPDX headers on every file and clear contributor documentation
 - Migration is a one-way door — reverting to markdown after migration loses op-log history
 - Cross-branch Lamport clock adds coupling between the tracker store and git internals
 - Op log files grow monotonically; compaction is deferred to a future revision
