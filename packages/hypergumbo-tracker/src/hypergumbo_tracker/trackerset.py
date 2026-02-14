@@ -330,6 +330,34 @@ class TrackerSet:
 
         return count
 
+    def hash_todos(self) -> str:
+        """SHA256 fingerprint of blocking items for circuit-breaker detection.
+
+        Returns hex string of SHA256(sorted lines of "id\\tstatus\\ttitle\\n").
+        Only includes identity + status — ignores discussion, fields, etc.
+        Respects scope setting.
+        """
+        import hashlib
+
+        blocking_set = set(self._config.blocking_statuses)
+
+        tiers_to_count: list[Tier]
+        if self._config.scope == "workspace":
+            tiers_to_count = [Tier.WORKSPACE, Tier.STEALTH]
+        else:
+            tiers_to_count = list(Tier)
+
+        lines: list[str] = []
+        for t in tiers_to_count:
+            store = self._tier_stores[t]
+            for item in store._compile_all():
+                if item.status in blocking_set:
+                    lines.append(f"{item.id}\t{item.status}\t{item.title}\n")
+
+        lines.sort()
+        h = hashlib.sha256("".join(lines).encode())
+        return h.hexdigest()
+
     # -------------------------------------------------------------------
     # Tier movement
     # -------------------------------------------------------------------

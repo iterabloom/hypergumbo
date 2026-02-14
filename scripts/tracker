@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Thin wrapper for hypergumbo-tracker CLI.
+# Delegates to the Python entry point if installed.
+
+set -euo pipefail
+
+if command -v hypergumbo-tracker &>/dev/null; then
+    exec hypergumbo-tracker "$@"
+fi
+
+# Fallback: try running as module
+if python3 -c "import hypergumbo_tracker" &>/dev/null 2>&1; then
+    exec python3 -m hypergumbo_tracker.cli "$@"
+fi
+
+echo "error: hypergumbo-tracker is not installed." >&2
+echo "Run: pip install -e packages/hypergumbo-tracker" >&2
+exit 1

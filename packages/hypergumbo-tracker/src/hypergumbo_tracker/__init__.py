@@ -27,6 +27,14 @@ See ADR-0013 for the full design specification.
 from hypergumbo_tracker.cache import Cache
 from hypergumbo_tracker.models import Tier
 from hypergumbo_tracker.trackerset import TrackerSet
+from hypergumbo_tracker.validation import validate_all, validate_ops_file
 
-__all__ = ["Cache", "Tier", "TrackerSet", "__version__"]
+__all__ = [
+    "Cache",
+    "Tier",
+    "TrackerSet",
+    "__version__",
+    "validate_all",
+    "validate_ops_file",
+]
 __version__ = "0.1.0"

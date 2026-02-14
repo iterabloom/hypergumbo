@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Git textconv driver for hypergumbo-tracker .ops files.
+# Delegates to the Python entry point if installed.
+
+set -euo pipefail
+
+if command -v hypergumbo-tracker-textconv &>/dev/null; then
+    exec hypergumbo-tracker-textconv "$@"
+fi
+
+# Fallback: try running as module
+if python3 -c "import hypergumbo_tracker" &>/dev/null 2>&1; then
+    exec python3 -c "from hypergumbo_tracker.cli import textconv_main; textconv_main()" "$@"
+fi
+
+echo "error: hypergumbo-tracker is not installed." >&2
+echo "Run: pip install -e packages/hypergumbo-tracker" >&2
+exit 1
