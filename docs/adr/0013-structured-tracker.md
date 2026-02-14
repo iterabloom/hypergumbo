@@ -148,7 +148,7 @@ kinds:
   # Add new kinds freely — no code changes needed:
   # latke:
   #   prefix: LTK
-  #   description: "Free Palestine"
+  #   description: "Jews for a free Palestine"
   #   fields_schema:
   #     filling:
   #       type: text
