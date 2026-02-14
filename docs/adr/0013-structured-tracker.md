@@ -28,7 +28,7 @@ This works but is fragile and limited:
 
 ### Alternatives Evaluated and Rejected
 
-- **SQLite as primary storage** — Binary file, opaque to git diffs, can't be meaningfully reviewed in PRs. (SQLite is used as a gitignored read cache — see [Read Cache](#read-cache-sqlite) — but the source of truth is always the append-only op log files.)
+- **SQLite as primary storage** — Binary file, opaque to git diffs, can't be meaningfully reviewed in PRs. (SQLite is used as an out-of-tree read cache — see [Read Cache](#read-cache-sqlite) — but the source of truth is always the append-only op log files.)
 - **[git-bug](https://github.com/MichaelMure/git-bug)** — Mature (6+ years, ~100k LOC Go) but rigid: status is hardcoded to Open/Closed, no parent-child, extending requires Go compilation. Wrong language for a Python project. However, git-bug's core insight — storing immutable operations rather than mutable snapshots — directly inspired our operation-log storage model (see [Item Schema](#item-schema-operation-log)). git-bug's "entity ID = SHA-256 hash of the first operation" also inspired our hash-based ID scheme (see [Key Design Decisions](#key-design-decisions)).
 - **[beads](https://github.com/steveyegge/beads)** — Feature-rich (~250k LOC Go) but overengineered for our needs. Beads' per-field resolution strategies (terminal-status-wins, timestamp tiebreakers) inspired the compile rules in [Compile Rules](#compile-rules-conflict-resolution). Beads' hash-based IDs (UUID → truncated SHA-256) validated the collision-free distributed ID approach we adopt in [Key Design Decisions](#key-design-decisions).
 - **Separate git repo** — Unnecessary complexity. The YAML files are small and merge cleanly in the same repo.
@@ -426,7 +426,7 @@ scripts/tracker update :1 --status done   # "item #1 from last list output"
 
 The last-displayed ID list is stashed in `$XDG_CACHE_HOME/hypergumbo-tracker/<repo-fingerprint>/` (see [Storage Layout](#storage-layout)). The `:N` syntax is unambiguous (colon distinguishes it from an ID prefix). Positional aliases are ephemeral — never stored in op log files, just a CLI convenience.
 
-**Advisory file locking (`flock()`) around appends.** Even append-only files can get corrupted by concurrent writes from multiple processes (agent CLI + human TUI, or two agent tasks running in parallel). The store wraps the critical section — compute Lamport clock, serialize op, append to file, fsync, update cache — in an advisory file lock:
+**Advisory file locking (`flock()`) around appends.** Even append-only files can get corrupted by concurrent writes from multiple processes (agent CLI + human TUI, or two agent tasks running in parallel). The store wraps the critical section — compute Lamport clock, serialize op, append to file, fsync — in an advisory file lock, then updates the cache outside the lock (the cache update is idempotent and reads the file, so it's safe to run unlocked):
 
 ```python
 import fcntl
@@ -440,7 +440,7 @@ def _append_op(filepath: Path, op_bytes: bytes, cache: Cache) -> None:
             os.fsync(f.fileno())
         finally:
             fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-    cache.upsert_from_file(filepath)
+    cache.upsert_from_file(filepath)  # outside lock — idempotent, reads file
 ```
 
 Contention is expected to be rare (two processes appending to the *same item* at the *same instant*), but when it happens, correctness matters more than performance. The lock scope is per-file, so appends to different items never block each other. Note: `flock()` is advisory on Linux — a process that doesn't call it can still write to the file. This is fine because the store is the sole writer of op log files (see [YAML Serialization Rules](#yaml-serialization-rules)); the lock protects against concurrent *tracker* processes, not against arbitrary file writes.
@@ -507,7 +507,7 @@ Locks are toggled from the TUI (`l` key) or via CLI (`scripts/tracker lock <ID> 
 
 **Human-authority operations.** The following ops require human authority (see [Security Model](#security-model)) — the store refuses to append them when the resolved actor is `"agent"`: `lock`, `unlock`, `discuss_clear`, `stealth`, `unstealth`. These ops override agent behavior or control visibility, so they must come from the human. `promote`, `demote`, and `discuss_summarize` remain available to both actors — they are workflow operations the agent legitimately needs.
 
-**Cross-branch lock enforcement.** Lock enforcement uses the same scoped cross-branch peek as the Lamport clock ([Key Design Decisions](#key-design-decisions)). Before appending an agent `update` op, the store runs `git show <branch>:<path>` on the scoped branch set (`dev`, `main`, `HEAD`, plus any unmerged branches), compiles each branch's version of the item, and unions their `locked_fields` sets. If the field being updated is locked on *any* branch in the scoped set, the write is rejected — even if the lock hasn't been merged into the current branch yet. This gives locks the **same guarantee boundary as the Lamport clock**: enforced against the active branch frontier, with `validate` warnings as a backstop for ops written on branches that weren't locally visible at write time (e.g., a remote branch not yet fetched). The cross-branch peek adds negligible overhead — it's the same `git show` calls the Lamport clock already makes, just extracting lock state from the compiled result.
+**Cross-branch lock enforcement.** Lock enforcement uses the same scoped cross-branch peek as the Lamport clock ([Key Design Decisions](#key-design-decisions)). Before appending an agent `update` op, the store peeks at the op log file on the scoped branch set (`dev`, `main`, `HEAD`, plus any unmerged branches) via `git cat-file --batch`, compiles each branch's version of the item, and unions their `locked_fields` sets. If the field being updated is locked on *any* branch in the scoped set, the write is rejected — even if the lock hasn't been merged into the current branch yet. This gives locks the **same guarantee boundary as the Lamport clock**: enforced against the active branch frontier, with `validate` warnings as a backstop for ops written on branches that weren't locally visible at write time (e.g., a remote branch not yet fetched). The cross-branch peek adds negligible overhead — it's the same `git cat-file --batch` calls the Lamport clock already makes, just extracting lock state from the compiled result.
 
 **Residual edge case.** For truly concurrent ops on branches not yet fetched (neither side has visibility of the other), lock violations can survive a merge. `validate` detects these and emits a warning. The human corrects with a new op if needed. This is the same honest guarantee boundary documented for the Lamport clock — strongest possible without a central server.
 
@@ -742,7 +742,7 @@ This is explicitly deferred — the current design handles the expected scale. T
 
 #### Read Cache (SQLite)
 
-The read path (`list`, `ready`, `count-todos`) must load and compile all items. Even with PyYAML's `CSafeLoader` ([YAML Serialization Rules](#yaml-serialization-rules)), parsing 500 op log files with 50+ ops each on every invocation adds latency that compounds when agents call `ready` frequently. A gitignored SQLite cache eliminates this cost for all read operations. The cache also means agents never need to read `.ops` files directly — `scripts/tracker show/list/ready` all query the cache (see [Agent Context Protection](#agent-context-protection)).
+The read path (`list`, `ready`, `count-todos`) must load and compile all items. Even with PyYAML's `CSafeLoader` ([YAML Serialization Rules](#yaml-serialization-rules)), parsing 500 op log files with 50+ ops each on every invocation adds latency that compounds when agents call `ready` frequently. An out-of-tree SQLite cache (in `$XDG_CACHE_HOME`) eliminates this cost for all read operations. The cache also means agents never need to read `.ops` files directly — `scripts/tracker show/list/ready` all query the cache (see [Agent Context Protection](#agent-context-protection)).
 
 **Location:** `$XDG_CACHE_HOME/hypergumbo-tracker/<repo-fingerprint>/` (see [Storage Layout](#storage-layout)). One cache database per tier (`canonical.cache.db`, `workspace.cache.db`, `stealth.cache.db`). The repo-fingerprint key (hash of remote URL + first commit SHA) allows multiple checkouts of the same repo to share a cache. Created automatically on first read; deleted and rebuilt by `scripts/tracker cache-rebuild`.
 
@@ -1093,7 +1093,7 @@ The tracker package declares `console_scripts` entry points (`hypergumbo-tracker
 | `unstealth <ID>` | Move file stealth → workspace (human-authority only) | human |
 | `show <ID>` | Print compiled current state (formatted; includes cross-tier conflict indicator if applicable) | agent |
 | `list [--status X] [--kind Y] [--tag Z] [--tier T]` | Filtered list (compact table, sorted by priority/before/created_at; shows tier indicator and conflict markers) | agent |
-| `ready [--limit N]` | List actionable, unblocked items (respects `before` soft-blocking; respects `stop_hook.scope` for scoping; excludes items with cross-tier conflicts) | agent |
+| `ready [--limit N]` | List actionable, unblocked items from all tiers (respects `before` soft-blocking; excludes items with cross-tier conflicts). Scope only affects `count-todos`, not `ready` — see [Three-Tier Visibility](#three-tier-visibility). | agent |
 | `log <ID>` | Print raw operation log | both |
 | `migrate` | Convert existing markdown → YAML (one-time, into canonical) | human/agent |
 | `guidance` | Generate guidance markdown for stop hook (scope-aware) | stop_logic.sh |
