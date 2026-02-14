@@ -248,16 +248,19 @@ except Exception:
 			echo ""
 			echo "❌ CI Failed. Contexts: $failed_contexts"
 			echo ""
+			# Extract first failed job's short name (e.g., "pytest" from "CI / pytest (pull_request)")
+			local first_failed_job
+			first_failed_job=$(echo "$failed_contexts" | sed 's/,.*//' | sed 's/.*\/ *//' | sed 's/ *(.*//')
 			echo "📋 Fetching failed job log..."
 			local log_output
-			if log_output=$(fetch_job_log "$head_sha" 2>/dev/null); then
+			if log_output=$(fetch_job_log "$head_sha" "$first_failed_job" 2>/dev/null); then
 				echo "--- Last 30 lines ---"
 				echo "$log_output" | tail -30
 				echo "--- End of log snippet ---"
 			else
 				echo "   (could not retrieve log automatically)"
 			fi
-			echo "💡 Full log: ./scripts/ci-debug logs"
+			echo "💡 Full log: ./scripts/ci-debug logs ${first_failed_job:-}"
 			return 1
 		fi
 
@@ -427,16 +430,19 @@ jobs = json.loads('[' + match.group(1) + ']')
 
 # Match by name, or pick first failed job, or first job
 best = None
+first = None
 for i, j in enumerate(jobs):
     name = j.get('name', '')
     status = j.get('status', '')
     if target and target in name.lower():
         best = (i, name)
         break
+    if first is None:
+        first = (i, name)
     if not target and status in ('failure', 'error') and best is None:
         best = (i, name)
-    if not target and best is None:
-        best = (i, name)
+if best is None:
+    best = first
 
 if best:
     print(f'{best[0]} {best[1]}')
