@@ -46,6 +46,23 @@ while read -r local_ref local_sha remote_ref remote_sha; do
             exit 1
         fi
     done
+
+    # Warn if workspace tracker files are being pushed to upstream remote
+    if [[ "$remote" == "upstream" ]]; then
+        # Use the zero sha for new branches (no remote_sha yet)
+        zero="0000000000000000000000000000000000000000"
+        diff_base="${remote_sha}"
+        if [[ "$diff_base" == "$zero" ]]; then
+            diff_base="upstream/dev"
+        fi
+        workspace_files=$(git diff --name-only "$diff_base" "$local_sha" -- '.agent/tracker-workspace/' 2>/dev/null || true)
+        if [[ -n "$workspace_files" ]]; then
+            echo ""
+            echo -e "${YELLOW}WARNING: Pushing workspace tracker files to upstream${NC}"
+            echo "  Use ./scripts/contribute to exclude workspace from upstream PRs"
+            echo ""
+        fi
+    fi
 done
 
 exit 0
