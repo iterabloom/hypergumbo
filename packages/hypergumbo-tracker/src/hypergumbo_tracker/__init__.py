@@ -25,6 +25,7 @@ See ADR-0013 for the full design specification.
 """
 
 from hypergumbo_tracker.cache import Cache
+from hypergumbo_tracker.migration import migrate
 from hypergumbo_tracker.models import Tier
 from hypergumbo_tracker.trackerset import TrackerSet
 from hypergumbo_tracker.validation import validate_all, validate_ops_file
@@ -34,6 +35,7 @@ __all__ = [
     "Tier",
     "TrackerSet",
     "__version__",
+    "migrate",
     "validate_all",
     "validate_ops_file",
 ]

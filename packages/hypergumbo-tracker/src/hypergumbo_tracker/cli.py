@@ -17,7 +17,7 @@ Design rationale:
 - --json global flag for machine-readable output.
 - --tracker-root global option defaults to .agent/ (nearest ancestor).
 - Exit codes: 0 = success, 1 = user error, 2 = internal error.
-- Stubs for migrate and tui (future PRs).
+- Stub for tui (future PR).
 
 See ADR-0013 for the full design specification.
 """
@@ -576,9 +576,41 @@ def _cmd_fork_setup(args: argparse.Namespace, ts: TrackerSet) -> int:
 
 
 def _cmd_migrate(args: argparse.Namespace) -> int:
-    """Handle 'migrate' subcommand — stub."""
-    print("not yet implemented (PR 2)", file=sys.stderr)
-    return EXIT_USER_ERROR
+    """Handle 'migrate' subcommand — convert markdown governance files to YAML ops."""
+    from hypergumbo_tracker.migration import migrate
+
+    tracker_root = Path(args.tracker_root) if args.tracker_root else Path.cwd() / ".agent"
+    ledger_path = Path(args.ledger) if args.ledger else tracker_root / "invariant-ledger.md"
+    work_items_path = Path(args.work_items) if args.work_items else (
+        Path.home() / "hypergumbo_lab_notebook" / "guidance_log" / "work_items.md"
+    )
+
+    result = migrate(
+        ledger_path,
+        work_items_path,
+        tracker_root,
+        dry_run=args.dry_run,
+    )
+
+    if args.json:
+        print(json.dumps({
+            "items_created": result.items_created,
+            "items_skipped": result.items_skipped,
+            "items_by_kind": result.items_by_kind,
+            "errors": result.errors,
+            "id_map": result.id_map,
+            "dry_run": args.dry_run,
+        }, indent=2))
+    else:
+        action = "would create" if args.dry_run else "created"
+        print(f"{action} {result.items_created} items, skipped {result.items_skipped}")
+        for kind, count in sorted(result.items_by_kind.items()):
+            print(f"  {kind}: {count}")
+        if result.errors:
+            for err in result.errors:
+                print(f"  ERROR: {err}", file=sys.stderr)
+
+    return EXIT_SUCCESS if not result.errors else EXIT_USER_ERROR
 
 
 def _cmd_tui(args: argparse.Namespace) -> int:
@@ -733,7 +765,12 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("fork-setup", help="Set scope to workspace (human only)")
 
     # --- migrate ---
-    sub.add_parser("migrate", help="Run migration (not yet implemented)")
+    p_migrate = sub.add_parser("migrate", help="Migrate markdown governance files to YAML ops")
+    p_migrate.add_argument("--ledger", help="Path to invariant-ledger.md (default: .agent/)")
+    p_migrate.add_argument("--work-items", dest="work_items",
+                           help="Path to work_items.md (default: ~/hypergumbo_lab_notebook/)")
+    p_migrate.add_argument("--dry-run", dest="dry_run", action="store_true",
+                           help="Report what would be done without writing files")
 
     # --- tui ---
     sub.add_parser("tui", help="Launch TUI (not yet implemented)")

@@ -242,11 +242,22 @@ class TestInitCommand:
 
 
 class TestStubCommands:
-    def test_migrate(self, capsys: pytest.CaptureFixture) -> None:
+    def test_migrate(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+        tracker_root = tmp_path / ".agent"
+        tracker_root.mkdir()
+        ledger = tmp_path / "ledger.md"
+        ledger.write_text("")
+        wi = tmp_path / "wi.md"
+        wi.write_text("")
         with pytest.raises(SystemExit) as exc:
-            main(["migrate"])
-        assert exc.value.code == EXIT_USER_ERROR
-        assert "not yet implemented" in capsys.readouterr().err
+            main([
+                "--tracker-root", str(tracker_root),
+                "migrate",
+                "--ledger", str(ledger),
+                "--work-items", str(wi),
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        assert "created 0 items" in capsys.readouterr().out
 
     def test_tui(self, capsys: pytest.CaptureFixture) -> None:
         with pytest.raises(SystemExit) as exc:
