@@ -28,10 +28,11 @@ dependencies = [
 tui = ["textual~=7.5"]
 dedup = ["onnxruntime~=1.17", "tokenizers~=0.21"]
 dev = [
-  "pytest~=9.0.2",
+  "pytest>=8.0,<10",
   "pytest-cov~=7.0.0",
   "pytest-xdist~=3.8.0",
   "pytest-asyncio>=1.0",
+  "pytest-textual-snapshot~=1.1",
   "hypothesis~=6.100",
 ]
 
