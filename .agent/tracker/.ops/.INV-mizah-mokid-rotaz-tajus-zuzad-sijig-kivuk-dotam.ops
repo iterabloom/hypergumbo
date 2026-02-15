@@ -1,0 +1,21 @@
+- op: create  # 417e
+  at: '2026-02-15T00:51:38Z'  # 417e
+  by: agent  # 417e
+  actor: migration  # 417e
+  clock: 1  # 417e
+  nonce: 417e  # 417e
+  data:  # 417e
+    kind: invariant  # 417e
+    title: "Branch Coverage"  # 417e
+    status: wont_do  # 417e
+    priority: 4  # 417e
+    parent:  # 417e
+    tags: []  # 417e
+    before: []  # 417e
+    duplicate_of: []  # 417e
+    not_duplicate_of: []  # 417e
+    pr_ref:  # 417e
+    justification:  # 417e
+    description: "Resolution (2026-02-07): Removed `--cov-branch` from `scripts/smart-test`.\n\nBranch coverage was never enforced in CI (ci.yml, full-suite.yml, release.yml all\n\nrun pytest without `--cov-branch`). It was only added to smart-test locally, which\n\ncreated ~1400 BRANCHES_*.py test files chasing the metric. Manual investigation of\n\njs_ts.py branch partials showed that ~70% of uncovered branches were unreachable\n\ndefensive code (internal call-site contracts, for-loop exhaustion, type narrowing)\n\nwhere tests required mock nodes the real code never produces. The ~30% that were\n\ngenuinely useful tested real input diversity (malformed configs, edge-case syntax)\n\n— but those are better discovered via bakeoff/integration testing than by auditing\n\nbranch partials bottom-up.\n\nThe existing BRANCHES_*.py files remain (some contain useful tests), but no new\n\nones should be created to chase branch coverage. Line coverage at 100% is the\n\nenforced standard. Quality gaps are better found via bakeoff on real repos."  # 417e
+    fields:  # 417e
+      statement: "Branch coverage should be tracked to catch untested code paths."  # 417e

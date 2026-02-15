@@ -1,0 +1,21 @@
+- op: create  # 6616
+  at: '2026-02-15T00:51:38Z'  # 6616
+  by: agent  # 6616
+  actor: migration  # 6616
+  clock: 1  # 6616
+  nonce: '6616'  # 6616
+  data:  # 6616
+    kind: work_item  # 6616
+    title: "Reexamine bakeoff-features session/cohort numbering UX."  # 6616
+    status: deferred  # 6616
+    priority: 4  # 6616
+    parent:  # 6616
+    tags:  # 6616
+    - bakeoff_infrastructure  # 6616
+    before: []  # 6616
+    duplicate_of: []  # 6616
+    not_duplicate_of: []  # 6616
+    pr_ref:  # 6616
+    justification: "non-blocking UX issue; does not affect correctness of bakeoff results. The 30-repo bakeoff completed successfully with the current numbering. Will address in a future PR when doing bakeoff infrastructure improvements."  # 6616
+    description: "Currently `init` creates sub-sessions under the latest top-level directory, and cohort numbers auto-increment globally across all sessions. This makes it confusing to map curriculum cohorts (1-6) to actual directory names (cohort-009 through cohort-014). Consider: per-session cohort numbering, or at minimum labeling cohorts with the curriculum name. Deferred: non-blocking UX issue; does not affect correctness of bakeoff results. The 30-repo bakeoff completed successfully with the current numbering. Will address in a future PR when doing bakeoff infrastructure improvements."  # 6616
+    fields: {}  # 6616

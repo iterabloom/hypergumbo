@@ -1,0 +1,21 @@
+- op: create  # 403a
+  at: '2026-02-15T00:51:38Z'  # 403a
+  by: agent  # 403a
+  actor: migration  # 403a
+  clock: 1  # 403a
+  nonce: 403a  # 403a
+  data:  # 403a
+    kind: work_item  # 403a
+    title: "Matrix strategy for packages."  # 403a
+    status: deferred  # 403a
+    priority: 4  # 403a
+    parent:  # 403a
+    tags:  # 403a
+    - ci_infrastructure  # 403a
+    before: []  # 403a
+    duplicate_of: []  # 403a
+    not_duplicate_of: []  # 403a
+    pr_ref:  # 403a
+    justification: "Manual job per package currently. Use `matrix: { package: [core, mainstream, common, extended] }`. Would reduce CI config duplication but CI works correctly."  # 403a
+    description: "Manual job per package currently. Use `matrix: { package: [core, mainstream, common, extended] }`. Would reduce CI config duplication but CI works correctly."  # 403a
+    fields: {}  # 403a

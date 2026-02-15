@@ -1,0 +1,27 @@
+- op: create  # be68
+  at: '2026-02-15T00:51:38Z'  # be68
+  by: agent  # be68
+  actor: migration  # be68
+  clock: 1  # be68
+  nonce: be68  # be68
+  data:  # be68
+    kind: invariant  # be68
+    title: "Call Attribution Completeness"  # be68
+    status: done  # be68
+    priority: 4  # be68
+    parent:  # be68
+    tags: []  # be68
+    before: []  # be68
+    duplicate_of: []  # be68
+    not_duplicate_of: []  # be68
+    pr_ref:  # be68
+    justification:  # be68
+    description: ""  # be68
+    fields:  # be68
+      statement: "Every emitted `calls` edge has a non-null caller symbol"  # be68
+      root_cause: "JS/TS arrow function special-case early-return in `_get_enclosing_function()`"  # be68
+      fix: "Position-based lookup in `_get_enclosing_function()` for arrow functions"  # be68
+      verification: "Kotlin and Scala lambdas work correctly - their `_get_enclosing_function()` walks up past `lambda_literal` (Kotlin) and `lambda_expression` (Scala) to find the enclosing `function_declaration` or `function_definition`."  # be68
+      regression_tests:  # be68
+      - test_js_ts.py::TestCallbackCallAttribution  # be68
+      - test_kotlin.py::TestKotlinLambdaCallAttribution  # be68

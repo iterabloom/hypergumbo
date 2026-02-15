@@ -1,0 +1,21 @@
+- op: create  # 35dd
+  at: '2026-02-15T00:51:38Z'  # 35dd
+  by: agent  # 35dd
+  actor: migration  # 35dd
+  clock: 1  # 35dd
+  nonce: 35dd  # 35dd
+  data:  # 35dd
+    kind: work_item  # 35dd
+    title: "Target: Add `--cov-branch` to CI — INV-011 closed as WON'T DO."  # 35dd
+    status: deferred  # 35dd
+    priority: 4  # 35dd
+    parent:  # 35dd
+    tags:  # 35dd
+    - from_inv_011  # 35dd
+    before: []  # 35dd
+    duplicate_of: []  # 35dd
+    not_duplicate_of: []  # 35dd
+    pr_ref:  # 35dd
+    justification: "Branch coverage was never in CI, ~70% of uncovered branches are unreachable defensive code, and bakeoff on real repos is a better quality signal than chasing branch partials."  # 35dd
+    description: "Branch coverage was never in CI, ~70% of uncovered branches are unreachable defensive code, and bakeoff on real repos is a better quality signal than chasing branch partials."  # 35dd
+    fields: {}  # 35dd

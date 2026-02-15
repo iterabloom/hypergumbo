@@ -1,0 +1,43 @@
+- op: create  # 5065
+  at: '2026-02-15T00:51:38Z'  # 5065
+  by: agent  # 5065
+  actor: migration  # 5065
+  clock: 1  # 5065
+  nonce: '5065'  # 5065
+  data:  # 5065
+    kind: invariant  # 5065
+    title: "Extends Edge Name Collision Resolution"  # 5065
+    status: todo_hard  # 5065
+    priority: 0  # 5065
+    parent:  # 5065
+    tags: []  # 5065
+    before: []  # 5065
+    duplicate_of: []  # 5065
+    not_duplicate_of: []  # 5065
+    pr_ref:  # 5065
+    justification:  # 5065
+    description: "Limitation: [What's still broken]\n\nNotes: [Assessment details, known gaps, research needed]\n\n**Unified by:**\n\n[List of specific INV-xxx that this meta-invariant unifies]\n\n**Implication:** [What this means for development practices]"  # 5065
+    fields:  # 5065
+      statement: "[What must always be true]"  # 5065
+      root_cause: "[File:line or description]"  # 5065
+      fix: "[What was done]"  # 5065
+      regression_tests:  # 5065
+      - test_python_ast_analysis.py::TestPythonInheritanceEdges::test_extends_prefers_imported_class_over_name_collision  # 5065
+      - test_python_ast_analysis.py::TestPythonInheritanceEdges::test_extends_same_file_class_preferred_over_other_file  # 5065
+      - test_python_ast_analysis.py::TestPythonInheritanceEdges::test_extends_deterministic_fallback_when_ambiguous  # 5065
+      - test_js_ts.py::TestJsTsInheritanceEdges::test_extends_prefers_imported_class_over_name_collision  # 5065
+      - test_js_ts.py::TestJsTsInheritanceEdges::test_extends_same_file_class_preferred_over_other_file  # 5065
+      - test_js_ts.py::TestJsTsInheritanceEdges::test_extends_deterministic_fallback_when_ambiguous  # 5065
+      - test_js_ts.py::TestJsTsInheritanceEdges::test_implements_prefers_imported_interface_over_collision  # 5065
+      - test_ruby.py::TestRubyInheritanceEdges::test_extends_prefers_required_class_over_name_collision  # 5065
+      - test_ruby.py::TestRubyInheritanceEdges::test_extends_same_file_class_preferred_over_other_file  # 5065
+      - test_ruby.py::TestRubyInheritanceEdges::test_extends_deterministic_fallback_when_ambiguous  # 5065
+      - test_kotlin.py::TestKotlinInheritanceEdges::test_extends_prefers_imported_class_over_name_collision  # 5065
+      - test_kotlin.py::TestKotlinInheritanceEdges::test_extends_same_file_class_preferred_over_other_file  # 5065
+      - test_kotlin.py::TestKotlinInheritanceEdges::test_extends_deterministic_fallback_when_ambiguous  # 5065
+      - test_kotlin.py::TestKotlinInheritanceEdges::test_implements_prefers_imported_interface_over_collision  # 5065
+      - test_java.py::TestJavaInheritanceEdges::test_extends_prefers_imported_class_over_name_collision  # 5065
+      - test_java.py::TestJavaInheritanceEdges::test_extends_same_file_class_preferred_over_other_file  # 5065
+      - test_java.py::TestJavaInheritanceEdges::test_extends_deterministic_fallback_when_ambiguous  # 5065
+      - test_java.py::TestJavaInheritanceEdges::test_implements_prefers_imported_interface_over_collision  # 5065
+      - test_java.py::TestJavaInheritanceEdges::test_extends_import_matches_full_fqn_path  # 5065

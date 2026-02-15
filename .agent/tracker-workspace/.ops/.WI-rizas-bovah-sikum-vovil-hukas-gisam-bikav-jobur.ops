@@ -1,0 +1,21 @@
+- op: create  # 2dfd
+  at: '2026-02-15T00:51:38Z'  # 2dfd
+  by: agent  # 2dfd
+  actor: migration  # 2dfd
+  clock: 1  # 2dfd
+  nonce: 2dfd  # 2dfd
+  data:  # 2dfd
+    kind: work_item  # 2dfd
+    title: "`.h` file C/C++ duplication: C and C++ analyzers both process `.h` files, creating 2x symbols."  # 2dfd
+    status: done  # 2dfd
+    priority: 4  # 2dfd
+    parent:  # 2dfd
+    tags:  # 2dfd
+    - analysis_quality  # 2dfd
+    before: []  # 2dfd
+    duplicate_of: []  # 2dfd
+    not_duplicate_of: []  # 2dfd
+    pr_ref: PR#1037 pending  # 2dfd
+    justification:  # 2dfd
+    description: "On Falco: 44/50 .h files duplicated, C orphan rate 92.1%. Fix: skip .h in C analyzer when C++ files exist. ObjC overlap deferred (rarer, needs separate heuristic)."  # 2dfd
+    fields: {}  # 2dfd

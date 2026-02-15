@@ -1,0 +1,32 @@
+- op: create  # d4f6
+  at: '2026-02-15T00:51:38Z'  # d4f6
+  by: agent  # d4f6
+  actor: migration  # d4f6
+  clock: 1  # d4f6
+  nonce: d4f6  # d4f6
+  data:  # d4f6
+    kind: invariant  # d4f6
+    title: "Chained Member Access Call Resolution"  # d4f6
+    status: done  # d4f6
+    priority: 4  # d4f6
+    parent:  # d4f6
+    tags: []  # d4f6
+    before: []  # d4f6
+    duplicate_of: []  # d4f6
+    not_duplicate_of: []  # d4f6
+    pr_ref:  # d4f6
+    justification:  # d4f6
+    description: "Discovery: Forward slice from `OwnerController.showOwner` in spring-petclinic returned 0 edges despite the method calling `this.owners.findById(ownerId)`."  # d4f6
+    fields:  # d4f6
+      statement: "Method calls on object properties (e.g., `this.field.method()`, `self.field.method()`, `obj.field.method()`) must resolve to the correct target method"  # d4f6
+      root_cause: "Analyzers only checked for simple `identifier` receivers in method invocation/call_expression nodes. Nested member access (navigation_expression, member_access_expression, field_expression, selector_expression, ast.Attribute) was not handled, causing zero call edges for the most common method call pattern in OO languages."  # d4f6
+      fix: " **Java** (PR #972): Replaced identifier scanning with `child_by_field_name(\"name\"/\"object\")`, added field_access handling and class field type tracking **Kotlin** (PR #973): Added constructor parameter type tracking (`class_parameter` → `var_types`), added nested `navigation_expression` handling for `this.property.method()` pattern **C#** (PR #973): Added field declaration type tracking (`field_declaration` → `var_types`, handles both simple and generic types), added nested `member_access_expression` handling for `this._field.Method()` pattern **Scala** (PR #973): Fixed method name extraction from `field_expression` — was taking first identifier (receiver name) instead of last (method name) **Python** (this PR): Added class field type pre-collection from `__init__` (tracks `self.field = param` with type annotations and `self.field = Class()` constructors), added Case 2f in `_process_call` for `self.field.method()` pattern using nested `ast.Attribute` **JS/TS** (INV-013, pre-existing): Already handled nested `member_expression` with `this` for NestJS constructor injection **Go**: Already works — method name extracted from outermost `field_identifier`, resolver matches by name"  # d4f6
+      regression_tests:  # d4f6
+      - test_kotlin.py::TestKotlinThisMethodCalls::test_this_property_method_call_resolved  # d4f6
+      - test_kotlin.py::TestKotlinThisMethodCalls::test_this_property_method_call_generic_type  # d4f6
+      - test_csharp.py::TestCSharpTypeInference::test_field_type_inference  # d4f6
+      - test_csharp.py::TestCSharpTypeInference::test_this_field_method_call  # d4f6
+      - test_scala.py::TestScalaFunctionCalls::test_detects_method_call_on_object  # d4f6
+      - test_java.py::TestJavaAnalysis::test_extracts_field_access_method_calls  # d4f6
+      - test_python_ast_analysis.py::TestVariableMethodCalls::test_self_field_method_call_with_param_type  # d4f6
+      - test_python_ast_analysis.py::TestVariableMethodCalls::test_self_field_method_call_with_constructor  # d4f6

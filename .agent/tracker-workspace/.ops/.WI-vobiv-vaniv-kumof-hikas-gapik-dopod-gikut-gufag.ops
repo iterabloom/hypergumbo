@@ -1,0 +1,21 @@
+- op: create  # 9916
+  at: '2026-02-15T00:51:38Z'  # 9916
+  by: agent  # 9916
+  actor: migration  # 9916
+  clock: 1  # 9916
+  nonce: '9916'  # 9916
+  data:  # 9916
+    kind: work_item  # 9916
+    title: "Test count reporting."  # 9916
+    status: deferred  # 9916
+    priority: 4  # 9916
+    parent:  # 9916
+    tags:  # 9916
+    - ci_infrastructure  # 9916
+    before: []  # 9916
+    duplicate_of: []  # 9916
+    not_duplicate_of: []  # 9916
+    pr_ref:  # 9916
+    justification: "ci.yml doesn't report how many tests ran. Add count to output for validating smart-test selection. Nice-to-have."  # 9916
+    description: "ci.yml doesn't report how many tests ran. Add count to output for validating smart-test selection. Nice-to-have."  # 9916
+    fields: {}  # 9916

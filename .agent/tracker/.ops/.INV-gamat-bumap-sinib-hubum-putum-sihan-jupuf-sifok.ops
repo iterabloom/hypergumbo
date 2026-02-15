@@ -1,0 +1,27 @@
+- op: create  # cba5
+  at: '2026-02-15T00:51:38Z'  # cba5
+  by: agent  # cba5
+  actor: migration  # cba5
+  clock: 1  # cba5
+  nonce: cba5  # cba5
+  data:  # cba5
+    kind: invariant  # cba5
+    title: "Rails Resource Route Handler Resolution"  # cba5
+    status: done  # cba5
+    priority: 4  # cba5
+    parent:  # cba5
+    tags: []  # cba5
+    before: []  # cba5
+    duplicate_of: []  # cba5
+    not_duplicate_of: []  # cba5
+    pr_ref:  # cba5
+    justification:  # cba5
+    description: "Original fix: Inferred `controller_action` for resources/resource routes to enable linking.\n\nEnhanced fix (v2): Full RESTful route expansion:\n\n`resources :users` → 7 route symbols (index, show, new, create, edit, update, destroy)\n\n`resource :profile` → 6 route symbols (show, new, create, edit, update, destroy - no index)\n\nEach route symbol has correct HTTP method, path, and controller_action, enabling the\n\nroute-handler linker to connect to ALL controller actions, not just index.\n\nLimitation: None - all standard RESTful actions are now linked."  # cba5
+    fields:  # cba5
+      statement: "Rails resource routes should have handler metadata for route-handler linking"  # cba5
+      root_cause: "Ruby analyzer only extracted `controller_action` from explicit `to: \"controller#action\"` syntax. `resources :users` and `resource :profile` macros didn't get controller_action metadata."  # cba5
+      regression_tests:  # cba5
+      - tests/test_ruby.py::TestRailsUsageContext::test_rails_resources_route  # cba5
+      - tests/test_ruby.py::TestRailsUsageContext::test_rails_resource_singular  # cba5
+      - tests/test_ruby.py::TestRailsRouteSymbols::test_route_symbols_for_resources_macro  # cba5
+      - tests/test_ruby.py::TestRailsRouteSymbols::test_route_symbols_for_resource_singular  # cba5

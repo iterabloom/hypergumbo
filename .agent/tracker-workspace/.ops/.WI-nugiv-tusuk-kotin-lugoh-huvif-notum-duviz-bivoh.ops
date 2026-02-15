@@ -1,0 +1,21 @@
+- op: create  # d76d
+  at: '2026-02-15T00:51:38Z'  # d76d
+  by: agent  # d76d
+  actor: migration  # d76d
+  clock: 1  # d76d
+  nonce: d76d  # d76d
+  data:  # d76d
+    kind: work_item  # d76d
+    title: "Parallel pytest in ci.yml."  # d76d
+    status: deferred  # d76d
+    priority: 4  # d76d
+    parent:  # d76d
+    tags:  # d76d
+    - ci_infrastructure  # d76d
+    before: []  # d76d
+    duplicate_of: []  # d76d
+    not_duplicate_of: []  # d76d
+    pr_ref:  # d76d
+    justification: "All selected tests run in single job. For large changes affecting multiple packages, could split by package. Non-blocking optimization."  # d76d
+    description: "All selected tests run in single job. For large changes affecting multiple packages, could split by package. Non-blocking optimization."  # d76d
+    fields: {}  # d76d

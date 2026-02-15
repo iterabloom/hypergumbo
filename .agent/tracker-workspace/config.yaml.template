@@ -1,0 +1,56 @@
+kinds:
+  invariant:
+    prefix: INV
+    description: "Discovered invariant with root cause analysis"
+    fields_schema:
+      statement:
+        type: text
+        required: true
+      root_cause:
+        type: text
+        required: true
+      fix:
+        type: text
+      verification:
+        type: text
+      regression_tests:
+        type: list
+  meta_invariant:
+    prefix: META
+    description: "A meta-invariant tracking cross-language coverage"
+    fields_schema:
+      statement:
+        type: text
+        required: true
+  work_item:
+    prefix: WI
+    description: "A work item"
+statuses:
+  - todo_hard
+  - todo_soft
+  - in_progress
+  - done
+  - deferred
+  - wont_do
+stop_hook:
+  blocking_statuses:
+    - todo_hard
+    - todo_soft
+  resolved_statuses:
+    - done
+    - deferred
+    - wont_do
+well_known_tags:
+  - developer_experience
+  - cross_language_linkers
+  - extends_edge_disambiguation
+  - bakeoff_infrastructure
+  - analysis_quality
+  - language_additions
+  - ci_infrastructure
+actor_resolution:
+  agent_usernames:
+    - "*_agent"
+lamport_branches:
+  - dev
+  - main

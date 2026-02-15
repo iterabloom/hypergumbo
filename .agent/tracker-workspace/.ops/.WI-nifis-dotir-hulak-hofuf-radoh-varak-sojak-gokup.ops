@@ -1,0 +1,21 @@
+- op: create  # 525b
+  at: '2026-02-15T00:51:38Z'  # 525b
+  by: agent  # 525b
+  actor: migration  # 525b
+  clock: 1  # 525b
+  nonce: 525b  # 525b
+  data:  # 525b
+    kind: work_item  # 525b
+    title: "Target: Audit branch partials in core modules — same rationale as above."  # 525b
+    status: deferred  # 525b
+    priority: 4  # 525b
+    parent:  # 525b
+    tags:  # 525b
+    - from_inv_011  # 525b
+    before: []  # 525b
+    duplicate_of: []  # 525b
+    not_duplicate_of: []  # 525b
+    pr_ref:  # 525b
+    justification: "Line coverage at 100% is the enforced standard."  # 525b
+    description: "Line coverage at 100% is the enforced standard."  # 525b
+    fields: {}  # 525b

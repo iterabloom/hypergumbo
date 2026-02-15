@@ -1,0 +1,21 @@
+- op: create  # 691b
+  at: '2026-02-15T00:51:38Z'  # 691b
+  by: agent  # 691b
+  actor: migration  # 691b
+  clock: 1  # 691b
+  nonce: 691b  # 691b
+  data:  # 691b
+    kind: meta_invariant  # 691b
+    title: "Metadata Must Become Graph Structure"  # 691b
+    status: done  # 691b
+    priority: 4  # 691b
+    parent:  # 691b
+    tags: []  # 691b
+    before: []  # 691b
+    duplicate_of: []  # 691b
+    not_duplicate_of: []  # 691b
+    pr_ref:  # 691b
+    justification:  # 691b
+    description: "DONE (create edges from base_classes): Java, JS/TS, Python, Ruby, Kotlin, C#, Scala, PHP, Groovy, Swift, C++, Objective-C, Apex, Go (interface assertions)\n\nAll 14 languages with class inheritance / interface satisfaction now extract `base_classes` metadata\n\nThe centralized inheritance linker (`linkers/inheritance.py`) creates extends/implements edges for all languages\n\n**Unified by:**\n\nINV-002 (usage patterns → concepts on nodes)\n\nINV-004 (route metadata → handler edges)\n\nINV-006 (resources macro → route symbols with controller_action)\n\nINV-008 (base_classes → extends/implements edges for Python/JS/TS)\n\nINV-009 (base_classes → extends/implements edges for Ruby/Kotlin)\n\nINV-010 (Django view_name → routes_to edges)\n\n**Implication:** When an analyzer stores relationship information in metadata (view_name,\n\ncontroller_action, etc.), there should be a corresponding linker or enrichment phase that\n\nconverts that metadata into edges or concepts. Metadata alone is not traversable."  # 691b
+    fields:  # 691b
+      statement: "Semantic relationships expressed in metadata must become traversable graph structure."  # 691b

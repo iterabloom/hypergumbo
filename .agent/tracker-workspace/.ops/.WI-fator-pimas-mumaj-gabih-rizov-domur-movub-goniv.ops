@@ -1,0 +1,21 @@
+- op: create  # 1e30
+  at: '2026-02-15T00:51:38Z'  # 1e30
+  by: agent  # 1e30
+  actor: migration  # 1e30
+  clock: 1  # 1e30
+  nonce: '1e30'  # 1e30
+  data:  # 1e30
+    kind: work_item  # 1e30
+    title: "`.m` file MATLAB/Wolfram overlap: Both analyzers claim `.m` files."  # 1e30
+    status: deferred  # 1e30
+    priority: 4  # 1e30
+    parent:  # 1e30
+    tags:  # 1e30
+    - analysis_quality  # 1e30
+    before: []  # 1e30
+    duplicate_of: []  # 1e30
+    not_duplicate_of: []  # 1e30
+    pr_ref:  # 1e30
+    justification: "Need heuristic disambiguation (e.g., check for MATLAB `function` keyword vs Wolfram `Module[` patterns). Niche impact — few repos mix both languages."  # 1e30
+    description: "Need heuristic disambiguation (e.g., check for MATLAB `function` keyword vs Wolfram `Module[` patterns). Niche impact — few repos mix both languages."  # 1e30
+    fields: {}  # 1e30

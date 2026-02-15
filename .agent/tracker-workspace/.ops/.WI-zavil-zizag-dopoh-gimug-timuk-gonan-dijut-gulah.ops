@@ -1,0 +1,21 @@
+- op: create  # 221e
+  at: '2026-02-15T00:51:38Z'  # 221e
+  by: agent  # 221e
+  actor: migration  # 221e
+  clock: 1  # 221e
+  nonce: 221e  # 221e
+  data:  # 221e
+    kind: work_item  # 221e
+    title: "Meson analyzer already exists in hypergumbo-lang-common (analyze_meson)."  # 221e
+    status: done  # 221e
+    priority: 4  # 221e
+    parent:  # 221e
+    tags:  # 221e
+    - language_additions  # 221e
+    before: []  # 221e
+    duplicate_of: []  # 221e
+    not_duplicate_of: []  # 221e
+    pr_ref:  # 221e
+    justification:  # 221e
+    description: "Was added previously; this TODO was stale."  # 221e
+    fields: {}  # 221e

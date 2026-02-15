@@ -1,0 +1,21 @@
+- op: create  # af5a
+  at: '2026-02-15T00:51:38Z'  # af5a
+  by: agent  # af5a
+  actor: migration  # af5a
+  clock: 1  # af5a
+  nonce: af5a  # af5a
+  data:  # af5a
+    kind: work_item  # af5a
+    title: "Add Kconfig analyzer."  # af5a
+    status: deferred  # af5a
+    priority: 4  # af5a
+    parent:  # af5a
+    tags:  # af5a
+    - language_additions  # af5a
+    before: []  # af5a
+    duplicate_of: []  # af5a
+    not_duplicate_of: []  # af5a
+    pr_ref:  # af5a
+    justification: "No known tree-sitter grammar. Blocked on grammar availability."  # af5a
+    description: "No known tree-sitter grammar. Blocked on grammar availability."  # af5a
+    fields: {}  # af5a

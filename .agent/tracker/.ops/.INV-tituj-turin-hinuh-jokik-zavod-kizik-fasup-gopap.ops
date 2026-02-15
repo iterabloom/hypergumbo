@@ -1,0 +1,26 @@
+- op: create  # edf2
+  at: '2026-02-15T00:51:38Z'  # edf2
+  by: agent  # edf2
+  actor: migration  # edf2
+  clock: 1  # edf2
+  nonce: edf2  # edf2
+  data:  # edf2
+    kind: invariant  # edf2
+    title: "Python Nested Decorated Function Extraction"  # edf2
+    status: done  # edf2
+    priority: 4  # edf2
+    parent:  # edf2
+    tags: []  # edf2
+    before: []  # edf2
+    duplicate_of: []  # edf2
+    not_duplicate_of: []  # edf2
+    pr_ref:  # edf2
+    justification:  # edf2
+    description: ""  # edf2
+    fields:  # edf2
+      statement: "Decorated nested functions must be extracted for framework pattern matching"  # edf2
+      root_cause: "`analyze/py.py:1259` had `if node.col_offset == 0:` which filtered out all nested functions. This was intended to skip methods (already processed via class body iteration), but also skipped legitimate nested functions like FastAPI route handlers inside factory functions: ```python def get_router(): router = APIRouter() @router.get(\"/items\")  # This was NOT extracted def list_items(): ... ```"  # edf2
+      fix: "Added `processed_functions` set to track already-extracted methods, then modified the condition to extract: 1. Top-level functions (col_offset == 0) - always extract 2. Nested functions with decorators - extract for framework patterns Also extended to handle `AsyncFunctionDef` for both methods and nested functions."  # edf2
+      verification: "Checked analogous patterns in other analyzers: JS/TS: Already handles arrow functions in callbacks via position-based lookup Ruby: Handles blocks properly for Sinatra/Rails patterns Go: Handles `func_literal` (anonymous functions) properly Issue was Python-specific due to the `col_offset` heuristic"  # edf2
+      regression_tests:  # edf2
+      - test_python_ast_analysis.py::TestNestedFunctionExtraction  # edf2

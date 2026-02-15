@@ -1,0 +1,21 @@
+- op: create  # 6c07
+  at: '2026-02-15T00:51:38Z'  # 6c07
+  by: agent  # 6c07
+  actor: migration  # 6c07
+  clock: 1  # 6c07
+  nonce: 6c07  # 6c07
+  data:  # 6c07
+    kind: meta_invariant  # 6c07
+    title: "Data Integrity"  # 6c07
+    status: done  # 6c07
+    priority: 4  # 6c07
+    parent:  # 6c07
+    tags: []  # 6c07
+    before: []  # 6c07
+    duplicate_of: []  # 6c07
+    not_duplicate_of: []  # 6c07
+    pr_ref:  # 6c07
+    justification:  # 6c07
+    description: "INV-005 fixed edge ID uniqueness. No known remaining issues. Symbol IDs\n\nappear stable across runs.\n\n**Unified by:**\n\nINV-005 (edge IDs must be unique)\n\n**Implication:** ID generation must include all disambiguating information (source, target,\n\ntype, AND location)."  # 6c07
+    fields:  # 6c07
+      statement: "Graph elements must have valid, unique identifiers for reliable lookup."  # 6c07

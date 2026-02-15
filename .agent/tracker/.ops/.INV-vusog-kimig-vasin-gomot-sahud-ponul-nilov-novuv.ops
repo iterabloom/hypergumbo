@@ -1,0 +1,26 @@
+- op: create  # 9ef2
+  at: '2026-02-15T00:51:38Z'  # 9ef2
+  by: agent  # 9ef2
+  actor: migration  # 9ef2
+  clock: 1  # 9ef2
+  nonce: 9ef2  # 9ef2
+  data:  # 9ef2
+    kind: invariant  # 9ef2
+    title: "Base Classes Metadata to Extends Edges"  # 9ef2
+    status: done  # 9ef2
+    priority: 4  # 9ef2
+    parent:  # 9ef2
+    tags: []  # 9ef2
+    before: []  # 9ef2
+    duplicate_of: []  # 9ef2
+    not_duplicate_of: []  # 9ef2
+    pr_ref:  # 9ef2
+    justification:  # 9ef2
+    description: ""  # 9ef2
+    fields:  # 9ef2
+      statement: "Class symbols with `base_classes` metadata must create `extends` or `implements` edges to base classes/interfaces that exist in the analyzed codebase"  # 9ef2
+      root_cause: "Python and JS/TS analyzers extracted `base_classes` into metadata but did not create edges. The type hierarchy linker requires `extends`/`implements` edges to build inheritance maps for polymorphic dispatch. Java was already creating these edges."  # 9ef2
+      fix: "Added `_extract_inheritance_edges()` function to both Python and JS/TS analyzers: `analyze/py.py`: Creates `extends` edges after symbol collection in Pass 2 `analyze/js_ts.py`: Creates `extends`/`implements` edges, distinguishing classes from interfaces Edges only created for base classes that exist in the analyzed codebase (not external packages) Generic type parameters stripped (e.g., `Repository<User>` → `Repository`)"  # 9ef2
+      regression_tests:  # 9ef2
+      - tests/test_python_ast_analysis.py::TestPythonInheritanceEdges  # 9ef2
+      - tests/test_js_ts.py::TestJsTsInheritanceEdges  # 9ef2

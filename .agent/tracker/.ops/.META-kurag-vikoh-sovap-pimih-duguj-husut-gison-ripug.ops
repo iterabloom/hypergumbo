@@ -1,0 +1,21 @@
+- op: create  # de53
+  at: '2026-02-15T00:51:38Z'  # de53
+  by: agent  # de53
+  actor: migration  # de53
+  clock: 1  # de53
+  nonce: de53  # de53
+  data:  # de53
+    kind: meta_invariant  # de53
+    title: "Testing Discipline"  # de53
+    status: done  # de53
+    priority: 4  # de53
+    parent:  # de53
+    tags: []  # de53
+    before: []  # de53
+    duplicate_of: []  # de53
+    not_duplicate_of: []  # de53
+    pr_ref:  # de53
+    justification:  # de53
+    description: "Line coverage: 100% ✅ (enforced in CI via `--cov-fail-under=100`)\n\nBranch coverage: deliberately not enforced (see INV-011 resolution)\n\n115+ BRANCHES test files exist from the branch coverage effort; they remain\n\nin the codebase (some contain genuinely useful edge-case tests) but no new\n\nones should be created solely to chase branch partial metrics.\n\n**Implication:** Quality gaps in analysis correctness are better found via bakeoff\n\non real repos than by auditing branch partials. Line coverage at 100% ensures all\n\nstatements are reached; input diversity testing ensures they produce correct results."  # de53
+    fields:  # de53
+      statement: "Tests must exercise all code paths to verify correctness and prevent regressions."  # de53

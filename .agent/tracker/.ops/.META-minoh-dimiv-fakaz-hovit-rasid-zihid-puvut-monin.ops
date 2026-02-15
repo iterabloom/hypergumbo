@@ -1,0 +1,21 @@
+- op: create  # 8393
+  at: '2026-02-15T00:51:38Z'  # 8393
+  by: agent  # 8393
+  actor: migration  # 8393
+  clock: 1  # 8393
+  nonce: '8393'  # 8393
+  data:  # 8393
+    kind: meta_invariant  # 8393
+    title: "Extraction Completeness"  # 8393
+    status: done  # 8393
+    priority: 4  # 8393
+    parent:  # 8393
+    tags: []  # 8393
+    before: []  # 8393
+    duplicate_of: []  # 8393
+    not_duplicate_of: []  # 8393
+    pr_ref:  # 8393
+    justification:  # 8393
+    description: "Based on EXTENSIVE checking across 25+ repos in 5 bakeoff cohorts:\n\nKnown cases (INV-001, INV-003) are fixed\n\nLambda/closure call attribution audited for Go, Java, Rust, C#, Kotlin, Scala - all\n\nuse implicit walk-up that correctly attributes calls to enclosing methods\n\nC++ test patterns (Google Test, Catch2): Added to test-frameworks.yaml\n\nC header declarations: Verified as correct (declarations don't have call edges)\n\nSpec repos (NO_CALL_EDGES): Verified as correct (declarative code, no callable functions)\n\nGo repos with external deps (LOW_RESOLUTION): Verified as correct (external calls unresolvable)\n\nLanguage metrics (Python, Ruby, Rust, TypeScript, C, C++, Go): All healthy\n\nTheoretical exotic constructs (metaprogrammed code, eval-generated functions) not\n\nfound in any analyzed repos; would require specific failing repos to investigate further\n\n**Unified by:**\n\nINV-001 (call edges must have caller symbols - implies callers are extracted)\n\nINV-003 (nested decorated functions must be extracted)\n\n**Implication:** Special cases (nested functions, lambdas, callbacks) should not silently\n\nskip symbol extraction. If code can be called, it must be extractable."  # 8393
+    fields:  # 8393
+      statement: "Symbols that exist in source code must be extracted for analysis."  # 8393

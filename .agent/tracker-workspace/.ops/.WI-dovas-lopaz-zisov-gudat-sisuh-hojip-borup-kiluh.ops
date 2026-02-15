@@ -1,0 +1,21 @@
+- op: create  # 2e47
+  at: '2026-02-15T00:51:38Z'  # 2e47
+  by: agent  # 2e47
+  actor: migration  # 2e47
+  clock: 1  # 2e47
+  nonce: '2e47'  # 2e47
+  data:  # 2e47
+    kind: work_item  # 2e47
+    title: "Target: Node.js N-API linker — `napi_create_function`, `node-addon-api` `Napi::Function::New` linking JS calls to C/C++ addon functions."  # 2e47
+    status: deferred  # 2e47
+    priority: 4  # 2e47
+    parent:  # 2e47
+    tags:  # 2e47
+    - cross_language_linkers  # 2e47
+    before: []  # 2e47
+    duplicate_of: []  # 2e47
+    not_duplicate_of: []  # 2e47
+    pr_ref:  # 2e47
+    justification: "lower priority than Python/Ruby FFI; smaller ecosystem of native addons. Can implement when a DEEP bakeoff reveals a Node+C polyglot repo that would benefit."  # 2e47
+    description: "Deferred: lower priority than Python/Ruby FFI; smaller ecosystem of native addons. Can implement when a DEEP bakeoff reveals a Node+C polyglot repo that would benefit."  # 2e47
+    fields: {}  # 2e47

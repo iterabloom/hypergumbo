@@ -1,0 +1,21 @@
+- op: create  # c266
+  at: '2026-02-15T00:51:38Z'  # c266
+  by: agent  # c266
+  actor: migration  # c266
+  clock: 1  # c266
+  nonce: c266  # c266
+  data:  # c266
+    kind: work_item  # c266
+    title: "Add Device Tree (DTS) analyzer."  # c266
+    status: deferred  # c266
+    priority: 4  # c266
+    parent:  # c266
+    tags:  # c266
+    - language_additions  # c266
+    before: []  # c266
+    duplicate_of: []  # c266
+    not_duplicate_of: []  # c266
+    pr_ref:  # c266
+    justification: "No known tree-sitter grammar. Blocked on grammar availability."  # c266
+    description: "No known tree-sitter grammar. Blocked on grammar availability."  # c266
+    fields: {}  # c266

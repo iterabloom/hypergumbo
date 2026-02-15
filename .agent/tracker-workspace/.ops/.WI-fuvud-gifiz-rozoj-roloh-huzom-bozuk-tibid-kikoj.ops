@@ -1,0 +1,21 @@
+- op: create  # 8c05
+  at: '2026-02-15T00:51:38Z'  # 8c05
+  by: agent  # 8c05
+  actor: migration  # 8c05
+  clock: 1  # 8c05
+  nonce: 8c05  # 8c05
+  data:  # 8c05
+    kind: work_item  # 8c05
+    title: "Add Rego analyzer."  # 8c05
+    status: deferred  # 8c05
+    priority: 4  # 8c05
+    parent:  # 8c05
+    tags:  # 8c05
+    - language_additions  # 8c05
+    before: []  # 8c05
+    duplicate_of: []  # 8c05
+    not_duplicate_of: []  # 8c05
+    pr_ref:  # 8c05
+    justification: "No known tree-sitter grammar — would require regex-based analysis. Blocked on grammar availability."  # 8c05
+    description: "No known tree-sitter grammar — would require regex-based analysis. Blocked on grammar availability."  # 8c05
+    fields: {}  # 8c05

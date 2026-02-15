@@ -1,0 +1,26 @@
+- op: create  # e76c
+  at: '2026-02-15T00:51:38Z'  # e76c
+  by: agent  # e76c
+  actor: migration  # e76c
+  clock: 1  # e76c
+  nonce: e76c  # e76c
+  data:  # e76c
+    kind: invariant  # e76c
+    title: "Usage-to-Concept Flow"  # e76c
+    status: done  # e76c
+    priority: 4  # e76c
+    parent:  # e76c
+    tags: []  # e76c
+    before: []  # e76c
+    duplicate_of: []  # e76c
+    not_duplicate_of: []  # e76c
+    pr_ref:  # e76c
+    justification:  # e76c
+    description: "Architecture decision: Chose deferred resolution (Option 2) over two-pass analysis\n\nor refactoring analyzers because it:\n\nHas access to complete symbol table (enables cross-file resolution)\n\nLeverages existing `NameResolver` infrastructure\n\nSingle point of resolution logic (DRY)\n\nMinimal disruption to existing code"  # e76c
+    fields:  # e76c
+      statement: "Usage patterns extracted by analyzers become concepts on nodes"  # e76c
+      root_cause: "`symbol_ref` gate prevented UsageContexts with `symbol_ref=None` from enriching symbols. This happens when analyzers extract string-based handler references (e.g., Django URL patterns like `path('users/', 'views.user_list')`) where the target symbol is in a different file not yet analyzed."  # e76c
+      fix: "Added deferred resolution phase `resolve_deferred_symbol_refs()` that runs BEFORE enrichment. After all analyzers complete, we have the complete symbol table. The function: 1. Builds a `NameResolver` from all symbols (by name and qualified_name) 2. For each UsageContext with `symbol_ref=None`, extracts resolution hints from metadata 3. Uses multi-strategy lookup: exact match → suffix match → path hint disambiguation 4. Updates `symbol_ref` directly on the UsageContext when resolved"  # e76c
+      regression_tests:  # e76c
+      - test_framework_patterns.py::TestResolveDeferredSymbolRefs  # e76c
+      - test_framework_patterns.py::TestEnrichSymbolsWithUsageContexts::test_inv002_fallback_resolution_by_view_name  # e76c

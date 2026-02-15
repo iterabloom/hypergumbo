@@ -1,0 +1,21 @@
+- op: create  # 9abc
+  at: '2026-02-15T00:51:38Z'  # 9abc
+  by: agent  # 9abc
+  actor: migration  # 9abc
+  clock: 1  # 9abc
+  nonce: 9abc  # 9abc
+  data:  # 9abc
+    kind: work_item  # 9abc
+    title: "Chatwoot tier1 anomaly: 99.4% tier1 despite 753 Ruby spec files + 338 JS test files."  # 9abc
+    status: deferred  # 9abc
+    priority: 4  # 9abc
+    parent:  # 9abc
+    tags:  # 9abc
+    - analysis_quality  # 9abc
+    before: []  # 9abc
+    duplicate_of: []  # 9abc
+    not_duplicate_of: []  # 9abc
+    pr_ref:  # 9abc
+    justification: "Investigated: NOT a bug. Vue template nodes (directive, component_ref, slot, prop, style_block) from `app/javascript/` are correctly tier1 and vastly outnumber tier2 test symbols. The bakeoff tier1_pct metric counts ALL nodes including non-code nodes. Consider excluding non-code kinds from the metric for a more meaningful production-vs-test signal."  # 9abc
+    description: "Investigated: NOT a bug. Vue template nodes (directive, component_ref, slot, prop, style_block) from `app/javascript/` are correctly tier1 and vastly outnumber tier2 test symbols. The bakeoff tier1_pct metric counts ALL nodes including non-code nodes. Consider excluding non-code kinds from the metric for a more meaningful production-vs-test signal."  # 9abc
+    fields: {}  # 9abc

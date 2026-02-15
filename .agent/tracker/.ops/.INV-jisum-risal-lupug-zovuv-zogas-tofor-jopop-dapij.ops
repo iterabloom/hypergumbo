@@ -1,0 +1,25 @@
+- op: create  # aeb7
+  at: '2026-02-15T00:51:38Z'  # aeb7
+  by: agent  # aeb7
+  actor: migration  # aeb7
+  clock: 1  # aeb7
+  nonce: aeb7  # aeb7
+  data:  # aeb7
+    kind: invariant  # aeb7
+    title: "Go Import Path Resolution"  # aeb7
+    status: done  # aeb7
+    priority: 4  # aeb7
+    parent:  # aeb7
+    tags: []  # aeb7
+    before: []  # aeb7
+    duplicate_of: []  # aeb7
+    not_duplicate_of: []  # aeb7
+    pr_ref:  # aeb7
+    justification:  # aeb7
+    description: ""  # aeb7
+    fields:  # aeb7
+      statement: "When multiple Go files define the same symbol (same package name, same function), call resolution must use the import path to pick the correct target file"  # aeb7
+      root_cause: "`symbol_resolution.py:ListNameResolver.lookup()` only checked the last directory segment of the import path (e.g., \"genproto\") which matched multiple candidates. When no unique match was found, it returned the first candidate, which was non-deterministic across Python versions."  # aeb7
+      fix: "Enhanced `ListNameResolver.lookup()` to: 1. Try progressively shorter suffixes of the import path (e.g., \"zzz_correct/genproto\", \"genproto\") 2. Return when exactly one candidate matches a suffix 3. Sort candidates deterministically (by path) when falling back to ambiguous resolution"  # aeb7
+      regression_tests:  # aeb7
+      - tests/test_go.py::TestGoImportPathResolution::test_resolves_call_to_correct_file_by_import_path  # aeb7

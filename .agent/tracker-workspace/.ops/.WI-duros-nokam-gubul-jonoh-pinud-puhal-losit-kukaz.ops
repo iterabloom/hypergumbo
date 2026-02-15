@@ -1,0 +1,21 @@
+- op: create  # 128b
+  at: '2026-02-15T00:51:38Z'  # 128b
+  by: agent  # 128b
+  actor: migration  # 128b
+  clock: 1  # 128b
+  nonce: 128b  # 128b
+  data:  # 128b
+    kind: work_item  # 128b
+    title: "Add Assembly analyzer."  # 128b
+    status: deferred  # 128b
+    priority: 4  # 128b
+    parent:  # 128b
+    tags:  # 128b
+    - language_additions  # 128b
+    before: []  # 128b
+    duplicate_of: []  # 128b
+    not_duplicate_of: []  # 128b
+    pr_ref:  # 128b
+    justification: "Grammar: tree-sitter-asm. Lower priority than linker and feature quality work in DEEP mode."  # 128b
+    description: "Grammar: tree-sitter-asm. Lower priority than linker and feature quality work in DEEP mode."  # 128b
+    fields: {}  # 128b

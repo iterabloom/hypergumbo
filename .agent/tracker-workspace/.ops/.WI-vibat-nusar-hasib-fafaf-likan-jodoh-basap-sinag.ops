@@ -1,0 +1,21 @@
+- op: create  # 6e66
+  at: '2026-02-15T00:51:38Z'  # 6e66
+  by: agent  # 6e66
+  actor: migration  # 6e66
+  clock: 1  # 6e66
+  nonce: '6e66'  # 6e66
+  data:  # 6e66
+    kind: work_item  # 6e66
+    title: "DRY refactor full-suite.yml."  # 6e66
+    status: deferred  # 6e66
+    priority: 4  # 6e66
+    parent:  # 6e66
+    tags:  # 6e66
+    - ci_infrastructure  # 6e66
+    before: []  # 6e66
+    duplicate_of: []  # 6e66
+    not_duplicate_of: []  # 6e66
+    pr_ref:  # 6e66
+    justification: "Currently 4 near-identical `test-*` jobs copy-pasted. Use matrix strategy or composite action to reduce duplication. Non-blocking; CI works correctly as-is."  # 6e66
+    description: "Currently 4 near-identical `test-*` jobs copy-pasted. Use matrix strategy or composite action to reduce duplication. Non-blocking; CI works correctly as-is."  # 6e66
+    fields: {}  # 6e66

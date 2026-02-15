@@ -1,0 +1,21 @@
+- op: create  # 52d3
+  at: '2026-02-15T00:51:38Z'  # 52d3
+  by: agent  # 52d3
+  actor: migration  # 52d3
+  clock: 1  # 52d3
+  nonce: 52d3  # 52d3
+  data:  # 52d3
+    kind: work_item  # 52d3
+    title: "Target: Lua FFI linker — LuaJIT `ffi.cdef`/`ffi.load` linking Lua calls to C functions."  # 52d3
+    status: deferred  # 52d3
+    priority: 4  # 52d3
+    parent:  # 52d3
+    tags:  # 52d3
+    - cross_language_linkers  # 52d3
+    before: []  # 52d3
+    duplicate_of: []  # 52d3
+    not_duplicate_of: []  # 52d3
+    pr_ref:  # 52d3
+    justification: "niche use case (primarily OpenResty/game dev). Can implement when a DEEP bakeoff reveals a Lua+C polyglot repo."  # 52d3
+    description: "Deferred: niche use case (primarily OpenResty/game dev). Can implement when a DEEP bakeoff reveals a Lua+C polyglot repo."  # 52d3
+    fields: {}  # 52d3

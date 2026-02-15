@@ -1,0 +1,21 @@
+- op: create  # 0a75
+  at: '2026-02-15T00:51:38Z'  # 0a75
+  by: agent  # 0a75
+  actor: migration  # 0a75
+  clock: 1  # 0a75
+  nonce: 0a75  # 0a75
+  data:  # 0a75
+    kind: work_item  # 0a75
+    title: "Target: Ruby FFI linker — `ffi` gem (`FFI::Library`, `attach_function`) and C extensions (`rb_define_method`) linking Ruby calls to C/C++ functions."  # 0a75
+    status: done  # 0a75
+    priority: 4  # 0a75
+    parent:  # 0a75
+    tags:  # 0a75
+    - cross_language_linkers  # 0a75
+    before: []  # 0a75
+    duplicate_of: []  # 0a75
+    not_duplicate_of: []  # 0a75
+    pr_ref: PR#1003  # 0a75
+    justification:  # 0a75
+    description: ""  # 0a75
+    fields: {}  # 0a75
