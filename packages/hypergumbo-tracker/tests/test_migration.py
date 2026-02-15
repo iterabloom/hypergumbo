@@ -330,6 +330,30 @@ class TestParseInvariantLedger:
         assert "symbol_ref" in items[0].fields["root_cause"]
         assert "enriching symbols" in items[0].fields["root_cause"]
 
+    def test_horizontal_rule_finalizes(self) -> None:
+        """Horizontal rule (---) finalizes the current entry."""
+        content = textwrap.dedent("""\
+            ## INV-001: First Item
+            - **Statement:** Something
+            - **Status:** FIXED
+            - **Root cause:** Bug
+            - **Fix:** Fixed
+            - **Pending Generalizations:** None
+
+            ---
+
+            ## INV-002: Second Item
+            - **Statement:** Another thing
+            - **Status:** UNFIXED
+            - **Root cause:** Different bug
+            - **Fix:** Pending
+            - **Pending Generalizations:** None
+        """)
+        items = parse_invariant_ledger(content)
+        assert len(items) == 2
+        assert items[0].source_id == "INV-001"
+        assert items[1].source_id == "INV-002"
+
     def test_empty_file(self) -> None:
         items = parse_invariant_ledger("")
         assert items == []
