@@ -1,5 +1,10 @@
 # Invariant Ledger
 
+> **DEPRECATED (ADR-0013 PR 7):** This file is no longer read by the stop
+> hook. Invariants and work items are now managed via the structured tracker
+> (`scripts/tracker`). This file is retained as a historical reference.
+> See `scripts/tracker list` for current items.
+
 This ledger tracks discovered invariants, their status, and regression tests.
 See [ADR-0008](../docs/adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for governance context.
 

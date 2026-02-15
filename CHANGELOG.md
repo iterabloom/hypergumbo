@@ -162,6 +162,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Bakeoff stable artifact paths**: Timestamped session directories under `~/hypergumbo_lab_notebook/bakeoff_artifacts/`. Prior artifacts never overwritten. Convergence status in stop-hook prompts.
 - **Deeper bakeoff slices**: `--max-hops 5` (from 3) with adjusted coverage thresholds.
 - **Updated documentation counts**: Corrected analyzer (67→104), linker (15→18), framework pattern (37→82), convention pattern (4→5) counts across docs.
+- **Remove legacy grep fallback from stop hook (ADR-0013 PR 7)**: The stop hook now uses only the structured tracker CLI (`scripts/tracker count-todos`, `hash-todos`, `guidance`) for TODO counting, circuit breaker hashing, and guidance generation. The legacy grep-based fallback that read `**TODO!**`/`**TODO**` markers from markdown files has been removed. Fail-closed: if the tracker CLI is present but fails, the stop hook blocks. Deprecation notices added to `.agent/invariant-ledger.md`.
 
 ### Fixed
 
