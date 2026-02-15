@@ -593,6 +593,8 @@ Items exist in one of three visibility tiers, determined by which directory the 
 
 The ID does not change on promotion/demotion — it's content-derived, not path-derived.
 
+**Tier is location, not compiled state.** Tier movement ops (`promote`, `demote`, `stealth`, `unstealth`) are **audit-only** in `compile()` — they record that movement occurred but do not affect the compiled item's fields. The authoritative tier is determined by the item's physical directory location, not by replaying ops. This is a deliberate architectural choice: git-level visibility controls (`.gitignore` for stealth, path exclusion in `scripts/contribute` for workspace) enforce tier boundaries without requiring YAML parsing. If tier were a compiled field in a single shared directory, `.gitignore` could not selectively exclude stealth items, and `scripts/contribute` would need to parse every ops file to determine which items to exclude from upstream PRs — a fragile and error-prone approach. The directory-based model provides defense in depth: even if `compile()` has a bug, workspace items physically cannot leak to upstream because they live in a different directory that `contribute` excludes by path. The tradeoff is that `shutil.move()` is not append-only, so interrupted moves can produce cross-tier duplicates — handled by the [Self-Healing Reconciliation](#self-healing-reconciliation) layer.
+
 **Fork workflow.** When a contributor forks and clones, they get canonical (it's committed) and an empty workspace. Their agent:
 
 1. **Reads** canonical items for context (upstream's priorities and institutional knowledge)
@@ -677,6 +679,8 @@ The `compile()` function is a pure function: it takes a list of ops from an op l
 | `fields` (dict) | Per-key last write wins (merge, not replace — updating `fields.root_cause` does not clobber `fields.statement`) |
 | `locked_fields` | Accumulated: `lock` ops add to the set, `unlock` ops remove |
 | Discussion | Accumulated: `discuss` ops append, `discuss_clear` resets to empty, `discuss_summarize` replaces with single summary |
+| Tier movement (`promote`, `demote`, `stealth`, `unstealth`) | Audit-only: recorded in the op log for reconciliation and history, but do not affect compiled state. Tier is determined by directory location, not by op replay (see [Three-Tier Visibility](#three-tier-visibility)). |
+| `reconcile` | Audit-only: records cross-tier duplicate resolution (see [Self-Healing Reconciliation](#self-healing-reconciliation)). Does not affect compiled state. |
 
 **Derived fields** (computed by `compile()`, never stored):
 - `created_at`: timestamp of the `create` op
