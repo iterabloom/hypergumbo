@@ -1179,7 +1179,7 @@ Chrome: 1-row header (app name + scope indicator), 1-row footer (top-3 keys: `q`
 Chrome: 1-row header (filter chips for kind/status/tag/tier; search bar at ≥80 cols), 1-row footer (up to 6 keybindings). ~4 rows total chrome.
 
 - **Left panel** (40–50% width, min 30 cols): DataTable or TreeView (`t` toggle). Columns: `#`, tier `[C]`/`[W]`/`[S]`, priority, ID (2–3 syllable pairs), status, title.
-- **Right panel** (remaining width): Detail view with Rich markup. For kinds with a `fields_schema`, known fields are rendered in declared order with their `description` as a tooltip/label; unknown fields appear in a separate "Other" section below. For kinds without a schema, fields are rendered as a generic key-value list. Lock icons on locked fields. Op log (scrollable). Discussion badge `[20+ msgs]`.
+- **Right panel** (remaining width): Detail view with Rich markup. For kinds with a `fields_schema`, known fields are rendered in declared order with their `description` as a tooltip/label; unknown fields appear in a separate "Other" section below. For kinds without a schema, fields are rendered as a generic key-value list. Lock icons on locked fields. Discussion entries (most recent, scrollable). Discussion badge `[20+ msgs]`.
 - **Vertical divider**: 1 col.
 
 #### Wide Layout
@@ -1187,7 +1187,7 @@ Chrome: 1-row header (filter chips for kind/status/tag/tier; search bar at ≥80
 Inherits standard structure with enhancements:
 - **Extra list columns**: `created_at` (date), `updated_at` (date), conflict indicator.
 - **Longer ID truncation**: 3–4 syllable pairs.
-- **Enhanced right panel**: Secondary section for op log alongside detail (both visible simultaneously).
+- **Enhanced right panel**: Secondary activity panel for discussion entries alongside detail (both visible simultaneously).
 - **Full keybindings** in footer.
 - **Filter chips** show active values inline.
 
@@ -1464,7 +1464,7 @@ Absorbed into PR 1c. See above.
 - Tree/table toggle (`t`)
 - Header filter chips (kind/status/tag/tier) + search bar (at ≥80 cols)
 - Schema-aware detail rendering: known fields in declared order with description tooltips, "Other" section for unknown fields, lock icons on locked fields
-- Op log display (scrollable). Discussion badge `[20+ msgs]`
+- Discussion entries in right panel (most recent, scrollable). Discussion badge `[20+ msgs]`
 - Standard keybindings enabled: `t`, `p`, `b`, `l`, `D`
 - Tier indicator column (`[C]`/`[W]`/`[S]`), tier move dialog (`m` key: promote/demote/stealth/unstealth)
 - Schema-aware edit form (type-appropriate widgets for known fields: text area, integer spinner with min/max, list editor; generic key-value row for unknown fields)
@@ -1472,7 +1472,7 @@ Absorbed into PR 1c. See above.
 - Tests: Pilot flows at (80, 24) and (120, 34). Edit flow, lock toggle (`l`) verify agent write rejected on locked field, discussion panel (`d`) submit message + `D` clear, tier move (`m`) promote/demote, schema-aware rendering (kind with `fields_schema` vs. kind without), tree/table toggle (`t`) selection preservation, filter (`f`) by status/tier
 
 #### PR 6c: Wide layout + dynamic resize `[MERGED]` (commit 2318a24)
-- Wide enhancements: extra columns (`created_at`, `updated_at`, conflict indicator), longer ID truncation (3–4 syllable pairs), expanded footer with full keybindings, enhanced right panel with secondary section for op log alongside detail, filter chips show active values inline
+- Wide enhancements: extra columns (`created_at`, `updated_at`, conflict indicator), longer ID truncation (3–4 syllable pairs), expanded footer with full keybindings, enhanced right panel with secondary activity panel for discussion entries alongside detail, filter chips show active values inline
 - Dynamic resize handler with state preservation (selected item ID, filter state, edit form state preserved; scroll positions reset)
 - "Too small" overlay for < 40×16 (any size → below minimum → all content hidden; resize back → app resumes)
 - Tests: Pilot flow at (160, 45) verifying enhanced columns appear. Dynamic resize tests: (80, 24) → (40, 16) standard→compact with selected item preserved; (80, 24) → (160, 45) standard→wide with extra columns; (40, 16) detail view → (80, 24) compact detail → standard right panel; any size → (30, 10) "too small" shown, resize back → app resumes
@@ -1530,7 +1530,7 @@ End-to-end after PR 6d:
 - Edits, locking, discussion, tier moves persist at all sizes
 - ID truncation produces readable, prefix-matchable IDs at all widths
 - Discussion badges for >20 entries
-- Op log scrollable in detail panel
+- Discussion entries scrollable in detail/activity panel
 - All Pilot tests pass at multiple sizes with `tmp_path`-backed `TrackerSet`
 - Snapshot baselines committed and passing for all three tiers
 
