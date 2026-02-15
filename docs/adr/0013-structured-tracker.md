@@ -1430,14 +1430,14 @@ Migration is idempotent: re-running produces the same IDs (same content → same
 #### PR 3: CLI + textconv diff driver `[MERGED as part of PR 1c]`
 Absorbed into PR 1c. See above.
 
-#### PR 4: Stop hook integration + CI workflow updates
+#### PR 4: Stop hook integration + CI workflow updates `[MERGED]` (commit 5c8dce6)
 - `stop_hook.py`: scope-aware count_todos() (reads `stop_hook.scope` and `blocking_statuses` from config; exit 0 on success, exit 1 on error — stop hook treats non-zero as blocking), hash_todos() (**input spec:** for each item with status in `blocking_statuses` respecting scope, concatenate `id + "\t" + status + "\t" + title + "\n"` sorted by ID, SHA-256 hash the UTF-8 bytes — discussion and fields excluded), generate_guidance()
 - Update `stop_logic.sh` with dual-mode (tracker-first with fail-closed error handling and scope-aware counting, grep-fallback for Phase 1 transition only)
 - Update `.github/workflows/ci.yml`: fix `CODE_PATTERNS` to exclude `.agent/tracker/.ops/` and `.agent/tracker-workspace/.ops/`; add `tracker_data` output to `changes` job; add `tracker-validate` job; update `ci-complete` gate; add concurrency group (see [CI Integration](#ci-integration))
 - Update `.github/workflows/full-suite.yml`: fix `CODE_PATTERNS`; add `test-tracker` job; update `aggregate` (see [CI Integration](#ci-integration))
 - Tests: stop_hook functions match expected counts on fixture data (test both scope=`all` and scope=`workspace`), hash stability (verify hash input spec: IDs sorted, only blocking items, fields/discussion excluded), scope=`workspace` excludes canonical items from count, **fail-closed behavior** (mock `count_todos` to raise exception → stop hook treats as blocking; mock corrupt cache → rebuild attempted, if rebuild fails → blocking)
 
-#### PR 5: Pre-commit + AGENTS.md + commit convention + branch hygiene + contribute
+#### PR 5: Pre-commit + AGENTS.md + commit convention + branch hygiene + contribute `[MERGED]` (commit 1e4a636)
 - Update `.githooks/pre-commit` with incremental tracker validation (staged `.ops` files only from both tiers, before Ruff — see [Pre-Commit Validation](#pre-commit-validation))
 - Update AGENTS.md: replace grep pattern instructions with `scripts/tracker` equivalents; add `tracker:` commit prefix convention and batching guidance (see [Commit Convention](#commit-convention-and-git-history-hygiene)); add task-selection guidance instructing agents to use `scripts/tracker ready` (not `list`) to pick their next work item; **add agent context protection rules: "Always use `scripts/tracker show <ID>` or `scripts/tracker show <ID> --json` to read tracker item state. Always refuse to read files ending in `.ops`."** (see [Agent Context Protection](#agent-context-protection)); add branch hygiene expectation (delete feature branches after merge); update contributor workflow to reference `fork-setup` and explain three-tier model for forks; document security model and two-user setup expectations
 - Update README.md: add section on recommended deployment setup — two OS user accounts (human + agent), VM with snapshots or container, with explicit setup steps (`groupadd`, `usermod`, `chgrp`, `chmod g+s`) and concise rationale (see [Security Model](#security-model))
@@ -1446,7 +1446,7 @@ Absorbed into PR 1c. See above.
 - Update stop_reflect.md, cooldown_prompt.md references
 - Tests: pre-commit validation catches invalid `.ops` files from both tiers, warns on lock violations, skips gracefully when no tracker files staged; contribute workspace exclusion (mock git operations, verify workspace files excluded from PR branch)
 
-#### PR 6a: TUI scaffold + compact layout
+#### PR 6a: TUI scaffold + compact layout `[MERGED]` (commit 9d66a29)
 - `tui.py`: `TrackerApp(App)` with dependency-injected `TrackerSet`, `_compute_tier(w, h)` function implementing the tier definitions above, CSS class switching (`compact`/`standard`/`wide`), `on_resize` handler
 - `textual~=3.0` declared as optional dep in PR 1a's pyproject.toml
 - Compact layout: single-pane full-width DataTable, stacked detail on `Enter`, `Esc` returns to list. Minimum-size enforcement (centered "Terminal too small" message below 40×16)
@@ -1455,7 +1455,7 @@ Absorbed into PR 1c. See above.
 - Basic keybindings: `q`, `f`, `e`, `n`, `m`, `d`
 - Tests use Textual's `App.run_test()`/`Pilot` (headless, async via `pytest-asyncio`). Pilot flows at (40, 16) and (50, 18). Too-small test at (30, 10). Unit tests for `_compute_tier()` (all 12 representative sizes) and `_truncate_id()` (each column-width bucket)
 
-#### PR 6b: Standard layout (two-pane)
+#### PR 6b: Standard layout (two-pane) `[MERGED]` (commit 5d4cbbd)
 - Two-pane layout: left DataTable/TreeView, right detail panel, vertical divider
 - Tree/table toggle (`t`)
 - Header filter chips (kind/status/tag/tier) + search bar (at ≥80 cols)
@@ -1467,13 +1467,13 @@ Absorbed into PR 1c. See above.
 - Cross-tier conflict indicator for items with unresolved duplicates (see [Self-Healing Reconciliation](#self-healing-reconciliation))
 - Tests: Pilot flows at (80, 24) and (120, 34). Edit flow, lock toggle (`l`) verify agent write rejected on locked field, discussion panel (`d`) submit message + `D` clear, tier move (`m`) promote/demote, schema-aware rendering (kind with `fields_schema` vs. kind without), tree/table toggle (`t`) selection preservation, filter (`f`) by status/tier
 
-#### PR 6c: Wide layout + dynamic resize
+#### PR 6c: Wide layout + dynamic resize `[MERGED]` (commit 2318a24)
 - Wide enhancements: extra columns (`created_at`, `updated_at`, conflict indicator), longer ID truncation (3–4 syllable pairs), expanded footer with full keybindings, enhanced right panel with secondary section for op log alongside detail, filter chips show active values inline
 - Dynamic resize handler with state preservation (selected item ID, filter state, edit form state preserved; scroll positions reset)
 - "Too small" overlay for < 40×16 (any size → below minimum → all content hidden; resize back → app resumes)
 - Tests: Pilot flow at (160, 45) verifying enhanced columns appear. Dynamic resize tests: (80, 24) → (40, 16) standard→compact with selected item preserved; (80, 24) → (160, 45) standard→wide with extra columns; (40, 16) detail view → (80, 24) compact detail → standard right panel; any size → (30, 10) "too small" shown, resize back → app resumes
 
-#### PR 6d: Snapshot tests (visual regression)
+#### PR 6d: Snapshot tests (visual regression) `[MERGED]` (commit 4e4bb91)
 - `pytest-textual-snapshot` SVG baselines for all three tiers:
   - (40, 16): compact list view
   - (55, 18): compact with status column visible
@@ -1489,7 +1489,7 @@ Absorbed into PR 1c. See above.
   - (30, 10): "too small" message
 - Update with `pytest --snapshot-update`. Compatible with `pytest-xdist`
 
-#### PR 7: Deprecate markdown files
+#### PR 7: Deprecate markdown files `[MERGED]` (commit 77e4dc2)
 - Remove grep fallback from stop_logic.sh
 - Add deprecation notice headers to the old markdown files
 - Final cleanup

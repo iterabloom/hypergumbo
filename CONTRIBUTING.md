@@ -65,6 +65,36 @@ git merge upstream/dev
 git push origin dev
 ```
 
+### Tracker & Fork Workflow
+
+The project uses a YAML-backed structured tracker (see [ADR-0013](docs/adr/0013-structured-tracker.md)) with three visibility tiers: **canonical** (shared with upstream), **workspace** (local to your fork), and **stealth** (never committed).
+
+**Initial setup** (run once after cloning your fork):
+
+```bash
+# Set tracker scope to workspace so your agent isn't blocked by upstream items
+scripts/tracker fork-setup
+```
+
+This sets `stop_hook.scope: workspace` in your local config, meaning the stop hook only counts your workspace items (not upstream's canonical items) when deciding whether the agent can stop.
+
+**How it works:**
+
+- Your agent writes tracker items to `.agent/tracker-workspace/` by default
+- Upstream's canonical items in `.agent/tracker/` are read-only context
+- `./scripts/contribute` automatically excludes workspace files from upstream PRs
+- The pre-push hook warns if you accidentally push workspace files to upstream
+
+**Promoting items to canonical:**
+
+If your workspace item should become part of upstream's tracker (e.g., a discovered invariant that affects the whole project), promote it:
+
+```bash
+scripts/tracker promote <ITEM-ID>
+```
+
+This moves the item from workspace to canonical. Include the promoted item in a separate PR.
+
 ### Maintainers: The Automated Way (Recommended)
 We provide a script that handles pushing, waiting for CI, and merging automatically.
 

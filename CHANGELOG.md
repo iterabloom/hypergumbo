@@ -159,7 +159,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Three-way stop hook logic**: Replaces unconditional blocking with decision logic: TODO blocking, cooldown, or full reflection.
 - **Post-compaction state recovery**: `.agent/last_stop_check.json` captures branch, last PR, pending TODOs, and notes for recovering context.
-- **Pre-push hook for protected branches**: Blocks direct pushes to `dev` and `main` locally.
+- **Pre-push hook for protected branches**: Blocks direct pushes to `dev` and `main` locally. Warns when workspace tracker files are pushed to upstream remote (ADR-0013 PR 8).
+- **Fork workflow hardening (ADR-0013 PR 8)**: End-to-end fork workflow test (fork-setup, workspace writes, promote to canonical). Tracker fork workflow documentation in CONTRIBUTING.md. ADR-0013 PRs 4–7 annotated as `[MERGED]`.
 - **Bakeoff stable artifact paths**: Timestamped session directories under `~/hypergumbo_lab_notebook/bakeoff_artifacts/`. Prior artifacts never overwritten. Convergence status in stop-hook prompts.
 - **Deeper bakeoff slices**: `--max-hops 5` (from 3) with adjusted coverage thresholds.
 - **Updated documentation counts**: Corrected analyzer (67→104), linker (15→18), framework pattern (37→82), convention pattern (4→5) counts across docs.
