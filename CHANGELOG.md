@@ -59,6 +59,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Tracker TUI
 
+- **Textual 7.x upgrade**: Bumped `textual` dependency from `~=3.0` to `~=7.5`. Adapts to the v6.0.0 breaking change: `Static.renderable` → `Static.content`.
 - **Standard two-pane layout (ADR-0013 PR 6b)**: The `tracker tui` command now supports the standard tier (60x20 – 120x38) with a two-pane layout: left panel shows a DataTable or Tree view, right panel shows detail for the highlighted item. Cursor movement auto-updates the detail panel. Tree toggle (`t`) switches between table and parent-child tree view. Filter input (`f`/Escape) narrows items by title, status, tags, or kind. Dynamic resize preserves selection across compact↔standard↔too-small transitions. Compact layout (40x16 – 59x19) continues to use stacked detail (Enter/Esc toggle).
 
 #### Analysis core

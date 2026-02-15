@@ -255,9 +255,13 @@ class TrackerApp(App):
         self._load_items()
 
     def on_resize(self, event: Resize) -> None:
-        """Re-evaluate layout tier when terminal is resized."""
+        """Re-evaluate layout tier when terminal is resized.
+
+        In Textual 7.x, self.size is not yet updated when on_resize fires;
+        the new dimensions are only available via event.size.
+        """
         old_tier = self._layout_tier
-        self._refresh_tier()
+        self._refresh_tier(event.size)
         if not self._items:
             self._load_items()
         elif old_tier != self._layout_tier:
@@ -268,9 +272,15 @@ class TrackerApp(App):
     # Tier / layout management
     # ------------------------------------------------------------------
 
-    def _refresh_tier(self) -> None:
-        """Compute and apply the layout tier based on current terminal size."""
-        w, h = self.size
+    def _refresh_tier(self, size: tuple[int, int] | None = None) -> None:
+        """Compute and apply the layout tier based on terminal size.
+
+        Args:
+            size: Explicit (w, h) to use. When called from on_resize, pass
+                  event.size because self.size is stale in Textual 7.x.
+                  Defaults to self.size (used by on_mount).
+        """
+        w, h = size if size is not None else self.size
         new_tier = _compute_tier(w, h)
         if new_tier != self._layout_tier:
             # Leaving compact detail mode when switching to standard

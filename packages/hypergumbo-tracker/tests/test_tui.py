@@ -405,7 +405,7 @@ class TestCompactLayout:
             await pilot.press("enter")
             await pilot.pause()
             content = app.query_one("#detail-content")
-            text = str(content.renderable)
+            text = str(content.content)
             # All items have these fields
             assert "Title:" in text
             assert "Status:" in text
@@ -481,7 +481,7 @@ class TestTooSmall:
                 await pilot.pause()
             msg = app.query_one("#too-small-msg")
             assert msg.display is True
-            assert "too small" in msg.renderable.lower()
+            assert "too small" in msg.content.lower()
             table = app.query_one("#item-table")
             assert table.display is False
 
@@ -520,7 +520,7 @@ class TestShowDetailDirect:
             item = next(i for i in app._items if i.id == item_id)
             app._show_detail(item)
             content = app.query_one("#detail-content")
-            text = str(content.renderable)
+            text = str(content.content)
             assert "Full detail item" in text
             assert "quality" in text
             assert "A detailed description" in text
@@ -550,7 +550,7 @@ class TestShowDetailDirect:
             await pilot.pause()
             app._show_detail(item)
             content = app.query_one("#detail-content")
-            text = str(content.renderable)
+            text = str(content.content)
             assert "Minimal item" in text
             assert "workspace" in text
 
@@ -571,7 +571,7 @@ class TestShowDetailDirect:
             await pilot.pause()
             app._show_detail(item)
             content = app.query_one("#detail-content")
-            text = str(content.renderable)
+            text = str(content.content)
             assert "unknown" in text
 
 
@@ -776,7 +776,7 @@ class TestStandardLayout:
         async with app.run_test(size=(80, 24)) as pilot:
             await _wait_for_std_table(pilot, app)
             content = app.query_one("#std-detail-content")
-            text = str(content.renderable)
+            text = str(content.content)
             assert "Title:" in text
 
     async def test_cursor_move_updates_detail(self, tracker_set: TrackerSet) -> None:
@@ -787,10 +787,10 @@ class TestStandardLayout:
         async with app.run_test(size=(80, 24)) as pilot:
             await _wait_for_std_table(pilot, app)
             content = app.query_one("#std-detail-content")
-            text_before = str(content.renderable)
+            text_before = str(content.content)
             await pilot.press("down")
             await pilot.pause()
-            text_after = str(content.renderable)
+            text_after = str(content.content)
             # Content should change (different item selected)
             assert text_after != text_before
 
@@ -855,7 +855,7 @@ class TestStandardLayout:
             await pilot.press("down")
             await pilot.pause()
             content = app.query_one("#std-detail-content")
-            text = str(content.renderable)
+            text = str(content.content)
             assert "Title:" in text
 
     async def test_tree_preserves_selection(self, tracker_set: TrackerSet) -> None:
