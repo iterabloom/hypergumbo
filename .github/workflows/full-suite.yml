@@ -416,7 +416,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install pytest pytest-cov pytest-xdist
-          pip install -e "packages/hypergumbo-tracker[dev]"
+          pip install -e "packages/hypergumbo-tracker[dev,tui]"
       - name: Run tests
         id: tests
         run: |
