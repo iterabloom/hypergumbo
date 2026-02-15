@@ -1137,33 +1137,119 @@ The tracker package declares `console_scripts` entry points (`hypergumbo-tracker
 
 ### TUI Design
 
-A single-screen terminal application:
+#### Responsive Layout Rationale
 
-- **Header**: filter chips (kind, status, tag, tier), search bar
-- **Left panel**: DataTable or TreeView (toggle with `t`). Tree groups by parent-child hierarchy. Table is flat and sortable. Each row shows a tier indicator (`[C]`/`[W]`/`[S]`) alongside the item ID.
-- **Right panel**: Detail view showing compiled item state rendered with Rich markup. For kinds with a `fields_schema`, known fields are rendered in declared order with their `description` as a tooltip/label; unknown fields appear in a separate "Other" section below. For kinds without a schema, fields are rendered as a generic key-value list. Locked fields show a lock icon. The operation log is displayed at the bottom of the detail panel (scrollable). Items with discussions exceeding 20 entries show a warning badge (e.g., `[20+ msgs]`).
-- **Footer**: keybinding hints
+Real-world terminals span 40×16 (phone over SSH) to 225×55 (full desktop). A single fixed layout tested only at 80×24 would be unusable on small screens and wasteful on large ones. The TUI uses three responsive layout tiers that adapt to the available terminal size, with a hard minimum of 40×16. Textual lacks CSS media queries, so responsive behavior is programmatic via `Resize` events + CSS class toggling — the idiomatic Textual pattern.
 
-Key bindings:
-| Key | Action |
-|---|---|
-| `q` | Quit |
-| `t` | Toggle tree/table view |
-| `f` | Open filter panel |
-| `e` | Edit status/priority/tags on selected item |
-| `n` | Create new item (in workspace by default) |
-| `p` | Set/change parent |
-| `b` | Set/change `before` ordering |
-| `l` | Toggle lock on field under cursor |
-| `m` | Move item between tiers (promote/demote/stealth/unstealth) |
-| `d` | Open discussion panel (type message as "human") |
-| `shift+d` | Clear discussion history |
+#### Minimum Supported Size
+
+**40×16.** Below this, the TUI hides all interactive content and displays a centered static message: `"Terminal too small (need 40×16, got WxH)"`. No interactive content is rendered until the terminal is resized above the minimum.
+
+#### Layout Tier Definitions
+
+| Tier | Condition | Rationale |
+|------|-----------|-----------|
+| Compact | cols < 60 **OR** rows < 20 | Either dimension too small for two-pane |
+| Wide | cols > 120 **AND** rows > 38 | Extra space for enhanced detail |
+| Standard | *(everything else)* | Two-pane layout fits comfortably |
+
+Evaluation order: compact first (any dimension too small), then wide (both dimensions large), then standard (the default). This ensures no terminal size falls through.
+
+The OR/AND logic handles odd aspect ratios correctly:
+- (100, 18): compact — height is the binding constraint
+- (45, 40): compact — width too narrow for two panes
+- (80, 24): standard — the typical terminal
+- (130, 38): standard — borderline, not enough vertical for wide
+- (225, 55): wide — full desktop
+
+#### Compact Layout
+
+Chrome: 1-row header (app name + scope indicator), 1-row footer (top-3 keys: `q`/`f`/`Enter`). ~4 rows total chrome.
+
+- **List view** (default): Full-width DataTable. Columns: `#` (3 chars), tier indicator (1 char), priority (2 chars), truncated ID (adaptive), title (remaining width). Status column hidden below 55 cols.
+- **Detail view** (`Enter`): Replaces list, full-screen scrollable. Shows title, status, priority, tier, full ID, tags, parent, description, fields (schema-aware), discussion (5 most recent, scrollable). `Esc` returns to list.
+- **No tree toggle** — insufficient width for indentation to be useful.
+
+#### Standard Layout
+
+Chrome: 1-row header (filter chips for kind/status/tag/tier; search bar at ≥80 cols), 1-row footer (up to 6 keybindings). ~4 rows total chrome.
+
+- **Left panel** (40–50% width, min 30 cols): DataTable or TreeView (`t` toggle). Columns: `#`, tier `[C]`/`[W]`/`[S]`, priority, ID (2–3 syllable pairs), status, title.
+- **Right panel** (remaining width): Detail view with Rich markup. For kinds with a `fields_schema`, known fields are rendered in declared order with their `description` as a tooltip/label; unknown fields appear in a separate "Other" section below. For kinds without a schema, fields are rendered as a generic key-value list. Lock icons on locked fields. Op log (scrollable). Discussion badge `[20+ msgs]`.
+- **Vertical divider**: 1 col.
+
+#### Wide Layout
+
+Inherits standard structure with enhancements:
+- **Extra list columns**: `created_at` (date), `updated_at` (date), conflict indicator.
+- **Longer ID truncation**: 3–4 syllable pairs.
+- **Enhanced right panel**: Secondary section for op log alongside detail (both visible simultaneously).
+- **Full keybindings** in footer.
+- **Filter chips** show active values inline.
+
+#### ID Truncation Strategy
+
+Full proquint IDs are 48–53 chars. Truncation by available column width:
+
+| Column width | Display | Example |
+|-------------|---------|---------|
+| ≤ 10 | prefix + 1 syllable pair | `INV-bolil` |
+| 11–20 | prefix + 2 pairs | `INV-bolil-mirid` |
+| 21–32 | prefix + 3–4 pairs | `INV-bolil-mirid-pakim` |
+| > 32 | full or shortest unambiguous | full ID |
+
+Uses the same shortest-unambiguous-prefix logic as the CLI — truncated IDs displayed in the TUI are directly usable as CLI arguments.
+
+#### Dynamic Resize Handling
+
+1. `TrackerApp` maintains a reactive `layout_tier` attribute.
+2. `on_resize` computes new tier from current dimensions. If tier changed, calls `_apply_layout_tier()`.
+3. Layout switching via CSS class toggling: `remove_class("compact", "standard", "wide")` then `add_class(new_tier)`. Three CSS rulesets control visibility and sizing per tier.
+4. Below 40×16: all content hidden, "too small" label shown.
+5. **State preservation**: selected item ID preserved (not row index), filter state preserved, unsaved edit form state preserved. Scroll positions reset on tier change.
+
+#### Keybindings (tier-dependent)
+
+| Key | Action | Compact list | Compact detail | Standard | Wide |
+|-----|--------|-------------|----------------|----------|------|
+| `q` | Quit | ✓ | ✓ | ✓ | ✓ |
+| `Enter` | Open detail / select | ✓ | — | ✓ | ✓ |
+| `Esc` | Back to list | — | ✓ | — | — |
+| `t` | Tree/table toggle | — | — | ✓ | ✓ |
+| `f` | Filter panel | ✓ | ✓ | ✓ | ✓ |
+| `e` | Edit item | ✓ | ✓ | ✓ | ✓ |
+| `n` | New item | ✓ | ✓ | ✓ | ✓ |
+| `p` | Set parent | — | ✓ | ✓ | ✓ |
+| `b` | Set before | — | ✓ | ✓ | ✓ |
+| `l` | Lock toggle | — | ✓ | ✓ | ✓ |
+| `m` | Tier move | ✓ | ✓ | ✓ | ✓ |
+| `d` | Discussion | ✓ | ✓ | ✓ | ✓ |
+| `D` | Clear discussion | — | ✓ | ✓ | ✓ |
+
+In compact mode, `p`/`b`/`l`/`D` require visual context only available in the detail view — disabled in list view, enabled in detail view.
 
 All edits append ops to the YAML file (immediate persistence). When editing `fields` on a kind with a `fields_schema`, the TUI presents known fields as named inputs with type-appropriate widgets (text area for `text`, spinner for `integer` with min/max constraints, multi-line list editor for `list`). Unknown fields are editable via a generic key-value row. Items with unresolved cross-tier conflicts (see [Self-Healing Reconciliation](#self-healing-reconciliation)) show a conflict indicator with resolution options.
 
 #### Testability
 
 The TUI app accepts a dependency-injected `TrackerSet` (wrapping canonical and workspace `Store` instances) so tests can point at `tmp_path` fixtures without touching `.agent/tracker/` on the real filesystem. This also enables safe `pytest-xdist` parallelism. All test fixtures use deterministic `at` timestamps in ops (no `datetime.now()`) to avoid flaky snapshots — the compile path already derives `created_at`/`updated_at` from op timestamps, so freezing time at the op level is sufficient.
+
+**Multi-size test matrix** (replaces single-size 80×24):
+
+| Test size | Tier | Purpose |
+|-----------|------|---------|
+| (30, 10) | too-small | "Terminal too small" message displayed |
+| (40, 16) | compact | Minimum supported; list renders, basic nav |
+| (50, 18) | compact | Phone-typical; ID truncation verified |
+| (80, 24) | standard | Primary flow test size |
+| (120, 34) | standard | Upper-standard; columns scale |
+| (160, 45) | wide | Enhanced columns appear |
+
+**Dynamic resize tests:**
+- (80, 24) → (40, 16): standard→compact, selected item preserved
+- (80, 24) → (160, 45): standard→wide, extra columns appear
+- (40, 16) detail view → (80, 24): compact detail → standard right panel
+- Any size → (30, 10): "too small" shown; resize back → app resumes
 
 ### Stop Hook Migration
 
@@ -1309,7 +1395,7 @@ Migration is idempotent: re-running produces the same IDs (same content → same
 
 ### Implementation Sequence
 
-#### PR 1a: Package scaffold + data model + store + serialization + licensing
+#### PR 1a: Package scaffold + data model + store + serialization + licensing `[MERGED]` (commit 689d78f)
 - Create `packages/hypergumbo-tracker/` with pyproject.toml (including `console_scripts` entry points: `hypergumbo-tracker` → `hypergumbo_tracker.cli:main`, `hypergumbo-tracker-textconv` → `hypergumbo_tracker.cli:textconv_main`), LICENSE (MPL-2.0), src layout, tests dir. All source files carry `# SPDX-License-Identifier: MPL-2.0` headers
 - Update root `LICENSE` with preamble noting per-package licensing
 - Update `CONTRIBUTING.md` to document dual-license structure (MPL-2.0 for tracker, AGPL-3.0-or-later for everything else), SPDX header convention, and that DCO sign-off covers both licenses per-file
@@ -1323,17 +1409,17 @@ Migration is idempotent: re-running produces the same IDs (same content → same
 - `test_yaml_roundtrip.py`: adversarial inputs (`"yes"`, `"null"`, `"3.0"`, `"*bold*"`, strings with colons, leading whitespace, emoji), canonical field order verification (including `actor` field), nonce field presence verification, **nonce-on-every-line verification** (every line of every serialized op carries a `# <nonce>` inline comment matching the `nonce` field value), **flow-style enforcement for list-valued fields in `update` ops** (`add`/`remove` dicts), **CSafeLoader/ruamel.yaml parity** (verify both parsers produce identical Python objects for all op types including adversarial inputs — note: CSafeLoader strips comments, so the nonce-on-every-line comments are not visible on the read path; comments are verified via raw string inspection of the serialized output, not via parsed data)
 - `test_compile_properties.py`: property-based tests using `hypothesis` — generate random op sequences (create followed by random update/discuss/lock/unlock ops with random clocks and timestamps) and verify: (1) idempotency (`compile(ops) == compile(ops)`), (2) permutation invariance (`compile(shuffle(ops)) == compile(ops)`), (3) terminal status consistency (compiled status = status from highest-clock update op that sets it), (4) **duplicate-create resilience** (generate op sequence with two `create` ops sharing the same `data` but different clocks/nonces, verify `compile()` produces the same result as with a single `create` op followed by the same non-`create` ops), (5) **additive-op commutativity** (generate random sequences of `add`/`remove` ops on `tags` with random clocks, verify `compile(shuffle(ops))` produces the same tag set regardless of op order)
 
-#### PR 1b: TrackerSet (multi-tier) + cache
+#### PR 1b: TrackerSet (multi-tier) + cache `[MERGED]` (commit 7e46481)
 - `trackerset.py`: Multi-tier wrapper that instantiates a `Store` per tier (canonical, workspace, stealth), merges reads transparently, resolves cross-tier `parent`/`before` references, routes writes to the correct tier, implements `promote()`/`demote()`/`stealth()`/`unstealth()` (append op + physical file move between directories), `reconcile_reset()` (human-authority — merge ops, delete duplicate, reset counter), **self-healing cross-tier duplicate reconciliation** (follows last tier-movement op when deterministic, flags ambiguous cases with derived `cross_tier_conflict` field, caps reconciliation attempts at 3 per item — see [Self-Healing Reconciliation](#self-healing-reconciliation)), provides unified `ready()` (excludes items with cross-tier conflicts) and scope-aware `count_todos()` (respects `stop_hook.scope` and `blocking_statuses` from config)
 - `cache.py`: SQLite read cache (see [Read Cache](#read-cache-sqlite)) — one cache database per tier in `$XDG_CACHE_HOME/hypergumbo-tracker/<repo-fingerprint>/`. Schema creation (including `source_size` and `tier` columns), incremental byte-offset invalidation (seek to stored `source_size`, parse only new bytes, skip data re-compile for discussion-only appends), write-through upsert on local ops, cold-start rebuild, `cache-rebuild` entry point, `TRACKER_CACHE_DIR` override. All read operations (`list`, `ready`, `count-todos`, `show`) query the cache; writes go to YAML and update the cache row in one step
 - `test_trackerset.py`: multi-tier merged reads (items from canonical + workspace + stealth appear in unified list with correct tier indicators), cross-tier `parent` resolution (workspace item with `parent` pointing to canonical item resolves correctly), cross-tier `before` resolution, `promote` (workspace → canonical: op appended, file physically moved, cache updated in both tiers, ID unchanged), `demote` (canonical → workspace: reverse), `stealth` (workspace → stealth: file moves to gitignored dir), `unstealth` (stealth → workspace), scope-aware `count_todos` (scope=`all` counts canonical + workspace + stealth; scope=`workspace` counts workspace + stealth only; uses `blocking_statuses` from config), `ready` always shows all tiers regardless of scope, **self-healing reconciliation** (cross-tier duplicate with `promote` op → auto-reconciled to canonical with `reconcile` op appended; cross-tier duplicate with `demote` op → auto-reconciled to workspace; cross-tier duplicate with no tier-movement ops → `cross_tier_conflict` flag set, item excluded from `ready`; reconciliation attempt cap: item with 3+ prior `reconcile` ops → stops trying, surfaces persistent error; `reconcile-reset` resets counter and resolves capped items; self-healing is append-only: verify no ops deleted or rewritten during reconciliation), **human-authority enforcement** (agent UID rejected for `lock`, `unlock`, `discuss_clear`, `stealth`, `unstealth`, `reconcile-reset`; agent UID accepted for `promote`, `demote`, `discuss_summarize`, `discuss`, `update`)
 - `test_cache.py`: SQLite cache correctness — write-through (append op, verify cache row updated without re-parse, verify `source_size` updated), mtime invalidation (touch YAML file, verify re-parse on next read), cold start (delete `.cache.db`, verify rebuilt from YAML), corruption recovery (corrupt `.cache.db`, verify rebuilt transparently), stale cache (simulate `git pull` changing file mtimes, verify only changed items re-parsed), cache-vs-YAML consistency (compile from YAML and compare against cache row for all items), **incremental invalidation** (append discuss op to file, verify only new bytes parsed and data fields not re-compiled; append update op to file, verify full re-compile triggered; simulate `merge=union` by appending ops from two simulated branches, verify incremental parse finds all new ops; simulate file truncation/rewrite, verify fallback to full re-parse; verify `source_size` tracking is accurate across append/merge/rewrite scenarios)
 
-#### PR 1c: Validation
+#### PR 1c: Validation + CLI + textconv `[MERGED]` (commit 2574412 — also absorbed PR 3)
 - `validation.py`: schema checks, status validation against config (not a hardcoded enum), dedup (across all tiers), cross-tier duplicate detection, parent ref checks (cross-tier), `before` cycle detection (cross-tier), compiled-state checks (deferred justification, etc.), per-kind `fields_schema` validation (required fields present, type/range checks on known fields, edit-distance typo warnings for unknown fields), **config-vs-template divergence warning** (warn when `config.yaml` has kinds/statuses not in `config.yaml.template`), **flow-style enforcement for list-valued fields in `update` ops**. Must support optional file-path arguments from the start (for incremental pre-commit validation — see [Pre-Commit Validation](#pre-commit-validation)). **Exit codes:** 0 = valid (warnings to stderr), 1 = validation errors, 2 = internal failure
 - Tests: validation pass/fail (including `fields_schema`: required field missing → error, wrong type → error, unknown field with close edit distance → warning with suggestion, unknown field on kind without schema → no warning), **exit code verification** (errors → exit 1, warnings only → exit 0, internal failure → exit 2, `--strict` promotes warnings to exit 1)
 
-#### PR 2: Migration script
+#### PR 2: Migration script `[MERGED]` (commits e471b2e, c12ee34 — migration + bootstrap)
 - `migration.py`: markdown parser, status normalizer, priority assigner (integer tiers), hash-based ID generator (SHA-256 of canonicalized `create` op `data` dict, first 128 bits proquint-encoded), writer
 - Test against actual current content of both markdown files
 - Creates `.agent/tracker/.ops/` (canonical tier) with migrated op log files (each dotfile containing a single `create` op)
@@ -1341,27 +1427,8 @@ Migration is idempotent: re-running produces the same IDs (same content → same
 - Creates empty `.agent/tracker-workspace/` with `.ops/`, `stealth/` dirs and template
 - Tests: parse each markdown format, normalize all status variants, verify parent-child links
 
-#### PR 3: CLI + textconv diff driver
-- `cli.py`: argparse-based CLI with all subcommands (init, add, update, discuss, lock, unlock, promote, demote, stealth, unstealth, show, list, ready, log, validate, migrate, fork-setup, reconcile-reset, cache-rebuild, textconv). No `--as` flag — actor resolved internally via `os.getuid()` (see [Security Model](#security-model)). All `<ID>` arguments accept proquint prefix matching and positional aliases (`:N`). Human-authority ops (`lock`, `unlock`, `discuss --clear`, `stealth`, `unstealth`, `reconcile-reset`) refuse to execute under agent UIDs.
-- `update` subcommand uses `--add-tag`/`--remove-tag`, `--add-before`/`--remove-before`, etc. for set-valued fields (mapped to `add`/`remove` dicts in the op). Scalar fields use `--status`, `--priority`, etc. (mapped to `set` dict).
-- `init`: creates both `.agent/tracker/` and `.agent/tracker-workspace/` with `.ops/` dotdirs, `stealth/` dir; copies `config.yaml.template` → `config.yaml` with human ownership (mode 644); sets up shared group if two-user deployment detected; sets up `.gitignore` entries
-- `add --tier`: defaults to workspace; `--tier canonical` writes to canonical tier. Emits SimHash similarity warning if near-duplicates detected (see [Key Design Decisions](#key-design-decisions)). Supports `--duplicate-of` and `--not-duplicate-of` flags.
-- `promote`/`demote`: delegates to `TrackerSet.promote()`/`demote()` (append op + file move)
-- `stealth`/`unstealth`: delegates to `TrackerSet.stealth()`/`unstealth()` (workspace ↔ stealth)
-- `fork-setup`: detects upstream remote, sets `stop_hook.scope: workspace` in workspace config (human-only — writes to human-owned `config.yaml`; if run by agent, prints required change and exits)
-- `list --tier`: filter by tier; default shows all with `[C]`/`[W]`/`[S]` indicators
-- `ready`: always shows all tiers (scope only affects `count-todos`)
-- `discuss --summarize`: appends `discuss_summarize` op
-- `log <ID>`: prints raw operation log
-- `show <ID>`: prints compiled current state with tier indicator
-- `textconv <FILE>`: emit compact one-line-per-field text representation for git textconv (see [textconv](#local-diff-declutter-textconv))
-- `scripts/tracker`: thin AGPL-3.0 bash wrapper delegating to installed `hypergumbo-tracker` entry point (falls back to `python -m hypergumbo_tracker.cli`). Carries `SPDX-License-Identifier: AGPL-3.0-or-later` header
-- `scripts/tracker-textconv`: thin AGPL-3.0 bash shim delegating to `hypergumbo-tracker-textconv` entry point, falls back to `cat` if tracker package not installed. Carries `SPDX-License-Identifier: AGPL-3.0-or-later` header
-- Update `scripts/install-hooks`: add `git config diff.tracker.textconv scripts/tracker-textconv`
-- `validate --similar`: runs SimHash comparison across all items, reports unflagged pairs, skips `not_duplicate_of` pairs
-- `validate --deep-similar`: additionally runs embedding-based tier 2 if available, falls back gracefully
-- `list` and `ready`: output numbered rows, stash ID list to `.last_list` for positional alias resolution
-- Tests: each subcommand with fixture YAML files, locked field rejection, tier routing (add defaults to workspace, add --tier canonical routes to canonical), promote/demote (verify file moves between directories, op appended, ID unchanged), stealth/unstealth (verify file moves to/from gitignored dir), reconcile-reset (capped item resolved, counter reset, human-authority required), discussion summarization, discussion soft cap warning, `before` ordering in `list` output, `ready` excludes items with incomplete `before` predecessors and items with non-empty `duplicate_of`, `ready --limit` returns top N, `list --tier workspace` filters correctly, fork-setup detection and config write, textconv output format (verify one-line-per-field structure, verify diff of two compiled states is human-readable), textconv graceful fallback when file is malformed, prefix matching via CLI (unique prefix resolves, ambiguous prefix shows candidates), positional alias via CLI (`:1` after `list` resolves correctly, stale `.last_list` warns), `add` similarity warning (create item similar to existing, verify warning on stderr), `validate --similar` (fixture with known similar pairs, verify flagged; fixture with `not_duplicate_of`, verify suppressed), **`update --add-tag`/`--remove-tag`** (verify `add`/`remove` dicts in op, compile produces correct set), `validate` exit codes (exit 0 with warnings, exit 1 with errors, exit 2 on internal failure, `--strict` promotes warnings to errors)
+#### PR 3: CLI + textconv diff driver `[MERGED as part of PR 1c]`
+Absorbed into PR 1c. See above.
 
 #### PR 4: Stop hook integration + CI workflow updates
 - `stop_hook.py`: scope-aware count_todos() (reads `stop_hook.scope` and `blocking_statuses` from config; exit 0 on success, exit 1 on error — stop hook treats non-zero as blocking), hash_todos() (**input spec:** for each item with status in `blocking_statuses` respecting scope, concatenate `id + "\t" + status + "\t" + title + "\n"` sorted by ID, SHA-256 hash the UTF-8 bytes — discussion and fields excluded), generate_guidance()
@@ -1379,12 +1446,48 @@ Migration is idempotent: re-running produces the same IDs (same content → same
 - Update stop_reflect.md, cooldown_prompt.md references
 - Tests: pre-commit validation catches invalid `.ops` files from both tiers, warns on lock violations, skips gracefully when no tracker files staged; contribute workspace exclusion (mock git operations, verify workspace files excluded from PR branch)
 
-#### PR 6: TUI
-- `tui.py`: Textual app with table/tree toggle, detail panel (schema-aware field rendering: known fields in declared order with description tooltips, unknown fields in "Other" section), filter chips (including tier filter), tier indicator column (`[C]`/`[W]`/`[S]`), tier move dialog (`m` key: promote/demote/stealth/unstealth), lock/discussion UI, `before` ordering UI, operation log display, discussion warning badge (`[20+ msgs]`), schema-aware edit form (type-appropriate widgets for known fields: text area, integer spinner with min/max, list editor; generic key-value row for unknown fields), cross-tier conflict indicator for items with unresolved duplicates (see [Self-Healing Reconciliation](#self-healing-reconciliation))
+#### PR 6a: TUI scaffold + compact layout
+- `tui.py`: `TrackerApp(App)` with dependency-injected `TrackerSet`, `_compute_tier(w, h)` function implementing the tier definitions above, CSS class switching (`compact`/`standard`/`wide`), `on_resize` handler
 - `textual~=3.0` declared as optional dep in PR 1a's pyproject.toml
-- Tests use Textual's `App.run_test()`/`Pilot` (headless, async via `pytest-asyncio`). All tests use `run_test(size=(80, 24))` for deterministic layout. Two test tiers:
-  - **Pilot-driven flow tests:** Launch → table loads with tier indicators → selection updates detail pane; toggle table/tree (`t`) → selection stays consistent; open filter (`f`) → apply status filter → table updates; filter by tier → only matching items shown; edit (`e`) → change status → assert op appended to YAML + UI refreshes; lock toggle (`l`) → verify agent write rejected on locked field; discussion panel (`d`) → submit message → assert `discuss` op appended; `shift+d` → clear discussion; tier move (`m`) → promote item → verify file moves from workspace `.ops/` to canonical `.ops/` dir + op appended + tier indicator updates. Uses `run_before` callbacks to reach multi-keystroke states before assertions.
-  - **Snapshot tests (visual regression, added once layout stabilizes):** `pytest-textual-snapshot` SVG baselines for: main screen at 80x24 and 120x40 (showing tier indicators); filter panel open; discussion panel with >20 entries badge; locked-field item with lock icon; tree view with parent-child hierarchy; detail panel for kind with `fields_schema` (known fields in order, "Other" section for unknowns) vs. kind without schema (flat key-value list); tier move dialog. Update with `pytest --snapshot-update`. Compatible with `pytest-xdist`.
+- Compact layout: single-pane full-width DataTable, stacked detail on `Enter`, `Esc` returns to list. Minimum-size enforcement (centered "Terminal too small" message below 40×16)
+- `_truncate_id(full_id, max_width, shortest_unambiguous)` helper implementing the ID truncation strategy above
+- Footer with tier-appropriate keybinding hints (top-3 in compact: `q`/`f`/`Enter`)
+- Basic keybindings: `q`, `f`, `e`, `n`, `m`, `d`
+- Tests use Textual's `App.run_test()`/`Pilot` (headless, async via `pytest-asyncio`). Pilot flows at (40, 16) and (50, 18). Too-small test at (30, 10). Unit tests for `_compute_tier()` (all 12 representative sizes) and `_truncate_id()` (each column-width bucket)
+
+#### PR 6b: Standard layout (two-pane)
+- Two-pane layout: left DataTable/TreeView, right detail panel, vertical divider
+- Tree/table toggle (`t`)
+- Header filter chips (kind/status/tag/tier) + search bar (at ≥80 cols)
+- Schema-aware detail rendering: known fields in declared order with description tooltips, "Other" section for unknown fields, lock icons on locked fields
+- Op log display (scrollable). Discussion badge `[20+ msgs]`
+- Standard keybindings enabled: `t`, `p`, `b`, `l`, `D`
+- Tier indicator column (`[C]`/`[W]`/`[S]`), tier move dialog (`m` key: promote/demote/stealth/unstealth)
+- Schema-aware edit form (type-appropriate widgets for known fields: text area, integer spinner with min/max, list editor; generic key-value row for unknown fields)
+- Cross-tier conflict indicator for items with unresolved duplicates (see [Self-Healing Reconciliation](#self-healing-reconciliation))
+- Tests: Pilot flows at (80, 24) and (120, 34). Edit flow, lock toggle (`l`) verify agent write rejected on locked field, discussion panel (`d`) submit message + `D` clear, tier move (`m`) promote/demote, schema-aware rendering (kind with `fields_schema` vs. kind without), tree/table toggle (`t`) selection preservation, filter (`f`) by status/tier
+
+#### PR 6c: Wide layout + dynamic resize
+- Wide enhancements: extra columns (`created_at`, `updated_at`, conflict indicator), longer ID truncation (3–4 syllable pairs), expanded footer with full keybindings, enhanced right panel with secondary section for op log alongside detail, filter chips show active values inline
+- Dynamic resize handler with state preservation (selected item ID, filter state, edit form state preserved; scroll positions reset)
+- "Too small" overlay for < 40×16 (any size → below minimum → all content hidden; resize back → app resumes)
+- Tests: Pilot flow at (160, 45) verifying enhanced columns appear. Dynamic resize tests: (80, 24) → (40, 16) standard→compact with selected item preserved; (80, 24) → (160, 45) standard→wide with extra columns; (40, 16) detail view → (80, 24) compact detail → standard right panel; any size → (30, 10) "too small" shown, resize back → app resumes
+
+#### PR 6d: Snapshot tests (visual regression)
+- `pytest-textual-snapshot` SVG baselines for all three tiers:
+  - (40, 16): compact list view
+  - (55, 18): compact with status column visible
+  - (50, 18): compact detail view
+  - (80, 24): standard two-pane layout
+  - (80, 24): tree view with parent-child hierarchy
+  - (160, 45): wide layout with enhanced columns
+  - Filter panel open
+  - Discussion badge (`[20+ msgs]`)
+  - Locked-field item with lock icon
+  - Schema-aware detail (known fields in order, "Other" section) vs. generic detail (flat key-value list)
+  - Tier move dialog
+  - (30, 10): "too small" message
+- Update with `pytest --snapshot-update`. Compatible with `pytest-xdist`
 
 #### PR 7: Deprecate markdown files
 - Remove grep fallback from stop_logic.sh
@@ -1416,13 +1519,16 @@ End-to-end after PR 5:
 - Simulate fork workflow: create item in workspace, verify `contribute` excludes it from PR, promote item to canonical, verify it appears in a separate commit
 - Verify `fork-setup` detects upstream remote and sets `stop_hook.scope: workspace`
 
-End-to-end after PR 6:
-- `scripts/tracker tui` launches, displays all items from both tiers in table and tree views with tier indicators
-- Status edits, field locking, discussion threads, tier moves (promote/demote/stealth/unstealth), and `before` ordering all persist correctly
-- Discussion warning badges appear for items with >20 entries
-- Operation log is visible and scrollable in detail panel
-- All Pilot flow tests pass under `run_test(size=(80, 24))` with `tmp_path`-backed `TrackerSet` (no real tracker directory)
-- Snapshot baselines committed and passing (once layout stabilizes)
+End-to-end after PR 6d:
+- `scripts/tracker tui` launches, displays all items from both tiers
+- Responsive tiers verified at representative sizes: (40, 16) compact, (80, 24) standard, (160, 45) wide, below (40, 16) too-small message
+- Dynamic resize: standard→compact preserves selected item; compact detail→standard moves detail to right panel
+- Edits, locking, discussion, tier moves persist at all sizes
+- ID truncation produces readable, prefix-matchable IDs at all widths
+- Discussion badges for >20 entries
+- Op log scrollable in detail panel
+- All Pilot tests pass at multiple sizes with `tmp_path`-backed `TrackerSet`
+- Snapshot baselines committed and passing for all three tiers
 
 End-to-end after PR 8:
 - Full fork lifecycle: fork → clone → fork-setup → agent creates workspace items → contribute (workspace excluded) → promote item → tracker PR → upstream merge → sync fork
