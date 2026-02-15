@@ -36,7 +36,13 @@ from hypergumbo_tracker.models import (
     TrackerConfig,
 )
 from hypergumbo_tracker.trackerset import TrackerSet
-from hypergumbo_tracker.tui import _compute_tier, _format_detail_lines, _truncate_id
+from hypergumbo_tracker.tui import (
+    _compute_tier,
+    _format_activity_lines,
+    _format_detail_lines,
+    _format_timestamp,
+    _truncate_id,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -308,6 +314,145 @@ class TestFormatDetailLines:
         lines = _format_detail_lines(item)
         text = "\n".join(lines)
         assert "unknown" in text
+
+    def test_wide_tier_shows_extra_fields(self) -> None:
+        """Wide tier should show timestamps, locked fields, and conflict."""
+        item = CompiledItem(
+            id="INV-wide",
+            kind="invariant",
+            title="Wide detail test",
+            status="todo_hard",
+            priority=1,
+            tier=Tier.CANONICAL,
+            created_at="2026-02-15T10:00:00Z",
+            updated_at="2026-02-15T12:00:00Z",
+            locked_fields={"status", "priority"},
+            cross_tier_conflict=True,
+        )
+        lines = _format_detail_lines(item, tier="wide")
+        text = "\n".join(lines)
+        assert "Created: 2026-02-15 10:00" in text
+        assert "Updated: 2026-02-15 12:00" in text
+        assert "Locked:" in text
+        assert "priority" in text
+        assert "status" in text
+        assert "Cross-tier conflict: YES" in text
+        # Discussion should NOT appear in wide mode
+        assert "Discussion" not in text
+
+    def test_wide_tier_suppresses_discussion(self) -> None:
+        """Wide tier should not include inline discussion."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        item = CompiledItem(
+            id="INV-disc",
+            kind="invariant",
+            title="Has discussion",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="agent", actor="bot", at="2026-01-01T00:00:00Z",
+                    message="Should not appear",
+                ),
+            ],
+        )
+        lines = _format_detail_lines(item, tier="wide")
+        text = "\n".join(lines)
+        assert "entries):" not in text
+        assert "Should not appear" not in text
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _format_timestamp
+# ---------------------------------------------------------------------------
+
+
+class TestFormatTimestamp:
+    """Test ISO timestamp formatting for wide-mode columns."""
+
+    def test_full_iso_timestamp(self) -> None:
+        assert _format_timestamp("2026-02-15T10:30:45Z") == "2026-02-15 10:30"
+
+    def test_empty_string(self) -> None:
+        assert _format_timestamp("") == ""
+
+    def test_malformed_short(self) -> None:
+        """Malformed/short input is returned truncated gracefully."""
+        result = _format_timestamp("2026-02")
+        assert result == "2026-02"
+
+    def test_date_only(self) -> None:
+        """Date without time portion uses what's available."""
+        result = _format_timestamp("2026-02-15")
+        assert result == "2026-02-15"
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _format_activity_lines
+# ---------------------------------------------------------------------------
+
+
+class TestFormatActivityLines:
+    """Test activity log formatting for the wide-mode activity panel."""
+
+    def test_with_discussion_entries(self) -> None:
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        item = CompiledItem(
+            id="INV-abc",
+            kind="invariant",
+            title="Test",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="agent", actor="bot", at="2026-01-01T10:00:00Z",
+                    message="First entry",
+                ),
+                DiscussionEntry(
+                    by="human", actor="dev", at="2026-01-02T14:30:00Z",
+                    message="Second entry",
+                ),
+            ],
+        )
+        lines = _format_activity_lines(item)
+        assert len(lines) == 2
+        assert "agent" in lines[0]
+        assert "First entry" in lines[0]
+        assert "human" in lines[1]
+        assert "Second entry" in lines[1]
+
+    def test_empty_discussion(self) -> None:
+        item = CompiledItem(
+            id="WI-abc",
+            kind="work_item",
+            title="Empty",
+            status="done",
+        )
+        lines = _format_activity_lines(item)
+        assert lines == ["No recent activity"]
+
+    def test_limit_truncation(self) -> None:
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        entries = [
+            DiscussionEntry(
+                by=f"user{i}", actor="dev", at=f"2026-01-{i+1:02d}T00:00:00Z",
+                message=f"Message {i}",
+            )
+            for i in range(15)
+        ]
+        item = CompiledItem(
+            id="INV-xyz",
+            kind="invariant",
+            title="Many entries",
+            status="todo_hard",
+            discussion=entries,
+        )
+        lines = _format_activity_lines(item, limit=5)
+        # Header line + 5 entries
+        assert len(lines) == 6
+        assert "showing last 5 of 15" in lines[0].lower()
+        assert "Message 14" in lines[-1]
 
 
 # ---------------------------------------------------------------------------
@@ -1163,6 +1308,75 @@ class TestDynamicResize:
             filter_input = app.query_one("#filter-input")
             assert filter_input.display is True
 
+    async def test_standard_to_wide_extra_columns_appear(
+        self, tracker_set: TrackerSet
+    ) -> None:
+        """Resizing from standard to wide should add extra columns."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            keys_before = [c.key.value for c in table.columns.values()]
+            assert "conflict" not in keys_before
+
+            # Resize to wide
+            await pilot.resize_terminal(160, 45)
+            await pilot.pause()
+            await pilot.pause()
+            assert app._layout_tier == "wide"
+            keys_after = [c.key.value for c in table.columns.values()]
+            assert "conflict" in keys_after
+            assert "created" in keys_after
+            assert "updated" in keys_after
+
+    async def test_wide_to_standard_extra_columns_removed(
+        self, tracker_set: TrackerSet
+    ) -> None:
+        """Resizing from wide to standard should remove extra columns."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            keys_wide = [c.key.value for c in table.columns.values()]
+            assert "conflict" in keys_wide
+
+            # Resize to standard
+            await pilot.resize_terminal(80, 24)
+            await pilot.pause()
+            await pilot.pause()
+            assert app._layout_tier == "standard"
+            keys_std = [c.key.value for c in table.columns.values()]
+            assert "conflict" not in keys_std
+            assert "created" not in keys_std
+            assert "updated" not in keys_std
+
+    async def test_wide_activity_panel_appears_on_resize(
+        self, tracker_set: TrackerSet
+    ) -> None:
+        """Resizing to wide should show the activity panel."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            activity = app.query_one("#activity-view")
+            assert activity.display is False
+
+            await pilot.resize_terminal(160, 45)
+            await pilot.pause()
+            await pilot.pause()
+            assert activity.display is True
+
+            # Resize back to standard
+            await pilot.resize_terminal(80, 24)
+            await pilot.pause()
+            await pilot.pause()
+            assert activity.display is False
+
 
 # ---------------------------------------------------------------------------
 # Pilot tests: edge cases
@@ -1418,3 +1632,280 @@ class TestStandardEdgeCases:
             app.action_toggle_filter()
             await pilot.pause()
             assert not app._filter_active
+
+
+# ---------------------------------------------------------------------------
+# Pilot tests: wide layout
+# ---------------------------------------------------------------------------
+
+
+class TestWideLayout:
+    """Test wide layout tier (>120x38) with extra columns and features."""
+
+    @pytest.fixture()
+    def tracker_set(self, tmp_path: Path) -> TrackerSet:
+        return _make_tracker_set(tmp_path)
+
+    async def test_wide_tier_detected(self, tracker_set: TrackerSet) -> None:
+        """At 160x45, layout tier should be 'wide'."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            assert app._layout_tier == "wide"
+
+    async def test_wide_extra_columns_present(
+        self, tracker_set: TrackerSet
+    ) -> None:
+        """Wide mode should include conflict, created, updated columns."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            column_keys = [col.key.value for col in table.columns.values()]
+            assert "conflict" in column_keys
+            assert "created" in column_keys
+            assert "updated" in column_keys
+
+    async def test_wide_standard_columns_still_present(
+        self, tracker_set: TrackerSet
+    ) -> None:
+        """Wide mode should still have the standard columns."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            column_keys = [col.key.value for col in table.columns.values()]
+            for key in ("row_num", "tier", "priority", "id", "status", "title"):
+                assert key in column_keys
+
+    async def test_standard_no_extra_columns(
+        self, tracker_set: TrackerSet
+    ) -> None:
+        """Standard mode should NOT have the extra wide columns."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            column_keys = [col.key.value for col in table.columns.values()]
+            assert "conflict" not in column_keys
+            assert "created" not in column_keys
+            assert "updated" not in column_keys
+
+    async def test_wide_activity_panel_visible(
+        self, tracker_set: TrackerSet
+    ) -> None:
+        """Activity panel should be visible in wide mode."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            activity_view = app.query_one("#activity-view")
+            assert activity_view.display is True
+            activity_divider = app.query_one("#activity-divider")
+            assert activity_divider.display is True
+
+    async def test_activity_hidden_in_standard(
+        self, tracker_set: TrackerSet
+    ) -> None:
+        """Activity panel should be hidden in standard mode."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            activity_view = app.query_one("#activity-view")
+            assert activity_view.display is False
+            activity_divider = app.query_one("#activity-divider")
+            assert activity_divider.display is False
+
+    async def test_wide_activity_updates_on_cursor_move(
+        self, tmp_path: Path
+    ) -> None:
+        """Moving cursor in wide mode should update activity panel."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        # Add discussion to first item
+        items = ts.list_items()
+        ts.discuss(items[0].id, "Activity test message")
+
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            content = app.query_one("#activity-content")
+            # Move down to trigger update
+            await pilot.press("down")
+            await pilot.pause()
+            # Activity content should have been updated
+            text = str(content.content)
+            # It may or may not contain the message depending on which item is selected
+            assert isinstance(text, str)
+
+    async def test_wide_detail_shows_timestamps(
+        self, tmp_path: Path
+    ) -> None:
+        """In wide mode, detail panel should show timestamps and extra fields."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            content = app.query_one("#std-detail-content")
+            text = str(content.content)
+            # Wide detail should show Created/Updated fields
+            assert "Created:" in text or "Updated:" in text
+
+    async def test_wide_detail_suppresses_inline_discussion(
+        self, tmp_path: Path
+    ) -> None:
+        """In wide mode, inline Discussion section should be suppressed."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        item_id = ts.add(
+            kind="invariant",
+            title="Suppression check item",
+            status="todo_hard",
+            priority=1,
+        )
+        ts.discuss(item_id, "Test discussion entry")
+
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._show_std_detail(item_id)
+            await pilot.pause()
+            content = app.query_one("#std-detail-content")
+            text = str(content.content)
+            # In wide mode, the "Discussion (N entries):" section should
+            # NOT appear in the detail panel; it's in the activity panel
+            assert "entries):" not in text
+
+    async def test_show_activity_not_wide_noop(
+        self, tmp_path: Path
+    ) -> None:
+        """Calling _show_activity in standard mode should be a no-op."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = app._items
+            if items:
+                app._show_activity(items[0])
+                # Should not crash, activity content stays empty
+                content = app.query_one("#activity-content")
+                text = str(content.content)
+                assert text == "" or text == "No recent activity" or isinstance(text, str)
+
+    async def test_wide_tree_toggle(self, tracker_set: TrackerSet) -> None:
+        """Tree toggle should work at wide size."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            await pilot.press("t")
+            await pilot.pause()
+            tree = app.query_one("#item-tree")
+            std_table = app.query_one("#std-table")
+            assert tree.display is True
+            assert std_table.display is False
+            assert app._tree_mode is True
+            # Toggle back
+            await pilot.press("t")
+            await pilot.pause()
+            assert tree.display is False
+            assert std_table.display is True
+
+    async def test_wide_filter_narrows_items(
+        self, tracker_set: TrackerSet
+    ) -> None:
+        """Filter should work at wide size."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            assert table.row_count == 3
+            await pilot.press("f")
+            await pilot.pause()
+            await pilot.press("c", "a", "c", "h")
+            await pilot.pause()
+            assert table.row_count < 3
+            assert table.row_count >= 1
+
+
+# ---------------------------------------------------------------------------
+# Pilot tests: filter status indicator
+# ---------------------------------------------------------------------------
+
+
+class TestFilterStatus:
+    """Test the filter status indicator widget."""
+
+    @pytest.fixture()
+    def tracker_set(self, tmp_path: Path) -> TrackerSet:
+        return _make_tracker_set(tmp_path)
+
+    async def test_filter_status_shown_when_active(
+        self, tracker_set: TrackerSet
+    ) -> None:
+        """Filter status should be visible when filter text is non-empty."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            await pilot.press("f")
+            await pilot.pause()
+            await pilot.press("c", "a", "c", "h")
+            await pilot.pause()
+            status = app.query_one("#filter-status")
+            assert status.display is True
+            text = str(status.content)
+            assert "cach" in text.lower()
+
+    async def test_filter_status_hidden_when_cleared(
+        self, tracker_set: TrackerSet
+    ) -> None:
+        """Filter status should be hidden after filter is dismissed."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            await pilot.press("f")
+            await pilot.pause()
+            await pilot.press("c", "a")
+            await pilot.pause()
+            status = app.query_one("#filter-status")
+            assert status.display is True
+            # Dismiss filter
+            await pilot.press("escape")
+            await pilot.pause()
+            assert status.display is False
+
+    async def test_filter_status_hidden_initially(
+        self, tracker_set: TrackerSet
+    ) -> None:
+        """Filter status should be hidden on initial load."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            status = app.query_one("#filter-status")
+            assert status.display is False

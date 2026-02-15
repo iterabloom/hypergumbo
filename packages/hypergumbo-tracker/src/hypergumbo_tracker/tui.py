@@ -11,7 +11,9 @@ items. The layout adapts to terminal size using a tier system:
   and right detail panel. Cursor movement auto-updates the detail view.
   Tree toggle (t) switches between DataTable and Tree. Filter (f) narrows
   items by title, status, tags, or kind.
-- wide (> 120x38): Falls through to standard (future PR)
+- wide (> 120x38): Extra DataTable columns (created, updated, conflict),
+  longer proquint IDs, split right panel with activity log below detail,
+  filter status indicator. Dynamic resize transitions between standard↔wide.
 
 Two separate DataTable instances exist for compact (#item-table) and standard
 (#std-table) to avoid reparenting complexity. Both use _populate_table() for
@@ -101,6 +103,48 @@ def _truncate_id(full_id: str, max_width: int) -> str:
     return full_id[:max_width - 1] + "…"
 
 
+def _format_timestamp(iso_ts: str) -> str:
+    """Convert ISO 8601 timestamp to compact display format.
+
+    Converts ``"2026-02-15T10:30:45Z"`` → ``"2026-02-15 10:30"``.
+    Returns ``""`` for empty input.  Short/malformed strings are returned
+    as-is (graceful truncation).
+    """
+    if not iso_ts:
+        return ""
+    # Replace 'T' separator and truncate to minute precision
+    readable = iso_ts.replace("T", " ")
+    # "2026-02-15 10:30:45Z" → take first 16 chars "2026-02-15 10:30"
+    if len(readable) >= 16:
+        return readable[:16]
+    return readable.rstrip("Z")
+
+
+def _format_activity_lines(item: CompiledItem, limit: int = 10) -> list[str]:
+    """Format discussion entries as compact activity log lines.
+
+    Returns a list of lines like ``"2026-02-15 10:30 [agent]: message"``.
+    When discussion has more than *limit* entries, shows only the last
+    *limit* with a ``"showing last N of M"`` header.  Returns
+    ``["No recent activity"]`` when discussion is empty.
+    """
+    if not item.discussion:
+        return ["No recent activity"]
+
+    entries = item.discussion
+    lines: list[str] = []
+
+    if len(entries) > limit:
+        lines.append(f"(showing last {limit} of {len(entries)} entries)")
+        entries = entries[-limit:]
+
+    for entry in entries:
+        ts = _format_timestamp(entry.at)
+        lines.append(f"{ts} [{entry.by}]: {entry.message}")
+
+    return lines
+
+
 _TIER_INDICATOR = {
     Tier.CANONICAL: "C",
     Tier.WORKSPACE: "W",
@@ -108,11 +152,15 @@ _TIER_INDICATOR = {
 }
 
 
-def _format_detail_lines(item: CompiledItem) -> list[str]:
+def _format_detail_lines(item: CompiledItem, tier: str = "standard") -> list[str]:
     """Format a CompiledItem into lines for detail display.
 
-    Used by both compact (stacked) and standard (side-panel) detail views.
+    Used by both compact (stacked) and standard/wide (side-panel) detail views.
     Returns a list of lines suitable for joining with newlines.
+
+    When *tier* is ``"wide"``, shows timestamps, locked fields, and conflict
+    status in the detail panel, but suppresses the inline discussion section
+    (the activity panel handles it instead).
     """
     lines: list[str] = []
     lines.append(f"Title: {item.title}")
@@ -122,6 +170,16 @@ def _format_detail_lines(item: CompiledItem) -> list[str]:
 
     tier_str = item.tier.value if item.tier else "unknown"
     lines.append(f"Tier: {tier_str}")
+
+    if tier == "wide":
+        if item.created_at:
+            lines.append(f"Created: {_format_timestamp(item.created_at)}")
+        if item.updated_at:
+            lines.append(f"Updated: {_format_timestamp(item.updated_at)}")
+        if item.locked_fields:
+            lines.append(f"Locked: {', '.join(sorted(item.locked_fields))}")
+        if item.cross_tier_conflict:
+            lines.append("Cross-tier conflict: YES")
 
     if item.tags:
         lines.append(f"Tags: {', '.join(item.tags)}")
@@ -133,7 +191,8 @@ def _format_detail_lines(item: CompiledItem) -> list[str]:
         lines.append("\nFields:")
         for k, v in item.fields.items():
             lines.append(f"  {k}: {v}")
-    if item.discussion:
+    # In wide mode, discussion is shown in the activity panel
+    if tier != "wide" and item.discussion:
         lines.append(f"\nDiscussion ({len(item.discussion)} entries):")
         for entry in item.discussion[-5:]:
             lines.append(f"  [{entry.at}] {entry.by}: {entry.message}")
@@ -149,13 +208,17 @@ def _format_detail_lines(item: CompiledItem) -> list[str]:
 class TrackerApp(App):
     """Textual TUI for the hypergumbo tracker.
 
-    Two layout tiers are fully implemented:
+    Three layout tiers are fully implemented:
 
     - **compact** (40x16 - 59x19): Single DataTable (#item-table) with
       stacked detail view (Enter/Esc).
     - **standard** (60x20 - 120x38): Two-pane layout -- left panel holds
       a DataTable (#std-table) or Tree (#item-tree), right panel shows
       detail for the highlighted item. Filter input (f) narrows items.
+    - **wide** (>120x38): Standard layout enhanced with extra DataTable
+      columns (conflict, created, updated), longer proquint IDs, split
+      right panel with activity log below detail, and filter status
+      indicator.
     """
 
     DEFAULT_CSS = """
@@ -202,8 +265,27 @@ class TrackerApp(App):
         height: 1;
     }
 
-    #std-detail-view {
+    #filter-status {
+        display: none;
+        dock: top;
+        height: 1;
+    }
+
+    #right-panel {
         width: 1fr;
+    }
+
+    #std-detail-view {
+        overflow-y: auto;
+    }
+
+    #activity-divider {
+        display: none;
+    }
+
+    #activity-view {
+        display: none;
+        height: 40%;
         overflow-y: auto;
     }
     """
@@ -235,18 +317,24 @@ class TrackerApp(App):
         yield Header()
         yield Static("Terminal too small", id="too-small-msg")
         yield Input(placeholder="Filter...", id="filter-input")
+        yield Static("", id="filter-status")
         # Compact-only widgets
         yield DataTable(id="item-table", cursor_type="row")
         yield VerticalScroll(Static("", id="detail-content"), id="detail-view")
-        # Standard two-pane widgets
+        # Standard/wide two-pane widgets
         with Horizontal(id="two-pane"):
             with Vertical(id="left-panel"):
                 yield DataTable(id="std-table", cursor_type="row")
                 yield Tree("Items", id="item-tree")
             yield Rule(orientation="vertical", id="divider")
-            yield VerticalScroll(
-                Static("", id="std-detail-content"), id="std-detail-view"
-            )
+            with Vertical(id="right-panel"):
+                yield VerticalScroll(
+                    Static("", id="std-detail-content"), id="std-detail-view"
+                )
+                yield Rule(id="activity-divider")
+                yield VerticalScroll(
+                    Static("", id="activity-content"), id="activity-view"
+                )
         yield Footer()
 
     def on_mount(self) -> None:
@@ -315,11 +403,21 @@ class TrackerApp(App):
         msg.display = False
 
         if self._layout_tier in ("standard", "wide"):
-            # Standard two-pane layout
+            # Standard/wide two-pane layout
             table.display = False
             detail.display = False
             two_pane.display = True
             filter_input.display = self._filter_active
+
+            # Activity panel: visible only in wide mode
+            activity_view = self.query_one("#activity-view")
+            activity_divider = self.query_one("#activity-divider")
+            if self._layout_tier == "wide":
+                activity_view.display = True
+                activity_divider.display = True
+            else:
+                activity_view.display = False
+                activity_divider.display = False
 
             # Tree/table toggle within left panel
             std_table = self.query_one("#std-table", DataTable)
@@ -381,16 +479,19 @@ class TrackerApp(App):
                 result.append(item)
         return result
 
-    def _populate_table(self, table: DataTable, width: int) -> None:
-        """Populate a DataTable with items, adapting columns to width.
+    def _populate_table(self, table: DataTable, width: int, tier: str) -> None:
+        """Populate a DataTable with items, adapting columns to width and tier.
 
-        Shared by both compact (#item-table) and standard (#std-table).
+        Shared by both compact (#item-table) and standard/wide (#std-table).
         Standard always shows the status column; compact only at width >= 55.
+        Wide mode adds conflict, created, and updated columns after title,
+        and widens the ID column.
         """
         items = self._filtered_items()
         table.clear(columns=True)
 
         is_standard = table.id == "std-table"
+        is_wide = tier == "wide"
         show_status = is_standard or width >= 55
 
         table.add_column("#", key="row_num")
@@ -399,13 +500,19 @@ class TrackerApp(App):
 
         id_width = min(max(10, width // 4), 35)
         if is_standard:
-            id_width = min(max(15, width // 3), 35)
+            id_cap = 45 if is_wide else 35
+            id_width = min(max(15 if not is_wide else 20, width // 3), id_cap)
         table.add_column("ID", key="id")
 
         if show_status:
             table.add_column("Status", key="status")
 
         table.add_column("Title", key="title")
+
+        if is_wide:
+            table.add_column("Conflict", key="conflict")
+            table.add_column("Created", key="created")
+            table.add_column("Updated", key="updated")
 
         for idx, item in enumerate(items):
             tier_char = _TIER_INDICATOR.get(item.tier, "?") if item.tier else "?"
@@ -421,6 +528,11 @@ class TrackerApp(App):
                 row.append(item.status)
             row.append(item.title)
 
+            if is_wide:
+                row.append("\u26a0" if item.cross_tier_conflict else "")
+                row.append(_format_timestamp(item.created_at))
+                row.append(_format_timestamp(item.updated_at))
+
             table.add_row(*row, key=item.id)
 
         if items:
@@ -430,13 +542,13 @@ class TrackerApp(App):
         """Populate the compact DataTable."""
         table = self.query_one("#item-table", DataTable)
         w, _ = self.size
-        self._populate_table(table, w)
+        self._populate_table(table, w, self._layout_tier)
 
     def _load_std_table(self) -> None:
-        """Populate the standard DataTable."""
+        """Populate the standard/wide DataTable."""
         table = self.query_one("#std-table", DataTable)
         w, _ = self.size
-        self._populate_table(table, w)
+        self._populate_table(table, w, self._layout_tier)
 
     def _load_tree(self) -> None:
         """Build tree from parent-child hierarchy using self._items."""
@@ -500,13 +612,30 @@ class TrackerApp(App):
         self._apply_layout()
 
     def _show_std_detail(self, item_id: str) -> None:
-        """Update the standard right-panel detail for the given item ID."""
+        """Update the standard/wide right-panel detail for the given item ID.
+
+        In wide mode, passes the tier to _format_detail_lines (to suppress
+        inline discussion) and updates the activity panel.
+        """
         item = next((i for i in self._items if i.id == item_id), None)
         if not item:
             return
         self._selected_item_id = item_id
-        lines = _format_detail_lines(item)
+        lines = _format_detail_lines(item, tier=self._layout_tier)
         content = self.query_one("#std-detail-content", Static)
+        content.update("\n".join(lines))
+        if self._layout_tier == "wide":
+            self._show_activity(item)
+
+    def _show_activity(self, item: CompiledItem) -> None:
+        """Populate the activity panel with discussion entries.
+
+        Only effective in wide mode; in other tiers this is a no-op.
+        """
+        if self._layout_tier != "wide":
+            return
+        lines = _format_activity_lines(item)
+        content = self.query_one("#activity-content", Static)
         content.update("\n".join(lines))
 
     # ------------------------------------------------------------------
@@ -548,11 +677,21 @@ class TrackerApp(App):
         self._show_std_detail(str(event.node.data))
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        """Update filter and reload table when filter input changes."""
+        """Update filter and reload table when filter input changes.
+
+        Also shows/hides the filter status indicator based on whether
+        there is active filter text.
+        """
         if event.input.id != "filter-input":
             return
         self._filter_text = event.value
         self._reload_active_table()
+        filter_status = self.query_one("#filter-status", Static)
+        if event.value:
+            filter_status.update(f"Filtering: {event.value}")
+            filter_status.display = True
+        else:
+            filter_status.display = False
 
     # ------------------------------------------------------------------
     # Actions
@@ -591,10 +730,11 @@ class TrackerApp(App):
             self.query_one("#filter-input", Input).focus()
 
     def _dismiss_filter(self) -> None:
-        """Hide filter input, clear filter text, and reload."""
+        """Hide filter input, clear filter text, hide status, and reload."""
         self._filter_active = False
         self._filter_text = ""
         filter_input = self.query_one("#filter-input", Input)
         filter_input.value = ""
+        self.query_one("#filter-status", Static).display = False
         self._apply_layout()
         self._reload_active_table()
