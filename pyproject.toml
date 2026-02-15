@@ -5,6 +5,8 @@
 [tool.pytest.ini_options]
 # Include BRANCHES_*.py files for branch coverage tests (default is test_*.py and *_test.py)
 python_files = ["test_*.py", "*_test.py", "BRANCHES_*.py"]
+# Required for hypergumbo-tracker's Textual TUI tests (async pilot tests)
+asyncio_mode = "auto"
 # Filter expected warnings from tests
 filterwarnings = [
     # tree-sitter unavailability in fallback tests
