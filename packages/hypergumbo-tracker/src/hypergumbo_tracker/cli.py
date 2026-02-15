@@ -17,7 +17,7 @@ Design rationale:
 - --json global flag for machine-readable output.
 - --tracker-root global option defaults to .agent/ (nearest ancestor).
 - Exit codes: 0 = success, 1 = user error, 2 = internal error.
-- Stub for tui (future PR).
+- TUI subcommand launches Textual app (requires textual optional dep).
 
 See ADR-0013 for the full design specification.
 """
@@ -635,10 +635,16 @@ def _cmd_migrate(args: argparse.Namespace) -> int:
     return EXIT_SUCCESS if not result.errors else EXIT_USER_ERROR
 
 
-def _cmd_tui(args: argparse.Namespace) -> int:
-    """Handle 'tui' subcommand — stub."""
-    print("not yet implemented (PR 5)", file=sys.stderr)
-    return EXIT_USER_ERROR
+def _cmd_tui(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Handle 'tui' subcommand — launch Textual TUI."""
+    try:
+        from hypergumbo_tracker.tui import TrackerApp
+    except ImportError:
+        print("TUI requires textual: pip install hypergumbo-tracker[tui]", file=sys.stderr)
+        return EXIT_USER_ERROR
+    app = TrackerApp(tracker_set=ts)
+    app.run()
+    return EXIT_SUCCESS
 
 
 # ---------------------------------------------------------------------------
@@ -800,7 +806,7 @@ def _build_parser() -> argparse.ArgumentParser:
                            help="Report what would be done without writing files")
 
     # --- tui ---
-    sub.add_parser("tui", help="Launch TUI (not yet implemented)")
+    sub.add_parser("tui", help="Launch interactive TUI (requires textual)")
 
     return parser
 
@@ -824,8 +830,6 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(_cmd_init(args))
     if args.command == "migrate":
         raise SystemExit(_cmd_migrate(args))
-    if args.command == "tui":
-        raise SystemExit(_cmd_tui(args))
 
     # Discover tracker root
     try:
@@ -869,6 +873,7 @@ def main(argv: list[str] | None = None) -> None:
         "cache-rebuild": _cmd_cache_rebuild,
         "reconcile-reset": _cmd_reconcile_reset,
         "fork-setup": _cmd_fork_setup,
+        "tui": _cmd_tui,
     }
 
     handler = handler_map.get(args.command)

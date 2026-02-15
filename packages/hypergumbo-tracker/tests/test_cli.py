@@ -259,11 +259,11 @@ class TestStubCommands:
         assert exc.value.code == EXIT_SUCCESS
         assert "created 0 items" in capsys.readouterr().out
 
-    def test_tui(self, capsys: pytest.CaptureFixture) -> None:
+    def test_tui_needs_tracker_root(self, capsys: pytest.CaptureFixture) -> None:
+        """TUI requires a tracker root (.agent/ directory) to be found."""
         with pytest.raises(SystemExit) as exc:
-            main(["tui"])
+            main(["--tracker-root", "/nonexistent/path", "tui"])
         assert exc.value.code == EXIT_USER_ERROR
-        assert "not yet implemented" in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------------

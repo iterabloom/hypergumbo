@@ -31,6 +31,7 @@ dev = [
   "pytest~=9.0.2",
   "pytest-cov~=7.0.0",
   "pytest-xdist~=3.8.0",
+  "pytest-asyncio>=1.0",
   "hypothesis~=6.100",
 ]
 
@@ -42,6 +43,7 @@ hypergumbo-tracker-textconv = "hypergumbo_tracker.cli:textconv_main"
 packages = ["src/hypergumbo_tracker"]
 
 [tool.pytest.ini_options]
+asyncio_mode = "auto"
 filterwarnings = []
 
 [tool.coverage.run]
