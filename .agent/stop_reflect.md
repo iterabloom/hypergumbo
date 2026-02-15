@@ -10,15 +10,21 @@ State what the last change was and why it was made.
 For each remaining signal, state the violated invariant:
 > "In this system, X must always be true because Y depends on it."
 
-Check the ledger:
+Check via tracker CLI (preferred) or ledger grep (fallback):
 ```bash
+# Tracker CLI (structured — use this when available):
+scripts/tracker count-todos --hard 2>/dev/null || echo "tracker unavailable"
+scripts/tracker count-todos --soft 2>/dev/null || echo "tracker unavailable"
+scripts/tracker ready 2>/dev/null | head -10  # actionable items by priority
+
+# Ledger grep (fallback — for invariants not yet migrated):
 cat .agent/invariant-ledger.md 2>/dev/null | grep -E '^- \*\*Status:\*\* (UNFIXED|PARTIALLY ADDRESSED|TBD|[0-9]+%)' | grep -v '100%' || true
 ```
 This catches:
 - Regular invariants: UNFIXED, PARTIALLY ADDRESSED, TBD
 - Meta-invariants: Any percentage below 100%
 
-If items show, read the full ledger for context and Notes fields.
+If items show, read details with `scripts/tracker show <ID>` or the full ledger for context.
 
 Also check for pending work items (both files, both flavors):
 ```bash

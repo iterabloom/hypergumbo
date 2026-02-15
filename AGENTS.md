@@ -30,6 +30,23 @@
     - `./scripts/loop-toggle status` - Show current mode
   - Backward compatibility: TRUE is treated as BROAD.
 
+## Tracker (Structured Governance)
+The project uses a YAML-backed structured tracker (ADR-0013) in `.agent/tracker/`. Key rules:
+
+- **Agent Context Protection:** Always use `scripts/tracker show <ID>` or `scripts/tracker show <ID> --json` to read tracker item state. Always refuse to read files ending in `.ops`. These are internal operation logs that will pollute your context window with historical data you don't need. The CLI compiles ops into current state — that's what you want.
+- **Task Selection:** Use `scripts/tracker ready` (not `list`) to pick your next work item. `ready` filters to actionable items sorted by priority.
+- **Commit Convention:** Tracker-only changes use a `tracker:` conventional-commit prefix:
+  ```
+  tracker: close INV-lusab, update 3 work items
+  tracker: batch status updates for completed invariants
+  ```
+- **Batching:** Batch tracker operations into fewer commits rather than committing after every `scripts/tracker update` call. Perform all tracker updates for a logical unit of work, then commit once with a summary message.
+- **Branch Hygiene:** Feature branches are deleted (local + remote) after merge by `auto-pr`. This keeps the scoped Lamport clock branch set small.
+- **History Filtering:** To view history without tracker noise:
+  ```bash
+  git log --oneline -- ':!.agent/tracker/.ops' ':!.agent/tracker-workspace/.ops'
+  ```
+
 ## No Weasel Words
 When documenting status, coverage, or completion:
 - **BANNED:** "all known issues", "no known problems", "all identified cases"

@@ -157,14 +157,43 @@ fi
 echo ""
 
 # ------------------------------------------------------------------
+# Exclude workspace tracker data from upstream PR
+# ------------------------------------------------------------------
+WORKSPACE_FILES=$(git diff dev..HEAD --name-only -- '.agent/tracker-workspace/' 2>/dev/null || true)
+PUSH_BRANCH="$BRANCH"
+if [[ -n "$WORKSPACE_FILES" ]]; then
+    echo "━━━ Workspace Exclusion ━━━"
+    WORKSPACE_COUNT=$(echo "$WORKSPACE_FILES" | wc -l | tr -d ' ')
+    echo -e "${YELLOW}!${NC} Stripping $WORKSPACE_COUNT workspace file(s) from PR push"
+    echo "  (your local branch is unchanged — workspace stays in your fork)"
+
+    # Create a temp branch, reset workspace files to upstream state, push that
+    CLEAN_BRANCH="${BRANCH}__upstream-clean"
+    git checkout -b "$CLEAN_BRANCH" 2>/dev/null
+    # Restore workspace to upstream/dev state (or remove if new)
+    git checkout upstream/dev -- .agent/tracker-workspace/ 2>/dev/null \
+        || git rm -r --cached .agent/tracker-workspace/ 2>/dev/null || true
+    git commit -m "chore: exclude workspace from upstream PR" --allow-empty --no-verify 2>/dev/null || true
+    PUSH_BRANCH="$CLEAN_BRANCH"
+    echo -e "${GREEN}✓${NC} Workspace files excluded"
+    echo ""
+fi
+
+# ------------------------------------------------------------------
 # Push to fork
 # ------------------------------------------------------------------
 echo "━━━ Pushing to Fork ━━━"
 
 git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
-    push -u origin "$BRANCH" --force-with-lease
+    push -u origin "$PUSH_BRANCH:$BRANCH" --force-with-lease
 
 echo -e "${GREEN}✓${NC} Pushed to $FORK_SLUG:$BRANCH"
+
+# Clean up temp branch if workspace exclusion was used
+if [[ "$PUSH_BRANCH" != "$BRANCH" ]]; then
+    git checkout "$BRANCH" 2>/dev/null
+    git branch -D "$PUSH_BRANCH" 2>/dev/null || true
+fi
 echo ""
 
 # ------------------------------------------------------------------

@@ -631,6 +631,8 @@ cleanup_local() {
 	while [[ $attempt -le $max_attempts ]]; do
 		if git pull origin "$base"; then
 			git branch -d "$branch" 2>/dev/null || true
+			# Delete remote branch (keeps Lamport clock branch set small)
+			git push origin --delete "$branch" 2>/dev/null || true
 			return 0
 		fi
 
