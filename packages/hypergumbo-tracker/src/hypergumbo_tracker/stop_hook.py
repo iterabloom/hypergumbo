@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: MPL-2.0
 """Stop hook helpers for the hypergumbo tracker.
 
-Provides count_todos and hash_todos functions used by the stop hook
-governance system. These functions wrap TrackerSet with fail-closed
-semantics: all exceptions are caught and result in exit code 1,
+Provides count_todos, hash_todos, and generate_guidance functions used
+by the stop hook governance system. These functions wrap TrackerSet with
+fail-closed semantics: all exceptions are caught and result in exit code 1,
 preventing silent governance failures.
 
 Design rationale:
@@ -14,13 +14,18 @@ Design rationale:
   This matches the **TODO!** (hard) vs **TODO** (soft) convention.
 - hash_todos provides a fingerprint for circuit-breaker detection:
   if the hash hasn't changed between stop attempts, no progress was made.
+- generate_guidance writes a markdown file listing blocking items sorted
+  by priority. This replaces the grep-based guidance generation in
+  stop_logic.sh (Phase 1: dual-mode with grep fallback).
 
 See ADR-0013 for the full design specification.
 """
 
 from __future__ import annotations
 
+import datetime
 import hashlib
+import os
 import sys
 from pathlib import Path
 
@@ -168,6 +173,137 @@ def hash_todos_safe(tracker_root: Path) -> str | None:
     except Exception:
         print(
             "hypergumbo-tracker: hash-todos failed (fail-closed)",
+            file=sys.stderr,
+        )
+        return None
+
+
+def generate_guidance(
+    tracker_root: Path,
+    *,
+    guidance_dir: Path | None = None,
+    config: TrackerConfig | None = None,
+) -> str:
+    """Generate guidance markdown listing blocking items.
+
+    Loads the tracker, collects all blocking items respecting scope,
+    splits into hard/soft groups, sorts by priority then ID, and
+    writes a markdown file to guidance_dir.
+
+    Args:
+        tracker_root: Path to the .agent/ directory.
+        guidance_dir: Directory to write guidance file. Defaults to
+            ~/hypergumbo_lab_notebook/guidance_log/.
+        config: Optional TrackerConfig. Loaded from tracker_root if None.
+
+    Returns:
+        Absolute path to the generated guidance file.
+    """
+    if config is None:
+        config = load_config(tracker_root / "tracker")
+
+    if guidance_dir is None:
+        guidance_dir = (
+            Path(os.environ.get("HOME", str(Path.home())))
+            / "hypergumbo_lab_notebook"
+            / "guidance_log"
+        )
+
+    guidance_dir.mkdir(parents=True, exist_ok=True)
+
+    ts = TrackerSet(tracker_root, config=config)
+    hard_statuses = _filter_blocking_statuses(
+        config.blocking_statuses, hard=True,
+    )
+    soft_statuses = _filter_blocking_statuses(
+        config.blocking_statuses, soft=True,
+    )
+
+    tiers_to_check: list[Tier]
+    if config.scope == "workspace":
+        tiers_to_check = [Tier.WORKSPACE, Tier.STEALTH]
+    else:
+        tiers_to_check = list(Tier)
+
+    from hypergumbo_tracker.models import CompiledItem
+
+    hard_items: list[CompiledItem] = []
+    soft_items: list[CompiledItem] = []
+
+    for t in tiers_to_check:
+        store = ts._tier_stores[t]
+        for item in store._compile_all():
+            if item.status in hard_statuses:
+                hard_items.append(item)
+            elif item.status in soft_statuses:
+                soft_items.append(item)
+
+    # Sort by priority (ascending — P0 first) then ID for stability
+    hard_items.sort(key=lambda i: (i.priority, i.id))
+    soft_items.sort(key=lambda i: (i.priority, i.id))
+
+    # Build guidance markdown
+    timestamp = datetime.datetime.now(tz=datetime.timezone.utc)
+    filename = f"stop_guidance_{timestamp.strftime('%m%d%Y_%H%M')}.md"
+    filepath = guidance_dir / filename
+
+    lines: list[str] = []
+    lines.append(f"# Stop Hook Guidance — {timestamp.strftime('%Y-%m-%dT%H:%M:%SZ')}")
+    lines.append("")
+    lines.append("## Status")
+    lines.append(f"- Hard TODO Items: {len(hard_items)}")
+    lines.append(f"- Soft TODO Items: {len(soft_items)}")
+    lines.append("")
+
+    if hard_items:
+        lines.append("## Hard TODO Items (TODO! — investigate deeply, assume structural)")
+        for item in hard_items:
+            tier_str = item.tier.value if item.tier else "unknown"
+            lines.append(
+                f"- [{item.id}] P{item.priority} {item.title} "
+                f"(status: {item.status}, tier: {tier_str})"
+            )
+        lines.append("")
+
+    if soft_items:
+        lines.append("## Soft TODO Items (TODO — address or defer freely)")
+        for item in soft_items:
+            tier_str = item.tier.value if item.tier else "unknown"
+            lines.append(
+                f"- [{item.id}] P{item.priority} {item.title} "
+                f"(status: {item.status}, tier: {tier_str})"
+            )
+        lines.append("")
+
+    lines.append("## Guidance")
+    lines.append(
+        "TODO! items: investigate deeply, assume structural. "
+        "Fix or explicitly DEFER with justification."
+    )
+    lines.append(
+        "TODO items: address or defer freely. "
+        "OK to defer if higher-priority work exists."
+    )
+    lines.append("")
+
+    filepath.write_text("\n".join(lines))
+    return str(filepath.resolve())
+
+
+def generate_guidance_safe(
+    tracker_root: Path,
+    *,
+    guidance_dir: Path | None = None,
+) -> str | None:
+    """Fail-closed wrapper around generate_guidance.
+
+    Returns None on error (caller should treat as "blocked").
+    """
+    try:
+        return generate_guidance(tracker_root, guidance_dir=guidance_dir)
+    except Exception:
+        print(
+            "hypergumbo-tracker: generate-guidance failed (fail-closed)",
             file=sys.stderr,
         )
         return None

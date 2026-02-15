@@ -57,13 +57,22 @@ jobs:
 
           # Check if any non-doc files changed
           # Docs: *.md, docs/**, LICENSE, .gitignore, etc.
-          CODE_PATTERNS='\.py$|\.yaml$|\.yml$|\.json$|\.toml$|pyproject\.toml|scripts/|\.github/workflows/'
+          # Note: YAML files in .agent/tracker(-workspace)/ are tracker data,
+          # not code — they should not trigger expensive test jobs.
+          CODE_PATTERNS='\.py$|\.json$|\.toml$|pyproject\.toml|scripts/|\.github/workflows/'
+          YAML_PATTERN='\.ya?ml$'
+          TRACKER_DATA='^\.agent/tracker(-workspace)?/'
 
-          if git diff --name-only "$base" "$head" | grep -qE "$CODE_PATTERNS"; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
+          CHANGED=$(git diff --name-only "$base" "$head")
+          has_code=false
+          echo "$CHANGED" | grep -qE "$CODE_PATTERNS" && has_code=true
+          # YAML files count as code UNLESS they're tracker data
+          echo "$CHANGED" | grep -E "$YAML_PATTERN" | grep -vqE "$TRACKER_DATA" 2>/dev/null && has_code=true
+          echo "code=$has_code" >> "$GITHUB_OUTPUT"
+
+          if [ "$has_code" = "true" ]; then
             echo "Code changes detected - running full suite"
           else
-            echo "code=false" >> "$GITHUB_OUTPUT"
             echo "Docs-only changes - skipping expensive jobs"
           fi
 

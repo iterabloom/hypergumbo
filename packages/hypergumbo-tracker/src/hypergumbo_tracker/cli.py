@@ -5,10 +5,10 @@ Provides the full argparse CLI for tracker operations and the git textconv
 driver for rendering .ops files as readable text.
 
 Entry points:
-- main(): Primary CLI with ~23 subcommands (add, update, list, show, ready,
+- main(): Primary CLI with ~24 subcommands (add, update, list, show, ready,
   log, discuss, lock, unlock, promote, demote, stealth, unstealth, validate,
-  count-todos, hash-todos, init, cache-rebuild, reconcile-reset, fork-setup,
-  migrate, tui).
+  count-todos, hash-todos, guidance, init, cache-rebuild, reconcile-reset,
+  fork-setup, migrate, tui).
 - textconv_main(): Git textconv driver that reads an ops file and outputs
   one-line-per-field compiled state.
 
@@ -479,6 +479,28 @@ def _cmd_hash_todos(args: argparse.Namespace, ts: TrackerSet) -> int:
         return EXIT_USER_ERROR
 
 
+def _cmd_guidance(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Handle 'guidance' subcommand — generate stop hook guidance file."""
+    from hypergumbo_tracker.stop_hook import generate_guidance
+
+    guidance_dir = Path(args.guidance_dir) if args.guidance_dir else None
+
+    try:
+        path = generate_guidance(
+            ts._tracker_root,
+            guidance_dir=guidance_dir,
+            config=ts.config,
+        )
+        if args.json:
+            print(json.dumps({"path": path}))
+        else:
+            print(path)
+        return EXIT_SUCCESS
+    except Exception as e:
+        print(f"error: guidance failed: {e}", file=sys.stderr)
+        return EXIT_USER_ERROR
+
+
 def _cmd_init(args: argparse.Namespace) -> int:
     """Handle 'init' subcommand — create tracker directory structure."""
     root = Path(args.tracker_root) if args.tracker_root else Path.cwd() / ".agent"
@@ -750,6 +772,11 @@ def _build_parser() -> argparse.ArgumentParser:
     # --- hash-todos ---
     sub.add_parser("hash-todos", help="SHA256 fingerprint of blocking items")
 
+    # --- guidance ---
+    p_guidance = sub.add_parser("guidance", help="Generate stop hook guidance file")
+    p_guidance.add_argument("--guidance-dir", dest="guidance_dir",
+                            help="Directory for guidance output (default: ~/hypergumbo_lab_notebook/guidance_log/)")
+
     # --- init ---
     sub.add_parser("init", help="Initialize tracker directory structure")
 
@@ -838,6 +865,7 @@ def main(argv: list[str] | None = None) -> None:
         "validate": _cmd_validate,
         "count-todos": _cmd_count_todos,
         "hash-todos": _cmd_hash_todos,
+        "guidance": _cmd_guidance,
         "cache-rebuild": _cmd_cache_rebuild,
         "reconcile-reset": _cmd_reconcile_reset,
         "fork-setup": _cmd_fork_setup,

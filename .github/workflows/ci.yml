@@ -6,12 +6,17 @@ on:
   pull_request:
     branches: [ "main", "dev" ]
 
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   # Detect what files changed to skip expensive jobs for docs-only PRs
   changes:
     runs-on: codeberg-small-lazy
     outputs:
       code: ${{ steps.filter.outputs.code }}
+      tracker_data: ${{ steps.filter.outputs.tracker_data }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,13 +54,30 @@ jobs:
 
           # Check if any non-doc files changed
           # Docs: *.md, docs/**, LICENSE, .gitignore, etc.
-          CODE_PATTERNS='\.py$|\.yaml$|\.yml$|\.json$|\.toml$|pyproject\.toml|scripts/|\.github/workflows/'
+          # Note: YAML files in .agent/tracker(-workspace)/ are tracker data,
+          # not code — they should not trigger expensive test jobs.
+          CODE_PATTERNS='\.py$|\.json$|\.toml$|pyproject\.toml|scripts/|\.github/workflows/'
+          YAML_PATTERN='\.ya?ml$'
+          TRACKER_DATA='^\.agent/tracker(-workspace)?/'
 
-          if git diff --name-only "$base" "$head" | grep -qE "$CODE_PATTERNS"; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
+          CHANGED=$(git diff --name-only "$base" "$head")
+          has_code=false
+          echo "$CHANGED" | grep -qE "$CODE_PATTERNS" && has_code=true
+          # YAML files count as code UNLESS they're tracker data
+          echo "$CHANGED" | grep -E "$YAML_PATTERN" | grep -vqE "$TRACKER_DATA" 2>/dev/null && has_code=true
+          echo "code=$has_code" >> "$GITHUB_OUTPUT"
+
+          # Detect tracker data changes (for lightweight validation job)
+          if echo "$CHANGED" | grep -qE '^\.agent/tracker(-workspace)?/|^packages/hypergumbo-tracker/'; then
+            echo "tracker_data=true" >> "$GITHUB_OUTPUT"
+            echo "Tracker data changes detected"
+          else
+            echo "tracker_data=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$has_code" = "true" ]; then
             echo "Code changes detected"
           else
-            echo "code=false" >> "$GITHUB_OUTPUT"
             echo "Docs-only changes, skipping expensive jobs"
           fi
 
@@ -625,10 +647,30 @@ jobs:
       # Coverage badge is updated by full-suite.yml, not here
       # (ci.yml skips pytest on push events)
 
+  tracker-validate:
+    needs: [changes, stop-the-line]
+    if: >-
+      always() &&
+      needs.changes.outputs.tracker_data == 'true' &&
+      needs.stop-the-line.result != 'failure'
+    runs-on: codeberg-small-lazy
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install tracker
+        run: |
+          pip install --upgrade pip
+          pip install -e packages/hypergumbo-tracker
+      - name: Validate tracker data
+        run: scripts/tracker validate
+
   # Final gate job - ensures workflow completes even when jobs are skipped
   # This fixes Forgejo Actions bug where skipped jobs leave workflow in "running" state
   ci-complete:
-    needs: [changes, stop-the-line, lint, audit, verify-generated, build-grammars, pytest, dco]
+    needs: [changes, stop-the-line, lint, audit, verify-generated, build-grammars, pytest, dco, tracker-validate]
     if: always()
     runs-on: codeberg-small-lazy
     timeout-minutes: 5
@@ -644,6 +686,7 @@ jobs:
           echo "  build-grammars: ${{ needs.build-grammars.result }}"
           echo "  pytest: ${{ needs.pytest.result }}"
           echo "  dco: ${{ needs.dco.result }}"
+          echo "  tracker-validate: ${{ needs.tracker-validate.result }}"
 
           # Fail if any required job failed (skipped is OK)
           if [[ "${{ needs.changes.result }}" == "failure" ]] || \
@@ -652,7 +695,8 @@ jobs:
              [[ "${{ needs.audit.result }}" == "failure" ]] || \
              [[ "${{ needs.verify-generated.result }}" == "failure" ]] || \
              [[ "${{ needs.pytest.result }}" == "failure" ]] || \
-             [[ "${{ needs.dco.result }}" == "failure" ]]; then
+             [[ "${{ needs.dco.result }}" == "failure" ]] || \
+             [[ "${{ needs.tracker-validate.result }}" == "failure" ]]; then
             echo "❌ One or more jobs failed"
             exit 1
           fi

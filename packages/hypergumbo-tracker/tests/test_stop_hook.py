@@ -22,6 +22,8 @@ from hypergumbo_tracker.stop_hook import (
     _filter_blocking_statuses,
     count_todos,
     count_todos_safe,
+    generate_guidance,
+    generate_guidance_safe,
     hash_todos,
     hash_todos_safe,
 )
@@ -324,4 +326,159 @@ class TestFailClosed:
     def test_hash_todos_safe_on_error(self) -> None:
         with patch("hypergumbo_tracker.stop_hook.hash_todos", side_effect=RuntimeError("boom")):
             result = hash_todos_safe(Path("/tmp/whatever"))
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# generate_guidance
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateGuidance:
+    def test_generates_file_with_blocking_items(self, tmp_path: Path) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        canonical_ops = tracker_root / "tracker" / ".ops"
+        _add_item(canonical_ops, "WI-a", "todo_hard")
+        _add_item(canonical_ops, "WI-b", "todo_soft")
+        _add_item(canonical_ops, "WI-c", "done")
+
+        config = _make_config()
+        guidance_dir = tmp_path / "guidance"
+        result = generate_guidance(
+            tracker_root, guidance_dir=guidance_dir, config=config,
+        )
+
+        assert Path(result).exists()
+        content = Path(result).read_text()
+        assert "WI-a" in content
+        assert "WI-b" in content
+        assert "WI-c" not in content  # done items excluded
+        assert "# Stop Hook Guidance" in content
+
+    def test_creates_guidance_dir(self, tmp_path: Path) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        canonical_ops = tracker_root / "tracker" / ".ops"
+        _add_item(canonical_ops, "WI-a", "todo_hard")
+
+        config = _make_config()
+        guidance_dir = tmp_path / "new" / "nested" / "dir"
+        assert not guidance_dir.exists()
+
+        result = generate_guidance(
+            tracker_root, guidance_dir=guidance_dir, config=config,
+        )
+        assert guidance_dir.exists()
+        assert Path(result).exists()
+
+    def test_scope_workspace_excludes_canonical(self, tmp_path: Path) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        canonical_ops = tracker_root / "tracker" / ".ops"
+        workspace_ops = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(canonical_ops, "WI-can", "todo_hard")
+        _add_item(workspace_ops, "WI-ws", "todo_soft")
+
+        config = _make_config(scope="workspace")
+        guidance_dir = tmp_path / "guidance"
+        result = generate_guidance(
+            tracker_root, guidance_dir=guidance_dir, config=config,
+        )
+        content = Path(result).read_text()
+        assert "WI-can" not in content
+        assert "WI-ws" in content
+
+    def test_returns_absolute_path(self, tmp_path: Path) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        config = _make_config()
+        guidance_dir = tmp_path / "guidance"
+        result = generate_guidance(
+            tracker_root, guidance_dir=guidance_dir, config=config,
+        )
+        assert Path(result).is_absolute()
+
+    def test_empty_tracker_still_generates_file(self, tmp_path: Path) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        config = _make_config()
+        guidance_dir = tmp_path / "guidance"
+        result = generate_guidance(
+            tracker_root, guidance_dir=guidance_dir, config=config,
+        )
+        assert Path(result).exists()
+        content = Path(result).read_text()
+        assert "# Stop Hook Guidance" in content
+        assert "Hard TODO Items: 0" in content
+
+    def test_default_guidance_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        config = _make_config()
+        monkeypatch.setenv("HOME", str(tmp_path / "fakehome"))
+        result = generate_guidance(tracker_root, config=config)
+        expected_dir = tmp_path / "fakehome" / "hypergumbo_lab_notebook" / "guidance_log"
+        assert Path(result).parent == expected_dir
+
+    def test_loads_config_when_none(self, tmp_path: Path) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        import yaml
+        config_data = {
+            "kinds": {"work_item": {"prefix": "WI"}},
+            "statuses": ["todo_hard", "done"],
+            "stop_hook": {"blocking_statuses": ["todo_hard"], "resolved_statuses": ["done"]},
+        }
+        (tracker_root / "tracker" / "config.yaml").write_text(yaml.dump(config_data))
+        _add_item(tracker_root / "tracker" / ".ops", "WI-a", "todo_hard")
+
+        guidance_dir = tmp_path / "guidance"
+        result = generate_guidance(tracker_root, guidance_dir=guidance_dir)
+        assert Path(result).exists()
+
+    def test_items_sorted_by_priority(self, tmp_path: Path) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        canonical_ops = tracker_root / "tracker" / ".ops"
+
+        # Create items with different priorities via custom ops
+        for item_id, priority in [("WI-lo", 3), ("WI-hi", 0), ("WI-mid", 2)]:
+            ops_content = textwrap.dedent(f"""\
+                - op: create
+                  at: "2026-01-01T00:00:00Z"
+                  by: agent
+                  actor: test_agent
+                  clock: 1
+                  nonce: a1b2
+                  data:
+                    kind: work_item
+                    title: "Item {item_id}"
+                    status: todo_hard
+                    priority: {priority}
+            """)
+            (canonical_ops / f".{item_id}.ops").write_text(ops_content)
+
+        config = _make_config()
+        guidance_dir = tmp_path / "guidance"
+        result = generate_guidance(
+            tracker_root, guidance_dir=guidance_dir, config=config,
+        )
+        content = Path(result).read_text()
+        # P0 should appear before P2, P2 before P3
+        hi_pos = content.index("WI-hi")
+        mid_pos = content.index("WI-mid")
+        lo_pos = content.index("WI-lo")
+        assert hi_pos < mid_pos < lo_pos
+
+
+class TestGenerateGuidanceSafe:
+    def test_safe_returns_path_on_success(self, tmp_path: Path) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        canonical_ops = tracker_root / "tracker" / ".ops"
+        _add_item(canonical_ops, "WI-a", "todo_hard")
+
+        guidance_dir = tmp_path / "guidance"
+        result = generate_guidance_safe(tracker_root, guidance_dir=guidance_dir)
+        assert result is not None
+        assert Path(result).exists()
+
+    def test_safe_returns_none_on_error(self) -> None:
+        with patch(
+            "hypergumbo_tracker.stop_hook.generate_guidance",
+            side_effect=RuntimeError("boom"),
+        ):
+            result = generate_guidance_safe(Path("/tmp/whatever"))
         assert result is None

@@ -1099,6 +1099,40 @@ class TestErrorHandling:
                 main(["--tracker-root", str(tracker_root), "hash-todos"])
             assert exc.value.code == EXIT_USER_ERROR
 
+    def test_guidance(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                      mock_agent_uid: None) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker" / ".ops", "WI-a")
+        guidance_dir = tmp_path / "guidance"
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "guidance", "--guidance-dir", str(guidance_dir),
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out.strip()
+        assert out.endswith(".md")
+
+    def test_guidance_json(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                           mock_agent_uid: None) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        guidance_dir = tmp_path / "guidance"
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "guidance", "--guidance-dir", str(guidance_dir),
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        data = json.loads(capsys.readouterr().out)
+        assert "path" in data
+
+    def test_guidance_exception(self, tmp_path: Path, mock_agent_uid: None) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        with patch("hypergumbo_tracker.stop_hook.generate_guidance", side_effect=RuntimeError("boom")):
+            with pytest.raises(SystemExit) as exc:
+                main(["--tracker-root", str(tracker_root), "guidance"])
+            assert exc.value.code == EXIT_USER_ERROR
+
 
 # ---------------------------------------------------------------------------
 # Textconv
