@@ -1,76 +1,37 @@
 #!/bin/bash
 # Shared stop hook logic — sourced by all vendor hooks.
-# See ADR-0008 for governance protocol.
+# See ADR-0008 for governance protocol; ADR-0013 for structured tracker.
+#
+# Uses the structured tracker CLI (scripts/tracker) for TODO counting,
+# circuit breaker hashing, and guidance generation. Fail-closed: if the
+# tracker CLI is present but fails, the hook blocks (exit 1).
 #
 # Expects REPO_ROOT to be set by the caller.
 # Exports: TOTAL_HARD, TOTAL_SOFT, TOTAL_TODOS, CIRCUIT_BREAKER_TRIPPED,
 #          GUIDANCE_FILE, GUIDANCE_FILE_COOLDOWN, GUIDANCE_FILE_REFLECTION,
 #          STATE_FILE, ELAPSED_MIN
-#
-# Lazy-load pattern: full content is written to guidance files on disk.
-# Vendor wrappers return short pointers; the agent reads the file when needed.
-# This prevents large prompts from consuming context window space.
-#
-# Callers handle: early exits (autonomous mode check, loop sentinel, vendor guards)
-#                 and output formatting (JSON shape varies per vendor).
 
 # --- Setup ---
 GUIDANCE_LOG_DIR="$HOME/hypergumbo_lab_notebook/guidance_log"
 mkdir -p "$GUIDANCE_LOG_DIR"
 HASH_FILE="/tmp/hypergumbo_stop_hashes"
 HASH_THRESHOLD=5
-WORK_ITEMS_FILE="$GUIDANCE_LOG_DIR/work_items.md"
-LEDGER_FILE="$REPO_ROOT/.agent/invariant-ledger.md"
 
-# --- Dual-mode: structured tracker (preferred) or legacy grep ---
-# Phase 1: try the structured tracker CLI first, fall back to grep.
-# The tracker CLI reads from .agent/tracker/ YAML ops files.
-# Legacy grep reads from markdown files (invariant-ledger.md, work_items.md).
-TRACKER_MODE="legacy"
+# --- Structured tracker (fail-closed) ---
+TOTAL_HARD=0
+TOTAL_SOFT=0
 if [[ -x "$REPO_ROOT/scripts/tracker" ]] && [[ -d "$REPO_ROOT/.agent/tracker" ]]; then
-  _TH=$("$REPO_ROOT/scripts/tracker" count-todos --hard 2>/dev/null) && \
-  _TS=$("$REPO_ROOT/scripts/tracker" count-todos --soft 2>/dev/null) && \
-  TOTAL_HARD=$_TH && TOTAL_SOFT=$_TS && TRACKER_MODE="structured"
+  TOTAL_HARD=$("$REPO_ROOT/scripts/tracker" count-todos --hard 2>/dev/null) || \
+    { echo "ERROR: tracker count-todos --hard failed" >&2; exit 1; }
+  TOTAL_SOFT=$("$REPO_ROOT/scripts/tracker" count-todos --soft 2>/dev/null) || \
+    { echo "ERROR: tracker count-todos --soft failed" >&2; exit 1; }
 fi
-
-if [[ "$TRACKER_MODE" == "structured" ]]; then
-  TOTAL_TODOS=$((TOTAL_HARD + TOTAL_SOFT))
-else
-  # --- Legacy: Count hard TODOs (TODO! — invariant/defect, investigate deeply) ---
-  # Note: grep -c exits 1 on no match but still outputs "0", so
-  # $(grep -c ... || echo 0) would capture "0\n0". Use || true and default.
-  HARD_TODO_COUNT=$(grep -c '^\s*- \*\*TODO!\*\*' "$LEDGER_FILE" 2>/dev/null) || HARD_TODO_COUNT=0
-  WORK_HARD_COUNT=0
-  if [[ -f "$WORK_ITEMS_FILE" ]]; then
-    WORK_HARD_COUNT=$(grep -c '^\s*- \*\*TODO!\*\*' "$WORK_ITEMS_FILE" 2>/dev/null) || WORK_HARD_COUNT=0
-  fi
-  TOTAL_HARD=$((HARD_TODO_COUNT + WORK_HARD_COUNT))
-
-  # --- Legacy: Count soft TODOs (TODO without ! — backlog, address or defer freely) ---
-  # Pattern: **TODO** followed by non-! character (avoids matching **TODO!**)
-  SOFT_TODO_COUNT=$(grep -c '^\s*- \*\*TODO\*\*[^!]' "$LEDGER_FILE" 2>/dev/null) || SOFT_TODO_COUNT=0
-  WORK_SOFT_COUNT=0
-  if [[ -f "$WORK_ITEMS_FILE" ]]; then
-    WORK_SOFT_COUNT=$(grep -c '^\s*- \*\*TODO\*\*[^!]' "$WORK_ITEMS_FILE" 2>/dev/null) || WORK_SOFT_COUNT=0
-  fi
-  TOTAL_SOFT=$((SOFT_TODO_COUNT + WORK_SOFT_COUNT))
-
-  TOTAL_TODOS=$((TOTAL_HARD + TOTAL_SOFT))
-fi
+TOTAL_TODOS=$((TOTAL_HARD + TOTAL_SOFT))
 
 # --- Circuit breaker (hash-based no-progress detection) ---
 CIRCUIT_BREAKER_TRIPPED=false
 if [[ "$TOTAL_TODOS" -gt 0 ]]; then
-  if [[ "$TRACKER_MODE" == "structured" ]]; then
-    CURRENT_HASH=$("$REPO_ROOT/scripts/tracker" hash-todos 2>/dev/null) || CURRENT_HASH="fallback-$$"
-  else
-    TODO_CONTENT=$(grep '^\s*- \*\*TODO[!]\{0,1\}\*\*' "$LEDGER_FILE" 2>/dev/null || true)
-    if [[ -f "$WORK_ITEMS_FILE" ]]; then
-      WORK_CONTENT=$(grep '^\s*- \*\*TODO[!]\{0,1\}\*\*' "$WORK_ITEMS_FILE" 2>/dev/null || true)
-      TODO_CONTENT="${TODO_CONTENT}${WORK_CONTENT}"
-    fi
-    CURRENT_HASH=$(printf '%s' "$TODO_CONTENT" | sha256sum | cut -d' ' -f1)
-  fi
+  CURRENT_HASH=$("$REPO_ROOT/scripts/tracker" hash-todos 2>/dev/null) || CURRENT_HASH="fallback-$$"
   echo "$CURRENT_HASH" >> "$HASH_FILE"
   TAIL_COUNT=$(tail -n "$HASH_THRESHOLD" "$HASH_FILE" | wc -l)
   UNIQUE_COUNT=$(tail -n "$HASH_THRESHOLD" "$HASH_FILE" | sort -u | wc -l)
@@ -82,49 +43,22 @@ fi
 # --- Write guidance file (if any TODOs exist) ---
 GUIDANCE_FILE=""
 if [[ "$TOTAL_TODOS" -gt 0 ]]; then
-  if [[ "$TRACKER_MODE" == "structured" ]]; then
-    # Use tracker CLI to generate structured guidance
-    GUIDANCE_FILE=$("$REPO_ROOT/scripts/tracker" guidance --guidance-dir "$GUIDANCE_LOG_DIR" 2>/dev/null) || true
-  fi
-
-  # Fallback: generate guidance via legacy grep if tracker guidance failed
+  GUIDANCE_FILE=$("$REPO_ROOT/scripts/tracker" guidance --guidance-dir "$GUIDANCE_LOG_DIR" 2>/dev/null) || true
   if [[ -z "$GUIDANCE_FILE" ]] || [[ ! -f "$GUIDANCE_FILE" ]]; then
-    TIMESTAMP=$(date +%m%d%Y_%H%M)
-    GUIDANCE_FILE="$GUIDANCE_LOG_DIR/stop_guidance_${TIMESTAMP}.md"
-    {
-      echo "# Stop Hook Guidance — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-      echo ""
-      echo "## Status"
-      echo "- Hard TODOs (blocking): $TOTAL_HARD"
-      echo "- Soft TODOs (informational): $TOTAL_SOFT"
-      echo "- Circuit breaker: $CIRCUIT_BREAKER_TRIPPED (threshold: $HASH_THRESHOLD)"
-      echo ""
-      if [[ "$TOTAL_HARD" -gt 0 ]]; then
-        echo "## Hard TODO Items (TODO! — investigate deeply, assume structural)"
-        grep '^\s*- \*\*TODO!\*\*' "$LEDGER_FILE" 2>/dev/null || true
-        [[ -f "$WORK_ITEMS_FILE" ]] && grep '^\s*- \*\*TODO!\*\*' "$WORK_ITEMS_FILE" 2>/dev/null || true
-        echo ""
-      fi
-      if [[ "$TOTAL_SOFT" -gt 0 ]]; then
-        echo "## Soft TODO Items (TODO — address or defer freely)"
-        grep '^\s*- \*\*TODO\*\*[^!]' "$LEDGER_FILE" 2>/dev/null || true
-        [[ -f "$WORK_ITEMS_FILE" ]] && grep '^\s*- \*\*TODO\*\*[^!]' "$WORK_ITEMS_FILE" 2>/dev/null || true
-        echo ""
-      fi
-      echo "## Guidance"
-      echo "TODO! items: investigate deeply, assume structural. Fix or explicitly DEFER with justification."
-      echo "TODO items: address or defer freely. OK to defer if higher-priority work exists."
-    } > "$GUIDANCE_FILE"
+    echo "WARNING: tracker guidance generation failed, continuing without guidance file" >&2
+    GUIDANCE_FILE=""
   fi
 
   # Update last_stop_check.json with guidance_file pointer
-  STATE_FILE_FOR_GF="$REPO_ROOT/.agent/last_stop_check.json"
-  if command -v jq &>/dev/null && [[ -f "$STATE_FILE_FOR_GF" ]]; then
-    TMP=$(mktemp)
-    if jq --arg gf "$GUIDANCE_FILE" '. + {guidance_file: $gf}' "$STATE_FILE_FOR_GF" > "$TMP" 2>/dev/null; then
-      mv "$TMP" "$STATE_FILE_FOR_GF"
-    else
-      rm -f "$TMP"
+  if [[ -n "$GUIDANCE_FILE" ]]; then
+    STATE_FILE_FOR_GF="$REPO_ROOT/.agent/last_stop_check.json"
+    if command -v jq &>/dev/null && [[ -f "$STATE_FILE_FOR_GF" ]]; then
+      TMP=$(mktemp)
+      if jq --arg gf "$GUIDANCE_FILE" '. + {guidance_file: $gf}' "$STATE_FILE_FOR_GF" > "$TMP" 2>/dev/null; then
+        mv "$TMP" "$STATE_FILE_FOR_GF"
+      else
+        rm -f "$TMP"
+      fi
     fi
   fi
 fi
