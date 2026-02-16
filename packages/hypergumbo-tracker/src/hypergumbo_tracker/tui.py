@@ -21,22 +21,44 @@ shared population logic. _format_detail_lines() is shared between compact
 stacked detail and standard right-panel detail.
 
 The tier computation and ID truncation are pure functions for easy unit testing.
-TrackerApp reads from a TrackerSet instance (read-only in this PR).
+
+Write keybindings (d, D, m, n, e, p, b, l) push ModalScreen subclasses that
+gather input, then call TrackerSet write methods on dismiss. Errors are shown
+via ``self.notify(str(e), severity="error")``. After each write, _load_items()
+refreshes the tables and _restore_selection() keeps the cursor stable.
 
 See ADR-0013 §TUI for the responsive design specification.
 """
 
 from __future__ import annotations
 
-from typing import ClassVar
+from functools import partial
+from typing import Any, ClassVar
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.events import Resize
-from textual.widgets import DataTable, Footer, Header, Input, Rule, Static, Tree
+from textual.screen import ModalScreen
+from textual.widgets import (
+    Button,
+    DataTable,
+    Footer,
+    Header,
+    Input,
+    Rule,
+    Select,
+    Static,
+    Tree,
+)
 
 from hypergumbo_tracker.models import CompiledItem, Tier
-from hypergumbo_tracker.trackerset import TrackerSet
+from hypergumbo_tracker.store import (
+    DiscussionRateLimitError,
+    HumanAuthorityError,
+    ItemNotFoundError,
+    LockedFieldError,
+)
+from hypergumbo_tracker.trackerset import TierMovementError, TrackerSet
 
 
 # ---------------------------------------------------------------------------
@@ -201,6 +223,551 @@ def _format_detail_lines(item: CompiledItem, tier: str = "standard") -> list[str
 
 
 # ---------------------------------------------------------------------------
+# Shared modal CSS factory
+# ---------------------------------------------------------------------------
+
+
+def _modal_css(cls_name: str) -> str:
+    """Generate Textual CSS for a ModalScreen subclass.
+
+    Wraps ``align: center middle`` in a selector matching *cls_name* so the
+    stylesheet parser doesn't reject bare properties.
+    """
+    return f"""
+    {cls_name} {{
+        align: center middle;
+    }}
+
+    #modal-dialog {{
+        width: 60;
+        height: auto;
+        max-height: 80%;
+        overflow-y: auto;
+        border: thick $accent;
+        padding: 1 2;
+        background: $surface;
+    }}
+
+    #modal-title {{
+        text-align: center;
+        text-style: bold;
+        margin-bottom: 1;
+    }}
+
+    .modal-buttons {{
+        height: 3;
+        align: center middle;
+        margin-top: 1;
+    }}
+
+    .modal-buttons Button {{
+        margin: 0 1;
+    }}
+"""
+
+# ---------------------------------------------------------------------------
+# Modal screens
+# ---------------------------------------------------------------------------
+
+
+class DiscussScreen(ModalScreen[str | None]):
+    """Modal for adding a discussion entry to a tracker item.
+
+    Presents a single-line Input for the message. Submit returns the message
+    string; Cancel or Escape returns None.
+    """
+
+    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+        ("escape", "cancel", "Cancel"),
+    ]
+
+    DEFAULT_CSS = _modal_css("DiscussScreen")
+
+    def __init__(self, item_id: str, item_title: str) -> None:
+        super().__init__()
+        self._item_id = item_id
+        self._item_title = item_title
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="modal-dialog"):
+            yield Static(f"Discuss: {self._item_title}", id="modal-title")
+            yield Input(placeholder="Enter message...", id="discuss-input")
+            with Horizontal(classes="modal-buttons"):
+                yield Button("Submit", variant="primary", id="submit")
+                yield Button("Cancel", id="cancel")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "submit":
+            value = self.query_one("#discuss-input", Input).value.strip()
+            self.dismiss(value if value else None)
+        else:
+            self.dismiss(None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class ConfirmScreen(ModalScreen[bool]):
+    """Reusable confirmation dialog with Yes/No buttons.
+
+    Returns True if confirmed, False if cancelled. Used by ``D``
+    (clear discussion) and potentially other destructive actions.
+    """
+
+    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+        ("escape", "cancel", "Cancel"),
+    ]
+
+    DEFAULT_CSS = _modal_css("ConfirmScreen")
+
+    def __init__(self, message: str) -> None:
+        super().__init__()
+        self._message = message
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="modal-dialog"):
+            yield Static(self._message, id="modal-title")
+            with Horizontal(classes="modal-buttons"):
+                yield Button("Yes", variant="warning", id="yes")
+                yield Button("No", variant="primary", id="no")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id == "yes")
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+
+class TierMoveScreen(ModalScreen[str | None]):
+    """Modal for tier movement operations.
+
+    Shows available moves based on the item's current tier:
+    - canonical → demote to workspace
+    - workspace → promote to canonical, or stealth
+    - stealth → unstealth to workspace
+
+    Returns the chosen move string or None if cancelled.
+    """
+
+    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+        ("escape", "cancel", "Cancel"),
+    ]
+
+    DEFAULT_CSS = _modal_css("TierMoveScreen")
+
+    def __init__(self, item_id: str, current_tier: Tier | None) -> None:
+        super().__init__()
+        self._item_id = item_id
+        self._current_tier = current_tier
+
+    def compose(self) -> ComposeResult:
+        options = self._available_moves()
+        tier_str = self._current_tier.value if self._current_tier else "unknown"
+        with Vertical(id="modal-dialog"):
+            yield Static(f"Move from: {tier_str}", id="modal-title")
+            if options:
+                yield Select[str](
+                    options, id="move-select", allow_blank=False,
+                )
+            else:
+                yield Static("No moves available for this tier")
+            with Horizontal(classes="modal-buttons"):
+                yield Button("Move", variant="primary", id="submit")
+                yield Button("Cancel", id="cancel")
+
+    def _available_moves(self) -> list[tuple[str, str]]:
+        if self._current_tier == Tier.CANONICAL:
+            return [("Demote to workspace", "demote")]
+        if self._current_tier == Tier.WORKSPACE:
+            return [
+                ("Promote to canonical", "promote"),
+                ("Stealth", "stealth"),
+            ]
+        if self._current_tier == Tier.STEALTH:
+            return [("Unstealth to workspace", "unstealth")]
+        return []
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "submit":
+            try:
+                select = self.query_one("#move-select", Select)
+            except Exception:
+                self.dismiss(None)
+                return
+            if select.value is not Select.BLANK:
+                self.dismiss(str(select.value))
+            else:  # pragma: no cover
+                self.dismiss(None)
+        else:
+            self.dismiss(None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class NewItemScreen(ModalScreen[dict[str, Any] | None]):
+    """Modal for creating a new tracker item.
+
+    Presents fields for kind, title, status, priority, tier, and description.
+    Returns a dict suitable for ``TrackerSet.add(**result)`` or None if
+    cancelled.
+    """
+
+    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+        ("escape", "cancel", "Cancel"),
+    ]
+
+    DEFAULT_CSS = _modal_css("NewItemScreen")
+
+    def __init__(self, kinds: list[str], statuses: list[str]) -> None:
+        super().__init__()
+        self._kinds = kinds
+        self._statuses = statuses
+
+    def compose(self) -> ComposeResult:
+        kind_options: list[tuple[str, str]] = [(k, k) for k in self._kinds]
+        status_options: list[tuple[str, str]] = [(s, s) for s in self._statuses]
+        tier_options: list[tuple[str, str]] = [
+            ("workspace", "workspace"),
+            ("canonical", "canonical"),
+            ("stealth", "stealth"),
+        ]
+        with Vertical(id="modal-dialog"):
+            yield Static("New Item", id="modal-title")
+            yield Static("Kind:")
+            yield Select[str](kind_options, id="kind-select", allow_blank=False)
+            yield Static("Title:")
+            yield Input(placeholder="Title", id="title-input")
+            yield Static("Status:")
+            yield Select[str](
+                status_options, id="status-select", allow_blank=False,
+            )
+            yield Static("Priority:")
+            yield Input(
+                placeholder="Priority (0-9)", id="priority-input", value="2",
+            )
+            yield Static("Tier:")
+            yield Select[str](
+                tier_options, id="tier-select", allow_blank=False,
+            )
+            yield Static("Description:")
+            yield Input(placeholder="Description (optional)", id="desc-input")
+            with Horizontal(classes="modal-buttons"):
+                yield Button("Create", variant="primary", id="submit")
+                yield Button("Cancel", id="cancel")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "submit":
+            title = self.query_one("#title-input", Input).value.strip()
+            if not title:
+                self.dismiss(None)
+                return
+            kind = str(self.query_one("#kind-select", Select).value)
+            status = str(self.query_one("#status-select", Select).value)
+            tier_str = str(self.query_one("#tier-select", Select).value)
+            tier_map = {
+                "workspace": Tier.WORKSPACE,
+                "canonical": Tier.CANONICAL,
+                "stealth": Tier.STEALTH,
+            }
+            tier = tier_map.get(tier_str, Tier.WORKSPACE)
+            priority_str = self.query_one("#priority-input", Input).value.strip()
+            try:
+                priority = int(priority_str)
+            except ValueError:
+                priority = 2
+            desc = self.query_one("#desc-input", Input).value.strip()
+            result: dict[str, Any] = {
+                "kind": kind,
+                "title": title,
+                "status": status,
+                "priority": priority,
+                "tier": tier,
+            }
+            if desc:
+                result["description"] = desc
+            self.dismiss(result)
+        else:
+            self.dismiss(None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class EditItemScreen(ModalScreen[dict[str, Any] | None]):
+    """Modal for editing an existing tracker item.
+
+    Pre-populated with the item's current values. Returns a dict with
+    ``set_fields``, ``add_fields``, and ``remove_fields`` keys suitable
+    for ``TrackerSet.update()``, or None if cancelled or nothing changed.
+    """
+
+    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+        ("escape", "cancel", "Cancel"),
+    ]
+
+    DEFAULT_CSS = _modal_css("EditItemScreen")
+
+    def __init__(self, item: CompiledItem, statuses: list[str]) -> None:
+        super().__init__()
+        self._item = item
+        self._statuses = statuses
+
+    def compose(self) -> ComposeResult:
+        status_options: list[tuple[str, str]] = [
+            (s, s) for s in self._statuses
+        ]
+        with Vertical(id="modal-dialog"):
+            yield Static(f"Edit: {self._item.title}", id="modal-title")
+            yield Static("Status:")
+            yield Select[str](
+                status_options, id="status-select",
+                value=self._item.status, allow_blank=False,
+            )
+            yield Static("Priority:")
+            yield Input(
+                id="priority-input", value=str(self._item.priority),
+            )
+            yield Static("Title:")
+            yield Input(id="title-input", value=self._item.title)
+            yield Static("Tags (comma-separated):")
+            yield Input(
+                id="tags-input", value=", ".join(self._item.tags),
+            )
+            yield Static("Description:")
+            yield Input(
+                id="desc-input", value=self._item.description or "",
+            )
+            with Horizontal(classes="modal-buttons"):
+                yield Button("Save", variant="primary", id="submit")
+                yield Button("Cancel", id="cancel")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "submit":
+            result: dict[str, Any] = {
+                "set_fields": {},
+                "add_fields": {},
+                "remove_fields": {},
+            }
+            new_status = str(self.query_one("#status-select", Select).value)
+            if new_status != self._item.status:
+                result["set_fields"]["status"] = new_status
+
+            priority_str = self.query_one(
+                "#priority-input", Input,
+            ).value.strip()
+            try:
+                new_priority = int(priority_str)
+                if new_priority != self._item.priority:
+                    result["set_fields"]["priority"] = new_priority
+            except ValueError:
+                pass
+
+            new_title = self.query_one("#title-input", Input).value.strip()
+            if new_title and new_title != self._item.title:
+                result["set_fields"]["title"] = new_title
+
+            new_desc = self.query_one("#desc-input", Input).value.strip()
+            if new_desc != (self._item.description or ""):
+                result["set_fields"]["description"] = new_desc
+
+            new_tags_str = self.query_one("#tags-input", Input).value.strip()
+            new_tags = (
+                [t.strip() for t in new_tags_str.split(",") if t.strip()]
+                if new_tags_str
+                else []
+            )
+            old_tags = list(self._item.tags)
+            tags_to_add = [t for t in new_tags if t not in old_tags]
+            tags_to_remove = [t for t in old_tags if t not in new_tags]
+            if tags_to_add:
+                result["add_fields"]["tags"] = tags_to_add
+            if tags_to_remove:
+                result["remove_fields"]["tags"] = tags_to_remove
+
+            if (
+                result["set_fields"]
+                or result["add_fields"]
+                or result["remove_fields"]
+            ):
+                self.dismiss(result)
+            else:
+                self.dismiss(None)
+        else:
+            self.dismiss(None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class ParentScreen(ModalScreen[str | None]):
+    """Modal for setting or clearing an item's parent.
+
+    Shows the current parent and provides an Input for the new parent ID.
+    Submitting with an empty string clears the parent. Cancel returns None
+    (distinct from empty-string submission).
+    """
+
+    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+        ("escape", "cancel", "Cancel"),
+    ]
+
+    DEFAULT_CSS = _modal_css("ParentScreen")
+
+    def __init__(self, item_id: str, current_parent: str | None) -> None:
+        super().__init__()
+        self._item_id = item_id
+        self._current_parent = current_parent
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="modal-dialog"):
+            yield Static("Set Parent", id="modal-title")
+            yield Static(
+                f"Current: {self._current_parent or '(none)'}",
+            )
+            yield Input(
+                placeholder="Parent ID (empty to clear)",
+                id="parent-input",
+                value=self._current_parent or "",
+            )
+            with Horizontal(classes="modal-buttons"):
+                yield Button("Set", variant="primary", id="submit")
+                yield Button("Cancel", id="cancel")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "submit":
+            value = self.query_one("#parent-input", Input).value.strip()
+            # Return the value (empty string means clear parent)
+            self.dismiss(value)
+        else:
+            self.dismiss(None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class BeforeScreen(ModalScreen[dict[str, list[str]] | None]):
+    """Modal for editing before (dependency) links.
+
+    Shows current before links and provides inputs for IDs to add and
+    IDs to remove. Returns ``{"add": [...], "remove": [...]}`` or None.
+    """
+
+    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+        ("escape", "cancel", "Cancel"),
+    ]
+
+    DEFAULT_CSS = _modal_css("BeforeScreen")
+
+    def __init__(self, item_id: str, current_before: list[str]) -> None:
+        super().__init__()
+        self._item_id = item_id
+        self._current_before = current_before
+
+    def compose(self) -> ComposeResult:
+        before_str = (
+            ", ".join(self._current_before)
+            if self._current_before
+            else "(none)"
+        )
+        with Vertical(id="modal-dialog"):
+            yield Static("Edit Before Links", id="modal-title")
+            yield Static(f"Current: {before_str}")
+            yield Static("Add IDs (comma-separated):")
+            yield Input(placeholder="IDs to add", id="add-input")
+            yield Static("Remove IDs (comma-separated):")
+            yield Input(placeholder="IDs to remove", id="remove-input")
+            with Horizontal(classes="modal-buttons"):
+                yield Button("Apply", variant="primary", id="submit")
+                yield Button("Cancel", id="cancel")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "submit":
+            add_str = self.query_one("#add-input", Input).value.strip()
+            remove_str = self.query_one("#remove-input", Input).value.strip()
+            add_ids = (
+                [x.strip() for x in add_str.split(",") if x.strip()]
+                if add_str
+                else []
+            )
+            remove_ids = (
+                [x.strip() for x in remove_str.split(",") if x.strip()]
+                if remove_str
+                else []
+            )
+            if add_ids or remove_ids:
+                self.dismiss({"add": add_ids, "remove": remove_ids})
+            else:
+                self.dismiss(None)
+        else:
+            self.dismiss(None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class LockScreen(ModalScreen[dict[str, list[str]] | None]):
+    """Modal for locking and unlocking item fields.
+
+    Shows currently locked fields and provides inputs for fields to lock
+    and fields to unlock. Returns ``{"lock": [...], "unlock": [...]}``
+    or None.
+    """
+
+    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+        ("escape", "cancel", "Cancel"),
+    ]
+
+    DEFAULT_CSS = _modal_css("LockScreen")
+
+    def __init__(self, item_id: str, locked_fields: set[str]) -> None:
+        super().__init__()
+        self._item_id = item_id
+        self._locked_fields = locked_fields
+
+    def compose(self) -> ComposeResult:
+        locked_str = (
+            ", ".join(sorted(self._locked_fields))
+            if self._locked_fields
+            else "(none)"
+        )
+        with Vertical(id="modal-dialog"):
+            yield Static("Lock/Unlock Fields", id="modal-title")
+            yield Static(f"Currently locked: {locked_str}")
+            yield Static("Lock fields (comma-separated):")
+            yield Input(placeholder="Fields to lock", id="lock-input")
+            yield Static("Unlock fields (comma-separated):")
+            yield Input(placeholder="Fields to unlock", id="unlock-input")
+            with Horizontal(classes="modal-buttons"):
+                yield Button("Apply", variant="primary", id="submit")
+                yield Button("Cancel", id="cancel")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "submit":
+            lock_str = self.query_one("#lock-input", Input).value.strip()
+            unlock_str = self.query_one("#unlock-input", Input).value.strip()
+            to_lock = (
+                [x.strip() for x in lock_str.split(",") if x.strip()]
+                if lock_str
+                else []
+            )
+            to_unlock = (
+                [x.strip() for x in unlock_str.split(",") if x.strip()]
+                if unlock_str
+                else []
+            )
+            if to_lock or to_unlock:
+                self.dismiss({"lock": to_lock, "unlock": to_unlock})
+            else:
+                self.dismiss(None)
+        else:
+            self.dismiss(None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+# ---------------------------------------------------------------------------
 # TrackerApp
 # ---------------------------------------------------------------------------
 
@@ -295,6 +862,14 @@ class TrackerApp(App):
         ("escape", "back", "Back"),
         ("t", "toggle_tree", "Tree"),
         ("f", "toggle_filter", "Filter"),
+        ("d", "discuss", "Discuss"),
+        ("D", "discuss_clear", "Clear Disc."),
+        ("m", "tier_move", "Move Tier"),
+        ("n", "new_item", "New"),
+        ("e", "edit_item", "Edit"),
+        ("p", "set_parent", "Parent"),
+        ("b", "edit_before", "Before"),
+        ("l", "toggle_lock", "Lock"),
     ]
 
     def __init__(self, tracker_set: TrackerSet, **kwargs: object) -> None:
@@ -738,3 +1313,275 @@ class TrackerApp(App):
         self.query_one("#filter-status", Static).display = False
         self._apply_layout()
         self._reload_active_table()
+
+    # ------------------------------------------------------------------
+    # Write helpers
+    # ------------------------------------------------------------------
+
+    def _get_selected_item(self) -> CompiledItem | None:
+        """Return the CompiledItem for the currently highlighted row.
+
+        Works in all layout tiers: compact table, standard/wide table,
+        and tree mode. Returns None when no item is selected or the
+        tier is too-small.
+        """
+        if self._layout_tier == "too-small":
+            return None
+
+        if self._layout_tier in ("standard", "wide"):
+            if self._tree_mode:
+                if self._selected_item_id:
+                    return next(
+                        (i for i in self._items
+                         if i.id == self._selected_item_id),
+                        None,
+                    )
+                return None
+            table = self.query_one("#std-table", DataTable)
+        else:
+            table = self.query_one("#item-table", DataTable)
+
+        if table.row_count == 0:
+            return None
+
+        row_keys = list(table.rows.keys())
+        cursor_row = table.cursor_coordinate.row
+        if cursor_row >= len(row_keys):
+            return None  # pragma: no cover
+
+        item_id = str(row_keys[cursor_row].value)
+        return next(
+            (i for i in self._items if i.id == item_id), None,
+        )
+
+    def _reload_after_write(self, select_id: str | None = None) -> None:
+        """Reload items from TrackerSet and refresh the active table.
+
+        Optionally restores cursor to *select_id* after reload.
+        """
+        self._load_items()
+        if select_id:
+            self._selected_item_id = select_id
+        self._restore_selection()
+
+    # ------------------------------------------------------------------
+    # Write actions
+    # ------------------------------------------------------------------
+
+    def action_discuss(self) -> None:
+        """Open the discuss modal for the selected item."""
+        item = self._get_selected_item()
+        if not item:
+            self.notify("No item selected", severity="warning")
+            return
+        self.push_screen(
+            DiscussScreen(item.id, item.title),
+            callback=partial(self._on_discuss, item.id),
+        )
+
+    def _on_discuss(self, item_id: str, message: str | None) -> None:
+        """Handle discuss modal result."""
+        if message is None:
+            return
+        try:
+            self._tracker_set.discuss(item_id, message)
+            self.notify(f"Discussion added to {item_id}")
+            self._reload_after_write(item_id)
+        except (
+            ItemNotFoundError,
+            LockedFieldError,
+            DiscussionRateLimitError,
+        ) as e:
+            self.notify(str(e), severity="error")
+
+    def action_discuss_clear(self) -> None:
+        """Open confirmation dialog to clear discussion."""
+        item = self._get_selected_item()
+        if not item:
+            self.notify("No item selected", severity="warning")
+            return
+        self.push_screen(
+            ConfirmScreen(f"Clear discussion for '{item.title}'?"),
+            callback=partial(self._on_discuss_clear, item.id),
+        )
+
+    def _on_discuss_clear(self, item_id: str, confirmed: bool) -> None:
+        """Handle discuss-clear confirmation result."""
+        if not confirmed:
+            return
+        try:
+            self._tracker_set.discuss(item_id, "", clear=True)
+            self.notify(f"Discussion cleared for {item_id}")
+            self._reload_after_write(item_id)
+        except (HumanAuthorityError, ItemNotFoundError) as e:
+            self.notify(str(e), severity="error")
+
+    def action_tier_move(self) -> None:
+        """Open the tier-move modal for the selected item."""
+        item = self._get_selected_item()
+        if not item:
+            self.notify("No item selected", severity="warning")
+            return
+        self.push_screen(
+            TierMoveScreen(item.id, item.tier),
+            callback=partial(self._on_tier_move, item.id),
+        )
+
+    def _on_tier_move(self, item_id: str, move: str | None) -> None:
+        """Handle tier-move modal result."""
+        if move is None:
+            return
+        try:
+            if move == "promote":
+                self._tracker_set.promote(item_id)
+            elif move == "demote":
+                self._tracker_set.demote(item_id)
+            elif move == "stealth":
+                self._tracker_set.stealth_item(item_id)
+            elif move == "unstealth":
+                self._tracker_set.unstealth_item(item_id)
+            self.notify(f"Tier moved: {move} for {item_id}")
+            self._reload_after_write(item_id)
+        except (
+            TierMovementError, HumanAuthorityError, ItemNotFoundError,
+        ) as e:
+            self.notify(str(e), severity="error")
+
+    def action_new_item(self) -> None:
+        """Open the new-item modal."""
+        config = self._tracker_set.config
+        kinds = list(config.kinds.keys())
+        statuses = list(config.statuses)
+        self.push_screen(
+            NewItemScreen(kinds, statuses),
+            callback=self._on_new_item,
+        )
+
+    def _on_new_item(self, result: dict[str, Any] | None) -> None:
+        """Handle new-item modal result."""
+        if result is None:
+            return
+        try:
+            item_id = self._tracker_set.add(**result)
+            self.notify(f"Created: {item_id}")
+            self._reload_after_write(item_id)
+        except Exception as e:
+            self.notify(str(e), severity="error")
+
+    def action_edit_item(self) -> None:
+        """Open the edit modal for the selected item."""
+        item = self._get_selected_item()
+        if not item:
+            self.notify("No item selected", severity="warning")
+            return
+        statuses = list(self._tracker_set.config.statuses)
+        self.push_screen(
+            EditItemScreen(item, statuses),
+            callback=partial(self._on_edit_item, item.id),
+        )
+
+    def _on_edit_item(
+        self, item_id: str, result: dict[str, Any] | None,
+    ) -> None:
+        """Handle edit-item modal result."""
+        if result is None:
+            return
+        try:
+            self._tracker_set.update(
+                item_id,
+                set_fields=result.get("set_fields") or None,
+                add_fields=result.get("add_fields") or None,
+                remove_fields=result.get("remove_fields") or None,
+            )
+            self.notify(f"Updated: {item_id}")
+            self._reload_after_write(item_id)
+        except (ItemNotFoundError, LockedFieldError) as e:
+            self.notify(str(e), severity="error")
+
+    def action_set_parent(self) -> None:
+        """Open the parent modal for the selected item."""
+        item = self._get_selected_item()
+        if not item:
+            self.notify("No item selected", severity="warning")
+            return
+        self.push_screen(
+            ParentScreen(item.id, item.parent),
+            callback=partial(self._on_set_parent, item.id),
+        )
+
+    def _on_set_parent(self, item_id: str, parent_id: str | None) -> None:
+        """Handle set-parent modal result."""
+        if parent_id is None:
+            return
+        try:
+            self._tracker_set.update(
+                item_id,
+                set_fields={"parent": parent_id if parent_id else ""},
+            )
+            self.notify(f"Parent set for {item_id}")
+            self._reload_after_write(item_id)
+        except (ItemNotFoundError, LockedFieldError) as e:
+            self.notify(str(e), severity="error")
+
+    def action_edit_before(self) -> None:
+        """Open the before-links modal for the selected item."""
+        item = self._get_selected_item()
+        if not item:
+            self.notify("No item selected", severity="warning")
+            return
+        self.push_screen(
+            BeforeScreen(item.id, list(item.before)),
+            callback=partial(self._on_edit_before, item.id),
+        )
+
+    def _on_edit_before(
+        self, item_id: str, result: dict[str, list[str]] | None,
+    ) -> None:
+        """Handle before-links modal result."""
+        if result is None:
+            return
+        try:
+            add_fields = (
+                {"before": result["add"]} if result.get("add") else None
+            )
+            remove_fields = (
+                {"before": result["remove"]}
+                if result.get("remove")
+                else None
+            )
+            self._tracker_set.update(
+                item_id,
+                add_fields=add_fields,
+                remove_fields=remove_fields,
+            )
+            self.notify(f"Before links updated for {item_id}")
+            self._reload_after_write(item_id)
+        except (ItemNotFoundError, LockedFieldError) as e:
+            self.notify(str(e), severity="error")
+
+    def action_toggle_lock(self) -> None:
+        """Open the lock/unlock modal for the selected item."""
+        item = self._get_selected_item()
+        if not item:
+            self.notify("No item selected", severity="warning")
+            return
+        self.push_screen(
+            LockScreen(item.id, item.locked_fields),
+            callback=partial(self._on_toggle_lock, item.id),
+        )
+
+    def _on_toggle_lock(
+        self, item_id: str, result: dict[str, list[str]] | None,
+    ) -> None:
+        """Handle lock/unlock modal result."""
+        if result is None:
+            return
+        try:
+            if result.get("lock"):
+                self._tracker_set.lock(item_id, result["lock"])
+            if result.get("unlock"):
+                self._tracker_set.unlock(item_id, result["unlock"])
+            self.notify(f"Lock state updated for {item_id}")
+            self._reload_after_write(item_id)
+        except (HumanAuthorityError, ItemNotFoundError) as e:
+            self.notify(str(e), severity="error")

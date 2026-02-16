@@ -56,8 +56,10 @@ if [[ "$QUICK" == "true" ]]; then
 fi
 
 # Detect coverage config once (not per-package)
+# Both sentence-transformers and onnxruntime are needed for embedding code paths.
 COV_CONFIG=""
-if ! python3 -c "import sentence_transformers" 2>/dev/null; then
+if ! python3 -c "import sentence_transformers" 2>/dev/null || \
+   ! python3 -c "import onnxruntime" 2>/dev/null; then
     COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
 fi
 

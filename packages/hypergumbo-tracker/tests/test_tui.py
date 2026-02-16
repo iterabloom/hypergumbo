@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -35,8 +35,24 @@ from hypergumbo_tracker.models import (
     Tier,
     TrackerConfig,
 )
-from hypergumbo_tracker.trackerset import TrackerSet
+from textual.app import App
+
+from hypergumbo_tracker.store import (
+    DiscussionRateLimitError,
+    HumanAuthorityError,
+    ItemNotFoundError,
+    LockedFieldError,
+)
+from hypergumbo_tracker.trackerset import TierMovementError, TrackerSet
 from hypergumbo_tracker.tui import (
+    BeforeScreen,
+    ConfirmScreen,
+    DiscussScreen,
+    EditItemScreen,
+    LockScreen,
+    NewItemScreen,
+    ParentScreen,
+    TierMoveScreen,
     _compute_tier,
     _format_activity_lines,
     _format_detail_lines,
@@ -106,7 +122,7 @@ def _make_tracker_set(tmp_path: Path) -> TrackerSet:
     return ts
 
 
-async def _wait_for_table(pilot: Any, app: Any, max_rounds: int = 30) -> None:
+async def _wait_for_table(pilot: Any, app: Any, max_rounds: int = 50) -> None:
     """Wait for the DataTable to be populated.
 
     Coverage tracing slows Textual's event loop, so on_mount may not have
@@ -873,7 +889,7 @@ class TestCmdTui:
 # ---------------------------------------------------------------------------
 
 
-async def _wait_for_std_table(pilot: Any, app: Any, max_rounds: int = 30) -> None:
+async def _wait_for_std_table(pilot: Any, app: Any, max_rounds: int = 50) -> None:
     """Wait for the standard DataTable to be populated."""
     table = app.query_one("#std-table")
     for _ in range(max_rounds):
@@ -1909,3 +1925,1721 @@ class TestFilterStatus:
             await _wait_for_std_table(pilot, app)
             status = app.query_one("#filter-status")
             assert status.display is False
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: modal screens via wrapper App
+# ---------------------------------------------------------------------------
+
+
+class _ModalTestApp(App):
+    """Minimal app for testing modal screens in isolation.
+
+    Pushes the given screen on mount and captures the result in ``_result``.
+    """
+
+    def __init__(self, screen: Any, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._screen = screen
+        self._result: Any = "NOT_SET"
+
+    def on_mount(self) -> None:
+        self.push_screen(self._screen, callback=self._capture)
+
+    def _capture(self, result: Any) -> None:
+        self._result = result
+
+
+async def _wait_for_modal(
+    pilot: Any, app: Any, widget_id: str = "#modal-dialog",
+    max_rounds: int = 30,
+) -> None:
+    """Wait for a modal screen to compose and render.
+
+    Polls until *widget_id* is found in the active screen's DOM, with a
+    configurable maximum number of event-loop ticks.  This accounts for
+    the asynchronous compose lifecycle when a ModalScreen is pushed from
+    ``on_mount``.
+    """
+    from textual.css.query import NoMatches
+
+    for _ in range(max_rounds):
+        await pilot.pause()
+        try:
+            app.screen.query_one(widget_id)
+            return
+        except NoMatches:
+            continue
+
+
+class TestDiscussScreenUnit:
+    """Test DiscussScreen modal in isolation."""
+
+    async def test_submit_returns_message(self) -> None:
+        screen = DiscussScreen("ID-1", "Test Item")
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            app.screen.query_one("#discuss-input").value = "Hello there"
+            await pilot.pause()
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result == "Hello there"
+
+    async def test_cancel_returns_none(self) -> None:
+        screen = DiscussScreen("ID-1", "Test Item")
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.click("#cancel")
+            await pilot.pause()
+            assert app._result is None
+
+    async def test_escape_returns_none(self) -> None:
+        screen = DiscussScreen("ID-1", "Test Item")
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.press("escape")
+            await pilot.pause()
+            assert app._result is None
+
+    async def test_empty_submit_returns_none(self) -> None:
+        screen = DiscussScreen("ID-1", "Test Item")
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result is None
+
+
+class TestConfirmScreenUnit:
+    """Test ConfirmScreen modal in isolation."""
+
+    async def test_yes_returns_true(self) -> None:
+        screen = ConfirmScreen("Are you sure?")
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.click("#yes")
+            await pilot.pause()
+            assert app._result is True
+
+    async def test_no_returns_false(self) -> None:
+        screen = ConfirmScreen("Are you sure?")
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.click("#no")
+            await pilot.pause()
+            assert app._result is False
+
+    async def test_escape_returns_false(self) -> None:
+        screen = ConfirmScreen("Are you sure?")
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.press("escape")
+            await pilot.pause()
+            assert app._result is False
+
+
+class TestTierMoveScreenUnit:
+    """Test TierMoveScreen modal in isolation."""
+
+    async def test_canonical_shows_demote(self) -> None:
+        screen = TierMoveScreen("ID-1", Tier.CANONICAL)
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            from textual.widgets import Select as Sel
+            sel = app.screen.query_one("#move-select", Sel)
+            assert sel.value == "demote"
+
+    async def test_workspace_shows_promote(self) -> None:
+        screen = TierMoveScreen("ID-1", Tier.WORKSPACE)
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            from textual.widgets import Select as Sel
+            sel = app.screen.query_one("#move-select", Sel)
+            assert sel.value == "promote"
+
+    async def test_stealth_shows_unstealth(self) -> None:
+        screen = TierMoveScreen("ID-1", Tier.STEALTH)
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            from textual.widgets import Select as Sel
+            sel = app.screen.query_one("#move-select", Sel)
+            assert sel.value == "unstealth"
+
+    async def test_none_tier_no_select(self) -> None:
+        screen = TierMoveScreen("ID-1", None)
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            results = app.screen.query("#move-select")
+            assert len(results) == 0
+
+    async def test_cancel_returns_none(self) -> None:
+        screen = TierMoveScreen("ID-1", Tier.WORKSPACE)
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.click("#cancel")
+            await pilot.pause()
+            assert app._result is None
+
+    async def test_escape_returns_none(self) -> None:
+        screen = TierMoveScreen("ID-1", Tier.WORKSPACE)
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.press("escape")
+            await pilot.pause()
+            assert app._result is None
+
+    async def test_submit_no_select_returns_none(self) -> None:
+        screen = TierMoveScreen("ID-1", None)
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result is None
+
+    async def test_submit_with_selection(self) -> None:
+        screen = TierMoveScreen("ID-1", Tier.CANONICAL)
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result == "demote"
+
+
+class TestNewItemScreenUnit:
+    """Test NewItemScreen modal in isolation."""
+
+    async def test_submit_with_valid_data(self) -> None:
+        screen = NewItemScreen(["invariant", "work_item"], ["todo_hard", "done"])
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 40)) as pilot:
+            await _wait_for_modal(pilot, app)
+            app.screen.query_one("#title-input").value = "New Test Item"
+            await pilot.pause()
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result is not None
+            assert app._result["title"] == "New Test Item"
+            assert app._result["kind"] == "invariant"
+            assert app._result["tier"] == Tier.WORKSPACE
+
+    async def test_submit_empty_title_returns_none(self) -> None:
+        screen = NewItemScreen(["invariant"], ["todo_hard"])
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 40)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result is None
+
+    async def test_cancel_returns_none(self) -> None:
+        screen = NewItemScreen(["invariant"], ["todo_hard"])
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 40)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.click("#cancel")
+            await pilot.pause()
+            assert app._result is None
+
+    async def test_invalid_priority_defaults_to_2(self) -> None:
+        screen = NewItemScreen(["invariant"], ["todo_hard"])
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 40)) as pilot:
+            await _wait_for_modal(pilot, app)
+            app.screen.query_one("#title-input").value = "Test"
+            app.screen.query_one("#priority-input").value = "not-a-number"
+            await pilot.pause()
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result is not None
+            assert app._result["priority"] == 2
+
+    async def test_escape_returns_none(self) -> None:
+        screen = NewItemScreen(["invariant"], ["todo_hard"])
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 40)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.press("escape")
+            await pilot.pause()
+            assert app._result is None
+
+    async def test_with_description(self) -> None:
+        screen = NewItemScreen(["invariant"], ["todo_hard"])
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 40)) as pilot:
+            await _wait_for_modal(pilot, app)
+            app.screen.query_one("#title-input").value = "With Desc"
+            app.screen.query_one("#desc-input").value = "A description"
+            await pilot.pause()
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result is not None
+            assert app._result["description"] == "A description"
+
+
+class TestEditItemScreenUnit:
+    """Test EditItemScreen modal in isolation."""
+
+    def _make_item(self) -> CompiledItem:
+        return CompiledItem(
+            id="INV-test",
+            kind="invariant",
+            title="Original Title",
+            status="todo_hard",
+            priority=1,
+            tier=Tier.CANONICAL,
+            tags=["quality"],
+            description="Original desc",
+        )
+
+    async def test_submit_with_changes(self) -> None:
+        item = self._make_item()
+        screen = EditItemScreen(item, ["todo_hard", "in_progress", "done"])
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 40)) as pilot:
+            await _wait_for_modal(pilot, app)
+            app.screen.query_one("#title-input").value = "Changed Title"
+            await pilot.pause()
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result is not None
+            assert app._result["set_fields"]["title"] == "Changed Title"
+
+    async def test_status_change(self) -> None:
+        item = self._make_item()
+        screen = EditItemScreen(item, ["todo_hard", "in_progress", "done"])
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 40)) as pilot:
+            await _wait_for_modal(pilot, app)
+            from textual.widgets import Select as Sel
+            sel = app.screen.query_one("#status-select", Sel)
+            sel.value = "in_progress"
+            await pilot.pause()
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result is not None
+            assert app._result["set_fields"]["status"] == "in_progress"
+
+    async def test_submit_no_changes_returns_none(self) -> None:
+        item = self._make_item()
+        screen = EditItemScreen(item, ["todo_hard", "in_progress", "done"])
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 40)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result is None
+
+    async def test_cancel_returns_none(self) -> None:
+        item = self._make_item()
+        screen = EditItemScreen(item, ["todo_hard", "done"])
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 40)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.click("#cancel")
+            await pilot.pause()
+            assert app._result is None
+
+    async def test_tag_add(self) -> None:
+        item = self._make_item()
+        screen = EditItemScreen(item, ["todo_hard", "done"])
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 40)) as pilot:
+            await _wait_for_modal(pilot, app)
+            app.screen.query_one("#tags-input").value = "quality, new_tag"
+            await pilot.pause()
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result is not None
+            assert "new_tag" in app._result["add_fields"]["tags"]
+
+    async def test_tag_removal(self) -> None:
+        item = self._make_item()
+        screen = EditItemScreen(item, ["todo_hard", "done"])
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 40)) as pilot:
+            await _wait_for_modal(pilot, app)
+            app.screen.query_one("#tags-input").value = ""
+            await pilot.pause()
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result is not None
+            assert "quality" in app._result["remove_fields"]["tags"]
+
+    async def test_priority_change(self) -> None:
+        item = self._make_item()
+        screen = EditItemScreen(item, ["todo_hard", "done"])
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 40)) as pilot:
+            await _wait_for_modal(pilot, app)
+            app.screen.query_one("#priority-input").value = "5"
+            await pilot.pause()
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result is not None
+            assert app._result["set_fields"]["priority"] == 5
+
+    async def test_invalid_priority_ignored(self) -> None:
+        item = self._make_item()
+        screen = EditItemScreen(item, ["todo_hard", "done"])
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 40)) as pilot:
+            await _wait_for_modal(pilot, app)
+            app.screen.query_one("#priority-input").value = "abc"
+            await pilot.pause()
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result is None
+
+    async def test_escape_returns_none(self) -> None:
+        item = self._make_item()
+        screen = EditItemScreen(item, ["todo_hard", "done"])
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 40)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.press("escape")
+            await pilot.pause()
+            assert app._result is None
+
+    async def test_desc_change(self) -> None:
+        item = self._make_item()
+        screen = EditItemScreen(item, ["todo_hard", "done"])
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 40)) as pilot:
+            await _wait_for_modal(pilot, app)
+            app.screen.query_one("#desc-input").value = "New description"
+            await pilot.pause()
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result is not None
+            assert app._result["set_fields"]["description"] == "New description"
+
+
+class TestParentScreenUnit:
+    """Test ParentScreen modal in isolation."""
+
+    async def test_submit_new_parent(self) -> None:
+        screen = ParentScreen("ID-1", "OLD-PARENT")
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            app.screen.query_one("#parent-input").value = "NEW-PARENT"
+            await pilot.pause()
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result == "NEW-PARENT"
+
+    async def test_submit_empty_clears_parent(self) -> None:
+        screen = ParentScreen("ID-1", "OLD-PARENT")
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            app.screen.query_one("#parent-input").value = ""
+            await pilot.pause()
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result == ""
+
+    async def test_cancel_returns_none(self) -> None:
+        screen = ParentScreen("ID-1", None)
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.click("#cancel")
+            await pilot.pause()
+            assert app._result is None
+
+    async def test_escape_returns_none(self) -> None:
+        screen = ParentScreen("ID-1", None)
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.press("escape")
+            await pilot.pause()
+            assert app._result is None
+
+
+class TestBeforeScreenUnit:
+    """Test BeforeScreen modal in isolation."""
+
+    async def test_add_ids(self) -> None:
+        screen = BeforeScreen("ID-1", ["EXISTING-1"])
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            app.screen.query_one("#add-input").value = "NEW-1, NEW-2"
+            await pilot.pause()
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result is not None
+            assert app._result["add"] == ["NEW-1", "NEW-2"]
+
+    async def test_remove_ids(self) -> None:
+        screen = BeforeScreen("ID-1", ["EXISTING-1"])
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            app.screen.query_one("#remove-input").value = "EXISTING-1"
+            await pilot.pause()
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result is not None
+            assert app._result["remove"] == ["EXISTING-1"]
+
+    async def test_empty_submit_returns_none(self) -> None:
+        screen = BeforeScreen("ID-1", [])
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result is None
+
+    async def test_cancel_returns_none(self) -> None:
+        screen = BeforeScreen("ID-1", [])
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.click("#cancel")
+            await pilot.pause()
+            assert app._result is None
+
+    async def test_escape_returns_none(self) -> None:
+        screen = BeforeScreen("ID-1", [])
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.press("escape")
+            await pilot.pause()
+            assert app._result is None
+
+
+class TestLockScreenUnit:
+    """Test LockScreen modal in isolation."""
+
+    async def test_lock_fields(self) -> None:
+        screen = LockScreen("ID-1", set())
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            app.screen.query_one("#lock-input").value = "status, priority"
+            await pilot.pause()
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result is not None
+            assert set(app._result["lock"]) == {"status", "priority"}
+
+    async def test_unlock_fields(self) -> None:
+        screen = LockScreen("ID-1", {"status"})
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            app.screen.query_one("#unlock-input").value = "status"
+            await pilot.pause()
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result is not None
+            assert app._result["unlock"] == ["status"]
+
+    async def test_empty_submit_returns_none(self) -> None:
+        screen = LockScreen("ID-1", set())
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.click("#submit")
+            await pilot.pause()
+            assert app._result is None
+
+    async def test_cancel_returns_none(self) -> None:
+        screen = LockScreen("ID-1", set())
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.click("#cancel")
+            await pilot.pause()
+            assert app._result is None
+
+    async def test_escape_returns_none(self) -> None:
+        screen = LockScreen("ID-1", set())
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            await pilot.press("escape")
+            await pilot.pause()
+            assert app._result is None
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: write keybindings on TrackerApp
+# ---------------------------------------------------------------------------
+
+
+class TestGetSelectedItem:
+    """Test the _get_selected_item helper."""
+
+    async def test_returns_item_at_cursor(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            assert item.id in [i.id for i in ts.list_items()]
+
+    async def test_returns_none_when_empty(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_empty_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            for _ in range(5):
+                await pilot.pause()
+            item = app._get_selected_item()
+            assert item is None
+
+    async def test_returns_none_at_too_small(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(30, 10)) as pilot:
+            for _ in range(5):
+                await pilot.pause()
+            item = app._get_selected_item()
+            assert item is None
+
+    async def test_returns_item_in_compact(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(50, 18)) as pilot:
+            await _wait_for_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+
+    async def test_returns_item_in_tree_mode(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Select an item first
+            await pilot.press("down")
+            await pilot.pause()
+            selected_id = app._selected_item_id
+            assert selected_id is not None
+            # Switch to tree mode
+            await pilot.press("t")
+            await pilot.pause()
+            item = app._get_selected_item()
+            assert item is not None
+            assert item.id == selected_id
+
+    async def test_returns_none_in_tree_mode_no_selection(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._tree_mode = True
+            app._selected_item_id = None
+            item = app._get_selected_item()
+            assert item is None
+
+
+class TestDiscussKeybinding:
+    """Test the 'd' discuss keybinding end-to-end."""
+
+    @pytest.fixture()
+    def tracker_set(self, tmp_path: Path) -> TrackerSet:
+        return _make_tracker_set(tmp_path)
+
+    async def test_discuss_no_item_warns(self, tmp_path: Path) -> None:
+        """Pressing 'd' with no items shows warning."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_empty_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            for _ in range(5):
+                await pilot.pause()
+            await pilot.press("d")
+            await pilot.pause()
+            # No crash; warning notification shown
+
+    async def test_discuss_happy_path(self, tracker_set: TrackerSet) -> None:
+        """Pressing 'd', typing, and submitting adds a discussion entry."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            item_id = item.id
+
+            # Mock TrackerSet.discuss to verify it's called
+            with patch.object(
+                tracker_set, "discuss", wraps=tracker_set.discuss,
+            ) as mock_discuss:
+                app.action_discuss()
+                await _wait_for_modal(pilot, app)
+                # The DiscussScreen should be pushed
+                # Simulate typing into the modal's input and clicking submit
+                modal_input = app.screen.query_one("#discuss-input")
+                modal_input.value = "Test discussion"
+                await pilot.pause()
+                await pilot.click("#submit")
+                await pilot.pause()
+                await pilot.pause()
+                mock_discuss.assert_called_once_with(item_id, "Test discussion")
+
+    async def test_discuss_cancel(self, tracker_set: TrackerSet) -> None:
+        """Pressing 'd' then Cancel does not write."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(tracker_set, "discuss") as mock_discuss:
+                app.action_discuss()
+                await _wait_for_modal(pilot, app)
+                await pilot.click("#cancel")
+                await pilot.pause()
+                mock_discuss.assert_not_called()
+
+    async def test_discuss_error(self, tracker_set: TrackerSet) -> None:
+        """When discuss raises an error, notification is shown."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(
+                tracker_set, "discuss",
+                side_effect=LockedFieldError("discussion locked"),
+            ):
+                app.action_discuss()
+                await _wait_for_modal(pilot, app)
+                modal_input = app.screen.query_one("#discuss-input")
+                modal_input.value = "Test"
+                await pilot.pause()
+                await pilot.click("#submit")
+                await pilot.pause()
+                await pilot.pause()
+                # Error notification shown (no crash)
+
+    async def test_discuss_rate_limit_error(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        """DiscussionRateLimitError is caught and notified."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(
+                tracker_set, "discuss",
+                side_effect=DiscussionRateLimitError("rate limited"),
+            ):
+                app.action_discuss()
+                await _wait_for_modal(pilot, app)
+                app.screen.query_one("#discuss-input").value = "Test"
+                await pilot.pause()
+                await pilot.click("#submit")
+                await pilot.pause()
+
+    async def test_discuss_not_found_error(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        """ItemNotFoundError is caught and notified."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(
+                tracker_set, "discuss",
+                side_effect=ItemNotFoundError("not found"),
+            ):
+                app.action_discuss()
+                await _wait_for_modal(pilot, app)
+                app.screen.query_one("#discuss-input").value = "Test"
+                await pilot.pause()
+                await pilot.click("#submit")
+                await pilot.pause()
+
+
+class TestDiscussClearKeybinding:
+    """Test the 'D' clear-discussion keybinding."""
+
+    @pytest.fixture()
+    def tracker_set(self, tmp_path: Path) -> TrackerSet:
+        return _make_tracker_set(tmp_path)
+
+    async def test_clear_no_item_warns(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_empty_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            for _ in range(5):
+                await pilot.pause()
+            await pilot.press("D")
+            await pilot.pause()
+
+    async def test_clear_confirmed(self, tracker_set: TrackerSet) -> None:
+        """Confirming clear calls discuss with clear=True."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            with patch.object(tracker_set, "discuss") as mock_discuss:
+                app.action_discuss_clear()
+                await _wait_for_modal(pilot, app)
+                await pilot.click("#yes")
+                await pilot.pause()
+                await pilot.pause()
+                mock_discuss.assert_called_once_with(
+                    item.id, "", clear=True,
+                )
+
+    async def test_clear_cancelled(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(tracker_set, "discuss") as mock_discuss:
+                app.action_discuss_clear()
+                await _wait_for_modal(pilot, app)
+                await pilot.click("#no")
+                await pilot.pause()
+                mock_discuss.assert_not_called()
+
+    async def test_clear_human_authority_error(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(
+                tracker_set, "discuss",
+                side_effect=HumanAuthorityError("human only"),
+            ):
+                app.action_discuss_clear()
+                await _wait_for_modal(pilot, app)
+                await pilot.click("#yes")
+                await pilot.pause()
+
+    async def test_clear_not_found_error(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(
+                tracker_set, "discuss",
+                side_effect=ItemNotFoundError("not found"),
+            ):
+                app.action_discuss_clear()
+                await _wait_for_modal(pilot, app)
+                await pilot.click("#yes")
+                await pilot.pause()
+
+
+class TestTierMoveKeybinding:
+    """Test the 'm' tier-move keybinding."""
+
+    @pytest.fixture()
+    def tracker_set(self, tmp_path: Path) -> TrackerSet:
+        return _make_tracker_set(tmp_path)
+
+    async def test_tier_move_no_item_warns(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_empty_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            for _ in range(5):
+                await pilot.pause()
+            await pilot.press("m")
+            await pilot.pause()
+
+    async def test_promote_happy_path(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            with patch.object(tracker_set, "promote") as mock_promote:
+                app.action_tier_move()
+                await _wait_for_modal(pilot, app)
+                await pilot.click("#submit")
+                await pilot.pause()
+                await pilot.pause()
+                # The mock should have been called (the item is workspace
+                # so the first option is "promote")
+                if item.tier == Tier.WORKSPACE:
+                    mock_promote.assert_called_once_with(item.id)
+
+    async def test_tier_move_cancel(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(tracker_set, "promote") as mock:
+                app.action_tier_move()
+                await _wait_for_modal(pilot, app)
+                await pilot.click("#cancel")
+                await pilot.pause()
+                mock.assert_not_called()
+
+    async def test_tier_move_error(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(
+                tracker_set, "promote",
+                side_effect=TierMovementError("wrong tier"),
+            ), patch.object(
+                tracker_set, "demote",
+                side_effect=TierMovementError("wrong tier"),
+            ), patch.object(
+                tracker_set, "stealth_item",
+                side_effect=TierMovementError("wrong tier"),
+            ), patch.object(
+                tracker_set, "unstealth_item",
+                side_effect=TierMovementError("wrong tier"),
+            ):
+                app.action_tier_move()
+                await _wait_for_modal(pilot, app)
+                await pilot.click("#submit")
+                await pilot.pause()
+
+    async def test_tier_move_human_authority_error(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(
+                tracker_set, "promote",
+                side_effect=HumanAuthorityError("human only"),
+            ), patch.object(
+                tracker_set, "stealth_item",
+                side_effect=HumanAuthorityError("human only"),
+            ):
+                app.action_tier_move()
+                await _wait_for_modal(pilot, app)
+                await pilot.click("#submit")
+                await pilot.pause()
+
+
+class TestNewItemKeybinding:
+    """Test the 'n' new-item keybinding."""
+
+    @pytest.fixture()
+    def tracker_set(self, tmp_path: Path) -> TrackerSet:
+        return _make_tracker_set(tmp_path)
+
+    async def test_new_item_happy_path(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 40)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            initial_count = len(app._items)
+
+            with patch.object(
+                tracker_set, "add", return_value="NEW-ID",
+            ) as mock_add:
+                app.action_new_item()
+                await _wait_for_modal(pilot, app)
+                app.screen.query_one("#title-input").value = "Brand New Item"
+                await pilot.pause()
+                await pilot.click("#submit")
+                await pilot.pause()
+                await pilot.pause()
+                mock_add.assert_called_once()
+                call_kwargs = mock_add.call_args
+                assert call_kwargs[1]["title"] == "Brand New Item"
+
+    async def test_new_item_cancel(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 40)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(tracker_set, "add") as mock_add:
+                app.action_new_item()
+                await _wait_for_modal(pilot, app)
+                await pilot.click("#cancel")
+                await pilot.pause()
+                mock_add.assert_not_called()
+
+    async def test_new_item_error(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 40)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(
+                tracker_set, "add",
+                side_effect=ValueError("unknown kind"),
+            ):
+                app.action_new_item()
+                await _wait_for_modal(pilot, app)
+                app.screen.query_one("#title-input").value = "Bad Item"
+                await pilot.pause()
+                await pilot.click("#submit")
+                await pilot.pause()
+
+
+class TestEditItemKeybinding:
+    """Test the 'e' edit-item keybinding."""
+
+    @pytest.fixture()
+    def tracker_set(self, tmp_path: Path) -> TrackerSet:
+        return _make_tracker_set(tmp_path)
+
+    async def test_edit_no_item_warns(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_empty_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            for _ in range(5):
+                await pilot.pause()
+            await pilot.press("e")
+            await pilot.pause()
+
+    async def test_edit_happy_path(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 40)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+
+            with patch.object(tracker_set, "update") as mock_update:
+                app.action_edit_item()
+                await _wait_for_modal(pilot, app)
+                app.screen.query_one("#title-input").value = "Changed Title"
+                await pilot.pause()
+                await pilot.click("#submit")
+                await pilot.pause()
+                await pilot.pause()
+                mock_update.assert_called_once()
+
+    async def test_edit_cancel(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 40)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(tracker_set, "update") as mock_update:
+                app.action_edit_item()
+                await _wait_for_modal(pilot, app)
+                await pilot.click("#cancel")
+                await pilot.pause()
+                mock_update.assert_not_called()
+
+    async def test_edit_locked_field_error(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 40)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(
+                tracker_set, "update",
+                side_effect=LockedFieldError("field locked"),
+            ):
+                app.action_edit_item()
+                await _wait_for_modal(pilot, app)
+                app.screen.query_one("#title-input").value = "New Title"
+                await pilot.pause()
+                await pilot.click("#submit")
+                await pilot.pause()
+
+
+class TestSetParentKeybinding:
+    """Test the 'p' set-parent keybinding."""
+
+    @pytest.fixture()
+    def tracker_set(self, tmp_path: Path) -> TrackerSet:
+        return _make_tracker_set(tmp_path)
+
+    async def test_parent_no_item_warns(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_empty_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            for _ in range(5):
+                await pilot.pause()
+            await pilot.press("p")
+            await pilot.pause()
+
+    async def test_set_parent_happy_path(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+
+            with patch.object(tracker_set, "update") as mock_update:
+                app.action_set_parent()
+                await _wait_for_modal(pilot, app)
+                app.screen.query_one("#parent-input").value = "PARENT-ID"
+                await pilot.pause()
+                await pilot.click("#submit")
+                await pilot.pause()
+                await pilot.pause()
+                mock_update.assert_called_once()
+                call_kwargs = mock_update.call_args
+                assert call_kwargs[1]["set_fields"]["parent"] == "PARENT-ID"
+
+    async def test_clear_parent(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+
+            with patch.object(tracker_set, "update") as mock_update:
+                app.action_set_parent()
+                await _wait_for_modal(pilot, app)
+                app.screen.query_one("#parent-input").value = ""
+                await pilot.pause()
+                await pilot.click("#submit")
+                await pilot.pause()
+                await pilot.pause()
+                mock_update.assert_called_once()
+                call_kwargs = mock_update.call_args
+                assert call_kwargs[1]["set_fields"]["parent"] == ""
+
+    async def test_parent_cancel(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(tracker_set, "update") as mock_update:
+                app.action_set_parent()
+                await _wait_for_modal(pilot, app)
+                await pilot.click("#cancel")
+                await pilot.pause()
+                mock_update.assert_not_called()
+
+    async def test_parent_error(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(
+                tracker_set, "update",
+                side_effect=LockedFieldError("locked"),
+            ):
+                app.action_set_parent()
+                await _wait_for_modal(pilot, app)
+                app.screen.query_one("#parent-input").value = "X"
+                await pilot.pause()
+                await pilot.click("#submit")
+                await pilot.pause()
+
+
+class TestEditBeforeKeybinding:
+    """Test the 'b' edit-before keybinding."""
+
+    @pytest.fixture()
+    def tracker_set(self, tmp_path: Path) -> TrackerSet:
+        return _make_tracker_set(tmp_path)
+
+    async def test_before_no_item_warns(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_empty_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            for _ in range(5):
+                await pilot.pause()
+            await pilot.press("b")
+            await pilot.pause()
+
+    async def test_add_before_links(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+
+            with patch.object(tracker_set, "update") as mock_update:
+                app.action_edit_before()
+                await _wait_for_modal(pilot, app)
+                app.screen.query_one("#add-input").value = "ID-1, ID-2"
+                await pilot.pause()
+                await pilot.click("#submit")
+                await pilot.pause()
+                await pilot.pause()
+                mock_update.assert_called_once()
+                call_kwargs = mock_update.call_args
+                assert call_kwargs[1]["add_fields"] == {
+                    "before": ["ID-1", "ID-2"],
+                }
+
+    async def test_remove_before_links(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(tracker_set, "update") as mock_update:
+                app.action_edit_before()
+                await _wait_for_modal(pilot, app)
+                app.screen.query_one("#remove-input").value = "OLD-ID"
+                await pilot.pause()
+                await pilot.click("#submit")
+                await pilot.pause()
+                await pilot.pause()
+                mock_update.assert_called_once()
+                call_kwargs = mock_update.call_args
+                assert call_kwargs[1]["remove_fields"] == {
+                    "before": ["OLD-ID"],
+                }
+
+    async def test_before_cancel(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(tracker_set, "update") as mock_update:
+                app.action_edit_before()
+                await _wait_for_modal(pilot, app)
+                await pilot.click("#cancel")
+                await pilot.pause()
+                mock_update.assert_not_called()
+
+    async def test_before_error(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(
+                tracker_set, "update",
+                side_effect=ItemNotFoundError("gone"),
+            ):
+                app.action_edit_before()
+                await _wait_for_modal(pilot, app)
+                app.screen.query_one("#add-input").value = "X"
+                await pilot.pause()
+                await pilot.click("#submit")
+                await pilot.pause()
+
+
+class TestLockKeybinding:
+    """Test the 'l' lock/unlock keybinding."""
+
+    @pytest.fixture()
+    def tracker_set(self, tmp_path: Path) -> TrackerSet:
+        return _make_tracker_set(tmp_path)
+
+    async def test_lock_no_item_warns(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_empty_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            for _ in range(5):
+                await pilot.pause()
+            await pilot.press("l")
+            await pilot.pause()
+
+    async def test_lock_fields(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(tracker_set, "lock") as mock_lock:
+                app.action_toggle_lock()
+                await _wait_for_modal(pilot, app)
+                app.screen.query_one("#lock-input").value = "status"
+                await pilot.pause()
+                await pilot.click("#submit")
+                await pilot.pause()
+                await pilot.pause()
+                mock_lock.assert_called_once()
+
+    async def test_unlock_fields(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(tracker_set, "unlock") as mock_unlock:
+                app.action_toggle_lock()
+                await _wait_for_modal(pilot, app)
+                app.screen.query_one("#unlock-input").value = "priority"
+                await pilot.pause()
+                await pilot.click("#submit")
+                await pilot.pause()
+                await pilot.pause()
+                mock_unlock.assert_called_once()
+
+    async def test_lock_and_unlock(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(tracker_set, "lock") as mock_lock, \
+                 patch.object(tracker_set, "unlock") as mock_unlock:
+                app.action_toggle_lock()
+                await _wait_for_modal(pilot, app)
+                app.screen.query_one("#lock-input").value = "status"
+                app.screen.query_one("#unlock-input").value = "priority"
+                await pilot.pause()
+                await pilot.click("#submit")
+                await pilot.pause()
+                await pilot.pause()
+                mock_lock.assert_called_once()
+                mock_unlock.assert_called_once()
+
+    async def test_lock_cancel(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(tracker_set, "lock") as mock_lock:
+                app.action_toggle_lock()
+                await _wait_for_modal(pilot, app)
+                await pilot.click("#cancel")
+                await pilot.pause()
+                mock_lock.assert_not_called()
+
+    async def test_lock_human_authority_error(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(
+                tracker_set, "lock",
+                side_effect=HumanAuthorityError("human only"),
+            ):
+                app.action_toggle_lock()
+                await _wait_for_modal(pilot, app)
+                app.screen.query_one("#lock-input").value = "status"
+                await pilot.pause()
+                await pilot.click("#submit")
+                await pilot.pause()
+
+    async def test_unlock_not_found_error(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(
+                tracker_set, "unlock",
+                side_effect=ItemNotFoundError("not found"),
+            ):
+                app.action_toggle_lock()
+                await _wait_for_modal(pilot, app)
+                app.screen.query_one("#unlock-input").value = "status"
+                await pilot.pause()
+                await pilot.click("#submit")
+                await pilot.pause()
+
+
+class TestReloadAfterWrite:
+    """Test the _reload_after_write helper."""
+
+    async def test_reload_preserves_selection(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = ts.list_items()
+            target_id = items[1].id
+            app._reload_after_write(target_id)
+            await pilot.pause()
+            assert app._selected_item_id == target_id
+
+    async def test_reload_without_selection(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._reload_after_write()
+            await pilot.pause()
+            table = app.query_one("#std-table")
+            assert table.row_count == 3
+
+
+class TestOnTierMoveCallbackBranches:
+    """Test _on_tier_move callback branches for full coverage."""
+
+    async def test_demote_branch(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            with patch.object(ts, "demote") as mock:
+                app._on_tier_move(item.id, "demote")
+                await pilot.pause()
+                mock.assert_called_once_with(item.id)
+
+    async def test_stealth_branch(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            with patch.object(ts, "stealth_item") as mock:
+                app._on_tier_move(item.id, "stealth")
+                await pilot.pause()
+                mock.assert_called_once_with(item.id)
+
+    async def test_unstealth_branch(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            with patch.object(ts, "unstealth_item") as mock:
+                app._on_tier_move(item.id, "unstealth")
+                await pilot.pause()
+                mock.assert_called_once_with(item.id)
+
+    async def test_none_move_noop(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            with patch.object(ts, "promote") as mock:
+                app._on_tier_move(item.id, None)
+                await pilot.pause()
+                mock.assert_not_called()
+
+    async def test_not_found_error(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(
+                ts, "promote",
+                side_effect=ItemNotFoundError("gone"),
+            ):
+                app._on_tier_move("FAKE-ID", "promote")
+                await pilot.pause()
+
+
+class TestOnEditItemCallbackBranches:
+    """Test _on_edit_item callback with empty fields."""
+
+    async def test_none_result_noop(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(ts, "update") as mock:
+                app._on_edit_item("FAKE-ID", None)
+                await pilot.pause()
+                mock.assert_not_called()
+
+    async def test_empty_fields_passes_none(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            with patch.object(ts, "update") as mock:
+                app._on_edit_item(item.id, {
+                    "set_fields": {"title": "X"},
+                    "add_fields": {},
+                    "remove_fields": {},
+                })
+                await pilot.pause()
+                mock.assert_called_once_with(
+                    item.id,
+                    set_fields={"title": "X"},
+                    add_fields=None,
+                    remove_fields=None,
+                )
+
+
+class TestOnEditBeforeCallbackBranches:
+    """Test _on_edit_before callback branches."""
+
+    async def test_add_only(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            with patch.object(ts, "update") as mock:
+                app._on_edit_before(item.id, {"add": ["X"], "remove": []})
+                await pilot.pause()
+                mock.assert_called_once_with(
+                    item.id,
+                    add_fields={"before": ["X"]},
+                    remove_fields=None,
+                )
+
+    async def test_remove_only(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            with patch.object(ts, "update") as mock:
+                app._on_edit_before(item.id, {"add": [], "remove": ["Y"]})
+                await pilot.pause()
+                mock.assert_called_once_with(
+                    item.id,
+                    add_fields=None,
+                    remove_fields={"before": ["Y"]},
+                )
+
+    async def test_none_result_noop(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(ts, "update") as mock:
+                app._on_edit_before("FAKE", None)
+                await pilot.pause()
+                mock.assert_not_called()
+
+    async def test_locked_field_error(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(
+                ts, "update",
+                side_effect=LockedFieldError("locked"),
+            ):
+                app._on_edit_before("FAKE", {"add": ["X"], "remove": []})
+                await pilot.pause()
+
+
+class TestOnToggleLockCallbackBranches:
+    """Test _on_toggle_lock callback branches."""
+
+    async def test_lock_only(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            with patch.object(ts, "lock") as ml, \
+                 patch.object(ts, "unlock") as mu:
+                app._on_toggle_lock(item.id, {"lock": ["status"], "unlock": []})
+                await pilot.pause()
+                ml.assert_called_once_with(item.id, ["status"])
+                mu.assert_not_called()
+
+    async def test_unlock_only(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            with patch.object(ts, "lock") as ml, \
+                 patch.object(ts, "unlock") as mu:
+                app._on_toggle_lock(item.id, {"lock": [], "unlock": ["p"]})
+                await pilot.pause()
+                ml.assert_not_called()
+                mu.assert_called_once_with(item.id, ["p"])
+
+    async def test_none_result_noop(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(ts, "lock") as ml:
+                app._on_toggle_lock("FAKE", None)
+                await pilot.pause()
+                ml.assert_not_called()
+
+
+class TestOnNewItemCallbackBranches:
+    """Test _on_new_item callback branches."""
+
+    async def test_none_result_noop(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(ts, "add") as mock:
+                app._on_new_item(None)
+                await pilot.pause()
+                mock.assert_not_called()
+
+
+class TestOnDiscussClearCallbackBranches:
+    """Test _on_discuss_clear with False confirmation."""
+
+    async def test_not_confirmed_noop(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(ts, "discuss") as mock:
+                app._on_discuss_clear("FAKE", False)
+                await pilot.pause()
+                mock.assert_not_called()
+
+
+class TestOnDiscussCallbackBranches:
+    """Test _on_discuss callback with None message."""
+
+    async def test_none_message_noop(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(ts, "discuss") as mock:
+                app._on_discuss("FAKE", None)
+                await pilot.pause()
+                mock.assert_not_called()
+
+
+class TestOnSetParentCallbackBranches:
+    """Test _on_set_parent callback branches."""
+
+    async def test_none_result_noop(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(ts, "update") as mock:
+                app._on_set_parent("FAKE", None)
+                await pilot.pause()
+                mock.assert_not_called()
+
+    async def test_not_found_error(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(
+                ts, "update",
+                side_effect=ItemNotFoundError("gone"),
+            ):
+                app._on_set_parent("FAKE", "PARENT")
+                await pilot.pause()
