@@ -376,6 +376,72 @@ class TestMakeNonce:
         assert len(nonces) > 90
 
 
+class TestFlowStyleUpdateLists:
+    """Verify that list-valued fields in update ops use YAML flow-style.
+
+    Flow-style keeps the entire list on one line, making it atomic under
+    merge=union — git cannot interleave lines from different ops.
+    """
+
+    def test_add_dict_lists_are_flow_style(self) -> None:
+        op = {
+            "op": "update",
+            **COMMON,
+            "set": {},
+            "add": {"tags": ["ci_infrastructure", "analysis_quality"]},
+        }
+        serialized = _serialize_op(op)
+        # Flow-style list should appear as [ci_infrastructure, analysis_quality]
+        # on a single line, not as block-style with leading dashes
+        assert "[ci_infrastructure, analysis_quality]" in serialized
+        # Should NOT have block-style dashes for the tag values
+        assert "- ci_infrastructure" not in serialized
+
+    def test_remove_dict_lists_are_flow_style(self) -> None:
+        op = {
+            "op": "update",
+            **COMMON,
+            "set": {},
+            "remove": {"tags": ["old_tag"], "before": ["WI-xxx", "WI-yyy"]},
+        }
+        serialized = _serialize_op(op)
+        assert "[old_tag]" in serialized
+        assert "[WI-xxx, WI-yyy]" in serialized
+
+    def test_flow_style_roundtrip(self) -> None:
+        """Flow-style lists round-trip correctly through CSafeLoader."""
+        op = {
+            "op": "update",
+            **COMMON,
+            "set": {},
+            "add": {"tags": ["a", "b", "c"]},
+            "remove": {"before": ["WI-x"]},
+        }
+        serialized = _serialize_op(op)
+        # Strip nonce comments for parsing
+        clean_lines = []
+        for line in serialized.split("\n"):
+            cleaned = re.sub(r"\s+# [0-9a-f]{4}$", "", line)
+            clean_lines.append(cleaned)
+        clean_yaml = "\n".join(clean_lines)
+
+        parsed = yaml.load(clean_yaml, Loader=yaml.CSafeLoader)
+        assert parsed is not None
+        assert parsed[0]["add"]["tags"] == ["a", "b", "c"]
+        assert parsed[0]["remove"]["before"] == ["WI-x"]
+
+    def test_add_empty_list_flow_style(self) -> None:
+        """Empty lists in add/remove should also be flow-style."""
+        op = {
+            "op": "update",
+            **COMMON,
+            "set": {},
+            "add": {"tags": []},
+        }
+        serialized = _serialize_op(op)
+        assert "[]" in serialized
+
+
 class TestReconcileOpSerialization:
     """Verify reconcile op serialization."""
 

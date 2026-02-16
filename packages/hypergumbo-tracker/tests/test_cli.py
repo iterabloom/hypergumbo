@@ -235,6 +235,50 @@ class TestInitCommand:
             main(["--tracker-root", str(root), "init"])
         assert exc.value.code == EXIT_SUCCESS
 
+    def test_init_creates_tracker_gitignore(self, tmp_path: Path) -> None:
+        root = tmp_path / ".agent"
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(root), "init"])
+        assert exc.value.code == EXIT_SUCCESS
+        gitignore = root / "tracker" / ".gitignore"
+        assert gitignore.exists()
+        assert "config.yaml" in gitignore.read_text()
+
+    def test_init_copies_config_template(self, tmp_path: Path) -> None:
+        root = tmp_path / ".agent"
+        tracker_dir = root / "tracker"
+        tracker_dir.mkdir(parents=True)
+        template = tracker_dir / "config.yaml.template"
+        template.write_text("kinds:\n  work_item:\n    prefix: WI\n")
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(root), "init"])
+        assert exc.value.code == EXIT_SUCCESS
+        config = tracker_dir / "config.yaml"
+        assert config.exists()
+        assert config.read_text() == template.read_text()
+
+    def test_init_does_not_overwrite_existing_config(self, tmp_path: Path) -> None:
+        root = tmp_path / ".agent"
+        tracker_dir = root / "tracker"
+        tracker_dir.mkdir(parents=True)
+        template = tracker_dir / "config.yaml.template"
+        template.write_text("kinds:\n  work_item:\n    prefix: WI\n")
+        config = tracker_dir / "config.yaml"
+        config.write_text("custom: data\n")
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(root), "init"])
+        assert exc.value.code == EXIT_SUCCESS
+        # Config should not be overwritten
+        assert config.read_text() == "custom: data\n"
+
+    def test_init_no_template_no_config_copy(self, tmp_path: Path) -> None:
+        root = tmp_path / ".agent"
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(root), "init"])
+        assert exc.value.code == EXIT_SUCCESS
+        # No template, so no config should be created
+        assert not (root / "tracker" / "config.yaml").exists()
+
 
 # ---------------------------------------------------------------------------
 # Stub commands

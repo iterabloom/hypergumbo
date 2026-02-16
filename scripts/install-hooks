@@ -153,6 +153,9 @@ chmod +x "$hooks_path"/* 2>/dev/null || true
 
 git config --local core.hooksPath "$hooks_path"
 
+# Configure textconv driver for tracker .ops files (ADR-0013)
+git config --local diff.tracker.textconv "$repo_root/scripts/tracker-textconv"
+
 # -----------------------------
 # Initialize AUTONOMOUS_MODE.txt from default if missing
 # -----------------------------
@@ -163,6 +166,7 @@ fi
 
 echo "✅ Git hooks installed for this clone"
 echo "   core.hooksPath=$(git config --local --get core.hooksPath)"
+echo "   diff.tracker.textconv=$(git config --local --get diff.tracker.textconv)"
 echo "   Dependencies look OK for commit-msg hook."
 echo "   Secret will be auto-generated on first commit by commit-msg hook."
 echo ""

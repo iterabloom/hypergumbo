@@ -45,7 +45,7 @@ from typing import Any
 import proquint
 import yaml
 from ruamel.yaml import YAML
-from ruamel.yaml.comments import CommentedMap
+from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.scalarstring import DoubleQuotedScalarString
 
 from hypergumbo_tracker.models import (
@@ -154,6 +154,18 @@ def _double_quote(value: str) -> DoubleQuotedScalarString:
     return DoubleQuotedScalarString(value)
 
 
+def _flow_seq(items: list[Any]) -> CommentedSeq:
+    """Wrap a list in a flow-style CommentedSeq for YAML output.
+
+    Flow-style keeps the entire list on one line (e.g., `[a, b, c]`),
+    making it atomic under merge=union — git cannot interleave lines
+    from different ops within a single-line value.
+    """
+    seq = CommentedSeq(items)
+    seq.fa.set_flow_style()
+    return seq
+
+
 def _prepare_op_for_yaml(op_dict: dict[str, Any]) -> CommentedMap:
     """Convert an op dict to a CommentedMap with canonical ordering and quoting.
 
@@ -212,12 +224,12 @@ def _prepare_op_for_yaml(op_dict: dict[str, Any]) -> CommentedMap:
         if "add" in op_dict:
             add_cm = CommentedMap()
             for k, v in op_dict["add"].items():
-                add_cm[k] = v
+                add_cm[k] = _flow_seq(v) if isinstance(v, list) else v
             result["add"] = add_cm
         if "remove" in op_dict:
             remove_cm = CommentedMap()
             for k, v in op_dict["remove"].items():
-                remove_cm[k] = v
+                remove_cm[k] = _flow_seq(v) if isinstance(v, list) else v
             result["remove"] = remove_cm
     elif op_type == "discuss" and "message" in op_dict:
         result["message"] = _double_quote(op_dict["message"])

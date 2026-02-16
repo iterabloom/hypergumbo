@@ -552,10 +552,22 @@ def _cmd_init(args: argparse.Namespace) -> int:
     if not ws_gitattributes.exists():
         ws_gitattributes.write_text("*.ops merge=union\n")
 
-    # Create .gitignore for stealth
-    gitignore = root / "tracker-workspace" / "stealth" / ".gitignore"
-    if not gitignore.exists():
-        gitignore.write_text("*.ops\n")
+    # Create .gitignore for stealth tier
+    stealth_gitignore = root / "tracker-workspace" / "stealth" / ".gitignore"
+    if not stealth_gitignore.exists():
+        stealth_gitignore.write_text("*.ops\n")
+
+    # Create .gitignore for tracker dir (config.yaml is human-owned, gitignored)
+    tracker_gitignore = root / "tracker" / ".gitignore"
+    if not tracker_gitignore.exists():
+        tracker_gitignore.write_text("config.yaml\n")
+
+    # Copy config.yaml.template → config.yaml if template exists and config doesn't
+    template_path = root / "tracker" / "config.yaml.template"
+    config_path = root / "tracker" / "config.yaml"
+    if template_path.exists() and not config_path.exists():
+        import shutil
+        shutil.copy2(template_path, config_path)
 
     if args.json:
         print(json.dumps({"root": str(root)}))
