@@ -62,6 +62,35 @@ EXIT_INTERNAL_ERROR = 2
 
 
 # ---------------------------------------------------------------------------
+# Cache directory discovery
+# ---------------------------------------------------------------------------
+
+
+def _get_cache_dir(tracker_root: Path) -> Path | None:
+    """Derive the XDG-based cache directory for tracker SQLite caches.
+
+    Uses $XDG_CACHE_HOME (default ~/.cache) + repo fingerprint to create
+    a unique cache directory per repository. Returns None if the repo
+    fingerprint cannot be computed (e.g. not in a git repo).
+    """
+    import os
+
+    from hypergumbo_tracker.cache import Cache
+    from hypergumbo_tracker.store import _find_git_dir
+
+    git_dir = _find_git_dir(tracker_root)
+    if git_dir is None:
+        return None
+
+    fingerprint = Cache.repo_fingerprint(git_dir)
+    if fingerprint == "no-git":
+        return None
+
+    xdg_cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+    return xdg_cache / "hypergumbo-tracker" / fingerprint
+
+
+# ---------------------------------------------------------------------------
 # Tracker root discovery
 # ---------------------------------------------------------------------------
 
@@ -843,10 +872,22 @@ def main(argv: list[str] | None = None) -> None:
     except SystemExit:
         raise
 
-    # Create TrackerSet
+    # Create TrackerSet with optional cache
     try:
         config = load_config(tracker_root / "tracker")
-        ts = TrackerSet(tracker_root, config=config)
+        cache_dir = _get_cache_dir(tracker_root)
+        ts = TrackerSet(tracker_root, config=config, cache_dir=cache_dir)
+
+        # Wire Cache instances for each tier
+        if cache_dir is not None:
+            from hypergumbo_tracker.cache import Cache
+
+            caches = {}
+            for tier_val, store in ts._tier_stores.items():
+                db_path = cache_dir / f"{tier_val.value}.cache.db"
+                db_path.parent.mkdir(parents=True, exist_ok=True)
+                caches[tier_val] = Cache(store, db_path, tier_val)
+            ts.set_caches(caches)
     except Exception as e:
         print(f"error: failed to initialize tracker: {e}", file=sys.stderr)
         raise SystemExit(EXIT_INTERNAL_ERROR) from e

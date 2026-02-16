@@ -1363,13 +1363,18 @@ class Store:
         status: str | None = None,
         kind: str | None = None,
         tag: str | None = None,
+        cache: Any | None = None,
     ) -> list[CompiledItem]:
         """List all items, optionally filtered and sorted.
 
         Sorted by (priority, topological before order, created_at).
         Updates the positional alias stash.
+
+        Args:
+            cache: Optional Cache instance. If provided, uses cached compiled
+                items when source files haven't changed (write-through on miss).
         """
-        items = self._compile_all()
+        items = self._compile_all_cached(cache) if cache is not None else self._compile_all()
 
         # Apply filters
         if status is not None:
@@ -1388,7 +1393,7 @@ class Store:
 
         return items
 
-    def ready(self) -> list[CompiledItem]:
+    def ready(self, cache: Any | None = None) -> list[CompiledItem]:
         """Return items that are actionable and unblocked.
 
         An item is ready if:
@@ -1402,8 +1407,11 @@ class Store:
         So Y is not ready until X is resolved.
 
         Sorted by (priority, created_at).
+
+        Args:
+            cache: Optional Cache instance for cache-accelerated reads.
         """
-        all_items = self._compile_all()
+        all_items = self._compile_all_cached(cache) if cache is not None else self._compile_all()
 
         # Build resolved set: items with status in resolved_statuses
         resolved_ids: set[str] = set()
@@ -1500,6 +1508,33 @@ class Store:
             try:
                 ops = _parse_ops_file(path)
                 item = compile_ops(ops, item_id)
+                items.append(item)
+            except CorruptFileError:
+                continue
+        return items
+
+    def _compile_all_cached(self, cache: Any) -> list[CompiledItem]:
+        """Compile all items, using cache for unchanged files.
+
+        For each ops file on disk:
+        - Cache hit (mtime unchanged) → return cached CompiledItem directly
+        - Cache miss → parse + compile + upsert into cache (write-through on read)
+
+        Falls back to _compile_all() if cache is None.
+        """
+        items: list[CompiledItem] = []
+        for path in self._list_item_files():
+            item_id = self._id_from_filename(path)
+            try:
+                cached_item = cache.get_compiled(item_id)
+                if cached_item is not None:
+                    items.append(cached_item)
+                    continue
+                # Cache miss — parse, compile, upsert
+                ops = _parse_ops_file(path)
+                item = compile_ops(ops, item_id)
+                stat = path.stat()
+                cache.upsert(item_id, item, stat.st_mtime, stat.st_size)
                 items.append(item)
             except CorruptFileError:
                 continue

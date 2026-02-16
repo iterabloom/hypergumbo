@@ -2273,3 +2273,143 @@ class TestAncestorsOrphanParent:
         ancestors = store.ancestors(item_id)
         # No ancestors found since parent doesn't exist
         assert ancestors == []
+
+
+# ---------------------------------------------------------------------------
+# Cache-accelerated read path: _compile_all_cached()
+# ---------------------------------------------------------------------------
+
+
+class TestCompileAllCached:
+    def test_returns_same_results_as_compile_all(
+        self, ops_dir: Path, mock_agent_uid: None
+    ) -> None:
+        """_compile_all_cached returns same items as _compile_all."""
+        from hypergumbo_tracker.cache import Cache
+        from hypergumbo_tracker.models import Tier
+
+        store = Store(ops_dir, config=_make_config())
+        id1 = store.add(kind="invariant", title="Cached A")
+        id2 = store.add(kind="work_item", title="Cached B", not_duplicate_of=[id1])
+
+        db_path = ops_dir.parent / "test.cache.db"
+        cache = Cache(store, db_path, Tier.WORKSPACE)
+
+        uncached = store._compile_all()
+        cached = store._compile_all_cached(cache)
+
+        assert len(cached) == len(uncached)
+        assert {i.id for i in cached} == {i.id for i in uncached}
+        cache.close()
+
+    def test_cache_hit_avoids_reparse(
+        self, ops_dir: Path, mock_agent_uid: None
+    ) -> None:
+        """Second call uses cache (no re-parse)."""
+        from hypergumbo_tracker.cache import Cache
+        from hypergumbo_tracker.models import Tier
+
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Cache Hit Test")
+
+        db_path = ops_dir.parent / "test.cache.db"
+        cache = Cache(store, db_path, Tier.WORKSPACE)
+
+        # First call populates cache
+        items1 = store._compile_all_cached(cache)
+        assert len(items1) == 1
+
+        # Verify item is cached
+        cached_item = cache.get_compiled(item_id)
+        assert cached_item is not None
+        assert cached_item.title == "Cache Hit Test"
+
+        # Second call should hit cache
+        items2 = store._compile_all_cached(cache)
+        assert len(items2) == 1
+        assert items2[0].title == "Cache Hit Test"
+        cache.close()
+
+    def test_cache_miss_on_modified_file(
+        self, ops_dir: Path, mock_agent_uid: None
+    ) -> None:
+        """Modified file triggers cache miss and reparse + upsert."""
+        import time
+        from hypergumbo_tracker.cache import Cache
+        from hypergumbo_tracker.models import Tier
+
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Will Modify")
+
+        db_path = ops_dir.parent / "test.cache.db"
+        cache = Cache(store, db_path, Tier.WORKSPACE)
+
+        # Populate cache
+        store._compile_all_cached(cache)
+
+        # Modify the file
+        time.sleep(0.05)
+        store.update(item_id, set_fields={"status": "in_progress"})
+
+        # Cache should miss and re-parse
+        items = store._compile_all_cached(cache)
+        assert len(items) == 1
+        assert items[0].status == "in_progress"
+        cache.close()
+
+    def test_corrupt_file_skipped_in_cached(
+        self, ops_dir: Path, mock_agent_uid: None
+    ) -> None:
+        """Corrupt file is skipped in _compile_all_cached."""
+        from hypergumbo_tracker.cache import Cache
+        from hypergumbo_tracker.models import Tier
+
+        store = Store(ops_dir, config=_make_config())
+        store.add(kind="invariant", title="Good Item")
+
+        db_path = ops_dir.parent / "test.cache.db"
+        cache = Cache(store, db_path, Tier.WORKSPACE)
+
+        # Write a corrupt file
+        (ops_dir / ".INV-corrupt-cached.ops").write_text("{{bad yaml")
+
+        items = store._compile_all_cached(cache)
+        assert len(items) == 1
+        assert items[0].title == "Good Item"
+        cache.close()
+
+    def test_list_items_with_cache(
+        self, ops_dir: Path, mock_agent_uid: None
+    ) -> None:
+        """list_items() with cache param uses cache-accelerated path."""
+        from hypergumbo_tracker.cache import Cache
+        from hypergumbo_tracker.models import Tier
+
+        store = Store(ops_dir, config=_make_config())
+        store.add(kind="invariant", title="Listed via Cache")
+
+        db_path = ops_dir.parent / "test.cache.db"
+        cache = Cache(store, db_path, Tier.WORKSPACE)
+
+        items = store.list_items(cache=cache)
+        assert len(items) == 1
+        assert items[0].title == "Listed via Cache"
+        cache.close()
+
+    def test_ready_with_cache(
+        self, ops_dir: Path, mock_agent_uid: None
+    ) -> None:
+        """ready() with cache param uses cache-accelerated path."""
+        from hypergumbo_tracker.cache import Cache
+        from hypergumbo_tracker.models import Tier
+
+        store = Store(ops_dir, config=_make_config())
+        store.add(kind="invariant", title="Ready via Cache", status="todo_hard")
+
+        db_path = ops_dir.parent / "test.cache.db"
+        cache = Cache(store, db_path, Tier.WORKSPACE)
+
+        items = store.ready(cache=cache)
+        assert len(items) == 1
+        assert items[0].title == "Ready via Cache"
+        cache.close()

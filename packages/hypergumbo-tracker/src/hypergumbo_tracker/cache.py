@@ -224,7 +224,14 @@ class Cache:
     # -------------------------------------------------------------------
 
     def invalidate_stale(self) -> list[str]:
-        """Check all cached items against source files. Returns IDs that were refreshed."""
+        """Check all cached items against source files. Returns IDs that were refreshed.
+
+        Discussion-only optimization (ADR-0013 §818-829): when new bytes
+        appended to an ops file contain only discuss/discuss_clear/discuss_summarize
+        ops, only the discussion and updated_at columns are updated instead of
+        a full INSERT OR REPLACE. This avoids rewriting all columns when only
+        discussion changed.
+        """
         assert self._conn is not None
         refreshed: list[str] = []
 
@@ -236,7 +243,7 @@ class Cache:
             self._recover()
             return []
 
-        for item_id, stored_mtime, _stored_size in rows:
+        for item_id, stored_mtime, stored_size in rows:
             source_path = self._store.item_path(item_id)
             if not source_path.exists():
                 self._delete_row(item_id)
@@ -247,7 +254,15 @@ class Cache:
             if stat.st_mtime == stored_mtime:
                 continue  # Fresh
 
-            # Stale — recompile
+            # Stale — check if discussion-only fast path applies
+            if stat.st_size >= stored_size and stored_size > 0:
+                if self._try_discussion_only_update(
+                    item_id, source_path, stat, stored_size
+                ):
+                    refreshed.append(item_id)
+                    continue
+
+            # Full reparse
             try:
                 ops = _parse_ops_file(source_path)
                 item = compile_ops(ops, item_id)
@@ -259,6 +274,98 @@ class Cache:
                 refreshed.append(item_id)
 
         return refreshed
+
+    _DISCUSSION_OPS = frozenset({"discuss", "discuss_clear", "discuss_summarize"})
+
+    def _try_discussion_only_update(
+        self,
+        item_id: str,
+        source_path: Path,
+        stat: Any,
+        stored_size: int,
+    ) -> bool:
+        """Attempt discussion-only fast path for an appended ops file.
+
+        Reads the new bytes appended since the last cached size. If they
+        parse as YAML and all ops are discuss/discuss_clear/discuss_summarize,
+        does a full file parse + compile but only updates discussion-related
+        columns in the cache row.
+
+        Returns True if the fast path succeeded, False if caller should
+        fall through to full reparse + full upsert.
+        """
+        import yaml as _yaml
+
+        try:
+            with open(source_path, "rb") as f:
+                f.seek(stored_size)
+                new_bytes = f.read()
+        except OSError:
+            return False
+
+        if not new_bytes.strip():
+            return False
+
+        # Parse new bytes as YAML
+        try:
+            new_ops = _yaml.load(new_bytes, Loader=_yaml.CSafeLoader)
+        except _yaml.YAMLError:
+            return False
+
+        if not isinstance(new_ops, list) or not new_ops:
+            return False
+
+        # Check if ALL new ops are discussion-related
+        for op in new_ops:
+            if not isinstance(op, dict):
+                return False
+            if op.get("op") not in self._DISCUSSION_OPS:
+                return False
+
+        # All discussion ops — do full parse + compile, but only update
+        # discussion columns
+        try:
+            ops = _parse_ops_file(source_path)
+            item = compile_ops(ops, item_id)
+            item.tier = self._tier
+            self._update_discussion_only(
+                item_id, item, stat.st_mtime, stat.st_size
+            )
+            return True
+        except Exception:
+            return False
+
+    def _update_discussion_only(
+        self,
+        item_id: str,
+        item: CompiledItem,
+        mtime: float,
+        size: int,
+    ) -> None:
+        """Update only discussion-related columns in the cache row.
+
+        Updates: discussion, updated_at, source_mtime, source_size.
+        Leaves all other fields untouched.
+        """
+        assert self._conn is not None
+        discussion_json = json.dumps([
+            {
+                "by": d.by, "actor": d.actor, "at": d.at,
+                "message": d.message, "is_summary": d.is_summary,
+            }
+            for d in item.discussion
+        ])
+        try:
+            self._conn.execute(
+                """UPDATE items
+                   SET discussion = ?, updated_at = ?,
+                       source_mtime = ?, source_size = ?
+                   WHERE id = ?""",
+                (discussion_json, item.updated_at, mtime, size, item_id),
+            )
+            self._conn.commit()
+        except sqlite3.DatabaseError:  # pragma: no cover — defensive
+            self._recover()
 
     def rebuild(self) -> None:
         """Cold start: wipe cache, recompile all items from Store."""

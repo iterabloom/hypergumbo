@@ -1226,3 +1226,72 @@ class TestTextconv:
         assert exc.value.code == 0
         out = capsys.readouterr().out
         assert "locked" in out
+
+
+# ---------------------------------------------------------------------------
+# _get_cache_dir
+# ---------------------------------------------------------------------------
+
+
+class TestGetCacheDir:
+    def test_returns_none_no_git(self, tmp_path: Path) -> None:
+        """No git repo → returns None."""
+        from hypergumbo_tracker.cli import _get_cache_dir
+        tracker_root = tmp_path / ".agent"
+        tracker_root.mkdir()
+        result = _get_cache_dir(tracker_root)
+        assert result is None
+
+    @staticmethod
+    def _init_git_repo(repo: Path) -> None:
+        """Set up a minimal git repo with one commit."""
+        import subprocess
+        def _git(*args: str) -> None:
+            subprocess.run(
+                ["git", *args],  # noqa: S607
+                cwd=str(repo), capture_output=True, check=True,
+            )
+        _git("init", str(repo))
+        _git("config", "user.email", "t@t.com")
+        _git("config", "user.name", "T")
+        (repo / "f.txt").write_text("x")
+        _git("add", "f.txt")
+        _git("commit", "-m", "i")
+
+    def test_returns_path_with_git(self, tmp_path: Path) -> None:
+        """Git repo → returns XDG-based cache path."""
+        from hypergumbo_tracker.cli import _get_cache_dir
+
+        self._init_git_repo(tmp_path)
+
+        tracker_root = tmp_path / ".agent"
+        tracker_root.mkdir()
+        result = _get_cache_dir(tracker_root)
+        assert result is not None
+        assert "hypergumbo-tracker" in str(result)
+
+    def test_returns_none_git_dir_but_no_git(self, tmp_path: Path) -> None:
+        """Git dir exists as file but no real git → fingerprint 'no-git' → None."""
+        from hypergumbo_tracker.cli import _get_cache_dir
+        tracker_root = tmp_path / ".agent"
+        tracker_root.mkdir()
+        # Create a .git file (like a worktree) but no real git
+        git_file = tmp_path / ".git"
+        git_file.write_text("gitdir: /nonexistent/path\n")
+        result = _get_cache_dir(tracker_root)
+        assert result is None
+
+    def test_xdg_cache_home_override(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """XDG_CACHE_HOME env var is respected."""
+        from hypergumbo_tracker.cli import _get_cache_dir
+
+        self._init_git_repo(tmp_path)
+
+        custom_cache = tmp_path / "custom_cache"
+        monkeypatch.setenv("XDG_CACHE_HOME", str(custom_cache))
+
+        tracker_root = tmp_path / ".agent"
+        tracker_root.mkdir()
+        result = _get_cache_dir(tracker_root)
+        assert result is not None
+        assert str(custom_cache) in str(result)

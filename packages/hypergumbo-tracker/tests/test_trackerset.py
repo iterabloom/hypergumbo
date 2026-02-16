@@ -1019,3 +1019,202 @@ class TestTrackerSetCacheIntegration:
         # After reconcile, item should be in canonical cache only
         can_items = ts._caches[Tier.CANONICAL].get_all()
         assert any(i.id == item_id for i in can_items)
+
+
+# ---------------------------------------------------------------------------
+# Positional alias persistence
+# ---------------------------------------------------------------------------
+
+
+class TestPositionalAliasPersistence:
+    def test_alias_resolves_after_list(
+        self, tracker_set: TrackerSet, mock_agent_uid: None
+    ) -> None:
+        """:N resolves correctly within same TrackerSet instance after list_items()."""
+        id1 = tracker_set.add("invariant", "Alias P1", tier=Tier.CANONICAL, priority=1)
+        id2 = tracker_set.add("work_item", "Alias P3", tier=Tier.WORKSPACE,
+                              priority=3, not_duplicate_of=[id1])
+        tracker_set.list_items()
+
+        # :1 should be the first item (P1), :2 should be second (P3)
+        full_id_1, _, _ = tracker_set._resolve_id(":1")
+        full_id_2, _, _ = tracker_set._resolve_id(":2")
+        assert full_id_1 == id1
+        assert full_id_2 == id2
+
+    def test_alias_resolves_after_ready(
+        self, tracker_set: TrackerSet, mock_agent_uid: None
+    ) -> None:
+        """:N resolves correctly after ready()."""
+        id1 = tracker_set.add("invariant", "Ready Alias", tier=Tier.WORKSPACE)
+        tracker_set.ready()
+
+        full_id, _, _ = tracker_set._resolve_id(":1")
+        assert full_id == id1
+
+    def test_cross_invocation_persistence(
+        self, tracker_root: Path, tmp_path: Path, mock_agent_uid: None
+    ) -> None:
+        """Cross-invocation: create TS → list → new TS with same cache_dir → :N resolves."""
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+
+        ts1 = TrackerSet(tracker_root, cache_dir=cache_dir)
+        id1 = ts1.add("invariant", "Persist Alias", tier=Tier.WORKSPACE)
+        ts1.list_items()
+
+        # Create a new TrackerSet with the same cache_dir
+        ts2 = TrackerSet(tracker_root, cache_dir=cache_dir)
+        full_id, _, _ = ts2._resolve_id(":1")
+        assert full_id == id1
+
+    def test_stale_alias_raises_item_not_found(
+        self, tracker_root: Path, tmp_path: Path, mock_agent_uid: None
+    ) -> None:
+        """Stale alias (item deleted between invocations) → ItemNotFoundError."""
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+
+        ts1 = TrackerSet(tracker_root, cache_dir=cache_dir)
+        id1 = ts1.add("invariant", "Stale Alias", tier=Tier.WORKSPACE)
+        ts1.list_items()
+
+        # Delete the item's ops file
+        ts1.workspace.item_path(id1).unlink()
+
+        # New TrackerSet — alias persists but item is gone
+        ts2 = TrackerSet(tracker_root, cache_dir=cache_dir)
+        with pytest.raises(ItemNotFoundError):
+            ts2._resolve_id(":1")
+
+    def test_cross_tier_merged_alias(
+        self, tracker_set: TrackerSet, mock_agent_uid: None
+    ) -> None:
+        """Merged list from 3 tiers, :N resolves to correct tier."""
+        id1 = tracker_set.add("invariant", "Can P1", tier=Tier.CANONICAL, priority=1)
+        id2 = tracker_set.add("work_item", "WS P2", tier=Tier.WORKSPACE,
+                              priority=2, not_duplicate_of=[id1])
+        id3 = tracker_set.add("work_item", "Stealth P3", tier=Tier.STEALTH,
+                              priority=3, not_duplicate_of=[id1, id2])
+        tracker_set.list_items()
+
+        _, _, tier1 = tracker_set._resolve_id(":1")
+        _, _, tier2 = tracker_set._resolve_id(":2")
+        _, _, tier3 = tracker_set._resolve_id(":3")
+        assert tier1 == Tier.CANONICAL
+        assert tier2 == Tier.WORKSPACE
+        assert tier3 == Tier.STEALTH
+
+    def test_out_of_range_raises(
+        self, tracker_set: TrackerSet, mock_agent_uid: None
+    ) -> None:
+        """:99 raises ItemNotFoundError with list size."""
+        tracker_set.add("invariant", "Solo", tier=Tier.WORKSPACE)
+        tracker_set.list_items()
+
+        with pytest.raises(ItemNotFoundError, match="1 items"):
+            tracker_set._resolve_id(":99")
+
+    def test_invalid_alias_format_raises(
+        self, tracker_set: TrackerSet, mock_agent_uid: None
+    ) -> None:
+        """:abc raises ItemNotFoundError."""
+        with pytest.raises(ItemNotFoundError, match="Invalid positional alias"):
+            tracker_set._resolve_id(":abc")
+
+    def test_no_cache_dir_aliases_in_memory_only(
+        self, tracker_root: Path, mock_agent_uid: None
+    ) -> None:
+        """No cache_dir: aliases work in-memory only (no persistence, no crash)."""
+        ts = TrackerSet(tracker_root)  # No cache_dir
+        id1 = ts.add("invariant", "In Memory", tier=Tier.WORKSPACE)
+        ts.list_items()
+
+        # In-memory alias works
+        full_id, _, _ = ts._resolve_id(":1")
+        assert full_id == id1
+
+        # New TrackerSet without cache_dir — alias NOT persisted
+        ts2 = TrackerSet(tracker_root)
+        with pytest.raises(ItemNotFoundError, match="0 items"):
+            ts2._resolve_id(":1")
+
+    def test_save_load_roundtrip(
+        self, tracker_root: Path, tmp_path: Path, mock_agent_uid: None
+    ) -> None:
+        """_save_last_list and _load_last_list round-trip correctly."""
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+
+        ts = TrackerSet(tracker_root, cache_dir=cache_dir)
+        ts._last_list = ["ID-aaa", "ID-bbb", "ID-ccc"]
+        ts._save_last_list()
+
+        # Verify file was written
+        last_list_path = cache_dir / "last_list"
+        assert last_list_path.exists()
+
+        # Load into new instance
+        ts2 = TrackerSet(tracker_root, cache_dir=cache_dir)
+        assert ts2._last_list == ["ID-aaa", "ID-bbb", "ID-ccc"]
+
+    def test_empty_last_list_persists(
+        self, tracker_root: Path, tmp_path: Path, mock_agent_uid: None
+    ) -> None:
+        """Empty _last_list writes empty file."""
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+
+        ts = TrackerSet(tracker_root, cache_dir=cache_dir)
+        ts._last_list = []
+        ts._save_last_list()
+
+        ts2 = TrackerSet(tracker_root, cache_dir=cache_dir)
+        assert ts2._last_list == []
+
+
+# ---------------------------------------------------------------------------
+# Cache-accelerated reads in TrackerSet
+# ---------------------------------------------------------------------------
+
+
+class TestCacheAcceleratedReads:
+    def _make_cached_ts(
+        self, tracker_root: Path, cache_dir: Path
+    ) -> TrackerSet:
+        """Create TrackerSet with real Cache instances."""
+        from hypergumbo_tracker.cache import Cache
+
+        ts = TrackerSet(tracker_root, cache_dir=cache_dir)
+        caches = {}
+        for tier_val, store in [
+            (Tier.CANONICAL, ts.canonical),
+            (Tier.WORKSPACE, ts.workspace),
+            (Tier.STEALTH, ts.stealth),
+        ]:
+            db_path = cache_dir / f"{tier_val.value}.cache.db"
+            caches[tier_val] = Cache(store, db_path, tier_val)
+        ts.set_caches(caches)
+        return ts
+
+    def test_list_items_uses_cache(
+        self, tracker_root: Path, tmp_path: Path, mock_agent_uid: None
+    ) -> None:
+        """list_items passes cache to Store for cache-accelerated reads."""
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+        ts = self._make_cached_ts(tracker_root, cache_dir)
+        id1 = ts.add("invariant", "Cache List", tier=Tier.WORKSPACE)
+        items = ts.list_items()
+        assert any(i.id == id1 for i in items)
+
+    def test_ready_uses_cache(
+        self, tracker_root: Path, tmp_path: Path, mock_agent_uid: None
+    ) -> None:
+        """ready() passes cache to Store for cache-accelerated reads."""
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+        ts = self._make_cached_ts(tracker_root, cache_dir)
+        id1 = ts.add("invariant", "Cache Ready", tier=Tier.WORKSPACE)
+        items = ts.ready()
+        assert any(i.id == id1 for i in items)

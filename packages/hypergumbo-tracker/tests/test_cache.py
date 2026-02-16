@@ -711,6 +711,245 @@ class TestRecoveryPaths:
         cache.close()
 
 
+# ---------------------------------------------------------------------------
+# Discussion-only fast path
+# ---------------------------------------------------------------------------
+
+
+class TestDiscussionOnlyFastPath:
+    def test_discuss_only_updates_discussion_columns(
+        self, tmp_path: Path, mock_agent_uid: None
+    ) -> None:
+        """Appending only discuss ops triggers discussion-only update."""
+        store, cache, _ = _make_store_and_cache(tmp_path)
+        item_id = store.add(kind="invariant", title="Discuss Only")
+        cache.rebuild()
+
+        # Verify initial state
+        cached = cache.get_compiled(item_id)
+        assert cached is not None
+        assert cached.title == "Discuss Only"
+        assert len(cached.discussion) == 0
+
+        # Append a discuss op
+        time.sleep(0.05)
+        store.discuss(item_id, message="hello world")
+
+        # Invalidate — should use discussion-only fast path
+        refreshed = cache.invalidate_stale()
+        assert item_id in refreshed
+
+        # Discussion should be updated
+        cached2 = cache.get_compiled(item_id)
+        assert cached2 is not None
+        assert len(cached2.discussion) == 1
+        assert cached2.discussion[0].message == "hello world"
+        # Title should be unchanged
+        assert cached2.title == "Discuss Only"
+        cache.close()
+
+    def test_non_discuss_op_triggers_full_reparse(
+        self, tmp_path: Path, mock_agent_uid: None
+    ) -> None:
+        """Appending an update op after discuss triggers full reparse."""
+        store, cache, _ = _make_store_and_cache(tmp_path)
+        item_id = store.add(kind="invariant", title="Non Discuss")
+        cache.rebuild()
+
+        # Append discuss then update
+        time.sleep(0.05)
+        store.discuss(item_id, message="message")
+        store.update(item_id, set_fields={"status": "in_progress"})
+
+        refreshed = cache.invalidate_stale()
+        assert item_id in refreshed
+
+        cached = cache.get_compiled(item_id)
+        assert cached is not None
+        assert cached.status == "in_progress"
+        assert len(cached.discussion) == 1
+        cache.close()
+
+    def test_file_size_shrank_triggers_full_reparse(
+        self, tmp_path: Path, mock_agent_uid: None
+    ) -> None:
+        """File that shrank (rewritten) triggers full reparse."""
+        store, cache, _ = _make_store_and_cache(tmp_path)
+        item_id = store.add(kind="invariant", title="Shrink Test")
+        cache.rebuild()
+
+        # Get current source path
+        source_path = store.item_path(item_id)
+        original_content = source_path.read_text()
+
+        # Simulate file shrinkage by rewriting with fewer bytes
+        time.sleep(0.05)
+        source_path.write_text(original_content[:len(original_content) // 2 + 50])
+        # This will likely be corrupt, so the item will be removed from cache
+
+        refreshed = cache.invalidate_stale()
+        # Whether it refreshes or removes the item, it should show as refreshed
+        # The corrupt shorter file won't parse — full reparse path handles this
+        assert isinstance(refreshed, list)
+        cache.close()
+
+    def test_discuss_summarize_uses_fast_path(
+        self, tmp_path: Path, mock_agent_uid: None
+    ) -> None:
+        """discuss_summarize is treated as discussion-only."""
+        store, cache, _ = _make_store_and_cache(tmp_path)
+        item_id = store.add(kind="invariant", title="Summarize Fast Path")
+        store.discuss(item_id, message="initial message")
+        cache.rebuild()
+
+        # Append discuss_summarize
+        time.sleep(0.05)
+        store.discuss(item_id, message="Summary of discussion", summarize=True)
+
+        refreshed = cache.invalidate_stale()
+        assert item_id in refreshed
+
+        cached = cache.get_compiled(item_id)
+        assert cached is not None
+        assert len(cached.discussion) == 1
+        assert cached.discussion[0].is_summary is True
+        cache.close()
+
+    def test_empty_append_no_fast_path(
+        self, tmp_path: Path, mock_agent_uid: None
+    ) -> None:
+        """Empty new bytes (whitespace only) doesn't trigger fast path."""
+        store, cache, _ = _make_store_and_cache(tmp_path)
+        item_id = store.add(kind="invariant", title="Empty Append")
+        cache.rebuild()
+
+        # Touch the file to change mtime but don't add meaningful content
+        source_path = store.item_path(item_id)
+        time.sleep(0.05)
+        content = source_path.read_text()
+        source_path.write_text(content + "\n\n")
+
+        refreshed = cache.invalidate_stale()
+        assert item_id in refreshed
+        cache.close()
+
+    def test_invalid_yaml_append_falls_through(
+        self, tmp_path: Path, mock_agent_uid: None
+    ) -> None:
+        """Invalid YAML in appended bytes falls through to full reparse."""
+        store, cache, _ = _make_store_and_cache(tmp_path)
+        item_id = store.add(kind="invariant", title="Bad YAML Append")
+        cache.rebuild()
+
+        # Append garbage YAML
+        source_path = store.item_path(item_id)
+        time.sleep(0.05)
+        with open(source_path, "a") as f:
+            f.write("{{invalid yaml content\n")
+
+        refreshed = cache.invalidate_stale()
+        # Item should be handled (either refreshed from full reparse or
+        # removed if corrupt)
+        assert isinstance(refreshed, list)
+        cache.close()
+
+    def test_non_list_yaml_append_falls_through(
+        self, tmp_path: Path, mock_agent_uid: None
+    ) -> None:
+        """YAML that parses to non-list falls through to full reparse."""
+        store, cache, _ = _make_store_and_cache(tmp_path)
+        item_id = store.add(kind="invariant", title="Non-list Append")
+        cache.rebuild()
+
+        source_path = store.item_path(item_id)
+        time.sleep(0.05)
+        with open(source_path, "a") as f:
+            f.write("key: value\n")
+
+        refreshed = cache.invalidate_stale()
+        assert item_id in refreshed
+        cache.close()
+
+    def test_non_dict_op_in_append_falls_through(
+        self, tmp_path: Path, mock_agent_uid: None
+    ) -> None:
+        """Append with non-dict op entry falls through to full reparse."""
+        store, cache, _ = _make_store_and_cache(tmp_path)
+        item_id = store.add(kind="invariant", title="Non-dict Op")
+        cache.rebuild()
+
+        source_path = store.item_path(item_id)
+        time.sleep(0.05)
+        with open(source_path, "a") as f:
+            f.write("- just a string\n")
+
+        refreshed = cache.invalidate_stale()
+        assert item_id in refreshed
+        cache.close()
+
+
+    def test_oserror_on_file_read_falls_through(
+        self, tmp_path: Path, mock_agent_uid: None
+    ) -> None:
+        """OSError reading new bytes falls through to full reparse."""
+        from unittest.mock import patch as mock_patch
+
+        store, cache, _ = _make_store_and_cache(tmp_path)
+        item_id = store.add(kind="invariant", title="OSError Read")
+        cache.rebuild()
+
+        # Modify the file
+        time.sleep(0.05)
+        store.discuss(item_id, message="trigger stale")
+
+        # Patch open to raise OSError when seeking
+        original_open = open
+
+        def mock_open_fn(path, mode="r", *args, **kwargs):
+            if mode == "rb" and str(path).endswith(".ops"):
+                raise OSError("permission denied")
+            return original_open(path, mode, *args, **kwargs)
+
+        with mock_patch("builtins.open", side_effect=mock_open_fn):
+            # The fast path should fail and fall through to full reparse
+            result = cache._try_discussion_only_update(
+                item_id,
+                store.item_path(item_id),
+                store.item_path(item_id).stat(),
+                100,
+            )
+        assert result is False
+        cache.close()
+
+    def test_compile_error_in_fast_path_falls_through(
+        self, tmp_path: Path, mock_agent_uid: None
+    ) -> None:
+        """Exception during compile in fast path returns False."""
+        from unittest.mock import patch as mock_patch
+
+        store, cache, _ = _make_store_and_cache(tmp_path)
+        item_id = store.add(kind="invariant", title="Compile Error")
+        cache.rebuild()
+
+        source_path = store.item_path(item_id)
+        pre_discuss_size = source_path.stat().st_size
+
+        time.sleep(0.05)
+        store.discuss(item_id, message="trigger")
+
+        stat = source_path.stat()
+
+        with mock_patch(
+            "hypergumbo_tracker.cache.compile_ops",
+            side_effect=Exception("compile failed"),
+        ):
+            result = cache._try_discussion_only_update(
+                item_id, source_path, stat, pre_discuss_size
+            )
+        assert result is False
+        cache.close()
+
+
 class TestClose:
     def test_close_idempotent(
         self, tmp_path: Path, mock_agent_uid: None

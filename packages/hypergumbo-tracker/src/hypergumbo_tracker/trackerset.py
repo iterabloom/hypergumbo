@@ -110,6 +110,10 @@ class TrackerSet:
         self._cache_dir = cache_dir
         self._caches: dict[Tier, Any] | None = None
 
+        # Positional alias stash (merged list across all tiers)
+        self._last_list: list[str] = []
+        self._load_last_list()
+
     @property
     def config(self) -> TrackerConfig:
         """Return the tracker configuration."""
@@ -151,18 +155,28 @@ class TrackerSet:
         """Merge items from all 3 tiers, annotate each with .tier.
 
         If tier is specified, only return items from that tier.
+        Passes per-tier cache to Store.list_items() for cache-accelerated reads.
+        Updates the positional alias stash for cross-invocation :N persistence.
         """
         items: list[CompiledItem] = []
 
         tiers_to_query = [tier] if tier is not None else list(Tier)
         for t in tiers_to_query:
             store = self._tier_stores[t]
-            tier_items = store.list_items(status=status, kind=kind, tag=tag)
+            cache = self._caches.get(t) if self._caches else None
+            tier_items = store.list_items(
+                status=status, kind=kind, tag=tag, cache=cache
+            )
             for item in tier_items:
                 item.tier = t
             items.extend(tier_items)
 
         items.sort(key=lambda i: (i.priority, i.created_at))
+
+        # Update positional alias stash (merged, sorted order)
+        self._last_list = [i.id for i in items]
+        self._save_last_list()
+
         return items
 
     def ready(self) -> list[CompiledItem]:
@@ -170,11 +184,19 @@ class TrackerSet:
 
         Cross-tier before references are resolved: if item X in canonical
         has before: [Y] and Y is in workspace, Y is still blocked.
+        Passes per-tier cache for cache-accelerated reads.
+        Updates the positional alias stash.
         """
         # Collect all items from all tiers
         all_items: list[CompiledItem] = []
         for t, store in self._tier_stores.items():
-            for item in store._compile_all():
+            cache = self._caches.get(t) if self._caches else None
+            compile_fn = (
+                store._compile_all_cached(cache)
+                if cache is not None
+                else store._compile_all()
+            )
+            for item in compile_fn:
                 item.tier = t
                 all_items.append(item)
 
@@ -206,6 +228,11 @@ class TrackerSet:
             ready_items.append(item)
 
         ready_items.sort(key=lambda i: (i.priority, i.created_at))
+
+        # Update positional alias stash (merged, sorted order)
+        self._last_list = [i.id for i in ready_items]
+        self._save_last_list()
+
         return ready_items
 
     def get(self, item_id: str) -> CompiledItem:
@@ -638,11 +665,30 @@ class TrackerSet:
         raise ItemNotFoundError(f"Item not found in any tier: {item_id}")
 
     def _resolve_id(self, prefix: str) -> tuple[str, Store, Tier]:
-        """Cross-tier prefix resolution.
+        """Cross-tier prefix resolution with positional alias support.
 
-        Returns (full_id, store, tier). Raises AmbiguousPrefixError if
-        prefix matches items in multiple tiers.
+        Returns (full_id, store, tier). Handles :N positional aliases
+        at the TrackerSet level before delegating to per-store resolution.
+
+        Raises:
+            AmbiguousPrefixError: If prefix matches items in multiple tiers.
+            ItemNotFoundError: If no items match or positional alias out of range.
         """
+        # Positional alias: intercept at TrackerSet level (merged list)
+        if prefix.startswith(":"):
+            try:
+                idx = int(prefix[1:]) - 1
+            except ValueError:
+                raise ItemNotFoundError(f"Invalid positional alias: {prefix}") from None
+            if 0 <= idx < len(self._last_list):
+                full_id = self._last_list[idx]
+                # Recurse with actual ID to find store/tier
+                return self._resolve_id(full_id)
+            raise ItemNotFoundError(
+                f"Positional alias {prefix} out of range "
+                f"(last list had {len(self._last_list)} items)"
+            )
+
         candidates: list[tuple[str, Store, Tier]] = []
 
         for t, store in self._tier_stores.items():
@@ -771,6 +817,29 @@ class TrackerSet:
             if t != winner_tier:
                 self._cache_delete_item(t, item_id)
         self._cache_upsert_item(winner_tier, winner_store, item_id)
+
+    # -------------------------------------------------------------------
+    # Positional alias persistence
+    # -------------------------------------------------------------------
+
+    def _save_last_list(self) -> None:
+        """Persist the positional alias stash to cache_dir/last_list."""
+        if self._cache_dir is None:
+            return
+        path = self._cache_dir / "last_list"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            "\n".join(self._last_list) + "\n" if self._last_list else ""
+        )
+
+    def _load_last_list(self) -> None:
+        """Load the positional alias stash from cache_dir/last_list."""
+        if self._cache_dir is None:
+            return
+        path = self._cache_dir / "last_list"
+        if path.exists():
+            content = path.read_text().strip()
+            self._last_list = content.split("\n") if content else []
 
     # -------------------------------------------------------------------
     # Cache integration helpers
