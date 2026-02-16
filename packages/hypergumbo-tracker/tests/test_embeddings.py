@@ -331,6 +331,7 @@ class TestEmbeddingModelMocked:
         assert model._session is None
         assert model._tokenizer is None
 
+    @pytest.mark.skipif(not _has_dedup_deps(), reason="onnxruntime/tokenizers not installed")
     def test_embed_returns_correct_shape(self, tmp_path: Path) -> None:
         """Directly inject mock session/tokenizer to verify embed() pipeline."""
         import numpy as np
