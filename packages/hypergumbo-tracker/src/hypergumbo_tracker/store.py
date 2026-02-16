@@ -130,10 +130,10 @@ _DISCUSSION_DAILY_TOKEN_LIMIT = 200_000
 _CHARS_PER_TOKEN = 4.4
 
 # SimHash fingerprint bit width
-_SIMHASH_BITS = 40
+_SIMHASH_BITS = 64
 
-# SimHash distance threshold for similarity warning
-_SIMHASH_THRESHOLD = 8
+# SimHash distance threshold for similarity warning (20% of bit width)
+_SIMHASH_THRESHOLD = 13
 
 # Discussion soft cap (entry count)
 _DISCUSSION_SOFT_CAP = 20
