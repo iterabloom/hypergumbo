@@ -32,9 +32,11 @@ from hypergumbo_tracker.validation import (
     _check_simhash_duplicates,
     _edit_distance,
     _suggest_field,
+    _validate_canonical_field_order,
     _validate_create_values,
     _validate_field_value,
     _validate_fields_schema,
+    _validate_nonce_on_every_line,
     _validate_timestamp,
     _validate_update_values,
     validate_all,
@@ -1496,3 +1498,162 @@ class TestEmbeddingDuplicates:
             _check_embedding_duplicates(items, result)
 
         assert "shared tags: none" in result.warnings[0]
+
+
+# ---------------------------------------------------------------------------
+# Nonce-on-every-line validation (H4)
+# ---------------------------------------------------------------------------
+
+
+class TestNonceOnEveryLine:
+    """Tests for _validate_nonce_on_every_line."""
+
+    def test_valid_nonces_no_warnings(self, tmp_path: Path) -> None:
+        """Properly serialized ops produce no nonce warnings."""
+        ops_dir = tmp_path / ".ops"
+        ops_dir.mkdir()
+        path = ops_dir / ".WI-test.ops"
+        path.write_text(
+            "- op: create  # a1b2\n"
+            "  at: \"2026-02-11T18:00:00Z\"  # a1b2\n"
+            "  by: agent  # a1b2\n"
+            "  actor: test_agent  # a1b2\n"
+            "  clock: 1  # a1b2\n"
+            "  nonce: a1b2  # a1b2\n"
+            "  data:  # a1b2\n"
+            "    kind: work_item  # a1b2\n"
+            "    title: \"Test\"  # a1b2\n"
+            "    status: todo_hard  # a1b2\n"
+            "    priority: 2  # a1b2\n"
+        )
+        ops = [{"op": "create", "nonce": "a1b2", "at": "2026-02-11T18:00:00Z",
+                "by": "agent", "actor": "test_agent", "clock": 1,
+                "data": {"kind": "work_item", "title": "Test", "status": "todo_hard",
+                         "priority": 2}}]
+        result = ValidationResult()
+        _validate_nonce_on_every_line(path, ops, result)
+        assert not result.warnings
+
+    def test_missing_nonce_comment(self, tmp_path: Path) -> None:
+        """Lines without nonce comments produce warnings."""
+        ops_dir = tmp_path / ".ops"
+        ops_dir.mkdir()
+        path = ops_dir / ".WI-test.ops"
+        path.write_text(
+            "- op: create  # a1b2\n"
+            "  at: \"2026-02-11T18:00:00Z\"\n"  # Missing nonce comment
+            "  by: agent  # a1b2\n"
+            "  actor: test_agent  # a1b2\n"
+            "  clock: 1  # a1b2\n"
+            "  nonce: a1b2  # a1b2\n"
+        )
+        ops = [{"op": "create", "nonce": "a1b2", "at": "2026-02-11T18:00:00Z",
+                "by": "agent", "actor": "test_agent", "clock": 1}]
+        result = ValidationResult()
+        _validate_nonce_on_every_line(path, ops, result)
+        assert len(result.warnings) == 1
+        assert "missing nonce comment" in result.warnings[0]
+
+    def test_mismatched_nonce_value(self, tmp_path: Path) -> None:
+        """Lines with wrong nonce value produce warnings."""
+        ops_dir = tmp_path / ".ops"
+        ops_dir.mkdir()
+        path = ops_dir / ".WI-test.ops"
+        path.write_text(
+            "- op: create  # a1b2\n"
+            "  at: \"2026-02-11T18:00:00Z\"  # ffff\n"  # Wrong nonce
+            "  by: agent  # a1b2\n"
+            "  nonce: a1b2  # a1b2\n"
+            "  clock: 1  # a1b2\n"
+        )
+        ops = [{"op": "create", "nonce": "a1b2", "at": "2026-02-11T18:00:00Z",
+                "by": "agent", "clock": 1}]
+        result = ValidationResult()
+        _validate_nonce_on_every_line(path, ops, result)
+        assert len(result.warnings) == 1
+        assert "does not match" in result.warnings[0]
+
+    def test_unreadable_file(self, tmp_path: Path) -> None:
+        """Unreadable file is silently skipped (other validators handle it)."""
+        path = tmp_path / ".WI-test.ops"
+        # Don't create the file — it doesn't exist
+        ops = [{"op": "create", "nonce": "a1b2"}]
+        result = ValidationResult()
+        _validate_nonce_on_every_line(path, ops, result)
+        assert not result.warnings
+        assert not result.errors
+
+    def test_op_without_nonce_skipped(self, tmp_path: Path) -> None:
+        """Ops with empty nonce are skipped gracefully."""
+        ops_dir = tmp_path / ".ops"
+        ops_dir.mkdir()
+        path = ops_dir / ".WI-test.ops"
+        path.write_text("- op: create\n  by: agent\n")
+        ops = [{"op": "create", "by": "agent"}]  # No nonce field
+        result = ValidationResult()
+        _validate_nonce_on_every_line(path, ops, result)
+        assert not result.warnings
+
+    def test_lines_before_first_op_skipped(self, tmp_path: Path) -> None:
+        """Lines before the first '- op:' marker are skipped."""
+        ops_dir = tmp_path / ".ops"
+        ops_dir.mkdir()
+        path = ops_dir / ".WI-test.ops"
+        path.write_text(
+            "# This is a comment at the top\n"
+            "- op: create  # a1b2\n"
+            "  nonce: a1b2  # a1b2\n"
+        )
+        ops = [{"op": "create", "nonce": "a1b2"}]
+        result = ValidationResult()
+        _validate_nonce_on_every_line(path, ops, result)
+        assert not result.warnings
+
+
+# ---------------------------------------------------------------------------
+# Canonical field order validation (H4)
+# ---------------------------------------------------------------------------
+
+
+class TestCanonicalFieldOrder:
+    """Tests for _validate_canonical_field_order."""
+
+    def test_canonical_order_no_warning(self) -> None:
+        """Ops with canonical field order produce no warnings."""
+        ops = [{"op": "create", "at": "2026-02-11T18:00:00Z", "by": "agent",
+                "actor": "test_agent", "clock": 1, "nonce": "a1b2",
+                "data": {"kind": "work_item"}}]
+        result = ValidationResult()
+        _validate_canonical_field_order("test.ops", ops, result)
+        assert not result.warnings
+
+    def test_non_canonical_order_warns(self) -> None:
+        """Ops with non-canonical order produce a warning."""
+        # nonce before clock is non-canonical
+        from collections import OrderedDict
+        op = OrderedDict([
+            ("op", "create"), ("nonce", "a1b2"), ("at", "2026-02-11T18:00:00Z"),
+            ("by", "agent"), ("actor", "test_agent"), ("clock", 1),
+            ("data", {"kind": "work_item"}),
+        ])
+        ops: list[dict[str, Any]] = [dict(op)]
+        result = ValidationResult()
+        _validate_canonical_field_order("test.ops", ops, result)
+        assert len(result.warnings) == 1
+        assert "non-canonical field order" in result.warnings[0]
+
+    def test_missing_op_type_skipped(self) -> None:
+        """Ops without an 'op' field are skipped."""
+        ops: list[dict[str, Any]] = [{"at": "2026-02-11T18:00:00Z", "by": "agent"}]
+        result = ValidationResult()
+        _validate_canonical_field_order("test.ops", ops, result)
+        assert not result.warnings
+
+    def test_update_op_canonical_order(self) -> None:
+        """Update ops with set/add/remove in canonical order pass."""
+        ops = [{"op": "update", "at": "2026-02-11T18:00:00Z", "by": "agent",
+                "actor": "test_agent", "clock": 2, "nonce": "b2c3",
+                "set": {"status": "done"}, "add": {"tags": ["x"]}}]
+        result = ValidationResult()
+        _validate_canonical_field_order("test.ops", ops, result)
+        assert not result.warnings

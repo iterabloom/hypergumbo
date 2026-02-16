@@ -375,8 +375,8 @@ def _cmd_discuss(args: argparse.Namespace, ts: TrackerSet) -> int:
     """Handle 'discuss' subcommand."""
     if args.clear:
         ts.discuss(args.item_id, message="", clear=True)
-    elif args.summarize:
-        ts.discuss(args.item_id, message=args.message, summarize=True)
+    elif args.summarize is not None:
+        ts.discuss(args.item_id, message=args.summarize, summarize=True)
     else:
         ts.discuss(args.item_id, message=args.message)
 
@@ -692,11 +692,8 @@ def _cmd_migrate(args: argparse.Namespace) -> int:
 
 def _cmd_tui(args: argparse.Namespace, ts: TrackerSet) -> int:
     """Handle 'tui' subcommand — launch Textual TUI."""
-    try:
-        from hypergumbo_tracker.tui import TrackerApp
-    except ImportError:
-        print("TUI requires textual: pip install hypergumbo-tracker[tui]", file=sys.stderr)
-        return EXIT_USER_ERROR
+    from hypergumbo_tracker.tui import TrackerApp
+
     app = TrackerApp(tracker_set=ts)
     app.run()
     return EXIT_SUCCESS
@@ -790,8 +787,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_discuss.add_argument("item_id", help="Item ID or prefix")
     p_discuss.add_argument("message", nargs="?", default="", help="Discussion message")
     p_discuss.add_argument("--clear", action="store_true", help="Clear discussion (human only)")
-    p_discuss.add_argument("--summarize", action="store_true",
-                           help="Replace discussion with summary")
+    p_discuss.add_argument("--summarize", type=str, default=None, metavar="TEXT",
+                           help="Replace discussion with summary text")
 
     # --- lock ---
     p_lock = sub.add_parser("lock", help="Lock fields on an item (human only)")

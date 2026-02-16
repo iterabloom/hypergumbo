@@ -26,12 +26,14 @@ See ADR-0013 for the full design specification.
 from __future__ import annotations
 
 import datetime
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from hypergumbo_tracker.models import TrackerConfig, load_config
 from hypergumbo_tracker.store import (
+    _COMMON_FIELD_ORDER,
     CorruptFileError,
     _compute_simhash,
     _hamming_distance,
@@ -51,6 +53,25 @@ _REQUIRED_COMMON_FIELDS = ("op", "at", "by", "clock", "nonce")
 
 # Default SimHash threshold for similarity warnings
 _SIMHASH_THRESHOLD = 8
+
+# Pattern to extract inline nonce comment from a line: `  # <nonce>`
+_NONCE_COMMENT_RE = re.compile(r"  # ([0-9a-f]{4})$")
+
+# Expected field order per op type (beyond common fields)
+_OP_SPECIFIC_FIELD_ORDER: dict[str, list[str]] = {
+    "create": ["data"],
+    "update": ["set", "add", "remove"],
+    "discuss": ["message"],
+    "discuss_clear": [],
+    "discuss_summarize": ["message"],
+    "lock": ["lock"],
+    "unlock": ["unlock"],
+    "promote": [],
+    "demote": [],
+    "stealth": [],
+    "unstealth": [],
+    "reconcile": ["from_tier", "reason"],
+}
 
 
 @dataclass
@@ -90,6 +111,90 @@ def _edit_distance(a: str, b: str) -> int:
             curr[j + 1] = min(curr[j] + 1, prev[j + 1] + 1, prev[j] + cost)
         prev = curr
     return prev[len(b)]
+
+
+def _validate_nonce_on_every_line(
+    filepath: Path, ops: list[dict[str, Any]], result: ValidationResult,
+) -> None:
+    """Check nonce-on-every-line format in the raw file content.
+
+    Every non-empty line must have an inline ``# <nonce>`` comment, and
+    the nonce value must match the ``nonce`` field of the enclosing op.
+    This is load-bearing for ``merge=union`` correctness (ADR-0013 §4.4).
+    """
+    fname = filepath.name
+    try:
+        raw_text = filepath.read_text()
+    except OSError:
+        return  # File unreadable — other validators will catch this
+
+    raw_lines = raw_text.split("\n")
+
+    # Build a list of (nonce, first_line_idx) for each op by finding
+    # `- op:` markers in the raw text.
+    op_nonces: list[str] = [op.get("nonce", "") for op in ops]
+
+    # Walk raw lines and track which op we're in
+    op_idx = -1
+    for line_no_0, line in enumerate(raw_lines):
+        stripped = line.rstrip()
+        if not stripped:
+            continue
+
+        # Detect new op start (YAML sequence item)
+        if stripped.startswith("- op:"):
+            op_idx += 1
+
+        if op_idx < 0 or op_idx >= len(op_nonces):
+            continue
+
+        expected_nonce = op_nonces[op_idx]
+        if not expected_nonce:
+            continue
+
+        # Check that the line has an inline nonce comment
+        m = _NONCE_COMMENT_RE.search(stripped)
+        if not m:
+            result.warnings.append(
+                f"{fname}: line {line_no_0 + 1}: missing nonce comment "
+                f"(expected '  # {expected_nonce}')"
+            )
+        elif m.group(1) != expected_nonce:
+            result.warnings.append(
+                f"{fname}: line {line_no_0 + 1}: nonce comment "
+                f"'{m.group(1)}' does not match op nonce '{expected_nonce}'"
+            )
+
+
+def _validate_canonical_field_order(
+    fname: str, ops: list[dict[str, Any]], result: ValidationResult,
+) -> None:
+    """Check that op fields follow the canonical serialization order.
+
+    The canonical order is: op, at, by, actor, clock, nonce, then
+    op-specific fields (data/set/add/remove/message/lock/unlock/etc).
+    Non-canonical ordering doesn't break correctness but indicates the
+    op was not written by the store (possible manual edit).
+    """
+    for i, op_dict in enumerate(ops):
+        op_type = op_dict.get("op")
+        if op_type is None:
+            continue
+
+        # Build expected order for this op type
+        specific = _OP_SPECIFIC_FIELD_ORDER.get(op_type, [])
+        expected_order = _COMMON_FIELD_ORDER + specific
+
+        # Get the actual key order (only keys that appear in expected_order)
+        actual_keys = list(op_dict.keys())
+        expected_present = [k for k in expected_order if k in op_dict]
+        actual_ordered = [k for k in actual_keys if k in set(expected_order)]
+
+        if actual_ordered != expected_present:
+            result.warnings.append(
+                f"{fname}: op {i}: non-canonical field order "
+                f"(got {actual_ordered}, expected {expected_present})"
+            )
 
 
 def validate_ops_file(
@@ -165,6 +270,12 @@ def validate_ops_file(
     # Lock violation detection
     if check_locks:
         _check_lock_violations(fname, ops, result)
+
+    # Nonce-on-every-line and nonce comment value matching (ADR-0013 §4.4)
+    _validate_nonce_on_every_line(filepath, ops, result)
+
+    # Canonical field order (ADR-0013 §4.4)
+    _validate_canonical_field_order(fname, ops, result)
 
     return result
 

@@ -1,6 +1,6 @@
-# Tracker ops files: merge=union makes concurrent appends conflict-free.
-# diff=tracker enables custom textconv for human-readable diffs.
-**/.ops/*.ops merge=union diff=tracker
-
-# Linguist: mark generated files
-**/.ops/*.ops linguist-generated
+# Tracker op log files: machine-generated append-only operation logs.
+# - linguist-generated: collapse in PR diffs, exclude from language stats
+# - merge=union: on conflict, keep lines from both sides (matches append-only design)
+# - diff=tracker: use textconv driver to show compiled state in diffs
+.agent/tracker/.ops/.*.ops             linguist-generated  merge=union  diff=tracker
+.agent/tracker-workspace/.ops/.*.ops   linguist-generated  merge=union  diff=tracker

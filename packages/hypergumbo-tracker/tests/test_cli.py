@@ -654,7 +654,7 @@ class TestWriteCommands:
         with pytest.raises(SystemExit) as exc:
             main([
                 "--tracker-root", str(tracker_root),
-                "discuss", "WI-test", "Summary text", "--summarize",
+                "discuss", "WI-test", "--summarize", "Summary text",
             ])
         assert exc.value.code == EXIT_SUCCESS
 
@@ -1399,3 +1399,35 @@ class TestDuplicateFlags:
                 "--remove-not-duplicate-of", "WI-nodup",
             ])
         assert exc.value.code == EXIT_SUCCESS
+
+
+# ---------------------------------------------------------------------------
+# Cache wiring in main()
+# ---------------------------------------------------------------------------
+
+
+class TestCacheWiring:
+    """Exercise the cache initialization path in main() (cli.py:912-920)."""
+
+    def test_main_wires_caches_when_cache_dir_set(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """When _get_cache_dir returns a path, main() creates Cache instances."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+
+        with patch(
+            "hypergumbo_tracker.cli._get_cache_dir",
+            return_value=cache_dir,
+        ):
+            with pytest.raises(SystemExit) as exc:
+                main(["--tracker-root", str(tracker_root), "list"])
+        assert exc.value.code == EXIT_SUCCESS
+
+        # Verify cache DB files were created for each tier
+        cache_files = list(cache_dir.glob("*.cache.db*"))
+        assert len(cache_files) > 0

@@ -853,24 +853,6 @@ class TestLoadItemsStatusColumn:
 class TestCmdTui:
     """Test the CLI tui subcommand."""
 
-    def test_tui_import_error(self, capsys: pytest.CaptureFixture) -> None:
-        """When textual is not importable, show a helpful error."""
-        import builtins
-        real_import = builtins.__import__
-
-        def mock_import(name: str, *args: Any, **kwargs: Any) -> Any:
-            if name == "hypergumbo_tracker.tui":
-                raise ImportError("No module named 'textual'")
-            return real_import(name, *args, **kwargs)
-
-        with patch("builtins.__import__", side_effect=mock_import):
-            from hypergumbo_tracker.cli import main
-            with pytest.raises(SystemExit) as exc:
-                main(["tui"])
-            assert exc.value.code == 1
-            err = capsys.readouterr().err
-            assert "textual" in err.lower()
-
     def test_tui_runs_app(self, tmp_path: Path) -> None:
         """When textual is available, _cmd_tui creates and runs the app."""
         ts = _make_tracker_set(tmp_path)

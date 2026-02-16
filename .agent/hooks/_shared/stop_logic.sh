@@ -31,7 +31,8 @@ TOTAL_TODOS=$((TOTAL_HARD + TOTAL_SOFT))
 # --- Circuit breaker (hash-based no-progress detection) ---
 CIRCUIT_BREAKER_TRIPPED=false
 if [[ "$TOTAL_TODOS" -gt 0 ]]; then
-  CURRENT_HASH=$("$REPO_ROOT/scripts/tracker" hash-todos 2>/dev/null) || CURRENT_HASH="fallback-$$"
+  CURRENT_HASH=$("$REPO_ROOT/scripts/tracker" hash-todos 2>/dev/null) || \
+    { echo "WARNING: hash-todos failed, using fallback hash" >&2; CURRENT_HASH="fallback-$$"; }
   echo "$CURRENT_HASH" >> "$HASH_FILE"
   TAIL_COUNT=$(tail -n "$HASH_THRESHOLD" "$HASH_FILE" | wc -l)
   UNIQUE_COUNT=$(tail -n "$HASH_THRESHOLD" "$HASH_FILE" | sort -u | wc -l)

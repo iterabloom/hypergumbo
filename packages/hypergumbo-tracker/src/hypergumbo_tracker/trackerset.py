@@ -647,7 +647,7 @@ class TrackerSet:
             raise ItemNotFoundError(f"Item not found: {item_id}")
 
         # Merge into canonical
-        self._do_reconcile(item_id, present_in, Tier.CANONICAL)
+        self._do_reconcile(item_id, present_in, Tier.CANONICAL, reason="manual-reset")
 
     # -------------------------------------------------------------------
     # Internal helpers
@@ -749,12 +749,17 @@ class TrackerSet:
         return None
 
     def _do_reconcile(
-        self, item_id: str, present_in: list[Tier], winner_tier: Tier
+        self, item_id: str, present_in: list[Tier], winner_tier: Tier,
+        *, reason: str | None = None,
     ) -> None:
         """Merge all ops into the winner tier and remove other copies.
 
         Reads ops from all tiers, merges them, appends a reconcile op,
         and writes the merged ops to the winner tier. Removes loser files.
+
+        Args:
+            reason: Custom reason for the reconcile op. If None, uses the
+                default "auto-reconciled to {winner_tier}" message.
         """
         winner_store = self._tier_stores[winner_tier]
         winner_path = winner_store.item_path(item_id)
@@ -791,7 +796,7 @@ class TrackerSet:
             "clock": max((o.get("clock", 0) for o in unique_ops), default=0) + 1,
             "nonce": _make_nonce(),
             "from_tier": ",".join(t.value for t in present_in if t != winner_tier),
-            "reason": f"auto-reconciled to {winner_tier.value}",
+            "reason": reason or f"auto-reconciled to {winner_tier.value}",
         }
         unique_ops.append(reconcile_op)
 

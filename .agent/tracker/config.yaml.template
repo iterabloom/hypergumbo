@@ -6,15 +6,28 @@ kinds:
       statement:
         type: text
         required: true
+        description: "The invariant being tracked"
       root_cause:
         type: text
         required: true
+        description: "Why the invariant was violated"
       fix:
         type: text
+        description: "How the root cause was addressed"
       verification:
         type: text
+        description: "How the fix was verified across languages/constructs"
       regression_tests:
         type: list
+        description: "Test cases that guard against recurrence"
+      scope:
+        type: text
+        description: "Which languages/constructs are affected"
+      progress_pct:
+        type: integer
+        min: 0
+        max: 100
+        description: "Percentage of affected scope addressed"
   meta_invariant:
     prefix: META
     description: "A meta-invariant tracking cross-language coverage"
@@ -22,6 +35,18 @@ kinds:
       statement:
         type: text
         required: true
+        description: "The cross-cutting invariant"
+      languages_done:
+        type: list
+        description: "Languages where the invariant holds"
+      languages_remaining:
+        type: list
+        description: "Languages not yet checked or fixed"
+      progress_pct:
+        type: integer
+        min: 0
+        max: 100
+        description: "Percentage of languages addressed"
   work_item:
     prefix: WI
     description: "A work item"

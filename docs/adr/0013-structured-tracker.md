@@ -475,7 +475,7 @@ Contention is expected to be rare (two processes appending to the *same item* at
 
 **Tier 1 — SimHash (fast, always runs on `add`).** SimHash computes a locality-sensitive fingerprint over tokenized `title` + `description` + `fields` text. The algorithm is ~30 lines of pure Python (hash each token, accumulate bit-position votes, threshold), runs in microseconds, and requires no external dependencies. SimHash has a useful formal guarantee: for inputs with cosine similarity S, the probability of a k-bit fingerprint collision is `(1 - arccos(S)/π)^k`. At 64 bits, unrelated items (cosine similarity ~0) have a collision probability of ~10⁻¹⁹ — identical to a random 64-bit hash. The "cost" of locality sensitivity appears only in the moderate-similarity zone (cosine ~0.5: ~10⁻¹³ collision probability at 64 bits), which is precisely where you *want* detection.
 
-On `add`, the store computes the new item's SimHash and compares it (by Hamming distance) against existing items' cached SimHash fingerprints. If the distance is below a threshold (e.g., ≤3 bits out of 64), a warning is emitted:
+On `add`, the store computes the new item's SimHash and compares it (by Hamming distance) against existing items' cached SimHash fingerprints. If the distance is below a configurable threshold, a warning is emitted. The store uses a threshold of 13 bits (~20% of 64-bit width) for `add`-time warnings; validation uses a tighter threshold of 8 bits for `validate --similar`. These empirical thresholds were tuned during implementation — the illustrative "≤3 bits" from early design proved too aggressive (high false-positive rate on real items). Example warning:
 
 ```
 WARNING: INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit is similar to existing INV-fodak-humit-kobap-linud-rasib-sufag-tohim-vukad
@@ -651,7 +651,7 @@ Cross-tier duplicates — the same item ID existing in multiple tier directories
       or:  scripts/tracker demote INV-lusab     (canonical → workspace)
 ```
 
-Until resolved, the item appears in `list` and `show` with a conflict indicator but is excluded from `ready` (the agent should not work on items in ambiguous state). `validate` warns on cross-tier duplicates.
+Until resolved, the item appears in `list` and `show` with a conflict indicator but is excluded from `ready` (the agent should not work on items in ambiguous state). However, `count_todos` **intentionally includes** cross-tier conflict items — they represent real data integrity issues that should not be silently ignored. The circuit breaker (5 identical stop attempts with no progress) prevents the agent from getting stuck indefinitely on genuinely unresolvable conflicts. `validate` warns on cross-tier duplicates.
 
 **Self-healing is append-only.** The `reconcile` op is the audit trail — the store never silently deletes or rewrites ops. The reconciled file contains the full combined history from both tier copies.
 
@@ -793,7 +793,7 @@ CREATE TABLE items (
     priority    INTEGER NOT NULL,
     parent      TEXT,
     tags        TEXT,               -- JSON array
-    before      TEXT,               -- JSON array of IDs
+    before_ids  TEXT,               -- JSON array of IDs
     duplicate_of TEXT,              -- JSON array of IDs
     not_duplicate_of TEXT,          -- JSON array of IDs
     pr_ref      TEXT,
@@ -1053,8 +1053,7 @@ packages/hypergumbo-tracker/
 
 The package is a dependency of the `hypergumbo` umbrella meta-package — `pip install hypergumbo` pulls it in alongside core and the lang packages. But it has no dependency on `hypergumbo-core` (no analyzers, IR, or tree-sitter), so it can also be installed standalone by projects that want the tracker without hypergumbo's analysis tooling:
 ```bash
-pip install hypergumbo-tracker                       # standalone CLI
-pip install hypergumbo-tracker[tui]                   # standalone CLI + TUI
+pip install hypergumbo-tracker                       # standalone CLI + TUI
 pip install hypergumbo                               # gets tracker + everything else
 ```
 
@@ -1066,8 +1065,8 @@ Required:
 - **proquint** (~0.1) — Proquint encoding/decoding for hash-based IDs (pure Python, no deps; ~30 lines — could be vendored if preferred)
 - **rich** (~14.3.2) — CLI table formatting
 
-Optional (`[tui]` extra):
-- **textual** (~3.0) — TUI framework
+Required:
+- **textual** (~7.5) — TUI framework (the TUI is a core feature; making it optional adds complexity for negligible footprint savings)
 
 Optional (`[dedup]` extra):
 - **onnxruntime** (~1.17) — ONNX model inference for `validate --deep-similar` (tier 2 dedup). CPU-only, no GPU or PyTorch required.
@@ -1217,7 +1216,7 @@ Uses the same shortest-unambiguous-prefix logic as the CLI — truncated IDs dis
 | Key | Action | Compact list | Compact detail | Standard | Wide |
 |-----|--------|-------------|----------------|----------|------|
 | `q` | Quit | ✓ | ✓ | ✓ | ✓ |
-| `Enter` | Open detail / select | ✓ | — | ✓ | ✓ |
+| `Enter` | Open detail / select (via Textual `on_data_table_row_selected` event, not explicit BINDINGS — avoids misleading footer entry in standard/wide modes where detail is always visible) | ✓ | — | ✓ | ✓ |
 | `Esc` | Back to list | — | ✓ | — | — |
 | `t` | Tree/table toggle | — | — | ✓ | ✓ |
 | `f` | Filter panel | ✓ | ✓ | ✓ | ✓ |
@@ -1277,7 +1276,8 @@ if [[ -x "$REPO_ROOT/scripts/tracker" && -d "$REPO_ROOT/.agent/tracker" ]]; then
     TOTAL_SOFT=999
   fi
   TOTAL_TODOS=$((TOTAL_HARD + TOTAL_SOFT))
-  CURRENT_HASH=$(scripts/tracker hash-todos) || CURRENT_HASH="tracker-error-$(date +%s)"
+  CURRENT_HASH=$(scripts/tracker hash-todos 2>/dev/null) || \
+    { echo "WARNING: hash-todos failed, using fallback hash" >&2; CURRENT_HASH="fallback-$$"; }
   # ... existing hash file / circuit breaker logic unchanged ...
 else
   # Legacy grep patterns (existing code, no changes)
@@ -1288,9 +1288,9 @@ fi
 
 **Task selection vs. stopping.** `count-todos` answers "can I stop?" (total open work, scoped by `stop_hook.scope`). The separate `scripts/tracker ready` command answers "what should I work on next?" — it returns items from all tiers that are actionable and unblocked by `before` links (see [Key Design Decisions](#key-design-decisions)), so the agent is always aware of canonical items even on forks. The stop hook uses `count-todos`; the agent's task-selection logic (documented in AGENTS.md) uses `ready`.
 
-#### Phase 2: Remove legacy grep
+#### Phase 2: Remove legacy grep `[COMPLETE]`
 
-After the migration is confirmed stable, delete the grep fallback. The markdown files become read-only archives (kept for git history, no longer consumed by anything).
+The grep fallback was removed in PR 7 (commit 77e4dc2). `stop_logic.sh` now uses the tracker CLI exclusively (fail-closed: if the tracker CLI is present but fails, the hook blocks). The markdown files are read-only archives (kept for git history, no longer consumed by anything). Phase 1 (dual-mode with grep fallback) was a transitional step and is no longer relevant.
 
 ### Pre-Commit Validation
 
@@ -1377,13 +1377,13 @@ Migration is idempotent: re-running produces the same IDs (same content → same
 | `packages/hypergumbo-tracker/LICENSE` (NEW) | MPL-2.0 full text |
 | `scripts/tracker` (NEW) | Thin AGPL-3.0 bash wrapper delegating to installed `hypergumbo-tracker` entry point (falls back to `python -m hypergumbo_tracker.cli`) |
 | `scripts/check-package-coverage` | Add `tracker` to PACKAGES map for per-package CI isolation |
-| `scripts/dev-install` | Add `pip install -e packages/hypergumbo-tracker[tui]` |
+| `scripts/dev-install` | Add `pip install -e packages/hypergumbo-tracker[dev]` |
 | `.agent/hooks/_shared/stop_logic.sh` | Add tracker-first path with grep fallback (scope-aware via config) |
 | `scripts/auto-pr` | Delete local and remote feature branch after successful merge (branch hygiene — see [Key Design Decisions](#key-design-decisions)) |
 | `scripts/contribute` | Add workspace exclusion (~15 lines): exclude `.agent/tracker-workspace/` from upstream PRs |
 | `.agent/tracker/` (NEW) | Canonical tier: `.ops/` dotdir with op log files from migration + `config.yaml.template` (tracked) + `config.yaml` (gitignored, human-owned) |
 | `.agent/tracker-workspace/` (NEW) | Workspace tier: empty `.ops/`, `stealth/` dirs + `config.yaml.template` (tracked) + `config.yaml` (gitignored) |
-| `scripts/tracker-textconv` (NEW) | AGPL-3.0 bash shim for git textconv diff driver — delegates to `hypergumbo-tracker-textconv` entry point, falls back to `cat` (see [textconv](#local-diff-declutter-textconv)) |
+| `scripts/tracker-textconv` (NEW) | AGPL-3.0 bash shim for git textconv diff driver — delegates to `hypergumbo-tracker-textconv` entry point, falls back to `python -m hypergumbo_tracker.cli`, then to `cat "$1"` with warning (see [textconv](#local-diff-declutter-textconv)) |
 | `.gitattributes` (NEW) | `linguist-generated` + `merge=union` + `diff=tracker` for both canonical and workspace `.ops/.*.ops` files (see [.gitattributes](#gitattributes), [textconv](#local-diff-declutter-textconv)) |
 | `.gitignore` | Add `.agent/tracker/config.yaml`, `.agent/tracker-workspace/config.yaml`, `.agent/tracker-workspace/stealth/` |
 | `AGENTS.md` | Update grep pattern instructions → `scripts/tracker` equivalents; add `tracker:` commit prefix convention and batching guidance (see [Commit Convention](#commit-convention-and-git-history-hygiene)); add task-selection guidance: use `scripts/tracker ready` (not `list`) to pick next work item; **add agent context protection rules: always use `scripts/tracker show` or `--json`, always refuse to read `.ops` files** (see [Agent Context Protection](#agent-context-protection)); add branch hygiene expectation (delete feature branches after merge); update contributor workflow to reference `fork-setup`; document security model and two-user setup |
@@ -1452,7 +1452,7 @@ Absorbed into PR 1c. See above.
 
 #### PR 6a: TUI scaffold + compact layout `[MERGED]` (commit 9d66a29)
 - `tui.py`: `TrackerApp(App)` with dependency-injected `TrackerSet`, `_compute_tier(w, h)` function implementing the tier definitions above, CSS class switching (`compact`/`standard`/`wide`), `on_resize` handler
-- `textual~=3.0` declared as optional dep in PR 1a's pyproject.toml
+- `textual~=7.5` declared as required dep in PR 1a's pyproject.toml
 - Compact layout: single-pane full-width DataTable, stacked detail on `Enter`, `Esc` returns to list. Minimum-size enforcement (centered "Terminal too small" message below 40×16)
 - `_truncate_id(full_id, max_width, shortest_unambiguous)` helper implementing the ID truncation strategy above
 - Footer with tier-appropriate keybinding hints (top-3 in compact: `q`/`f`/`Enter`)
@@ -1582,8 +1582,6 @@ No `.gitattributes` exists in the repo. Create one at the repo root:
 # - diff=tracker: use textconv driver to show compiled state in diffs (see [textconv](#local-diff-declutter-textconv))
 .agent/tracker/.ops/.*.ops             linguist-generated  merge=union  diff=tracker
 .agent/tracker-workspace/.ops/.*.ops   linguist-generated  merge=union  diff=tracker
-.agent/tracker/config.yaml.template             linguist-generated
-.agent/tracker-workspace/config.yaml.template   linguist-generated
 ```
 
 **`merge=union`** is the critical entry. It tells git that when a merge conflict occurs in these files, include all lines from both sides. This is exactly right for append-only operation logs: two branches that both appended ops will have all ops preserved without conflict markers. This upgrades the merge guarantee from "git usually handles appends correctly" to "git is explicitly told to keep everything from both sides."
