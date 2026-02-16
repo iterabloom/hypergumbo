@@ -263,6 +263,139 @@ jobs:
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
+  # Retry jobs for heavy packages that may hit Codeberg's 5-min deadline.
+  # These run ONLY when the primary job fails, and ONLY on the local runner
+  # (via the 'self-hosted' label), which has no such time limit.
+  test-core-retry:
+    needs: [changes, prep, test-core]
+    if: needs.changes.outputs.code == 'true' && needs.test-core.result == 'failure'
+    runs-on: self-hosted
+    timeout-minutes: 15
+    outputs:
+      coverage: ${{ steps.tests.outputs.coverage }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Restore grammar wheels
+        uses: actions/cache@v3
+        with:
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Restore pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/lib/python3.11/site-packages
+          key: pip-packages-${{ hashFiles('packages/*/pyproject.toml') }}
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pytest pytest-cov pytest-xdist jsonschema
+          pip install -e packages/hypergumbo-core \
+                      -e packages/hypergumbo-lang-mainstream \
+                      -e packages/hypergumbo-lang-common \
+                      -e packages/hypergumbo-lang-extended1 \
+                      -e "packages/hypergumbo-tracker[dev]"
+          ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+      - name: Check for sentence-transformers
+        run: |
+          if python -c "import sentence_transformers" 2>/dev/null; then
+            echo "sentence-transformers available"
+            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "sentence-transformers not installed, using no-embeddings coverage config"
+            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
+      - name: Run tests
+        id: tests
+        run: |
+          COV_CONFIG=""
+          if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
+            COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
+          fi
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
+
+          pytest packages/hypergumbo-core/tests/ -n "$WORKERS" --tb=short \
+            --cov=packages/hypergumbo-core/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
+          COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
+          echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
+
+  test-mainstream-retry:
+    needs: [changes, prep, test-mainstream]
+    if: needs.changes.outputs.code == 'true' && needs.test-mainstream.result == 'failure'
+    runs-on: self-hosted
+    timeout-minutes: 15
+    outputs:
+      coverage: ${{ steps.tests.outputs.coverage }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Restore grammar wheels
+        uses: actions/cache@v3
+        with:
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Restore pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/lib/python3.11/site-packages
+          key: pip-packages-${{ hashFiles('packages/*/pyproject.toml') }}
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pytest pytest-cov pytest-xdist jsonschema
+          pip install -e packages/hypergumbo-core \
+                      -e packages/hypergumbo-lang-mainstream \
+                      -e packages/hypergumbo-lang-common \
+                      -e packages/hypergumbo-lang-extended1 \
+                      -e "packages/hypergumbo-tracker[dev]"
+          ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+      - name: Check for sentence-transformers
+        run: |
+          if python -c "import sentence_transformers" 2>/dev/null; then
+            echo "sentence-transformers available"
+            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "sentence-transformers not installed, using no-embeddings coverage config"
+            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
+      - name: Run tests
+        id: tests
+        run: |
+          COV_CONFIG=""
+          if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
+            COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
+          fi
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
+
+          pytest packages/hypergumbo-lang-mainstream/tests/ -n "$WORKERS" --tb=short \
+            --cov=packages/hypergumbo-lang-mainstream/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
+          COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
+          echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
+
   test-common:
     needs: [changes, prep]
     if: needs.changes.outputs.code == 'true'
@@ -439,7 +572,8 @@ jobs:
 
   # Aggregate results after all test jobs complete
   aggregate:
-    needs: [changes, test-core, test-mainstream, test-common, test-extended, test-tracker]
+    needs: [changes, test-core, test-core-retry, test-mainstream, test-mainstream-retry,
+            test-common, test-extended, test-tracker]
     if: always()
     runs-on: codeberg-small-lazy
     steps:
@@ -461,14 +595,24 @@ jobs:
         run: |
           echo "Job results:"
           echo "  test-core: ${{ needs.test-core.result }} (coverage: ${{ needs.test-core.outputs.coverage }}%)"
+          echo "  test-core-retry: ${{ needs.test-core-retry.result }} (coverage: ${{ needs.test-core-retry.outputs.coverage }}%)"
           echo "  test-mainstream: ${{ needs.test-mainstream.result }} (coverage: ${{ needs.test-mainstream.outputs.coverage }}%)"
+          echo "  test-mainstream-retry: ${{ needs.test-mainstream-retry.result }} (coverage: ${{ needs.test-mainstream-retry.outputs.coverage }}%)"
           echo "  test-common: ${{ needs.test-common.result }} (coverage: ${{ needs.test-common.outputs.coverage }}%)"
           echo "  test-extended: ${{ needs.test-extended.result }} (coverage: ${{ needs.test-extended.outputs.coverage }}%)"
           echo "  test-tracker: ${{ needs.test-tracker.result }} (coverage: ${{ needs.test-tracker.outputs.coverage }}%)"
 
-          # Determine overall result
-          if [[ "${{ needs.test-core.result }}" == "success" ]] && \
-             [[ "${{ needs.test-mainstream.result }}" == "success" ]] && \
+          # Heavy jobs pass if primary OR retry succeeded
+          core_ok=false
+          [[ "${{ needs.test-core.result }}" == "success" ]] && core_ok=true
+          [[ "${{ needs.test-core-retry.result }}" == "success" ]] && core_ok=true
+
+          mainstream_ok=false
+          [[ "${{ needs.test-mainstream.result }}" == "success" ]] && mainstream_ok=true
+          [[ "${{ needs.test-mainstream-retry.result }}" == "success" ]] && mainstream_ok=true
+
+          if [[ "$core_ok" == "true" ]] && \
+             [[ "$mainstream_ok" == "true" ]] && \
              [[ "${{ needs.test-common.result }}" == "success" ]] && \
              [[ "${{ needs.test-extended.result }}" == "success" ]] && \
              [[ "${{ needs.test-tracker.result }}" == "success" ]]; then
@@ -479,9 +623,19 @@ jobs:
             echo "❌ One or more test jobs failed"
           fi
 
-          # Calculate average coverage (simple average of 4 packages)
+          # Use retry coverage when retry was the one that succeeded
           COV_CORE="${{ needs.test-core.outputs.coverage }}"
+          if [[ -z "$COV_CORE" || "$COV_CORE" == "0" ]] && \
+             [[ "${{ needs.test-core-retry.result }}" == "success" ]]; then
+            COV_CORE="${{ needs.test-core-retry.outputs.coverage }}"
+          fi
+
           COV_MAINSTREAM="${{ needs.test-mainstream.outputs.coverage }}"
+          if [[ -z "$COV_MAINSTREAM" || "$COV_MAINSTREAM" == "0" ]] && \
+             [[ "${{ needs.test-mainstream-retry.result }}" == "success" ]]; then
+            COV_MAINSTREAM="${{ needs.test-mainstream-retry.outputs.coverage }}"
+          fi
+
           COV_COMMON="${{ needs.test-common.outputs.coverage }}"
           COV_EXTENDED="${{ needs.test-extended.outputs.coverage }}"
           COV_TRACKER="${{ needs.test-tracker.outputs.coverage }}"
@@ -511,7 +665,9 @@ jobs:
             \"triggered_by\": \"${{ github.event_name }}\",
             \"jobs\": {
               \"core\": \"${{ needs.test-core.result }}\",
+              \"core-retry\": \"${{ needs.test-core-retry.result }}\",
               \"mainstream\": \"${{ needs.test-mainstream.result }}\",
+              \"mainstream-retry\": \"${{ needs.test-mainstream-retry.result }}\",
               \"common\": \"${{ needs.test-common.result }}\",
               \"extended\": \"${{ needs.test-extended.result }}\",
               \"tracker\": \"${{ needs.test-tracker.result }}\"
@@ -522,8 +678,20 @@ jobs:
         if: needs.changes.outputs.code == 'true' && steps.results.outputs.conclusion == 'success'
         run: |
           COV="${{ steps.results.outputs.coverage }}"
+
+          # Use retry coverage when retry was the one that succeeded
           COV_CORE="${{ needs.test-core.outputs.coverage }}"
+          if [ -z "$COV_CORE" ] || [ "$COV_CORE" = "0" ]; then
+            RETRY_COV="${{ needs.test-core-retry.outputs.coverage }}"
+            [ -n "$RETRY_COV" ] && [ "$RETRY_COV" != "0" ] && COV_CORE="$RETRY_COV"
+          fi
+
           COV_MAINSTREAM="${{ needs.test-mainstream.outputs.coverage }}"
+          if [ -z "$COV_MAINSTREAM" ] || [ "$COV_MAINSTREAM" = "0" ]; then
+            RETRY_COV="${{ needs.test-mainstream-retry.outputs.coverage }}"
+            [ -n "$RETRY_COV" ] && [ "$RETRY_COV" != "0" ] && COV_MAINSTREAM="$RETRY_COV"
+          fi
+
           COV_COMMON="${{ needs.test-common.outputs.coverage }}"
           COV_EXTENDED="${{ needs.test-extended.outputs.coverage }}"
           COV_TRACKER="${{ needs.test-tracker.outputs.coverage }}"
