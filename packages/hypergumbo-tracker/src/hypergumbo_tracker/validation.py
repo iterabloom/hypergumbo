@@ -18,6 +18,7 @@ Validation tiers:
 - **Config comparison:** Kinds in config but not in template (and vice versa).
 - **Lock violation detection:** Agent updates touching locked fields.
 - **SimHash duplicate warnings:** Near-duplicate pairs not in not_duplicate_of.
+- **Embedding duplicate warnings:** Deep semantic duplicates via dense embeddings.
 
 See ADR-0013 for the full design specification.
 """
@@ -394,6 +395,7 @@ def validate_all(
     config: TrackerConfig | None = None,
     *,
     check_similar: bool = False,
+    check_deep_similar: bool = False,
     check_locks: bool = False,
     strict: bool = False,
 ) -> ValidationResult:
@@ -407,11 +409,13 @@ def validate_all(
     - Deferred without justification
     - Config vs template comparison (if both exist)
     - SimHash near-duplicate warnings (if check_similar=True)
+    - Embedding near-duplicate warnings (if check_deep_similar=True)
 
     Args:
         tracker_root: Path to the .agent/ directory.
         config: Optional TrackerConfig. Loaded from tracker_root if None.
         check_similar: If True, check SimHash near-duplicates.
+        check_deep_similar: If True, check embedding-based near-duplicates.
         check_locks: If True, check for lock violations.
         strict: If True, treat warnings as errors.
 
@@ -482,6 +486,10 @@ def validate_all(
     # SimHash duplicate warnings
     if check_similar:
         _check_simhash_duplicates(all_items, result)
+
+    # Embedding-based duplicate warnings
+    if check_deep_similar:
+        _check_embedding_duplicates(all_items, result)
 
     # Strict mode: promote warnings to errors
     if strict:
@@ -646,3 +654,32 @@ def _check_simhash_duplicates(
                     f"near-duplicate: {id_a} and {id_b} "
                     f"(SimHash distance: {dist} bits)"
                 )
+
+
+def _check_embedding_duplicates(
+    all_items: dict[str, tuple[str, Any]], result: ValidationResult
+) -> None:
+    """Check for embedding-based near-duplicates not marked in not_duplicate_of.
+
+    Requires the `dedup` optional dependency group (onnxruntime + tokenizers).
+    Warns and returns if dependencies are unavailable.
+    """
+    from hypergumbo_tracker.embeddings import (
+        check_embedding_duplicates,
+        is_dedup_available,
+    )
+
+    if not is_dedup_available():
+        result.warnings.append(
+            "deep-similar: skipped (install dedup extras: "
+            "pip install hypergumbo-tracker[dedup])"
+        )
+        return
+
+    duplicates = check_embedding_duplicates(all_items)
+    for dup in duplicates:
+        tags_str = ", ".join(dup.shared_tags) if dup.shared_tags else "none"
+        result.warnings.append(
+            f"deep-similar: {dup.id_a} and {dup.id_b} "
+            f"(cosine similarity: {dup.cosine_sim:.3f}, shared tags: {tags_str})"
+        )

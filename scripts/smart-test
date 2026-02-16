@@ -99,9 +99,11 @@ COV_PATHS=(
     "--cov=packages/hypergumbo-lang-extended1/src"
 )
 
-# Detect if sentence-transformers is available
-# If not, use reduced coverage config that excludes embedding-dependent code
-if python3 -c "import sentence_transformers" 2>/dev/null; then
+# Detect if embedding dependencies are available
+# If either sentence-transformers or onnxruntime is missing, use reduced
+# coverage config that excludes embedding-dependent code
+if python3 -c "import sentence_transformers" 2>/dev/null && \
+   python3 -c "import onnxruntime" 2>/dev/null; then
     EMBEDDINGS_AVAILABLE=true
 else
     EMBEDDINGS_AVAILABLE=false

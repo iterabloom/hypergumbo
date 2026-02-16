@@ -454,6 +454,7 @@ def _cmd_validate(args: argparse.Namespace, ts: TrackerSet) -> int:
             tracker_root,
             config=ts.config,
             check_similar=args.similar,
+            check_deep_similar=args.deep_similar,
             check_locks=args.check_locks,
             strict=args.strict,
         )
@@ -794,6 +795,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p_validate.add_argument("files", nargs="*", help="Specific files to validate")
     p_validate.add_argument("--similar", action="store_true",
                             help="Check SimHash near-duplicates")
+    p_validate.add_argument("--deep-similar", action="store_true",
+                            dest="deep_similar",
+                            help="Check embedding-based near-duplicates (requires dedup extras)")
     p_validate.add_argument("--strict", action="store_true",
                             help="Treat warnings as errors")
     p_validate.add_argument("--check-locks", action="store_true",
