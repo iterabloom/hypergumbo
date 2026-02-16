@@ -11,6 +11,7 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -25,6 +26,7 @@ from hypergumbo_tracker.validation import (
     _check_config_comparison,
     _check_dangling_parents,
     _check_deferred_justification,
+    _check_embedding_duplicates,
     _check_id_prefix_mismatch,
     _check_lock_violations,
     _check_simhash_duplicates,
@@ -1360,3 +1362,137 @@ class TestValidateAllIntegration:
 
         result = validate_all(tracker_root)
         assert result.ok
+
+
+# ---------------------------------------------------------------------------
+# Embedding duplicate warnings (mocked — always runnable)
+# ---------------------------------------------------------------------------
+
+
+class TestEmbeddingDuplicates:
+    def test_check_deep_similar_calls_embedding_check(self, tmp_path: Path) -> None:
+        """validate_all with check_deep_similar=True calls _check_embedding_duplicates."""
+        tracker_root = tmp_path / ".agent"
+        canonical_ops = tracker_root / "tracker" / ".ops"
+        canonical_ops.mkdir(parents=True)
+        (tracker_root / "tracker-workspace" / ".ops").mkdir(parents=True)
+        (tracker_root / "tracker-workspace" / "stealth").mkdir(parents=True)
+
+        ops_a = textwrap.dedent("""\
+            - op: create
+              at: "2026-01-01T00:00:00Z"
+              by: agent
+              actor: test_agent
+              clock: 1
+              nonce: a1b2
+              data:
+                kind: work_item
+                title: "Fix auth bug"
+                status: todo_hard
+                priority: 2
+        """)
+        (canonical_ops / ".WI-item-a.ops").write_text(ops_a)
+
+        with patch(
+            "hypergumbo_tracker.validation._check_embedding_duplicates"
+        ) as mock_check:
+            validate_all(tracker_root, _make_config(), check_deep_similar=True)
+            mock_check.assert_called_once()
+
+    def test_check_deep_similar_not_called_by_default(self, tmp_path: Path) -> None:
+        tracker_root = tmp_path / ".agent"
+        (tracker_root / "tracker" / ".ops").mkdir(parents=True)
+        (tracker_root / "tracker-workspace" / ".ops").mkdir(parents=True)
+        (tracker_root / "tracker-workspace" / "stealth").mkdir(parents=True)
+
+        with patch(
+            "hypergumbo_tracker.validation._check_embedding_duplicates"
+        ) as mock_check:
+            validate_all(tracker_root, _make_config())
+            mock_check.assert_not_called()
+
+    def test_embedding_check_warns_when_deps_missing(self) -> None:
+        """_check_embedding_duplicates warns when dedup deps unavailable."""
+        from hypergumbo_tracker.models import CompiledItem
+
+        items: dict[str, tuple[str, Any]] = {
+            "WI-a": ("canonical", CompiledItem(
+                id="WI-a", kind="work_item", title="Test",
+                status="todo_hard",
+            )),
+        }
+        result = ValidationResult()
+
+        with patch(
+            "hypergumbo_tracker.embeddings.is_dedup_available", return_value=False
+        ):
+            _check_embedding_duplicates(items, result)
+
+        assert any("deep-similar: skipped" in w for w in result.warnings)
+
+    def test_embedding_check_reports_duplicates(self) -> None:
+        """_check_embedding_duplicates appends warnings with cosine + tags."""
+        from hypergumbo_tracker.embeddings import EmbeddingDuplicateResult
+        from hypergumbo_tracker.models import CompiledItem
+
+        items: dict[str, tuple[str, Any]] = {
+            "WI-a": ("canonical", CompiledItem(
+                id="WI-a", kind="work_item", title="Test",
+                status="todo_hard",
+            )),
+            "WI-b": ("canonical", CompiledItem(
+                id="WI-b", kind="work_item", title="Test",
+                status="todo_hard",
+            )),
+        }
+        result = ValidationResult()
+
+        mock_result = EmbeddingDuplicateResult(
+            id_a="WI-a", id_b="WI-b",
+            cosine_sim=0.92, shared_tags=["call_graph", "performance"],
+        )
+
+        with patch(
+            "hypergumbo_tracker.embeddings.is_dedup_available", return_value=True
+        ), patch(
+            "hypergumbo_tracker.embeddings.check_embedding_duplicates",
+            return_value=[mock_result],
+        ):
+            _check_embedding_duplicates(items, result)
+
+        assert len(result.warnings) == 1
+        w = result.warnings[0]
+        assert "deep-similar: WI-a and WI-b" in w
+        assert "cosine similarity: 0.920" in w
+        assert "call_graph" in w
+        assert "performance" in w
+
+    def test_embedding_check_no_shared_tags(self) -> None:
+        """When no shared tags, report 'none'."""
+        from hypergumbo_tracker.embeddings import EmbeddingDuplicateResult
+        from hypergumbo_tracker.models import CompiledItem
+
+        items: dict[str, tuple[str, Any]] = {
+            "WI-a": ("canonical", CompiledItem(
+                id="WI-a", kind="work_item", title="A", status="todo_hard",
+            )),
+            "WI-b": ("canonical", CompiledItem(
+                id="WI-b", kind="work_item", title="B", status="todo_hard",
+            )),
+        }
+        result = ValidationResult()
+
+        mock_result = EmbeddingDuplicateResult(
+            id_a="WI-a", id_b="WI-b",
+            cosine_sim=0.87, shared_tags=[],
+        )
+
+        with patch(
+            "hypergumbo_tracker.embeddings.is_dedup_available", return_value=True
+        ), patch(
+            "hypergumbo_tracker.embeddings.check_embedding_duplicates",
+            return_value=[mock_result],
+        ):
+            _check_embedding_duplicates(items, result)
+
+        assert "shared tags: none" in result.warnings[0]

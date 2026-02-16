@@ -892,6 +892,15 @@ class TestGovernanceCommands:
             main(["--tracker-root", str(tracker_root), "validate", "--check-locks"])
         assert exc.value.code == EXIT_SUCCESS
 
+    def test_validate_deep_similar(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                                   mock_agent_uid: None) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        with patch("hypergumbo_tracker.validation._check_embedding_duplicates") as mock_check:
+            with pytest.raises(SystemExit) as exc:
+                main(["--tracker-root", str(tracker_root), "validate", "--deep-similar"])
+            assert exc.value.code == EXIT_SUCCESS
+            mock_check.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # Utility commands

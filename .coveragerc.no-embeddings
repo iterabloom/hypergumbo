@@ -1,13 +1,14 @@
-# Coverage configuration for when sentence-transformers is unavailable.
+# Coverage configuration for when embedding dependencies are unavailable.
 # This excludes embedding-specific code that cannot be executed without
-# the optional sentence-transformers dependency.
+# the optional sentence-transformers or onnxruntime/tokenizers dependencies.
 
 [run]
-# Omit embedding modules - they require sentence-transformers
+# Omit embedding modules - they require sentence-transformers or onnxruntime
 omit =
     */sketch_embeddings.py
     */_embedding_data.py
     */__main__.py
+    */embeddings.py
 
 [report]
 # Exclude lines containing these patterns (embedding-related conditionals)
