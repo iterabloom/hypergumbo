@@ -617,8 +617,8 @@ class TestWriteCommands:
                 "--description", "new desc",
                 "--add-before", "WI-before",
                 "--remove-tag", "old",
-                "--duplicate-of", "WI-dup",
-                "--not-duplicate-of", "WI-nodup",
+                "--add-duplicate-of", "WI-dup",
+                "--add-not-duplicate-of", "WI-nodup",
             ])
         assert exc.value.code == EXIT_SUCCESS
 
@@ -1348,3 +1348,54 @@ class TestGetCacheDir:
         result = _get_cache_dir(tracker_root)
         assert result is not None
         assert str(custom_cache) in str(result)
+
+    def test_tracker_cache_dir_override(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """TRACKER_CACHE_DIR env var overrides default cache path."""
+        from hypergumbo_tracker.cli import _get_cache_dir
+
+        custom_dir = tmp_path / "my_cache"
+        monkeypatch.setenv("TRACKER_CACHE_DIR", str(custom_dir))
+
+        tracker_root = tmp_path / ".agent"
+        tracker_root.mkdir()
+        result = _get_cache_dir(tracker_root)
+        assert result == custom_dir
+
+
+# ---------------------------------------------------------------------------
+# D6: Four separate duplicate flags
+# ---------------------------------------------------------------------------
+
+
+class TestDuplicateFlags:
+    def test_remove_duplicate_of(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--remove-duplicate-of removes a duplicate-of link."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test",
+                "--remove-duplicate-of", "WI-dup",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+
+    def test_remove_not_duplicate_of(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--remove-not-duplicate-of removes a not-duplicate-of link."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test",
+                "--remove-not-duplicate-of", "WI-nodup",
+            ])
+        assert exc.value.code == EXIT_SUCCESS

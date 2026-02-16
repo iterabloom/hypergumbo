@@ -51,7 +51,7 @@ from textual.widgets import (
     Tree,
 )
 
-from hypergumbo_tracker.models import CompiledItem, Tier
+from hypergumbo_tracker.models import CompiledItem, FieldSchema, Tier
 from hypergumbo_tracker.store import (
     DiscussionRateLimitError,
     HumanAuthorityError,
@@ -149,12 +149,17 @@ def _format_activity_lines(item: CompiledItem, limit: int = 10) -> list[str]:
     When discussion has more than *limit* entries, shows only the last
     *limit* with a ``"showing last N of M"`` header.  Returns
     ``["No recent activity"]`` when discussion is empty.
+
+    Prepends a ``[20+ msgs]`` badge when entry count >= 20 (D9).
     """
     if not item.discussion:
         return ["No recent activity"]
 
     entries = item.discussion
     lines: list[str] = []
+
+    if len(entries) >= 20:
+        lines.append("[20+ msgs]")
 
     if len(entries) > limit:
         lines.append(f"(showing last {limit} of {len(entries)} entries)")
@@ -174,21 +179,34 @@ _TIER_INDICATOR = {
 }
 
 
-def _format_detail_lines(item: CompiledItem, tier: str = "standard") -> list[str]:
+def _format_detail_lines(
+    item: CompiledItem,
+    tier: str = "standard",
+    fields_schema: dict[str, FieldSchema] | None = None,
+) -> list[str]:
     """Format a CompiledItem into lines for detail display.
 
     Used by both compact (stacked) and standard/wide (side-panel) detail views.
     Returns a list of lines suitable for joining with newlines.
 
-    When *tier* is ``"wide"``, shows timestamps, locked fields, and conflict
-    status in the detail panel, but suppresses the inline discussion section
-    (the activity panel handles it instead).
+    When *tier* is ``"wide"``, shows timestamps and conflict status in the
+    detail panel, but suppresses the inline discussion section (the activity
+    panel handles it instead).
+
+    Per-field ``[locked]`` indicators replace the old summary line (D8).
+    When *fields_schema* is provided, known fields render in schema
+    declaration order with descriptions; unknown fields go under ``Other`` (D7).
+    Discussion badge ``[20+ msgs]`` appears when entry count >= 20 (D9).
     """
     lines: list[str] = []
     lines.append(f"Title: {item.title}")
     lines.append(f"ID: {item.id}")
-    lines.append(f"Status: {item.status}")
-    lines.append(f"Priority: P{item.priority}")
+
+    lock_s = " [locked]" if "status" in item.locked_fields else ""
+    lines.append(f"Status{lock_s}: {item.status}")
+
+    lock_p = " [locked]" if "priority" in item.locked_fields else ""
+    lines.append(f"Priority{lock_p}: P{item.priority}")
 
     tier_str = item.tier.value if item.tier else "unknown"
     lines.append(f"Tier: {tier_str}")
@@ -198,8 +216,6 @@ def _format_detail_lines(item: CompiledItem, tier: str = "standard") -> list[str
             lines.append(f"Created: {_format_timestamp(item.created_at)}")
         if item.updated_at:
             lines.append(f"Updated: {_format_timestamp(item.updated_at)}")
-        if item.locked_fields:
-            lines.append(f"Locked: {', '.join(sorted(item.locked_fields))}")
         if item.cross_tier_conflict:
             lines.append("Cross-tier conflict: YES")
 
@@ -207,15 +223,39 @@ def _format_detail_lines(item: CompiledItem, tier: str = "standard") -> list[str
         lines.append(f"Tags: {', '.join(item.tags)}")
     if item.parent:
         lines.append(f"Parent: {item.parent}")
+
+    lock_desc = " [locked]" if "description" in item.locked_fields else ""
     if item.description:
-        lines.append(f"\nDescription:\n{item.description}")
+        lines.append(f"\nDescription{lock_desc}:\n{item.description}")
+
     if item.fields:
-        lines.append("\nFields:")
-        for k, v in item.fields.items():
-            lines.append(f"  {k}: {v}")
+        if fields_schema:
+            lines.append("\nFields:")
+            # Known fields in schema declaration order
+            for fname, fschema in fields_schema.items():
+                if fname in item.fields:
+                    label = f" ({fschema.description})" if fschema.description else ""
+                    lock = " [locked]" if fname in item.locked_fields else ""
+                    lines.append(f"  {fname}{label}{lock}: {item.fields[fname]}")
+            # Unknown fields (not in schema)
+            unknown = {k: v for k, v in item.fields.items() if k not in fields_schema}
+            if unknown:
+                lines.append("\n  Other:")
+                for k, v in unknown.items():
+                    lock = " [locked]" if k in item.locked_fields else ""
+                    lines.append(f"    {k}{lock}: {v}")
+        else:
+            lines.append("\nFields:")
+            for k, v in item.fields.items():
+                lock = " [locked]" if k in item.locked_fields else ""
+                lines.append(f"  {k}{lock}: {v}")
+
     # In wide mode, discussion is shown in the activity panel
     if tier != "wide" and item.discussion:
-        lines.append(f"\nDiscussion ({len(item.discussion)} entries):")
+        count = len(item.discussion)
+        badge = " [20+ msgs]" if count >= 20 else ""
+        lock_d = " [locked]" if "discussion" in item.locked_fields else ""
+        lines.append(f"\nDiscussion{lock_d} ({count} entries){badge}:")
         for entry in item.discussion[-5:]:
             lines.append(f"  [{entry.at}] {entry.by}: {entry.message}")
 
@@ -876,6 +916,7 @@ class TrackerApp(App):
         super().__init__(**kwargs)
         self._tracker_set = tracker_set
         self._layout_tier = "compact"
+        self._layout_width = 0
         self._items: list[CompiledItem] = []
         self._in_detail = False
         self._selected_item_id: str | None = None
@@ -944,6 +985,7 @@ class TrackerApp(App):
                   Defaults to self.size (used by on_mount).
         """
         w, h = size if size is not None else self.size
+        self._layout_width = w
         new_tier = _compute_tier(w, h)
         if new_tier != self._layout_tier:
             # Leaving compact detail mode when switching to standard
@@ -982,7 +1024,7 @@ class TrackerApp(App):
             table.display = False
             detail.display = False
             two_pane.display = True
-            filter_input.display = self._filter_active
+            filter_input.display = self._filter_active and self._layout_width >= 80
 
             # Activity panel: visible only in wide mode
             activity_view = self.query_one("#activity-view")
@@ -1010,7 +1052,7 @@ class TrackerApp(App):
         else:
             # Compact layout
             two_pane.display = False
-            filter_input.display = self._filter_active
+            filter_input.display = self._filter_active and self._layout_width >= 80
             if self._in_detail:
                 table.display = False
                 detail.display = True
@@ -1179,7 +1221,8 @@ class TrackerApp(App):
 
     def _show_detail(self, item: CompiledItem) -> None:
         """Populate the compact detail view with item information."""
-        lines = _format_detail_lines(item)
+        fields_schema = self._get_fields_schema(item)
+        lines = _format_detail_lines(item, fields_schema=fields_schema)
         content = self.query_one("#detail-content", Static)
         content.update("\n".join(lines))
 
@@ -1196,11 +1239,23 @@ class TrackerApp(App):
         if not item:
             return
         self._selected_item_id = item_id
-        lines = _format_detail_lines(item, tier=self._layout_tier)
+        fields_schema = self._get_fields_schema(item)
+        lines = _format_detail_lines(
+            item, tier=self._layout_tier, fields_schema=fields_schema,
+        )
         content = self.query_one("#std-detail-content", Static)
         content.update("\n".join(lines))
         if self._layout_tier == "wide":
             self._show_activity(item)
+
+    def _get_fields_schema(
+        self, item: CompiledItem,
+    ) -> dict[str, FieldSchema] | None:
+        """Look up the fields_schema for an item's kind from config."""
+        kind_config = self._tracker_set.config.kinds.get(item.kind)
+        if kind_config:
+            return kind_config.fields_schema
+        return None
 
     def _show_activity(self, item: CompiledItem) -> None:
         """Populate the activity panel with discussion entries.
@@ -1300,6 +1355,12 @@ class TrackerApp(App):
         if self._filter_active:
             self._dismiss_filter()
         else:
+            if self._layout_width < 80:
+                self.notify(
+                    "Filter requires terminal width \u2265 80",
+                    severity="warning",
+                )
+                return
             self._filter_active = True
             self._apply_layout()
             self.query_one("#filter-input", Input).focus()

@@ -349,9 +349,9 @@ class TestFormatDetailLines:
         text = "\n".join(lines)
         assert "Created: 2026-02-15 10:00" in text
         assert "Updated: 2026-02-15 12:00" in text
-        assert "Locked:" in text
-        assert "priority" in text
-        assert "status" in text
+        assert "[locked]" in text
+        assert "Priority [locked]" in text
+        assert "Status [locked]" in text
         assert "Cross-tier conflict: YES" in text
         # Discussion should NOT appear in wide mode
         assert "Discussion" not in text
@@ -1314,15 +1314,15 @@ class TestDynamicResize:
             await pilot.pause()
             assert app._filter_active is True
 
-            # Resize to compact
+            # Resize to compact (width < 80 → filter hidden but state preserved)
             await pilot.resize_terminal(50, 18)
             await pilot.pause()
             await pilot.pause()
             assert app._filter_active is True
 
-            # Filter input should still be visible
+            # Filter input should be hidden (width < 80) but state preserved
             filter_input = app.query_one("#filter-input")
-            assert filter_input.display is True
+            assert filter_input.display is False
 
     async def test_standard_to_wide_extra_columns_appear(
         self, tracker_set: TrackerSet
@@ -1504,21 +1504,21 @@ class TestStandardEdgeCases:
             app.on_data_table_row_highlighted(event)
             # Should not crash
 
-    async def test_filter_in_compact_mode(self, tmp_path: Path) -> None:
-        """Filter should work in compact mode too."""
+    async def test_filter_in_compact_mode_wide_enough(self, tmp_path: Path) -> None:
+        """Filter should work in compact mode at width >= 80 (but height < 20)."""
         from hypergumbo_tracker.tui import TrackerApp
 
         ts = _make_tracker_set(tmp_path)
         app = TrackerApp(tracker_set=ts)
-        async with app.run_test(size=(50, 18)) as pilot:
+        # Width 80 (>= 80 for filter), height 18 (compact tier: < 20)
+        async with app.run_test(size=(80, 18)) as pilot:
             await _wait_for_table(pilot, app)
             await pilot.press("f")
             await pilot.pause()
             assert app._filter_active is True
             filter_input = app.query_one("#filter-input")
             assert filter_input.display is True
-            # Dismiss with 'f' again (action_toggle_filter)
-            # Since filter is active, escape dismisses it
+            # Dismiss with escape
             await pilot.press("escape")
             await pilot.pause()
             assert not app._filter_active
@@ -1592,7 +1592,8 @@ class TestStandardEdgeCases:
 
         ts = _make_tracker_set(tmp_path)
         app = TrackerApp(tracker_set=ts)
-        async with app.run_test(size=(50, 18)) as pilot:
+        # Width >= 80 required for filter (D10), height < 20 keeps compact tier
+        async with app.run_test(size=(80, 18)) as pilot:
             await _wait_for_table(pilot, app)
             # Enter detail mode
             await pilot.press("enter")
@@ -3643,3 +3644,377 @@ class TestOnSetParentCallbackBranches:
             ):
                 app._on_set_parent("FAKE", "PARENT")
                 await pilot.pause()
+
+
+# ---------------------------------------------------------------------------
+# D7: Schema-aware detail rendering
+# ---------------------------------------------------------------------------
+
+
+class TestSchemaAwareRendering:
+    """Test _format_detail_lines with fields_schema parameter."""
+
+    def test_known_fields_in_schema_order_with_description(self) -> None:
+        """Known fields render in schema declaration order with descriptions."""
+        from hypergumbo_tracker.models import FieldSchema
+
+        item = CompiledItem(
+            id="INV-abc",
+            kind="invariant",
+            title="Schema test",
+            status="todo_hard",
+            fields={
+                "root_cause": "bug in parser",
+                "statement": "must be true",
+                "extra_field": "unknown",
+            },
+        )
+        schema = {
+            "statement": FieldSchema(type="text", description="What must hold"),
+            "root_cause": FieldSchema(type="text", description="Why it fails"),
+        }
+        lines = _format_detail_lines(item, fields_schema=schema)
+        text = "\n".join(lines)
+        # Known fields in schema order (statement before root_cause)
+        stmt_pos = text.index("statement")
+        rc_pos = text.index("root_cause")
+        assert stmt_pos < rc_pos
+        # Descriptions in labels
+        assert "(What must hold)" in text
+        assert "(Why it fails)" in text
+        # Unknown field under "Other"
+        assert "Other:" in text
+        assert "extra_field" in text
+
+    def test_no_schema_renders_flat(self) -> None:
+        """Without fields_schema, fields render as flat key: value pairs."""
+        item = CompiledItem(
+            id="WI-abc",
+            kind="work_item",
+            title="No schema",
+            status="done",
+            fields={"key1": "val1", "key2": "val2"},
+        )
+        lines = _format_detail_lines(item, fields_schema=None)
+        text = "\n".join(lines)
+        assert "key1" in text
+        assert "key2" in text
+        assert "Other:" not in text
+
+    def test_schema_no_description(self) -> None:
+        """Schema field without description renders without label."""
+        from hypergumbo_tracker.models import FieldSchema
+
+        item = CompiledItem(
+            id="INV-xyz",
+            kind="invariant",
+            title="No desc",
+            status="todo_hard",
+            fields={"statement": "must be true"},
+        )
+        schema = {
+            "statement": FieldSchema(type="text"),
+        }
+        lines = _format_detail_lines(item, fields_schema=schema)
+        text = "\n".join(lines)
+        assert "statement" in text
+        assert "()" not in text  # No empty parens
+
+    def test_schema_only_unknown_fields(self) -> None:
+        """When all fields are unknown (not in schema), they go under Other."""
+        from hypergumbo_tracker.models import FieldSchema
+
+        item = CompiledItem(
+            id="INV-unk",
+            kind="invariant",
+            title="All unknown",
+            status="todo_hard",
+            fields={"custom1": "val1"},
+        )
+        schema = {
+            "statement": FieldSchema(type="text", description="Required"),
+        }
+        lines = _format_detail_lines(item, fields_schema=schema)
+        text = "\n".join(lines)
+        assert "Other:" in text
+        assert "custom1" in text
+
+
+# ---------------------------------------------------------------------------
+# D7: _get_fields_schema integration
+# ---------------------------------------------------------------------------
+
+
+class TestGetFieldsSchema:
+    """Test _get_fields_schema returns None when kind has no schema."""
+
+    async def test_kind_without_schema_returns_none(
+        self, tmp_path: Path,
+    ) -> None:
+        """Kind without fields_schema in config returns None."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # work_item has no fields_schema in _make_config()
+            wi_item = next(
+                i for i in app._items if i.kind == "work_item"
+            )
+            result = app._get_fields_schema(wi_item)
+            assert result is None
+
+    async def test_unknown_kind_returns_none(
+        self, tmp_path: Path,
+    ) -> None:
+        """Item whose kind is not in config at all returns None."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Create a fake item with an unknown kind
+            fake_item = CompiledItem(
+                id="FAKE-test",
+                kind="nonexistent_kind",
+                title="Fake",
+                status="todo_hard",
+                priority=1,
+                created_at="2026-01-01T00:00:00Z",
+                updated_at="2026-01-01T00:00:00Z",
+            )
+            result = app._get_fields_schema(fake_item)
+            assert result is None
+
+
+# ---------------------------------------------------------------------------
+# D8: Per-field lock icons
+# ---------------------------------------------------------------------------
+
+
+class TestPerFieldLockIcons:
+    """Test [locked] indicators on individual fields."""
+
+    def test_locked_status_shows_indicator(self) -> None:
+        """Locked status field shows [locked] indicator."""
+        item = CompiledItem(
+            id="INV-lock",
+            kind="invariant",
+            title="Lock test",
+            status="todo_hard",
+            locked_fields={"status"},
+        )
+        lines = _format_detail_lines(item)
+        text = "\n".join(lines)
+        assert "Status [locked]:" in text
+        assert "Priority:" in text  # Not locked
+
+    def test_locked_priority_shows_indicator(self) -> None:
+        """Locked priority field shows [locked] indicator."""
+        item = CompiledItem(
+            id="INV-lock2",
+            kind="invariant",
+            title="Lock test 2",
+            status="todo_hard",
+            locked_fields={"priority"},
+        )
+        lines = _format_detail_lines(item)
+        text = "\n".join(lines)
+        assert "Status:" in text  # Not locked
+        assert "Priority [locked]:" in text
+
+    def test_locked_description_shows_indicator(self) -> None:
+        """Locked description field shows [locked] indicator."""
+        item = CompiledItem(
+            id="INV-lock3",
+            kind="invariant",
+            title="Lock desc test",
+            status="todo_hard",
+            description="Some text",
+            locked_fields={"description"},
+        )
+        lines = _format_detail_lines(item)
+        text = "\n".join(lines)
+        assert "Description [locked]:" in text
+
+    def test_locked_discussion_shows_indicator(self) -> None:
+        """Locked discussion field shows [locked] indicator."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        item = CompiledItem(
+            id="INV-lock4",
+            kind="invariant",
+            title="Lock disc test",
+            status="todo_hard",
+            locked_fields={"discussion"},
+            discussion=[
+                DiscussionEntry(
+                    by="agent", actor="bot", at="2026-01-01T00:00:00Z",
+                    message="Test",
+                ),
+            ],
+        )
+        lines = _format_detail_lines(item)
+        text = "\n".join(lines)
+        assert "Discussion [locked]" in text
+
+    def test_locked_fields_in_schema(self) -> None:
+        """Locked fields in schema-aware rendering show [locked]."""
+        from hypergumbo_tracker.models import FieldSchema
+
+        item = CompiledItem(
+            id="INV-lock5",
+            kind="invariant",
+            title="Lock schema test",
+            status="todo_hard",
+            fields={"statement": "must hold", "root_cause": "bug"},
+            locked_fields={"statement"},
+        )
+        schema = {
+            "statement": FieldSchema(type="text", description="Principle"),
+            "root_cause": FieldSchema(type="text"),
+        }
+        lines = _format_detail_lines(item, fields_schema=schema)
+        text = "\n".join(lines)
+        assert "statement (Principle) [locked]:" in text
+        assert "root_cause:" in text
+        assert "root_cause [locked]" not in text
+
+
+# ---------------------------------------------------------------------------
+# D9: Discussion badge [20+ msgs]
+# ---------------------------------------------------------------------------
+
+
+class TestDiscussionBadge:
+    """Test [20+ msgs] badge on discussion sections."""
+
+    def test_no_badge_under_20(self) -> None:
+        """Discussion with < 20 entries should NOT show badge."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        entries = [
+            DiscussionEntry(
+                by=f"user{i}", actor="dev", at=f"2026-01-{i+1:02d}T00:00:00Z",
+                message=f"Message {i}",
+            )
+            for i in range(5)
+        ]
+        item = CompiledItem(
+            id="INV-few",
+            kind="invariant",
+            title="Few messages",
+            status="todo_hard",
+            discussion=entries,
+        )
+        lines = _format_detail_lines(item)
+        text = "\n".join(lines)
+        assert "Discussion (5 entries):" in text
+        assert "[20+ msgs]" not in text
+
+    def test_badge_at_20(self) -> None:
+        """Discussion with 20 entries should show badge."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        entries = [
+            DiscussionEntry(
+                by=f"user{i}", actor="dev", at=f"2026-01-{i+1:02d}T00:00:00Z",
+                message=f"Message {i}",
+            )
+            for i in range(20)
+        ]
+        item = CompiledItem(
+            id="INV-many",
+            kind="invariant",
+            title="Many messages",
+            status="todo_hard",
+            discussion=entries,
+        )
+        lines = _format_detail_lines(item)
+        text = "\n".join(lines)
+        assert "[20+ msgs]" in text
+
+    def test_badge_in_activity_lines(self) -> None:
+        """Activity lines with 20+ entries should show badge."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        entries = [
+            DiscussionEntry(
+                by=f"user{i}", actor="dev", at=f"2026-01-{i+1:02d}T00:00:00Z",
+                message=f"Message {i}",
+            )
+            for i in range(25)
+        ]
+        item = CompiledItem(
+            id="INV-act",
+            kind="invariant",
+            title="Activity badge",
+            status="todo_hard",
+            discussion=entries,
+        )
+        lines = _format_activity_lines(item)
+        assert "[20+ msgs]" in lines[0]
+
+    def test_no_badge_in_activity_under_20(self) -> None:
+        """Activity lines with < 20 entries should NOT show badge."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        entries = [
+            DiscussionEntry(
+                by=f"user{i}", actor="dev", at=f"2026-01-{i+1:02d}T00:00:00Z",
+                message=f"Message {i}",
+            )
+            for i in range(10)
+        ]
+        item = CompiledItem(
+            id="INV-noact",
+            kind="invariant",
+            title="No badge activity",
+            status="todo_hard",
+            discussion=entries,
+        )
+        lines = _format_activity_lines(item)
+        assert not any("[20+ msgs]" in line for line in lines)
+
+
+# ---------------------------------------------------------------------------
+# D10: Filter width gate (>=80 cols)
+# ---------------------------------------------------------------------------
+
+
+class TestFilterWidthGate:
+    """Test that filter is width-gated to >=80 columns."""
+
+    async def test_filter_blocked_at_narrow_width(
+        self, tmp_path: Path,
+    ) -> None:
+        """Pressing 'f' at width < 80 should NOT activate filter."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(50, 18)) as pilot:
+            await _wait_for_table(pilot, app)
+            await pilot.press("f")
+            await pilot.pause()
+            assert not app._filter_active
+            filter_input = app.query_one("#filter-input")
+            assert filter_input.display is False
+
+    async def test_filter_works_at_80_cols(
+        self, tmp_path: Path,
+    ) -> None:
+        """Pressing 'f' at width >= 80 should activate filter."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            await pilot.press("f")
+            await pilot.pause()
+            assert app._filter_active is True
+            filter_input = app.query_one("#filter-input")
+            assert filter_input.display is True

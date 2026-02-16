@@ -2413,3 +2413,86 @@ class TestCompileAllCached:
         assert len(items) == 1
         assert items[0].title == "Ready via Cache"
         cache.close()
+
+
+# ---------------------------------------------------------------------------
+# D2: Pre-write validation (frozen uncompilable items)
+# ---------------------------------------------------------------------------
+
+
+class TestPreWriteValidation:
+    """Verify that _append_op refuses to write to items with corrupt ops."""
+
+    def test_update_on_corrupt_item_raises(
+        self, ops_dir: Path, config_yaml: Path, mock_human_uid: None,
+    ) -> None:
+        """Update (as human) on an uncompilable item raises CorruptFileError.
+
+        Uses human actor to bypass the locked-field check (which would also
+        compile and raise earlier) so that _append_op's pre-write validation
+        is the one that triggers.
+        """
+        config = TrackerConfig(
+            kinds={"work_item": KindConfig(prefix="WI", description="Work item")},
+            statuses=["todo_hard", "done"],
+            blocking_statuses=["todo_hard"],
+            resolved_statuses=["done"],
+            agent_usernames=["*_agent"],
+            lamport_branches=["dev"],
+        )
+        store = Store(ops_dir, config)
+        # Create as human first
+        item_id = store.add(
+            kind="work_item", title="Will corrupt", status="todo_hard",
+            priority=2,
+        )
+        # Corrupt the ops file by removing the create op
+        ops_path = store.item_path(item_id)
+        ops_path.write_text(textwrap.dedent("""\
+            - op: update
+              at: "2026-01-01T00:00:00Z"
+              by: human
+              actor: jgstern
+              clock: 2
+              nonce: ab12
+              set:
+                status: done
+        """))
+        with pytest.raises(CorruptFileError, match="uncompilable"):
+            store.update(item_id, set_fields={"status": "done"})
+
+    def test_discuss_clear_on_corrupt_item_raises(
+        self, ops_dir: Path, config_yaml: Path, mock_human_uid: None,
+    ) -> None:
+        """discuss(clear=True) on an uncompilable item raises CorruptFileError.
+
+        Uses human actor + clear=True to go directly to _append_op,
+        bypassing the soft cap warning that also calls compile_ops.
+        """
+        config = TrackerConfig(
+            kinds={"work_item": KindConfig(prefix="WI", description="Work item")},
+            statuses=["todo_hard", "done"],
+            blocking_statuses=["todo_hard"],
+            resolved_statuses=["done"],
+            agent_usernames=["*_agent"],
+            lamport_branches=["dev"],
+        )
+        store = Store(ops_dir, config)
+        item_id = store.add(
+            kind="work_item", title="Will corrupt", status="todo_hard",
+            priority=2,
+        )
+        # Corrupt: write only an update op (no create)
+        ops_path = store.item_path(item_id)
+        ops_path.write_text(textwrap.dedent("""\
+            - op: update
+              at: "2026-01-01T00:00:00Z"
+              by: human
+              actor: jgstern
+              clock: 2
+              nonce: ab12
+              set:
+                status: done
+        """))
+        with pytest.raises(CorruptFileError, match="uncompilable"):
+            store.discuss(item_id, "ignored", clear=True)

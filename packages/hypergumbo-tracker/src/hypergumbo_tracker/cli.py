@@ -69,11 +69,20 @@ EXIT_INTERNAL_ERROR = 2
 def _get_cache_dir(tracker_root: Path) -> Path | None:
     """Derive the XDG-based cache directory for tracker SQLite caches.
 
-    Uses $XDG_CACHE_HOME (default ~/.cache) + repo fingerprint to create
-    a unique cache directory per repository. Returns None if the repo
+    If ``TRACKER_CACHE_DIR`` is set, returns that path directly — useful when
+    the default cache directory is on a network filesystem where SQLite
+    locking is unreliable (e.g., NFS).
+
+    Otherwise uses $XDG_CACHE_HOME (default ~/.cache) + repo fingerprint to
+    create a unique cache directory per repository. Returns None if the repo
     fingerprint cannot be computed (e.g. not in a git repo).
     """
     import os
+
+    # TRACKER_CACHE_DIR overrides everything — use as-is
+    override = os.environ.get("TRACKER_CACHE_DIR")
+    if override:
+        return Path(override)
 
     from hypergumbo_tracker.cache import Cache
     from hypergumbo_tracker.store import _find_git_dir
@@ -329,10 +338,14 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
         add_fields["before"] = args.add_before
     if args.remove_before:
         remove_fields["before"] = args.remove_before
-    if args.duplicate_of:
-        add_fields["duplicate_of"] = args.duplicate_of
-    if args.not_duplicate_of:
-        add_fields["not_duplicate_of"] = args.not_duplicate_of
+    if args.add_duplicate_of:
+        add_fields["duplicate_of"] = args.add_duplicate_of
+    if args.remove_duplicate_of:
+        remove_fields["duplicate_of"] = args.remove_duplicate_of
+    if args.add_not_duplicate_of:
+        add_fields["not_duplicate_of"] = args.add_not_duplicate_of
+    if args.remove_not_duplicate_of:
+        remove_fields["not_duplicate_of"] = args.remove_not_duplicate_of
 
     if args.field:
         fields_dict: dict[str, Any] = {}
@@ -762,10 +775,14 @@ def _build_parser() -> argparse.ArgumentParser:
     p_update.add_argument("--remove-tag", action="append", help="Remove tag")
     p_update.add_argument("--add-before", action="append", help="Add before link")
     p_update.add_argument("--remove-before", action="append", help="Remove before link")
-    p_update.add_argument("--duplicate-of", dest="duplicate_of", action="append",
-                          help="Mark as duplicate of")
-    p_update.add_argument("--not-duplicate-of", dest="not_duplicate_of", action="append",
-                          help="Mark as not duplicate of")
+    p_update.add_argument("--add-duplicate-of", action="append",
+                          help="Add duplicate-of link")
+    p_update.add_argument("--remove-duplicate-of", action="append",
+                          help="Remove duplicate-of link")
+    p_update.add_argument("--add-not-duplicate-of", action="append",
+                          help="Add not-duplicate-of link")
+    p_update.add_argument("--remove-not-duplicate-of", action="append",
+                          help="Remove not-duplicate-of link")
     p_update.add_argument("--field", action="append", help="Field key=value (repeatable)")
 
     # --- discuss ---

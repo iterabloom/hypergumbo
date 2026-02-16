@@ -443,17 +443,19 @@ def _item_text_for_simhash(data: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _op_sort_key(op_dict: dict[str, Any]) -> tuple[int, str, int]:
-    """Sort key for ops: (clock, timestamp, actor_rank).
+def _op_sort_key(op_dict: dict[str, Any]) -> tuple[int, str, int, str]:
+    """Sort key for ops: (clock, timestamp, actor_rank, nonce).
 
     actor_rank: human=0 (higher priority), agent=1.
-    Lower rank wins in tiebreaker.
+    Lower rank wins in tiebreaker.  Nonce provides a final
+    deterministic tiebreaker when all other fields match.
     """
     clock = op_dict.get("clock", 0)
     at = op_dict.get("at", "")
     by = op_dict.get("by", "agent")
     actor_rank = 0 if by == "human" else 1
-    return (clock, at, actor_rank)
+    nonce = op_dict.get("nonce", "")
+    return (clock, at, actor_rank, nonce)
 
 
 def compile_ops(ops: list[dict[str, Any]], item_id: str = "") -> CompiledItem:
@@ -1147,8 +1149,27 @@ class Store:
     def _append_op(self, filepath: Path, op_dict: dict[str, Any]) -> None:
         """Append an op to a file with flock and Lamport clock.
 
+        Pre-write validation: refuses to append to items whose op log can't
+        compile (e.g. missing create op, corrupt YAML). The item is frozen
+        until a human inspects the ops file. This check is done before the
+        flock to avoid holding the lock during compilation (TOCTOU is
+        acceptable — a corrupt file won't spontaneously heal).
+
         The critical section: acquire lock → compute clock → serialize → write → fsync → release.
         """
+        # Pre-write validation: refuse to append to uncompilable items
+        if filepath.exists():
+            existing_ops = _parse_ops_file(filepath)
+            if existing_ops:
+                item_id = filepath.stem.lstrip(".")
+                try:
+                    compile_ops(existing_ops, item_id)
+                except CorruptFileError:
+                    raise CorruptFileError(
+                        f"{filepath.name}: item is uncompilable (frozen). "
+                        f"A human must inspect the ops file before further writes."
+                    ) from None
+
         with open(filepath, "a") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:

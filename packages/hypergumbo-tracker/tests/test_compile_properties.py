@@ -128,7 +128,12 @@ def lock_op(draw: st.DrawFn, min_clock: int = 2) -> dict[str, Any]:
 
 @st.composite
 def op_sequence(draw: st.DrawFn) -> list[dict[str, Any]]:
-    """Generate a valid op sequence: one create + random updates/discusses/locks."""
+    """Generate a valid op sequence: one create + random updates/discusses/locks.
+
+    Each op gets a unique nonce to ensure the sort key is deterministic
+    regardless of input order (matching production behaviour where nonces
+    are random and extremely unlikely to collide).
+    """
     create = draw(create_op())
     n_subsequent = draw(st.integers(min_value=0, max_value=10))
     subsequent = draw(
@@ -138,7 +143,11 @@ def op_sequence(draw: st.DrawFn) -> list[dict[str, Any]]:
             max_size=n_subsequent,
         )
     )
-    return [create] + subsequent
+    all_ops = [create] + subsequent
+    # Assign unique nonces so sort order is fully deterministic
+    for i, op in enumerate(all_ops):
+        op["nonce"] = f"{i:04x}"
+    return all_ops
 
 
 # ---------------------------------------------------------------------------

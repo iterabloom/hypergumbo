@@ -1121,3 +1121,285 @@ class TestCLIMigrate:
 
         captured = capsys.readouterr()
         assert "ERROR:" in captured.err
+
+
+# ============================================================================
+# Phase 5: D5 — Pending Generalizations → parent-child relationships
+# ============================================================================
+
+
+class TestPendingGeneralizations:
+    """Test that Pending Generalizations become child items with parent links."""
+
+    def test_pending_gen_creates_child_items(self) -> None:
+        """Pending generalizations with content create child ParsedItems."""
+        content = textwrap.dedent("""\
+            ## INV-001: Test Item
+            - **Statement:** Something
+            - **Status:** UNFIXED
+            - **Root cause:** Bug
+            - **Fix:** Pending
+            - **Pending Generalizations:**
+              - **TODO!** Check Java for same issue
+              - **TODO** Add test for edge case
+        """)
+        items = parse_invariant_ledger(content)
+        assert len(items) == 3  # parent + 2 children
+        parent = items[0]
+        assert parent.source_id == "INV-001"
+        assert parent.parent_source_id is None
+
+        child1 = items[1]
+        assert child1.source_id == "INV-001-pg-0"
+        assert child1.parent_source_id == "INV-001"
+        assert child1.status == "todo_hard"  # **TODO!**
+        assert "Java" in child1.title
+
+        child2 = items[2]
+        assert child2.source_id == "INV-001-pg-1"
+        assert child2.parent_source_id == "INV-001"
+        assert child2.status == "todo_soft"  # **TODO**
+
+    def test_pending_gen_none_creates_no_children(self) -> None:
+        """Pending Generalizations: None should NOT create children."""
+        content = textwrap.dedent("""\
+            ## INV-001: Test Item
+            - **Statement:** Something
+            - **Status:** FIXED
+            - **Root cause:** Bug
+            - **Fix:** Fixed
+            - **Pending Generalizations:** None
+        """)
+        items = parse_invariant_ledger(content)
+        assert len(items) == 1
+        assert items[0].parent_source_id is None
+
+    def test_pending_gen_done_status(self) -> None:
+        """Pending gen with **DONE** marker gets status 'done'."""
+        content = textwrap.dedent("""\
+            ## INV-002: Another Item
+            - **Statement:** Something
+            - **Status:** FIXED
+            - **Root cause:** Bug
+            - **Fix:** Fixed
+            - **Pending Generalizations:**
+              - **DONE** (PR#123) Verified in Ruby
+        """)
+        items = parse_invariant_ledger(content)
+        assert len(items) == 2
+        child = items[1]
+        assert child.status == "done"
+        assert child.parent_source_id == "INV-002"
+
+    def test_pending_gen_deferred_status(self) -> None:
+        """Pending gen with **DEFERRED** marker gets status 'deferred'."""
+        content = textwrap.dedent("""\
+            ## INV-003: Third Item
+            - **Statement:** Something
+            - **Status:** FIXED
+            - **Root cause:** Bug
+            - **Fix:** Fixed
+            - **Pending Generalizations:**
+              - **DEFERRED** blocked on grammar availability
+        """)
+        items = parse_invariant_ledger(content)
+        assert len(items) == 2
+        child = items[1]
+        assert child.status == "deferred"
+        assert child.parent_source_id == "INV-003"
+
+    def test_pending_gen_inline_value(self) -> None:
+        """Pending generalization on the same line as the field header."""
+        content = textwrap.dedent("""\
+            ## INV-004: Inline Gen
+            - **Statement:** Something
+            - **Status:** UNFIXED
+            - **Root cause:** Bug
+            - **Fix:** Pending
+            - **Pending Generalizations:** Check if this applies to Go
+        """)
+        items = parse_invariant_ledger(content)
+        assert len(items) == 2
+        child = items[1]
+        assert child.parent_source_id == "INV-004"
+        assert "Go" in child.title
+
+    def test_pending_gen_none_with_suffix_no_children(self) -> None:
+        """'None, or entries with markers:' should not create children."""
+        content = textwrap.dedent("""\
+            ## INV-005: Template-Like Entry
+            - **Statement:** Something
+            - **Status:** FIXED
+            - **Root cause:** Bug
+            - **Fix:** Fixed
+            - **Pending Generalizations:** None, or entries with markers:
+              - `**TODO!**` — invariant/defect work
+        """)
+        items = parse_invariant_ledger(content)
+        assert len(items) == 1
+        assert items[0].parent_source_id is None
+
+    def test_migrate_sets_parent_fields(self, tmp_path: Path) -> None:
+        """Full migrate creates child items with parent field set."""
+        tracker_root = tmp_path / ".agent"
+        tracker_root.mkdir()
+        ledger = tmp_path / "ledger.md"
+        ledger.write_text(textwrap.dedent("""\
+            ## INV-001: Parent Item
+            - **Statement:** Something
+            - **Status:** UNFIXED
+            - **Root cause:** Bug
+            - **Fix:** Pending
+            - **Pending Generalizations:**
+              - **TODO!** Check Java for same issue
+        """))
+        work_items = tmp_path / "work_items.md"
+        work_items.write_text("")
+
+        result = migrate(ledger, work_items, tracker_root)
+
+        assert result.items_created == 2
+        assert result.errors == []
+
+        # Verify parent field is set on child
+        canonical_ops = tracker_root / "tracker" / ".ops"
+        ops_files = list(canonical_ops.glob("*.ops"))
+        assert len(ops_files) == 2
+
+        # Find the child item (has parent update op)
+        child_found = False
+        parent_id = result.id_map["INV-001"]
+        child_id = result.id_map["INV-001-pg-0"]
+        for ops_path in ops_files:
+            ops = _parse_ops_file(ops_path)
+            item_id = ops_path.name[1:-4]
+            if item_id == child_id:
+                compiled = compile_ops(ops, item_id)
+                assert compiled.parent == parent_id
+                child_found = True
+        assert child_found
+
+    def test_migrate_skips_parent_when_not_in_id_map(self, tmp_path: Path) -> None:
+        """Skip parent update when parent_source_id not in id_map."""
+        tracker_root = tmp_path / ".agent"
+        tracker_root.mkdir()
+        # Create a ledger with a child that references a non-existent parent
+        ledger = tmp_path / "ledger.md"
+        ledger.write_text(textwrap.dedent("""\
+            ## INV-001: Parent Item
+            - **Statement:** Something
+            - **Status:** UNFIXED
+            - **Root cause:** Bug
+            - **Fix:** Pending
+            - **Pending Generalizations:**
+              - **TODO!** Check Java for same issue
+        """))
+        work_items = tmp_path / "work_items.md"
+        work_items.write_text("")
+
+        # First run: create items normally
+        result1 = migrate(ledger, work_items, tracker_root)
+        assert result1.items_created == 2
+
+        # Remove the parent ops file to orphan the child in the id_map
+        canonical_ops = tracker_root / "tracker" / ".ops"
+        parent_id = result1.id_map["INV-001"]
+        parent_ops = canonical_ops / f".{parent_id}.ops"
+        parent_ops.unlink()
+
+        # Re-run: child exists (skipped), but parent is gone from id_map
+        # because the ledger still produces both items but the parent file
+        # doesn't exist (so it gets re-created, and the child is skipped)
+        result2 = migrate(ledger, work_items, tracker_root)
+        # Parent re-created, child skipped (already exists)
+        assert result2.items_skipped >= 1
+
+    def test_migrate_idempotent_parent_skips_existing(self, tmp_path: Path) -> None:
+        """Re-running migrate skips items that already exist but still
+        tracks them for parent resolution (line 729)."""
+        tracker_root = tmp_path / ".agent"
+        tracker_root.mkdir()
+        ledger = tmp_path / "ledger.md"
+        ledger.write_text(textwrap.dedent("""\
+            ## INV-001: Parent Item
+            - **Statement:** Something
+            - **Status:** UNFIXED
+            - **Root cause:** Bug
+            - **Fix:** Pending
+            - **Pending Generalizations:**
+              - **TODO!** Check Java for same issue
+        """))
+        work_items = tmp_path / "work_items.md"
+        work_items.write_text("")
+
+        # First run creates items
+        result1 = migrate(ledger, work_items, tracker_root)
+        assert result1.items_created == 2
+
+        # Second run: all items already exist, but parent still set
+        result2 = migrate(ledger, work_items, tracker_root)
+        assert result2.items_skipped == 2
+        assert result2.items_created == 0
+
+        # Parent field should still be correct on re-read
+        child_id = result2.id_map["INV-001-pg-0"]
+        parent_id = result2.id_map["INV-001"]
+        canonical_ops = tracker_root / "tracker" / ".ops"
+        child_ops = _parse_ops_file(canonical_ops / f".{child_id}.ops")
+        compiled = compile_ops(child_ops, child_id)
+        assert compiled.parent == parent_id
+
+    def test_migrate_dry_run_skips_parent_update(self, tmp_path: Path) -> None:
+        """dry_run=True skips writing parent update ops (line 756)."""
+        tracker_root = tmp_path / ".agent"
+        tracker_root.mkdir()
+        ledger = tmp_path / "ledger.md"
+        ledger.write_text(textwrap.dedent("""\
+            ## INV-001: Parent Item
+            - **Statement:** Something
+            - **Status:** UNFIXED
+            - **Root cause:** Bug
+            - **Fix:** Pending
+            - **Pending Generalizations:**
+              - **TODO!** Check Java for same issue
+        """))
+        work_items = tmp_path / "work_items.md"
+        work_items.write_text("")
+
+        result = migrate(ledger, work_items, tracker_root, dry_run=True)
+        assert result.items_created == 2
+        # No files should be created
+        canonical_ops = tracker_root / "tracker" / ".ops"
+        assert not canonical_ops.exists() or list(canonical_ops.glob("*.ops")) == []
+
+    def test_migrate_corrupt_child_skips_parent_update(self, tmp_path: Path) -> None:
+        """If child ops file is corrupt, parent update is skipped (line 765)."""
+        tracker_root = tmp_path / ".agent"
+        tracker_root.mkdir()
+        ledger = tmp_path / "ledger.md"
+        ledger.write_text(textwrap.dedent("""\
+            ## INV-001: Parent Item
+            - **Statement:** Something
+            - **Status:** UNFIXED
+            - **Root cause:** Bug
+            - **Fix:** Pending
+            - **Pending Generalizations:**
+              - **TODO!** Check Java for same issue
+        """))
+        work_items = tmp_path / "work_items.md"
+        work_items.write_text("")
+
+        # First run: create items normally
+        result1 = migrate(ledger, work_items, tracker_root)
+        assert result1.items_created == 2
+
+        # Corrupt the child's ops file (remove create op)
+        child_id = result1.id_map["INV-001-pg-0"]
+        canonical_ops = tracker_root / "tracker" / ".ops"
+        child_ops_path = canonical_ops / f".{child_id}.ops"
+        child_ops_path.write_text("- op: update\n  at: '2026-01-01T00:00:00Z'\n  by: agent\n  actor: test\n  clock: 2\n  nonce: abcd\n  set:\n    status: done\n")
+
+        # Re-run: child exists (skipped) but corrupt —
+        # second pass tries to compile and catches the error
+        result2 = migrate(ledger, work_items, tracker_root)
+        assert result2.items_skipped >= 1

@@ -343,6 +343,37 @@ def parse_invariant_ledger(content: str) -> list[ParsedItem]:
             justification=None,
             parent_source_id=None,
         ))
+
+        # Create child items from pending generalizations
+        pending_gens = current.get("pending_generalizations", [])
+        for idx, gen_text in enumerate(pending_gens):
+            child_source_id = f"{current['source_id']}-pg-{idx}"
+            child_status = "todo_soft"
+            # Detect status markers in the generalization text
+            gen_upper = gen_text.upper()
+            if gen_upper.startswith("**DONE"):
+                child_status = "done"
+            elif gen_upper.startswith("**DEFERRED"):
+                child_status = "deferred"
+            elif gen_upper.startswith("**TODO!"):
+                child_status = "todo_hard"
+            elif gen_upper.startswith("**TODO"):
+                child_status = "todo_soft"
+            child_priority = assign_priority(child_status)
+            items.append(ParsedItem(
+                source_id=child_source_id,
+                kind=current["kind"],
+                title=gen_text,
+                status=child_status,
+                priority=child_priority,
+                description="",
+                fields={},
+                tags=[],
+                pr_ref=None,
+                justification=None,
+                parent_source_id=current["source_id"],
+            ))
+
         current = None
 
     for line in lines:
@@ -408,7 +439,15 @@ def parse_invariant_ledger(content: str) -> list[ParsedItem]:
             elif field_name == "Regression tests":
                 current_field_key = "_regression_tests"
             elif field_name == "Pending Generalizations":
-                pass  # Skip — handled separately if needed
+                if field_value and not field_value.lower().startswith("none"):
+                    current.setdefault("pending_generalizations", []).append(field_value)
+                    current_field_key = "_pending_gen"
+                elif not field_value:
+                    # Empty value → content is on continuation lines
+                    current_field_key = "_pending_gen"
+                else:
+                    # Value starts with "None" → no pending gens
+                    current_field_key = None
             elif field_name in _INV_FIELD_MAP and current["kind"] == "invariant":
                 mapped = _INV_FIELD_MAP[field_name]
                 current["fields"][mapped] = field_value
@@ -442,6 +481,9 @@ def parse_invariant_ledger(content: str) -> list[ParsedItem]:
                 test_cont = re.match(r"`(.+)`", cont_text)
                 if test_cont:
                     current.setdefault("regression_tests", []).append(test_cont.group(1))
+            elif current_field_key == "_pending_gen":
+                if cont_text and cont_text.lower() != "none":
+                    current.setdefault("pending_generalizations", []).append(cont_text)
             elif current_field_key == "_desc":
                 current["description_parts"].append(cont_text)
             elif current_field_key in current.get("fields", {}):
@@ -661,6 +703,9 @@ def migrate(
     config = load_config(tracker_root / "tracker")
 
     # --- Build and write ops ---
+    # Track items that need parent update ops (second pass)
+    items_needing_parent: list[tuple[ParsedItem, str]] = []
+
     for item in all_items:
         try:
             op_dict, item_id = build_create_op(item, config)
@@ -680,6 +725,8 @@ def migrate(
         if ops_path.exists():
             result.items_skipped += 1
             result.id_map[item.source_id] = item_id
+            if item.parent_source_id:
+                items_needing_parent.append((item, item_id))
             continue
 
         if not dry_run:
@@ -689,5 +736,47 @@ def migrate(
         result.items_created += 1
         result.items_by_kind[item.kind] = result.items_by_kind.get(item.kind, 0) + 1
         result.id_map[item.source_id] = item_id
+
+        if item.parent_source_id:
+            items_needing_parent.append((item, item_id))
+
+    # --- Second pass: write parent update ops for child items ---
+    for item, item_id in items_needing_parent:
+        parent_tracker_id = result.id_map.get(item.parent_source_id)
+        if not parent_tracker_id:  # pragma: no cover
+            continue
+
+        if item.kind in ("invariant", "meta_invariant"):
+            target_dir = canonical_ops
+        else:  # pragma: no cover
+            target_dir = workspace_ops
+
+        ops_path = target_dir / f".{item_id}.ops"
+        if not ops_path.exists() or dry_run:
+            continue
+
+        # Check if parent is already set (idempotency)
+        from hypergumbo_tracker.store import CorruptFileError, _parse_ops_file, compile_ops
+        try:
+            existing_ops = _parse_ops_file(ops_path)
+            compiled = compile_ops(existing_ops, item_id)
+            if compiled.parent == parent_tracker_id:
+                continue
+        except (ValueError, KeyError, CorruptFileError):
+            continue
+
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        update_op: dict[str, Any] = {
+            "op": "update",
+            "at": now,
+            "by": "agent",
+            "actor": "migration",
+            "clock": 2,
+            "nonce": _make_nonce(),
+            "set": {"parent": parent_tracker_id},
+        }
+        serialized = _serialize_op(update_op)
+        with open(ops_path, "a") as f:
+            f.write(serialized)
 
     return result
