@@ -37,6 +37,9 @@ AUTONOMOUS_MODE.txt
 htmlcov/
 coverage-report.txt
 
+# Snapshot reports (pytest-textual-snapshot)
+snapshot_report.html
+
 # Node (bats testing)
 node_modules/
 package.json
