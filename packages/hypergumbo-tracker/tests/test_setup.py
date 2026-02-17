@@ -969,6 +969,24 @@ class TestCheckStopHook:
         assert result.status == "warn"
         assert "does not reference" in result.message
 
+    def test_tracker_commands_in_sourced_file(self, tmp_path: Path) -> None:
+        """Commands in a sibling file (e.g. stop_logic.sh) should be found."""
+        hooks_dir = tmp_path / ".agent" / "hooks"
+        vendor_dir = hooks_dir / "claude-code"
+        vendor_dir.mkdir(parents=True)
+        shared_dir = hooks_dir / "_shared"
+        shared_dir.mkdir(parents=True)
+        # Vendor stop.sh sources shared logic but has no tracker commands
+        (vendor_dir / "stop.sh").write_text(
+            '#!/bin/bash\nsource "$DIR/../_shared/stop_logic.sh"\n'
+        )
+        # Shared stop_logic.sh has the actual tracker commands
+        (shared_dir / "stop_logic.sh").write_text(
+            '#!/bin/bash\nscripts/tracker count-todos\nscripts/tracker hash-todos\n'
+        )
+        result = _check_stop_hook(tmp_path)
+        assert result.status == "ok"
+
     def test_githooks_stop(self, tmp_path: Path) -> None:
         hooks_dir = tmp_path / ".githooks"
         hooks_dir.mkdir()

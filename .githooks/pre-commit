@@ -36,7 +36,7 @@ fi
 # Run tracker validation (fast - only staged files)
 echo -n "  Tracker (schema)... "
 if [ -d ".agent/tracker" ] && command -v scripts/tracker &> /dev/null; then
-    STAGED_TRACKER=$(git diff --cached --name-only -- '.agent/tracker/.ops/' '.agent/tracker-workspace/.ops/' '.agent/tracker-workspace/stealth/' 2>/dev/null || true)
+    STAGED_TRACKER=$(git diff --cached --name-only -- '.agent/tracker/.ops/*.ops' '.agent/tracker-workspace/.ops/*.ops' '.agent/tracker-workspace/stealth/*.ops' 2>/dev/null || true)
     if [ -n "$STAGED_TRACKER" ]; then
         if scripts/tracker validate $STAGED_TRACKER 2>/dev/null; then
             echo -e "${GREEN}✓${NC}"

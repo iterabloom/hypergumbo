@@ -749,7 +749,7 @@ def _check_stop_hook(repo_root: Path | None) -> CheckResult:
         repo_root / ".githooks",
     ]
 
-    hook_content = None
+    hook_contents: list[str] = []
     for hook_dir in hook_patterns:
         if not hook_dir.is_dir():
             continue
@@ -757,14 +757,11 @@ def _check_stop_hook(repo_root: Path | None) -> CheckResult:
         for p in hook_dir.rglob("*"):
             if p.is_file() and "stop" in p.name.lower():
                 try:
-                    hook_content = p.read_text()
-                    break
+                    hook_contents.append(p.read_text())
                 except OSError:
                     continue
-        if hook_content is not None:
-            break
 
-    if hook_content is None:
+    if not hook_contents:
         return CheckResult(
             name="stop_hook",
             status="warn",
@@ -775,9 +772,10 @@ def _check_stop_hook(repo_root: Path | None) -> CheckResult:
             ],
         )
 
-    # Check for tracker CLI references
+    # Check for tracker CLI references across all stop-related files
+    combined_content = "\n".join(hook_contents)
     tracker_commands = ["count-todos", "hash-todos", "guidance"]
-    found = [cmd for cmd in tracker_commands if cmd in hook_content]
+    found = [cmd for cmd in tracker_commands if cmd in combined_content]
 
     if found:
         return CheckResult(
