@@ -173,6 +173,7 @@ packages/
 ├── hypergumbo-lang-mainstream/  # Python, JS, Java, Go, Rust, etc.
 ├── hypergumbo-lang-common/      # Haskell, Elixir, GraphQL, etc.
 ├── hypergumbo-lang-extended1/   # Zig, Solidity, Agda, etc.
+├── hypergumbo-tracker/           # Structured work tracker for agent governance (MPL-2.0)
 └── hypergumbo/                  # Meta-package (installs all above)
 ```
 
@@ -209,6 +210,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for PR workflow (including fork-based wor
 - [docs/CITATIONS.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/CITATIONS.md) — Paper citations for embedding models
 - [docs/CACHE.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/CACHE.md) — Caching architecture
 - [SECURITY.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/SECURITY.md) — Vulnerability reporting
+- [hypergumbo-tracker README](packages/hypergumbo-tracker/README.md) — Standalone tracker for AI agent governance
 
 ## License
 

@@ -1440,6 +1440,17 @@ Each AI coding tool has a different hook mechanism. Adapter scripts provide a co
 
 The invariant ledger (`.agent/invariant-ledger.md`) is the authoritative source for discovered invariants and their current fix status. See [ADR-0008](adr/0008-autonomous-governance-and-vendor-agnostic-hooks.md) for the full governance design rationale.
 
+### Structured Tracker (ADR-0013)
+
+🟩 The markdown-based governance files (invariant ledger, work items) are superseded by a YAML-backed structured tracker ([ADR-0013](adr/0013-structured-tracker.md)). The tracker provides append-only op-logs that are git-merge-safe, causally ordered via Lamport clocks, and support field-level access control. It ships as an independent package (`hypergumbo-tracker`, licensed MPL-2.0) usable in any project — see [the tracker README](../packages/hypergumbo-tracker/README.md) for standalone adoption.
+
+Key capabilities beyond the markdown predecessor:
+- **Three visibility tiers:** canonical (shared), workspace (fork-local), stealth (gitignored)
+- **Actor-based authority:** `os.getuid()` distinguishes agents from humans; locks, stealth, and discussion clearing are human-only
+- **Stop hook integration:** `count-todos`, `hash-todos`, and `guidance` commands replace grep-based TODO scanning
+- **TUI:** Interactive terminal interface for human oversight
+- **Fork workflow:** `fork-setup` scopes the stop hook to workspace items, so upstream canonical items don't block contributor agents
+
 ## 20) Future work
 
 This section collects capabilities that are designed but not yet implemented. The architecture supports these enhancements without breaking changes: the IR ([§6](#6-internal-representation)) enables multi-pass merging, and the schema contract ([Appendix C](#appendix-c-schema-compatibility-contract)) defines what can change in minor vs. major versions.
