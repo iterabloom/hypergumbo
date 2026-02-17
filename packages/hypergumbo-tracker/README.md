@@ -13,6 +13,7 @@ Install the tracker into your project's virtual environment:
 
 ```bash
 # As either user (whoever owns the venv)
+source .venv/bin/activate   # or wherever your venv lives
 pip install hypergumbo-tracker
 ```
 
@@ -48,7 +49,7 @@ edit `actor_resolution.agent_usernames` in `config.yaml`.
 
 ```bash
 # As the human user (recommended — can auto-fix config ownership)
-cd your-repo
+cd /path/to/your-repo   # must be the repo root
 htrac setup
 ```
 
@@ -56,13 +57,15 @@ This creates directories, configures git plumbing (merge=union, textconv),
 copies the config template, sets file permissions, and reports anything that
 needs attention. It's idempotent — run it again anytime to diagnose issues.
 
-The wizard validates your setup interactively:
-- **Running as agent?** Prompts you to switch to the human user (you can
-  override, but config ownership won't be auto-fixed).
+The wizard handles common pitfalls automatically:
+- **Running as agent?** Prompts to switch to the human user and prints
+  ready-to-paste setup commands (venv activation, `htrac setup`, group fixes).
+- **Cross-user repo ownership?** Auto-adds `safe.directory` to git config.
+- **`.git/config` not writable?** Falls back to `--global` for textconv.
 - **Two-user group misconfigured?** Reports specific problems (missing
-  group-write, missing setgid, user not in group) and asks before continuing.
-- **Config owned by wrong user?** Auto-fixes when run as human; warns when
-  run as agent.
+  group-write, missing setgid, user not in group) with fix commands that
+  include the detected group name.
+- **Config owned by wrong user?** Auto-fixes when run as human.
 
 If you did step 2 (two-user setup), set group ownership on the directories
 it created so both users can write to ops files:
@@ -108,6 +111,11 @@ htrac show INV-lusab           # Full item details
 htrac list --status todo_hard  # Filtered listing
 htrac discuss INV-lusab "Root cause confirmed in parser.py"
 ```
+
+**Positional aliases:** `htrac ready` and `htrac list` assign shortcuts `:1`,
+`:2`, etc. to their output rows. Use them in the next command (e.g.
+`htrac update :1 --status in_progress`). Aliases reset after any non-list
+command.
 
 Use `htrac <command> --help` for all options. Use `--json` on any command for
 machine-readable output.
