@@ -41,6 +41,7 @@ from hypergumbo_tracker.setup import (
     _check_stop_hook,
     _check_textconv,
     _check_tracker_wrapper,
+    _ensure_safe_directory,
     format_results,
     generate_human_shim,
     results_to_json,
@@ -954,7 +955,10 @@ class TestCheckTextconv:
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "python -m hypergumbo_tracker.cli textconv\n"
-        with patch("hypergumbo_tracker.setup.subprocess.run", return_value=mock_result):
+        with (
+            patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=False),
+            patch("hypergumbo_tracker.setup.subprocess.run", return_value=mock_result),
+        ):
             result = _check_textconv(root, tmp_path)
         assert result.status == "ok"
 
@@ -983,21 +987,28 @@ class TestCheckTextconv:
                 result.stdout = ""
             return result
 
-        with patch("hypergumbo_tracker.setup.subprocess.run", side_effect=mock_run):
+        with (
+            patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=False),
+            patch("hypergumbo_tracker.setup.subprocess.run", side_effect=mock_run),
+        ):
             result = _check_textconv(root, tmp_path)
         assert result.status == "fixed"
 
     def test_git_command_fails(self, tmp_path: Path) -> None:
         root = _make_full_agent_dir(tmp_path)
-        with patch(
-            "hypergumbo_tracker.setup.subprocess.run",
-            side_effect=FileNotFoundError("git not found"),
+        with (
+            patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=False),
+            patch(
+                "hypergumbo_tracker.setup.subprocess.run",
+                side_effect=FileNotFoundError("git not found"),
+            ),
         ):
             result = _check_textconv(root, tmp_path)
         assert result.status == "warn"
         assert "could not configure" in result.message.lower()
 
     def test_git_config_set_fails(self, tmp_path: Path) -> None:
+        """Local and global config both fail — falls through to warn."""
         root = _make_full_agent_dir(tmp_path)
 
         call_count = 0
@@ -1006,13 +1017,18 @@ class TestCheckTextconv:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
+                # Check config — not set
                 result = MagicMock()
                 result.returncode = 1
                 result.stdout = ""
                 return result
+            # Both local and global set fail
             raise subprocess.CalledProcessError(1, cmd)
 
-        with patch("hypergumbo_tracker.setup.subprocess.run", side_effect=mock_run):
+        with (
+            patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=False),
+            patch("hypergumbo_tracker.setup.subprocess.run", side_effect=mock_run),
+        ):
             result = _check_textconv(root, tmp_path)
         assert result.status == "warn"
 
@@ -1022,7 +1038,10 @@ class TestCheckTextconv:
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "python -m hypergumbo_tracker.cli textconv\n"
-        with patch("hypergumbo_tracker.setup.subprocess.run", return_value=mock_result):
+        with (
+            patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=False),
+            patch("hypergumbo_tracker.setup.subprocess.run", return_value=mock_result),
+        ):
             result = _check_textconv(root, tmp_path)
         assert result.status == "fixed"
         for ops_dir in [
@@ -1042,12 +1061,131 @@ class TestCheckTextconv:
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "textconv-driver\n"
-        with patch("hypergumbo_tracker.setup.subprocess.run", return_value=mock_result):
+        with (
+            patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=False),
+            patch("hypergumbo_tracker.setup.subprocess.run", return_value=mock_result),
+        ):
             result = _check_textconv(root, tmp_path)
         assert result.status == "fixed"
         content = ga.read_text()
         assert "*.ops merge=union" in content
         assert "*.ops diff=tracker-ops" in content
+
+    def test_safe_directory_auto_fixed(self, tmp_path: Path) -> None:
+        """safe.directory is auto-added, then textconv is configured."""
+        root = _make_full_agent_dir(tmp_path)
+        for ops_dir in [
+            root / "tracker" / ".ops",
+            root / "tracker-workspace" / ".ops",
+        ]:
+            (ops_dir / ".gitattributes").write_text("*.ops diff=tracker-ops\n")
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "python -m hypergumbo_tracker.cli textconv\n"
+        with (
+            patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=True),
+            patch("hypergumbo_tracker.setup.subprocess.run", return_value=mock_result),
+        ):
+            result = _check_textconv(root, tmp_path)
+        # safe.directory auto-fix counts as a fix even when textconv was ok
+        assert result.status == "fixed"
+        assert "1 fix" in result.message
+
+    def test_local_config_not_writable_falls_back_to_global(
+        self, tmp_path: Path
+    ) -> None:
+        """Local git config not writable — falls back to --global."""
+        root = _make_full_agent_dir(tmp_path)
+        for ops_dir in [
+            root / "tracker" / ".ops",
+            root / "tracker-workspace" / ".ops",
+        ]:
+            (ops_dir / ".gitattributes").write_text("*.ops diff=tracker-ops\n")
+
+        call_count = 0
+
+        def mock_run(cmd, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # Check config — not set
+                result = MagicMock()
+                result.returncode = 1
+                result.stdout = ""
+                return result
+            if call_count == 2:
+                # Local config write fails
+                raise subprocess.CalledProcessError(1, cmd)
+            # Global config write succeeds
+            result = MagicMock()
+            result.returncode = 0
+            return result
+
+        with (
+            patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=False),
+            patch("hypergumbo_tracker.setup.subprocess.run", side_effect=mock_run),
+        ):
+            result = _check_textconv(root, tmp_path)
+        assert result.status == "fixed"
+
+
+class TestEnsureSafeDirectory:
+    """Tests for _ensure_safe_directory."""
+
+    def test_no_dubious_ownership(self, tmp_path: Path) -> None:
+        """Repo is trusted — no fix needed."""
+        mock_result = MagicMock()
+        mock_result.stderr = ""
+        with patch("hypergumbo_tracker.setup.subprocess.run", return_value=mock_result):
+            assert _ensure_safe_directory(tmp_path) is False
+
+    def test_dubious_ownership_fixed(self, tmp_path: Path) -> None:
+        """Repo has dubious ownership — safe.directory is added."""
+        call_count = 0
+
+        def mock_run(cmd, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            result = MagicMock()
+            if call_count == 1:
+                # git status — dubious ownership
+                result.stderr = (
+                    "fatal: detected dubious ownership in repository at '/foo'"
+                )
+            else:
+                # git config --global --add safe.directory — success
+                result.returncode = 0
+            return result
+
+        with patch("hypergumbo_tracker.setup.subprocess.run", side_effect=mock_run):
+            assert _ensure_safe_directory(tmp_path) is True
+
+    def test_dubious_ownership_fix_fails(self, tmp_path: Path) -> None:
+        """Repo has dubious ownership but git config fails."""
+        call_count = 0
+
+        def mock_run(cmd, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                result = MagicMock()
+                result.stderr = (
+                    "fatal: detected dubious ownership in repository at '/foo'"
+                )
+                return result
+            raise subprocess.CalledProcessError(1, cmd)
+
+        with patch("hypergumbo_tracker.setup.subprocess.run", side_effect=mock_run):
+            assert _ensure_safe_directory(tmp_path) is False
+
+    def test_git_not_found(self, tmp_path: Path) -> None:
+        """git binary not found — returns False."""
+        with patch(
+            "hypergumbo_tracker.setup.subprocess.run",
+            side_effect=FileNotFoundError("git not found"),
+        ):
+            assert _ensure_safe_directory(tmp_path) is False
 
 
 # ---------------------------------------------------------------------------

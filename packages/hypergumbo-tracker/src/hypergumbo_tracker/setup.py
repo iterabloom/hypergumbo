@@ -558,21 +558,23 @@ def _check_config_ownership(root: Path) -> CheckResult:
 
 
 def _check_group_permissions(root: Path) -> CheckResult:
-    """Check #11: Verify two-user group setup on .ops directories.
+    """Check #11: Verify two-user group setup on writable directories.
 
-    Checks whether .ops directories have a shared group with group-write
-    and setgid permissions. This is read-only — it reports problems but
-    does not fix them, since group/permission changes require sudo.
+    Checks whether .ops and stealth directories have a shared group with
+    group-write and setgid permissions. This is read-only — it reports
+    problems but does not fix them, since group/permission changes
+    require sudo.
 
-    If .ops directories are owned by the user's primary group (not a
-    shared group), the two-user setup is not active and the check passes
-    with an informational message.
+    If directories are owned by the user's primary group (not a shared
+    group), the two-user setup is not active and the check passes with
+    an informational message.
     """
     import stat
 
     ops_dirs = [
         root / "tracker" / ".ops",
         root / "tracker-workspace" / ".ops",
+        root / "tracker-workspace" / "stealth",
     ]
     existing = [d for d in ops_dirs if d.exists()]
     if not existing:
@@ -647,7 +649,9 @@ def _check_group_permissions(root: Path) -> CheckResult:
                 "",
                 "Fix with (as a user with sudo):",
                 "  sudo chgrp -R GROUP .agent/tracker .agent/tracker-workspace",
-                "  sudo chmod -R g+rws .agent/tracker/.ops .agent/tracker-workspace/.ops",
+                "  sudo chmod -R g+rws .agent/tracker/.ops"
+                " .agent/tracker-workspace/.ops"
+                " .agent/tracker-workspace/stealth",
             ],
         )
 
@@ -685,8 +689,55 @@ def _check_ops_writable(root: Path) -> CheckResult:
     )
 
 
+def _ensure_safe_directory(repo_root: Path) -> bool:
+    """Add repo to git's safe.directory if not already trusted.
+
+    In a two-user setup the repo is owned by the agent user but the
+    human user needs to run git commands in it. Git blocks this unless
+    the repo is listed in safe.directory. Returns True if the config
+    was modified.
+    """
+    try:
+        probe = subprocess.run(  # nosec B603, B607
+            ["git", "status", "--porcelain"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            cwd=str(repo_root),
+        )
+        if "dubious ownership" not in probe.stderr:
+            return False
+    except FileNotFoundError:
+        return False
+
+    # Add this repo to safe.directory (global config)
+    try:
+        subprocess.run(  # noqa: S603  # nosec B603, B607
+            [  # noqa: S607
+                "git",
+                "config",
+                "--global",
+                "--add",
+                "safe.directory",
+                str(repo_root),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+    return True
+
+
 def _check_textconv(root: Path, repo_root: Path | None) -> CheckResult:
-    """Check #13: Git textconv driver for .ops files."""
+    """Check #13: Git textconv driver for .ops files.
+
+    When running as the human user in a repo owned by the agent user,
+    git may block access due to safe.directory restrictions. The wizard
+    auto-adds the repo to safe.directory if needed. If the local
+    .git/config isn't writable (common in two-user setups), falls back
+    to --global config.
+    """
     if repo_root is None:
         return CheckResult(
             name="textconv",
@@ -695,6 +746,12 @@ def _check_textconv(root: Path, repo_root: Path | None) -> CheckResult:
         )
 
     fixed: list[str] = []
+
+    # Ensure git trusts this repo (two-user setup: repo may be owned by
+    # a different user, triggering safe.directory protection).
+    safe_dir_fixed = _ensure_safe_directory(repo_root)
+    if safe_dir_fixed:
+        fixed.append("safe.directory")
 
     # Check git config for textconv driver
     try:
@@ -705,20 +762,37 @@ def _check_textconv(root: Path, repo_root: Path | None) -> CheckResult:
             cwd=str(repo_root),
         )
         if result.returncode != 0 or not result.stdout.strip():
-            # Set the textconv driver
-            subprocess.run(  # nosec B603, B607
-                [  # noqa: S607
-                    "git",
-                    "config",
-                    "diff.tracker-ops.textconv",
-                    "python -m hypergumbo_tracker.cli textconv",
-                ],
-                capture_output=True,
-                text=True,
-                cwd=str(repo_root),
-                check=True,
-            )
-            fixed.append("textconv driver")
+            # Try local config first, fall back to --global if not writable
+            textconv_value = "python -m hypergumbo_tracker.cli textconv"
+            try:
+                subprocess.run(  # noqa: S603  # nosec B603, B607
+                    [  # noqa: S607
+                        "git",
+                        "config",
+                        "diff.tracker-ops.textconv",
+                        textconv_value,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    cwd=str(repo_root),
+                    check=True,
+                )
+                fixed.append("textconv driver")
+            except subprocess.CalledProcessError:
+                # Local .git/config not writable — use --global
+                subprocess.run(  # noqa: S603  # nosec B603, B607
+                    [  # noqa: S607
+                        "git",
+                        "config",
+                        "--global",
+                        "diff.tracker-ops.textconv",
+                        textconv_value,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                fixed.append("textconv driver (global)")
     except (subprocess.CalledProcessError, FileNotFoundError):
         return CheckResult(
             name="textconv",
@@ -1224,6 +1298,7 @@ def generate_human_shim(root: Path) -> str:
         lines.append(
             f"sudo chmod -R g+rws {repo_root / '.agent' / 'tracker' / '.ops'}"
             f" {repo_root / '.agent' / 'tracker-workspace' / '.ops'}"
+            f" {repo_root / '.agent' / 'tracker-workspace' / 'stealth'}"
         )
         lines.append(f"newgrp {group_name}")
         lines.append("")

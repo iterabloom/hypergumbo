@@ -70,7 +70,7 @@ it created so both users can write to ops files:
 ```bash
 # As the human user (needs sudo)
 sudo chgrp -R project-dev .agent/tracker .agent/tracker-workspace
-sudo chmod -R g+rws .agent/tracker/.ops .agent/tracker-workspace/.ops
+sudo chmod -R g+rws .agent/tracker/.ops .agent/tracker-workspace/.ops .agent/tracker-workspace/stealth
 ```
 
 Verify the human user can write:
