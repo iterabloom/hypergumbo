@@ -1149,3 +1149,92 @@ def results_to_json(results: list[CheckResult]) -> dict[str, Any]:
         ],
         "summary": counts,
     }
+
+
+def generate_human_shim(root: Path) -> str:
+    """Generate a copy-paste command block for the human user's terminal.
+
+    Detects the repo path, venv location, and shared group (if two-user
+    setup is active) to produce a ready-to-run sequence of commands for
+    the human user. This is printed when the setup wizard is run as the
+    agent user and they decline to continue.
+
+    The shim covers three scenarios:
+    1. Running setup as the human user
+    2. Fixing group permissions (if two-user setup detected)
+    3. Ongoing TUI access from the human terminal
+    """
+    # Find repo root (git root or parent of .agent/)
+    repo_root = root.parent.resolve()
+    git_dir = _find_git_dir(repo_root)
+    if git_dir is not None:
+        repo_root = git_dir.parent
+
+    # Detect the venv
+    venv_path: Path | None = None
+    for candidate in [repo_root / ".venv", repo_root / "venv"]:
+        if (candidate / "bin" / "activate").exists():
+            venv_path = candidate
+            break
+    if venv_path is None:
+        # Check VIRTUAL_ENV env var
+        env_venv = os.environ.get("VIRTUAL_ENV")
+        if env_venv and (Path(env_venv) / "bin" / "activate").exists():
+            venv_path = Path(env_venv)
+
+    # Detect shared group from .ops directories
+    group_name: str | None = None
+    current_primary_gid = pwd.getpwuid(os.getuid()).pw_gid
+    for ops_dir in [root / "tracker" / ".ops", root / "tracker-workspace" / ".ops"]:
+        if ops_dir.exists():
+            dir_gid = ops_dir.stat().st_gid
+            if dir_gid != current_primary_gid:
+                try:
+                    group_name = grp.getgrgid(dir_gid).gr_name
+                except KeyError:
+                    pass
+                break
+
+    # Detect if home dir needs traversal (repo under agent's home)
+    agent_home = Path.home()
+    needs_traversal = str(repo_root).startswith(str(agent_home))
+
+    lines: list[str] = []
+    lines.append("# ── Paste into the human user's terminal ──────────────")
+
+    if needs_traversal:
+        lines.append(f"sudo chmod o+rx {agent_home}")
+
+    lines.append(f"cd {repo_root}")
+
+    if venv_path is not None:
+        activate = venv_path / "bin" / "activate"
+        lines.append(f"source {activate}")
+
+    lines.append("htrac setup")
+    lines.append("")
+
+    # If two-user group setup is active or should be set up
+    if group_name:
+        lines.append("# ── Fix group permissions (after setup) ────────────────")
+        lines.append(
+            f"sudo chgrp -R {group_name} {repo_root / '.agent' / 'tracker'}"
+            f" {repo_root / '.agent' / 'tracker-workspace'}"
+        )
+        lines.append(
+            f"sudo chmod -R g+rws {repo_root / '.agent' / 'tracker' / '.ops'}"
+            f" {repo_root / '.agent' / 'tracker-workspace' / '.ops'}"
+        )
+        lines.append(f"newgrp {group_name}")
+        lines.append("")
+
+    lines.append("# ── Quick TUI access (anytime) ─────────────────────────")
+    tui_parts = []
+    if needs_traversal:
+        tui_parts.append(f"cd {repo_root}")
+    if venv_path is not None:
+        tui_parts.append(f"source {venv_path / 'bin' / 'activate'}")
+    tui_parts.append("htrac tui")
+    lines.append(" && ".join(tui_parts))
+
+    return "\n".join(lines)

@@ -42,6 +42,7 @@ from hypergumbo_tracker.setup import (
     _check_textconv,
     _check_tracker_wrapper,
     format_results,
+    generate_human_shim,
     results_to_json,
     run_setup,
 )
@@ -1627,7 +1628,7 @@ class TestCmdSetup:
     def test_agent_prompt_decline(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Agent user declines to continue — exits cleanly."""
+        """Agent user declines to continue — prints human shim."""
         root = tmp_path / ".agent"
         mock_stdin = MagicMock()
         mock_stdin.isatty.return_value = True
@@ -1643,7 +1644,9 @@ class TestCmdSetup:
             main(["setup", "--root", str(root)])
         assert exc_info.value.code == EXIT_SUCCESS
         captured = capsys.readouterr()
-        assert "human user" in captured.out
+        # Shim is printed with copy-paste commands
+        assert "htrac setup" in captured.out
+        assert "htrac tui" in captured.out
 
     def test_agent_prompt_accept(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -1692,7 +1695,7 @@ class TestCmdSetup:
     def test_agent_prompt_eof(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """EOFError on agent prompt — treats as decline."""
+        """EOFError on agent prompt — prints human shim."""
         root = tmp_path / ".agent"
         mock_stdin = MagicMock()
         mock_stdin.isatty.return_value = True
@@ -1708,7 +1711,7 @@ class TestCmdSetup:
             main(["setup", "--root", str(root)])
         assert exc_info.value.code == EXIT_SUCCESS
         captured = capsys.readouterr()
-        assert "human user" in captured.out
+        assert "htrac setup" in captured.out
 
     def test_error_override_decline(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -1772,6 +1775,148 @@ class TestCmdSetup:
         ):
             main(["setup", "--root", str(root)])
         assert exc_info.value.code == EXIT_USER_ERROR
+
+
+# ---------------------------------------------------------------------------
+# Human shim generation
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateHumanShim:
+    """Tests for generate_human_shim() — copy-paste command block."""
+
+    def test_basic_shim(self, tmp_path: Path) -> None:
+        """Minimal shim with no venv and no shared group."""
+        root = tmp_path / ".agent"
+        (root / "tracker" / ".ops").mkdir(parents=True)
+        shim = generate_human_shim(root)
+        assert f"cd {tmp_path}" in shim
+        assert "htrac setup" in shim
+        assert "htrac tui" in shim
+
+    def test_shim_with_venv(self, tmp_path: Path) -> None:
+        """Shim includes venv activation when .venv exists."""
+        root = tmp_path / ".agent"
+        (root / "tracker" / ".ops").mkdir(parents=True)
+        venv = tmp_path / ".venv" / "bin"
+        venv.mkdir(parents=True)
+        (venv / "activate").write_text("")
+        shim = generate_human_shim(root)
+        assert f"source {tmp_path / '.venv' / 'bin' / 'activate'}" in shim
+
+    def test_shim_with_venv_dir(self, tmp_path: Path) -> None:
+        """Shim detects 'venv/' as fallback when '.venv/' doesn't exist."""
+        root = tmp_path / ".agent"
+        (root / "tracker" / ".ops").mkdir(parents=True)
+        venv = tmp_path / "venv" / "bin"
+        venv.mkdir(parents=True)
+        (venv / "activate").write_text("")
+        shim = generate_human_shim(root)
+        assert f"source {tmp_path / 'venv' / 'bin' / 'activate'}" in shim
+
+    def test_shim_with_virtual_env_envvar(self, tmp_path: Path) -> None:
+        """Shim uses VIRTUAL_ENV env var when no .venv/ directory."""
+        root = tmp_path / ".agent"
+        (root / "tracker" / ".ops").mkdir(parents=True)
+        venv_dir = tmp_path / "my_env"
+        (venv_dir / "bin").mkdir(parents=True)
+        (venv_dir / "bin" / "activate").write_text("")
+        with patch.dict(os.environ, {"VIRTUAL_ENV": str(venv_dir)}):
+            shim = generate_human_shim(root)
+        assert f"source {venv_dir / 'bin' / 'activate'}" in shim
+
+    def test_shim_with_shared_group(self, tmp_path: Path) -> None:
+        """Shim includes group fix commands when shared group is detected."""
+        root = tmp_path / ".agent"
+        ops_dir = root / "tracker" / ".ops"
+        ops_dir.mkdir(parents=True)
+        # Mock the group detection — set .ops dir to a non-primary gid
+        with (
+            patch("hypergumbo_tracker.setup.pwd.getpwuid") as mock_pwd,
+            patch("hypergumbo_tracker.setup.grp.getgrgid") as mock_grp,
+        ):
+            mock_pwd.return_value = MagicMock(pw_gid=1000)
+            mock_grp.return_value = MagicMock(gr_name="project-dev")
+            # Make the .ops dir appear to have a different gid
+            real_stat = os.stat(ops_dir)
+            mock_stat = MagicMock()
+            mock_stat.st_gid = 9999  # Different from primary gid (1000)
+            mock_stat.st_mode = real_stat.st_mode
+            with patch.object(Path, "stat", return_value=mock_stat):
+                shim = generate_human_shim(root)
+        assert "sudo chgrp -R project-dev" in shim
+        assert "sudo chmod -R g+rws" in shim
+        assert "newgrp project-dev" in shim
+
+    def test_shim_unknown_group(self, tmp_path: Path) -> None:
+        """Shim omits group commands when gid lookup fails."""
+        root = tmp_path / ".agent"
+        ops_dir = root / "tracker" / ".ops"
+        ops_dir.mkdir(parents=True)
+        with (
+            patch("hypergumbo_tracker.setup.pwd.getpwuid") as mock_pwd,
+            patch("hypergumbo_tracker.setup.grp.getgrgid", side_effect=KeyError),
+        ):
+            mock_pwd.return_value = MagicMock(pw_gid=1000)
+            real_stat = os.stat(ops_dir)
+            mock_stat = MagicMock()
+            mock_stat.st_gid = 9999
+            mock_stat.st_mode = real_stat.st_mode
+            with patch.object(Path, "stat", return_value=mock_stat):
+                shim = generate_human_shim(root)
+        assert "chgrp" not in shim
+        assert "newgrp" not in shim
+
+    def test_shim_traversal_needed(self, tmp_path: Path) -> None:
+        """Shim includes chmod o+rx when repo is under agent's home."""
+        root = tmp_path / ".agent"
+        (root / "tracker" / ".ops").mkdir(parents=True)
+        home_dir = tmp_path  # Pretend this is home
+        with patch("hypergumbo_tracker.setup.Path.home", return_value=home_dir):
+            shim = generate_human_shim(root)
+        assert f"sudo chmod o+rx {home_dir}" in shim
+
+    def test_shim_no_traversal_when_not_under_home(self, tmp_path: Path) -> None:
+        """No chmod o+rx when repo is not under agent's home."""
+        root = tmp_path / ".agent"
+        (root / "tracker" / ".ops").mkdir(parents=True)
+        fake_home = Path("/some/other/path")
+        with patch("hypergumbo_tracker.setup.Path.home", return_value=fake_home):
+            shim = generate_human_shim(root)
+        assert "chmod o+rx" not in shim
+
+    def test_shim_tui_shortcut(self, tmp_path: Path) -> None:
+        """TUI shortcut combines cd and htrac tui."""
+        root = tmp_path / ".agent"
+        (root / "tracker" / ".ops").mkdir(parents=True)
+        home_dir = tmp_path
+        venv = tmp_path / ".venv" / "bin"
+        venv.mkdir(parents=True)
+        (venv / "activate").write_text("")
+        with patch("hypergumbo_tracker.setup.Path.home", return_value=home_dir):
+            shim = generate_human_shim(root)
+        # TUI line should chain cd, source, and htrac tui
+        tui_line = next(l for l in shim.splitlines() if "htrac tui" in l)
+        assert f"cd {tmp_path}" in tui_line
+        assert "source" in tui_line
+        assert "htrac tui" in tui_line
+
+    def test_shim_no_ops_dirs(self, tmp_path: Path) -> None:
+        """Shim works even when no .ops directories exist yet."""
+        root = tmp_path / ".agent"
+        root.mkdir()
+        shim = generate_human_shim(root)
+        assert "htrac setup" in shim
+        assert "htrac tui" in shim
+
+    def test_shim_with_git_root(self, tmp_path: Path) -> None:
+        """Shim uses the git root when a .git directory exists."""
+        repo = tmp_path / "myrepo"
+        (repo / ".git").mkdir(parents=True)
+        root = repo / ".agent"
+        (root / "tracker" / ".ops").mkdir(parents=True)
+        shim = generate_human_shim(root)
+        assert f"cd {repo}" in shim
 
 
 # ---------------------------------------------------------------------------

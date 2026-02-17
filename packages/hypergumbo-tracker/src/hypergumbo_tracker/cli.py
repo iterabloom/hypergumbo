@@ -591,7 +591,21 @@ def _cmd_init(args: argparse.Namespace) -> int:
 
 def _cmd_setup(args: argparse.Namespace) -> int:
     """Handle 'setup' subcommand — idempotent setup wizard."""
-    from hypergumbo_tracker.setup import format_results, results_to_json, run_setup
+    from hypergumbo_tracker.setup import (
+        format_results,
+        generate_human_shim,
+        results_to_json,
+        run_setup,
+    )
+
+    if args.setup_root:
+        root = Path(args.setup_root)
+    else:
+        # Try to find existing .agent/ or default to cwd/.agent
+        try:
+            root = _find_tracker_root()
+        except SystemExit:
+            root = Path.cwd() / ".agent"
 
     # Warn if running as agent — config ownership and human-only fixes
     # work best when the human user runs setup.
@@ -607,17 +621,8 @@ def _cmd_setup(args: argparse.Namespace) -> int:
         except (EOFError, KeyboardInterrupt):
             answer = ""
         if answer not in ("y", "yes"):
-            print("Tip: switch to the human user and re-run 'htrac setup'.")
+            print(generate_human_shim(root))
             return EXIT_SUCCESS
-
-    if args.setup_root:
-        root = Path(args.setup_root)
-    else:
-        # Try to find existing .agent/ or default to cwd/.agent
-        try:
-            root = _find_tracker_root()
-        except SystemExit:
-            root = Path.cwd() / ".agent"
 
     results = run_setup(root)
 
