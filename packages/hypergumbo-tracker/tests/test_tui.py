@@ -52,6 +52,7 @@ from hypergumbo_tracker.tui import (
     NewItemScreen,
     ParentScreen,
     TierMoveScreen,
+    _collapse_double_spacing,
     _compute_tier,
     _format_activity_lines,
     _format_detail_lines,
@@ -481,6 +482,74 @@ class TestFormatDetailLines:
         text = "\n".join(lines)
         assert "entries):" not in text
         assert "Should not appear" not in text
+
+    def test_description_all_double_spaced_collapses(self) -> None:
+        """Descriptions where every line break is \\n\\n collapse to single-spaced."""
+        item = CompiledItem(
+            id="WI-dblnl",
+            kind="work_item",
+            title="Double newline test",
+            status="done",
+            priority=2,
+            tier=Tier.CANONICAL,
+            description="Line one\n\nLine two\n\nLine three",
+        )
+        lines = _format_detail_lines(item)
+        text = "\n".join(lines)
+        assert "Line one\nLine two\nLine three" in text
+        assert "\n\n" not in text.split("Description:\n", 1)[-1]
+
+    def test_description_mixed_newlines_preserves_paragraphs(self) -> None:
+        """Descriptions with mixed \\n and \\n\\n preserve paragraph breaks."""
+        item = CompiledItem(
+            id="WI-mixed",
+            kind="work_item",
+            title="Mixed newline test",
+            status="done",
+            priority=2,
+            tier=Tier.CANONICAL,
+            description="Para one line one\nPara one line two\n\nPara two line one",
+        )
+        lines = _format_detail_lines(item)
+        text = "\n".join(lines)
+        desc_part = text.split("Description:\n", 1)[-1]
+        assert "Para one line one\nPara one line two" in desc_part
+        assert "Para one line two\n\nPara two line one" in desc_part
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _collapse_double_spacing
+# ---------------------------------------------------------------------------
+
+
+class TestCollapseDoubleSpacing:
+    """Test the double-spacing heuristic for description display."""
+
+    def test_all_double_spaced(self) -> None:
+        """Every break is \\n\\n → collapse to single-spaced."""
+        assert _collapse_double_spacing("A\n\nB\n\nC") == "A\nB\nC"
+
+    def test_triple_newlines(self) -> None:
+        """Triple+ newlines also collapse when all-double-spaced."""
+        assert _collapse_double_spacing("A\n\n\nB") == "A\nB"
+
+    def test_mixed_preserves_paragraphs(self) -> None:
+        """Single \\n within paragraphs + \\n\\n between → preserved."""
+        text = "Line 1\nLine 2\n\nLine 3\nLine 4"
+        assert _collapse_double_spacing(text) == text
+
+    def test_single_newlines_only(self) -> None:
+        """Already single-spaced text is unchanged."""
+        assert _collapse_double_spacing("A\nB\nC") == "A\nB\nC"
+
+    def test_empty_string(self) -> None:
+        assert _collapse_double_spacing("") == ""
+
+    def test_no_newlines(self) -> None:
+        assert _collapse_double_spacing("single line") == "single line"
+
+    def test_strips_surrounding_whitespace(self) -> None:
+        assert _collapse_double_spacing("\n\nA\n\nB\n\n") == "A\nB"
 
 
 # ---------------------------------------------------------------------------
