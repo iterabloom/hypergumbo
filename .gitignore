@@ -49,4 +49,3 @@ package-lock.json
 # Tracker
 **/config.yaml
 !**/config.yaml.template
-**/.stealth/

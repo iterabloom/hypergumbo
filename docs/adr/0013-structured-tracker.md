@@ -1,7 +1,7 @@
 # 13. Structured Tracker
 
 Date: 2026-02-13
-Status: Draft
+Status: Accepted
 
 ## Context
 
@@ -1036,8 +1036,10 @@ packages/hypergumbo-tracker/
 │       ├── migration.py                  # One-time markdown → YAML converter
 │       ├── cli.py                        # CLI (console_scripts: hypergumbo-tracker, hypergumbo-tracker-textconv)
 │       ├── stop_hook.py                  # count_todos, hash_todos, generate_guidance (scope-aware)
+│       ├── embeddings.py                 # Tier 2 embedding-based near-duplicate detection (ONNX/ModernBERT)
 │       └── tui.py                        # Textual TUI application
 └── tests/
+    ├── conftest.py                      # Shared fixtures and test configuration
     ├── test_models.py
     ├── test_store.py                     # CRUD, compile(), concurrent-append scenarios
     ├── test_trackerset.py                 # Multi-tier merged reads, cross-tier refs, promote/demote
@@ -1048,7 +1050,11 @@ packages/hypergumbo-tracker/
     ├── test_compile_properties.py        # Property-based tests (hypothesis) for compile()
     ├── test_cli.py
     ├── test_stop_hook.py
-    └── test_tui.py
+    ├── test_embeddings.py                # ONNX embedding and semantic duplicate detection tests
+    ├── test_fork_workflow.py             # Fork-based contributor workflow tests
+    ├── test_git_integration.py           # Git integration: Lamport clock, branch tracking
+    ├── test_tui.py
+    └── test_tui_snapshots.py            # Textual snapshot tests for visual regression
 ```
 
 The package is a dependency of the `hypergumbo` umbrella meta-package — `pip install hypergumbo` pulls it in alongside core and the lang packages. But it has no dependency on `hypergumbo-core` (no analyzers, IR, or tree-sitter), so it can also be installed standalone by projects that want the tracker without hypergumbo's analysis tooling:
@@ -1062,7 +1068,7 @@ pip install hypergumbo                               # gets tracker + everything
 Required:
 - **ruamel.yaml** (~0.18) — Round-trip-safe YAML write with preserved quoting (write path only — see [YAML Serialization Rules](#yaml-serialization-rules))
 - **PyYAML** (~6.0, with C extension) — Fast YAML read via `CSafeLoader` (read path only — see [YAML Serialization Rules](#yaml-serialization-rules))
-- **proquint** (~0.1) — Proquint encoding/decoding for hash-based IDs (pure Python, no deps; ~30 lines — could be vendored if preferred)
+- **proquint** (~0.2) — Proquint encoding/decoding for hash-based IDs (pure Python, no deps; ~30 lines — could be vendored if preferred)
 - **rich** (~14.3.2) — CLI table formatting
 
 Required:
@@ -1373,7 +1379,7 @@ Migration is idempotent: re-running produces the same IDs (same content → same
 
 | File | Change |
 |---|---|
-| `packages/hypergumbo-tracker/` (NEW) | Entire new package: pyproject.toml (with `console_scripts` entry points), LICENSE (MPL-2.0), 10 src modules (all with `SPDX-License-Identifier: MPL-2.0` headers), 11 test modules |
+| `packages/hypergumbo-tracker/` (NEW) | Entire new package: pyproject.toml (with `console_scripts` entry points), LICENSE (MPL-2.0), 11 src modules (all with `SPDX-License-Identifier: MPL-2.0` headers), 17 test modules |
 | `packages/hypergumbo-tracker/LICENSE` (NEW) | MPL-2.0 full text |
 | `scripts/tracker` (NEW) | Thin AGPL-3.0 bash wrapper delegating to installed `hypergumbo-tracker` entry point (falls back to `python -m hypergumbo_tracker.cli`) |
 | `scripts/check-package-coverage` | Add `tracker` to PACKAGES map for per-package CI isolation |
@@ -1498,7 +1504,7 @@ Absorbed into PR 1c. See above.
 - Add deprecation notice headers to the old markdown files
 - Final cleanup
 
-#### PR 8: Fork workflow hardening
+#### PR 8: Fork workflow hardening `[MERGED]` (commit 04065b2)
 - Add pre-push hook warning when workspace items are pushed to upstream remote
 - End-to-end fork workflow test: fork-setup → workspace writes → contribute excludes workspace → promote → separate tracker PR
 - Documentation: add fork workflow guide to README or CONTRIBUTING.md
@@ -1815,7 +1821,7 @@ Instead of the raw YAML op that was appended:
 - Config-defined statuses and blocking semantics — governance changes are config changes, not code PRs
 
 ### Negative
-- New package adds maintenance surface (~10 source modules, ~11 test modules)
+- New package adds maintenance surface (~11 source modules, ~17 test modules)
 - Nonce-on-every-line makes op log files more verbose (every line carries `# <nonce>` suffix)
 - Two YAML libraries (ruamel.yaml for writes, PyYAML/CSafeLoader for reads) in the dependency tree
 - Dual-license repo (AGPL + MPL) requires SPDX headers on every file and clear contributor documentation
@@ -1825,7 +1831,7 @@ Instead of the raw YAML op that was appended:
 - Two-user deployment requires OS-level setup (shared group, setgid); single-user deployments degrade to social controls for human authority enforcement
 
 ### Neutral
-- The TUI depends on Textual (optional extra), keeping the core CLI lightweight
+- The TUI depends on Textual (required dependency), keeping the package self-contained
 - Embedding-based dedup (tier 2) is optional and degrades gracefully when unavailable
 - Stealth tier is gitignored — provides privacy but no backup
 - `linguist-generated` collapses tracker diffs in PRs, reducing review noise at the cost of visibility
