@@ -20,7 +20,10 @@ Two separate DataTable instances exist for compact (#item-table) and standard
 shared population logic. _format_detail_lines() is shared between compact
 stacked detail and standard right-panel detail.
 
-The tier computation and ID truncation are pure functions for easy unit testing.
+The tier computation, ID truncation, and shortest-unique-prefix computation
+are pure functions for easy unit testing. IDs are auto-shortened to the
+minimum distinguishing prefix (snapped to proquint syllable boundaries);
+the ``i`` key toggles full ID display.
 
 Write keybindings (d, D, m, n, e, p, b, l) push ModalScreen subclasses that
 gather input, then call TrackerSet write methods on dismiss. Errors are shown
@@ -82,6 +85,76 @@ def _compute_tier(w: int, h: int) -> str:
     if w > 120 and h > 38:
         return "wide"
     return "standard"
+
+
+def _shortest_unique_prefix_len(ids: list[str]) -> int:
+    """Return the minimum character count so every ID's prefix is unique.
+
+    The algorithm extends from the kind prefix (e.g., "INV-", "WI-")
+    incrementally until all prefixes are distinct, then snaps up to the
+    next proquint syllable boundary (prefix + N complete ``-xxxxx`` pairs).
+    Floor is prefix + 1 pair (e.g., ``INV-bolil`` = 9 chars) — never
+    shows just the kind prefix alone.
+
+    Returns 0 for an empty list.
+    """
+    if not ids:
+        return 0
+
+    # Find minimum prefix + 1 pair length for each ID
+    # Proquint IDs: PREFIX-xxxxx-xxxxx-... where each pair is 6 chars (-xxxxx)
+    # We need to find the character length where all prefixes are unique
+
+    # Step 1: Find the minimum distinguishing raw char count
+    max_len = max(len(id_) for id_ in ids)
+    min_unique_len = 1
+    for length in range(1, max_len + 1):
+        prefixes = [id_[:length] for id_ in ids]
+        if len(prefixes) == len(set(prefixes)):
+            min_unique_len = length
+            break
+    else:
+        # All IDs are identical up to the longest — use full length
+        min_unique_len = max_len
+
+    # Step 2: Snap up to the next proquint syllable boundary
+    # Parse the first ID to understand the structure (all share the same
+    # prefix structure within a kind, and we want the global max)
+    result = 0
+    for id_ in ids:
+        parts = id_.split("-")
+        if len(parts) <= 1:
+            # Not a proquint — use raw length
+            result = max(result, min_unique_len)
+            continue
+
+        prefix = parts[0]
+        # prefix_len includes the trailing dash: "INV-" = 4
+        prefix_len = len(prefix) + 1
+
+        # Floor: prefix + 1 pair
+        floor_len = prefix_len + len(parts[1]) if len(parts) > 1 else prefix_len
+
+        # Snap min_unique_len to the next syllable boundary for this ID
+        snapped = floor_len  # at least 1 pair
+        cumulative = prefix_len
+        for part in parts[1:]:
+            cumulative += len(part)
+            if cumulative >= min_unique_len:
+                snapped = cumulative
+                break
+            cumulative += 1  # for the dash separator
+            if cumulative >= min_unique_len:
+                snapped = cumulative
+                break
+        else:
+            # min_unique_len exceeds all pairs — use full ID
+            snapped = len(id_)
+
+        snapped = max(snapped, floor_len)
+        result = max(result, snapped)
+
+    return result
 
 
 def _truncate_id(full_id: str, max_width: int) -> str:
@@ -910,6 +983,7 @@ class TrackerApp(App):
         ("p", "set_parent", "Parent"),
         ("b", "edit_before", "Before"),
         ("l", "toggle_lock", "Lock"),
+        ("i", "toggle_full_ids", "Full IDs"),
     ]
 
     def __init__(self, tracker_set: TrackerSet, **kwargs: object) -> None:
@@ -923,6 +997,7 @@ class TrackerApp(App):
         self._tree_mode: bool = False
         self._filter_active: bool = False
         self._filter_text: str = ""
+        self._show_full_ids: bool = False
 
     def compose(self) -> ComposeResult:
         """Build the widget tree.
@@ -1131,9 +1206,25 @@ class TrackerApp(App):
             table.add_column("Created", key="created")
             table.add_column("Updated", key="updated")
 
+        # Content-driven ID width: use shortest unique prefix unless
+        # full IDs are toggled on
+        all_ids = [item.id for item in items]
+        if self._show_full_ids:
+            id_display_len = max((len(id_) for id_ in all_ids), default=id_width)
+        else:
+            id_display_len = _shortest_unique_prefix_len(all_ids)
+            # Still cap at column width as upper bound
+            if id_display_len > 0:
+                id_display_len = min(id_display_len, id_width)
+            else:
+                id_display_len = id_width
+
         for idx, item in enumerate(items):
             tier_char = _TIER_INDICATOR.get(item.tier, "?") if item.tier else "?"
-            truncated_id = _truncate_id(item.id, id_width)
+            truncated_id = (
+                item.id if self._show_full_ids
+                else _truncate_id(item.id, id_display_len)
+            )
 
             row: list[str] = [
                 str(idx + 1),
@@ -1374,6 +1465,12 @@ class TrackerApp(App):
         self.query_one("#filter-status", Static).display = False
         self._apply_layout()
         self._reload_active_table()
+
+    def action_toggle_full_ids(self) -> None:
+        """Toggle between shortest-unique-prefix and full ID display."""
+        self._show_full_ids = not self._show_full_ids
+        self._reload_active_table()
+        self._restore_selection()
 
     # ------------------------------------------------------------------
     # Write helpers

@@ -57,6 +57,7 @@ from hypergumbo_tracker.tui import (
     _format_activity_lines,
     _format_detail_lines,
     _format_timestamp,
+    _shortest_unique_prefix_len,
     _truncate_id,
 )
 
@@ -249,6 +250,129 @@ class TestTruncateId:
         result = _truncate_id(full_id, 12)
         assert len(result) <= 12
         assert result.endswith("…")
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _shortest_unique_prefix_len
+# ---------------------------------------------------------------------------
+
+
+class TestShortestUniquePrefixLen:
+    """Test shortest unique prefix computation for proquint IDs."""
+
+    def test_empty_list_returns_minimum(self) -> None:
+        """Empty list should return 0 — no IDs to distinguish."""
+        assert _shortest_unique_prefix_len([]) == 0
+
+    def test_single_item_returns_prefix_plus_one_pair(self) -> None:
+        """Single ID needs only prefix + 1 syllable pair."""
+        result = _shortest_unique_prefix_len(
+            ["INV-bolil-mirid-pakim-lujun"]
+        )
+        # "INV-bolil" = 9 chars
+        assert result == 9
+
+    def test_different_first_pairs(self) -> None:
+        """IDs that differ at first pair need only prefix + 1 pair."""
+        result = _shortest_unique_prefix_len([
+            "INV-alpha-mirid-pakim-lujun",
+            "INV-bravo-dabab-fabab-habab",
+        ])
+        assert result == 9
+
+    def test_same_first_pair_extends_to_two(self) -> None:
+        """IDs sharing first pair need prefix + 2 pairs to distinguish."""
+        result = _shortest_unique_prefix_len([
+            "INV-bolil-mirid-pakim-lujun",
+            "INV-bolil-xxxxx-fabab-habab",
+        ])
+        # "INV-bolil-mirid" = 15 chars
+        assert result == 15
+
+    def test_same_two_pairs_extends_to_three(self) -> None:
+        """IDs sharing first two pairs need prefix + 3 pairs."""
+        result = _shortest_unique_prefix_len([
+            "INV-bolil-mirid-pakim-lujun",
+            "INV-bolil-mirid-xxxxx-habab",
+        ])
+        # "INV-bolil-mirid-pakim" = 21 chars
+        assert result == 21
+
+    def test_mixed_prefixes_short_enough(self) -> None:
+        """IDs with different prefixes (INV vs WI) are already unique at prefix."""
+        result = _shortest_unique_prefix_len([
+            "INV-bolil-mirid-pakim-lujun",
+            "WI-dabab-fabab-habab-jabab",
+        ])
+        # INV- prefix is 4 chars, WI- is 3 chars; first pair for INV = 9, WI = 8
+        # They differ at the prefix level, so prefix + 1 pair suffices
+        assert result == 9  # max of min lengths: INV-bolil(9), WI-dabab(8)
+
+    def test_mixed_prefixes_with_collision_within_kind(self) -> None:
+        """Mixed prefixes where one kind has collisions."""
+        result = _shortest_unique_prefix_len([
+            "INV-bolil-mirid-pakim-lujun",
+            "INV-bolil-xxxxx-fabab-habab",
+            "WI-dabab-fabab-habab-jabab",
+        ])
+        # INV pair needs 2 pairs to distinguish, WI only needs 1
+        assert result == 15  # INV-bolil-mirid = 15
+
+    def test_all_identical_extends_to_full(self) -> None:
+        """Duplicate IDs extend to the full ID length."""
+        full_id = "INV-bolil-mirid-pakim-lujun"
+        result = _shortest_unique_prefix_len([full_id, full_id])
+        assert result == len(full_id)
+
+    def test_three_items_progressive_collision(self) -> None:
+        """Three items where two share first pair but third differs."""
+        result = _shortest_unique_prefix_len([
+            "INV-alpha-mirid-pakim-lujun",
+            "INV-alpha-xxxxx-fabab-habab",
+            "INV-bravo-dabab-fabab-habab",
+        ])
+        # alpha pair needs 2 pairs, bravo only needs 1
+        assert result == 15  # max is INV-alpha-mirid = 15
+
+    def test_non_proquint_ids(self) -> None:
+        """IDs without dashes use raw distinguishing length."""
+        result = _shortest_unique_prefix_len(["ABCDEF", "ABCXYZ"])
+        # Differ at char 4, no syllable boundaries to snap to
+        assert result >= 4
+
+    def test_snap_at_dash_boundary(self) -> None:
+        """Test snapping when min_unique_len falls exactly on a dash."""
+        # IDs that differ right after a dash separator:
+        # "X-ab-cd" vs "X-ab-ef" — differ at position 6 (after dash)
+        result = _shortest_unique_prefix_len(["X-ab-cd", "X-ab-ef"])
+        # Need prefix + 2 pairs: "X-ab-cd" = 7 chars
+        assert result == 7
+
+    def test_min_unique_exceeds_all_pairs(self) -> None:
+        """When IDs share all pairs, returns full length via for-else."""
+        # Two IDs identical except last char — all pairs match
+        result = _shortest_unique_prefix_len([
+            "A-bb-cc-dd",
+            "A-bb-cc-de",
+        ])
+        # They share up to "A-bb-cc-d", differ at last char
+        assert result == 10  # full length of "A-bb-cc-dd"
+
+    def test_different_structure_hits_dash_snap(self) -> None:
+        """IDs with different structures snap at dash boundary."""
+        # 'A-b' vs 'A-bxy': differ at position 3 (end of shorter vs 'x')
+        # For 'A-b': after processing part 'b', cumul=3 < target=5,
+        # cumul+1=4 < target=5, loop exhausts → else clause (snapped=3)
+        # For 'A-bxy': cumul=2+3=5 >= 5 → snapped=5
+        result = _shortest_unique_prefix_len(["A-b", "A-bxy"])
+        assert result == 5
+
+    def test_short_id_for_else_clause(self) -> None:
+        """Shorter ID exhausts all pairs when target driven by duplicates."""
+        # Two identical short IDs make min_unique_len = max_len (7),
+        # which exceeds 'A-b' total (4 with dash). Loop exhausts → for-else.
+        result = _shortest_unique_prefix_len(["A-b", "A-b", "A-bxyzw"])
+        assert result == 7
 
 
 # ---------------------------------------------------------------------------
@@ -4000,3 +4124,113 @@ class TestFilterWidthGate:
             assert app._filter_active is True
             filter_input = app.query_one("#filter-input")
             assert filter_input.display is True
+
+
+# ---------------------------------------------------------------------------
+# Tests: toggle_full_ids keybinding
+# ---------------------------------------------------------------------------
+
+
+class TestToggleFullIds:
+    """Test the 'i' keybinding for toggling full ID display."""
+
+    async def test_toggle_full_ids_compact(self, tmp_path: Path) -> None:
+        """Pressing 'i' in compact mode toggles full ID display."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(50, 18)) as pilot:
+            await _wait_for_table(pilot, app)
+            # Initially full IDs are off
+            assert app._show_full_ids is False
+
+            # Get the ID from the first row before toggle
+            table = app.query_one("#item-table")
+            first_row_key = next(iter(table.rows.keys()))
+            full_id = str(first_row_key.value)
+
+            # The displayed ID should be truncated (shorter than full)
+            row_data = table.get_row(first_row_key)
+            id_cell = row_data[3]  # ID is 4th column (after #, T, P)
+            assert len(id_cell) <= len(full_id)
+
+            # Toggle on
+            await pilot.press("i")
+            await pilot.pause()
+            assert app._show_full_ids is True
+
+            # Now IDs should be full length
+            first_row_key = next(iter(table.rows.keys()))
+            row_data = table.get_row(first_row_key)
+            id_cell_full = row_data[3]
+            assert id_cell_full == full_id
+
+            # Toggle off
+            await pilot.press("i")
+            await pilot.pause()
+            assert app._show_full_ids is False
+
+    async def test_toggle_full_ids_standard(self, tmp_path: Path) -> None:
+        """Pressing 'i' in standard mode toggles full ID display."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            assert app._show_full_ids is False
+
+            table = app.query_one("#std-table")
+            first_row_key = next(iter(table.rows.keys()))
+            full_id = str(first_row_key.value)
+
+            # Toggle on
+            await pilot.press("i")
+            await pilot.pause()
+            assert app._show_full_ids is True
+
+            first_row_key = next(iter(table.rows.keys()))
+            row_data = table.get_row(first_row_key)
+            id_cell = row_data[3]
+            assert id_cell == full_id
+
+
+# ---------------------------------------------------------------------------
+# Tests: shortest unique prefix in _populate_table
+# ---------------------------------------------------------------------------
+
+
+class TestShortenedIdsInTable:
+    """Test that _populate_table uses content-driven ID widths."""
+
+    async def test_ids_shortened_to_unique_prefix(
+        self, tmp_path: Path,
+    ) -> None:
+        """IDs in the table should be shortened to their unique prefix."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(50, 18)) as pilot:
+            await _wait_for_table(pilot, app)
+            table = app.query_one("#item-table")
+
+            # Collect all displayed IDs
+            displayed_ids = []
+            for row_key in table.rows.keys():
+                row_data = table.get_row(row_key)
+                displayed_ids.append(row_data[3])
+
+            # All displayed IDs should be unique
+            assert len(displayed_ids) == len(set(displayed_ids))
+
+            # At least one should be shorter than the full ID
+            full_ids = [str(rk.value) for rk in table.rows.keys()]
+            has_shorter = any(
+                len(d) < len(f)
+                for d, f in zip(displayed_ids, full_ids, strict=True)
+            )
+            assert has_shorter, (
+                f"Expected shortened IDs but got: {displayed_ids}"
+            )
