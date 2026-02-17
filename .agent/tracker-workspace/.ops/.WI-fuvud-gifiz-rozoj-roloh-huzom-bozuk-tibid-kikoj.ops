@@ -7,7 +7,7 @@
   data:  # 8c05
     kind: work_item  # 8c05
     title: "Add Rego analyzer."  # 8c05
-    status: deferred  # 8c05
+    status: todo_soft  # 8c05
     priority: 4  # 8c05
     parent:  # 8c05
     tags:  # 8c05
@@ -19,3 +19,11 @@
     justification: "No known tree-sitter grammar — would require regex-based analysis. Blocked on grammar availability."  # 8c05
     description: "No known tree-sitter grammar — would require regex-based analysis. Blocked on grammar availability."  # 8c05
     fields: {}  # 8c05
+- op: update  # 96bd
+  at: '2026-02-17T20:42:56Z'  # 96bd
+  by: agent  # 96bd
+  actor: jgstern_agent  # 96bd
+  clock: 2  # 96bd
+  nonce: 96bd  # 96bd
+  set:  # 96bd
+    status: todo_soft  # 96bd

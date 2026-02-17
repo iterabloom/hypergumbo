@@ -14,8 +14,7 @@
   When AUTONOMOUS_MODE.txt is TRUE, BROAD, or DEEP (any non-OFF value):
   - NEVER output a "summary" or "status report" as a final action
   - Before ANY stopping point: check todo list - if items remain, continue
-  - Before ANY stopping point: check `.agent/invariant-ledger.md` for unfixed or partially-addressed root causes related to your work
-  - Before ANY stopping point: check for `**TODO!**` and `**TODO**` items in both `.agent/invariant-ledger.md` and `~/hypergumbo_lab_notebook/guidance_log/work_items.md`. Both flavors block stopping. The difference is agent behavior: `**TODO!**` means investigate deeply, assume structural; `**TODO**` means address or defer freely.
+  - Before ANY stopping point: check the tracker for blocking items (`scripts/tracker count-todos`). Items with `todo_hard` or `todo_soft` status block stopping. The difference is agent behavior: `todo_hard` means investigate deeply, assume structural; `todo_soft` means address freely.
   - Before ANY stopping point: complete the reflection protocol in `.agent/stop_reflect.md`
   - After completing a major milestone: immediately start next item from priority queue
   - Follow the below section titled "Autonomous Development Mode Stipulations"
@@ -86,16 +85,15 @@ No weak shit. If you don't know, say you don't know. If you haven't checked, say
   2. **Name the invariant:** "In this system, X must always be true because Y depends on it"
   3. **Scope expansion:** Check same-language-different-construct, different-language-same-pattern, different-pipeline-stage
   4. **Distinguish fix from workaround:** Does your change bypass a problematic code path, or fix/remove it?
-  5. **If workaround:** Document in `.agent/invariant-ledger.md` with Status: ❌ UNFIXED, then fix the root cause
+  5. **If workaround:** Create a tracker item (`scripts/tracker add invariant ...`) with status `todo_hard`, then fix the root cause
 - **Scope Expansion Commitment Protocol:** When a structural fix identifies analogous issues in other languages, constructs, or pipeline stages:
-  1. **Write immediately:** Add entries using the appropriate flavor:
-     - `**TODO!**` — invariant violations, defects, anything potentially structural. **When in doubt, use this.** The circuit breaker prevents death spirals, so err on the side of taking things seriously.
-     - `**TODO**` — clearly non-defect backlog (CI config, test coverage, nice-to-haves).
-     Both markers can go in the invariant ledger (`Pending Generalizations` field) or in `~/hypergumbo_lab_notebook/guidance_log/work_items.md` (for things that don't fit an invariant entry).
-  2. **First-class work item:** Both `**TODO!**` and `**TODO**` entries are enforced by the stop hook — they block stopping (subject to circuit breaker) and surface as candidate next actions
-  3. **Act or defer:** Either fix the TODO or explicitly change it to `**DEFERRED**` with justification (e.g., "blocked on X", "requires grammar not available")
-  4. **Track to completion:** When done, change `**TODO**`/`**TODO!**` to `**DONE**` with PR reference
-  5. **Hook enforcement:** The stop hook counts both `**TODO!**` and `**TODO**` markers in both the invariant ledger and `work_items.md`. Both block stopping, subject to circuit breaker (5 identical firings with no progress → approve)
+  1. **Create tracker items immediately** using `scripts/tracker add`:
+     - `todo_hard` — invariant violations, defects, anything potentially structural. **When in doubt, use this.** The circuit breaker prevents death spirals, so err on the side of taking things seriously.
+     - `todo_soft` — clearly non-defect backlog (CI config, test coverage, nice-to-haves).
+  2. **First-class work items:** Both `todo_hard` and `todo_soft` items block the stop hook (subject to circuit breaker) and surface via `scripts/tracker ready`.
+  3. **Act or deprioritize:** Either fix the item or set it to lowest priority (P4) with a justification note.
+  4. **Track to completion:** When done, update the item's status to `done` with a PR reference.
+  5. **Hook enforcement:** The stop hook queries the tracker (`scripts/tracker count-todos`). Both `todo_hard` and `todo_soft` statuses block stopping, subject to circuit breaker (5 identical firings with no progress → approve).
 - **Signing & Identity:**
   1. Check `git config user.name` and `git config user.email` **before** creating any commit.
   2. If they are blank, **STOP**. You are **strictly forbidden** from generating, inferring, or guessing an identity. You must ask the user to run:
@@ -183,7 +181,7 @@ If the JSON contains a `guidance_file` field, read that file for the most recent
 
 Also check for pending work items:
 ```bash
-cat ~/hypergumbo_lab_notebook/guidance_log/work_items.md 2>/dev/null | grep '^\s*- \*\*TODO'
+./scripts/tracker ready
 ```
 
 **smart-test reminder:** Always use `pytest` (aliased to `smart-test`) for running tests. NEVER use `python -m pytest`, `.venv/bin/pytest`, or `command pytest` — these bypass smart-test and produce ~4000 lines of raw output instead of the compact ~20-line summary.
@@ -199,15 +197,10 @@ pytest -n auto --cov-fail-under=100
 
 # 3. If feature status changed: Update CHANGELOG.md. Update emoji indicators in `docs/hypergumbo-spec.md`.
 
-# 4. If fixing a bakeoff signal: Check invariant ledger (see ADR-0008)
-cat .agent/invariant-ledger.md 2>/dev/null | grep -E '^- \*\*Status:\*\* (UNFIXED|PARTIALLY ADDRESSED|TBD|[0-9]+%)' | grep -v '100%' || true
-# If any items show, read the full ledger for context
-# If your change relates to an UNFIXED or PARTIALLY ADDRESSED invariant, fix the root cause, not a workaround
-
-# 4b. Check for pending scope expansion TODOs (both files, both flavors)
-grep -c '^\s*- \*\*TODO!\*\*' .agent/invariant-ledger.md ~/hypergumbo_lab_notebook/guidance_log/work_items.md 2>/dev/null || echo 0
-grep -c '^\s*- \*\*TODO\*\*[^!]' .agent/invariant-ledger.md ~/hypergumbo_lab_notebook/guidance_log/work_items.md 2>/dev/null || echo 0
-# If count > 0, address them or explicitly DEFER with justification before committing
+# 4. If fixing a bakeoff signal: Check tracker for blocking items (see ADR-0008)
+./scripts/tracker count-todos --hard  # todo_hard items (structural issues)
+./scripts/tracker count-todos --soft  # todo_soft items (backlog)
+# If count > 0, review with `./scripts/tracker ready` and address or deprioritize before committing
 
 # 5. Commit with sign-off
 git commit -s -m "feat: description"
@@ -503,7 +496,7 @@ Use DEEP mode when:
 - **Always structural:** Assume bugs are structural until proven otherwise. See "Structural Fix Protocol" above and ADR-0008.
 - **Always PR:** Every feature gets its own PR. Prefer `./scripts/auto-pr` for blocking CI-poll-merge workflow; use manual PR for more control.
 - **Always 100% coverage:** No exceptions. Mark defensive code paths with `# pragma: no cover`.
-- **Maintain the invariant ledger:** When you discover a violated invariant, document it in `.agent/invariant-ledger.md`. When you fix a root cause (not a workaround), update the ledger status.
+- **Maintain the tracker:** When you discover a violated invariant, create a tracker item (`scripts/tracker add invariant ...`). When you fix a root cause (not a workaround), update the item status to `done`.
 - **Periodically and frequently test on real repos:** Use the lab journal/notebook (`$HOME/hypergumbo_lab_notebook/notebookjournal_<MMDDYYYY_HHMM>.md`) to record your observations and ideas as you experiment with various hypergumbo settings on various real-world projects. Once you begin experimenting, keep going until it gets boring or repetitive. If you notice obvious bugs during experimentation, you don't necessarily need to stop right away to fix the bug. Just be sure to note it prominently in your lab notebookjournal. When you feel you have done enough experiments, review and analyze the entire notebookjournal file, and use your analysis to plan your next actions. Think about how to make hypergumbo more useful both to agentic LLMs such as yourself and human software developers.
 - **Run mini trial runs before full experiments:** Always run a minimal trial first (1 repo, 1 budget, 1 method) to validate the experimental setup works end-to-end and to estimate runtime. Use the trial timing to extrapolate full experiment duration. This prevents accidentally launching experiments that would take days or weeks to complete. Include modest verbosity in experiment scripts (progress messages, completion counts) to provide a heartbeat indicating the experiment is still running.
 - **8-hour rule for experiments:** If extrapolated runtime exceeds 8 hours, do NOT run the experiment immediately. Instead, document the experiment design and estimated runtime in a "Long-Running Experiment Ideas" section of your lab notebook for later discussion with the user. The user can then decide whether to run it overnight, parallelize it, or simplify the design.
@@ -515,19 +508,17 @@ Use DEEP mode when:
 - **Don't stop until you've finished Spec B or you've become profoundly stuck.**
 
 ### BROAD Mode Priority Queue:
-1. **Actionable invariants** in `.agent/invariant-ledger.md`:
-   - Pending Generalizations: any `**TODO!**` or `**TODO**` markers in ledger or `work_items.md` (scope expansion work from the Commitment Protocol)
-   - Meta-invariants: Any status below 100% (even 99%) (the percentages are extremely cursory and vibes-based and will mislead if taken at face value)
-   - Regular: Status: UNFIXED or PARTIALLY ADDRESSED
+1. **Actionable tracker items** (`scripts/tracker ready`):
+   - `todo_hard` items: structural issues, invariant violations — investigate deeply
+   - `todo_soft` items: backlog, scope expansion work from the Commitment Protocol
 2. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
 3. **Frameworks** (see `docs/FRAMEWORKS.md` for comprehensive list, 150+ frameworks): Pattern detection for frameworks helps hypergumbo understand routes, handlers, lifecycle hooks, and application structure.
 
 ### DEEP Mode Priority Queue:
 When in DEEP mode, focus on feature quality rather than parse correctness:
-1. **Actionable invariants** in `.agent/invariant-ledger.md`:
-   - Pending Generalizations: any `**TODO!**` or `**TODO**` markers in ledger or `work_items.md` (scope expansion work from the Commitment Protocol)
-   - Meta-invariants: Any status below 100% (even 99%)
-   - Regular: Status: UNFIXED or PARTIALLY ADDRESSED
+1. **Actionable tracker items** (`scripts/tracker ready`):
+   - `todo_hard` items: structural issues, invariant violations — investigate deeply
+   - `todo_soft` items: backlog, scope expansion work from the Commitment Protocol
 2. **Slice quality:** Does forward slice capture actual dependencies?
 3. **Reverse slice:** Does it correctly identify callers?
 4. **Supply chain tiers:** Is tier classification accurate for monorepos?

@@ -7,7 +7,7 @@
   data:  # c266
     kind: work_item  # c266
     title: "Add Device Tree (DTS) analyzer."  # c266
-    status: deferred  # c266
+    status: todo_soft  # c266
     priority: 4  # c266
     parent:  # c266
     tags:  # c266
@@ -19,3 +19,11 @@
     justification: "No known tree-sitter grammar. Blocked on grammar availability."  # c266
     description: "No known tree-sitter grammar. Blocked on grammar availability."  # c266
     fields: {}  # c266
+- op: update  # b55a
+  at: '2026-02-17T20:42:56Z'  # b55a
+  by: agent  # b55a
+  actor: jgstern_agent  # b55a
+  clock: 2  # b55a
+  nonce: b55a  # b55a
+  set:  # b55a
+    status: todo_soft  # b55a

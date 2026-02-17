@@ -7,7 +7,7 @@
   data:  # 2bcd
     kind: work_item  # 2bcd
     title: "Job-to-job artifact sharing."  # 2bcd
-    status: deferred  # 2bcd
+    status: todo_soft  # 2bcd
     priority: 4  # 2bcd
     parent:  # 2bcd
     tags:  # 2bcd
@@ -19,3 +19,11 @@
     justification: "Each test job restores grammar wheels from cache separately. Use `actions/upload-artifact`/`download-artifact` for faster sharing. Non-blocking optimization."  # 2bcd
     description: "Each test job restores grammar wheels from cache separately. Use `actions/upload-artifact`/`download-artifact` for faster sharing. Non-blocking optimization."  # 2bcd
     fields: {}  # 2bcd
+- op: update  # d6fe
+  at: '2026-02-17T20:42:56Z'  # d6fe
+  by: agent  # d6fe
+  actor: jgstern_agent  # d6fe
+  clock: 2  # d6fe
+  nonce: d6fe  # d6fe
+  set:  # d6fe
+    status: todo_soft  # d6fe

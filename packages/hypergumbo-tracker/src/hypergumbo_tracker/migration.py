@@ -88,7 +88,7 @@ def normalize_status(raw: str) -> str:
     Handles emoji prefixes (✅, ⬛), parenthetical notes, percentage values,
     and the various status keywords used in the governance files.
 
-    Returns one of: done, wont_do, todo_hard, in_progress, deferred, todo_soft.
+    Returns one of: done, wont_do, todo_hard, in_progress, todo_soft.
     Unknown statuses default to todo_hard.
     """
     s = raw.strip()
@@ -112,7 +112,7 @@ def normalize_status(raw: str) -> str:
     if s_upper == "DONE":
         return "done"
     if s_upper == "DEFERRED":
-        return "deferred"
+        return "todo_soft"
     if s_upper == "TODO!":
         return "todo_hard"
     if s_upper == "TODO":
@@ -130,13 +130,13 @@ def normalize_status(raw: str) -> str:
 def assign_priority(status: str) -> int:
     """Map a normalized status to a priority level (0-4).
 
-    Priority 0 is highest urgency (todo_hard), 4 is lowest (done/deferred/wont_do).
+    Priority 0 is highest urgency (todo_hard), 4 is lowest (done/wont_do).
     """
     if status == "todo_hard":
         return 0
     if status in ("todo_soft", "in_progress"):
         return 1
-    # done, deferred, wont_do
+    # done, wont_do
     return 4
 
 
@@ -201,7 +201,6 @@ _CONFIG_TEMPLATE = textwrap.dedent("""\
       - todo_soft
       - in_progress
       - done
-      - deferred
       - wont_do
     stop_hook:
       blocking_statuses:
@@ -209,7 +208,6 @@ _CONFIG_TEMPLATE = textwrap.dedent("""\
         - todo_soft
       resolved_statuses:
         - done
-        - deferred
         - wont_do
     well_known_tags:
       - developer_experience
@@ -354,7 +352,7 @@ def parse_invariant_ledger(content: str) -> list[ParsedItem]:
             if gen_upper.startswith("**DONE"):
                 child_status = "done"
             elif gen_upper.startswith("**DEFERRED"):
-                child_status = "deferred"
+                child_status = "todo_soft"
             elif gen_upper.startswith("**TODO!"):
                 child_status = "todo_hard"
             elif gen_upper.startswith("**TODO"):
@@ -549,19 +547,8 @@ def parse_work_items(content: str) -> list[ParsedItem]:
                 title = rest[:period_idx + 1]
                 description = rest[period_idx + 2:].strip()
 
-            # Extract justification for deferred items
-            justification: str | None = None
-            if status == "deferred" and description:
-                # Look for "Deferred:" or the whole description serves as justification
-                deferred_match = re.search(
-                    r"[Dd]eferred:?\s*(.*)", description
-                )
-                if deferred_match:
-                    justification = deferred_match.group(1).strip() or description
-                else:
-                    justification = description
-
             # Generate source_id
+            justification: str | None = None
             tag = category_to_tag(current_category)
             cat_slug = tag.replace("_", "-")
             idx = category_counts.get(cat_slug, 0)

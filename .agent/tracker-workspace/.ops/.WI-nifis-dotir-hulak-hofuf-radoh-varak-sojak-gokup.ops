@@ -7,7 +7,7 @@
   data:  # 525b
     kind: work_item  # 525b
     title: "Target: Audit branch partials in core modules — same rationale as above."  # 525b
-    status: deferred  # 525b
+    status: todo_soft  # 525b
     priority: 4  # 525b
     parent:  # 525b
     tags:  # 525b
@@ -19,3 +19,11 @@
     justification: "Line coverage at 100% is the enforced standard."  # 525b
     description: "Line coverage at 100% is the enforced standard."  # 525b
     fields: {}  # 525b
+- op: update  # 4554
+  at: '2026-02-17T20:42:56Z'  # 4554
+  by: agent  # 4554
+  actor: jgstern_agent  # 4554
+  clock: 2  # 4554
+  nonce: '4554'  # 4554
+  set:  # 4554
+    status: todo_soft  # 4554

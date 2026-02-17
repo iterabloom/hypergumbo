@@ -13,8 +13,7 @@ Validation tiers:
 - **Field schema validation:** Required fields missing, type mismatches,
   integer range violations, unknown fields (with edit-distance suggestions).
 - **Cross-file validation:** Duplicate IDs across tiers, dangling parent
-  references, ID prefix/kind mismatches, cycles in before links,
-  deferred without justification.
+  references, ID prefix/kind mismatches, cycles in before links.
 - **Config comparison:** Kinds in config but not in template (and vice versa).
 - **Lock violation detection:** Agent updates touching locked fields.
 - **SimHash duplicate warnings:** Near-duplicate pairs not in not_duplicate_of.
@@ -589,7 +588,6 @@ def validate_all(
     _check_dangling_parents(all_items, result)
     _check_id_prefix_mismatch(all_items, config, result)
     _check_before_cycles(all_items, result)
-    _check_deferred_justification(all_items, result)
 
     # Config comparison warnings
     _check_config_comparison(tracker_root, result)
@@ -680,17 +678,6 @@ def _check_before_cycles(
         result.errors.append(
             f"cycle in before links: {' -> '.join(cycle)}"
         )
-
-
-def _check_deferred_justification(
-    all_items: dict[str, tuple[str, Any]], result: ValidationResult
-) -> None:
-    """Check that deferred items have justification."""
-    for item_id, (_, item) in all_items.items():
-        if item.status == "deferred" and not item.justification:
-            result.errors.append(
-                f"{item_id}: status is 'deferred' but no justification provided"
-            )
 
 
 def _check_config_comparison(

@@ -7,7 +7,7 @@
   data:  # 9916
     kind: work_item  # 9916
     title: "Test count reporting."  # 9916
-    status: deferred  # 9916
+    status: todo_soft  # 9916
     priority: 4  # 9916
     parent:  # 9916
     tags:  # 9916
@@ -19,3 +19,11 @@
     justification: "ci.yml doesn't report how many tests ran. Add count to output for validating smart-test selection. Nice-to-have."  # 9916
     description: "ci.yml doesn't report how many tests ran. Add count to output for validating smart-test selection. Nice-to-have."  # 9916
     fields: {}  # 9916
+- op: update  # 08e4
+  at: '2026-02-17T20:42:57Z'  # 08e4
+  by: agent  # 08e4
+  actor: jgstern_agent  # 08e4
+  clock: 2  # 08e4
+  nonce: '08e4'  # 08e4
+  set:  # 08e4
+    status: todo_soft  # 08e4

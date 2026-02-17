@@ -7,7 +7,7 @@
   data:  # 403a
     kind: work_item  # 403a
     title: "Matrix strategy for packages."  # 403a
-    status: deferred  # 403a
+    status: todo_soft  # 403a
     priority: 4  # 403a
     parent:  # 403a
     tags:  # 403a
@@ -19,3 +19,11 @@
     justification: "Manual job per package currently. Use `matrix: { package: [core, mainstream, common, extended] }`. Would reduce CI config duplication but CI works correctly."  # 403a
     description: "Manual job per package currently. Use `matrix: { package: [core, mainstream, common, extended] }`. Would reduce CI config duplication but CI works correctly."  # 403a
     fields: {}  # 403a
+- op: update  # 89a4
+  at: '2026-02-17T20:42:56Z'  # 89a4
+  by: agent  # 89a4
+  actor: jgstern_agent  # 89a4
+  clock: 2  # 89a4
+  nonce: 89a4  # 89a4
+  set:  # 89a4
+    status: todo_soft  # 89a4

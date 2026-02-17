@@ -7,7 +7,7 @@
   data:  # d76d
     kind: work_item  # d76d
     title: "Parallel pytest in ci.yml."  # d76d
-    status: deferred  # d76d
+    status: todo_soft  # d76d
     priority: 4  # d76d
     parent:  # d76d
     tags:  # d76d
@@ -19,3 +19,11 @@
     justification: "All selected tests run in single job. For large changes affecting multiple packages, could split by package. Non-blocking optimization."  # d76d
     description: "All selected tests run in single job. For large changes affecting multiple packages, could split by package. Non-blocking optimization."  # d76d
     fields: {}  # d76d
+- op: update  # 22fe
+  at: '2026-02-17T20:42:57Z'  # 22fe
+  by: agent  # 22fe
+  actor: jgstern_agent  # 22fe
+  clock: 2  # 22fe
+  nonce: 22fe  # 22fe
+  set:  # 22fe
+    status: todo_soft  # 22fe

@@ -7,7 +7,7 @@
   data:  # 2e47
     kind: work_item  # 2e47
     title: "Target: Node.js N-API linker — `napi_create_function`, `node-addon-api` `Napi::Function::New` linking JS calls to C/C++ addon functions."  # 2e47
-    status: deferred  # 2e47
+    status: todo_soft  # 2e47
     priority: 4  # 2e47
     parent:  # 2e47
     tags:  # 2e47
@@ -19,3 +19,12 @@
     justification: "lower priority than Python/Ruby FFI; smaller ecosystem of native addons. Can implement when a DEEP bakeoff reveals a Node+C polyglot repo that would benefit."  # 2e47
     description: "Deferred: lower priority than Python/Ruby FFI; smaller ecosystem of native addons. Can implement when a DEEP bakeoff reveals a Node+C polyglot repo that would benefit."  # 2e47
     fields: {}  # 2e47
+- op: update  # 28bc
+  at: '2026-02-17T08:52:14Z'  # 28bc
+  by: human  # 28bc
+  actor: jgstern  # 28bc
+  clock: 2  # 28bc
+  nonce: 28bc  # 28bc
+  set:  # 28bc
+    status: todo_soft  # 28bc
+    description: "Can implement when a DEEP bakeoff reveals a Node+C polyglot repo that would benefit."  # 28bc

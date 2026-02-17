@@ -7,7 +7,7 @@
   data:  # 35dd
     kind: work_item  # 35dd
     title: "Target: Add `--cov-branch` to CI — INV-011 closed as WON'T DO."  # 35dd
-    status: deferred  # 35dd
+    status: todo_soft  # 35dd
     priority: 4  # 35dd
     parent:  # 35dd
     tags:  # 35dd
@@ -19,3 +19,11 @@
     justification: "Branch coverage was never in CI, ~70% of uncovered branches are unreachable defensive code, and bakeoff on real repos is a better quality signal than chasing branch partials."  # 35dd
     description: "Branch coverage was never in CI, ~70% of uncovered branches are unreachable defensive code, and bakeoff on real repos is a better quality signal than chasing branch partials."  # 35dd
     fields: {}  # 35dd
+- op: update  # b36b
+  at: '2026-02-17T20:42:57Z'  # b36b
+  by: agent  # b36b
+  actor: jgstern_agent  # b36b
+  clock: 2  # b36b
+  nonce: b36b  # b36b
+  set:  # b36b
+    status: todo_soft  # b36b

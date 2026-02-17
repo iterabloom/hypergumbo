@@ -7,7 +7,7 @@
   data:  # 1e30
     kind: work_item  # 1e30
     title: "`.m` file MATLAB/Wolfram overlap: Both analyzers claim `.m` files."  # 1e30
-    status: deferred  # 1e30
+    status: todo_soft  # 1e30
     priority: 4  # 1e30
     parent:  # 1e30
     tags:  # 1e30
@@ -19,3 +19,11 @@
     justification: "Need heuristic disambiguation (e.g., check for MATLAB `function` keyword vs Wolfram `Module[` patterns). Niche impact — few repos mix both languages."  # 1e30
     description: "Need heuristic disambiguation (e.g., check for MATLAB `function` keyword vs Wolfram `Module[` patterns). Niche impact — few repos mix both languages."  # 1e30
     fields: {}  # 1e30
+- op: update  # d173
+  at: '2026-02-17T20:42:55Z'  # d173
+  by: agent  # d173
+  actor: jgstern_agent  # d173
+  clock: 2  # d173
+  nonce: d173  # d173
+  set:  # d173
+    status: todo_soft  # d173

@@ -7,7 +7,7 @@
   data:  # 6e66
     kind: work_item  # 6e66
     title: "DRY refactor full-suite.yml."  # 6e66
-    status: deferred  # 6e66
+    status: todo_soft  # 6e66
     priority: 4  # 6e66
     parent:  # 6e66
     tags:  # 6e66
@@ -19,3 +19,11 @@
     justification: "Currently 4 near-identical `test-*` jobs copy-pasted. Use matrix strategy or composite action to reduce duplication. Non-blocking; CI works correctly as-is."  # 6e66
     description: "Currently 4 near-identical `test-*` jobs copy-pasted. Use matrix strategy or composite action to reduce duplication. Non-blocking; CI works correctly as-is."  # 6e66
     fields: {}  # 6e66
+- op: update  # 99ca
+  at: '2026-02-17T20:42:57Z'  # 99ca
+  by: agent  # 99ca
+  actor: jgstern_agent  # 99ca
+  clock: 2  # 99ca
+  nonce: 99ca  # 99ca
+  set:  # 99ca
+    status: todo_soft  # 99ca

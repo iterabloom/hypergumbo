@@ -7,7 +7,7 @@
   data:  # 1546
     kind: work_item  # 1546
     title: "Improve D language cross-file call resolution."  # 1546
-    status: deferred  # 1546
+    status: todo_soft  # 1546
     priority: 4  # 1546
     parent:  # 1546
     tags:  # 1546
@@ -19,3 +19,11 @@
     justification: "requires understanding D import system (modules, package imports, selective imports) and modifying the D analyzer's call resolution. Lower priority than other linker work (affects a smaller user base)."  # 1546
     description: "DMD bakeoff shows 72.2% orphan rate and 5.3% cross-file ratio despite extracting 78K nodes. D symbols are extracted but import-based cross-file calls are not resolved. Would benefit the D ecosystem (DMD, Phobos, etc.). Deferred: requires understanding D import system (modules, package imports, selective imports) and modifying the D analyzer's call resolution. Lower priority than other linker work (affects a smaller user base)."  # 1546
     fields: {}  # 1546
+- op: update  # a4c1
+  at: '2026-02-17T20:42:57Z'  # a4c1
+  by: agent  # a4c1
+  actor: jgstern_agent  # a4c1
+  clock: 2  # a4c1
+  nonce: a4c1  # a4c1
+  set:  # a4c1
+    status: todo_soft  # a4c1

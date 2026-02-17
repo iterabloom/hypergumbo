@@ -7,7 +7,7 @@
   data:  # 9abc
     kind: work_item  # 9abc
     title: "Chatwoot tier1 anomaly: 99.4% tier1 despite 753 Ruby spec files + 338 JS test files."  # 9abc
-    status: deferred  # 9abc
+    status: todo_soft  # 9abc
     priority: 4  # 9abc
     parent:  # 9abc
     tags:  # 9abc
@@ -19,3 +19,11 @@
     justification: "Investigated: NOT a bug. Vue template nodes (directive, component_ref, slot, prop, style_block) from `app/javascript/` are correctly tier1 and vastly outnumber tier2 test symbols. The bakeoff tier1_pct metric counts ALL nodes including non-code nodes. Consider excluding non-code kinds from the metric for a more meaningful production-vs-test signal."  # 9abc
     description: "Investigated: NOT a bug. Vue template nodes (directive, component_ref, slot, prop, style_block) from `app/javascript/` are correctly tier1 and vastly outnumber tier2 test symbols. The bakeoff tier1_pct metric counts ALL nodes including non-code nodes. Consider excluding non-code kinds from the metric for a more meaningful production-vs-test signal."  # 9abc
     fields: {}  # 9abc
+- op: update  # af41
+  at: '2026-02-17T20:42:56Z'  # af41
+  by: agent  # af41
+  actor: jgstern_agent  # af41
+  clock: 2  # af41
+  nonce: af41  # af41
+  set:  # af41
+    status: todo_soft  # af41

@@ -7,7 +7,7 @@
   data:  # 128b
     kind: work_item  # 128b
     title: "Add Assembly analyzer."  # 128b
-    status: deferred  # 128b
+    status: todo_soft  # 128b
     priority: 4  # 128b
     parent:  # 128b
     tags:  # 128b
@@ -19,3 +19,11 @@
     justification: "Grammar: tree-sitter-asm. Lower priority than linker and feature quality work in DEEP mode."  # 128b
     description: "Grammar: tree-sitter-asm. Lower priority than linker and feature quality work in DEEP mode."  # 128b
     fields: {}  # 128b
+- op: update  # 72af
+  at: '2026-02-17T20:42:55Z'  # 72af
+  by: agent  # 72af
+  actor: jgstern_agent  # 72af
+  clock: 2  # 72af
+  nonce: 72af  # 72af
+  set:  # 72af
+    status: todo_soft  # 72af

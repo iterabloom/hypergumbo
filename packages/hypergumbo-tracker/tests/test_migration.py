@@ -78,7 +78,7 @@ class TestNormalizeStatus:
         assert normalize_status("DONE") == "done"
 
     def test_deferred(self) -> None:
-        assert normalize_status("DEFERRED") == "deferred"
+        assert normalize_status("DEFERRED") == "todo_soft"
 
     def test_todo_hard(self) -> None:
         assert normalize_status("TODO!") == "todo_hard"
@@ -110,9 +110,6 @@ class TestAssignPriority:
 
     def test_done(self) -> None:
         assert assign_priority("done") == 4
-
-    def test_deferred(self) -> None:
-        assert assign_priority("deferred") == 4
 
     def test_wont_do(self) -> None:
         assert assign_priority("wont_do") == 4
@@ -183,7 +180,6 @@ class TestWriteConfigTemplate:
         assert "todo_soft" in config.statuses
         assert "in_progress" in config.statuses
         assert "done" in config.statuses
-        assert "deferred" in config.statuses
         assert "wont_do" in config.statuses
 
     def test_config_has_correct_prefixes(self, tmp_path: Path) -> None:
@@ -467,7 +463,7 @@ class TestParseWorkItems:
         """)
         items = parse_work_items(content)
         assert len(items) == 1
-        assert items[0].status == "deferred"
+        assert items[0].status == "todo_soft"
         assert "cross_language_linkers" in items[0].tags
 
     def test_parses_multiple_categories(self) -> None:
@@ -535,10 +531,10 @@ class TestParseWorkItems:
         content = wi_path.read_text()
         items = parse_work_items(content)
         done_items = [i for i in items if i.status == "done"]
-        deferred_items = [i for i in items if i.status == "deferred"]
+        todo_soft_items = [i for i in items if i.status == "todo_soft"]
         assert len(items) == 24, f"Expected 24 items, got {len(items)}"
         assert len(done_items) == 7, f"Expected 7 DONE, got {len(done_items)}"
-        assert len(deferred_items) == 17, f"Expected 17 DEFERRED, got {len(deferred_items)}"
+        assert len(todo_soft_items) == 17, f"Expected 17 todo_soft (from DEFERRED), got {len(todo_soft_items)}"
 
     def test_source_ids_sequential_per_category(self) -> None:
         content = textwrap.dedent("""\
@@ -564,15 +560,15 @@ class TestParseWorkItems:
         assert items[0].pr_ref is None
         assert "Assembly" in items[0].title
 
-    def test_justification_for_deferred(self) -> None:
+    def test_deferred_maps_to_todo_soft(self) -> None:
         content = textwrap.dedent("""\
             ## Language Additions
             - **DEFERRED** Add Assembly analyzer. Lower priority than linker work.
         """)
         items = parse_work_items(content)
         assert len(items) == 1
-        assert items[0].justification is not None
-        assert "priority" in items[0].justification.lower()
+        assert items[0].status == "todo_soft"
+        assert items[0].justification is None
 
 
 # ============================================================================
@@ -961,7 +957,7 @@ class TestIntegrationRealFiles:
                 assert compiled.title, f"Empty title for {item_id}"
                 assert compiled.status in (
                     "todo_hard", "todo_soft", "in_progress",
-                    "done", "deferred", "wont_do",
+                    "done", "wont_do",
                 ), f"Bad status '{compiled.status}' for {item_id}"
 
     def test_full_migration_idempotent(
@@ -1192,7 +1188,7 @@ class TestPendingGeneralizations:
         assert child.parent_source_id == "INV-002"
 
     def test_pending_gen_deferred_status(self) -> None:
-        """Pending gen with **DEFERRED** marker gets status 'deferred'."""
+        """Pending gen with **DEFERRED** marker gets status 'todo_soft'."""
         content = textwrap.dedent("""\
             ## INV-003: Third Item
             - **Statement:** Something
@@ -1205,7 +1201,7 @@ class TestPendingGeneralizations:
         items = parse_invariant_ledger(content)
         assert len(items) == 2
         child = items[1]
-        assert child.status == "deferred"
+        assert child.status == "todo_soft"
         assert child.parent_source_id == "INV-003"
 
     def test_pending_gen_inline_value(self) -> None:

@@ -7,7 +7,7 @@
   data:  # 52d3
     kind: work_item  # 52d3
     title: "Target: Lua FFI linker — LuaJIT `ffi.cdef`/`ffi.load` linking Lua calls to C functions."  # 52d3
-    status: deferred  # 52d3
+    status: todo_soft  # 52d3
     priority: 4  # 52d3
     parent:  # 52d3
     tags:  # 52d3
@@ -19,3 +19,11 @@
     justification: "niche use case (primarily OpenResty/game dev). Can implement when a DEEP bakeoff reveals a Lua+C polyglot repo."  # 52d3
     description: "Deferred: niche use case (primarily OpenResty/game dev). Can implement when a DEEP bakeoff reveals a Lua+C polyglot repo."  # 52d3
     fields: {}  # 52d3
+- op: update  # 621a
+  at: '2026-02-17T20:42:56Z'  # 621a
+  by: agent  # 621a
+  actor: jgstern_agent  # 621a
+  clock: 2  # 621a
+  nonce: 621a  # 621a
+  set:  # 621a
+    status: todo_soft  # 621a

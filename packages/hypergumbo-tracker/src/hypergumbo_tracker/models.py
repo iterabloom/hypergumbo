@@ -590,12 +590,11 @@ _DEFAULT_CONFIG_RAW: dict[str, Any] = {
         "todo_soft",
         "in_progress",
         "done",
-        "deferred",
         "wont_do",
     ],
     "stop_hook": {
         "blocking_statuses": ["todo_hard", "todo_soft"],
-        "resolved_statuses": ["done", "deferred", "wont_do"],
+        "resolved_statuses": ["done", "wont_do"],
     },
     "well_known_tags": [],
     "actor_resolution": {"agent_usernames": ["*_agent"]},
