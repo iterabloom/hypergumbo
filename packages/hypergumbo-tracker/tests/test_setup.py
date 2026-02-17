@@ -792,6 +792,8 @@ class TestCheckGroupPermissions:
             result = _check_group_permissions(root)
         assert result.status == "error"
         assert "group-write" in str(result.details)
+        # Fix command uses actual group name, not placeholder
+        assert "sudo chgrp -R project-dev" in str(result.details)
 
     def test_user_not_in_group(self, tmp_path: Path) -> None:
         """User not in the shared group is an error."""
@@ -853,6 +855,8 @@ class TestCheckGroupPermissions:
             result = _check_group_permissions(root)
         assert result.status == "error"
         assert "unknown gid" in str(result.details)
+        # Falls back to placeholder when group name can't be resolved
+        assert "sudo chgrp -R GROUP" in str(result.details)
 
     def test_group_member_lookup_keyerror(self, tmp_path: Path) -> None:
         """KeyError when looking up group members is caught silently."""

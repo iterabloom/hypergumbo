@@ -590,6 +590,7 @@ def _check_group_permissions(root: Path) -> CheckResult:
 
     problems: list[str] = []
     shared_group_detected = False
+    detected_group: str | None = None
 
     for d in existing:
         st = d.stat()
@@ -605,6 +606,7 @@ def _check_group_permissions(root: Path) -> CheckResult:
         shared_group_detected = True
         try:
             group_name = grp.getgrgid(dir_gid).gr_name
+            detected_group = group_name
         except KeyError:
             problems.append(f"{d}: owned by unknown gid {dir_gid}")
             continue
@@ -640,6 +642,7 @@ def _check_group_permissions(root: Path) -> CheckResult:
         )
 
     if problems:
+        grp_label = detected_group or "GROUP"
         return CheckResult(
             name="group_permissions",
             status="error",
@@ -648,7 +651,8 @@ def _check_group_permissions(root: Path) -> CheckResult:
                 *problems,
                 "",
                 "Fix with (as a user with sudo):",
-                "  sudo chgrp -R GROUP .agent/tracker .agent/tracker-workspace",
+                f"  sudo chgrp -R {grp_label}"
+                " .agent/tracker .agent/tracker-workspace",
                 "  sudo chmod -R g+rws .agent/tracker/.ops"
                 " .agent/tracker-workspace/.ops"
                 " .agent/tracker-workspace/stealth",
