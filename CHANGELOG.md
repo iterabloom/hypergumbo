@@ -70,6 +70,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Standard two-pane layout (ADR-0013 PR 6b)**: The `tracker tui` command now supports the standard tier (60x20 – 120x38) with a two-pane layout: left panel shows a DataTable or Tree view, right panel shows detail for the highlighted item. Cursor movement auto-updates the detail panel. Tree toggle (`t`) switches between table and parent-child tree view. Filter input (`f`/Escape) narrows items by title, status, tags, or kind. Dynamic resize preserves selection across compact↔standard↔too-small transitions. Compact layout (40x16 – 59x19) continues to use stacked detail (Enter/Esc toggle).
 - **Wide layout tier (ADR-0013 PR 6c)**: Terminals wider than 120x38 now show extra DataTable columns (created, updated, conflict indicator), longer proquint IDs, a split right panel with activity log below detail, and a filter status indicator. Dynamic resize transitions between standard↔wide preserve selection state.
 - **Snapshot tests (ADR-0013 PR 6d)**: Visual regression tests using `pytest-textual-snapshot` for all 8 TUI scenarios: compact list, compact+status, compact detail, standard two-pane, standard tree, wide layout, filter panel, too-small. SVG baselines in `tests/__snapshots__/` detect unintended rendering changes.
+- **Write keybindings (ADR-0013 H1)**: 8 modal dialogs for in-TUI editing: `d` (discuss), `D` (clear discussion, human-only with confirmation), `m` (tier move: promote/demote/stealth/unstealth), `n` (new item), `e` (edit status/priority/title/tags/description), `p` (set parent), `b` (edit before/dependency links), `l` (lock/unlock fields). Each pushes a ModalScreen, calls TrackerSet write methods on dismiss, shows errors via notify(), and reloads items after writes.
+
+#### Documentation
+
+- **Tracker quick-start guide**: Replaced the stale stub README in `packages/hypergumbo-tracker/` with a comprehensive 500-line quick-start guide covering install, two-user deployment, setup, core concepts, agent/human workflows, stop hook integration, configuration reference, fork workflow, and pre-commit integration. Updated root README and `docs/hypergumbo-spec.md` §19 with cross-references to the tracker and ADR-0013.
 
 #### Analysis core
 
@@ -124,6 +129,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **CI telemetry in `auto-pr` polling**: Prints one-line job status every 3rd pass (e.g., `[89s] ✅lint ⏳pytest ⏳ci-complete`). On failure, fetches the last 30 lines of the failed job's log. Zero extra API calls during polling.
 - **`ci-debug logs` subcommand**: `ci-debug logs [job] [sha]` fetches plain-text CI job logs without opening the web UI.
 - **`auto-pr` manifest regeneration**: Regenerates `.ci/affected-tests.txt` before pushing and amends the commit if it changed.
+- **CI auto-retry for heavy test jobs**: `test-core` and `test-mainstream` jobs that exceed Codeberg's 5-minute runner deadline now automatically retry on a self-hosted runner (no time limit). Aggregate job treats primary-or-retry success as pass.
 
 ### Changed
 
