@@ -21,7 +21,7 @@ from unittest.mock import patch
 import pytest
 
 from hypergumbo_tracker.cli import main, EXIT_SUCCESS, EXIT_USER_ERROR
-from hypergumbo_tracker.models import KindConfig, TrackerConfig
+from hypergumbo_tracker.models import TrackerConfig
 from hypergumbo_tracker.trackerset import TrackerSet
 
 
@@ -31,21 +31,15 @@ from hypergumbo_tracker.trackerset import TrackerSet
 
 
 def _make_config() -> TrackerConfig:
-    return TrackerConfig(
-        kinds={
-            "invariant": KindConfig(prefix="INV", description="Test invariant"),
-            "work_item": KindConfig(prefix="WI", description="Work item"),
-        },
-        statuses=["todo_hard", "todo_soft", "in_progress", "done", "deferred", "wont_do"],
-        blocking_statuses=["todo_hard", "todo_soft"],
-        resolved_statuses=["done", "deferred", "wont_do"],
-        agent_usernames=["*_agent"],
-        lamport_branches=["dev", "main"],
-    )
+    from helpers import make_test_config
+
+    return make_test_config()
 
 
 def _setup_tracker_root(tmp_path: Path) -> Path:
     """Create tracker directory structure and config file."""
+    from helpers import make_test_config_dict
+
     import yaml
 
     tracker_root = tmp_path / ".agent"
@@ -54,19 +48,7 @@ def _setup_tracker_root(tmp_path: Path) -> Path:
     (tracker_root / "tracker-workspace" / "stealth").mkdir(parents=True)
 
     config_path = tracker_root / "tracker" / "config.yaml"
-    config_path.write_text(yaml.dump({
-        "kinds": {
-            "invariant": {"prefix": "INV", "description": "Test invariant"},
-            "work_item": {"prefix": "WI", "description": "Work item"},
-        },
-        "statuses": ["todo_hard", "todo_soft", "in_progress", "done", "deferred", "wont_do"],
-        "stop_hook": {
-            "blocking_statuses": ["todo_hard", "todo_soft"],
-            "resolved_statuses": ["done", "deferred", "wont_do"],
-        },
-        "actor_resolution": {"agent_usernames": ["*_agent"]},
-        "lamport_branches": ["dev", "main"],
-    }))
+    config_path.write_text(yaml.dump(make_test_config_dict()))
     return tracker_root
 
 

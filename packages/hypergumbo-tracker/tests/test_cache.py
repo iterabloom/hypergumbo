@@ -30,19 +30,9 @@ from hypergumbo_tracker.store import Store, _parse_ops_file, compile_ops
 
 def _make_config() -> TrackerConfig:
     """Create a minimal TrackerConfig for tests."""
-    return TrackerConfig(
-        kinds={
-            "invariant": __import__(
-                "hypergumbo_tracker.models", fromlist=["KindConfig"]
-            ).KindConfig(prefix="INV", description="test"),
-            "work_item": __import__(
-                "hypergumbo_tracker.models", fromlist=["KindConfig"]
-            ).KindConfig(prefix="WI", description="test"),
-        },
-        statuses=["todo_hard", "todo_soft", "in_progress", "done", "deferred", "wont_do"],
-        blocking_statuses=["todo_hard", "todo_soft"],
-        resolved_statuses=["done", "deferred", "wont_do"],
-    )
+    from helpers import make_test_config
+
+    return make_test_config()
 
 
 def _make_store_and_cache(

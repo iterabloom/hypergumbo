@@ -72,42 +72,18 @@ def _make_full_agent_dir(tmp_path: Path) -> Path:
 
 def _write_config_template(root: Path) -> None:
     """Write a valid config.yaml.template."""
+    from helpers import make_test_config_dict
+
     template = root / "tracker" / "config.yaml.template"
-    template.write_text(
-        yaml.dump(
-            {
-                "kinds": {
-                    "invariant": {"prefix": "INV"},
-                    "work_item": {"prefix": "WI"},
-                },
-                "statuses": ["todo_hard", "todo_soft", "done", "deferred", "wont_do"],
-                "stop_hook": {
-                    "blocking_statuses": ["todo_hard", "todo_soft"],
-                    "resolved_statuses": ["done", "deferred", "wont_do"],
-                },
-                "actor_resolution": {"agent_usernames": ["*_agent"]},
-                "lamport_branches": ["dev", "main"],
-            }
-        )
-    )
+    template.write_text(yaml.dump(make_test_config_dict()))
 
 
 def _write_config(root: Path, raw: dict[str, Any] | None = None) -> None:
     """Write a config.yaml (valid by default)."""
     if raw is None:
-        raw = {
-            "kinds": {
-                "invariant": {"prefix": "INV"},
-                "work_item": {"prefix": "WI"},
-            },
-            "statuses": ["todo_hard", "todo_soft", "done", "deferred", "wont_do"],
-            "stop_hook": {
-                "blocking_statuses": ["todo_hard", "todo_soft"],
-                "resolved_statuses": ["done", "deferred", "wont_do"],
-            },
-            "actor_resolution": {"agent_usernames": ["*_agent"]},
-            "lamport_branches": ["dev", "main"],
-        }
+        from helpers import make_test_config_dict
+
+        raw = make_test_config_dict()
     (root / "tracker").mkdir(parents=True, exist_ok=True)
     (root / "tracker" / "config.yaml").write_text(yaml.dump(raw))
 

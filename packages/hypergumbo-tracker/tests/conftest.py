@@ -8,7 +8,6 @@ and op construction helpers used across test modules.
 from __future__ import annotations
 
 import os
-import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -26,75 +25,19 @@ def ops_dir(tmp_path: Path) -> Path:
 @pytest.fixture()
 def config_yaml(tmp_path: Path) -> Path:
     """Write a minimal tracker config.yaml and return its path."""
+    import yaml
+
+    from helpers import make_test_config_dict
+
     cfg = tmp_path / "config.yaml"
-    cfg.write_text(textwrap.dedent("""\
-        kinds:
-          invariant:
-            prefix: INV
-            description: "A violated invariant"
-            fields_schema:
-              statement:
-                type: text
-                required: true
-              root_cause:
-                type: text
-                required: true
-              fix:
-                type: text
-              verification:
-                type: text
-              regression_tests:
-                type: list
-              scope:
-                type: text
-              progress_pct:
-                type: integer
-                min: 0
-                max: 100
-          meta_invariant:
-            prefix: META
-            description: "A meta-invariant tracking cross-language coverage"
-            fields_schema:
-              statement:
-                type: text
-                required: true
-              languages_done:
-                type: list
-              languages_remaining:
-                type: list
-              progress_pct:
-                type: integer
-                min: 0
-                max: 100
-          work_item:
-            prefix: WI
-            description: "A work item"
-        statuses:
-          - todo_hard
-          - todo_soft
-          - in_progress
-          - done
-          - deferred
-          - wont_do
-        stop_hook:
-          blocking_statuses:
-            - todo_hard
-            - todo_soft
-          resolved_statuses:
-            - done
-            - deferred
-            - wont_do
-        well_known_tags:
-          - developer_experience
-          - cross_language_linkers
-          - analysis_quality
-        actor_resolution:
-          agent_usernames:
-            - "*_agent"
-        lamport_branches:
-          - dev
-          - main
-    """))
+    config_dict = make_test_config_dict(
+        well_known_tags=[
+            "developer_experience",
+            "cross_language_linkers",
+            "analysis_quality",
+        ],
+    )
+    cfg.write_text(yaml.dump(config_dict))
     return cfg
 
 

@@ -14,10 +14,7 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo_tracker.models import (
-    KindConfig,
-    TrackerConfig,
-)
+from hypergumbo_tracker.models import TrackerConfig
 from hypergumbo_tracker.stop_hook import (
     _filter_blocking_statuses,
     count_todos,
@@ -36,18 +33,9 @@ from hypergumbo_tracker.stop_hook import (
 
 def _make_config(**overrides: Any) -> TrackerConfig:
     """Create a minimal TrackerConfig for testing."""
-    defaults = {
-        "kinds": {
-            "work_item": KindConfig(prefix="WI", description="Work item"),
-        },
-        "statuses": ["todo_hard", "todo_soft", "in_progress", "done", "deferred", "wont_do"],
-        "blocking_statuses": ["todo_hard", "todo_soft"],
-        "resolved_statuses": ["done", "deferred", "wont_do"],
-        "agent_usernames": ["*_agent"],
-        "lamport_branches": ["dev", "main"],
-    }
-    defaults.update(overrides)
-    return TrackerConfig(**defaults)
+    from helpers import make_test_config
+
+    return make_test_config(**overrides)
 
 
 def _setup_tracker(tmp_path: Path) -> Path:

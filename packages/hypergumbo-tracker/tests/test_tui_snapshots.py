@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from hypergumbo_tracker.models import KindConfig, TrackerConfig
+from hypergumbo_tracker.models import TrackerConfig
 from hypergumbo_tracker.trackerset import TrackerSet
 
 # Frozen timestamp for deterministic snapshots (wide layout shows created/updated)
@@ -33,23 +33,14 @@ _FROZEN_DT = datetime.datetime(2026, 1, 15, 12, 0, 0, tzinfo=datetime.timezone.u
 
 
 # ---------------------------------------------------------------------------
-# Helpers (duplicated from test_tui.py to keep snapshot tests self-contained;
-# any structural change to item data must be mirrored here)
+# Helpers (shared vocabulary via tests/helpers.py)
 # ---------------------------------------------------------------------------
 
 
 def _make_config() -> TrackerConfig:
-    return TrackerConfig(
-        kinds={
-            "invariant": KindConfig(prefix="INV", description="Test invariant"),
-            "work_item": KindConfig(prefix="WI", description="Work item"),
-        },
-        statuses=["todo_hard", "todo_soft", "in_progress", "done", "deferred", "wont_do"],
-        blocking_statuses=["todo_hard", "todo_soft"],
-        resolved_statuses=["done", "deferred", "wont_do"],
-        agent_usernames=["*_agent"],
-        lamport_branches=["dev", "main"],
-    )
+    from helpers import make_test_config
+
+    return make_test_config()
 
 
 class _FrozenDatetime(datetime.datetime):
@@ -66,6 +57,8 @@ class _FrozenDatetime(datetime.datetime):
 
 def _make_tracker_set(tmp_path: Path) -> TrackerSet:
     """Create a TrackerSet with sample items and frozen timestamps."""
+    from helpers import make_test_config_dict
+
     root = tmp_path / ".agent"
     for d in [
         root / "tracker" / ".ops",
@@ -78,19 +71,7 @@ def _make_tracker_set(tmp_path: Path) -> TrackerSet:
     config_path = root / "tracker" / "config.yaml"
     import yaml
 
-    config_path.write_text(yaml.dump({
-        "kinds": {
-            "invariant": {"prefix": "INV", "description": "Test invariant"},
-            "work_item": {"prefix": "WI", "description": "Work item"},
-        },
-        "statuses": ["todo_hard", "todo_soft", "in_progress", "done", "deferred", "wont_do"],
-        "stop_hook": {
-            "blocking_statuses": ["todo_hard", "todo_soft"],
-            "resolved_statuses": ["done", "deferred", "wont_do"],
-        },
-        "actor_resolution": {"agent_usernames": ["*_agent"]},
-        "lamport_branches": ["dev", "main"],
-    }))
+    config_path.write_text(yaml.dump(make_test_config_dict()))
 
     ts = TrackerSet(root, config=config)
 

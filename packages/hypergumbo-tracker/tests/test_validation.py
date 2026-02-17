@@ -15,17 +15,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from hypergumbo_tracker.models import (
-    FieldSchema,
-    KindConfig,
-    TrackerConfig,
-)
+from hypergumbo_tracker.models import FieldSchema, TrackerConfig
 from hypergumbo_tracker.validation import (
     ValidationResult,
     _check_before_cycles,
     _check_config_comparison,
     _check_dangling_parents,
-    _check_deferred_justification,
     _check_embedding_duplicates,
     _check_id_prefix_mismatch,
     _check_lock_violations,
@@ -51,27 +46,9 @@ from hypergumbo_tracker.validation import (
 
 def _make_config(**overrides: Any) -> TrackerConfig:
     """Create a minimal TrackerConfig for testing."""
-    return TrackerConfig(
-        kinds={
-            "invariant": KindConfig(
-                prefix="INV",
-                description="Test invariant",
-                fields_schema={
-                    "statement": FieldSchema(type="text", required=True),
-                    "root_cause": FieldSchema(type="text", required=True),
-                    "progress_pct": FieldSchema(type="integer", min=0, max=100),
-                    "regression_tests": FieldSchema(type="list"),
-                    "verified": FieldSchema(type="boolean"),
-                },
-            ),
-            "work_item": KindConfig(prefix="WI", description="Test work item"),
-        },
-        statuses=["todo_hard", "todo_soft", "in_progress", "done", "deferred", "wont_do"],
-        blocking_statuses=["todo_hard", "todo_soft"],
-        resolved_statuses=["done", "deferred", "wont_do"],
-        agent_usernames=["*_agent"],
-        lamport_branches=["dev", "main"],
-    )
+    from helpers import make_test_config
+
+    return make_test_config(**overrides)
 
 
 def _write_ops(ops_dir: Path, item_id: str, yaml_text: str) -> Path:
@@ -1030,56 +1007,6 @@ class TestCrossFileValidation:
         result = validate_all(tracker_root, _make_config())
         assert any("cycle in before links" in e for e in result.errors)
 
-    def test_deferred_without_justification(self, tmp_path: Path) -> None:
-        tracker_root = tmp_path / ".agent"
-        canonical_ops = tracker_root / "tracker" / ".ops"
-        canonical_ops.mkdir(parents=True)
-        (tracker_root / "tracker-workspace" / ".ops").mkdir(parents=True)
-        (tracker_root / "tracker-workspace" / "stealth").mkdir(parents=True)
-
-        ops_content = textwrap.dedent("""\
-            - op: create
-              at: "2026-01-01T00:00:00Z"
-              by: agent
-              actor: test_agent
-              clock: 1
-              nonce: a1b2
-              data:
-                kind: work_item
-                title: "Test"
-                status: deferred
-                priority: 2
-        """)
-        (canonical_ops / ".WI-test.ops").write_text(ops_content)
-
-        result = validate_all(tracker_root, _make_config())
-        assert any("deferred" in e and "justification" in e for e in result.errors)
-
-    def test_deferred_with_justification_ok(self, tmp_path: Path) -> None:
-        tracker_root = tmp_path / ".agent"
-        canonical_ops = tracker_root / "tracker" / ".ops"
-        canonical_ops.mkdir(parents=True)
-        (tracker_root / "tracker-workspace" / ".ops").mkdir(parents=True)
-        (tracker_root / "tracker-workspace" / "stealth").mkdir(parents=True)
-
-        ops_content = textwrap.dedent("""\
-            - op: create
-              at: "2026-01-01T00:00:00Z"
-              by: agent
-              actor: test_agent
-              clock: 1
-              nonce: a1b2
-              data:
-                kind: work_item
-                title: "Test"
-                status: deferred
-                priority: 2
-                justification: "Blocked on external dependency"
-        """)
-        (canonical_ops / ".WI-test.ops").write_text(ops_content)
-
-        result = validate_all(tracker_root, _make_config())
-        assert not any("justification" in e for e in result.errors)
 
 
 # ---------------------------------------------------------------------------

@@ -20,7 +20,6 @@ from hypergumbo_tracker.models import (
     CompiledItem,
     TrackerConfig,
     KindConfig,
-    FieldSchema,
 )
 from hypergumbo_tracker.store import (
     _SIMHASH_THRESHOLD,
@@ -52,18 +51,9 @@ from hypergumbo_tracker.store import (
 
 def _make_config(**overrides: Any) -> TrackerConfig:
     """Create a minimal TrackerConfig for testing."""
-    return TrackerConfig(
-        kinds={
-            "invariant": KindConfig(prefix="INV", description="Test invariant"),
-            "work_item": KindConfig(prefix="WI", description="Test work item"),
-            "meta_invariant": KindConfig(prefix="META", description="Meta"),
-        },
-        statuses=["todo_hard", "todo_soft", "in_progress", "done", "deferred", "wont_do"],
-        blocking_statuses=["todo_hard", "todo_soft"],
-        resolved_statuses=["done", "deferred", "wont_do"],
-        agent_usernames=["*_agent"],
-        lamport_branches=["dev", "main"],
-    )
+    from helpers import make_test_config
+
+    return make_test_config(**overrides)
 
 
 def _write_ops_file(ops_dir: Path, item_id: str, ops_yaml: str) -> Path:

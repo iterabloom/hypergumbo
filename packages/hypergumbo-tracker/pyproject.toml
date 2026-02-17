@@ -47,6 +47,7 @@ packages = ["src/hypergumbo_tracker"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 filterwarnings = []
+pythonpath = ["tests"]
 
 [tool.coverage.run]
 omit = []
