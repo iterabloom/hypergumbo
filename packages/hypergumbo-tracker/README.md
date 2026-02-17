@@ -9,7 +9,10 @@ and a TUI.
 
 ### 1. Install
 
+Install the tracker into your project's virtual environment:
+
 ```bash
+# As either user (whoever owns the venv)
 pip install hypergumbo-tracker
 ```
 
@@ -19,6 +22,7 @@ The tracker uses `os.getuid()` to distinguish agents from humans. For real
 enforcement (not just convention), run the agent as a separate OS user:
 
 ```bash
+# As the human user (needs sudo)
 sudo useradd -m myproject_agent
 sudo groupadd project-dev
 sudo usermod -aG project-dev yourname
@@ -32,6 +36,7 @@ If the repo lives under the agent's home directory, the human user also needs
 traversal access:
 
 ```bash
+# As the human user (needs sudo)
 sudo chmod o+rx /home/myproject_agent
 ```
 
@@ -42,6 +47,7 @@ edit `actor_resolution.agent_usernames` in `config.yaml`.
 ### 3. Run the wizard
 
 ```bash
+# As either user (from the repo root)
 cd your-repo
 htrac setup
 ```
@@ -54,11 +60,20 @@ If you did step 2 (two-user setup), set group ownership on the directories
 it created so both users can write to ops files:
 
 ```bash
+# As the human user (needs sudo)
 sudo chgrp -R project-dev .agent/tracker .agent/tracker-workspace
 sudo chmod -R g+rws .agent/tracker/.ops .agent/tracker-workspace/.ops
 ```
 
-Verify the human user can write: `touch .agent/tracker-workspace/.ops/test && rm .agent/tracker-workspace/.ops/test`. If you get "Permission denied", check that `newgrp project-dev` was run (or start a new login session).
+Verify the human user can write:
+
+```bash
+# As the human user (must have run newgrp project-dev or started a new session)
+touch .agent/tracker-workspace/.ops/test && rm .agent/tracker-workspace/.ops/test
+```
+
+If you get "Permission denied", check that `newgrp project-dev` was run (or
+start a new login session).
 
 You now have:
 
@@ -67,6 +82,10 @@ You now have:
 - **`htrac setup`** — re-runnable setup wizard
 
 ## Agent usage
+
+These commands are run **as the agent user** (e.g. `myproject_agent`). The
+tracker records `by: agent` on each operation, and human-only commands
+(`lock`, `stealth`, `discuss --clear`) are blocked.
 
 ```bash
 htrac ready                    # What should I work on?
@@ -83,6 +102,10 @@ machine-readable output.
 
 ## Human usage
 
+These commands are run **as the human user** (e.g. `yourname`). The tracker
+records `by: human` on each operation, enabling human-only commands that
+agents cannot access.
+
 ```bash
 htrac tui                      # Interactive terminal UI
 htrac lock INV-lusab status    # Prevent agent from changing status
@@ -93,6 +116,8 @@ htrac discuss INV-lusab --clear  # Clear discussion (human-only)
 The TUI supports three layouts (compact/standard/wide) based on terminal size.
 Keybindings: `q` quit, `f` filter, `d` discuss, `m` move tier, `n` new item,
 `e` edit, `l` lock/unlock.
+
+Both users can read all items — the access control only applies to writes.
 
 ## Core concepts
 
@@ -123,6 +148,7 @@ command respects this.
 Three commands for autonomous-agent stop hooks:
 
 ```bash
+# Called by the stop hook (runs as the agent user)
 htrac count-todos              # Number of blocking items (0 = ok to stop)
 htrac hash-todos               # SHA-256 fingerprint (circuit-breaker detection)
 htrac guidance                 # Generate guidance file for the agent
@@ -168,6 +194,7 @@ the template file for the full schema. Key sections:
 ## Fork workflow
 
 ```bash
+# As the agent user (in your fork)
 htrac fork-setup               # Sets scope to workspace-only
 ```
 
