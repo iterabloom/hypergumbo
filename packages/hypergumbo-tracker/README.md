@@ -14,7 +14,7 @@ pip install hypergumbo-tracker
 
 This gives you:
 
-- **`htrac`** (or `hypergumbo-tracker`) — CLI with 24 subcommands. Agents use
+- **`htrac`** (or `hypergumbo-tracker`) — CLI with 25 subcommands. Agents use
   this: `htrac ready`, `htrac update`, `htrac add`, etc.
 - **`htrac tui`** — interactive terminal UI. Humans use this: browse items, lock
   fields, move tiers, manage discussion — all from a single screen.
@@ -88,12 +88,49 @@ Everything still works with one user, but governance becomes a social contract:
 
 ## Setup
 
+The recommended way to set up the tracker is `htrac setup` — an idempotent
+wizard that creates directories, configures git plumbing, validates config,
+and diagnoses the full operational stack:
+
 ```bash
-# Initialize tracker structure in your repo
+htrac setup
+```
+
+You can run it repeatedly — it inspects current state first and only fixes
+what's missing. Output shows what was created, fixed, or needs attention:
+
+```
+-----------------------------------------------
+[ok]    Git repository detected
+[ok]    Directory structure
+[fixed] .gitattributes — added '*.ops merge=union' to 1 directory
+[ok]    .gitignore files
+[ok]    config.yaml.template found
+[fixed] config.yaml — copied from template
+[ok]    Config validation passed
+[ok]    Config matches template
+[ok]    Actor resolution: 'alice' is human
+[ok]    .ops/ directories are writable
+[fixed] Git textconv driver configured (2 fixes)
+[ok]    No existing data to validate
+[ok]    scripts/tracker wrapper found
+[ok]    AGENTS.md covers all tracker concepts
+[ok]    Stop hook references tracker CLI
+[ok]    Pre-commit hook references tracker validate
+-----------------------------------------------
+Setup complete. 3 fixed.
+```
+
+Use `--json` for machine-readable output. Use `--root` to specify the `.agent/`
+directory explicitly.
+
+For a minimal directory-only setup (no diagnostics), use `htrac init`:
+
+```bash
 hypergumbo-tracker init
 ```
 
-This creates:
+Both commands create the same directory structure:
 
 ```
 .agent/
@@ -106,7 +143,7 @@ This creates:
     └── stealth/                    # Stealth tier (gitignored, local-only)
 ```
 
-If `config.yaml.template` exists, `init` copies it to `config.yaml`. Edit
+If `config.yaml.template` exists, both commands copy it to `config.yaml`. Edit
 `config.yaml` to customize behavior for your environment (it is gitignored).
 
 ## Core Concepts

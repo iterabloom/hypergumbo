@@ -5,10 +5,10 @@ Provides the full argparse CLI for tracker operations and the git textconv
 driver for rendering .ops files as readable text.
 
 Entry points:
-- main(): Primary CLI with ~24 subcommands (add, update, list, show, ready,
+- main(): Primary CLI with ~25 subcommands (add, update, list, show, ready,
   log, discuss, lock, unlock, promote, demote, stealth, unstealth, validate,
-  count-todos, hash-todos, guidance, init, cache-rebuild, reconcile-reset,
-  fork-setup, migrate, tui).
+  count-todos, hash-todos, guidance, init, setup, cache-rebuild,
+  reconcile-reset, fork-setup, migrate, tui).
 - textconv_main(): Git textconv driver that reads an ops file and outputs
   one-line-per-field compiled state.
 
@@ -589,6 +589,32 @@ def _cmd_init(args: argparse.Namespace) -> int:
     return EXIT_SUCCESS
 
 
+def _cmd_setup(args: argparse.Namespace) -> int:
+    """Handle 'setup' subcommand — idempotent setup wizard."""
+    from hypergumbo_tracker.setup import format_results, results_to_json, run_setup
+
+    if args.setup_root:
+        root = Path(args.setup_root)
+    else:
+        # Try to find existing .agent/ or default to cwd/.agent
+        try:
+            root = _find_tracker_root()
+        except SystemExit:
+            root = Path.cwd() / ".agent"
+
+    results = run_setup(root)
+
+    if args.json:
+        print(json.dumps(results_to_json(results), indent=2))
+    else:
+        text, _ = format_results(results)
+        print(text)
+
+    # Exit code based on errors
+    has_errors = any(r.status == "error" for r in results)
+    return EXIT_USER_ERROR if has_errors else EXIT_SUCCESS
+
+
 def _cmd_cache_rebuild(args: argparse.Namespace, ts: TrackerSet) -> int:
     """Handle 'cache-rebuild' subcommand."""
     # Cache is optional — rebuild if available
@@ -845,6 +871,11 @@ def _build_parser() -> argparse.ArgumentParser:
     # --- init ---
     sub.add_parser("init", help="Initialize tracker directory structure")
 
+    # --- setup ---
+    p_setup = sub.add_parser("setup", help="Idempotent setup wizard (diagnose + fix)")
+    p_setup.add_argument("--root", dest="setup_root",
+                         help="Path to .agent/ directory (default: auto-detect or cwd/.agent)")
+
     # --- cache-rebuild ---
     sub.add_parser("cache-rebuild", help="Rebuild SQLite read cache")
 
@@ -887,6 +918,8 @@ def main(argv: list[str] | None = None) -> None:
     # Commands that don't need TrackerSet
     if args.command == "init":
         raise SystemExit(_cmd_init(args))
+    if args.command == "setup":
+        raise SystemExit(_cmd_setup(args))
     if args.command == "migrate":
         raise SystemExit(_cmd_migrate(args))
 
