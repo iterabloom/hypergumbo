@@ -4215,3 +4215,59 @@ class TestShortenedIdsInTable:
             assert has_shorter, (
                 f"Expected shortened IDs but got: {displayed_ids}"
             )
+
+
+# ---------------------------------------------------------------------------
+# Screenshot delivery
+# ---------------------------------------------------------------------------
+
+
+class TestDeliverScreenshot:
+    """deliver_screenshot creates missing directories before saving."""
+
+    @pytest.mark.asyncio
+    async def test_screenshot_creates_missing_downloads_dir(
+        self, tmp_path: Path,
+    ) -> None:
+        """Screenshot succeeds even when ~/Downloads doesn't exist."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        save_dir = tmp_path / "nonexistent" / "downloads"
+
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            key = app.deliver_screenshot(path=str(save_dir))
+            assert key is not None
+            # Give the background thread time to write the file
+            for _ in range(20):
+                await pilot.pause()
+            svgs = list(save_dir.glob("*.svg"))
+            assert len(svgs) == 1
+            assert svgs[0].stat().st_size > 0
+
+    @pytest.mark.asyncio
+    async def test_screenshot_no_path_creates_default_downloads(
+        self, tmp_path: Path,
+    ) -> None:
+        """Screenshot with no path creates user downloads dir if missing."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        fake_downloads = tmp_path / "fake_downloads"
+
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch(
+                "platformdirs.user_downloads_path",
+                return_value=fake_downloads,
+            ):
+                key = app.deliver_screenshot()
+            assert key is not None
+            assert fake_downloads.is_dir()
+            for _ in range(20):
+                await pilot.pause()
+            svgs = list(fake_downloads.glob("*.svg"))
+            assert len(svgs) == 1

@@ -36,6 +36,7 @@ See ADR-0013 §TUI for the responsive design specification.
 from __future__ import annotations
 
 from functools import partial
+from pathlib import Path
 from typing import Any, ClassVar
 
 from textual.app import App, ComposeResult
@@ -985,6 +986,28 @@ class TrackerApp(App):
         ("l", "toggle_lock", "Lock"),
         ("i", "toggle_full_ids", "Full IDs"),
     ]
+
+    def deliver_screenshot(
+        self,
+        filename: str | None = None,
+        path: str | None = None,
+        time_format: str | None = None,
+    ) -> str | None:
+        """Save SVG screenshot, creating the target directory if needed.
+
+        The default save directory is the user's Downloads folder
+        (``platformdirs.user_downloads_path``).  When the TUI is run from
+        a different user account than the one whose home directory hosts
+        the tracker, that directory may not exist, causing a silent
+        ``FileNotFoundError`` and a "Failed to take screenshot" toast.
+        We fix this by ensuring the directory exists before delegating.
+        """
+        if path is None:
+            from platformdirs import user_downloads_path
+
+            path = str(user_downloads_path())
+        Path(path).mkdir(parents=True, exist_ok=True)
+        return super().deliver_screenshot(filename, path, time_format)
 
     def __init__(self, tracker_set: TrackerSet, **kwargs: object) -> None:
         super().__init__(**kwargs)
