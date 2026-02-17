@@ -75,6 +75,10 @@ touch .agent/tracker-workspace/.ops/test && rm .agent/tracker-workspace/.ops/tes
 If you get "Permission denied", check that `newgrp project-dev` was run (or
 start a new login session).
 
+**Note:** Git does not track file ownership or group permissions. After a fresh
+`git clone`, you must re-run `htrac setup` and repeat the `chgrp`/`chmod`
+commands above.
+
 You now have:
 
 - **`htrac`** — CLI for agents (`htrac ready`, `htrac add`, `htrac update`, ...)
