@@ -71,20 +71,20 @@ if [[ "$ELAPSED_MIN" -lt 30 ]]; then
   cat >&2 <<BANNER
 ================================================================
   AUTONOMOUS MODE ACTIVE - COOLDOWN (reflection completed ${ELAPSED_MIN}m ago)
+  Read $GUIDANCE_FILE_COOLDOWN for next actions.
   (If Codex CLI does not auto-continue, review and manually proceed)
 ================================================================
 
 BANNER
-  cat "$REPO_ROOT/.agent/cooldown_prompt.md" >&2
   exit 0
 fi
 
 # --- Path 3: Full reflection prompt ---
-cat >&2 <<'BANNER'
+cat >&2 <<BANNER
 ================================================================
   AUTONOMOUS MODE ACTIVE - REFLECTION REQUIRED BEFORE STOPPING
+  Read $GUIDANCE_FILE_REFLECTION to complete the stop reflection protocol.
   (If Codex CLI does not auto-continue, review and manually proceed)
 ================================================================
 
 BANNER
-cat "$REPO_ROOT/.agent/stop_reflect.md" >&2
