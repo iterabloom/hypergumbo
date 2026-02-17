@@ -38,6 +38,7 @@ dev = [
 
 [project.scripts]
 hypergumbo-tracker = "hypergumbo_tracker.cli:main"
+htrac = "hypergumbo_tracker.cli:main"
 hypergumbo-tracker-textconv = "hypergumbo_tracker.cli:textconv_main"
 
 [tool.hatch.build.targets.wheel]

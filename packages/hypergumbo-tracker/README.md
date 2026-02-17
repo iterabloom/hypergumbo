@@ -14,9 +14,16 @@ pip install hypergumbo-tracker
 
 This gives you:
 
-- **`hypergumbo-tracker`** — CLI with 24 subcommands (query, write, governance)
-- **`hypergumbo-tracker tui`** — interactive terminal UI (requires the `tui` extra: `pip install hypergumbo-tracker[tui]`)
+- **`htrac`** (or `hypergumbo-tracker`) — CLI with 24 subcommands. Agents use
+  this: `htrac ready`, `htrac update`, `htrac add`, etc.
+- **`htrac tui`** — interactive terminal UI. Humans use this: browse items, lock
+  fields, move tiers, manage discussion — all from a single screen.
 - **`hypergumbo-tracker-textconv`** — git textconv driver for readable diffs on `.ops` files
+
+The typical workflow: agents run `htrac` subcommands programmatically (logged in
+as an agent user account), while humans launch `htrac tui` (logged in as
+themselves) for oversight — reviewing what the agent created, locking fields,
+stealthing items, and clearing discussion.
 
 What you do **not** get: repo-specific hooks (pre-commit, stop hook). Wire those
 up yourself — see [Stop Hook Integration](#stop-hook-integration) and
@@ -75,8 +82,9 @@ Everything still works with one user, but governance becomes a social contract:
 - Locks are enforced by the CLI, not the OS — the agent could bypass them by
   writing raw YAML (but a well-behaved agent won't).
 - `config.yaml` protection is moot — same user owns everything.
-- Human-only operations (`lock`, `stealth`, `discuss --clear`) are unavailable
-  unless you override actor resolution.
+- If your username matches an agent pattern (e.g., `*_agent`), human-only
+  operations (`lock`, `stealth`, `discuss --clear`) will be blocked. Edit
+  `actor_resolution.agent_usernames` in `config.yaml` to fix this.
 
 ## Setup
 
