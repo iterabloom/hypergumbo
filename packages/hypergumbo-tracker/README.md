@@ -13,7 +13,7 @@ and a TUI.
 pip install hypergumbo-tracker
 ```
 
-### 2. Create an agent user (recommended)
+### 2. Create an agent user (optional)
 
 The tracker uses `os.getuid()` to distinguish agents from humans. For real
 enforcement (not just convention), run the agent as a separate OS user:
@@ -23,6 +23,16 @@ sudo useradd -m myproject_agent
 sudo groupadd project-dev
 sudo usermod -aG project-dev yourname
 sudo usermod -aG project-dev myproject_agent
+```
+
+**Important:** Group membership doesn't take effect in existing shells. Either
+log out and back in, or run `newgrp project-dev` in your current session.
+
+If the repo lives under the agent's home directory, the human user also needs
+traversal access:
+
+```bash
+sudo chmod o+rx /home/myproject_agent
 ```
 
 Single-user works fine — governance becomes a social contract instead of
@@ -40,12 +50,15 @@ This creates directories, configures git plumbing (merge=union, textconv),
 copies the config template, sets file permissions, and reports anything that
 needs attention. It's idempotent — run it again anytime to diagnose issues.
 
-If you did step 2, set group ownership on the directories it created:
+If you did step 2 (two-user setup), set group ownership on the directories
+it created so both users can write to ops files:
 
 ```bash
 sudo chgrp -R project-dev .agent/tracker .agent/tracker-workspace
 sudo chmod -R g+rws .agent/tracker/.ops .agent/tracker-workspace/.ops
 ```
+
+Verify the human user can write: `touch .agent/tracker-workspace/.ops/test && rm .agent/tracker-workspace/.ops/test`. If you get "Permission denied", check that `newgrp project-dev` was run (or start a new login session).
 
 You now have:
 
