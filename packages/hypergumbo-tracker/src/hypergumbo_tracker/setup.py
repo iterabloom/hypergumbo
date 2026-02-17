@@ -11,11 +11,11 @@ is idempotent: running it twice with no changes between runs produces all
 "ok" results.
 
 The check sequence covers three areas:
-1. **Core infrastructure** (checks 1-12): directory structure, git plumbing,
-   config validation, textconv driver, data integrity.
-2. **Agentic infrastructure** (checks 13-16): wrapper scripts, agent
+1. **Core infrastructure** (checks 1-14): directory structure, git plumbing,
+   config validation, ownership, group permissions, textconv driver,
+   data integrity.
+2. **Agentic infrastructure** (checks 15-18): wrapper scripts, agent
    instructions, hook integration. Read-only / advisory only.
-3. **Summary** (check 17): aggregate counts and exit code.
 
 Entry point: ``run_setup(root, repo_root)`` returns a list of CheckResult.
 The CLI handler in cli.py formats and prints them.
@@ -23,7 +23,9 @@ The CLI handler in cli.py formats and prints them.
 
 from __future__ import annotations
 
+import grp
 import os
+import pwd
 import re
 import shutil
 import subprocess  # nosec B404
@@ -466,8 +468,198 @@ def _check_actor_resolution(root: Path) -> CheckResult:
     )
 
 
+def _check_config_ownership(root: Path) -> CheckResult:
+    """Check #10: Verify config.yaml is owned by the human user.
+
+    Config files control governance (agent patterns, stop hook behavior,
+    status lifecycle). The human user should own them so the agent can
+    read but not modify governance settings.
+
+    If the current user is human, auto-fix ownership. If agent, warn.
+    """
+    config_paths = [
+        root / "tracker" / "config.yaml",
+        root / "tracker-workspace" / "config.yaml",
+    ]
+    existing = [p for p in config_paths if p.exists()]
+    if not existing:
+        return CheckResult(
+            name="config_ownership",
+            status="ok",
+            message="Config ownership check skipped (no config.yaml yet)",
+        )
+
+    # Determine current user role
+    agent_patterns = ["*_agent"]
+    config_path = root / "tracker" / "config.yaml"
+    if config_path.exists():
+        try:
+            with open(config_path) as f:
+                raw = yaml.safe_load(f) or {}
+            actor_res = raw.get("actor_resolution", {})
+            if isinstance(actor_res, dict):
+                patterns = actor_res.get("agent_usernames")
+                if isinstance(patterns, list) and patterns:
+                    agent_patterns = patterns
+        except yaml.YAMLError:
+            pass
+
+    by, username = resolve_actor(agent_patterns)
+    current_uid = os.getuid()
+
+    # Check if any config is NOT owned by the current human user
+    if by == "agent":
+        wrong_owner = [p for p in existing if p.stat().st_uid == current_uid]
+        if wrong_owner:
+            return CheckResult(
+                name="config_ownership",
+                status="warn",
+                message="config.yaml is owned by the agent user",
+                details=[
+                    "Config controls governance settings and should be owned",
+                    "by the human user. As the human user, run:",
+                    f"  sudo chown $(whoami) {' '.join(str(p) for p in existing)}",
+                ],
+            )
+        return CheckResult(
+            name="config_ownership",
+            status="ok",
+            message="config.yaml ownership looks correct",
+        )
+
+    # Current user is human — fix ownership if needed
+    fixed: list[str] = []
+    for p in existing:
+        if p.stat().st_uid != current_uid:
+            try:
+                os.chown(p, current_uid, -1)
+                fixed.append(str(p))
+            except OSError:
+                return CheckResult(
+                    name="config_ownership",
+                    status="warn",
+                    message="Cannot fix config.yaml ownership (permission denied)",
+                    details=[
+                        "Run with sudo to fix:",
+                        f"  sudo chown {username} {' '.join(str(p) for p in existing)}",
+                    ],
+                )
+    if fixed:
+        return CheckResult(
+            name="config_ownership",
+            status="fixed",
+            message=f"config.yaml ownership — fixed {len(fixed)} file{'s' if len(fixed) != 1 else ''}",
+        )
+    return CheckResult(
+        name="config_ownership",
+        status="ok",
+        message="config.yaml owned by human user",
+    )
+
+
+def _check_group_permissions(root: Path) -> CheckResult:
+    """Check #11: Verify two-user group setup on .ops directories.
+
+    Checks whether .ops directories have a shared group with group-write
+    and setgid permissions. This is read-only — it reports problems but
+    does not fix them, since group/permission changes require sudo.
+
+    If .ops directories are owned by the user's primary group (not a
+    shared group), the two-user setup is not active and the check passes
+    with an informational message.
+    """
+    import stat
+
+    ops_dirs = [
+        root / "tracker" / ".ops",
+        root / "tracker-workspace" / ".ops",
+    ]
+    existing = [d for d in ops_dirs if d.exists()]
+    if not existing:
+        return CheckResult(
+            name="group_permissions",
+            status="ok",
+            message="Group check skipped (no .ops directories yet)",
+        )
+
+    current_uid = os.getuid()
+    current_user = pwd.getpwuid(current_uid).pw_name
+    current_primary_gid = pwd.getpwuid(current_uid).pw_gid
+
+    problems: list[str] = []
+    shared_group_detected = False
+
+    for d in existing:
+        st = d.stat()
+        dir_gid = st.st_gid
+
+        # If the directory group is the user's primary group, two-user
+        # setup hasn't been configured — that's fine, not an error.
+        if dir_gid == current_primary_gid:
+            continue
+
+        # A non-primary group means someone ran chgrp — two-user setup
+        # is intended. Verify it's correct.
+        shared_group_detected = True
+        try:
+            group_name = grp.getgrgid(dir_gid).gr_name
+        except KeyError:
+            problems.append(f"{d}: owned by unknown gid {dir_gid}")
+            continue
+
+        # Check current user is in the group
+        try:
+            group_members = grp.getgrgid(dir_gid).gr_mem
+            # Also check if it's the user's primary group (won't appear in gr_mem)
+            user_in_group = (
+                current_user in group_members or current_primary_gid == dir_gid
+            )
+            if not user_in_group:
+                problems.append(
+                    f"{d}: user '{current_user}' is not in group '{group_name}'"
+                )
+        except KeyError:
+            pass
+
+        # Check group-write permission
+        mode = st.st_mode
+        if not (mode & stat.S_IWGRP):
+            problems.append(f"{d}: missing group-write permission")
+
+        # Check setgid bit (ensures new files inherit the group)
+        if not (mode & stat.S_ISGID):
+            problems.append(f"{d}: missing setgid bit")
+
+    if not shared_group_detected:
+        return CheckResult(
+            name="group_permissions",
+            status="ok",
+            message="Single-user setup (no shared group on .ops directories)",
+        )
+
+    if problems:
+        return CheckResult(
+            name="group_permissions",
+            status="error",
+            message=f"Two-user group setup has {len(problems)} problem{'s' if len(problems) != 1 else ''}",
+            details=[
+                *problems,
+                "",
+                "Fix with (as a user with sudo):",
+                "  sudo chgrp -R GROUP .agent/tracker .agent/tracker-workspace",
+                "  sudo chmod -R g+rws .agent/tracker/.ops .agent/tracker-workspace/.ops",
+            ],
+        )
+
+    return CheckResult(
+        name="group_permissions",
+        status="ok",
+        message="Two-user group setup is correct",
+    )
+
+
 def _check_ops_writable(root: Path) -> CheckResult:
-    """Check #10: Verify .ops/ directories are writable."""
+    """Check #12: Verify .ops/ directories are writable."""
     ops_dirs = [
         root / "tracker" / ".ops",
         root / "tracker-workspace" / ".ops",
@@ -494,7 +686,7 @@ def _check_ops_writable(root: Path) -> CheckResult:
 
 
 def _check_textconv(root: Path, repo_root: Path | None) -> CheckResult:
-    """Check #11: Git textconv driver for .ops files."""
+    """Check #13: Git textconv driver for .ops files."""
     if repo_root is None:
         return CheckResult(
             name="textconv",
@@ -569,7 +761,7 @@ def _check_textconv(root: Path, repo_root: Path | None) -> CheckResult:
 
 
 def _check_existing_data(root: Path) -> CheckResult:
-    """Check #12: Validate existing .ops files if any exist."""
+    """Check #14: Validate existing .ops files if any exist."""
     # Check if any .ops files exist
     ops_dirs = [
         root / "tracker" / ".ops",
@@ -638,7 +830,7 @@ def _check_existing_data(root: Path) -> CheckResult:
 
 
 def _check_tracker_wrapper(repo_root: Path | None) -> CheckResult:
-    """Check #13: Check if scripts/tracker wrapper exists and is executable."""
+    """Check #15: Check if scripts/tracker wrapper exists and is executable."""
     if repo_root is None:
         return CheckResult(
             name="tracker_wrapper",
@@ -675,7 +867,7 @@ def _check_tracker_wrapper(repo_root: Path | None) -> CheckResult:
 
 
 def _check_agents_md(repo_root: Path | None) -> CheckResult:
-    """Check #14: Scan AGENTS.md for key tracker concepts."""
+    """Check #16: Scan AGENTS.md for key tracker concepts."""
     if repo_root is None:
         return CheckResult(
             name="agents_md",
@@ -735,7 +927,7 @@ def _check_agents_md(repo_root: Path | None) -> CheckResult:
 
 
 def _check_stop_hook(repo_root: Path | None) -> CheckResult:
-    """Check #15: Check if stop hooks reference tracker commands."""
+    """Check #17: Check if stop hooks reference tracker commands."""
     if repo_root is None:
         return CheckResult(
             name="stop_hook",
@@ -798,7 +990,7 @@ def _check_stop_hook(repo_root: Path | None) -> CheckResult:
 
 
 def _check_precommit_hook(repo_root: Path | None) -> CheckResult:
-    """Check #16: Check if pre-commit hook references tracker validate."""
+    """Check #18: Check if pre-commit hook references tracker validate."""
     if repo_root is None:
         return CheckResult(
             name="precommit_hook",
@@ -883,15 +1075,17 @@ def run_setup(root: Path, repo_root: Path | None = None) -> list[CheckResult]:
     results.append(_check_config_validation(root))         # 7
     results.append(_check_config_drift(root))              # 8
     results.append(_check_actor_resolution(root))          # 9
-    results.append(_check_ops_writable(root))              # 10
-    results.append(_check_textconv(root, repo_root))       # 11
-    results.append(_check_existing_data(root))             # 12
+    results.append(_check_config_ownership(root))          # 10
+    results.append(_check_group_permissions(root))         # 11
+    results.append(_check_ops_writable(root))              # 12
+    results.append(_check_textconv(root, repo_root))       # 13
+    results.append(_check_existing_data(root))             # 14
 
     # Part 2: Agentic infrastructure
-    results.append(_check_tracker_wrapper(repo_root))      # 13
-    results.append(_check_agents_md(repo_root))            # 14
-    results.append(_check_stop_hook(repo_root))            # 15
-    results.append(_check_precommit_hook(repo_root))       # 16
+    results.append(_check_tracker_wrapper(repo_root))      # 15
+    results.append(_check_agents_md(repo_root))            # 16
+    results.append(_check_stop_hook(repo_root))            # 17
+    results.append(_check_precommit_hook(repo_root))       # 18
 
     return results
 

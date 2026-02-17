@@ -591,7 +591,27 @@ def _cmd_init(args: argparse.Namespace) -> int:
 
 def _cmd_setup(args: argparse.Namespace) -> int:
     """Handle 'setup' subcommand — idempotent setup wizard."""
+    import sys
+
+    from hypergumbo_tracker.models import resolve_actor
     from hypergumbo_tracker.setup import format_results, results_to_json, run_setup
+
+    # Warn if running as agent — config ownership and human-only fixes
+    # work best when the human user runs setup.
+    by, username = resolve_actor()
+    if by == "agent" and sys.stdin.isatty() and not args.json:
+        print(
+            f"Warning: running as '{username}' (detected as agent).\n"
+            "Setup works best when run as the human user, because it can\n"
+            "auto-fix config ownership and file permissions.\n"
+        )
+        try:
+            answer = input("Continue as agent? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            answer = ""
+        if answer not in ("y", "yes"):
+            print("Tip: switch to the human user and re-run 'htrac setup'.")
+            return EXIT_SUCCESS
 
     if args.setup_root:
         root = Path(args.setup_root)
@@ -610,7 +630,17 @@ def _cmd_setup(args: argparse.Namespace) -> int:
         text, _ = format_results(results)
         print(text)
 
-    # Exit code based on errors
+    # If there are errors, prompt before continuing (interactive only)
+    errors = [r for r in results if r.status == "error"]
+    if errors and sys.stdin.isatty() and not args.json:
+        print(f"\n{len(errors)} error(s) found. These should be fixed before use.")
+        try:
+            answer = input("Continue anyway? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            answer = ""
+        if answer not in ("y", "yes"):
+            return EXIT_USER_ERROR
+
     has_errors = any(r.status == "error" for r in results)
     return EXIT_USER_ERROR if has_errors else EXIT_SUCCESS
 

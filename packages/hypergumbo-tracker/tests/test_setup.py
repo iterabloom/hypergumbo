@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 """Tests for hypergumbo_tracker.setup — idempotent setup wizard.
 
-Covers all 16 checks in all reachable states (ok, fixed, warn, error),
+Covers all 18 checks in all reachable states (ok, fixed, warn, error),
 the top-level run_setup() orchestration, and CLI integration via _cmd_setup.
 """
 
@@ -25,6 +25,7 @@ from hypergumbo_tracker.setup import (
     _check_actor_resolution,
     _check_agents_md,
     _check_config_drift,
+    _check_config_ownership,
     _check_config_template,
     _check_config_validation,
     _check_config_yaml,
@@ -33,6 +34,7 @@ from hypergumbo_tracker.setup import (
     _check_git_repo,
     _check_gitattributes,
     _check_gitignore,
+    _check_group_permissions,
     _check_ops_writable,
     _check_precommit_hook,
     _check_stop_hook,
@@ -585,12 +587,323 @@ class TestCheckActorResolution:
 
 
 # ---------------------------------------------------------------------------
-# Check #10: .ops/ writable
+# Check #10: Config ownership
+# ---------------------------------------------------------------------------
+
+
+class TestCheckConfigOwnership:
+    """Tests for _check_config_ownership (check #10)."""
+
+    def test_no_config(self, tmp_path: Path) -> None:
+        root = tmp_path / ".agent"
+        root.mkdir()
+        result = _check_config_ownership(root)
+        assert result.status == "ok"
+        assert "skipped" in result.message
+
+    def _make_with_config(self, tmp_path: Path) -> Path:
+        """Helper: create .agent dir with config.yaml files."""
+        root = _make_full_agent_dir(tmp_path)
+        (root / "tracker" / "config.yaml").write_text("statuses: []")
+        (root / "tracker-workspace" / "config.yaml").write_text("statuses: []")
+        return root
+
+    def test_owned_by_human(self, tmp_path: Path) -> None:
+        root = self._make_with_config(tmp_path)
+        with patch(
+            "hypergumbo_tracker.setup.resolve_actor",
+            return_value=("human", "jgstern"),
+        ):
+            result = _check_config_ownership(root)
+        assert result.status == "ok"
+
+    def test_agent_owns_config_warns(self, tmp_path: Path) -> None:
+        root = self._make_with_config(tmp_path)
+        with patch(
+            "hypergumbo_tracker.setup.resolve_actor",
+            return_value=("agent", "myproject_agent"),
+        ):
+            result = _check_config_ownership(root)
+        # Agent owns the file (same uid), so it should warn
+        assert result.status == "warn"
+        assert "agent" in result.message
+
+    def test_agent_different_owner_ok(self, tmp_path: Path) -> None:
+        root = self._make_with_config(tmp_path)
+        config = root / "tracker" / "config.yaml"
+        # Simulate config owned by a different uid (human)
+        real_stat = config.stat()
+        fake_stat = MagicMock()
+        fake_stat.st_uid = real_stat.st_uid + 1  # Different from current uid
+        with (
+            patch(
+                "hypergumbo_tracker.setup.resolve_actor",
+                return_value=("agent", "myproject_agent"),
+            ),
+            patch.object(Path, "stat", return_value=fake_stat),
+        ):
+            result = _check_config_ownership(root)
+        assert result.status == "ok"
+
+    def test_human_fixes_wrong_owner(self, tmp_path: Path) -> None:
+        root = self._make_with_config(tmp_path)
+        config = root / "tracker" / "config.yaml"
+        real_stat = config.stat()
+        fake_stat = MagicMock()
+        fake_stat.st_uid = real_stat.st_uid + 1  # Different from current uid
+        with (
+            patch(
+                "hypergumbo_tracker.setup.resolve_actor",
+                return_value=("human", "jgstern"),
+            ),
+            patch.object(Path, "stat", return_value=fake_stat),
+            patch("hypergumbo_tracker.setup.os.chown") as mock_chown,
+        ):
+            result = _check_config_ownership(root)
+        assert result.status == "fixed"
+        assert mock_chown.called
+
+    def test_invalid_yaml_config(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        (root / "tracker" / "config.yaml").write_text(": bad yaml {{{")
+        (root / "tracker-workspace" / "config.yaml").write_text("statuses: []")
+        with patch(
+            "hypergumbo_tracker.setup.resolve_actor",
+            return_value=("agent", "myproject_agent"),
+        ):
+            result = _check_config_ownership(root)
+        # Should still work with default patterns
+        assert result.status == "warn"
+
+    def test_human_chown_fails(self, tmp_path: Path) -> None:
+        root = self._make_with_config(tmp_path)
+        config = root / "tracker" / "config.yaml"
+        real_stat = config.stat()
+        fake_stat = MagicMock()
+        fake_stat.st_uid = real_stat.st_uid + 1
+        with (
+            patch(
+                "hypergumbo_tracker.setup.resolve_actor",
+                return_value=("human", "jgstern"),
+            ),
+            patch.object(Path, "stat", return_value=fake_stat),
+            patch(
+                "hypergumbo_tracker.setup.os.chown",
+                side_effect=OSError("permission denied"),
+            ),
+        ):
+            result = _check_config_ownership(root)
+        assert result.status == "warn"
+        assert "sudo" in result.details[1]
+
+
+# ---------------------------------------------------------------------------
+# Check #11: Group permissions
+# ---------------------------------------------------------------------------
+
+
+class TestCheckGroupPermissions:
+    """Tests for _check_group_permissions (check #11)."""
+
+    def test_no_ops_dirs(self, tmp_path: Path) -> None:
+        root = tmp_path / ".agent"
+        root.mkdir()
+
+        result = _check_group_permissions(root)
+        assert result.status == "ok"
+        assert "skipped" in result.message
+
+    def test_single_user_setup(self, tmp_path: Path) -> None:
+        """When .ops group is the user's primary group, it's single-user."""
+        root = _make_full_agent_dir(tmp_path)
+
+        # Default — dirs are owned by the user's primary group
+        result = _check_group_permissions(root)
+        assert result.status == "ok"
+        assert "Single-user" in result.message
+
+    def test_shared_group_correct(self, tmp_path: Path) -> None:
+        """Shared group with correct permissions passes."""
+        import grp
+        import stat
+
+        root = _make_full_agent_dir(tmp_path)
+        ops_dir = root / "tracker" / ".ops"
+
+        # Find a group we're actually in (other than primary)
+        current_gid = os.stat(ops_dir).st_gid
+        fake_gid = current_gid + 1  # Simulate a shared group
+
+        fake_stat = MagicMock()
+        fake_stat.st_gid = fake_gid
+        fake_stat.st_mode = stat.S_IRWXU | stat.S_IRWXG | stat.S_ISGID
+        fake_stat.st_uid = os.getuid()
+
+        fake_grp = MagicMock()
+        fake_grp.gr_name = "project-dev"
+        fake_grp.gr_mem = [os.environ.get("USER", "testuser")]
+
+        with (
+            patch.object(Path, "stat", return_value=fake_stat),
+            patch("hypergumbo_tracker.setup.grp.getgrgid", return_value=fake_grp),
+            patch(
+                "hypergumbo_tracker.setup.pwd.getpwuid",
+                return_value=MagicMock(
+                    pw_name=os.environ.get("USER", "testuser"),
+                    pw_gid=current_gid,
+                ),
+            ),
+        ):
+            result = _check_group_permissions(root)
+        assert result.status == "ok"
+        assert "correct" in result.message
+
+    def test_missing_group_write(self, tmp_path: Path) -> None:
+        """Shared group without group-write is an error."""
+        import stat
+
+        root = _make_full_agent_dir(tmp_path)
+        current_gid = os.stat(root / "tracker" / ".ops").st_gid
+        fake_gid = current_gid + 1
+
+        fake_stat = MagicMock()
+        fake_stat.st_gid = fake_gid
+        fake_stat.st_mode = stat.S_IRWXU | stat.S_IRGRP  # No group write
+        fake_stat.st_uid = os.getuid()
+
+        fake_grp = MagicMock()
+        fake_grp.gr_name = "project-dev"
+        fake_grp.gr_mem = [os.environ.get("USER", "testuser")]
+
+        with (
+            patch.object(Path, "stat", return_value=fake_stat),
+            patch("hypergumbo_tracker.setup.grp.getgrgid", return_value=fake_grp),
+            patch(
+                "hypergumbo_tracker.setup.pwd.getpwuid",
+                return_value=MagicMock(
+                    pw_name=os.environ.get("USER", "testuser"),
+                    pw_gid=current_gid,
+                ),
+            ),
+        ):
+            result = _check_group_permissions(root)
+        assert result.status == "error"
+        assert "group-write" in str(result.details)
+
+    def test_user_not_in_group(self, tmp_path: Path) -> None:
+        """User not in the shared group is an error."""
+        import stat
+
+        root = _make_full_agent_dir(tmp_path)
+        current_gid = os.stat(root / "tracker" / ".ops").st_gid
+        fake_gid = current_gid + 1
+
+        fake_stat = MagicMock()
+        fake_stat.st_gid = fake_gid
+        fake_stat.st_mode = stat.S_IRWXU | stat.S_IRWXG | stat.S_ISGID
+        fake_stat.st_uid = os.getuid()
+
+        fake_grp = MagicMock()
+        fake_grp.gr_name = "project-dev"
+        fake_grp.gr_mem = ["someone_else"]  # Current user not in group
+
+        with (
+            patch.object(Path, "stat", return_value=fake_stat),
+            patch("hypergumbo_tracker.setup.grp.getgrgid", return_value=fake_grp),
+            patch(
+                "hypergumbo_tracker.setup.pwd.getpwuid",
+                return_value=MagicMock(
+                    pw_name="testuser",
+                    pw_gid=current_gid,
+                ),
+            ),
+        ):
+            result = _check_group_permissions(root)
+        assert result.status == "error"
+        assert "not in group" in str(result.details)
+
+    def test_unknown_gid(self, tmp_path: Path) -> None:
+        """Directory owned by a gid with no group entry."""
+        root = _make_full_agent_dir(tmp_path)
+        current_gid = os.stat(root / "tracker" / ".ops").st_gid
+        fake_gid = current_gid + 1
+
+        fake_stat = MagicMock()
+        fake_stat.st_gid = fake_gid
+        fake_stat.st_mode = 0
+        fake_stat.st_uid = os.getuid()
+
+        with (
+            patch.object(Path, "stat", return_value=fake_stat),
+            patch(
+                "hypergumbo_tracker.setup.grp.getgrgid",
+                side_effect=KeyError("unknown gid"),
+            ),
+            patch(
+                "hypergumbo_tracker.setup.pwd.getpwuid",
+                return_value=MagicMock(
+                    pw_name="testuser",
+                    pw_gid=current_gid,
+                ),
+            ),
+        ):
+            result = _check_group_permissions(root)
+        assert result.status == "error"
+        assert "unknown gid" in str(result.details)
+
+    def test_group_member_lookup_keyerror(self, tmp_path: Path) -> None:
+        """KeyError when looking up group members is caught silently."""
+        import stat
+
+        root = _make_full_agent_dir(tmp_path)
+        current_gid = os.stat(root / "tracker" / ".ops").st_gid
+        fake_gid = current_gid + 1
+
+        fake_stat = MagicMock()
+        fake_stat.st_gid = fake_gid
+        fake_stat.st_mode = stat.S_IRWXU | stat.S_IRWXG | stat.S_ISGID
+        fake_stat.st_uid = os.getuid()
+
+        fake_grp_name_only = MagicMock()
+        fake_grp_name_only.gr_name = "project-dev"
+
+        def getgrgid_side_effect(gid):
+            # First call per dir gets name, second gets members
+            if not hasattr(getgrgid_side_effect, "_calls"):
+                getgrgid_side_effect._calls = 0
+            getgrgid_side_effect._calls += 1
+            # Odd calls return name, even calls raise KeyError
+            if getgrgid_side_effect._calls % 2 == 1:
+                return fake_grp_name_only
+            raise KeyError("no such gid")
+
+        with (
+            patch.object(Path, "stat", return_value=fake_stat),
+            patch(
+                "hypergumbo_tracker.setup.grp.getgrgid",
+                side_effect=getgrgid_side_effect,
+            ),
+            patch(
+                "hypergumbo_tracker.setup.pwd.getpwuid",
+                return_value=MagicMock(
+                    pw_name="testuser",
+                    pw_gid=current_gid,
+                ),
+            ),
+        ):
+            result = _check_group_permissions(root)
+        # KeyError on member lookup is silently caught — no member
+        # check problems added, permissions are correct, so it passes.
+        assert result.status == "ok"
+
+
+# ---------------------------------------------------------------------------
+# Check #12: .ops/ writable
 # ---------------------------------------------------------------------------
 
 
 class TestCheckOpsWritable:
-    """Tests for _check_ops_writable (check #10)."""
+    """Tests for _check_ops_writable (check #12)."""
 
     def test_all_writable(self, tmp_path: Path) -> None:
         root = _make_full_agent_dir(tmp_path)
@@ -1100,7 +1413,7 @@ class TestRunSetup:
         ):
             results = run_setup(root)
         # Should have 16 results (one per check)
-        assert len(results) == 16
+        assert len(results) == 18
         # Directory structure should be fixed
         dir_result = next(r for r in results if r.name == "directory_structure")
         assert dir_result.status == "fixed"
@@ -1308,6 +1621,69 @@ class TestCmdSetup:
             pytest.raises(SystemExit) as exc_info,
         ):
             main(["setup"])
+        assert exc_info.value.code == EXIT_SUCCESS
+
+    def test_agent_prompt_decline(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Agent user declines to continue — exits cleanly."""
+        root = tmp_path / ".agent"
+        with (
+            patch(
+                "hypergumbo_tracker.cli.resolve_actor",
+                return_value=("agent", "myproject_agent"),
+            ),
+            patch("sys.stdin") as mock_stdin,
+            patch("builtins.input", return_value="n"),
+        ):
+            mock_stdin.isatty.return_value = True
+            with pytest.raises(SystemExit) as exc_info:
+                main(["setup", "--root", str(root)])
+        assert exc_info.value.code == EXIT_SUCCESS
+        captured = capsys.readouterr()
+        assert "human user" in captured.out
+
+    def test_agent_prompt_accept(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Agent user confirms continue — runs setup."""
+        root = tmp_path / ".agent"
+        with (
+            patch(
+                "hypergumbo_tracker.cli.resolve_actor",
+                return_value=("agent", "myproject_agent"),
+            ),
+            patch(
+                "hypergumbo_tracker.setup.resolve_actor",
+                return_value=("agent", "myproject_agent"),
+            ),
+            patch("sys.stdin") as mock_stdin,
+            patch("builtins.input", return_value="y"),
+        ):
+            mock_stdin.isatty.return_value = True
+            with pytest.raises(SystemExit) as exc_info:
+                main(["setup", "--root", str(root)])
+        assert exc_info.value.code == EXIT_SUCCESS
+        captured = capsys.readouterr()
+        assert "Setup complete" in captured.out
+
+    def test_agent_no_prompt_in_json_mode(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Agent user in JSON mode — no prompt, just runs."""
+        root = tmp_path / ".agent"
+        with (
+            patch(
+                "hypergumbo_tracker.cli.resolve_actor",
+                return_value=("agent", "myproject_agent"),
+            ),
+            patch(
+                "hypergumbo_tracker.setup.resolve_actor",
+                return_value=("agent", "myproject_agent"),
+            ),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            main(["--json", "setup", "--root", str(root)])
         assert exc_info.value.code == EXIT_SUCCESS
 
 

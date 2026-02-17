@@ -47,7 +47,7 @@ edit `actor_resolution.agent_usernames` in `config.yaml`.
 ### 3. Run the wizard
 
 ```bash
-# As either user (from the repo root)
+# As the human user (recommended — can auto-fix config ownership)
 cd your-repo
 htrac setup
 ```
@@ -55,6 +55,14 @@ htrac setup
 This creates directories, configures git plumbing (merge=union, textconv),
 copies the config template, sets file permissions, and reports anything that
 needs attention. It's idempotent — run it again anytime to diagnose issues.
+
+The wizard validates your setup interactively:
+- **Running as agent?** Prompts you to switch to the human user (you can
+  override, but config ownership won't be auto-fixed).
+- **Two-user group misconfigured?** Reports specific problems (missing
+  group-write, missing setgid, user not in group) and asks before continuing.
+- **Config owned by wrong user?** Auto-fixes when run as human; warns when
+  run as agent.
 
 If you did step 2 (two-user setup), set group ownership on the directories
 it created so both users can write to ops files:
@@ -186,8 +194,9 @@ compiled item state instead of raw YAML.
 Config loading order: `config.yaml` (gitignored, yours to edit) →
 `config.yaml.template` (tracked, shared) → built-in defaults.
 
-`htrac setup` copies the template to `config.yaml` if it doesn't exist. See
-the template file for the full schema. Key sections:
+`htrac setup` copies the template to `config.yaml` if it doesn't exist and
+ensures it's owned by the human user (governance settings shouldn't be
+agent-writable). See the template file for the full schema. Key sections:
 
 - **`kinds`** — item types with optional `fields_schema`
 - **`statuses`** — lifecycle states
