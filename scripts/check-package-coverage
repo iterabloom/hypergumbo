@@ -73,6 +73,7 @@ run_package() {
     local cov_file="/tmp/pkg-cov-$pkg.coverage"
 
     SMART_TEST_ACTIVE=1 COVERAGE_FILE="$cov_file" pytest "$test_dir" \
+        -n auto \
         --cov="$src_dir" $COV_CONFIG \
         --cov-fail-under=100 \
         --cov-report=term-missing:skip-covered \
