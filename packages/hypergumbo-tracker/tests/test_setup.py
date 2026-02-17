@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import textwrap
 from pathlib import Path
 from typing import Any
@@ -1628,17 +1629,18 @@ class TestCmdSetup:
     ) -> None:
         """Agent user declines to continue — exits cleanly."""
         root = tmp_path / ".agent"
+        mock_stdin = MagicMock()
+        mock_stdin.isatty.return_value = True
         with (
             patch(
                 "hypergumbo_tracker.cli.resolve_actor",
                 return_value=("agent", "myproject_agent"),
             ),
-            patch("sys.stdin") as mock_stdin,
+            patch.object(sys, "stdin", mock_stdin),
             patch("builtins.input", return_value="n"),
+            pytest.raises(SystemExit) as exc_info,
         ):
-            mock_stdin.isatty.return_value = True
-            with pytest.raises(SystemExit) as exc_info:
-                main(["setup", "--root", str(root)])
+            main(["setup", "--root", str(root)])
         assert exc_info.value.code == EXIT_SUCCESS
         captured = capsys.readouterr()
         assert "human user" in captured.out
@@ -1648,6 +1650,8 @@ class TestCmdSetup:
     ) -> None:
         """Agent user confirms continue — runs setup."""
         root = tmp_path / ".agent"
+        mock_stdin = MagicMock()
+        mock_stdin.isatty.return_value = True
         with (
             patch(
                 "hypergumbo_tracker.cli.resolve_actor",
@@ -1657,12 +1661,11 @@ class TestCmdSetup:
                 "hypergumbo_tracker.setup.resolve_actor",
                 return_value=("agent", "myproject_agent"),
             ),
-            patch("sys.stdin") as mock_stdin,
+            patch.object(sys, "stdin", mock_stdin),
             patch("builtins.input", return_value="y"),
+            pytest.raises(SystemExit) as exc_info,
         ):
-            mock_stdin.isatty.return_value = True
-            with pytest.raises(SystemExit) as exc_info:
-                main(["setup", "--root", str(root)])
+            main(["setup", "--root", str(root)])
         assert exc_info.value.code == EXIT_SUCCESS
         captured = capsys.readouterr()
         assert "Setup complete" in captured.out
@@ -1685,6 +1688,90 @@ class TestCmdSetup:
         ):
             main(["--json", "setup", "--root", str(root)])
         assert exc_info.value.code == EXIT_SUCCESS
+
+    def test_agent_prompt_eof(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """EOFError on agent prompt — treats as decline."""
+        root = tmp_path / ".agent"
+        mock_stdin = MagicMock()
+        mock_stdin.isatty.return_value = True
+        with (
+            patch(
+                "hypergumbo_tracker.cli.resolve_actor",
+                return_value=("agent", "myproject_agent"),
+            ),
+            patch.object(sys, "stdin", mock_stdin),
+            patch("builtins.input", side_effect=EOFError),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            main(["setup", "--root", str(root)])
+        assert exc_info.value.code == EXIT_SUCCESS
+        captured = capsys.readouterr()
+        assert "human user" in captured.out
+
+    def test_error_override_decline(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Setup has errors, user declines to continue."""
+        root = tmp_path / ".agent"
+        root.mkdir()
+        (root / "tracker" / ".ops").mkdir(parents=True)
+        (root / "tracker-workspace" / ".ops").mkdir(parents=True)
+        (root / "tracker-workspace" / "stealth").mkdir(parents=True)
+        # Invalid config triggers a validation error
+        (root / "tracker" / "config.yaml").write_text(
+            yaml.dump({"statuses": []})
+        )
+        mock_stdin = MagicMock()
+        mock_stdin.isatty.return_value = True
+        with (
+            patch(
+                "hypergumbo_tracker.setup.resolve_actor",
+                return_value=("human", "alice"),
+            ),
+            patch(
+                "hypergumbo_tracker.cli.resolve_actor",
+                return_value=("human", "alice"),
+            ),
+            patch.object(sys, "stdin", mock_stdin),
+            patch("builtins.input", return_value="n"),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            main(["setup", "--root", str(root)])
+        assert exc_info.value.code == EXIT_USER_ERROR
+        captured = capsys.readouterr()
+        assert "error(s) found" in captured.out
+
+    def test_error_override_eof(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """EOFError on error override prompt — treats as decline."""
+        root = tmp_path / ".agent"
+        root.mkdir()
+        (root / "tracker" / ".ops").mkdir(parents=True)
+        (root / "tracker-workspace" / ".ops").mkdir(parents=True)
+        (root / "tracker-workspace" / "stealth").mkdir(parents=True)
+        (root / "tracker" / "config.yaml").write_text(
+            yaml.dump({"statuses": []})
+        )
+        mock_stdin = MagicMock()
+        mock_stdin.isatty.return_value = True
+        with (
+            patch(
+                "hypergumbo_tracker.setup.resolve_actor",
+                return_value=("human", "alice"),
+            ),
+            patch(
+                "hypergumbo_tracker.cli.resolve_actor",
+                return_value=("human", "alice"),
+            ),
+            patch.object(sys, "stdin", mock_stdin),
+            patch("builtins.input", side_effect=EOFError),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            main(["setup", "--root", str(root)])
+        assert exc_info.value.code == EXIT_USER_ERROR
 
 
 # ---------------------------------------------------------------------------

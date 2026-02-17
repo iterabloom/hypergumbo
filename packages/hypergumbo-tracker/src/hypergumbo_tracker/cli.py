@@ -591,9 +591,6 @@ def _cmd_init(args: argparse.Namespace) -> int:
 
 def _cmd_setup(args: argparse.Namespace) -> int:
     """Handle 'setup' subcommand — idempotent setup wizard."""
-    import sys
-
-    from hypergumbo_tracker.models import resolve_actor
     from hypergumbo_tracker.setup import format_results, results_to_json, run_setup
 
     # Warn if running as agent — config ownership and human-only fixes
