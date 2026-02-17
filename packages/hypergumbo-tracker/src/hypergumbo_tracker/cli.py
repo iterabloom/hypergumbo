@@ -26,7 +26,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import subprocess  # nosec B404 — needed for `screen -Q` query
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -77,8 +80,6 @@ def _get_cache_dir(tracker_root: Path) -> Path | None:
     create a unique cache directory per repository. Returns None if the repo
     fingerprint cannot be computed (e.g. not in a git repo).
     """
-    import os
-
     # TRACKER_CACHE_DIR overrides everything — use as-is
     override = os.environ.get("TRACKER_CACHE_DIR")
     if override:
@@ -748,12 +749,61 @@ def _cmd_migrate(args: argparse.Namespace) -> int:
     return EXIT_SUCCESS if not result.errors else EXIT_USER_ERROR
 
 
+def _detect_screen_altscreen_off() -> bool:
+    """Return True if running inside GNU Screen with altscreen off.
+
+    Detection strategy:
+    1. Check STY env var — present only inside GNU Screen.
+    2. Query Screen via ``screen -Q altscreen`` to check the setting.
+    3. If the query fails (old Screen, no -Q support), assume altscreen is off
+       because that is the GNU Screen default.
+    """
+    if not os.environ.get("STY"):
+        return False
+    try:
+        result = subprocess.run(  # nosec B603, B607
+            ["screen", "-Q", "altscreen"],  # noqa: S607
+            capture_output=True, text=True, timeout=5,
+        )
+        # Output varies by version: "altscreen off", "off", etc.
+        return "on" not in result.stdout.lower()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        # Can't query → assume off (the default)
+        return True
+
+
+_SCREEN_HINT = """\
+Note: GNU Screen's 'altscreen' is off — TUI apps can't preserve your
+scrollback. To fix permanently, add to ~/.screenrc:
+
+    altscreen on
+
+Then restart Screen (or run: screen -X altscreen on)."""
+
+
+def _print_screen_warning() -> None:
+    """Print the altscreen-off hint to stderr."""
+    print(_SCREEN_HINT, file=sys.stderr)
+
+
 def _cmd_tui(args: argparse.Namespace, ts: TrackerSet) -> int:
     """Handle 'tui' subcommand — launch Textual TUI."""
     from hypergumbo_tracker.tui import TrackerApp
 
+    altscreen_off = _detect_screen_altscreen_off()
+    if altscreen_off:
+        _print_screen_warning()
+        time.sleep(3)
+
     app = TrackerApp(tracker_set=ts)
     app.run()
+
+    if altscreen_off:
+        # Clear the screen to remove TUI remnants, then re-show the hint.
+        sys.stdout.write("\033[2J\033[H")
+        sys.stdout.flush()
+        _print_screen_warning()
+
     return EXIT_SUCCESS
 
 

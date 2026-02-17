@@ -22,10 +22,12 @@ from hypergumbo_tracker.cli import (
     EXIT_SUCCESS,
     EXIT_USER_ERROR,
     _build_parser,
+    _detect_screen_altscreen_off,
     _find_tracker_root,
     _format_item_full,
     _format_item_short,
     _item_to_dict,
+    _print_screen_warning,
     main,
     textconv_main,
 )
@@ -1431,3 +1433,119 @@ class TestCacheWiring:
         # Verify cache DB files were created for each tier
         cache_files = list(cache_dir.glob("*.cache.db*"))
         assert len(cache_files) > 0
+
+
+# ---------------------------------------------------------------------------
+# GNU Screen altscreen detection
+# ---------------------------------------------------------------------------
+
+
+class TestDetectScreenAltscreenOff:
+    """Tests for _detect_screen_altscreen_off helper."""
+
+    def test_no_sty_returns_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Outside GNU Screen (no STY env var) → False."""
+        monkeypatch.delenv("STY", raising=False)
+        assert _detect_screen_altscreen_off() is False
+
+    def test_sty_set_altscreen_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Inside Screen, altscreen off → True."""
+        monkeypatch.setenv("STY", "12345.pts-0.host")
+        with patch("hypergumbo_tracker.cli.subprocess.run") as mock_run:
+            mock_run.return_value.stdout = "altscreen off\n"
+            assert _detect_screen_altscreen_off() is True
+
+    def test_sty_set_altscreen_on(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Inside Screen, altscreen on → False."""
+        monkeypatch.setenv("STY", "12345.pts-0.host")
+        with patch("hypergumbo_tracker.cli.subprocess.run") as mock_run:
+            mock_run.return_value.stdout = "altscreen on\n"
+            assert _detect_screen_altscreen_off() is False
+
+    def test_sty_set_file_not_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Inside Screen, screen binary not found → True (assume off)."""
+        monkeypatch.setenv("STY", "12345.pts-0.host")
+        with patch(
+            "hypergumbo_tracker.cli.subprocess.run",
+            side_effect=FileNotFoundError("screen"),
+        ):
+            assert _detect_screen_altscreen_off() is True
+
+    def test_sty_set_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Inside Screen, query times out → True (assume off)."""
+        import subprocess as sp
+        monkeypatch.setenv("STY", "12345.pts-0.host")
+        with patch(
+            "hypergumbo_tracker.cli.subprocess.run",
+            side_effect=sp.TimeoutExpired(cmd="screen", timeout=5),
+        ):
+            assert _detect_screen_altscreen_off() is True
+
+
+class TestPrintScreenWarning:
+    """Tests for _print_screen_warning helper."""
+
+    def test_prints_to_stderr(self, capsys: pytest.CaptureFixture) -> None:
+        _print_screen_warning()
+        captured = capsys.readouterr()
+        assert "altscreen" in captured.err
+        assert "~/.screenrc" in captured.err
+
+
+# ---------------------------------------------------------------------------
+# TUI with GNU Screen integration
+# ---------------------------------------------------------------------------
+
+
+class TestTuiScreenIntegration:
+    """Tests for _cmd_tui's Screen altscreen-off handling."""
+
+    def test_tui_with_altscreen_off(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When altscreen is off: warn before, clear + warn after."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+
+        with patch(
+            "hypergumbo_tracker.cli._detect_screen_altscreen_off",
+            return_value=True,
+        ), patch(
+            "hypergumbo_tracker.cli.time.sleep",
+        ) as mock_sleep, patch(
+            "hypergumbo_tracker.tui.TrackerApp.run",
+        ):
+            with pytest.raises(SystemExit) as exc:
+                main(["--tracker-root", str(tracker_root), "tui"])
+            assert exc.value.code == EXIT_SUCCESS
+
+        mock_sleep.assert_called_once_with(3)
+
+        captured = capsys.readouterr()
+        # Warning printed to stderr twice (before and after)
+        assert captured.err.count("altscreen") >= 2
+        # Clear sequence written to stdout
+        assert "\033[2J\033[H" in captured.out
+
+    def test_tui_without_screen(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """When not in Screen: no warning, no clear."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+
+        with patch(
+            "hypergumbo_tracker.cli._detect_screen_altscreen_off",
+            return_value=False,
+        ), patch(
+            "hypergumbo_tracker.tui.TrackerApp.run",
+        ):
+            with pytest.raises(SystemExit) as exc:
+                main(["--tracker-root", str(tracker_root), "tui"])
+            assert exc.value.code == EXIT_SUCCESS
+
+        captured = capsys.readouterr()
+        assert "altscreen" not in captured.err
+        assert "\033[2J" not in captured.out
