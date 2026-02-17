@@ -35,6 +35,7 @@ See ADR-0013 §TUI for the responsive design specification.
 
 from __future__ import annotations
 
+import re
 from functools import partial
 from pathlib import Path
 from typing import Any, ClassVar
@@ -253,6 +254,29 @@ _TIER_INDICATOR = {
 }
 
 
+def _collapse_double_spacing(text: str) -> str:
+    """Remove artificial double-spacing from multi-line text.
+
+    Descriptions stored via YAML block scalars often end up with ``\\n\\n``
+    between every line (a storage artifact). When the text has *no* single
+    ``\\n`` between content lines — i.e. every line break is ``\\n\\n`` — we
+    collapse to single-spaced.  If the text contains a mix of ``\\n`` and
+    ``\\n\\n``, the ``\\n\\n`` are intentional paragraph breaks and are kept.
+    """
+    stripped = text.strip()
+    if not stripped:
+        return stripped
+    # Split on \n\n (blank-line boundaries) — if there are NO single-\n
+    # joins between content lines, every break is double-spaced.
+    paragraphs = re.split(r"\n{2,}", stripped)
+    has_single_newline = any("\n" in p for p in paragraphs)
+    if has_single_newline:
+        # Mixed: preserve paragraph breaks (join with blank line)
+        return "\n\n".join(paragraphs)
+    # All-double-spaced: collapse to single-spaced
+    return "\n".join(paragraphs)
+
+
 def _format_detail_lines(
     item: CompiledItem,
     tier: str = "standard",
@@ -300,7 +324,8 @@ def _format_detail_lines(
 
     lock_desc = " [locked]" if "description" in item.locked_fields else ""
     if item.description:
-        lines.append(f"\nDescription{lock_desc}:\n{item.description}")
+        desc = _collapse_double_spacing(item.description)
+        lines.append(f"\nDescription{lock_desc}:\n{desc}")
 
     if item.fields:
         if fields_schema:
