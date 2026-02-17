@@ -13,33 +13,20 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Language & framework support
 
-- **JS/TS module resolution linker**: Resolves import edges to actual file symbols. Supports relative imports (extension/index probing), path aliases from `tsconfig.json`/`jsconfig.json`/`vite.config`, and monorepo tsconfig discovery.
-- **Vue template-method linker**: Connects Vue template event handlers (`@click`, `v-on:input`) to method/function symbols in the same file's `<script>` section.
-- **Vue component linker**: Resolves Vue component import paths (`./Header.vue`, `@/components/Modal.vue`) to actual `.vue` files on disk.
-- **Python FFI linker (ctypes/cffi/PyO3)**: Links Python C/C++ calls via `ctypes`, `cffi`, and Rust PyO3 to corresponding symbols.
-- **Ruby FFI linker**: Links Ruby to C/C++ via FFI gem patterns (`attach_function`) and C extension registration (`rb_define_method`).
-- **Cgo linker (Go-C interop)**: Resolves `C.funcName()` calls (via `import "C"`) to C/C++ function implementations.
+- **JS/TS module resolution linker**: Resolves import edges to file symbols via relative imports (extension/index probing), `tsconfig.json`/`jsconfig.json`/`vite.config` path aliases, and monorepo tsconfig discovery.
+- **Vue linkers**: Template-method linker connects event handlers (`@click`, `v-on:input`) to `<script>` symbols; component linker resolves import paths to `.vue` files on disk.
+- **FFI linkers**: Python (ctypes/cffi/PyO3), Ruby (FFI gem, C extensions), and Go (Cgo) cross-language call linking to C/C++ symbols.
 - **ORM query linker**: Detects Django ORM and Flask-SQLAlchemy query patterns, linking calling functions to Model classes.
-- **OTP GenServer dispatch linker (Elixir)**: Connects `GenServer.call/cast` call sites to `handle_call/handle_cast` handlers. Supports same-module, `__MODULE__`, and cross-module targets.
-- **OTP/Phoenix behaviour callback detection (Elixir)**: Modules using `GenServer`, `Phoenix.LiveView`, etc. now get edges to their callback functions. Covers 11 behaviours.
-- **Phoenix LiveView `live` route detection (Elixir)**: The `live` macro is now detected as a route, linked to the LiveView module's `mount` callback.
-- **Elixir multi-clause function edge resolution**: Call and callback edges now target all clauses of a multi-clause function, not just the last one.
-- **Elixir cross-file module-qualified call linking**: Resolves calls like `Helper.greet()` across files via direct lookup, alias resolution, and suffix matching.
-- **Go generic interface assertion detection**: Assertions with generics (`var _ Cache[string] = &StringCache{}`) are now detected.
-- **Go route-handler linking**: Gin, Echo, Fiber, Chi routes linked to handler functions via metadata.
-- **Go HTTP client detection**: `net/http` calls (`http.Get`, `http.Post`, etc.) detected for cross-language linking.
-- **Gorilla mux route detection (Go)**: Detects `router.HandleFunc` and builder chain patterns.
-- **Java inherited method fallback**: Unresolvable inherited method calls (e.g., `repo.save()` from `JpaRepository`) now create an edge to the type's class symbol.
-- **Java array initializer annotation path extraction**: `@GetMapping({ "/vets" })` now unwraps correctly instead of stringifying as `"['/vets']"`.
-- **Chained member access call resolution**: Fixed `this.field.method()` / `self.field.method()` call graph extraction in Kotlin, C#, Scala, and Python.
+- **Elixir/OTP improvements**: GenServer dispatch linking (`call`/`cast` → `handle_call`/`handle_cast`), behaviour callback detection (11 behaviours including Phoenix LiveView), `live` route detection, multi-clause function edge targeting, and cross-file module-qualified call resolution.
+- **Go improvements**: Generic interface assertion detection, route-handler linking (Gin, Echo, Fiber, Chi, Gorilla mux), and HTTP client detection (`net/http`) for cross-language linking.
+- **Java improvements**: Inherited method fallback (edges to class symbol when method unresolvable) and array initializer annotation path unwrapping.
+- **Chained member access call resolution**: `this.field.method()` / `self.field.method()` call graph extraction fixed in Kotlin, C#, Scala, and Python.
 - **Route path prefix inheritance**: Class-level route annotations now correctly combine with method-level annotations in Spring Boot, JAX-RS, Micronaut, and ASP.NET.
-- **Django framework patterns**: Template tag/filter patterns and signal receiver edge detection.
-- **Flask framework patterns**: Jinja2 template customizations, Blinker signal handlers, and Flask-RESTful support.
+- **Django & Flask framework patterns**: Django template tags/filters and signal receivers; Flask Jinja2 customizations, Blinker signals, and Flask-RESTful support.
 - **Framework detection for 16 additional languages**: Haskell, Clojure, R, Lua, C++, Erlang, F#, Kotlin, C#, Dart, Julia, OCaml, Nim, Zig, D, Groovy.
 - **Test framework patterns for 16 additional languages**: Elixir, Scala, Dart, Clojure, Haskell, Erlang, F#, Ruby, Julia, OCaml, Lua, R, Nim, Zig, D, Groovy.
 - **Main function entrypoint detection for 7 more languages**: D, Nim, Zig, V, Odin, Gleam, Haxe.
-- **Test file tier classification**: Test directories and test files now classified as tier 2 instead of defaulting to tier 1.
-- **Test function entrypoint detection**: Test functions registered as `TEST_FUNCTION` entrypoints, with 90% penalty to avoid dominating `--entry auto`.
+- **Test classification improvements**: Test directories/files classified as tier 2; test functions registered as entrypoints with 90% penalty to avoid dominating `--entry auto`.
 
 #### Tracker
 
@@ -51,7 +38,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Textual 7.x upgrade**: Bumped from `~=3.0` to `~=7.5`.
 - **Three responsive layout tiers**: Compact (40x16+, stacked detail), standard (60x20+, two-pane with tree/table toggle and filters), wide (120x38+, extra columns and split detail/activity panel). Dynamic resize preserves selection.
-- **Write keybindings**: 8 modal dialogs: `d` discuss, `D` clear discussion, `m` tier move, `n` new item, `e` edit, `p` set parent, `b` edit dependencies, `l` lock/unlock fields.
+- **Write keybindings**: 8 modal dialogs for discuss, move, new, edit, set parent, edit dependencies, and lock/unlock operations.
 - **Snapshot tests**: SVG-based visual regression tests for all layout tiers.
 
 #### Documentation
@@ -125,27 +112,19 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
-- **Vue analyzer deduplication**: Removed duplicate extraction — JS/TS analyzer already processes `.vue` `<script>` sections.
-- **C/C++ `.h` file deduplication**: C analyzer skips `.h` files when C++ files exist in the repo.
+- **Analyzer deduplication**: Vue analyzer no longer double-extracts `.vue` scripts (JS/TS analyzer already handles them); C analyzer skips `.h` files when C++ files exist.
 - **Framework detection word-boundary matching**: Uses word-boundary regex instead of substring matching (fixes `"bottle"` matching `"bottleneck"`).
 - **Micronaut framework patterns**: Fixed YAML patterns to use correct field names and extraction paths.
 - **Go same-package method resolution**: Package-qualified calls no longer incorrectly resolve to local methods with the same short name.
 - **ListNameResolver full-path disambiguation**: Tries the full import path as a disambiguation suffix, not just progressively shorter segments.
 - **Java field_access receiver call extraction**: Fixed `this.repo.findById()` patterns using tree-sitter field names and class field type tracking.
-- **JS/TS import-path disambiguation**: Uses import paths to disambiguate duplicate class names (e.g., NestJS monorepos) instead of last-processed-wins.
-- **JS/TS monorepo enclosing function**: Position-based symbol lookup replacing name-based lookup that silently dropped call edges.
-- **Ruby variable-receiver false positives**: Calls with variable receivers no longer fall through to bare-name global lookup.
-- **Ruby/Rails route detection false positives**: Route detection restricted by file context — test directories skipped.
-- **Name-collision edge fanout (JS/TS, PHP)**: Bare-name fallback emits a single edge to the best match instead of all same-named methods.
-- **`extends` edge name collision**: Import-aware disambiguation instead of last-writer-wins in Python, JS/TS, Ruby, Kotlin, Java.
-- **Containment linker name collision**: Prefers same-file class over last-writer-wins.
+- **JS/TS resolution fixes**: Import-path disambiguation for duplicate class names (e.g., NestJS monorepos) instead of last-processed-wins; position-based enclosing function lookup replacing name-based lookup that silently dropped call edges.
+- **Ruby false positive fixes**: Variable-receiver calls no longer fall through to bare-name global lookup; route detection restricted by file context (test directories skipped).
+- **Name-collision edge fixes**: Bare-name fallback emits single best match instead of fan-out (JS/TS, PHP); import-aware disambiguation for `extends` edges (Python, JS/TS, Ruby, Kotlin, Java); containment linker prefers same-file class.
 - **Tiered view token budget compliance**: Was exceeding budget by up to 177x. Force-includes now capped and sorted.
 - **Supply chain tier deserialization**: Cached nodes always had tier=1 due to key mismatch.
-- **Route-handler linking**: Route symbols no longer overwrite handler functions in lookup. Rails suffix matching for namespaced controllers. Rails singular resource no longer double-pluralizes names ending in "s".
-- **Django route-handler linking**: Added `view_name` support and fixed `.as_view()` extraction.
+- **Route-handler linking fixes**: Route symbols no longer overwrite handler functions in lookup. Rails suffix matching for namespaced controllers; singular resource no longer double-pluralizes names ending in "s". Django `view_name` support and `.as_view()` extraction. Phoenix route symbols get "route" concept. Ruby hash rocket syntax (`"path" => "controller#action"`) recognized.
 - **Rust impl method names**: Reference and generic types now extract only the base identifier.
-- **Phoenix route entrypoint detection**: Route symbols now get the "route" concept.
-- **Ruby hash rocket route syntax**: `"path" => "controller#action"` now recognized.
 - **Dangling edge dst after tier filtering**: Edges pointing to tier-filtered nodes no longer create dangling references.
 - **WebSocket generic event edge explosion**: Generic `send_text()`/`ws.send()` no longer create NxM combinatorial edges.
 - **smart-test scoped mode**: No longer fails when total project coverage is below 100%.
