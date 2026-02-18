@@ -7,8 +7,8 @@ driver for rendering .ops files as readable text.
 Entry points:
 - main(): Primary CLI with ~25 subcommands (add, update, list, show, ready,
   log, discuss, lock, unlock, promote, demote, stealth, unstealth, validate,
-  count-todos, hash-todos, guidance, init, setup, cache-rebuild,
-  reconcile-reset, fork-setup, migrate, tui).
+  count-todos, hash-todos, guidance, check-messages, init, setup,
+  cache-rebuild, reconcile-reset, fork-setup, migrate, tui).
 - textconv_main(): Git textconv driver that reads an ops file and outputs
   one-line-per-field compiled state.
 
@@ -35,6 +35,7 @@ from typing import Any
 
 from hypergumbo_tracker.models import (
     CompiledItem,
+    DiscussionEntry,
     Tier,
     load_config,
     resolve_actor,
@@ -48,6 +49,8 @@ from hypergumbo_tracker.store import (
     LockedFieldError,
     _parse_ops_file,
     compile_ops,
+    has_unread_human_messages,
+    unread_human_messages,
 )
 from hypergumbo_tracker.trackerset import (
     TierMovementError,
@@ -156,7 +159,13 @@ def _format_item_full(item: CompiledItem) -> str:
         lines.append(f"  description: {item.description}")
     if item.justification:
         lines.append(f"  justification: {item.justification}")
-    lines.append(f"  discussion: {len(item.discussion)} entries")
+    if item.discussion:
+        lines.append(f"  discussion: ({len(item.discussion)} entries)")
+        for entry in item.discussion:
+            prefix = "[summary] " if entry.is_summary else ""
+            lines.append(f"    [{entry.at}] {entry.actor} ({entry.by}): {prefix}{entry.message}")
+    else:
+        lines.append("  discussion: (none)")
     if item.locked_fields:
         lines.append(f"  locked: [{', '.join(sorted(item.locked_fields))}]")
     if item.duplicate_of:
@@ -543,6 +552,59 @@ def _cmd_guidance(args: argparse.Namespace, ts: TrackerSet) -> int:
     except Exception as e:
         print(f"error: guidance failed: {e}", file=sys.stderr)
         return EXIT_USER_ERROR
+
+
+def _cmd_check_messages(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Handle 'check-messages' subcommand — show items with unread human messages."""
+    tiers_to_check: list[Tier]
+    if ts.config.scope == "workspace":
+        tiers_to_check = [Tier.WORKSPACE, Tier.STEALTH]
+    else:
+        tiers_to_check = list(Tier)
+
+    results: list[tuple[CompiledItem, list[DiscussionEntry]]] = []
+    for t in tiers_to_check:
+        store = ts._tier_stores[t]
+        for item in store._compile_all():
+            if has_unread_human_messages(item):
+                msgs = unread_human_messages(item)
+                if args.autolimit is not None and args.autolimit > 0:
+                    msgs = msgs[-args.autolimit:]
+                results.append((item, msgs))
+
+    # Sort by (priority, id)
+    results.sort(key=lambda r: (r[0].priority, r[0].id))
+
+    if args.json:
+        out = []
+        for item, msgs in results:
+            out.append({
+                "id": item.id,
+                "title": item.title,
+                "status": item.status,
+                "priority": item.priority,
+                "tier": item.tier.value if item.tier else None,
+                "unread_messages": [
+                    {"by": m.by, "actor": m.actor, "at": m.at,
+                     "message": m.message, "is_summary": m.is_summary}
+                    for m in msgs
+                ],
+            })
+        print(json.dumps(out, indent=2))
+    else:
+        if not results:
+            print("(no unread human messages)")
+        else:
+            for i, (item, msgs) in enumerate(results):
+                if i > 0:
+                    print()
+                tier_str = item.tier.value if item.tier else "unknown"
+                print(f"{item.id}  P{item.priority}  {item.status}  "
+                      f"[{tier_str}]  {item.title}")
+                for m in msgs:
+                    print(f"  [{m.at}] {m.actor} ({m.by}): {m.message}")
+
+    return EXIT_SUCCESS
 
 
 def _cmd_init(args: argparse.Namespace) -> int:
@@ -950,6 +1012,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p_guidance.add_argument("--guidance-dir", dest="guidance_dir",
                             help="Directory for guidance output (default: ~/hypergumbo_lab_notebook/guidance_log/)")
 
+    # --- check-messages ---
+    p_checkmsg = sub.add_parser("check-messages",
+                                help="Show items with unread human discussion messages")
+    p_checkmsg.add_argument("--autolimit", type=int, default=None,
+                            help="Limit to last N unread messages per item")
+
     # --- init ---
     sub.add_parser("init", help="Initialize tracker directory structure")
 
@@ -1056,6 +1124,7 @@ def main(argv: list[str] | None = None) -> None:
         "count-todos": _cmd_count_todos,
         "hash-todos": _cmd_hash_todos,
         "guidance": _cmd_guidance,
+        "check-messages": _cmd_check_messages,
         "cache-rebuild": _cmd_cache_rebuild,
         "reconcile-reset": _cmd_reconcile_reset,
         "fork-setup": _cmd_fork_setup,

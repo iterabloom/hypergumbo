@@ -132,6 +132,8 @@ class TestFormatting:
         assert "duplicate_of" in result
         assert "not_duplicate_of" in result
         assert "CROSS-TIER CONFLICT" in result
+        assert "(1 entries)" in result
+        assert "a (agent): m" in result
 
     def test_item_to_dict(self) -> None:
         item = CompiledItem(
@@ -1540,3 +1542,243 @@ class TestTuiScreenIntegration:
         captured = capsys.readouterr()
         assert "altscreen" not in captured.err
         assert "\033[2J" not in captured.out
+
+
+# ---------------------------------------------------------------------------
+# _format_item_full discussion rendering
+# ---------------------------------------------------------------------------
+
+
+class TestFormatItemFullDiscussion:
+    """Tests for discussion entry rendering in _format_item_full."""
+
+    def test_no_discussion(self) -> None:
+        item = CompiledItem(
+            id="WI-test", kind="work_item", title="Test",
+            status="todo_hard", discussion=[],
+        )
+        result = _format_item_full(item)
+        assert "discussion: (none)" in result
+
+    def test_with_discussion_entries(self) -> None:
+        item = CompiledItem(
+            id="WI-test", kind="work_item", title="Test",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="human", actor="jgstern",
+                    at="2026-01-15T10:00:00Z", message="Please investigate",
+                ),
+                DiscussionEntry(
+                    by="agent", actor="test_agent",
+                    at="2026-01-15T10:05:00Z", message="On it",
+                ),
+            ],
+        )
+        result = _format_item_full(item)
+        assert "(2 entries)" in result
+        assert "jgstern (human): Please investigate" in result
+        assert "test_agent (agent): On it" in result
+
+    def test_summary_entry_prefix(self) -> None:
+        item = CompiledItem(
+            id="WI-test", kind="work_item", title="Test",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="agent", actor="test_agent",
+                    at="2026-01-15T10:00:00Z", message="Summary text",
+                    is_summary=True,
+                ),
+            ],
+        )
+        result = _format_item_full(item)
+        assert "[summary] Summary text" in result
+
+
+# ---------------------------------------------------------------------------
+# check-messages command
+# ---------------------------------------------------------------------------
+
+
+def _add_item_with_discussion(
+    ops_dir: Path, item_id: str, discussion_ops: list[dict],
+    status: str = "todo_hard",
+) -> None:
+    """Write an ops file with a create op followed by discussion ops."""
+    lines = [textwrap.dedent(f"""\
+        - op: create
+          at: "2026-01-01T00:00:00Z"
+          by: agent
+          actor: test_agent
+          clock: 1
+          nonce: a1b2
+          data:
+            kind: work_item
+            title: "Item {item_id}"
+            status: {status}
+            priority: 2
+    """)]
+    for i, disc in enumerate(discussion_ops):
+        lines.append(textwrap.dedent(f"""\
+        - op: discuss
+          at: "{disc['at']}"
+          by: {disc['by']}
+          actor: {disc['actor']}
+          clock: {10 + i}
+          nonce: d{i:03d}
+          message: "{disc['message']}"
+        """))
+    (ops_dir / f".{item_id}.ops").write_text("".join(lines))
+
+
+class TestCheckMessages:
+    def test_no_unread_messages(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker" / ".ops", "WI-a")
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(tracker_root), "check-messages"])
+        assert exc.value.code == EXIT_SUCCESS
+        assert "(no unread human messages)" in capsys.readouterr().out
+
+    def test_item_with_trailing_human_message(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item_with_discussion(
+            tracker_root / "tracker-workspace" / ".ops", "WI-msg",
+            discussion_ops=[
+                {"at": "2026-01-15T10:00:00Z", "by": "agent", "actor": "test_agent",
+                 "message": "Working on it"},
+                {"at": "2026-01-15T11:00:00Z", "by": "human", "actor": "jgstern",
+                 "message": "Please check edge case"},
+            ],
+        )
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(tracker_root), "check-messages"])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "WI-msg" in out
+        assert "Please check edge case" in out
+
+    def test_json_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item_with_discussion(
+            tracker_root / "tracker-workspace" / ".ops", "WI-j",
+            discussion_ops=[
+                {"at": "2026-01-15T10:00:00Z", "by": "human", "actor": "jgstern",
+                 "message": "Hello"},
+            ],
+        )
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(tracker_root), "--json", "check-messages"])
+        assert exc.value.code == EXIT_SUCCESS
+        data = json.loads(capsys.readouterr().out)
+        assert isinstance(data, list)
+        assert len(data) == 1
+        assert data[0]["id"] == "WI-j"
+        assert len(data[0]["unread_messages"]) == 1
+
+    def test_autolimit(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item_with_discussion(
+            tracker_root / "tracker-workspace" / ".ops", "WI-al",
+            discussion_ops=[
+                {"at": "2026-01-15T10:00:00Z", "by": "human", "actor": "jgstern",
+                 "message": "msg1"},
+                {"at": "2026-01-15T10:01:00Z", "by": "human", "actor": "jgstern",
+                 "message": "msg2"},
+                {"at": "2026-01-15T10:02:00Z", "by": "human", "actor": "jgstern",
+                 "message": "msg3"},
+            ],
+        )
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "check-messages", "--autolimit", "1",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        data = json.loads(capsys.readouterr().out)
+        assert len(data[0]["unread_messages"]) == 1
+        assert data[0]["unread_messages"][0]["message"] == "msg3"
+
+    def test_multiple_items_text_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Multiple items with unread messages separated by blank lines."""
+        tracker_root = _setup_tracker(tmp_path)
+        ws_ops = tracker_root / "tracker-workspace" / ".ops"
+        _add_item_with_discussion(
+            ws_ops, "WI-a",
+            discussion_ops=[
+                {"at": "2026-01-15T10:00:00Z", "by": "human", "actor": "jgstern",
+                 "message": "msg a"},
+            ],
+        )
+        _add_item_with_discussion(
+            ws_ops, "WI-b",
+            discussion_ops=[
+                {"at": "2026-01-15T11:00:00Z", "by": "human", "actor": "jgstern",
+                 "message": "msg b"},
+            ],
+        )
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(tracker_root), "check-messages"])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "WI-a" in out
+        assert "WI-b" in out
+        assert "msg a" in out
+        assert "msg b" in out
+
+    def test_workspace_scope_excludes_canonical(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        # Human message in canonical tier
+        _add_item_with_discussion(
+            tracker_root / "tracker" / ".ops", "WI-can",
+            discussion_ops=[
+                {"at": "2026-01-15T10:00:00Z", "by": "human", "actor": "jgstern",
+                 "message": "canonical msg"},
+            ],
+        )
+        # Human message in workspace tier
+        _add_item_with_discussion(
+            tracker_root / "tracker-workspace" / ".ops", "WI-ws",
+            discussion_ops=[
+                {"at": "2026-01-15T10:00:00Z", "by": "human", "actor": "jgstern",
+                 "message": "workspace msg"},
+            ],
+        )
+        # Write a workspace-scoped config
+        import yaml
+        config_data = {
+            "kinds": {"work_item": {"prefix": "WI"}},
+            "statuses": ["todo_hard", "todo_soft", "in_progress", "needs_human_review", "done", "wont_do"],
+            "stop_hook": {
+                "blocking_statuses": ["todo_hard", "todo_soft"],
+                "resolved_statuses": ["done", "wont_do"],
+                "scope": "workspace",
+            },
+        }
+        (tracker_root / "tracker" / "config.yaml").write_text(yaml.dump(config_data))
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(tracker_root), "--json", "check-messages"])
+        assert exc.value.code == EXIT_SUCCESS
+        data = json.loads(capsys.readouterr().out)
+        ids = [item["id"] for item in data]
+        assert "WI-ws" in ids
+        assert "WI-can" not in ids

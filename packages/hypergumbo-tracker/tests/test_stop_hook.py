@@ -470,3 +470,151 @@ class TestGenerateGuidanceSafe:
         ):
             result = generate_guidance_safe(Path("/tmp/whatever"))
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# generate_guidance: unread human message annotations
+# ---------------------------------------------------------------------------
+
+
+def _add_item_with_discussion(
+    ops_dir: Path, item_id: str, status: str, discussion_ops: list[dict],
+    priority: int = 2,
+) -> None:
+    """Write an ops file with create + discussion ops."""
+    lines = [textwrap.dedent(f"""\
+        - op: create
+          at: "2026-01-01T00:00:00Z"
+          by: agent
+          actor: test_agent
+          clock: 1
+          nonce: a1b2
+          data:
+            kind: work_item
+            title: "Item {item_id}"
+            status: {status}
+            priority: {priority}
+    """)]
+    for i, disc in enumerate(discussion_ops):
+        lines.append(textwrap.dedent(f"""\
+        - op: discuss
+          at: "{disc['at']}"
+          by: {disc['by']}
+          actor: {disc['actor']}
+          clock: {10 + i}
+          nonce: d{i:03d}
+          message: "{disc['message']}"
+        """))
+    (ops_dir / f".{item_id}.ops").write_text("".join(lines))
+
+
+class TestGenerateGuidanceUnreadMessages:
+    def test_blocking_item_with_unread_gets_tag(self, tmp_path: Path) -> None:
+        """Blocking item with trailing human message gets [UNREAD] tag."""
+        tracker_root = _setup_tracker(tmp_path)
+        canonical_ops = tracker_root / "tracker" / ".ops"
+        _add_item_with_discussion(
+            canonical_ops, "WI-ur", "todo_hard",
+            discussion_ops=[
+                {"at": "2026-01-15T10:00:00Z", "by": "human", "actor": "jgstern",
+                 "message": "please check"},
+            ],
+        )
+        config = _make_config()
+        guidance_dir = tmp_path / "guidance"
+        result = generate_guidance(
+            tracker_root, guidance_dir=guidance_dir, config=config,
+        )
+        content = Path(result).read_text()
+        assert "**[UNREAD]**" in content
+        assert "WI-ur" in content
+        assert "1 with unread human message(s)" in content
+        assert "check-messages" in content
+
+    def test_non_blocking_item_with_unread(self, tmp_path: Path) -> None:
+        """Non-blocking item with trailing human message appears in separate section."""
+        tracker_root = _setup_tracker(tmp_path)
+        canonical_ops = tracker_root / "tracker" / ".ops"
+        _add_item_with_discussion(
+            canonical_ops, "WI-done", "done",
+            discussion_ops=[
+                {"at": "2026-01-15T10:00:00Z", "by": "human", "actor": "jgstern",
+                 "message": "fyi"},
+            ],
+        )
+        config = _make_config()
+        guidance_dir = tmp_path / "guidance"
+        result = generate_guidance(
+            tracker_root, guidance_dir=guidance_dir, config=config,
+        )
+        content = Path(result).read_text()
+        assert "Unread Human Messages (non-blocking)" in content
+        assert "WI-done" in content
+        assert "1 unread)" in content
+
+    def test_no_unread_messages_backward_compatible(self, tmp_path: Path) -> None:
+        """No unread messages: no unread section, no check-messages hint."""
+        tracker_root = _setup_tracker(tmp_path)
+        canonical_ops = tracker_root / "tracker" / ".ops"
+        _add_item(canonical_ops, "WI-a", "todo_hard")
+
+        config = _make_config()
+        guidance_dir = tmp_path / "guidance"
+        result = generate_guidance(
+            tracker_root, guidance_dir=guidance_dir, config=config,
+        )
+        content = Path(result).read_text()
+        assert "**[UNREAD]**" not in content
+        assert "Unread Human Messages" not in content
+        assert "check-messages" not in content
+
+    def test_unread_count_in_status_section(self, tmp_path: Path) -> None:
+        """Status section shows unread counts for hard and soft items."""
+        tracker_root = _setup_tracker(tmp_path)
+        canonical_ops = tracker_root / "tracker" / ".ops"
+        _add_item_with_discussion(
+            canonical_ops, "WI-hard", "todo_hard",
+            discussion_ops=[
+                {"at": "2026-01-15T10:00:00Z", "by": "human", "actor": "jgstern",
+                 "message": "check this"},
+            ],
+        )
+        _add_item_with_discussion(
+            canonical_ops, "WI-soft", "todo_soft",
+            discussion_ops=[
+                {"at": "2026-01-15T10:00:00Z", "by": "human", "actor": "jgstern",
+                 "message": "also this"},
+            ],
+        )
+        config = _make_config()
+        guidance_dir = tmp_path / "guidance"
+        result = generate_guidance(
+            tracker_root, guidance_dir=guidance_dir, config=config,
+        )
+        content = Path(result).read_text()
+        # Both sections should have unread count annotations
+        lines = content.split("\n")
+        hard_count_lines = [l for l in lines if "Hard TODO Items:" in l]
+        assert len(hard_count_lines) == 1
+        # After the hard count line, there should be an unread count line
+        hard_idx = lines.index(hard_count_lines[0])
+        assert "1 with unread human message(s)" in lines[hard_idx + 1]
+
+    def test_non_blocking_unread_count_in_status(self, tmp_path: Path) -> None:
+        """Non-blocking unread count shows in status section."""
+        tracker_root = _setup_tracker(tmp_path)
+        canonical_ops = tracker_root / "tracker" / ".ops"
+        _add_item_with_discussion(
+            canonical_ops, "WI-nr", "done",
+            discussion_ops=[
+                {"at": "2026-01-15T10:00:00Z", "by": "human", "actor": "jgstern",
+                 "message": "info"},
+            ],
+        )
+        config = _make_config()
+        guidance_dir = tmp_path / "guidance"
+        result = generate_guidance(
+            tracker_root, guidance_dir=guidance_dir, config=config,
+        )
+        content = Path(result).read_text()
+        assert "Non-blocking items with unread messages: 1" in content

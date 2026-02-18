@@ -41,3 +41,12 @@
       - test_java.py::TestJavaInheritanceEdges::test_extends_deterministic_fallback_when_ambiguous  # 5065
       - test_java.py::TestJavaInheritanceEdges::test_implements_prefers_imported_interface_over_collision  # 5065
       - test_java.py::TestJavaInheritanceEdges::test_extends_import_matches_full_fqn_path  # 5065
+- op: update  # 95e1
+  at: '2026-02-18T02:13:28Z'  # 95e1
+  by: human  # 95e1
+  actor: jgstern  # 95e1
+  clock: 2  # 95e1
+  nonce: '95e1'  # 95e1
+  set:  # 95e1
+    status: wont_do  # 95e1
+    description: "NOTE this seems to be a template that got erroneously treated as a real item. Limitation: [What's still broken]\n\nNotes: [Assessment details, known gaps, research needed]\n\n**Unified by:**\n\n[List of specific INV-xxx that this meta-invariant unifies]\n\n**Implication:** [What this means for development practices]"  # 95e1

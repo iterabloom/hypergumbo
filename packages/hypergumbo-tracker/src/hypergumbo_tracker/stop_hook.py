@@ -29,7 +29,8 @@ import os
 import sys
 from pathlib import Path
 
-from hypergumbo_tracker.models import TrackerConfig, Tier, load_config
+from hypergumbo_tracker.models import CompiledItem, TrackerConfig, Tier, load_config
+from hypergumbo_tracker.store import has_unread_human_messages, unread_human_messages
 from hypergumbo_tracker.trackerset import TrackerSet
 
 
@@ -225,14 +226,14 @@ def generate_guidance(
     else:
         tiers_to_check = list(Tier)
 
-    from hypergumbo_tracker.models import CompiledItem
-
     hard_items: list[CompiledItem] = []
     soft_items: list[CompiledItem] = []
+    all_items: list[CompiledItem] = []
 
     for t in tiers_to_check:
         store = ts._tier_stores[t]
         for item in store._compile_all():
+            all_items.append(item)
             if item.status in hard_statuses:
                 hard_items.append(item)
             elif item.status in soft_statuses:
@@ -241,6 +242,20 @@ def generate_guidance(
     # Sort by priority (ascending — P0 first) then ID for stability
     hard_items.sort(key=lambda i: (i.priority, i.id))
     soft_items.sort(key=lambda i: (i.priority, i.id))
+
+    # Scan for unread human messages
+    blocking_ids = {i.id for i in hard_items} | {i.id for i in soft_items}
+    items_with_unread_blocking: set[str] = set()
+    unread_non_blocking: list[CompiledItem] = []
+
+    for item in all_items:
+        if has_unread_human_messages(item):
+            if item.id in blocking_ids:
+                items_with_unread_blocking.add(item.id)
+            else:
+                unread_non_blocking.append(item)
+
+    unread_non_blocking.sort(key=lambda i: (i.priority, i.id))
 
     # Build guidance markdown
     timestamp = datetime.datetime.now(tz=datetime.timezone.utc)
@@ -252,16 +267,25 @@ def generate_guidance(
     lines.append("")
     lines.append("## Status")
     lines.append(f"- Hard TODO Items: {len(hard_items)}")
+    unread_hard_count = sum(1 for i in hard_items if i.id in items_with_unread_blocking)
+    if unread_hard_count:
+        lines.append(f"  > {unread_hard_count} with unread human message(s)")
     lines.append(f"- Soft TODO Items: {len(soft_items)}")
+    unread_soft_count = sum(1 for i in soft_items if i.id in items_with_unread_blocking)
+    if unread_soft_count:
+        lines.append(f"  > {unread_soft_count} with unread human message(s)")
+    if unread_non_blocking:
+        lines.append(f"- Non-blocking items with unread messages: {len(unread_non_blocking)}")
     lines.append("")
 
     if hard_items:
         lines.append("## Hard TODO Items (TODO! — investigate deeply, assume structural)")
         for item in hard_items:
             tier_str = item.tier.value if item.tier else "unknown"
+            unread_tag = " **[UNREAD]**" if item.id in items_with_unread_blocking else ""
             lines.append(
                 f"- [{item.id}] P{item.priority} {item.title} "
-                f"(status: {item.status}, tier: {tier_str})"
+                f"(status: {item.status}, tier: {tier_str}){unread_tag}"
             )
         lines.append("")
 
@@ -269,9 +293,23 @@ def generate_guidance(
         lines.append("## Soft TODO Items (TODO — address or defer freely)")
         for item in soft_items:
             tier_str = item.tier.value if item.tier else "unknown"
+            unread_tag = " **[UNREAD]**" if item.id in items_with_unread_blocking else ""
             lines.append(
                 f"- [{item.id}] P{item.priority} {item.title} "
-                f"(status: {item.status}, tier: {tier_str})"
+                f"(status: {item.status}, tier: {tier_str}){unread_tag}"
+            )
+        lines.append("")
+
+    if unread_non_blocking:
+        lines.append("## Unread Human Messages (non-blocking)")
+        lines.append("These items have unread human messages but are not in blocking status.")
+        for item in unread_non_blocking:
+            tier_str = item.tier.value if item.tier else "unknown"
+            msgs = unread_human_messages(item)
+            lines.append(
+                f"- [{item.id}] P{item.priority} {item.title} "
+                f"(status: {item.status}, tier: {tier_str}, "
+                f"{len(msgs)} unread)"
             )
         lines.append("")
 
@@ -284,6 +322,11 @@ def generate_guidance(
         "TODO items: address or defer freely. "
         "OK to defer if higher-priority work exists."
     )
+    if items_with_unread_blocking or unread_non_blocking:
+        lines.append(
+            "Use `scripts/tracker check-messages` to read and reply to "
+            "unread human messages."
+        )
     lines.append("")
 
     filepath.write_text("\n".join(lines))

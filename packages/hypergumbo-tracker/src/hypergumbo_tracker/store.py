@@ -593,6 +593,40 @@ def compile_ops(ops: list[dict[str, Any]], item_id: str = "") -> CompiledItem:
 
 
 # ---------------------------------------------------------------------------
+# Unread human message helpers
+# ---------------------------------------------------------------------------
+
+
+def has_unread_human_messages(item: CompiledItem) -> bool:
+    """True if the item's discussion ends with a human message.
+
+    Single-agent assumption: a trailing human message means the agent
+    hasn't replied yet.  Empty discussions return False.
+    """
+    if not item.discussion:
+        return False
+    return item.discussion[-1].by == "human"
+
+
+def unread_human_messages(item: CompiledItem) -> list[DiscussionEntry]:
+    """Return trailing consecutive human-authored discussion entries.
+
+    Scans backward from end, collecting by=="human" entries until
+    hitting an agent entry or the start.  Returns chronological order.
+    """
+    if not item.discussion:
+        return []
+    result: list[DiscussionEntry] = []
+    for entry in reversed(item.discussion):
+        if entry.by == "human":
+            result.append(entry)
+        else:
+            break
+    result.reverse()
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Lamport clock
 # ---------------------------------------------------------------------------
 

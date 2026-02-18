@@ -18,6 +18,7 @@ import pytest
 
 from hypergumbo_tracker.models import (
     CompiledItem,
+    DiscussionEntry,
     TrackerConfig,
     KindConfig,
 )
@@ -41,6 +42,8 @@ from hypergumbo_tracker.store import (
     _serialize_op,
     _tokenize,
     compile_ops,
+    has_unread_human_messages,
+    unread_human_messages,
 )
 
 
@@ -2486,3 +2489,74 @@ class TestPreWriteValidation:
         """))
         with pytest.raises(CorruptFileError, match="uncompilable"):
             store.discuss(item_id, "ignored", clear=True)
+
+
+# ---------------------------------------------------------------------------
+# Unread human message helpers
+# ---------------------------------------------------------------------------
+
+
+class TestUnreadHumanMessages:
+    """Tests for has_unread_human_messages() and unread_human_messages()."""
+
+    def _make_entry(self, by: str, message: str = "msg") -> DiscussionEntry:
+        return DiscussionEntry(by=by, actor=f"{by}_user", at="2026-01-01T00:00:00Z", message=message)
+
+    def _make_item(self, discussion: list[DiscussionEntry]) -> CompiledItem:
+        return CompiledItem(
+            id="WI-test", kind="work_item", title="Test",
+            status="todo_hard", discussion=discussion,
+        )
+
+    def test_empty_discussion(self) -> None:
+        item = self._make_item([])
+        assert has_unread_human_messages(item) is False
+        assert unread_human_messages(item) == []
+
+    def test_only_agent_entries(self) -> None:
+        item = self._make_item([self._make_entry("agent")])
+        assert has_unread_human_messages(item) is False
+        assert unread_human_messages(item) == []
+
+    def test_only_human_entries(self) -> None:
+        h1 = self._make_entry("human", "first")
+        h2 = self._make_entry("human", "second")
+        item = self._make_item([h1, h2])
+        assert has_unread_human_messages(item) is True
+        assert unread_human_messages(item) == [h1, h2]
+
+    def test_human_after_agent(self) -> None:
+        a = self._make_entry("agent")
+        h = self._make_entry("human", "question")
+        item = self._make_item([a, h])
+        assert has_unread_human_messages(item) is True
+        assert unread_human_messages(item) == [h]
+
+    def test_agent_after_human(self) -> None:
+        h = self._make_entry("human")
+        a = self._make_entry("agent")
+        item = self._make_item([h, a])
+        assert has_unread_human_messages(item) is False
+        assert unread_human_messages(item) == []
+
+    def test_multiple_trailing_human(self) -> None:
+        a = self._make_entry("agent")
+        h1 = self._make_entry("human", "q1")
+        h2 = self._make_entry("human", "q2")
+        h3 = self._make_entry("human", "q3")
+        item = self._make_item([a, h1, h2, h3])
+        assert has_unread_human_messages(item) is True
+        msgs = unread_human_messages(item)
+        assert len(msgs) == 3
+        assert msgs[0].message == "q1"
+        assert msgs[1].message == "q2"
+        assert msgs[2].message == "q3"
+
+    def test_interleaved_ending_agent(self) -> None:
+        h1 = self._make_entry("human")
+        a1 = self._make_entry("agent")
+        h2 = self._make_entry("human")
+        a2 = self._make_entry("agent")
+        item = self._make_item([h1, a1, h2, a2])
+        assert has_unread_human_messages(item) is False
+        assert unread_human_messages(item) == []
