@@ -631,10 +631,10 @@ def _check_config_ownership(root: Path) -> CheckResult:
 def _check_group_permissions(root: Path) -> CheckResult:
     """Check #11: Verify two-user group setup on writable directories.
 
-    Checks whether .ops and stealth directories have a shared group with
-    group-write and setgid permissions. This is read-only — it reports
-    problems but does not fix them, since group/permission changes
-    require sudo.
+    Checks whether tracker-workspace (which holds tui_preferences.json),
+    .ops, and stealth directories have a shared group with group-write
+    and setgid permissions.  This is read-only — it reports problems but
+    does not fix them, since group/permission changes require sudo.
 
     If directories are owned by the user's primary group (not a shared
     group), the two-user setup is not active and the check passes with
@@ -644,6 +644,7 @@ def _check_group_permissions(root: Path) -> CheckResult:
 
     ops_dirs = [
         root / "tracker" / ".ops",
+        root / "tracker-workspace",
         root / "tracker-workspace" / ".ops",
         root / "tracker-workspace" / "stealth",
     ]
@@ -725,6 +726,7 @@ def _check_group_permissions(root: Path) -> CheckResult:
                 f"  sudo chgrp -R {grp_label}"
                 " .agent/tracker .agent/tracker-workspace",
                 "  sudo chmod -R g+rws .agent/tracker/.ops"
+                " .agent/tracker-workspace"
                 " .agent/tracker-workspace/.ops"
                 " .agent/tracker-workspace/stealth",
             ],
@@ -1528,6 +1530,7 @@ def generate_human_shim(root: Path) -> str:
         )
         lines.append(
             f"sudo chmod -R g+rws {repo_root / '.agent' / 'tracker' / '.ops'}"
+            f" {repo_root / '.agent' / 'tracker-workspace'}"
             f" {repo_root / '.agent' / 'tracker-workspace' / '.ops'}"
             f" {repo_root / '.agent' / 'tracker-workspace' / 'stealth'}"
         )
