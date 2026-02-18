@@ -71,3 +71,12 @@
   clock: 9  # 5748
   nonce: '5748'  # 5748
   message: "Auto-sync test 4: N-API linker remains deferred."  # 5748
+- op: update  # 2b74
+  at: '2026-02-18T18:18:39Z'  # 2b74
+  by: agent  # 2b74
+  actor: jgstern_agent  # 2b74
+  clock: 10  # 2b74
+  nonce: 2b74  # 2b74
+  set:  # 2b74
+    status: done  # 2b74
+    justification: "N-API linker merged in upcoming PR"  # 2b74
