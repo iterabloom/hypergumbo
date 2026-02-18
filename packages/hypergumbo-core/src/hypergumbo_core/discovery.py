@@ -1,7 +1,85 @@
-"""File discovery with exclude patterns."""
+"""File discovery with exclude patterns and .m file disambiguation.
+
+Provides shared utilities for finding source files across the repository while
+respecting exclude patterns. Also provides content-based classification for
+`.m` files, which are ambiguously shared by Objective-C, MATLAB, and Wolfram.
+
+The `classify_dot_m_file` function reads file content and uses syntactic
+heuristics to determine which language a `.m` file belongs to. This prevents
+all three analyzers from independently processing the same file.
+"""
+import re
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Iterator
+
+# Compiled patterns for .m file disambiguation — compiled once at import time.
+# Objective-C: preprocessor directives and @-keywords
+_OBJC_PATTERNS = re.compile(
+    r"(?:^#import\b|^#include\b|^@interface\b|^@implementation\b"
+    r"|^@protocol\b|^@end\b|^@property\b|^@synthesize\b|^@dynamic\b"
+    r"|^#pragma\b)",
+    re.MULTILINE,
+)
+# Wolfram: pattern-match arguments (x_), scoping constructs, package structure
+_WOLFRAM_PATTERNS = re.compile(
+    r"(?:\w+\[[\w_,\s]*\w+_[\w]*\]\s*:="  # f[x_] := or f[x_, y_Integer] :=
+    r"|(?:Module|Block|With)\["            # scoping constructs
+    r"|BeginPackage\[|EndPackage\["         # package structure
+    r"|Needs\[|Get\["                       # imports
+    r"|\(\*)",                              # block comments (* ... *)
+    re.MULTILINE,
+)
+# MATLAB: function/classdef keywords at start of line
+_MATLAB_PATTERNS = re.compile(
+    r"(?:^function\b|^classdef\b)",
+    re.MULTILINE,
+)
+
+# How many bytes to read for classification. 8 KB is enough to capture
+# the file header, imports, and first few definitions.
+_CLASSIFY_READ_LIMIT = 8192
+
+
+def classify_dot_m_file(path: Path) -> str:
+    """Classify a .m file as 'objc', 'wolfram', or 'matlab'.
+
+    Uses content-based heuristics to disambiguate .m files, which are shared
+    by three languages:
+    - Objective-C: #import, @interface/@implementation/@protocol, #pragma
+    - Wolfram/Mathematica: f[x_] :=, Module[, BeginPackage[, (* comments *)
+    - MATLAB: function keyword, classdef keyword, % comments
+
+    Reads the first 8 KB of the file for classification. Returns 'matlab' as
+    the default when no strong signals are found (MATLAB is the most common
+    user of .m files in practice).
+
+    Args:
+        path: Path to a .m file.
+
+    Returns:
+        One of 'objc', 'wolfram', or 'matlab'.
+    """
+    try:
+        content = path.read_bytes()[:_CLASSIFY_READ_LIMIT].decode("utf-8", errors="replace")
+    except (OSError, PermissionError):
+        return "matlab"
+
+    # Check Objective-C first — it has the most distinctive syntax
+    if _OBJC_PATTERNS.search(content):
+        return "objc"
+
+    # Check Wolfram — pattern-match syntax (x_) is very distinctive
+    if _WOLFRAM_PATTERNS.search(content):
+        return "wolfram"
+
+    # Check MATLAB keywords
+    if _MATLAB_PATTERNS.search(content):
+        return "matlab"
+
+    # Default: MATLAB is the most common use of .m files
+    return "matlab"
+
 
 # Default exclude patterns (gitignore-style)
 DEFAULT_EXCLUDES = [

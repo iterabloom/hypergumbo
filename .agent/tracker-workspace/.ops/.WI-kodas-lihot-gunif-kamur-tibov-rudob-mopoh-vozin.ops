@@ -70,3 +70,12 @@
   clock: 9  # 207d
   nonce: 207d  # 207d
   message: "Auto-sync test 4: all prior CI settled to green, clean test environment."  # 207d
+- op: update  # 736d
+  at: '2026-02-18T16:47:04Z'  # 736d
+  by: agent  # 736d
+  actor: jgstern_agent  # 736d
+  clock: 10  # 736d
+  nonce: 736d  # 736d
+  set:  # 736d
+    status: done  # 736d
+    justification: "Investigated and confirmed NOT a bug. Vue template nodes from app/javascript/ are correctly tier1 and vastly outnumber tier2 test symbols. Metric interpretation issue, not classification bug."  # 736d

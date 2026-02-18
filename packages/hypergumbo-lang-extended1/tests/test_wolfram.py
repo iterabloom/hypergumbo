@@ -23,7 +23,11 @@ from unittest.mock import patch
 
 import pytest
 
-from hypergumbo_lang_extended1.wolfram import analyze_wolfram, is_wolfram_tree_sitter_available
+from hypergumbo_lang_extended1.wolfram import (
+    analyze_wolfram,
+    find_wolfram_files,
+    is_wolfram_tree_sitter_available,
+)
 
 
 def make_wolfram_file(tmp_path: Path, name: str, content: str) -> Path:
@@ -182,3 +186,32 @@ class TestWolframSignatureExtraction:
         funcs = [s for s in result.symbols if s.kind == "function" and s.name == "double"]
         assert len(funcs) == 1
         assert funcs[0].signature is not None
+
+
+class TestFindWolframFilesDisambiguation:
+    """Tests for .m file disambiguation in find_wolfram_files."""
+
+    def test_includes_wolfram_dot_m_files(self, tmp_path: Path) -> None:
+        """Should include .m files that contain Wolfram syntax."""
+        make_wolfram_file(tmp_path, "math.m", "f[x_] := x^2\n")
+        files = list(find_wolfram_files(tmp_path))
+        assert any(f.name == "math.m" for f in files)
+
+    def test_excludes_matlab_dot_m_files(self, tmp_path: Path) -> None:
+        """Should not include .m files that contain MATLAB syntax."""
+        make_wolfram_file(tmp_path, "func.m", "function y = func(x)\n    y = x * 2;\nend\n")
+        files = list(find_wolfram_files(tmp_path))
+        assert not any(f.name == "func.m" for f in files)
+
+    def test_excludes_objc_dot_m_files(self, tmp_path: Path) -> None:
+        """Should not include .m files that contain Objective-C syntax."""
+        make_wolfram_file(tmp_path, "AppDelegate.m",
+                          '#import "AppDelegate.h"\n@implementation AppDelegate\n@end\n')
+        files = list(find_wolfram_files(tmp_path))
+        assert not any(f.name == "AppDelegate.m" for f in files)
+
+    def test_always_includes_wl_files(self, tmp_path: Path) -> None:
+        """Should always include .wl files regardless of content."""
+        make_wolfram_file(tmp_path, "Package.wl", "x = 42\n")
+        files = list(find_wolfram_files(tmp_path))
+        assert any(f.name == "Package.wl" for f in files)

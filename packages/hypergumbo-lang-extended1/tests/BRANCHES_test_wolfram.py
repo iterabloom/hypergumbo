@@ -145,8 +145,8 @@ class TestFindWolframFiles:
         assert any(f.suffix == ".wl" for f in files)
 
     def test_finds_m_files(self, tmp_path: Path) -> None:
-        """Test .m files are discovered."""
-        (tmp_path / "test.m").write_text("Print[\"hello\"]")
+        """Test .m files with Wolfram content are discovered."""
+        (tmp_path / "test.m").write_text("f[x_] := x^2\n")
         files = list(find_wolfram_files(tmp_path))
         assert any(f.suffix == ".m" for f in files)
 

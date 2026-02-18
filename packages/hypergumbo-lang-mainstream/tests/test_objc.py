@@ -48,6 +48,34 @@ class TestFindObjCFiles:
         assert len(files) == 1
         assert files[0].suffix == ".mm"
 
+    def test_excludes_matlab_dot_m_files(self, tmp_path: Path) -> None:
+        """Should not include MATLAB .m files."""
+        from hypergumbo_lang_mainstream.objc import find_objc_files
+
+        (tmp_path / "AppDelegate.m").write_text(
+            '#import "AppDelegate.h"\n@implementation AppDelegate\n@end\n'
+        )
+        (tmp_path / "func.m").write_text("function y = func(x)\n    y = x * 2;\nend\n")
+
+        files = list(find_objc_files(tmp_path))
+        m_files = [f for f in files if f.suffix == ".m"]
+        assert len(m_files) == 1
+        assert m_files[0].name == "AppDelegate.m"
+
+    def test_excludes_wolfram_dot_m_files(self, tmp_path: Path) -> None:
+        """Should not include Wolfram .m files."""
+        from hypergumbo_lang_mainstream.objc import find_objc_files
+
+        (tmp_path / "AppDelegate.m").write_text(
+            '#import "AppDelegate.h"\n@implementation AppDelegate\n@end\n'
+        )
+        (tmp_path / "math.m").write_text("f[x_] := x^2\n")
+
+        files = list(find_objc_files(tmp_path))
+        m_files = [f for f in files if f.suffix == ".m"]
+        assert len(m_files) == 1
+        assert m_files[0].name == "AppDelegate.m"
+
 
 class TestObjCTreeSitterAvailability:
     """Tests for tree-sitter-objc availability checking."""

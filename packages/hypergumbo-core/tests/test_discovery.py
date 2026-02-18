@@ -1,7 +1,12 @@
 """Tests for the discovery module."""
 from pathlib import Path
 
-from hypergumbo_core.discovery import DEFAULT_EXCLUDES, find_files, is_excluded
+from hypergumbo_core.discovery import (
+    DEFAULT_EXCLUDES,
+    classify_dot_m_file,
+    find_files,
+    is_excluded,
+)
 
 
 def test_is_excluded_with_default_patterns(tmp_path: Path) -> None:
@@ -162,3 +167,138 @@ def test_find_files_respects_max_files(tmp_path: Path) -> None:
     # With limit higher than available, should return all
     results = list(find_files(tmp_path, ["*.py"], max_files=100))
     assert len(results) == 5
+
+
+# ---------- classify_dot_m_file tests ----------
+
+
+class TestClassifyDotMFile:
+    """Tests for .m file disambiguation between Objective-C, MATLAB, and Wolfram."""
+
+    def test_objc_interface(self, tmp_path: Path) -> None:
+        """Files with @interface are Objective-C."""
+        f = tmp_path / "AppDelegate.m"
+        f.write_text('#import "AppDelegate.h"\n@implementation AppDelegate\n@end\n')
+        assert classify_dot_m_file(f) == "objc"
+
+    def test_objc_import(self, tmp_path: Path) -> None:
+        """Files with #import are Objective-C."""
+        f = tmp_path / "main.m"
+        f.write_text('#import <Foundation/Foundation.h>\nint main() { return 0; }\n')
+        assert classify_dot_m_file(f) == "objc"
+
+    def test_objc_protocol(self, tmp_path: Path) -> None:
+        """Files with @protocol are Objective-C."""
+        f = tmp_path / "proto.m"
+        f.write_text("@protocol MyProtocol\n- (void)doSomething;\n@end\n")
+        assert classify_dot_m_file(f) == "objc"
+
+    def test_objc_message_send(self, tmp_path: Path) -> None:
+        """Files with [obj message] syntax are Objective-C."""
+        f = tmp_path / "test.m"
+        f.write_text(
+            "#include <stdio.h>\n"
+            "@implementation Foo\n"
+            "- (void)bar { [self doThing]; }\n"
+            "@end\n"
+        )
+        assert classify_dot_m_file(f) == "objc"
+
+    def test_wolfram_set_delayed(self, tmp_path: Path) -> None:
+        """Files with f[x_] := pattern are Wolfram."""
+        f = tmp_path / "math.m"
+        f.write_text("double[x_] := 2 * x\ntriple[x_] := 3 * x\n")
+        assert classify_dot_m_file(f) == "wolfram"
+
+    def test_wolfram_module(self, tmp_path: Path) -> None:
+        """Files with Module[ scoping are Wolfram."""
+        f = tmp_path / "util.m"
+        f.write_text("f[x_] := Module[{y}, y = x + 1; y]\n")
+        assert classify_dot_m_file(f) == "wolfram"
+
+    def test_wolfram_begin_package(self, tmp_path: Path) -> None:
+        """Files with BeginPackage are Wolfram."""
+        f = tmp_path / "pkg.m"
+        f.write_text('BeginPackage["MyPackage`"]\nf::usage = "f[x] does stuff"\nEndPackage[]\n')
+        assert classify_dot_m_file(f) == "wolfram"
+
+    def test_wolfram_needs(self, tmp_path: Path) -> None:
+        """Files with Needs[...] imports are Wolfram."""
+        f = tmp_path / "init.m"
+        f.write_text('Needs["SomePackage`"]\nresult = SomeFunction[42]\n')
+        assert classify_dot_m_file(f) == "wolfram"
+
+    def test_wolfram_block_comment(self, tmp_path: Path) -> None:
+        """Files with (* ... *) block comments and Wolfram syntax are Wolfram."""
+        f = tmp_path / "calc.m"
+        f.write_text("(* Helper function *)\nf[x_] := x^2\n")
+        assert classify_dot_m_file(f) == "wolfram"
+
+    def test_matlab_function(self, tmp_path: Path) -> None:
+        """Files with 'function' keyword are MATLAB."""
+        f = tmp_path / "myfunc.m"
+        f.write_text("function result = myfunc(x)\n    result = x * 2;\nend\n")
+        assert classify_dot_m_file(f) == "matlab"
+
+    def test_matlab_classdef(self, tmp_path: Path) -> None:
+        """Files with 'classdef' keyword are MATLAB."""
+        f = tmp_path / "MyClass.m"
+        f.write_text(
+            "classdef MyClass\n"
+            "    properties\n"
+            "        Value\n"
+            "    end\n"
+            "    methods\n"
+            "        function obj = MyClass(v)\n"
+            "            obj.Value = v;\n"
+            "        end\n"
+            "    end\n"
+            "end\n"
+        )
+        assert classify_dot_m_file(f) == "matlab"
+
+    def test_matlab_percent_comment(self, tmp_path: Path) -> None:
+        """Files with % comments and MATLAB syntax are MATLAB."""
+        f = tmp_path / "script.m"
+        f.write_text("% This is a MATLAB script\nx = linspace(0, 1, 100);\ny = sin(x);\nplot(x, y);\n")
+        assert classify_dot_m_file(f) == "matlab"
+
+    def test_matlab_script_with_semicolons(self, tmp_path: Path) -> None:
+        """MATLAB scripts with semicolons and assignments default to MATLAB."""
+        f = tmp_path / "run.m"
+        f.write_text("% Run simulation\ndt = 0.01;\nT = 10;\nfor i = 1:T/dt\n    x = x + dt;\nend\n")
+        assert classify_dot_m_file(f) == "matlab"
+
+    def test_empty_file_defaults_to_matlab(self, tmp_path: Path) -> None:
+        """Empty .m files default to MATLAB (most common use of .m)."""
+        f = tmp_path / "empty.m"
+        f.write_text("")
+        assert classify_dot_m_file(f) == "matlab"
+
+    def test_unreadable_file_defaults_to_matlab(self, tmp_path: Path) -> None:
+        """Binary/unreadable .m files default to MATLAB."""
+        f = tmp_path / "binary.m"
+        f.write_bytes(b"\x00\x01\x02\xff\xfe")
+        assert classify_dot_m_file(f) == "matlab"
+
+    def test_nonexistent_file_defaults_to_matlab(self, tmp_path: Path) -> None:
+        """Nonexistent files default to MATLAB."""
+        f = tmp_path / "nofile.m"
+        assert classify_dot_m_file(f) == "matlab"
+
+    def test_wolfram_underscore_pattern_args(self, tmp_path: Path) -> None:
+        """Wolfram pattern-match arguments like x_ are a strong signal."""
+        f = tmp_path / "patterns.m"
+        f.write_text("f[x_, y_] := x + y\ng[n_Integer] := n!\n")
+        assert classify_dot_m_file(f) == "wolfram"
+
+    def test_objc_pragma_mark(self, tmp_path: Path) -> None:
+        """#pragma mark is Objective-C."""
+        f = tmp_path / "vc.m"
+        f.write_text(
+            '#import "ViewController.h"\n'
+            "#pragma mark - Lifecycle\n"
+            "@implementation ViewController\n"
+            "@end\n"
+        )
+        assert classify_dot_m_file(f) == "objc"

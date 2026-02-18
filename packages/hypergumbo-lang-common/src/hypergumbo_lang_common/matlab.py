@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator, Optional, TYPE_CHECKING
 
-from hypergumbo_core.discovery import find_files
+from hypergumbo_core.discovery import classify_dot_m_file, find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -59,9 +59,13 @@ def is_matlab_tree_sitter_available() -> bool:
 
 
 def find_matlab_files(root: Path) -> Iterator[Path]:
-    """Find all MATLAB files in the given directory."""
+    """Find MATLAB files, excluding .m files that belong to Objective-C or Wolfram.
+
+    Uses content-based heuristics to disambiguate .m files shared by three
+    languages. Only yields files classified as MATLAB.
+    """
     for path in find_files(root, ["*.m"]):
-        if path.is_file():
+        if path.is_file() and classify_dot_m_file(path) == "matlab":
             yield path
 
 

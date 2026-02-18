@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from hypergumbo_core.discovery import find_files
+from hypergumbo_core.discovery import classify_dot_m_file, find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import iter_tree
@@ -50,14 +50,18 @@ def is_objc_tree_sitter_available() -> bool:
 
 
 def find_objc_files(root: Path) -> list[Path]:
-    """Find all Objective-C files in a directory tree, excluding vendor dirs.
+    """Find Objective-C files, disambiguating .m files via content heuristics.
 
-    Identifies files by extensions:
-    - .m: Objective-C implementation
-    - .mm: Objective-C++ implementation
-    - .h: Header files (may contain Objective-C interfaces)
+    Extensions:
+    - .m: Shared with MATLAB and Wolfram — classified by content
+    - .mm: Objective-C++ (unambiguous)
+    - .h: Header files (unambiguous for Objective-C analysis)
     """
-    return list(find_files(root, ["*.m", "*.mm", "*.h"]))
+    # Unambiguous extensions
+    result = list(find_files(root, ["*.mm", "*.h"]))
+    # Ambiguous .m files — only include if classified as Objective-C
+    result.extend(p for p in find_files(root, ["*.m"]) if classify_dot_m_file(p) == "objc")
+    return result
 
 
 def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:

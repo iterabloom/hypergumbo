@@ -42,7 +42,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
-from hypergumbo_core.discovery import find_files
+from hypergumbo_core.discovery import classify_dot_m_file, find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import iter_tree
@@ -56,8 +56,18 @@ PASS_VERSION = "hypergumbo-0.1.0"
 
 
 def find_wolfram_files(repo_root: Path) -> Iterator[Path]:
-    """Yield all Wolfram files in the repository."""
-    yield from find_files(repo_root, ["*.wl", "*.m", "*.wls", "*.nb"])
+    """Yield Wolfram files, disambiguating .m files via content heuristics.
+
+    Wolfram uses .wl, .wls, and .nb extensions unambiguously. The .m extension
+    is shared with MATLAB and Objective-C, so those files are classified by
+    content before inclusion.
+    """
+    # Unambiguous Wolfram extensions
+    yield from find_files(repo_root, ["*.wl", "*.wls", "*.nb"])
+    # Ambiguous .m files — only include if classified as Wolfram
+    for path in find_files(repo_root, ["*.m"]):
+        if classify_dot_m_file(path) == "wolfram":
+            yield path
 
 
 def is_wolfram_tree_sitter_available() -> bool:
