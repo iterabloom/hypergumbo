@@ -45,6 +45,7 @@ The project uses a YAML-backed structured tracker (ADR-0013) in `.agent/tracker/
   ```bash
   git log --oneline -- ':!.agent/tracker/.ops' ':!.agent/tracker-workspace/.ops'
   ```
+- **Unread Messages:** Use `scripts/tracker check-messages` to see items with unread human discussion messages. The stop hook guidance also surfaces these. Heuristic: a thread is "unread" if its last entry has `by: human` (single-agent assumption — once the agent replies, the thread is considered "read").
 
 ## No Weasel Words
 When documenting status, coverage, or completion:
