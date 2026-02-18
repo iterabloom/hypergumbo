@@ -1,39 +1,40 @@
 """Containment linker for creating `contains` edges between containers and members.
 
 This linker connects container symbols (classes, interfaces, structs, traits,
-enums, modules) to their member symbols (methods, getters, setters, and nested
-containers) based on naming conventions, creating `contains` edges. Without
-these edges, members are orphaned in the graph — disconnected from their parent
-types — which inflates orphan rates and hides hierarchical structure from slice
-traversal.
+enums, modules, services, messages) to their member symbols (methods, getters,
+setters, RPCs, nested messages, and nested containers) based on naming
+conventions, creating `contains` edges. Without these edges, members are
+orphaned in the graph — disconnected from their parent types — which inflates
+orphan rates and hides hierarchical structure from slice traversal.
 
 How It Works
 ------------
-1. Builds a multimap of container names to their symbols
-2. For each member symbol, extracts the parent name using
-   language-specific separators (`.`, `#`, `::`)
-3. Looks up the parent symbol and creates a `contains` edge
-4. Handles nested types: Outer.Inner.method → Inner contains method
-5. Handles module nesting: Postal::MessageDB → Postal contains MessageDB
-6. **Span fallback**: When naming conventions fail (unqualified names),
-   checks if any container symbol in the same file has a span that fully
-   encloses the unqualified symbol.  Prefers the tightest (smallest span)
-   enclosing container.
+Three phases, tried in order of decreasing confidence:
+
+**Phase 1 — Naming convention** (confidence=1.0):
+Extracts the parent name from the symbol's ``name`` field using
+language-specific separators (``.``, ``#``, ``::``).  For example,
+``User.save`` → parent ``User``.
+
+**Phase 1.5 — canonical_name fallback** (confidence=0.95):
+When ``sym.name`` has no separator (e.g., proto RPCs where
+``name="BidiHello"``), falls back to ``sym.canonical_name``
+(e.g., ``hello.HelloService.BidiHello``).  This handles proto
+service→rpc containment and nested message containment.
+
+**Phase 2 — Span-based fallback** (confidence=0.9):
+When neither naming convention nor canonical_name produces a parent,
+checks if any container symbol in the same file has a span that fully
+encloses the unqualified symbol.  Prefers the tightest (smallest span)
+enclosing container.
 
 Naming Conventions by Language
 ------------------------------
-- Most languages use `.`: ClassName.methodName (Python, Java, JS/TS, etc.)
-- Ruby instance methods use `#`: ClassName#method_name
-- Ruby/Elixir modules use `::`: Postal::HTTP, MyApp.Repo
-- Rust uses `::`: ImplTarget::method_name
-
-Span-Based Fallback
--------------------
-Ruby analyzers sometimes emit unqualified names: ``module Postal; class HTTP``
-produces "Postal" (module) and "HTTP" (class) instead of "Postal::HTTP".  The
-naming convention approach cannot link these because ``_extract_parent_name("HTTP")``
-returns None.  The span fallback handles this by checking if any container in the
-same file encloses the symbol's line range.
+- Most languages use ``.``: ClassName.methodName (Python, Java, JS/TS, etc.)
+- Ruby instance methods use ``#``: ClassName#method_name
+- Ruby/Elixir modules use ``::``: Postal::HTTP, MyApp.Repo
+- Rust uses ``::``: ImplTarget::method_name
+- Proto uses ``.`` in canonical_name: hello.HelloService.BidiHello
 
 Why a Linker Instead of Per-Analyzer Logic
 -----------------------------------------
@@ -55,12 +56,16 @@ if TYPE_CHECKING:
 
 PASS_ID = "containment-linker-v1"
 
-# Symbol kinds that can be "contained" by a class/interface
-CONTAINABLE_KINDS = frozenset({"method", "getter", "setter"})
+# Symbol kinds that can be "contained" by a class/interface/service
+CONTAINABLE_KINDS = frozenset({"method", "getter", "setter", "rpc", "message"})
 
 # Symbol kinds that can "contain" other symbols.
-# Includes struct/trait/enum for Rust (and Go/C/Zig structs).
-CONTAINER_KINDS = frozenset({"class", "interface", "struct", "trait", "enum", "module"})
+# Includes struct/trait/enum for Rust (and Go/C/Zig structs),
+# service for proto (contains RPCs), message for proto (nested messages).
+CONTAINER_KINDS = frozenset({
+    "class", "interface", "struct", "trait", "enum", "module",
+    "service", "message",
+})
 
 # Separators used in method names, ordered by specificity
 # Ruby `#` and Rust `::` are checked before `.` to avoid
@@ -94,6 +99,28 @@ def _extract_parent_name(method_name: str) -> str | None:
     return None
 
 
+def _find_parent(
+    parent_name: str,
+    child_path: str,
+    container_by_name: dict[str, list[Symbol]],
+) -> Symbol | None:
+    """Find the best parent container for a given parent name.
+
+    When multiple containers share a name (e.g., Django's 238 Model classes),
+    prefers the container in the same file as the child symbol.  Falls back
+    to the first candidate when no same-file match exists.
+    """
+    candidates = container_by_name.get(parent_name)
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+    for c in candidates:
+        if c.path == child_path:
+            return c
+    return candidates[0]
+
+
 @register_linker(
     "containment",
     priority=12,  # After analyzers (0), before inheritance (15)
@@ -119,10 +146,15 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
     # Multiple classes can share the same name (e.g., Django has 238 classes
     # named "Model" — 1 real + 237 test stubs). When linking methods, we
     # prefer the class in the same file as the method.
+    # Also index by canonical_name for proto service→rpc and nested message
+    # containment, where name is unqualified but canonical_name is fully
+    # qualified (e.g., name="HelloService", canonical_name="hello.HelloService").
     container_by_name: dict[str, list[Symbol]] = {}
     for sym in ctx.symbols:
         if sym.kind in CONTAINER_KINDS:
             container_by_name.setdefault(sym.name, []).append(sym)
+            if sym.canonical_name and sym.canonical_name != sym.name:
+                container_by_name.setdefault(sym.canonical_name, []).append(sym)
 
     # Build set of existing contains edge keys for deduplication
     existing_contains: set[tuple[str, str]] = {
@@ -142,21 +174,9 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
         if parent_name is None:
             continue
 
-        # Look up the parent container, preferring same-file match
-        candidates = container_by_name.get(parent_name)
-        if not candidates:
+        parent_sym = _find_parent(parent_name, sym.path, container_by_name)
+        if parent_sym is None:
             continue
-        parent_sym: Symbol | None = None
-        if len(candidates) == 1:
-            parent_sym = candidates[0]
-        else:
-            # Prefer the class in the same file as the method
-            for c in candidates:
-                if c.path == sym.path:
-                    parent_sym = c
-                    break
-            if parent_sym is None:
-                parent_sym = candidates[0]
 
         # Skip self-containment
         if parent_sym.id == sym.id:
@@ -178,6 +198,49 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
             evidence_type="naming_convention",
         ))
         # Track to avoid duplicates within this run
+        existing_contains.add(pair)
+
+    # --- Phase 1.5: canonical_name fallback ---
+    # Handles cases where sym.name is unqualified (no separator) but
+    # sym.canonical_name is fully qualified (e.g., proto RPCs where
+    # name="BidiHello" but canonical_name="hello.HelloService.BidiHello").
+    for sym in ctx.symbols:
+        if sym.kind not in CONTAINABLE_KINDS and sym.kind not in CONTAINER_KINDS:
+            continue
+
+        # Only apply when name has no separator (Phase 1 didn't match)
+        if _extract_parent_name(sym.name) is not None:
+            continue
+
+        # Need a canonical_name with a separator
+        if not sym.canonical_name:
+            continue
+        parent_name = _extract_parent_name(sym.canonical_name)
+        if parent_name is None:
+            continue
+
+        parent_sym = _find_parent(parent_name, sym.path, container_by_name)
+        if parent_sym is None:
+            continue
+
+        # Skip self-containment
+        if parent_sym.id == sym.id:
+            continue  # pragma: no cover - defensive
+
+        pair = (parent_sym.id, sym.id)
+        if pair in existing_contains:
+            continue
+
+        edges.append(Edge.create(
+            src=parent_sym.id,
+            dst=sym.id,
+            edge_type="contains",
+            line=sym.span.start_line if sym.span else 0,
+            confidence=0.95,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            evidence_type="canonical_name",
+        ))
         existing_contains.add(pair)
 
     # --- Phase 2: Span-based fallback for unqualified names ---

@@ -50,7 +50,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Analysis core
 
 - **Edge deduplication by relationship**: At most one edge per (src, dst, edge_type), eliminating false centrality inflation from repeated calls.
-- **Containment linker**: Creates `contains` edges from classes, interfaces, and modules to their methods across all 15 supported languages. Handles nested classes and struct/trait/enum containers. Span-based fallback for unqualified names (e.g., Ruby `module Postal; class HTTP` where analyzer emits "HTTP" not "Postal::HTTP").
+- **Containment linker**: Creates `contains` edges from classes, interfaces, modules, services, and messages to their methods/RPCs/nested members across all 15 supported languages. Handles nested classes and struct/trait/enum containers. Three-phase resolution: naming convention (qualified names), canonical_name fallback (proto service→rpc and nested message containment), and span-based fallback (unqualified names like Ruby `module Postal; class HTTP`).
 - **Inheritance linker struct support**: Go structs with `base_classes` metadata now produce `implements`/`extends` edges.
 - **Decorator/annotation edge detection**: Decorator applications create edges in Python, TypeScript, Java, C#, and Rust, making registration patterns visible in centrality and slices.
 - **Return type tracking**: Variable type inference now handles function return type annotations in Python, TypeScript, Java, Kotlin, C#, and Dart. Simple (non-generic) return types only.

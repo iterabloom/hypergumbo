@@ -20,6 +20,7 @@ def _sym(
     path: str = "app.py",
     start: int = 1,
     end: int = 5,
+    canonical_name: str | None = None,
 ) -> Symbol:
     """Helper to create a Symbol with minimal boilerplate."""
     return Symbol(
@@ -32,6 +33,7 @@ def _sym(
         origin="test",
         origin_run_id="test-run",
         meta=None,
+        canonical_name=canonical_name,
     )
 
 
@@ -833,6 +835,29 @@ class TestSpanBasedContainment:
         assert contains[0].dst == cls.id
         assert contains[0].evidence_type == "naming_convention"
 
+    def test_span_containment_rpc_with_unqualified_name(self) -> None:
+        """Proto RPCs with unqualified names should be linked to services via span fallback."""
+        svc = _sym(
+            "proto:hello.proto:3-15:HelloService:service",
+            "HelloService", "service", language="proto", path="hello.proto",
+            start=3, end=15,
+        )
+        rpc = _sym(
+            "proto:hello.proto:5-5:BidiHello:rpc",
+            "BidiHello", "rpc", language="proto", path="hello.proto",
+            start=5, end=5,
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[svc, rpc], edges=[],
+        )
+        result = link_containment(ctx)
+
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 1
+        assert contains[0].src == svc.id
+        assert contains[0].dst == rpc.id
+
     def test_span_containment_dedup_with_existing_edges(self) -> None:
         """Span containment doesn't duplicate edges already in ctx.edges."""
         mod = _sym(
@@ -853,6 +878,250 @@ class TestSpanBasedContainment:
 
         ctx = LinkerContext(
             repo_root=Path("/test"), symbols=[mod, cls], edges=[existing_edge],
+        )
+        result = link_containment(ctx)
+
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 0
+
+
+class TestCanonicalNameContainment:
+    """Tests for canonical_name-based containment fallback.
+
+    Proto analyzers and some other analyzers emit unqualified symbol names
+    (e.g., ``name="BidiHello"``) but provide a fully qualified canonical_name
+    (e.g., ``canonical_name="hello.HelloService.BidiHello"``).  The containment
+    linker should fall back to canonical_name when the plain name has no
+    separator, enabling service→rpc and nested message containment.
+    """
+
+    def test_proto_service_contains_rpc_via_canonical_name(self) -> None:
+        """Proto service contains its RPCs via canonical_name fallback."""
+        svc = _sym(
+            "proto:hello.proto:3-15:HelloService:service",
+            "HelloService", "service", language="proto", path="hello.proto",
+            start=3, end=15,
+            canonical_name="hello.HelloService",
+        )
+        rpc = _sym(
+            "proto:hello.proto:5-5:BidiHello:rpc",
+            "BidiHello", "rpc", language="proto", path="hello.proto",
+            start=5, end=5,
+            canonical_name="hello.HelloService.BidiHello",
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[svc, rpc], edges=[],
+        )
+        result = link_containment(ctx)
+
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 1
+        assert contains[0].src == svc.id
+        assert contains[0].dst == rpc.id
+        assert contains[0].evidence_type == "canonical_name"
+
+    def test_proto_nested_message_via_canonical_name(self) -> None:
+        """Nested proto message linked via canonical_name."""
+        outer_msg = _sym(
+            "proto:types.proto:10-30:MemoryStats:message",
+            "MemoryStats", "message", language="proto", path="types.proto",
+            start=10, end=30,
+            canonical_name="kong.MemoryStats",
+        )
+        inner_msg = _sym(
+            "proto:types.proto:15-20:LuaSharedDicts:message",
+            "LuaSharedDicts", "message", language="proto", path="types.proto",
+            start=15, end=20,
+            canonical_name="kong.MemoryStats.LuaSharedDicts",
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[outer_msg, inner_msg], edges=[],
+        )
+        result = link_containment(ctx)
+
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 1
+        assert contains[0].src == outer_msg.id
+        assert contains[0].dst == inner_msg.id
+        assert contains[0].evidence_type == "canonical_name"
+
+    def test_canonical_name_prefers_same_file(self) -> None:
+        """When multiple containers share canonical_name, prefer same-file."""
+        svc_a = _sym(
+            "proto:a.proto:1-20:HelloService:service",
+            "HelloService", "service", language="proto", path="a.proto",
+            start=1, end=20,
+            canonical_name="hello.HelloService",
+        )
+        svc_b = _sym(
+            "proto:b.proto:1-20:HelloService:service",
+            "HelloService", "service", language="proto", path="b.proto",
+            start=1, end=20,
+            canonical_name="hello.HelloService",
+        )
+        rpc = _sym(
+            "proto:b.proto:5-5:BidiHello:rpc",
+            "BidiHello", "rpc", language="proto", path="b.proto",
+            start=5, end=5,
+            canonical_name="hello.HelloService.BidiHello",
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[svc_a, svc_b, rpc], edges=[],
+        )
+        result = link_containment(ctx)
+
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 1
+        assert contains[0].src == svc_b.id  # same file as rpc
+
+    def test_canonical_name_no_match_when_parent_missing(self) -> None:
+        """No edge when canonical_name parent doesn't exist as a symbol."""
+        rpc = _sym(
+            "proto:hello.proto:5-5:BidiHello:rpc",
+            "BidiHello", "rpc", language="proto", path="hello.proto",
+            start=5, end=5,
+            canonical_name="hello.MissingService.BidiHello",
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[rpc], edges=[],
+        )
+        result = link_containment(ctx)
+
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 0
+
+    def test_canonical_name_skips_when_name_has_separator(self) -> None:
+        """canonical_name fallback is only used when name has no separator."""
+        svc = _sym(
+            "proto:hello.proto:3-15:hello.HelloService:service",
+            "hello.HelloService", "service", language="proto", path="hello.proto",
+            start=3, end=15,
+            canonical_name="hello.HelloService",
+        )
+        rpc = _sym(
+            "proto:hello.proto:5-5:hello.HelloService.BidiHello:rpc",
+            "hello.HelloService.BidiHello", "rpc", language="proto",
+            path="hello.proto", start=5, end=5,
+            canonical_name="hello.HelloService.BidiHello",
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[svc, rpc], edges=[],
+        )
+        result = link_containment(ctx)
+
+        # Should use naming_convention (name has separator), not canonical_name
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 1
+        assert contains[0].evidence_type == "naming_convention"
+
+    def test_multiple_rpcs_in_service(self) -> None:
+        """All RPCs in a service should be contained."""
+        svc = _sym(
+            "proto:plugin.proto:1-50:Kong:service",
+            "Kong", "service", language="proto", path="plugin.proto",
+            start=1, end=50,
+            canonical_name="kong_plugin_protocol.Kong",
+        )
+        rpc1 = _sym(
+            "proto:plugin.proto:5-5:Client_Authenticate:rpc",
+            "Client_Authenticate", "rpc", language="proto", path="plugin.proto",
+            start=5, end=5,
+            canonical_name="kong_plugin_protocol.Kong.Client_Authenticate",
+        )
+        rpc2 = _sym(
+            "proto:plugin.proto:8-8:Client_GetConsumer:rpc",
+            "Client_GetConsumer", "rpc", language="proto", path="plugin.proto",
+            start=8, end=8,
+            canonical_name="kong_plugin_protocol.Kong.Client_GetConsumer",
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[svc, rpc1, rpc2], edges=[],
+        )
+        result = link_containment(ctx)
+
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 2
+        assert all(e.src == svc.id for e in contains)
+        dst_ids = {e.dst for e in contains}
+        assert dst_ids == {rpc1.id, rpc2.id}
+
+    def test_canonical_name_no_separator_skipped(self) -> None:
+        """canonical_name without separator is skipped (no parent extractable)."""
+        rpc = _sym(
+            "proto:hello.proto:5-5:BidiHello:rpc",
+            "BidiHello", "rpc", language="proto", path="hello.proto",
+            start=5, end=5,
+            canonical_name="BidiHello",  # No separator
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[rpc], edges=[],
+        )
+        result = link_containment(ctx)
+
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 0
+
+    def test_canonical_name_fallback_no_same_file_match(self) -> None:
+        """Falls back to first candidate when no same-file match exists."""
+        svc_a = _sym(
+            "proto:a.proto:1-20:HelloService:service",
+            "HelloService", "service", language="proto", path="a.proto",
+            start=1, end=20,
+            canonical_name="hello.HelloService",
+        )
+        svc_b = _sym(
+            "proto:b.proto:1-20:HelloService:service",
+            "HelloService", "service", language="proto", path="b.proto",
+            start=1, end=20,
+            canonical_name="hello.HelloService",
+        )
+        # RPC is in a THIRD file — no same-file match
+        rpc = _sym(
+            "proto:c.proto:5-5:BidiHello:rpc",
+            "BidiHello", "rpc", language="proto", path="c.proto",
+            start=5, end=5,
+            canonical_name="hello.HelloService.BidiHello",
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[svc_a, svc_b, rpc], edges=[],
+        )
+        result = link_containment(ctx)
+
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 1
+        # Falls back to first candidate (svc_a)
+        assert contains[0].src == svc_a.id
+
+    def test_canonical_name_dedup_with_existing_edges(self) -> None:
+        """canonical_name containment doesn't duplicate existing edges."""
+        svc = _sym(
+            "proto:hello.proto:3-15:HelloService:service",
+            "HelloService", "service", language="proto", path="hello.proto",
+            start=3, end=15,
+            canonical_name="hello.HelloService",
+        )
+        rpc = _sym(
+            "proto:hello.proto:5-5:BidiHello:rpc",
+            "BidiHello", "rpc", language="proto", path="hello.proto",
+            start=5, end=5,
+            canonical_name="hello.HelloService.BidiHello",
+        )
+
+        existing_edge = Edge.create(
+            src=svc.id, dst=rpc.id, edge_type="contains",
+            line=5, confidence=1.0, origin="test",
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[svc, rpc], edges=[existing_edge],
         )
         result = link_containment(ctx)
 
