@@ -14,8 +14,9 @@ The check sequence covers three areas:
 1. **Core infrastructure** (checks 1-14): directory structure, git plumbing,
    config validation, ownership, group permissions, textconv driver,
    data integrity.
-2. **Agentic infrastructure** (checks 15-18): wrapper scripts, agent
-   instructions, hook integration. Read-only / advisory only.
+2. **Agentic infrastructure** (checks 15-20): wrapper scripts, agent
+   instructions, hook integration, autonomous mode consistency, reflection
+   state validity. Read-only / advisory only.
 
 Entry point: ``run_setup(root, repo_root)`` returns a list of CheckResult.
 The CLI handler in cli.py formats and prints them.
@@ -23,7 +24,9 @@ The CLI handler in cli.py formats and prints them.
 
 from __future__ import annotations
 
+import datetime
 import grp
+import json
 import os
 import pwd
 import re
@@ -62,7 +65,7 @@ class CheckResult:
 
 
 # ---------------------------------------------------------------------------
-# Tracker concept definitions for AGENTS.md scanning (check #14)
+# Tracker concept definitions for AGENTS.md scanning (check #16)
 # ---------------------------------------------------------------------------
 
 TRACKER_CONCEPTS: dict[str, dict[str, Any]] = {
@@ -101,6 +104,62 @@ TRACKER_CONCEPTS: dict[str, dict[str, Any]] = {
         "suggestion": (
             "Add to your agent instructions:\n"
             "  Tracker-only changes use a `tracker:` conventional-commit prefix."
+        ),
+    },
+    "structural_fix_protocol": {
+        "description": (
+            "Assume a bug is a symptom of a deeper issue affecting multiple "
+            "disparate parts of the codebase"
+        ),
+        "patterns": [
+            r"assume\s+structural",
+            r"name\s+the\s+invariant",
+            r"scope\s+expansion",
+        ],
+        "suggestion": (
+            "Add to your agent instructions:\n"
+            "  When fixing a bug, assume it is a symptom of a deeper issue\n"
+            "  affecting multiple parts of the codebase. Name the violated\n"
+            "  invariant, then check for analogous issues via scope expansion."
+        ),
+    },
+    "tdd_protocol": {
+        "description": "Agents should follow TDD (Red/Green/Refactor)",
+        "patterns": [
+            r"red.*green.*refactor",
+            r"failing\s+test\s+first",
+            r"write.*test.*before",
+        ],
+        "suggestion": (
+            "Add to your agent instructions:\n"
+            "  Follow TDD: write a failing test first (Red), make it pass\n"
+            "  (Green), then refactor. Do not skip the refactor phase."
+        ),
+    },
+    "coverage_requirement": {
+        "description": "Test coverage target should be explicit",
+        "patterns": [
+            r"100%.*coverage",
+            r"cov-fail-under",
+            r"coverage.*100",
+        ],
+        "suggestion": (
+            "Add to your agent instructions:\n"
+            "  Maintain 100% test coverage. Verify with:\n"
+            "    pytest --cov-fail-under=100"
+        ),
+    },
+    "batching": {
+        "description": "Tracker operations should be batched into fewer commits",
+        "patterns": [
+            r"batch.*tracker",
+            r"tracker.*batch",
+            r"fewer\s+commits.*tracker",
+        ],
+        "suggestion": (
+            "Add to your agent instructions:\n"
+            "  Batch tracker operations into fewer commits rather than committing\n"
+            "  after every `scripts/tracker update` call."
         ),
     },
 }
@@ -1120,6 +1179,160 @@ def _check_precommit_hook(repo_root: Path | None) -> CheckResult:
     )
 
 
+def _check_autonomous_mode(repo_root: Path | None) -> CheckResult:
+    """Check #19: Cross-check autonomous mode config and loop sentinel.
+
+    Verifies that AUTONOMOUS_MODE.txt (if present) has a recognized value
+    and that the .agent/LOOP sentinel is consistent with the mode setting.
+    Active autonomous modes (TRUE, BROAD, DEEP) without a LOOP sentinel
+    mean the agent won't actually loop. A LOOP sentinel with OFF mode is
+    also inconsistent.
+    """
+    if repo_root is None:
+        return CheckResult(
+            name="autonomous_mode",
+            status="ok",
+            message="Autonomous mode check skipped (no git repo)",
+        )
+
+    mode_file = repo_root / "AUTONOMOUS_MODE.txt"
+    if not mode_file.exists():
+        return CheckResult(
+            name="autonomous_mode",
+            status="ok",
+            message="Autonomous mode not configured (no AUTONOMOUS_MODE.txt)",
+        )
+
+    mode = mode_file.read_text().strip().upper()
+    known_modes = {"OFF", "TRUE", "BROAD", "DEEP"}
+    agent_dir = repo_root / ".agent"
+    has_sentinel = (agent_dir / "LOOP").exists()
+
+    if mode not in known_modes:
+        return CheckResult(
+            name="autonomous_mode",
+            status="warn",
+            message=f"Unrecognized autonomous mode: '{mode}'",
+            details=[f"Expected one of: {', '.join(sorted(known_modes))}"],
+        )
+
+    if mode == "OFF":
+        if has_sentinel:
+            return CheckResult(
+                name="autonomous_mode",
+                status="warn",
+                message="Inconsistent: mode is OFF but .agent/LOOP sentinel exists",
+                details=[
+                    "The LOOP sentinel will be ignored since mode is OFF.",
+                    "Remove .agent/LOOP or change mode to BROAD/DEEP.",
+                ],
+            )
+        return CheckResult(
+            name="autonomous_mode",
+            status="ok",
+            message="Autonomous mode: OFF",
+        )
+
+    # Active mode (TRUE, BROAD, DEEP)
+    if not has_sentinel:
+        return CheckResult(
+            name="autonomous_mode",
+            status="warn",
+            message=f"Mode is {mode} but no .agent/LOOP sentinel found",
+            details=[
+                "Without the LOOP sentinel, the agent won't actually loop.",
+                "Create it with: touch .agent/LOOP",
+            ],
+        )
+
+    return CheckResult(
+        name="autonomous_mode",
+        status="ok",
+        message=f"Autonomous mode: {mode} (LOOP sentinel present)",
+    )
+
+
+def _check_reflection_state(repo_root: Path | None) -> CheckResult:
+    """Check #20: Validate last_stop_check.json schema and freshness.
+
+    Parses the reflection state file and checks that it has the expected
+    keys, the timestamp is valid ISO format, and the reflection is not
+    unreasonably stale (>7 days). Advisory only.
+    """
+    if repo_root is None:
+        return CheckResult(
+            name="reflection_state",
+            status="ok",
+            message="Reflection state check skipped (no git repo)",
+        )
+
+    state_file = repo_root / ".agent" / "last_stop_check.json"
+    if not state_file.exists():
+        return CheckResult(
+            name="reflection_state",
+            status="ok",
+            message="No reflection state file (last_stop_check.json)",
+        )
+
+    try:
+        raw = json.loads(state_file.read_text())
+    except (json.JSONDecodeError, ValueError):
+        return CheckResult(
+            name="reflection_state",
+            status="warn",
+            message="last_stop_check.json: invalid JSON",
+            details=["The file exists but cannot be parsed."],
+        )
+
+    if not isinstance(raw, dict):
+        return CheckResult(
+            name="reflection_state",
+            status="warn",
+            message="last_stop_check.json: not a JSON object",
+        )
+
+    required_keys = {"last_completed_utc", "branch"}
+    missing = required_keys - set(raw.keys())
+    if missing:
+        return CheckResult(
+            name="reflection_state",
+            status="warn",
+            message=f"last_stop_check.json: missing key(s): {sorted(missing)}",
+        )
+
+    # Validate timestamp
+    ts_str = raw["last_completed_utc"]
+    try:
+        ts = datetime.datetime.strptime(ts_str, "%Y-%m-%dT%H:%M:%SZ")
+        ts = ts.replace(tzinfo=datetime.timezone.utc)
+    except (ValueError, TypeError):
+        return CheckResult(
+            name="reflection_state",
+            status="warn",
+            message="last_stop_check.json: unparseable timestamp",
+            details=[f"Value: {ts_str!r}", "Expected ISO format: YYYY-MM-DDTHH:MM:SSZ"],
+        )
+
+    # Check freshness
+    age = datetime.datetime.now(tz=datetime.timezone.utc) - ts
+    if age.days > 7:
+        return CheckResult(
+            name="reflection_state",
+            status="warn",
+            message=f"Reflection state is stale ({age.days} days old)",
+            details=[
+                "The reflection loop may not be running.",
+                f"Last reflection: {ts_str}",
+            ],
+        )
+
+    return CheckResult(
+        name="reflection_state",
+        status="ok",
+        message="Reflection state is valid and recent",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Top-level runner
 # ---------------------------------------------------------------------------
@@ -1164,6 +1377,8 @@ def run_setup(root: Path, repo_root: Path | None = None) -> list[CheckResult]:
     results.append(_check_agents_md(repo_root))            # 16
     results.append(_check_stop_hook(repo_root))            # 17
     results.append(_check_precommit_hook(repo_root))       # 18
+    results.append(_check_autonomous_mode(repo_root))      # 19
+    results.append(_check_reflection_state(repo_root))     # 20
 
     return results
 

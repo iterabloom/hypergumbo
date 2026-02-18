@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 """Tests for hypergumbo_tracker.setup — idempotent setup wizard.
 
-Covers all 18 checks in all reachable states (ok, fixed, warn, error),
+Covers all 20 checks in all reachable states (ok, fixed, warn, error),
 the top-level run_setup() orchestration, and CLI integration via _cmd_setup.
 """
 
@@ -25,6 +25,7 @@ from hypergumbo_tracker.setup import (
     CheckResult,
     _check_actor_resolution,
     _check_agents_md,
+    _check_autonomous_mode,
     _check_config_drift,
     _check_config_ownership,
     _check_config_template,
@@ -38,6 +39,7 @@ from hypergumbo_tracker.setup import (
     _check_group_permissions,
     _check_ops_writable,
     _check_precommit_hook,
+    _check_reflection_state,
     _check_stop_hook,
     _check_textconv,
     _check_tracker_wrapper,
@@ -1326,6 +1328,12 @@ class TestCheckAgentsMd:
         Don't read .ops files — they pollute context.
         Use `tracker ready` to pick tasks.
         tracker: commit prefix for tracker-only changes.
+        Assume structural until proven otherwise.
+        Name the invariant before fixing.
+        Follow TDD: Red, Green, Refactor.
+        Write a failing test first.
+        Must maintain 100% coverage with cov-fail-under.
+        Batch tracker operations into fewer commits.
         """)
         (tmp_path / "AGENTS.md").write_text(content)
         result = _check_agents_md(tmp_path)
@@ -1336,14 +1344,15 @@ class TestCheckAgentsMd:
         (tmp_path / "AGENTS.md").write_text(content)
         result = _check_agents_md(tmp_path)
         assert result.status == "warn"
-        assert "3" in result.message  # All 3 concepts missing
+        assert str(len(TRACKER_CONCEPTS)) in result.message
 
     def test_partial_concepts(self, tmp_path: Path) -> None:
         content = "# Agent Instructions\nUse tracker ready for tasks.\n"
         (tmp_path / "AGENTS.md").write_text(content)
         result = _check_agents_md(tmp_path)
         assert result.status == "warn"
-        assert "2" in result.message  # 2 concepts missing
+        expected_missing = len(TRACKER_CONCEPTS) - 1
+        assert str(expected_missing) in result.message
 
     def test_claude_md_fallback(self, tmp_path: Path) -> None:
         content = textwrap.dedent("""\
@@ -1351,6 +1360,10 @@ class TestCheckAgentsMd:
         .ops files pollute context.
         tracker ready for tasks.
         tracker: prefix for commits.
+        Assume structural until proven otherwise.
+        Red, Green, Refactor cycle.
+        100% coverage requirement.
+        Batch tracker operations.
         """)
         (tmp_path / "CLAUDE.md").write_text(content)
         result = _check_agents_md(tmp_path)
@@ -1519,6 +1532,175 @@ class TestCheckPrecommitHook:
 
 
 # ---------------------------------------------------------------------------
+# Check #19: Autonomous mode consistency
+# ---------------------------------------------------------------------------
+
+
+class TestCheckAutonomousMode:
+    """Tests for _check_autonomous_mode (check #19)."""
+
+    def test_no_repo(self) -> None:
+        result = _check_autonomous_mode(None)
+        assert result.status == "ok"
+        assert "skipped" in result.message
+
+    def test_no_autonomous_mode_file(self, tmp_path: Path) -> None:
+        (tmp_path / ".agent").mkdir()
+        result = _check_autonomous_mode(tmp_path)
+        assert result.status == "ok"
+        assert "not configured" in result.message.lower()
+
+    def test_off_mode_no_sentinel(self, tmp_path: Path) -> None:
+        (tmp_path / "AUTONOMOUS_MODE.txt").write_text("OFF\n")
+        (tmp_path / ".agent").mkdir()
+        result = _check_autonomous_mode(tmp_path)
+        assert result.status == "ok"
+
+    def test_off_mode_with_sentinel(self, tmp_path: Path) -> None:
+        """OFF mode but LOOP sentinel present — inconsistent."""
+        (tmp_path / "AUTONOMOUS_MODE.txt").write_text("OFF\n")
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir()
+        (agent_dir / "LOOP").write_text("")
+        result = _check_autonomous_mode(tmp_path)
+        assert result.status == "warn"
+        assert "LOOP" in result.message or "inconsistent" in result.message.lower()
+
+    def test_broad_mode_with_sentinel(self, tmp_path: Path) -> None:
+        (tmp_path / "AUTONOMOUS_MODE.txt").write_text("BROAD\n")
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir()
+        (agent_dir / "LOOP").write_text("")
+        result = _check_autonomous_mode(tmp_path)
+        assert result.status == "ok"
+        assert "BROAD" in result.message
+
+    def test_deep_mode_without_sentinel(self, tmp_path: Path) -> None:
+        """DEEP mode but no LOOP sentinel — agent won't actually loop."""
+        (tmp_path / "AUTONOMOUS_MODE.txt").write_text("DEEP\n")
+        (tmp_path / ".agent").mkdir()
+        result = _check_autonomous_mode(tmp_path)
+        assert result.status == "warn"
+        assert "LOOP" in result.message or "sentinel" in result.message.lower()
+
+    def test_true_mode_treated_as_broad(self, tmp_path: Path) -> None:
+        (tmp_path / "AUTONOMOUS_MODE.txt").write_text("TRUE\n")
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir()
+        (agent_dir / "LOOP").write_text("")
+        result = _check_autonomous_mode(tmp_path)
+        assert result.status == "ok"
+
+    def test_unknown_mode_value(self, tmp_path: Path) -> None:
+        (tmp_path / "AUTONOMOUS_MODE.txt").write_text("YOLO\n")
+        (tmp_path / ".agent").mkdir()
+        result = _check_autonomous_mode(tmp_path)
+        assert result.status == "warn"
+        assert "unrecognized" in result.message.lower() or "YOLO" in result.message
+
+
+# ---------------------------------------------------------------------------
+# Check #20: Reflection state
+# ---------------------------------------------------------------------------
+
+
+class TestCheckReflectionState:
+    """Tests for _check_reflection_state (check #20)."""
+
+    def test_no_repo(self) -> None:
+        result = _check_reflection_state(None)
+        assert result.status == "ok"
+        assert "skipped" in result.message
+
+    def test_no_state_file(self, tmp_path: Path) -> None:
+        (tmp_path / ".agent").mkdir()
+        result = _check_reflection_state(tmp_path)
+        assert result.status == "ok"
+        assert "no reflection state" in result.message.lower()
+
+    def test_valid_recent_state(self, tmp_path: Path) -> None:
+        """A valid state file with a recent timestamp should be ok."""
+        from datetime import datetime, timezone
+
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir()
+        now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        state = {
+            "last_completed_utc": now,
+            "branch": "dev",
+            "last_pr": 42,
+            "last_pr_state": "none",
+            "pending_hard_todos": 0,
+            "pending_soft_todos": 0,
+            "notes": "",
+        }
+        (agent_dir / "last_stop_check.json").write_text(json.dumps(state))
+        result = _check_reflection_state(tmp_path)
+        assert result.status == "ok"
+
+    def test_stale_state(self, tmp_path: Path) -> None:
+        """A state file > 7 days old should warn."""
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir()
+        state = {
+            "last_completed_utc": "2020-01-01T00:00:00Z",
+            "branch": "dev",
+            "last_pr": 0,
+            "last_pr_state": "none",
+            "pending_hard_todos": 0,
+            "pending_soft_todos": 0,
+            "notes": "",
+        }
+        (agent_dir / "last_stop_check.json").write_text(json.dumps(state))
+        result = _check_reflection_state(tmp_path)
+        assert result.status == "warn"
+        assert "stale" in result.message.lower()
+
+    def test_unparseable_json(self, tmp_path: Path) -> None:
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir()
+        (agent_dir / "last_stop_check.json").write_text("not json{{{")
+        result = _check_reflection_state(tmp_path)
+        assert result.status == "warn"
+        assert "parse" in result.message.lower() or "invalid" in result.message.lower()
+
+    def test_non_dict_json(self, tmp_path: Path) -> None:
+        """JSON file that parses but isn't an object (e.g., a list)."""
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir()
+        (agent_dir / "last_stop_check.json").write_text("[1, 2, 3]")
+        result = _check_reflection_state(tmp_path)
+        assert result.status == "warn"
+        assert "not a json object" in result.message.lower()
+
+    def test_missing_required_keys(self, tmp_path: Path) -> None:
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir()
+        state = {"branch": "dev"}  # missing last_completed_utc
+        (agent_dir / "last_stop_check.json").write_text(json.dumps(state))
+        result = _check_reflection_state(tmp_path)
+        assert result.status == "warn"
+        assert "missing" in result.message.lower() or "key" in result.message.lower()
+
+    def test_unparseable_timestamp(self, tmp_path: Path) -> None:
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir()
+        state = {
+            "last_completed_utc": "not-a-date",
+            "branch": "dev",
+            "last_pr": 0,
+            "last_pr_state": "none",
+            "pending_hard_todos": 0,
+            "pending_soft_todos": 0,
+            "notes": "",
+        }
+        (agent_dir / "last_stop_check.json").write_text(json.dumps(state))
+        result = _check_reflection_state(tmp_path)
+        assert result.status == "warn"
+        assert "timestamp" in result.message.lower() or "parse" in result.message.lower()
+
+
+# ---------------------------------------------------------------------------
 # run_setup orchestration
 # ---------------------------------------------------------------------------
 
@@ -1532,8 +1714,8 @@ class TestRunSetup:
             "hypergumbo_tracker.setup.resolve_actor", return_value=("human", "alice")
         ):
             results = run_setup(root)
-        # Should have 16 results (one per check)
-        assert len(results) == 18
+        # Should have one result per check (20 total)
+        assert len(results) == 20
         # Directory structure should be fixed
         dir_result = next(r for r in results if r.name == "directory_structure")
         assert dir_result.status == "fixed"

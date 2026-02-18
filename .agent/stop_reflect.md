@@ -10,33 +10,16 @@ State what the last change was and why it was made.
 For each remaining signal, state the violated invariant:
 > "In this system, X must always be true because Y depends on it."
 
-Check via tracker CLI (preferred) or ledger grep (fallback):
+Check the structured tracker for blocking items:
 ```bash
-# Tracker CLI (structured — use this when available):
-scripts/tracker count-todos --hard 2>/dev/null || echo "tracker unavailable"
-scripts/tracker count-todos --soft 2>/dev/null || echo "tracker unavailable"
-scripts/tracker ready 2>/dev/null | head -10  # actionable items by priority
-
-# Ledger grep (fallback — for invariants not yet migrated):
-cat .agent/invariant-ledger.md 2>/dev/null | grep -E '^- \*\*Status:\*\* (UNFIXED|PARTIALLY ADDRESSED|TBD|[0-9]+%)' | grep -v '100%' || true
+scripts/tracker count-todos --hard   # todo_hard: investigate deeply, assume structural
+scripts/tracker count-todos --soft   # todo_soft: backlog, address or defer freely
+scripts/tracker ready | head -10     # actionable items sorted by priority
 ```
-This catches:
-- Regular invariants: UNFIXED, PARTIALLY ADDRESSED, TBD
-- Meta-invariants: Any percentage below 100%
 
-If items show, read details with `scripts/tracker show <ID>` or the full ledger for context.
+If items show, read details with `scripts/tracker show <ID>`.
 
-Also check for pending work items (both files, both flavors):
-```bash
-# Hard TODOs (invariant/defect — investigate deeply):
-grep -c '^\s*- \*\*TODO!\*\*' .agent/invariant-ledger.md 2>/dev/null || echo 0
-grep -c '^\s*- \*\*TODO!\*\*' ~/hypergumbo_lab_notebook/guidance_log/work_items.md 2>/dev/null || echo 0
-
-# Soft TODOs (backlog — address or defer freely):
-grep -c '^\s*- \*\*TODO\*\*[^!]' .agent/invariant-ledger.md 2>/dev/null || echo 0
-grep -c '^\s*- \*\*TODO\*\*[^!]' ~/hypergumbo_lab_notebook/guidance_log/work_items.md 2>/dev/null || echo 0
-```
-Both `**TODO!**` and `**TODO**` items block stopping (subject to circuit breaker). `**TODO!**` = investigate deeply, assume structural. `**TODO**` = address or defer freely.
+Both `todo_hard` and `todo_soft` items block stopping (subject to circuit breaker).
 
 ## 3. Structural vs Workaround
 For the last change made:
@@ -49,18 +32,19 @@ Check for structural analogues of the last fix:
 - Different language, same pattern?
 - Different pipeline stage?
 
-If analogues exist, write TODO entries immediately. Use the appropriate flavor:
-```
-- **TODO!** Target: description (invariant/defect, est. complexity, value: ...)
-- **TODO** Target: description (backlog, est. complexity, value: ...)
-```
-Use `**TODO!**` for invariant violations, defects, and anything that might be structural. Use `**TODO**` for clearly non-defect backlog. **When in doubt, use `**TODO!**`** — the circuit breaker prevents death spirals, so err on the side of taking things seriously.
+If analogues exist, create tracker items immediately:
+```bash
+# Invariant violations, defects, anything potentially structural:
+scripts/tracker add invariant --title "..." --status todo_hard --priority N
 
-Place entries in the invariant ledger (under `Pending Generalizations`) for invariant-related work, or in `~/hypergumbo_lab_notebook/guidance_log/work_items.md` for things that don't fit an invariant entry. Both files are checked by the stop hook.
+# Clearly non-defect backlog (CI config, nice-to-haves):
+scripts/tracker add work_item --title "..." --status todo_soft --priority N
+```
+**When in doubt, use `todo_hard`** — the circuit breaker prevents death spirals, so err on the side of taking things seriously.
 
 ## 5. Decision
 - If root cause is unfixed (even partially) and analogous issues might exist: **DO NOT STOP** — fix the root cause or investigate further
-- If root cause is fixed or truly isolated: document in invariant ledger, then decide your next action.
+- If root cause is fixed or truly isolated: update the tracker item to `done`, then decide your next action.
 
 **Next action selection (in priority order):**
 1. **Implementation-ready insights:** Check the lab notebook (`ls -t ~/hypergumbo_lab_notebook/*.md | head -5`) for recent entries that identify concrete code changes. If found, implement them (TDD).
@@ -85,7 +69,7 @@ Consider the last few changes made:
 
 - **Hardcoded vs YAML:** Is there anything hardcoded in Python that would be more appropriate as a YAML config? Framework patterns should live in `src/hypergumbo/frameworks/*.yaml`. Language conventions should be declarative where possible. If you added a new pattern check, could it be expressed as YAML instead?
 
-- **Invariant Consolidation:** Are there any invariants in the ledger that should be combined into a single, more principled/general invariant? Look for invariants that share a root cause or could be expressed as a single more abstract principle.
+- **Invariant Consolidation:** Are there any invariants in the tracker that should be combined into a single, more principled/general invariant? Look for invariants that share a root cause or could be expressed as a single more abstract principle. Use `scripts/tracker list --kind invariant` to review.
 
 ## 8. Commit and Timestamp
 - Run `git status` — are there uncommitted changes?
@@ -107,21 +91,17 @@ else:
     last_pr = 0       # Agent fills in the PR number that just merged, or 0
     last_pr_state = 'none'
 
-# Count pending work items from invariant ledger + work_items.md
-ledger = pathlib.Path('.agent/invariant-ledger.md')
-ledger_text = ledger.read_text() if ledger.exists() else ''
-work_items = pathlib.Path.home() / 'hypergumbo_lab_notebook' / 'guidance_log' / 'work_items.md'
-work_text = work_items.read_text() if work_items.exists() else ''
-import re
-pending_hard_todos = (
-    len(re.findall(r'^\s*- \*\*TODO!\*\*', ledger_text, re.MULTILINE))
-    + len(re.findall(r'^\s*- \*\*TODO!\*\*', work_text, re.MULTILINE))
-)
-pending_soft_todos = (
-    len(re.findall(r'^\s*- \*\*TODO\*\*[^!]', ledger_text, re.MULTILINE))
-    + len(re.findall(r'^\s*- \*\*TODO\*\*[^!]', work_text, re.MULTILINE))
-)
-unfixed = len(re.findall(r'^\s*- \*\*Status:\*\* (UNFIXED|PARTIALLY ADDRESSED|TBD)', ledger_text, re.MULTILINE))
+# Count pending work items from structured tracker
+def tracker_count(flag):
+    try:
+        return int(subprocess.check_output(
+            ['scripts/tracker', 'count-todos', flag], text=True
+        ).strip())
+    except Exception:
+        return 0
+
+pending_hard_todos = tracker_count('--hard')
+pending_soft_todos = tracker_count('--soft')
 
 # Preserve guidance_file from previous stop hook run if present
 existing_state = {}
@@ -139,8 +119,7 @@ state = {
     'last_pr_state': last_pr_state,
     'pending_hard_todos': pending_hard_todos,
     'pending_soft_todos': pending_soft_todos,
-    'unfixed_invariants': unfixed,
-    'notes': '',  # Agent fills in: specific implementation task(s) for cooldown to act on. Be concrete: "add X pattern to Y file" not "investigate X"
+    'notes': '',  # Agent fills in: specific implementation task(s) for cooldown to act on. Be concrete: 'add X pattern to Y file' not 'investigate X'
 }
 if 'guidance_file' in existing_state:
     state['guidance_file'] = existing_state['guidance_file']

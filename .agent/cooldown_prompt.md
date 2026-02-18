@@ -13,7 +13,7 @@ The stop hook injects `LAST REFLECTION NOTES` below (from `last_stop_check.json`
 - Check the tracker for ready items: `scripts/tracker ready` (sorted by priority).
 - Check the lab notebook (`~/hypergumbo_lab_notebook/`) for recent entries with implementation-ready insights.
 - Check the DEEP/BROAD priority queues in `AGENTS.md` for the next work item.
-- Check the invariant ledger for actionable items: `scripts/tracker list --status todo_hard`.
+- Check the tracker for hard TODOs: `scripts/tracker list --status todo_hard`.
 
 ## 2. Lab Notebook Mining
 If Section 1 didn't yield implementation work, mine the lab notebook:
