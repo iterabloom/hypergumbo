@@ -224,7 +224,7 @@ def analyze_asm(repo_root: Path) -> AsmAnalysisResult:
             # Check if this is a call instruction
             word_node = _find_child_by_type(node, "word")
             if not word_node:
-                continue
+                continue  # pragma: no cover - defensive against unusual AST shape
             opcode = _node_text(word_node, source).lower()
             if opcode != "call":
                 continue
