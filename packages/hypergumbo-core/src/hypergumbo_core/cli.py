@@ -61,6 +61,7 @@ import hypergumbo_core.linkers.http as _http_linker  # noqa: F401
 import hypergumbo_core.linkers.ipc as _ipc_linker  # noqa: F401
 import hypergumbo_core.linkers.jni as _jni_linker  # noqa: F401
 import hypergumbo_core.linkers.message_queue as _message_queue_linker  # noqa: F401
+import hypergumbo_core.linkers.napi as _napi_linker  # noqa: F401
 import hypergumbo_core.linkers.openapi as _openapi_linker  # noqa: F401
 import hypergumbo_core.linkers.otp as _otp_linker  # noqa: F401
 import hypergumbo_core.linkers.phoenix_ipc as _phoenix_ipc_linker  # noqa: F401
