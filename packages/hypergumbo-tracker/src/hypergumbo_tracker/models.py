@@ -589,6 +589,7 @@ _DEFAULT_CONFIG_RAW: dict[str, Any] = {
         "todo_hard",
         "todo_soft",
         "in_progress",
+        "needs_human_review",
         "done",
         "wont_do",
     ],

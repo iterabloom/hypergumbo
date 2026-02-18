@@ -35,6 +35,7 @@ TRACKER_TEST_STATUSES: list[str] = [
     "todo_hard",
     "todo_soft",
     "in_progress",
+    "needs_human_review",
     "done",
     "wont_do",
 ]

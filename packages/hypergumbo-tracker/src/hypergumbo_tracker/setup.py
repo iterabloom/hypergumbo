@@ -162,6 +162,18 @@ TRACKER_CONCEPTS: dict[str, dict[str, Any]] = {
             "  after every `scripts/tracker update` call."
         ),
     },
+    "human_review_status": {
+        "description": "Agents should know about needs_human_review for non-blocking items",
+        "patterns": [
+            r"needs_human_review",
+        ],
+        "suggestion": (
+            "Add to your agent instructions:\n"
+            "  Use `needs_human_review` status for governance proposals, architectural\n"
+            "  questions, or anything requiring human judgment. This status does NOT\n"
+            "  block stopping — the human triages these items in the TUI."
+        ),
+    },
 }
 
 

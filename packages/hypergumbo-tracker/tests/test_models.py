@@ -414,7 +414,8 @@ class TestConfigLoading:
         assert "invariant" in cfg.kinds
         assert cfg.kinds["invariant"].prefix == "INV"
         assert cfg.statuses == [
-            "todo_hard", "todo_soft", "in_progress", "done", "wont_do"
+            "todo_hard", "todo_soft", "in_progress",
+            "needs_human_review", "done", "wont_do",
         ]
         assert cfg.blocking_statuses == ["todo_hard", "todo_soft"]
         assert cfg.resolved_statuses == ["done", "wont_do"]
@@ -440,7 +441,8 @@ class TestConfigLoading:
         assert "invariant" in cfg.kinds
         assert "work_item" in cfg.kinds
         assert cfg.statuses == [
-            "todo_hard", "todo_soft", "in_progress", "done", "wont_do"
+            "todo_hard", "todo_soft", "in_progress",
+            "needs_human_review", "done", "wont_do",
         ]
 
     def test_config_yaml_takes_priority_over_template(self, tmp_path: Path) -> None:

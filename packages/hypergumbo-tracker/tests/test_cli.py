@@ -1117,7 +1117,7 @@ class TestErrorHandling:
                 },
                 "work_item": {"prefix": "WI"},
             },
-            "statuses": ["todo_hard", "todo_soft", "in_progress", "done", "wont_do"],
+            "statuses": ["todo_hard", "todo_soft", "in_progress", "needs_human_review", "done", "wont_do"],
             "stop_hook": {
                 "blocking_statuses": ["todo_hard", "todo_soft"],
                 "resolved_statuses": ["done", "wont_do"],

@@ -14,7 +14,7 @@
   When AUTONOMOUS_MODE.txt is TRUE, BROAD, or DEEP (any non-OFF value):
   - NEVER output a "summary" or "status report" as a final action
   - Before ANY stopping point: check todo list - if items remain, continue
-  - Before ANY stopping point: check the tracker for blocking items (`scripts/tracker count-todos`). Items with `todo_hard` or `todo_soft` status block stopping. The difference is agent behavior: `todo_hard` means investigate deeply, assume structural; `todo_soft` means address freely.
+  - Before ANY stopping point: check the tracker for blocking items (`scripts/tracker count-todos`). Items with `todo_hard` or `todo_soft` status block stopping. The difference is agent behavior: `todo_hard` means investigate deeply, assume structural; `todo_soft` means address freely. Items with `needs_human_review` do NOT block stopping — use this for governance proposals or architectural questions that need human judgment.
   - Before ANY stopping point: complete the reflection protocol in `.agent/stop_reflect.md`
   - After completing a major milestone: immediately start next item from priority queue
   - Follow the below section titled "Autonomous Development Mode Stipulations"
@@ -90,6 +90,7 @@ No weak shit. If you don't know, say you don't know. If you haven't checked, say
   1. **Create tracker items immediately** using `scripts/tracker add`:
      - `todo_hard` — invariant violations, defects, anything potentially structural. **When in doubt, use this.** The circuit breaker prevents death spirals, so err on the side of taking things seriously.
      - `todo_soft` — clearly non-defect backlog (CI config, test coverage, nice-to-haves).
+     - `needs_human_review` — governance proposals, architectural questions, or anything requiring human judgment. Does NOT block stopping.
   2. **First-class work items:** Both `todo_hard` and `todo_soft` items block the stop hook (subject to circuit breaker) and surface via `scripts/tracker ready`.
   3. **Act or deprioritize:** Either fix the item or set it to lowest priority (P4) with a justification note.
   4. **Track to completion:** When done, update the item's status to `done` with a PR reference.
@@ -511,6 +512,7 @@ Use DEEP mode when:
 1. **Actionable tracker items** (`scripts/tracker ready`):
    - `todo_hard` items: structural issues, invariant violations — investigate deeply
    - `todo_soft` items: backlog, scope expansion work from the Commitment Protocol
+   - `needs_human_review` items: do not work on these (other than to update their data using `scripts/tracker`) — they await human triage
 2. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
 3. **Frameworks** (see `docs/FRAMEWORKS.md` for comprehensive list, 150+ frameworks): Pattern detection for frameworks helps hypergumbo understand routes, handlers, lifecycle hooks, and application structure.
 
@@ -519,6 +521,7 @@ When in DEEP mode, focus on feature quality rather than parse correctness:
 1. **Actionable tracker items** (`scripts/tracker ready`):
    - `todo_hard` items: structural issues, invariant violations — investigate deeply
    - `todo_soft` items: backlog, scope expansion work from the Commitment Protocol
+   - `needs_human_review` items: do not work on these (other than to update their data using `scripts/tracker`) — they await human triage
 2. **Slice quality:** Does forward slice capture actual dependencies?
 3. **Reverse slice:** Does it correctly identify callers?
 4. **Supply chain tiers:** Is tier classification accurate for monorepos?

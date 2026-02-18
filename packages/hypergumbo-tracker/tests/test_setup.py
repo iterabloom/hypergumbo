@@ -1334,6 +1334,7 @@ class TestCheckAgentsMd:
         Write a failing test first.
         Must maintain 100% coverage with cov-fail-under.
         Batch tracker operations into fewer commits.
+        Use needs_human_review for governance proposals.
         """)
         (tmp_path / "AGENTS.md").write_text(content)
         result = _check_agents_md(tmp_path)
@@ -1364,6 +1365,7 @@ class TestCheckAgentsMd:
         Red, Green, Refactor cycle.
         100% coverage requirement.
         Batch tracker operations.
+        Use needs_human_review for human-judgment items.
         """)
         (tmp_path / "CLAUDE.md").write_text(content)
         result = _check_agents_md(tmp_path)

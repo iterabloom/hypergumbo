@@ -39,8 +39,11 @@ scripts/tracker add invariant --title "..." --status todo_hard --priority N
 
 # Clearly non-defect backlog (CI config, nice-to-haves):
 scripts/tracker add work_item --title "..." --status todo_soft --priority N
+
+# Governance proposals, architectural questions, needs human judgment:
+scripts/tracker add work_item --title "..." --status needs_human_review --priority N
 ```
-**When in doubt, use `todo_hard`** — the circuit breaker prevents death spirals, so err on the side of taking things seriously.
+**When in doubt, use `todo_hard`** — the circuit breaker prevents death spirals, so err on the side of taking things seriously. Use `needs_human_review` for items that genuinely require human decision-making rather than just human review of agent work.
 
 ## 5. Decision
 - If root cause is unfixed (even partially) and analogous issues might exist: **DO NOT STOP** — fix the root cause or investigate further
