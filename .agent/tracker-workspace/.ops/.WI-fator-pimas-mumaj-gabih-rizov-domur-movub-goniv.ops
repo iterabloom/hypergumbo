@@ -42,3 +42,10 @@
   clock: 5  # a1aa
   nonce: a1aa  # a1aa
   message: "Approach: Use file-level heuristics (shebang, imports like import matlab.engine) to disambiguate .m files. The Wolfram analyzer should check for Mathematica-style patterns (e.g. SetDelayed, Module) while MATLAB checks for function/classdef keywords."  # a1aa
+- op: discuss  # 76f8
+  at: '2026-02-18T14:01:12Z'  # 76f8
+  by: agent  # 76f8
+  actor: jgstern_agent  # 76f8
+  clock: 6  # 76f8
+  nonce: 76f8  # 76f8
+  message: "Alternative approach: Instead of file-level heuristics, check the project for a MATLAB project file (*.prj) or Mathematica package file (*.wl, *.nb). If neither exists, fall back to content-based detection using AST patterns."  # 76f8

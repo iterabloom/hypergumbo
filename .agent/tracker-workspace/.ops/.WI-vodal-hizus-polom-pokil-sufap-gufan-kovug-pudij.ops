@@ -49,3 +49,10 @@
   clock: 7  # 259d
   nonce: 259d  # 259d
   message: "Bakeoff-features numbering UX: The current session/cohort numbering uses timestamps which are hard to reference. Consider adding human-readable aliases or sequential numbering alongside timestamps for easier cross-referencing in lab notebooks."  # 259d
+- op: discuss  # 6cf4
+  at: '2026-02-18T14:01:13Z'  # 6cf4
+  by: agent  # 6cf4
+  actor: jgstern_agent  # 6cf4
+  clock: 8  # 6cf4
+  nonce: 6cf4  # 6cf4
+  message: "Concrete proposal: Add an optional --alias flag to bakeoff-features init that assigns a short human-readable name (e.g. deep-chatwoot-1) alongside the timestamp directory. The alias would be a symlink in the artifacts directory."  # 6cf4

@@ -42,3 +42,10 @@
   clock: 5  # 1ffc
   nonce: 1ffc  # 1ffc
   message: "D language cross-file resolution: The current analyzer resolves calls within a single file. For cross-file, need to handle D module imports (import std.algorithm) and track exported symbols per module to build accurate call edges across files."  # 1ffc
+- op: discuss  # 8a46
+  at: '2026-02-18T14:01:12Z'  # 8a46
+  by: agent  # 8a46
+  actor: jgstern_agent  # 8a46
+  clock: 6  # 8a46
+  nonce: 8a46  # 8a46
+  message: "D module system: Each file defines a module based on its path (std/algorithm.d -> std.algorithm). Public symbols are exported by default unless marked private. The cross-file resolver needs to build a module-to-symbol map from the filesystem layout."  # 8a46

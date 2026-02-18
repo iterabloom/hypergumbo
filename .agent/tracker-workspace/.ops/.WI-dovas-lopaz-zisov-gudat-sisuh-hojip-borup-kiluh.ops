@@ -43,3 +43,10 @@
   clock: 5  # f90e
   nonce: f90e  # f90e
   message: "Node.js N-API linker design: Should detect napi_create_function in C/C++ addon source, map the registered function name to the JS export, and create cross-language edges in the call graph. Also handle node-addon-api C++ wrapper patterns."  # f90e
+- op: discuss  # b671
+  at: '2026-02-18T14:01:12Z'  # b671
+  by: agent  # b671
+  actor: jgstern_agent  # b671
+  clock: 6  # b671
+  nonce: b671  # b671
+  message: "Implementation note: The N-API linker should also handle node-gyp binding.gyp files to identify which C/C++ sources are compiled into the addon, linking the build graph to the runtime call graph."  # b671

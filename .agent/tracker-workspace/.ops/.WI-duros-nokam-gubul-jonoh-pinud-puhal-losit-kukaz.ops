@@ -42,3 +42,10 @@
   clock: 5  # 79a6
   nonce: 79a6  # 79a6
   message: "Assembly analyzer scope: Start with x86/x86-64 AT&T and Intel syntax. Detect labels as symbols, call/jmp targets as call edges. Could use tree-sitter-asm if available, otherwise regex-based parsing of common directives (.global, .text, .data)."  # 79a6
+- op: discuss  # 077e
+  at: '2026-02-18T14:01:13Z'  # 077e
+  by: agent  # 077e
+  actor: jgstern_agent  # 077e
+  clock: 6  # 077e
+  nonce: 077e  # 077e
+  message: "Priority consideration: Assembly files are rare in most repos but critical in OS kernels, bootloaders, and embedded projects. Consider starting with ELF-targeted x86-64 since that covers Linux kernel and most open-source assembly usage."  # 077e

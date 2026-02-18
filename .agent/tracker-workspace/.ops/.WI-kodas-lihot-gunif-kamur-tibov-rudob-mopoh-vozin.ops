@@ -42,3 +42,10 @@
   clock: 5  # 5631
   nonce: '5631'  # 5631
   message: "Investigation plan: Need to check if Chatwoot spec files are being counted as tier1 instead of test tier. The 99.4 percent tier1 ratio suggests the tier classification is not properly detecting spec/test directories in Ruby projects that use rspec conventions."  # 5631
+- op: discuss  # d6fb
+  at: '2026-02-18T14:01:12Z'  # d6fb
+  by: agent  # d6fb
+  actor: jgstern_agent  # d6fb
+  clock: 6  # d6fb
+  nonce: d6fb  # d6fb
+  message: "Root cause hypothesis: The tier classifier uses directory name matching (test, spec, tests, specs) but Chatwoot places spec files in app/javascript/spec/ which may not match the expected top-level test directory pattern."  # d6fb

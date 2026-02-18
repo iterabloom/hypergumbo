@@ -42,3 +42,10 @@
   clock: 5  # 8bca
   nonce: 8bca  # 8bca
   message: "Lua FFI linker should parse ffi.cdef string literals to extract C function declarations, then match ffi.C.func_name calls to those declarations. LuaJIT metatype patterns also need handling for C struct method binding."  # 8bca
+- op: discuss  # ba8c
+  at: '2026-02-18T14:01:12Z'  # ba8c
+  by: agent  # ba8c
+  actor: jgstern_agent  # ba8c
+  clock: 6  # ba8c
+  nonce: ba8c  # ba8c
+  message: "Edge case: LuaJIT ffi.cdef can span multiple calls that accumulate declarations. The linker needs to track all cdef calls in order and build a cumulative type/function namespace for accurate resolution."  # ba8c
