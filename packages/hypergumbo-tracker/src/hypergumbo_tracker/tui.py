@@ -334,19 +334,27 @@ def _load_tui_preferences(path: Path) -> dict:
 
 def _save_tui_preferences(
     path: Path, hidden_statuses: set[str], display_order: list[str],
-) -> None:
+) -> bool:
     """Persist TUI preferences to disk.
 
     Writes a JSON file with ``version``, ``hidden_statuses``, and
     ``display_order`` keys.  Creates parent directories as needed.
+
+    Returns ``True`` on success, ``False`` if the write failed (e.g.
+    permission denied).  Callers should tolerate failure gracefully —
+    preferences are best-effort and must never crash the TUI.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
     data = {
         "version": 1,
         "hidden_statuses": sorted(hidden_statuses),
         "display_order": list(display_order),
     }
-    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    except OSError:
+        return False
+    return True
 
 
 def _apply_custom_order(
@@ -1723,9 +1731,11 @@ class TrackerApp(App):
         self._custom_order[a_idx], self._custom_order[b_idx] = (
             self._custom_order[b_idx], self._custom_order[a_idx]
         )
-        _save_tui_preferences(
+        if not _save_tui_preferences(
             self._prefs_path, self._hidden_statuses, self._custom_order,
-        )
+        ):
+            self.notify("Could not save display order (permission denied)",
+                        severity="warning")
         self._selected_item_id = item.id
         self._reload_active_table()
         self._restore_selection()
@@ -1750,9 +1760,11 @@ class TrackerApp(App):
 
     async def action_quit(self) -> None:
         """Save TUI preferences and exit."""
-        _save_tui_preferences(
+        if not _save_tui_preferences(
             self._prefs_path, self._hidden_statuses, self._custom_order,
-        )
+        ):
+            self.notify("Could not save preferences (permission denied)",
+                        severity="warning")
         await super().action_quit()
 
     def action_yank(self) -> None:

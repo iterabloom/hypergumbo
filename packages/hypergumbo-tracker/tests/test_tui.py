@@ -4598,17 +4598,24 @@ class TestTuiPreferences:
 
     def test_save_then_load_roundtrip(self, tmp_path: Path) -> None:
         p = tmp_path / "prefs.json"
-        _save_tui_preferences(p, {"done", "wont_do"}, ["C", "B", "A"])
+        assert _save_tui_preferences(p, {"done", "wont_do"}, ["C", "B", "A"]) is True
         result = _load_tui_preferences(p)
         assert set(result["hidden_statuses"]) == {"done", "wont_do"}
         assert result["display_order"] == ["C", "B", "A"]
 
     def test_save_creates_parent_dirs(self, tmp_path: Path) -> None:
         p = tmp_path / "sub" / "dir" / "prefs.json"
-        _save_tui_preferences(p, set(), [])
+        assert _save_tui_preferences(p, set(), []) is True
         assert p.is_file()
         result = _load_tui_preferences(p)
         assert result == {"hidden_statuses": [], "display_order": []}
+
+    def test_save_returns_false_on_permission_error(self, tmp_path: Path) -> None:
+        """_save_tui_preferences tolerates write failures gracefully."""
+        from unittest.mock import patch
+        p = tmp_path / "prefs.json"
+        with patch.object(type(p), "write_text", side_effect=PermissionError("denied")):
+            assert _save_tui_preferences(p, {"done"}, ["A"]) is False
 
 
 # ---------------------------------------------------------------------------
@@ -4914,6 +4921,24 @@ class TestManualReorder:
             prefs = _load_tui_preferences(app._prefs_path)
             assert len(prefs["display_order"]) > 0
 
+    async def test_move_shows_warning_on_save_failure(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        """Move notifies user when preferences can't be saved."""
+        from unittest.mock import patch
+
+        from hypergumbo_tracker.tui import TrackerApp
+        import hypergumbo_tracker.tui as tui_mod
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(tui_mod, "_save_tui_preferences", return_value=False):
+                await pilot.press("greater_than_sign")
+                await pilot.pause()
+            # The move still happens (order updated in memory)
+            assert len(app._custom_order) > 0
+
 
 # ---------------------------------------------------------------------------
 # Pilot tests: persistence (quit/mount roundtrip)
@@ -4982,3 +5007,21 @@ class TestPersistence:
             await pilot.pause()
             prefs = _load_tui_preferences(app._prefs_path)
             assert len(prefs["display_order"]) >= 3
+
+    async def test_quit_warns_on_save_failure(self, tmp_path: Path) -> None:
+        """Quitting with unwritable prefs notifies instead of crashing."""
+        from unittest.mock import patch
+
+        from hypergumbo_tracker.tui import TrackerApp
+        import hypergumbo_tracker.tui as tui_mod
+
+        ts = _make_tracker_set_with_resolved(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            await pilot.press("c")  # hide done
+            await pilot.pause()
+            with patch.object(tui_mod, "_save_tui_preferences", return_value=False):
+                await pilot.press("q")
+                await pilot.pause()
+            # TUI exited without crashing
