@@ -479,6 +479,14 @@ def preflight_check(repo_root: Path) -> PreflightResult:
             error="tracker sync already in progress (TRACKER_SYNC_PENDING exists).",
         )
 
+    # 2b. Write access — sync needs to create branches in .git/refs/heads
+    refs_heads = git_dir / "refs" / "heads"
+    if refs_heads.is_dir() and not os.access(refs_heads, os.W_OK):
+        return PreflightResult(
+            ok=False,
+            error="no write access to .git/refs/heads/ (wrong user?)",
+        )
+
     # 3. Current branch
     branch_result = _git(repo_root, "branch", "--show-current", check=False)
     if branch_result.returncode != 0:

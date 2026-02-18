@@ -761,6 +761,28 @@ class TestPreflightCheck:
     @patch("hypergumbo_tracker.sync._git")
     @patch("hypergumbo_tracker.sync._load_env")
     @patch("hypergumbo_tracker.sync._detect_api_base")
+    def test_no_write_access_to_refs_heads(
+        self,
+        mock_api_base: MagicMock,
+        mock_env: MagicMock,
+        mock_git: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Fail fast when user lacks write access to .git/refs/heads/."""
+        git_dir = tmp_path / ".git"
+        refs_heads = git_dir / "refs" / "heads"
+        refs_heads.mkdir(parents=True)
+        mock_git.return_value = _make_completed_process(
+            stdout=str(git_dir)
+        )
+        with patch("hypergumbo_tracker.sync.os.access", return_value=False):
+            result = preflight_check(tmp_path)
+        assert not result.ok
+        assert "no write access" in result.error
+
+    @patch("hypergumbo_tracker.sync._git")
+    @patch("hypergumbo_tracker.sync._load_env")
+    @patch("hypergumbo_tracker.sync._detect_api_base")
     def test_detached_head(
         self,
         mock_api_base: MagicMock,
