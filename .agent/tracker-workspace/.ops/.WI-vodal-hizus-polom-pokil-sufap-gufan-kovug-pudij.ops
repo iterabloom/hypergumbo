@@ -70,3 +70,12 @@
   clock: 10  # 77fa
   nonce: 77fa  # 77fa
   message: "Auto-sync test 4: bakeoff UX improvements remain P3 backlog."  # 77fa
+- op: update  # 8efb
+  at: '2026-02-18T20:06:00Z'  # 8efb
+  by: agent  # 8efb
+  actor: jgstern_agent  # 8efb
+  clock: 11  # 8efb
+  nonce: 8efb  # 8efb
+  set:  # 8efb
+    status: done  # 8efb
+    justification: "Reassessed: resolved by recent bakeoff infrastructure changes. Cohort numbering is now per-session (resets to 001 for each new init). Each init creates a new timestamped top-level directory, not sub-sessions. No global counter confusion remains."  # 8efb
