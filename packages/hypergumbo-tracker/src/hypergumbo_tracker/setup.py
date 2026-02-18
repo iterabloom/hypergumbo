@@ -17,6 +17,8 @@ The check sequence covers three areas:
 2. **Agentic infrastructure** (checks 15-20): wrapper scripts, agent
    instructions, hook integration, autonomous mode consistency, reflection
    state validity. Read-only / advisory only.
+3. **Sync prerequisites** (check 21): remote origin, FORGEJO_TOKEN,
+   git identity — advisory check for ``htrac sync`` workflow.
 
 Entry point: ``run_setup(root, repo_root)`` returns a list of CheckResult.
 The CLI handler in cli.py formats and prints them.
@@ -1347,6 +1349,96 @@ def _check_reflection_state(repo_root: Path | None) -> CheckResult:
     )
 
 
+def _check_sync_prerequisites(
+    root: Path, repo_root: Path | None
+) -> CheckResult:
+    """Check #21: Verify prerequisites for ``htrac sync``.
+
+    Advisory check (status is ``ok`` or ``warn``, never ``error``) since
+    sync is an optional workflow.  Verifies:
+    1. Remote ``origin`` exists.
+    2. ``FORGEJO_TOKEN`` present in ``.env`` or environment.
+    3. Git identity configured (``user.name``, ``user.email``).
+    """
+    if repo_root is None:
+        return CheckResult(
+            name="sync_prerequisites",
+            status="ok",
+            message="Sync prerequisites check skipped (no git repo)",
+        )
+
+    problems: list[str] = []
+
+    # 1. Remote origin
+    try:
+        remote_result = subprocess.run(  # nosec B603, B607
+            ["git", "remote", "get-url", "origin"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            cwd=str(repo_root),
+            check=False,
+        )
+        if remote_result.returncode != 0:
+            problems.append("No remote 'origin' configured")
+    except FileNotFoundError:  # pragma: no cover — git always available in CI
+        problems.append("git not found")
+
+    # 2. FORGEJO_TOKEN
+    has_token = bool(os.environ.get("FORGEJO_TOKEN"))
+    if not has_token:
+        # Check .env file
+        env_path = repo_root / ".env"
+        if env_path.is_file():
+            content = env_path.read_text()
+            for line in content.splitlines():
+                if line.strip().startswith("FORGEJO_TOKEN="):
+                    value = line.strip().split("=", 1)[1].strip()
+                    if value:
+                        has_token = True
+                    break
+    if not has_token:
+        problems.append("FORGEJO_TOKEN not found in .env or environment")
+
+    # 3. Git identity
+    if not problems or "git not found" not in problems:
+        try:
+            name_result = subprocess.run(  # nosec B603, B607
+                ["git", "config", "user.name"],  # noqa: S607
+                capture_output=True,
+                text=True,
+                cwd=str(repo_root),
+                check=False,
+            )
+            email_result = subprocess.run(  # nosec B603, B607
+                ["git", "config", "user.email"],  # noqa: S607
+                capture_output=True,
+                text=True,
+                cwd=str(repo_root),
+                check=False,
+            )
+            if not name_result.stdout.strip() or not email_result.stdout.strip():
+                problems.append("Git identity not configured (user.name / user.email)")
+        except FileNotFoundError:  # pragma: no cover — git always available in CI
+            pass  # Already caught above
+
+    if problems:
+        return CheckResult(
+            name="sync_prerequisites",
+            status="warn",
+            message=f"Sync prerequisites: {problems[0]}",
+            details=[
+                "htrac sync requires these to push tracker changes via PR.",
+                *[f"  - {p}" for p in problems],
+            ],
+        )
+
+    return CheckResult(
+        name="sync_prerequisites",
+        status="ok",
+        message="Sync prerequisites met",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Top-level runner
 # ---------------------------------------------------------------------------
@@ -1393,6 +1485,7 @@ def run_setup(root: Path, repo_root: Path | None = None) -> list[CheckResult]:
     results.append(_check_precommit_hook(repo_root))       # 18
     results.append(_check_autonomous_mode(repo_root))      # 19
     results.append(_check_reflection_state(repo_root))     # 20
+    results.append(_check_sync_prerequisites(root, repo_root))  # 21
 
     return results
 

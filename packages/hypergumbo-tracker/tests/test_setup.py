@@ -1716,8 +1716,8 @@ class TestRunSetup:
             "hypergumbo_tracker.setup.resolve_actor", return_value=("human", "alice")
         ):
             results = run_setup(root)
-        # Should have one result per check (20 total)
-        assert len(results) == 20
+        # Should have one result per check (21 total, including sync prerequisites)
+        assert len(results) == 21
         # Directory structure should be fixed
         dir_result = next(r for r in results if r.name == "directory_structure")
         assert dir_result.status == "fixed"

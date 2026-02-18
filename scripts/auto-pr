@@ -418,6 +418,12 @@ do_pr() {
 		exit 1
 	fi
 
+	# Check for tracker sync in progress
+	if [[ -f "$REPO_ROOT/.git/TRACKER_SYNC_PENDING" ]]; then
+		echo "Error: tracker sync in progress. Wait for htrac sync to complete."
+		exit 1
+	fi
+
 	BRANCH="$(git branch --show-current)"
 	BASE_BRANCH="${BASE_BRANCH:-dev}"
 	if [[ "$BRANCH" == "main" || "$BRANCH" == "dev" ]]; then

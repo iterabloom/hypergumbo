@@ -5,9 +5,9 @@ Provides the full argparse CLI for tracker operations and the git textconv
 driver for rendering .ops files as readable text.
 
 Entry points:
-- main(): Primary CLI with ~25 subcommands (add, update, list, show, ready,
+- main(): Primary CLI with ~26 subcommands (add, update, list, show, ready,
   log, discuss, lock, unlock, promote, demote, stealth, unstealth, validate,
-  count-todos, hash-todos, guidance, check-messages, init, setup,
+  count-todos, hash-todos, guidance, check-messages, init, setup, sync,
   cache-rebuild, reconcile-reset, fork-setup, migrate, tui).
 - textconv_main(): Git textconv driver that reads an ops file and outputs
   one-line-per-field compiled state.
@@ -773,6 +773,43 @@ def _cmd_fork_setup(args: argparse.Namespace, ts: TrackerSet) -> int:
     return EXIT_SUCCESS
 
 
+def _cmd_sync(args: argparse.Namespace) -> int:
+    """Handle 'sync' subcommand — push tracker changes via streamlined PR."""
+    from hypergumbo_tracker.sync import do_sync, preflight_check
+
+    repo_root = Path(
+        subprocess.run(  # nosec B603, B607
+            ["git", "rev-parse", "--show-toplevel"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+    )
+    pre = preflight_check(repo_root)
+    if not pre.ok:
+        print(f"error: {pre.error}", file=sys.stderr)
+        return EXIT_USER_ERROR
+    if not pre.changed_files:
+        print("nothing to sync")
+        return EXIT_SUCCESS
+    if args.dry_run:
+        print(f"would sync {len(pre.changed_files)} file(s):")
+        for f in pre.changed_files:
+            print(f"  {f}")
+        return EXIT_SUCCESS
+    result = do_sync(
+        repo_root=repo_root,
+        preflight=pre,
+        base_branch=args.base_branch,
+        ci_timeout=args.timeout,
+    )
+    if result.success:
+        print(f"synced {result.files_synced} file(s) via PR #{result.pr_number}")
+    else:
+        print(f"error: {result.error}", file=sys.stderr)
+    return result.exit_code
+
+
 def _cmd_migrate(args: argparse.Namespace) -> int:
     """Handle 'migrate' subcommand — convert markdown governance files to YAML ops."""
     from hypergumbo_tracker.migration import migrate
@@ -1045,6 +1082,23 @@ def _build_parser() -> argparse.ArgumentParser:
     p_migrate.add_argument("--dry-run", dest="dry_run", action="store_true",
                            help="Report what would be done without writing files")
 
+    # --- sync ---
+    p_sync = sub.add_parser(
+        "sync", help="Push tracker changes via streamlined PR workflow"
+    )
+    p_sync.add_argument(
+        "--base-branch", dest="base_branch", default="dev",
+        help="Target branch (default: dev)",
+    )
+    p_sync.add_argument(
+        "--timeout", type=int, default=300,
+        help="CI timeout in seconds (default: 300)",
+    )
+    p_sync.add_argument(
+        "--dry-run", dest="dry_run", action="store_true",
+        help="Show what would be synced without pushing",
+    )
+
     # --- tui ---
     sub.add_parser("tui", help="Launch interactive TUI (requires textual)")
 
@@ -1072,6 +1126,8 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(_cmd_setup(args))
     if args.command == "migrate":
         raise SystemExit(_cmd_migrate(args))
+    if args.command == "sync":
+        raise SystemExit(_cmd_sync(args))
 
     # Discover tracker root
     try:
