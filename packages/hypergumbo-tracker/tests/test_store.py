@@ -2454,6 +2454,38 @@ class TestPreWriteValidation:
         with pytest.raises(CorruptFileError, match="uncompilable"):
             store.update(item_id, set_fields={"status": "done"})
 
+    def test_append_op_ensures_group_write(
+        self, ops_dir: Path, config_yaml: Path, mock_human_uid: None,
+    ) -> None:
+        """_append_op adds group-write permission when missing.
+
+        In a two-user setup the creating process's umask may strip g+w.
+        The store ensures it's always set so the other user can append.
+        """
+        import stat
+
+        config = TrackerConfig(
+            kinds={"work_item": KindConfig(prefix="WI", description="Work item")},
+            statuses=["todo_hard", "done"],
+            blocking_statuses=["todo_hard"],
+            resolved_statuses=["done"],
+            agent_usernames=["*_agent"],
+            lamport_branches=["dev"],
+        )
+        store = Store(ops_dir, config)
+        item_id = store.add(
+            kind="work_item", title="Group write test", status="todo_hard",
+            priority=2,
+        )
+        ops_path = store.item_path(item_id)
+        # Simulate restrictive umask: strip group-write
+        current = ops_path.stat().st_mode
+        ops_path.chmod(current & ~stat.S_IWGRP)
+        assert not (ops_path.stat().st_mode & stat.S_IWGRP)
+        # Update should restore group-write
+        store.update(item_id, set_fields={"status": "done"})
+        assert ops_path.stat().st_mode & stat.S_IWGRP
+
     def test_discuss_clear_on_corrupt_item_raises(
         self, ops_dir: Path, config_yaml: Path, mock_human_uid: None,
     ) -> None:

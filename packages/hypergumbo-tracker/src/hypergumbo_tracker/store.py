@@ -1207,6 +1207,14 @@ class Store:
         with open(filepath, "a") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:
+                # Ensure group-write so both human and agent users can
+                # append ops in a two-user setup (umask may strip g+w).
+                import stat
+
+                st_mode = os.fstat(f.fileno()).st_mode
+                if not (st_mode & stat.S_IWGRP):
+                    os.fchmod(f.fileno(), st_mode | stat.S_IWGRP)
+
                 clock = _compute_lamport_clock(filepath, self._config.lamport_branches)
                 op_dict["clock"] = clock
                 serialized = _serialize_op(op_dict)
