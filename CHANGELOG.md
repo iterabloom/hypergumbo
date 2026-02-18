@@ -67,6 +67,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Secret scanning with gitleaks**: `hypergumbo sketch` scans output for potential secrets. Install with `hypergumbo install-gitleaks`. Opt out with `--no-secret-scan`.
 - **CLI extras management**: Subcommands for optional dependencies: `add-extras`, `remove-extras`, `install-embeddings`, `uninstall-embeddings`, `uninstall-gitleaks`.
 - **Cache management**: `hypergumbo cache-status` and `hypergumbo cache-clear` for managing `~/.cache/hypergumbo/`.
+- **`bakeoff-reflect` redesign**: Structured two-phase LLM assessment pipeline for BROAD bakeoff (mirrors `bakeoff-features-reflect`). Generates per-repo prompts with 3 fixed parse-correctness tasks + 8 stratified questions + 1 journal question; aggregates YAML assessments into `summary.yaml`.
 
 #### Testing & CI infrastructure
 

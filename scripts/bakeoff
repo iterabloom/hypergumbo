@@ -753,7 +753,7 @@ def cmd_diagnose(args):
                 print(f"  - [{i.repo}] {i.flag}")
 
     print()
-    print("Next: Run `bakeoff status` to check convergence")
+    print("Next: Run `bakeoff-reflect` for parse assessment, or `bakeoff status` for convergence")
     return 0
 
 
@@ -818,8 +818,9 @@ def cmd_status(args):
             print()
             print("  Next steps:")
             print("    1. Review questions: ./scripts/bakeoff questions")
-            print("    2. Investigate issues deeply, check analogous cases")
-            print("    3. Fix issues, then: ./scripts/bakeoff cycle")
+            print("    2. Run parse assessment: ./scripts/bakeoff-reflect")
+            print("    3. Investigate issues deeply, check analogous cases")
+            print("    4. Fix issues, then: ./scripts/bakeoff cycle")
     elif len(state.convergence_history) == 1:
         last = state.convergence_history[0]
         print(f"First iteration: {last.get('critical', 0)} CRITICAL, {last.get('high', 0)} HIGH")
@@ -869,6 +870,9 @@ def cmd_questions(args):
     """Show diagnostic questions to ask when analyzing bakeoff results."""
     questions = """
 # Bakeoff Diagnostic Questions
+
+For structured LLM-driven parse assessment, use `bakeoff-reflect` instead.
+These manual questions are for quick human-driven analysis.
 
 Ask these questions repeatedly until you stop getting interesting answers.
 

@@ -514,8 +514,9 @@ Use DEEP mode when:
    - `todo_hard` items: structural issues, invariant violations — investigate deeply
    - `todo_soft` items: backlog, scope expansion work from the Commitment Protocol
    - `needs_human_review` items: do not work on these (other than to update their data using `scripts/tracker`) — they await human triage
-2. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
-3. **Frameworks** (see `docs/FRAMEWORKS.md` for comprehensive list, 150+ frameworks): Pattern detection for frameworks helps hypergumbo understand routes, handlers, lifecycle hooks, and application structure.
+2. **Parse correctness assessment:** Run `bakeoff-reflect` for LLM-driven parse assessment (parallel to DEEP's `bakeoff-features-reflect`)
+3. **Linkers:** polyglot repos are common and challenging for new developers; they are an opportunity for hypergumbo to shine
+4. **Frameworks** (see `docs/FRAMEWORKS.md` for comprehensive list, 150+ frameworks): Pattern detection for frameworks helps hypergumbo understand routes, handlers, lifecycle hooks, and application structure.
 
 ### DEEP Mode Priority Queue:
 When in DEEP mode, focus on feature quality rather than parse correctness:
@@ -564,12 +565,14 @@ Both `scripts/bakeoff` and `scripts/bakeoff-features` store artifacts in a canon
 │   ├── state.json
 │   ├── cohorts/
 │   ├── out/
-│   └── diag/
+│   ├── diag/
+│   └── reflect/            # LLM assessment prompts and results
 ├── deep-20260206-190000/    # bakeoff-features session (timestamped)
 │   ├── state.json
 │   ├── cohorts/
 │   ├── out/
-│   └── diag/
+│   ├── diag/
+│   └── reflect/            # LLM assessment prompts and results
 └── ...
 ```
 

@@ -60,7 +60,7 @@ scripts/tracker add work_item --title "..." --status needs_human_review --priori
 Use analysis when you need data to inform an implementation decision, not as a destination in itself. Every analysis session should end with a concrete "what to implement" conclusion written into either the lab notebook or `last_stop_check.json` notes.
 
 Analysis toolkit (see `~/hypergumbo_lab_notebook/analysis_lib/README.md` for current inventory):
-- `./scripts/bakeoff-reflect <path> --cycle N` — qualitative assessment
+- `./scripts/bakeoff-reflect` — structured LLM-driven parse correctness assessment (generates per-repo prompts, aggregates YAML results)
 - `scripts/hypergumbo_diag.py` — comprehensive diagnostic report
 - `scripts/analyze-artifacts` — catalog, summary, routes, concepts, edges, gaps
 - `~/hypergumbo_lab_notebook/analysis_lib/` — 18+ reusable analysis scripts (run `ls ~/hypergumbo_lab_notebook/analysis_lib/[0-9]*.py` for current list)
