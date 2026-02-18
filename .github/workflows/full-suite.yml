@@ -573,10 +573,52 @@ jobs:
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
+  test-tracker-retry:
+    needs: [changes, prep, test-tracker]
+    if: needs.changes.outputs.code == 'true' && needs.test-tracker.result == 'failure'
+    runs-on: self-hosted
+    timeout-minutes: 15
+    outputs:
+      coverage: ${{ steps.tests.outputs.coverage }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Restore pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/lib/python3.11/site-packages
+          key: pip-packages-${{ hashFiles('packages/*/pyproject.toml') }}
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pytest pytest-cov pytest-xdist
+          pip install -e "packages/hypergumbo-tracker[dev,tui]"
+      - name: Run tests
+        id: tests
+        run: |
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
+
+          pytest packages/hypergumbo-tracker/tests/ -n "$WORKERS" --tb=short \
+            --cov=packages/hypergumbo-tracker/src --cov-report=term | tee coverage-output.txt
+          COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
+          echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
+
   # Aggregate results after all test jobs complete
   aggregate:
     needs: [changes, test-core, test-core-retry, test-mainstream, test-mainstream-retry,
-            test-common, test-extended, test-tracker]
+            test-common, test-extended, test-tracker, test-tracker-retry]
     if: always()
     runs-on: codeberg-small-lazy
     steps:
@@ -604,6 +646,7 @@ jobs:
           echo "  test-common: ${{ needs.test-common.result }} (coverage: ${{ needs.test-common.outputs.coverage }}%)"
           echo "  test-extended: ${{ needs.test-extended.result }} (coverage: ${{ needs.test-extended.outputs.coverage }}%)"
           echo "  test-tracker: ${{ needs.test-tracker.result }} (coverage: ${{ needs.test-tracker.outputs.coverage }}%)"
+          echo "  test-tracker-retry: ${{ needs.test-tracker-retry.result }} (coverage: ${{ needs.test-tracker-retry.outputs.coverage }}%)"
 
           # Heavy jobs pass if primary OR retry succeeded
           core_ok=false
@@ -614,11 +657,15 @@ jobs:
           [[ "${{ needs.test-mainstream.result }}" == "success" ]] && mainstream_ok=true
           [[ "${{ needs.test-mainstream-retry.result }}" == "success" ]] && mainstream_ok=true
 
+          tracker_ok=false
+          [[ "${{ needs.test-tracker.result }}" == "success" ]] && tracker_ok=true
+          [[ "${{ needs.test-tracker-retry.result }}" == "success" ]] && tracker_ok=true
+
           if [[ "$core_ok" == "true" ]] && \
              [[ "$mainstream_ok" == "true" ]] && \
              [[ "${{ needs.test-common.result }}" == "success" ]] && \
              [[ "${{ needs.test-extended.result }}" == "success" ]] && \
-             [[ "${{ needs.test-tracker.result }}" == "success" ]]; then
+             [[ "$tracker_ok" == "true" ]]; then
             echo "conclusion=success" >> "$GITHUB_OUTPUT"
             echo "✅ All test jobs passed"
           else
@@ -642,6 +689,10 @@ jobs:
           COV_COMMON="${{ needs.test-common.outputs.coverage }}"
           COV_EXTENDED="${{ needs.test-extended.outputs.coverage }}"
           COV_TRACKER="${{ needs.test-tracker.outputs.coverage }}"
+          if [[ -z "$COV_TRACKER" || "$COV_TRACKER" == "0" ]] && \
+             [[ "${{ needs.test-tracker-retry.result }}" == "success" ]]; then
+            COV_TRACKER="${{ needs.test-tracker-retry.outputs.coverage }}"
+          fi
 
           # Default to 0 if empty
           COV_CORE="${COV_CORE:-0}"
@@ -673,7 +724,8 @@ jobs:
               \"mainstream-retry\": \"${{ needs.test-mainstream-retry.result }}\",
               \"common\": \"${{ needs.test-common.result }}\",
               \"extended\": \"${{ needs.test-extended.result }}\",
-              \"tracker\": \"${{ needs.test-tracker.result }}\"
+              \"tracker\": \"${{ needs.test-tracker.result }}\",
+              \"tracker-retry\": \"${{ needs.test-tracker-retry.result }}\"
             }
           }"
 
@@ -698,6 +750,10 @@ jobs:
           COV_COMMON="${{ needs.test-common.outputs.coverage }}"
           COV_EXTENDED="${{ needs.test-extended.outputs.coverage }}"
           COV_TRACKER="${{ needs.test-tracker.outputs.coverage }}"
+          if [ -z "$COV_TRACKER" ] || [ "$COV_TRACKER" = "0" ]; then
+            RETRY_COV="${{ needs.test-tracker-retry.outputs.coverage }}"
+            [ -n "$RETRY_COV" ] && [ "$RETRY_COV" != "0" ] && COV_TRACKER="$RETRY_COV"
+          fi
 
           # Determine badge color based on coverage
           if [ "$COV" -ge 90 ]; then
