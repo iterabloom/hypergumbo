@@ -280,7 +280,7 @@ def _poll_ci(
     token: str,
     head_sha: str,
     poll_interval: int = 10,
-    timeout: int = 300,
+    timeout: int = 600,
 ) -> str:
     """Poll CI status until terminal state or timeout.
 
@@ -313,6 +313,12 @@ def _poll_ci(
 
         state = body.get("state", "pending")
         statuses = body.get("statuses") or []
+
+        # Don't trust aggregate state when no statuses exist yet —
+        # CI hasn't started.  Wait for at least one status to appear.
+        if not statuses:
+            time.sleep(poll_interval)
+            continue
 
         if state == "success":
             return "success"

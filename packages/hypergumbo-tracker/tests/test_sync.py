@@ -580,7 +580,9 @@ class TestPollCi:
         mock_time.sleep = MagicMock()
         mock_api.return_value = (
             200,
-            {"state": "success", "statuses": []},
+            {"state": "success", "statuses": [
+                {"status": "success", "context": "CI / pytest"},
+            ]},
         )
         result = _poll_ci(
             "https://api.example.com/repos/o/r", "token", "sha123"
@@ -595,8 +597,12 @@ class TestPollCi:
         mock_time.monotonic.side_effect = [0, 10, 20, 30]
         mock_time.sleep = MagicMock()
         mock_api.side_effect = [
-            (200, {"state": "pending", "statuses": []}),
-            (200, {"state": "success", "statuses": []}),
+            (200, {"state": "pending", "statuses": [
+                {"status": "pending", "context": "CI / pytest"},
+            ]}),
+            (200, {"state": "success", "statuses": [
+                {"status": "success", "context": "CI / pytest"},
+            ]}),
         ]
         result = _poll_ci(
             "https://api.example.com/repos/o/r",
@@ -616,7 +622,9 @@ class TestPollCi:
         mock_time.sleep = MagicMock()
         mock_api.return_value = (
             200,
-            {"state": "failure", "statuses": []},
+            {"state": "failure", "statuses": [
+                {"status": "failure", "context": "CI / pytest"},
+            ]},
         )
         result = _poll_ci(
             "https://api.example.com/repos/o/r", "token", "sha123"
@@ -632,7 +640,9 @@ class TestPollCi:
         mock_time.sleep = MagicMock()
         mock_api.return_value = (
             200,
-            {"state": "error", "statuses": []},
+            {"state": "error", "statuses": [
+                {"status": "error", "context": "CI / pytest"},
+            ]},
         )
         result = _poll_ci(
             "https://api.example.com/repos/o/r", "token", "sha123"
@@ -649,7 +659,9 @@ class TestPollCi:
         mock_time.sleep = MagicMock()
         mock_api.return_value = (
             200,
-            {"state": "pending", "statuses": []},
+            {"state": "pending", "statuses": [
+                {"status": "pending", "context": "CI / pytest"},
+            ]},
         )
         result = _poll_ci(
             "https://api.example.com/repos/o/r",
@@ -658,6 +670,31 @@ class TestPollCi:
             timeout=300,
         )
         assert result == "timeout"
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._api_call")
+    def test_empty_statuses_waits_for_ci(
+        self, mock_api: MagicMock, mock_time: MagicMock
+    ) -> None:
+        """Don't return success when no statuses exist — CI hasn't started."""
+        mock_time.monotonic.side_effect = [0, 5, 10, 15, 20]
+        mock_time.sleep = MagicMock()
+        mock_api.side_effect = [
+            (200, {"state": "success", "statuses": []}),  # no CI yet
+            (200, {"state": "success", "statuses": []}),  # still nothing
+            (200, {"state": "success", "statuses": [      # CI finished
+                {"status": "success", "context": "CI / pytest"},
+            ]}),
+        ]
+        result = _poll_ci(
+            "https://api.example.com/repos/o/r",
+            "token",
+            "sha123",
+            timeout=300,
+        )
+        assert result == "success"
+        # Should have slept twice while waiting for statuses
+        assert mock_time.sleep.call_count == 2
 
     @patch("hypergumbo_tracker.sync.time")
     @patch("hypergumbo_tracker.sync._api_call")
@@ -695,7 +732,9 @@ class TestPollCi:
         mock_time.sleep = MagicMock()
         mock_api.side_effect = [
             (0, None),  # network error
-            (200, {"state": "success", "statuses": []}),  # success
+            (200, {"state": "success", "statuses": [
+                {"status": "success", "context": "CI / pytest"},
+            ]}),  # success
         ]
         result = _poll_ci(
             "https://api.example.com/repos/o/r",
