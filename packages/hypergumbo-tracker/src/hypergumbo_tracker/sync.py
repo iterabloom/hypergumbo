@@ -788,19 +788,31 @@ def do_sync(
                 exit_code=2,
             )
 
-        # 9. Merge PR
-        # Extract repo slug from api_base for URL construction
+        # 9. Merge PR (with retries for status check propagation)
+        # After CI passes, the required commit status may take a few
+        # seconds to propagate.  Retry the merge cascade on 405 responses.
         slug_match = re.search(r"/repos/(.+)$", preflight.api_base)
         repo_slug = slug_match.group(1) if slug_match else ""
 
-        merged = _merge_pr(
-            preflight.api_base, preflight.forgejo_token, pr_num
-        )
+        merged = False
+        for merge_attempt in range(1, 7):
+            merged = _merge_pr(
+                preflight.api_base, preflight.forgejo_token, pr_num
+            )
+            if merged:
+                break
+            if merge_attempt < 6:
+                _log(
+                    f"merge attempt {merge_attempt}/6 failed, "
+                    f"retrying in 10s..."
+                )
+                time.sleep(10)
+
         if not merged:
             return SyncResult(
                 success=False,
                 pr_number=pr_num,
-                error="merge failed (branch may have diverged)",
+                error="merge failed after retries (status checks or divergence)",
                 exit_code=1,
             )
 

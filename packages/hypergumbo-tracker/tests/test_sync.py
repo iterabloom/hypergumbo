@@ -1478,7 +1478,7 @@ class TestDoSync:
     @patch("hypergumbo_tracker.sync._poll_ci")
     @patch("hypergumbo_tracker.sync._find_open_pr")
     @patch("hypergumbo_tracker.sync._git")
-    def test_merge_failure(
+    def test_merge_failure_after_retries(
         self,
         mock_git: MagicMock,
         mock_find_pr: MagicMock,
@@ -1498,7 +1498,39 @@ class TestDoSync:
 
         result = do_sync(repo_root=tmp_path, preflight=pre)
         assert not result.success
-        assert "merge failed" in result.error
+        assert "merge failed after retries" in result.error
+        # Should have retried 6 times
+        assert mock_merge.call_count == 6
+
+    @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._merge_pr")
+    @patch("hypergumbo_tracker.sync._poll_ci")
+    @patch("hypergumbo_tracker.sync._find_open_pr")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_merge_succeeds_on_retry(
+        self,
+        mock_git: MagicMock,
+        mock_find_pr: MagicMock,
+        mock_poll: MagicMock,
+        mock_merge: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Merge fails initially (status checks not ready), succeeds on retry."""
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path)
+
+        mock_git.return_value = _make_completed_process()
+        mock_find_pr.return_value = (42, "sha123")
+        mock_poll.return_value = "success"
+        # Fail twice, succeed on third attempt
+        mock_merge.side_effect = [False, False, True]
+
+        result = do_sync(repo_root=tmp_path, preflight=pre)
+        assert result.success
+        assert result.pr_number == 42
+        assert mock_merge.call_count == 3
 
     @patch("hypergumbo_tracker.sync.time")
     @patch("hypergumbo_tracker.sync._merge_pr")
