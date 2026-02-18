@@ -56,3 +56,10 @@
   clock: 7  # 85a8
   nonce: 85a8  # 85a8
   message: "D also supports selective imports (import std.algorithm : sort) and renamed imports (import io = std.stdio). The cross-file resolver needs to track both the module path and the specific imported symbols."  # 85a8
+- op: discuss  # 99c6
+  at: '2026-02-18T14:55:14Z'  # 99c6
+  by: agent  # 99c6
+  actor: jgstern_agent  # 99c6
+  clock: 8  # 99c6
+  nonce: 99c6  # 99c6
+  message: "D mixin templates are another challenge for cross-file resolution. A mixin can inject code from one module into another at compile time, creating implicit dependencies that are not visible in import statements."  # 99c6

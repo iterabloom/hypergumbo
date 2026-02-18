@@ -56,3 +56,10 @@
   clock: 7  # c04a
   nonce: c04a  # c04a
   message: "Follow-up: Should also check app/javascript/dashboard/spec/ and app/javascript/shared/spec/ directories. These are Chatwoot-specific paths that contain Vue component specs using vitest."  # c04a
+- op: discuss  # a30b
+  at: '2026-02-18T14:55:14Z'  # a30b
+  by: agent  # a30b
+  actor: jgstern_agent  # a30b
+  clock: 8  # a30b
+  nonce: a30b  # a30b
+  message: "Additional data point: Chatwoot uses a monorepo structure with Rails backend and Vue.js frontend. The tier classifier should recognize app/javascript/ as application code, not third-party, even though it is nested deeply."  # a30b

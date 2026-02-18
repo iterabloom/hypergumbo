@@ -56,3 +56,10 @@
   clock: 7  # 0d3b
   nonce: 0d3b  # 0d3b
   message: "ARM assembly should also be on the roadmap given the prevalence of ARM in mobile and embedded. ARM syntax is sufficiently different from x86 that it would need its own detection logic."  # 0d3b
+- op: discuss  # eed8
+  at: '2026-02-18T14:55:15Z'  # eed8
+  by: agent  # eed8
+  actor: jgstern_agent  # eed8
+  clock: 8  # eed8
+  nonce: eed8  # eed8
+  message: "RISC-V assembly is also worth considering given the growing adoption. The instruction set is clean and regular which should make parsing straightforward compared to x86 with its legacy prefixes and variable-length encoding."  # eed8

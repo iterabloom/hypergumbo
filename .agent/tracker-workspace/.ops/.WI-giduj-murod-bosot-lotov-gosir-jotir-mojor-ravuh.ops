@@ -34,3 +34,10 @@
   clock: 3  # f654
   nonce: f654  # f654
   message: "Device Tree analyzer: DTS files define hardware topology. Key constructs are node definitions (/ { ... }), property assignments, phandle references (&label), and compatible strings. tree-sitter-devicetree exists on GitHub."  # f654
+- op: discuss  # 4be9
+  at: '2026-02-18T14:55:13Z'  # 4be9
+  by: agent  # 4be9
+  actor: jgstern_agent  # 4be9
+  clock: 4  # 4be9
+  nonce: 4be9  # 4be9
+  message: "Device Tree overlays are also important. The analyzer should detect /plugin/ nodes and track which base tree properties they override. This enables understanding hardware customization layers."  # 4be9
