@@ -35,3 +35,12 @@
   nonce: 7d2f  # 7d2f
   set:  # 7d2f
     status: needs_human_review  # 7d2f
+- op: update  # 0593
+  at: '2026-02-18T09:22:00Z'  # 0593
+  by: agent  # 0593
+  actor: jgstern_agent  # 0593
+  clock: 6  # 0593
+  nonce: '0593'  # 0593
+  set:  # 0593
+    title: "CI matrix strategy: DRY refactor jobs and parallel pytest"  # 0593
+    description: "Three overlapping CI improvements: (1) Matrix strategy for per-package jobs instead of manual duplication, (2) DRY refactor of near-identical test-* jobs in full-suite.yml via matrix or composite action, (3) Parallel pytest split by package for large changes. All non-blocking — CI works correctly as-is."  # 0593
