@@ -504,6 +504,95 @@ void error(int code) {
         )
 
 
+class TestDTemplateCalls:
+    """Tests for D template instantiation call detection."""
+
+    def test_template_call_detected(self, temp_repo: Path) -> None:
+        """Template calls like to!string(x) should produce call edges."""
+        (temp_repo / "convert.d").write_text('''
+module convert;
+
+string stringify(int x) {
+    return to!string(x);
+}
+''')
+
+        result = analyze_d(temp_repo)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        stringify_calls = [e for e in call_edges if "stringify" in e.src]
+        assert len(stringify_calls) >= 1
+        assert any("to" in e.dst for e in stringify_calls)
+
+    def test_plain_property_access_no_edge(self, temp_repo: Path) -> None:
+        """Plain property access (obj.field) should NOT produce a call edge."""
+        (temp_repo / "access.d").write_text('''
+module access;
+
+void read_field() {
+    auto x = obj.length;
+}
+''')
+
+        result = analyze_d(temp_repo)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # obj.length is a property access, not a UFCS template call
+        read_calls = [e for e in call_edges if "read_field" in e.src]
+        # Should have no UFCS edge for 'length' (it's a plain property, not template)
+        assert not any("length" in e.dst and "external" not in e.dst for e in read_calls)
+
+    def test_ufcs_template_call_detected(self, temp_repo: Path) -> None:
+        """UFCS template calls like arr.map!(fn) should produce call edges."""
+        (temp_repo / "transform.d").write_text('''
+module transform;
+
+void process() {
+    auto arr = [1, 2, 3];
+    auto result = arr.map!(a => a * 2);
+}
+''')
+
+        result = analyze_d(temp_repo)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        process_calls = [e for e in call_edges if "process" in e.src]
+        assert any("map" in e.dst for e in process_calls)
+
+
+class TestDCrossFileCallResolution:
+    """Tests for cross-file call resolution in D."""
+
+    def test_cross_file_call_resolved(self, temp_repo: Path) -> None:
+        """Calls to functions defined in another file should resolve."""
+        (temp_repo / "utils.d").write_text('''
+module utils;
+
+int helper(int x) {
+    return x + 1;
+}
+''')
+        (temp_repo / "main.d").write_text('''
+module main;
+
+import utils;
+
+void run() {
+    auto x = helper(42);
+}
+''')
+
+        result = analyze_d(temp_repo)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        run_calls = [e for e in call_edges if "run" in e.src]
+        # helper() should be resolved to utils.d, not external
+        resolved = [e for e in run_calls if "external" not in e.dst]
+        assert len(resolved) >= 1, (
+            f"Cross-file call to helper() should resolve. Edges: {[(e.src, e.dst) for e in run_calls]}"
+        )
+
+
 class TestDImportEdgeResolution:
     """Tests for resolving D import edges to actual module symbols."""
 

@@ -385,6 +385,11 @@ def _get_call_target_name_d(
 ) -> tuple[Optional[str], Optional[str]]:
     """Extract the target name and receiver from a call_expression.
 
+    Handles three call patterns in D:
+    1. ``writeln("hello")`` → identifier child → (writeln, None)
+    2. ``errors.error("bad")`` → type > identifier, '.', identifier → (error, errors)
+    3. ``to!string(42)`` → type > template_instance > identifier → (to, None)
+
     Returns (target_name, receiver) where receiver is the module prefix
     for qualified calls like math.sin().
     """
@@ -392,6 +397,12 @@ def _get_call_target_name_d(
         if child.type == "identifier":
             return (_node_text(child, source), None)
         elif child.type == "type":
+            # Check for template_instance first: to!string(42)
+            for subchild in child.children:
+                if subchild.type == "template_instance":
+                    tmpl_name = _find_child_by_type(subchild, "identifier")
+                    if tmpl_name:
+                        return (_node_text(tmpl_name, source), None)
             # Qualified call like math.sin()
             # type has: identifier (math), '.', identifier (sin)
             parts = []
@@ -403,6 +414,76 @@ def _get_call_target_name_d(
             elif len(parts) == 1:  # pragma: no cover - defensive
                 return (parts[0], None)
     return (None, None)  # pragma: no cover - defensive
+
+
+def _get_ufcs_template_name(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """Extract the template function name from a UFCS property_expression.
+
+    Handles patterns like ``arr.map!(a => a * 2)`` where the tree-sitter AST
+    produces a ``property_expression`` with a ``template_instance`` child.
+
+    Returns the function name (e.g., "map") or None if not a UFCS template.
+    """
+    for child in node.children:
+        if child.type == "template_instance":
+            tmpl_name = _find_child_by_type(child, "identifier")
+            if tmpl_name:
+                return _node_text(tmpl_name, source)
+    return None
+
+
+def _resolve_and_emit_call_edge(
+    caller: Symbol,
+    target_name: str,
+    receiver: Optional[str],
+    import_aliases: dict[str, str],
+    imported_modules: list[str],
+    resolver: NameResolver,
+    edges: list[Edge],
+    node: "tree_sitter.Node",
+    run_id: str,
+) -> None:
+    """Resolve a call target and emit a call edge.
+
+    Shared between regular call_expression and UFCS property_expression
+    handling. Uses import aliases for qualified calls and import-scope
+    path_hints for bare calls to disambiguate cross-file resolution.
+    """
+    # Get path hint from import aliases if receiver is aliased
+    path_hint: Optional[str] = None
+    if receiver:
+        path_hint = import_aliases.get(receiver)
+
+    # Use resolver for callee resolution.  For bare calls
+    # (no receiver), pass imported module paths as hints
+    # so the resolver prefers symbols from imported modules
+    # over identically-named symbols in unrelated files.
+    hints = imported_modules if not receiver else None
+    lookup_result = resolver.lookup(
+        target_name,
+        path_hint=path_hint,
+        path_hints=hints,
+    )
+    if lookup_result.found and lookup_result.symbol:
+        dst_id = lookup_result.symbol.id
+        confidence = 0.85 * lookup_result.confidence
+    else:
+        # External function (e.g., writeln from std.stdio)
+        dst_id = f"d:external:{target_name}:function"
+        confidence = 0.70
+
+    edges.append(Edge(
+        id=f"edge:d:{uuid.uuid4().hex[:12]}",
+        src=caller.id,
+        dst=dst_id,
+        edge_type="calls",
+        line=node.start_point[0] + 1,
+        confidence=confidence,
+        origin=PASS_ID,
+        origin_run_id=run_id,
+    ))
 
 
 @register_analyzer("d")
@@ -532,39 +613,24 @@ def analyze_d(repo_root: Path) -> DAnalysisResult:
                 if target_name:
                     caller = _find_enclosing_function_d(node, source, local_symbols)
                     if caller:
-                        # Get path hint from import aliases if receiver is aliased
-                        path_hint: Optional[str] = None
-                        if receiver:
-                            path_hint = import_aliases.get(receiver)
-
-                        # Use resolver for callee resolution.  For bare calls
-                        # (no receiver), pass imported module paths as hints
-                        # so the resolver prefers symbols from imported modules
-                        # over identically-named symbols in unrelated files.
-                        hints = imported_modules if not receiver else None
-                        lookup_result = resolver.lookup(
-                            target_name,
-                            path_hint=path_hint,
-                            path_hints=hints,
+                        _resolve_and_emit_call_edge(
+                            caller, target_name, receiver,
+                            import_aliases, imported_modules,
+                            resolver, edges, node, run_id,
                         )
-                        if lookup_result.found and lookup_result.symbol:
-                            dst_id = lookup_result.symbol.id
-                            confidence = 0.85 * lookup_result.confidence
-                        else:
-                            # External function (e.g., writeln from std.stdio)
-                            dst_id = f"d:external:{target_name}:function"
-                            confidence = 0.70
 
-                        edges.append(Edge(
-                            id=f"edge:d:{uuid.uuid4().hex[:12]}",
-                            src=caller.id,
-                            dst=dst_id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            confidence=confidence,
-                            origin=PASS_ID,
-                            origin_run_id=run_id,
-                        ))
+            # Process UFCS template calls: arr.map!(fn)
+            # These appear as property_expression with template_instance child
+            elif node.type == "property_expression":
+                ufcs_name = _get_ufcs_template_name(node, source)
+                if ufcs_name:
+                    caller = _find_enclosing_function_d(node, source, local_symbols)
+                    if caller:
+                        _resolve_and_emit_call_edge(
+                            caller, ufcs_name, None,
+                            import_aliases, imported_modules,
+                            resolver, edges, node, run_id,
+                        )
 
     duration_ms = int((time.time() - start_time) * 1000)
     return DAnalysisResult(
