@@ -33,6 +33,8 @@ from hypergumbo_tracker.sync import (
     _find_open_pr,
     _git,
     _load_env,
+    _check_pr_merged,
+    _log,
     _merge_pr,
     _poll_ci,
     _sum_added_lines,
@@ -725,75 +727,154 @@ class TestPollCi:
 # ---------------------------------------------------------------------------
 
 
-class TestMergePr:
-    """Tests for _merge_pr — PR merge via API."""
+class TestLog:
+    """Tests for _log — stderr diagnostic helper."""
+
+    def test_writes_to_stderr(self, capsys: Any) -> None:
+        _log("hello world")
+        assert capsys.readouterr().err == "sync: hello world\n"
+
+
+class TestCheckPrMerged:
+    """Tests for _check_pr_merged — verify PR merged state."""
 
     @patch("hypergumbo_tracker.sync._api_call")
-    def test_success_200(self, mock_api: MagicMock) -> None:
+    def test_merged(self, mock_api: MagicMock) -> None:
         mock_api.return_value = (200, {"merged": True})
-        assert _merge_pr("https://api.example.com/repos/o/r", "token", 42)
+        assert _check_pr_merged("https://api.example.com/repos/o/r", "t", 1)
 
     @patch("hypergumbo_tracker.sync._api_call")
-    def test_success_204(self, mock_api: MagicMock) -> None:
+    def test_not_merged(self, mock_api: MagicMock) -> None:
+        mock_api.return_value = (200, {"merged": False})
+        assert not _check_pr_merged(
+            "https://api.example.com/repos/o/r", "t", 1
+        )
+
+    @patch("hypergumbo_tracker.sync._api_call")
+    def test_api_failure(self, mock_api: MagicMock) -> None:
+        mock_api.return_value = (0, None)
+        assert not _check_pr_merged(
+            "https://api.example.com/repos/o/r", "t", 1
+        )
+
+    @patch("hypergumbo_tracker.sync._api_call")
+    def test_non_dict_body(self, mock_api: MagicMock) -> None:
+        mock_api.return_value = (200, [])
+        assert not _check_pr_merged(
+            "https://api.example.com/repos/o/r", "t", 1
+        )
+
+
+class TestMergePr:
+    """Tests for _merge_pr — cascading merge strategies."""
+
+    BASE = "https://api.example.com/repos/o/r"
+
+    @patch("hypergumbo_tracker.sync._api_call")
+    def test_fast_forward_204(self, mock_api: MagicMock) -> None:
+        """Fast-forward returns 204 — immediate success."""
         mock_api.return_value = (204, None)
-        assert _merge_pr("https://api.example.com/repos/o/r", "token", 42)
+        assert _merge_pr(self.BASE, "token", 42)
+        # Only one call (fast-forward), no fallback needed
+        assert mock_api.call_count == 1
+
+    @patch("hypergumbo_tracker.sync._api_call")
+    def test_fast_forward_200_verified(self, mock_api: MagicMock) -> None:
+        """Fast-forward returns 200, verified merged via GET."""
+        mock_api.side_effect = [
+            (200, {"merged": False}),  # POST ff — ambiguous 200
+            (200, {"merged": True}),   # GET check — actually merged
+        ]
+        assert _merge_pr(self.BASE, "token", 42)
+        assert mock_api.call_count == 2
+
+    @patch("hypergumbo_tracker.sync._api_call")
+    def test_fast_forward_200_not_merged_rebase_succeeds(
+        self, mock_api: MagicMock
+    ) -> None:
+        """Fast-forward 200 but not merged, rebase 204 succeeds."""
+        mock_api.side_effect = [
+            (200, {"merged": False}),  # POST ff
+            (200, {"merged": False}),  # GET check — not merged
+            (204, None),               # POST rebase — success
+        ]
+        assert _merge_pr(self.BASE, "token", 42)
+        assert mock_api.call_count == 3
+
+    @patch("hypergumbo_tracker.sync._api_call")
+    def test_all_strategies_fail(self, mock_api: MagicMock) -> None:
+        """All three strategies fail — returns False."""
+        mock_api.side_effect = [
+            (500, {"message": "error"}),  # POST ff
+            (500, {"message": "error"}),  # POST rebase
+            (500, {"message": "error"}),  # POST merge
+        ]
+        assert not _merge_pr(self.BASE, "token", 42)
+
+    @patch("hypergumbo_tracker.sync._api_call")
+    def test_ff_and_rebase_fail_merge_commit_succeeds(
+        self, mock_api: MagicMock
+    ) -> None:
+        """Fast-forward and rebase both fail, merge commit works."""
+        mock_api.side_effect = [
+            (200, {"merged": False}),  # POST ff
+            (200, {"merged": False}),  # GET check — not merged
+            (200, {"merged": False}),  # POST rebase
+            (200, {"merged": False}),  # GET check — not merged
+            (200, {"merged": False}),  # POST merge
+            (200, {"merged": True}),   # GET check — merged!
+        ]
+        assert _merge_pr(self.BASE, "token", 42)
+        assert mock_api.call_count == 6
 
     @patch("hypergumbo_tracker.sync._api_call")
     def test_already_merged_405(self, mock_api: MagicMock) -> None:
+        """405 on fast-forward, PR already merged."""
         mock_api.side_effect = [
             (405, {"message": "already merged"}),
-            (200, {"merged": True}),
+            (200, {"merged": True}),  # GET check — already merged
         ]
-        assert _merge_pr("https://api.example.com/repos/o/r", "token", 42)
+        assert _merge_pr(self.BASE, "token", 42)
 
     @patch("hypergumbo_tracker.sync._api_call")
-    def test_already_merged_409(self, mock_api: MagicMock) -> None:
-        mock_api.side_effect = [
-            (409, {"message": "conflict"}),
-            (200, {"merged": True}),
-        ]
-        assert _merge_pr("https://api.example.com/repos/o/r", "token", 42)
-
-    @patch("hypergumbo_tracker.sync._api_call")
-    def test_diverged_not_merged(self, mock_api: MagicMock) -> None:
-        mock_api.side_effect = [
-            (409, {"message": "conflict"}),
-            (200, {"merged": False}),
-        ]
-        assert not _merge_pr(
-            "https://api.example.com/repos/o/r", "token", 42
-        )
-
-    @patch("hypergumbo_tracker.sync._api_call")
-    def test_merge_failure(self, mock_api: MagicMock) -> None:
-        mock_api.return_value = (500, {"message": "server error"})
-        assert not _merge_pr(
-            "https://api.example.com/repos/o/r", "token", 42
-        )
-
-    @patch("hypergumbo_tracker.sync._api_call")
-    def test_idempotent_check_api_failure(
+    def test_409_not_merged_falls_through(
         self, mock_api: MagicMock
     ) -> None:
+        """409 on fast-forward, not merged, tries next strategy."""
         mock_api.side_effect = [
-            (405, {"message": "already merged"}),
-            (0, None),  # API check fails
+            (409, {"message": "conflict"}),   # POST ff
+            (200, {"merged": False}),          # GET check
+            (204, None),                       # POST rebase — success
         ]
-        assert not _merge_pr(
-            "https://api.example.com/repos/o/r", "token", 42
-        )
+        assert _merge_pr(self.BASE, "token", 42)
+        assert mock_api.call_count == 3
 
     @patch("hypergumbo_tracker.sync._api_call")
-    def test_idempotent_check_non_dict_body(
+    def test_405_api_check_fails_tries_next(
         self, mock_api: MagicMock
     ) -> None:
+        """405 on ff, API check fails, tries rebase."""
         mock_api.side_effect = [
-            (409, None),
-            (200, []),  # non-dict body
+            (405, {"message": "blocked"}),
+            (0, None),    # GET check fails
+            (204, None),  # POST rebase — success
         ]
-        assert not _merge_pr(
-            "https://api.example.com/repos/o/r", "token", 42
-        )
+        assert _merge_pr(self.BASE, "token", 42)
+
+    @patch("hypergumbo_tracker.sync._api_call")
+    def test_all_blocked_all_not_merged(
+        self, mock_api: MagicMock
+    ) -> None:
+        """All strategies get 405/409, never actually merged."""
+        mock_api.side_effect = [
+            (405, {"message": "blocked"}),
+            (200, {"merged": False}),  # GET check
+            (409, {"message": "conflict"}),
+            (200, {"merged": False}),  # GET check
+            (405, {"message": "blocked"}),
+            (200, {"merged": False}),  # GET check
+        ]
+        assert not _merge_pr(self.BASE, "token", 42)
 
 
 # ---------------------------------------------------------------------------

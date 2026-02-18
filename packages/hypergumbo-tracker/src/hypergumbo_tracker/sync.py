@@ -28,6 +28,7 @@ import json
 import os
 import re
 import subprocess  # nosec B404 — required for git subprocess calls
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -332,14 +333,42 @@ def _poll_ci(
     return "timeout"
 
 
+def _log(msg: str) -> None:
+    """Write a sync diagnostic message to stderr."""
+    print(f"sync: {msg}", file=sys.stderr)
+
+
+def _check_pr_merged(
+    api_base: str, token: str, pr_num: int
+) -> bool:
+    """Check whether a PR is merged by fetching its current state."""
+    check_status, check_body = _api_call(
+        "GET",
+        f"{api_base}/pulls/{pr_num}",
+        token,
+    )
+    return (
+        check_status == 200
+        and isinstance(check_body, dict)
+        and bool(check_body.get("merged"))
+    )
+
+
 def _merge_pr(
     api_base: str,
     token: str,
     pr_num: int,
 ) -> bool:
-    """Merge a PR via fast-forward-only merge.
+    """Merge a PR, cascading through merge strategies.
 
-    Handles the idempotent case where the PR is already merged.
+    Tries fast-forward-only first (cleanest history), then rebase
+    (preserves commit identity), then merge commit (always works).
+    AGit-flow PRs (created via ``refs/for/``) lack a real branch,
+    which causes Forgejo's fast-forward merge to silently fail
+    (HTTP 200 but ``merged: false``).
+
+    After each attempt, verifies the PR is actually merged before
+    declaring success.
 
     Args:
         api_base: Forgejo API base URL.
@@ -349,29 +378,48 @@ def _merge_pr(
     Returns:
         True if merge succeeded or PR was already merged.
     """
-    status, body = _api_call(
-        "POST",
-        f"{api_base}/pulls/{pr_num}/merge",
-        token,
-        data={"Do": "fast-forward-only"},
-    )
+    merge_url = f"{api_base}/pulls/{pr_num}/merge"
 
-    if status == 200 or status == 204:
-        return True
+    strategies = [
+        ("fast-forward-only", "fast-forward"),
+        ("rebase", "rebase"),
+        ("merge", "merge commit"),
+    ]
 
-    # Check if already merged (idempotent)
-    if status == 405 or status == 409:
-        check_status, check_body = _api_call(
-            "GET",
-            f"{api_base}/pulls/{pr_num}",
-            token,
+    for do_value, label in strategies:
+        status, body = _api_call(
+            "POST", merge_url, token, data={"Do": do_value},
         )
-        if (
-            check_status == 200
-            and isinstance(check_body, dict)
-            and check_body.get("merged")
-        ):
+
+        if status == 204:
+            _log(f"merged via {label}")
             return True
+
+        if status == 200:
+            # Forgejo sometimes returns 200 with the PR object
+            # without actually merging (especially for AGit-flow PRs
+            # with fast-forward-only).  Verify before declaring success.
+            if _check_pr_merged(api_base, token, pr_num):
+                _log(f"merged via {label}")
+                return True
+            _log(f"{label} returned 200 but PR not merged, "
+                 f"trying next strategy")
+            continue
+
+        # 405/409 = merge blocked or conflict
+        if status in (405, 409):
+            # Could be already merged (idempotent) or genuinely blocked
+            if _check_pr_merged(api_base, token, pr_num):
+                _log("PR already merged")
+                return True
+            msg = ""
+            if isinstance(body, dict):
+                msg = body.get("message", "")
+            _log(f"{label} blocked (HTTP {status}): {msg}")
+            continue
+
+        _log(f"{label} failed (HTTP {status})")
+        continue
 
     return False
 
