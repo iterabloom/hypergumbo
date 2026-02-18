@@ -70,3 +70,13 @@
   clock: 9  # c62d
   nonce: c62d  # c62d
   message: "Auto-sync test 4: D language improvements remain deferred."  # c62d
+- op: update  # be7d
+  at: '2026-02-18T17:24:06Z'  # be7d
+  by: agent  # be7d
+  actor: jgstern_agent  # be7d
+  clock: 10  # be7d
+  nonce: be7d  # be7d
+  set:  # be7d
+    status: done  # be7d
+    pr_ref: '1178'  # be7d
+    justification: "Added template call detection (to!string) and UFCS template property expressions (arr.map!(fn)). These are the two most common call patterns missing from the D analyzer."  # be7d

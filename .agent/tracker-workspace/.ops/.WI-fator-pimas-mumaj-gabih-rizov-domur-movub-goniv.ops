@@ -70,3 +70,13 @@
   clock: 9  # c33f
   nonce: c33f  # c33f
   message: "Auto-sync test 4: branch protection now uses *CI* pattern, testing if Tracker CI status satisfies it."  # c33f
+- op: update  # 6f70
+  at: '2026-02-18T17:10:46Z'  # 6f70
+  by: agent  # 6f70
+  actor: jgstern_agent  # 6f70
+  clock: 10  # 6f70
+  nonce: 6f70  # 6f70
+  set:  # 6f70
+    status: done  # 6f70
+    pr_ref: '1177'  # 6f70
+    justification: "Added classify_dot_m_file() content-based heuristic in discovery.py. All three analyzers now filter .m files correctly."  # 6f70
