@@ -27,3 +27,11 @@
   nonce: b36b  # b36b
   set:  # b36b
     status: todo_soft  # b36b
+- op: update  # 071f
+  at: '2026-02-18T09:06:15Z'  # 071f
+  by: human  # 071f
+  actor: jgstern  # 071f
+  clock: 4  # 071f
+  nonce: 071f  # 071f
+  set:  # 071f
+    status: needs_human_review  # 071f

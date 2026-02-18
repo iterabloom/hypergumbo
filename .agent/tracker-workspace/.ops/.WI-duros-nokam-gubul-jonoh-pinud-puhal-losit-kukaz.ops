@@ -27,3 +27,11 @@
   nonce: 72af  # 72af
   set:  # 72af
     status: todo_soft  # 72af
+- op: update  # c6ea
+  at: '2026-02-18T09:11:37Z'  # c6ea
+  by: human  # c6ea
+  actor: jgstern  # c6ea
+  clock: 4  # c6ea
+  nonce: c6ea  # c6ea
+  set:  # c6ea
+    priority: 3  # c6ea

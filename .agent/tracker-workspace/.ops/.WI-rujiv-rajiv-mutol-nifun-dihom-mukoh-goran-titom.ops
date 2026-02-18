@@ -27,3 +27,11 @@
   nonce: a4c1  # a4c1
   set:  # a4c1
     status: todo_soft  # a4c1
+- op: update  # 603e
+  at: '2026-02-18T09:12:14Z'  # 603e
+  by: human  # 603e
+  actor: jgstern  # 603e
+  clock: 4  # 603e
+  nonce: 603e  # 603e
+  set:  # 603e
+    priority: 2  # 603e

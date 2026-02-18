@@ -28,3 +28,11 @@
   set:  # 28bc
     status: todo_soft  # 28bc
     description: "Can implement when a DEEP bakeoff reveals a Node+C polyglot repo that would benefit."  # 28bc
+- op: update  # fd0a
+  at: '2026-02-18T09:12:08Z'  # fd0a
+  by: human  # fd0a
+  actor: jgstern  # fd0a
+  clock: 4  # fd0a
+  nonce: fd0a  # fd0a
+  set:  # fd0a
+    priority: 2  # fd0a

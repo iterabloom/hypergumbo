@@ -27,3 +27,11 @@
   nonce: 621a  # 621a
   set:  # 621a
     status: todo_soft  # 621a
+- op: update  # b78b
+  at: '2026-02-18T09:12:03Z'  # b78b
+  by: human  # b78b
+  actor: jgstern  # b78b
+  clock: 4  # b78b
+  nonce: b78b  # b78b
+  set:  # b78b
+    priority: 2  # b78b

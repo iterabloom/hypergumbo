@@ -27,3 +27,18 @@
   nonce: d6b9  # d6b9
   set:  # d6b9
     status: todo_soft  # d6b9
+- op: update  # f076
+  at: '2026-02-18T09:10:32Z'  # f076
+  by: human  # f076
+  actor: jgstern  # f076
+  clock: 5  # f076
+  nonce: f076  # f076
+  set:  # f076
+    priority: 3  # f076
+- op: discuss  # 5906
+  at: '2026-02-18T09:11:10Z'  # 5906
+  by: human  # 5906
+  actor: jgstern  # 5906
+  clock: 6  # 5906
+  nonce: '5906'  # 5906
+  message: "Since this item was created we made significant changes to the bakeoff infrastructure, so this item should be reassessed."  # 5906

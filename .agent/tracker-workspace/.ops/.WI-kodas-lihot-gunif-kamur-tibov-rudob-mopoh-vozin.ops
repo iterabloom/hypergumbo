@@ -27,3 +27,11 @@
   nonce: af41  # af41
   set:  # af41
     status: todo_soft  # af41
+- op: update  # 75e1
+  at: '2026-02-18T09:09:30Z'  # 75e1
+  by: human  # 75e1
+  actor: jgstern  # 75e1
+  clock: 4  # 75e1
+  nonce: '75e1'  # 75e1
+  set:  # 75e1
+    priority: 1  # 75e1

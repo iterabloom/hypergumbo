@@ -27,3 +27,11 @@
   nonce: 89a4  # 89a4
   set:  # 89a4
     status: todo_soft  # 89a4
+- op: update  # 7d2f
+  at: '2026-02-18T09:08:20Z'  # 7d2f
+  by: human  # 7d2f
+  actor: jgstern  # 7d2f
+  clock: 5  # 7d2f
+  nonce: 7d2f  # 7d2f
+  set:  # 7d2f
+    status: needs_human_review  # 7d2f
