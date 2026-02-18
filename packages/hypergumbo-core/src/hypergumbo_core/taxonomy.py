@@ -348,6 +348,11 @@ LANGUAGES: dict[str, LanguageSpec] = {
         extensions=["*.ll"],
         roles=FileRole.ANALYZABLE,
     ),
+    "asm": LanguageSpec(
+        name="asm",
+        extensions=["*.s", "*.asm", "*.S"],
+        roles=FileRole.ANALYZABLE,
+    ),
     "glsl": LanguageSpec(
         name="glsl",
         extensions=["*.glsl", "*.vert", "*.frag", "*.geom", "*.comp", "*.tesc", "*.tese"],

@@ -11,6 +11,7 @@ __version__ = "2.0.2"
 # Importing each module triggers the @register_analyzer decorator within it.
 ANALYZER_MODULES = [
     # Systems programming (modern alternatives to C/C++)
+    "hypergumbo_lang_extended1.asm",
     "hypergumbo_lang_extended1.zig",
     "hypergumbo_lang_extended1.odin",
     "hypergumbo_lang_extended1.nim",
