@@ -12,9 +12,12 @@ concurrency:
 
 jobs:
   # Detect what files changed to skip expensive jobs for docs-only PRs
-  # Skip entirely for tracker-sync PRs (handled by tracker-ci.yml)
+  # Skip entirely for tracker-sync PRs and tracker-only pushes
+  # (handled by tracker-ci.yml — no need to run lint, pytest, etc.)
   changes:
-    if: ${{ !startsWith(github.head_ref || '', 'tracker-sync/') }}
+    if: >-
+      !startsWith(github.head_ref || '', 'tracker-sync/')
+      && !startsWith(github.event.head_commit.message || '', 'tracker:')
     runs-on: codeberg-small-lazy
     outputs:
       code: ${{ steps.filter.outputs.code }}
