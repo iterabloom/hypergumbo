@@ -1,8 +1,9 @@
 """Luau language analyzer.
 
-This module analyzes Luau files (.luau, .lua) using tree-sitter. Luau is
+This module analyzes Luau files (.luau only) using tree-sitter. Luau is
 Roblox's typed Lua variant used for game development on the Roblox platform.
-It extends Lua with a gradual type system.
+It extends Lua with a gradual type system. Vanilla .lua files are handled
+by the lua-v1 analyzer to avoid duplicate symbol extraction.
 
 How It Works
 ------------
@@ -87,10 +88,13 @@ def _make_stable_id(path: Path, repo_root: Path, name: str, kind: str) -> str:
 
 
 def find_luau_files(repo_root: Path) -> list[Path]:
-    """Find all Luau files in the repository."""
-    luau_files = list(find_files(repo_root, ["*.luau"]))
-    lua_files = list(find_files(repo_root, ["*.lua"]))
-    return sorted(luau_files + lua_files)
+    """Find all Luau (.luau) files in the repository.
+
+    Only processes .luau files (Roblox's typed Lua variant).
+    Vanilla .lua files are handled exclusively by the lua-v1 analyzer
+    to avoid duplicate symbol extraction.
+    """
+    return sorted(find_files(repo_root, ["*.luau"]))
 
 
 def is_luau_tree_sitter_available() -> bool:

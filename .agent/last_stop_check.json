@@ -1,11 +1,11 @@
 {
-  "last_completed_utc": "2026-02-13T19:02:10Z",
-  "branch": "dev",
-  "last_pr": 1071,
-  "last_pr_state": "merged",
+  "last_completed_utc": "2026-02-18T23:15:00Z",
+  "branch": "jgstern-agent/feat/canonical-name-containment",
+  "last_pr": 1191,
+  "last_pr_state": "open_ci_stuck",
   "pending_hard_todos": 0,
-  "pending_soft_todos": 0,
+  "pending_soft_todos": 3,
   "unfixed_invariants": 0,
-  "notes": "Merged PRs #1070 (Ruby .new constructor resolution) and #1071 (edge dedup by edge_key). Cohort 042 bakeoff shows significant improvements: postal max_in_degree 131->53, git-bug edges 12013->8863 (-26%), chatwoot edges 53437->49526 (-7.3%). Remaining gaps: postal orphan rate 21.4% (need Rails route->controller with namespace modules, delegate macro edges), spring-petclinic LOW_AVG_SLICE_NODES (15.9), HIGH_CENTRALITY_GINI (91.5%). Next actionable items from reflect: fix Rails string route resolution (namespace module patterns), add Spring MVC controller-to-template edges, reduce forward slice noise with dynamic hub threshold.",
-  "guidance_file": "/home/jgstern_agent/hypergumbo_lab_notebook/guidance_log/stop_guidance_02182026_1645.md"
+  "notes": "PR #1191 (canonical_name containment for proto service→rpc) open but CI stuck (all 10 jobs pending, runners unavailable). merge-pr PID 2931270 polling with 1hr timeout. DEEP bakeoff-features-reflect completed: all 4 repos PARTIALLY_USEFUL. Extensive research done on 6 quality gaps. Implementation queue ready: (1) Lua/Luau dedup - remove *.lua from find_luau_files(), (2) OpenResty phase handler patterns - add definition-based patterns to openresty.yaml, (3) Ruby bare method call class-aware resolution, (4) Route nesting: scope path. Lab notebook at ~/hypergumbo_lab_notebook/notebookjournal_02182026_2040.md has full research findings. When CI recovers: ./scripts/merge-pr 1191 --wait-for-ci, then implement Sprint 1 items.",
+  "guidance_file": "/home/jgstern_agent/hypergumbo_lab_notebook/guidance_log/stop_guidance_02182026_2136.md"
 }

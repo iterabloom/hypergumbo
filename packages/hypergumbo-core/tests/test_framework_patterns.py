@@ -14961,3 +14961,124 @@ class TestLibraryExportPatterns:
         results = match_patterns(symbol, [pattern_def])
         lib_exports = [r for r in results if r["concept"] == "library_export"]
         assert len(lib_exports) == 0
+
+
+class TestOpenRestyPhaseHandlerPatterns:
+    """Tests for OpenResty/nginx phase handler definition-based patterns.
+
+    OpenResty applications (Kong plugins, ingress-nginx, custom apps)
+    define lifecycle handler functions named after nginx request processing
+    phases: init_worker, access, content, header_filter, log, etc.
+
+    These are matched by symbol_name + symbol_kind (definition-based), not
+    by usage context, because the Lua analyzer doesn't emit UsageContext
+    records.
+    """
+
+    def test_qualified_phase_handler_matches(self) -> None:
+        """Kong-style qualified name 'Kong.access' matches event_handler."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("openresty")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="lua:kong/plugins/rate-limiting/handler.lua:1-20:Kong.access:function",
+            name="Kong.access",
+            kind="function",
+            language="lua",
+            path="kong/plugins/rate-limiting/handler.lua",
+            span=Span(1, 20, 0, 100),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        handlers = [r for r in results if r["concept"] == "event_handler"]
+        assert len(handlers) == 1
+        assert handlers[0]["matched_symbol_name"] == "Kong.access"
+
+    def test_module_export_phase_handler_matches(self) -> None:
+        """Module export style '_M.init_worker' matches event_handler."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("openresty")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="lua:lib/worker.lua:1-15:_M.init_worker:function",
+            name="_M.init_worker",
+            kind="function",
+            language="lua",
+            path="lib/worker.lua",
+            span=Span(1, 15, 0, 100),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        handlers = [r for r in results if r["concept"] == "event_handler"]
+        assert len(handlers) == 1
+        assert handlers[0]["matched_symbol_name"] == "_M.init_worker"
+
+    def test_all_phase_names_match(self) -> None:
+        """All 10 nginx phase handler names are recognized."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("openresty")
+        assert pattern_def is not None
+
+        phase_names = [
+            "init_worker", "ssl_certificate", "rewrite", "access",
+            "content", "balancer", "header_filter", "body_filter",
+            "log", "preread",
+        ]
+
+        for phase in phase_names:
+            symbol = Symbol(
+                id=f"lua:handler.lua:1-10:{phase}:function",
+                name=phase,
+                kind="function",
+                language="lua",
+                path="handler.lua",
+                span=Span(1, 10, 0, 50),
+                meta={},
+            )
+            results = match_patterns(symbol, [pattern_def])
+            handlers = [r for r in results if r["concept"] == "event_handler"]
+            assert len(handlers) >= 1, f"Phase '{phase}' should match event_handler"
+
+    def test_init_excluded_to_avoid_false_positives(self) -> None:
+        """Plain 'init' is excluded — too many false positives (e.g. Lua constructors)."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("openresty")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="lua:lib/cache.lua:1-10:init:function",
+            name="init",
+            kind="function",
+            language="lua",
+            path="lib/cache.lua",
+            span=Span(1, 10, 0, 50),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        handlers = [r for r in results if r["concept"] == "event_handler"]
+        assert len(handlers) == 0
+
+    def test_non_function_kind_does_not_match(self) -> None:
+        """Variables named after phases should NOT match — only functions."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("openresty")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="lua:config.lua:1-5:access:variable",
+            name="access",
+            kind="variable",
+            language="lua",
+            path="config.lua",
+            span=Span(1, 5, 0, 30),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        handlers = [r for r in results if r["concept"] == "event_handler"]
+        assert len(handlers) == 0

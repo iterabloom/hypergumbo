@@ -72,5 +72,15 @@ patterns:
       kind: "^call$"
       name: "^capture_errors.*$"
 
+  # OpenResty/nginx phase handler functions (definition-based).
+  # Functions named after nginx request processing phases are lifecycle
+  # handlers invoked by nginx, not by Lua code. Common in Kong plugins,
+  # ingress-nginx extensions, and any OpenResty application.
+  # Matched names: init, init_worker, ssl_certificate, rewrite, access,
+  # content, balancer, header_filter, body_filter, log, preread.
+  - concept: event_handler
+    symbol_name: "(^|\\.)(?:init_worker|ssl_certificate|rewrite|access|content|balancer|header_filter|body_filter|log|preread)$"
+    symbol_kind: "function"
+
 linkers:
   - http

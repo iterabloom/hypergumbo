@@ -33,11 +33,19 @@ class TestFindLuauFiles:
         names = {f.name for f in files}
         assert names == {"main.luau", "utils.luau"}
 
-    def test_finds_lua_files(self, tmp_path: Path) -> None:
+    def test_ignores_lua_files(self, tmp_path: Path) -> None:
+        """Luau analyzer only processes .luau files; .lua handled by lua-v1."""
         make_luau_file(tmp_path, "module.lua", "local x = 1")
         files = find_luau_files(tmp_path)
+        assert files == []
+
+    def test_mixed_lua_and_luau(self, tmp_path: Path) -> None:
+        """Only .luau files are returned when both .lua and .luau exist."""
+        make_luau_file(tmp_path, "module.lua", "local x = 1")
+        make_luau_file(tmp_path, "types.luau", "export type Foo = {}")
+        files = find_luau_files(tmp_path)
         assert len(files) == 1
-        assert files[0].name == "module.lua"
+        assert files[0].name == "types.luau"
 
     def test_empty_directory(self, tmp_path: Path) -> None:
         files = find_luau_files(tmp_path)
