@@ -124,7 +124,7 @@ def _resolve_rails_handler(
         if name.endswith(hash_suffix) or name.endswith(dot_suffix):
             return sym
 
-    # Case-insensitive fallback for Rails acronym inflections.
+    # Case-insensitive fallback for Rails acronym inflections (ADR-0008).
     # Rails treats words like IP, HTTP, SMTP, API as acronyms:
     # 'ip_pool_rules' → 'IPPoolRulesController', not 'IpPoolRulesController'.
     # Our naive CamelCase conversion can't replicate Rails' custom acronym list,
