@@ -138,7 +138,10 @@ def _detect_api_base(repo_root: Path) -> str:
     url = result.stdout.strip()
 
     # HTTPS: https://codeberg.org/owner/repo.git
-    m = re.match(r"https?://([^/]+)/([^/]+)/([^/]+?)(?:\.git)?$", url)
+    # Also handles embedded credentials: https://user:token@host/...
+    m = re.match(
+        r"https?://(?:[^@/]+@)?([^/]+)/([^/]+)/([^/]+?)(?:\.git)?$", url
+    )
     if m:
         host, owner, repo = m.group(1), m.group(2), m.group(3)
         return f"https://{host}/api/v1/repos/{owner}/{repo}"

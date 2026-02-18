@@ -215,6 +215,19 @@ class TestDetectApiBase:
         assert result == ""
 
     @patch("hypergumbo_tracker.sync._git")
+    def test_https_embedded_credentials(
+        self, mock_git: MagicMock, tmp_path: Path
+    ) -> None:
+        """URLs with embedded user:token@ are parsed correctly."""
+        mock_git.return_value = _make_completed_process(
+            stdout="https://agent:abc123token@codeberg.org/iterabloom/hypergumbo.git\n"
+        )
+        result = _detect_api_base(tmp_path)
+        assert result == (
+            "https://codeberg.org/api/v1/repos/iterabloom/hypergumbo"
+        )
+
+    @patch("hypergumbo_tracker.sync._git")
     def test_unparseable_url(
         self, mock_git: MagicMock, tmp_path: Path
     ) -> None:
