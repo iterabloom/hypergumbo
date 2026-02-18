@@ -425,9 +425,10 @@ class TestCssNoiseFiltering:
     """Test default exclusion of CSS structural node kinds.
 
     CSS selector kinds (class_selector, id_selector, rule_set, property,
-    media, keyframes, font_face, variable) are degree-0 noise that add
-    no architectural insight. They are excluded by default alongside
-    documentation/config kinds.
+    media, keyframes, font_face) and CSS custom property / SCSS variable
+    kinds ("variable") are degree-0 noise that add no architectural
+    insight.  They are excluded by default alongside documentation/config
+    kinds.
     """
 
     @pytest.fixture()
@@ -440,10 +441,14 @@ class TestCssNoiseFiltering:
             "def main():\n"
             "    pass\n"
         )
-        # CSS file (generates class_selector, id_selector, etc.)
+        # CSS file (generates class_selector, id_selector, variable, etc.)
         (repo / "styles.css").write_text(
+            ":root {\n"
+            "    --primary-color: blue;\n"
+            "}\n"
+            "\n"
             ".button {\n"
-            "    color: blue;\n"
+            "    color: var(--primary-color);\n"
             "}\n"
             "\n"
             "#header {\n"
@@ -464,6 +469,7 @@ class TestCssNoiseFiltering:
         css_noise_kinds = {
             "class_selector", "id_selector", "rule_set",
             "property", "media", "keyframes", "font_face",
+            "variable",
         }
         for node in data["nodes"]:
             assert node["kind"] not in css_noise_kinds, (

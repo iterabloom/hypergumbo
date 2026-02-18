@@ -4066,6 +4066,7 @@ def run_behavior_map(
             # CSS structural (degree-0 in behavior maps)
             "class_selector", "id_selector", "rule_set",
             "property", "media", "keyframes", "font_face",
+            "variable",     # CSS custom properties / SCSS variables (zero edges)
             # Config metadata (degree-0 across all tested repos)
             "pattern",      # .gitignore entries
             "script",       # npm scripts / pyproject.toml entry points
