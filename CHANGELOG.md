@@ -15,7 +15,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **JS/TS module resolution linker**: Resolves import edges to file symbols via relative imports (extension/index probing), `tsconfig.json`/`jsconfig.json`/`vite.config` path aliases, and monorepo tsconfig discovery.
 - **Vue linkers**: Template-method linker connects event handlers (`@click`, `v-on:input`) to `<script>` symbols; component linker resolves import paths to `.vue` files on disk.
-- **FFI linkers**: Python (ctypes/cffi/PyO3), Ruby (FFI gem, C extensions), Go (Cgo), and Node.js (N-API/node-addon-api) cross-language call linking to C/C++ symbols.
+- **FFI linkers**: Python (ctypes/cffi/PyO3), Ruby (FFI gem, C extensions), Go (Cgo), Node.js (N-API/node-addon-api), and Lua (LuaJIT ffi.C/ffi.load) cross-language call linking to C/C++ symbols.
 - **Assembly language analyzer**: Tree-sitter-based analyzer for assembly files (`.s`, `.asm`, `.S`). Extracts labels as function/variable symbols, detects call instructions as call edges with cross-file resolution.
 - **ORM query linker**: Detects Django ORM and Flask-SQLAlchemy query patterns, linking calling functions to Model classes.
 - **Elixir/OTP improvements**: GenServer dispatch linking (`call`/`cast` → `handle_call`/`handle_cast`), behaviour callback detection (11 behaviours including Phoenix LiveView), `live` route detection, multi-clause function edge targeting, and cross-file module-qualified call resolution.
