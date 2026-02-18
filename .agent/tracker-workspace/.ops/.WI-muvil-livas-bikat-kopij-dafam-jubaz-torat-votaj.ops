@@ -41,3 +41,11 @@
   clock: 4  # b777
   nonce: b777  # b777
   message: "Kconfig tristate options (y/m/n) control whether code compiles as built-in, module, or excluded. The analyzer should model these as conditional compilation edges affecting which source files participate in the build."  # b777
+- op: update  # 2783
+  at: '2026-02-18T21:45:00Z'  # 2783
+  by: agent  # 2783
+  actor: jgstern_agent  # 2783
+  clock: 5  # 2783
+  nonce: '2783'  # 2783
+  set:  # 2783
+    justification: "Deferred: P4 niche language. Kconfig found in kernel repos but not in current bakeoff cohorts."  # 2783

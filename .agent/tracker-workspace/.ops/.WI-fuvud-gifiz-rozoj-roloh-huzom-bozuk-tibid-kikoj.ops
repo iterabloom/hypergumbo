@@ -48,3 +48,11 @@
   clock: 5  # 8b18
   nonce: 8b18  # 8b18
   message: "Auto-sync test 4: final message to trigger threshold. Rego analyzer remains P4."  # 8b18
+- op: update  # 4646
+  at: '2026-02-18T21:44:54Z'  # 4646
+  by: agent  # 4646
+  actor: jgstern_agent  # 4646
+  clock: 6  # 4646
+  nonce: '4646'  # 4646
+  set:  # 4646
+    justification: "Deferred: P4 niche language. No bakeoff signal showing Rego analysis gaps. Higher-priority items addressed first."  # 4646
