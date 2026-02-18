@@ -25,6 +25,11 @@ are pure functions for easy unit testing. IDs are auto-shortened to the
 minimum distinguishing prefix (snapped to proquint syllable boundaries);
 the ``i`` key toggles full ID display.
 
+The ``y`` key copies the selected item's detail text to the system clipboard
+via the OSC 52 terminal escape sequence (Textual's ``copy_to_clipboard``).
+This bypasses the mouse-capture issue where Textual intercepts click-and-drag,
+preventing terminal-native text selection in clients like Royal TSX.
+
 Write keybindings (d, D, m, n, e, p, b, l) push ModalScreen subclasses that
 gather input, then call TrackerSet write methods on dismiss. Errors are shown
 via ``self.notify(str(e), severity="error")``. After each write, _load_items()
@@ -1010,6 +1015,7 @@ class TrackerApp(App):
         ("b", "edit_before", "Before"),
         ("l", "toggle_lock", "Lock"),
         ("i", "toggle_full_ids", "Full IDs"),
+        ("y", "yank", "Copy"),
     ]
 
     def deliver_screenshot(
@@ -1519,6 +1525,25 @@ class TrackerApp(App):
         self._show_full_ids = not self._show_full_ids
         self._reload_active_table()
         self._restore_selection()
+
+    def action_yank(self) -> None:
+        """Copy the selected item's detail text to the system clipboard.
+
+        Uses the OSC 52 terminal escape sequence via Textual's
+        ``copy_to_clipboard``.  This sidesteps the fact that Textual's
+        mouse protocol prevents terminal-native click-and-drag selection
+        in clients like Royal TSX.
+        """
+        item = self._get_selected_item()
+        if not item:
+            self.notify("No item selected", severity="warning")
+            return
+        fields_schema = self._get_fields_schema(item)
+        lines = _format_detail_lines(
+            item, tier=self._layout_tier, fields_schema=fields_schema,
+        )
+        self.copy_to_clipboard("\n".join(lines))
+        self.notify(f"Copied {item.id} to clipboard")
 
     # ------------------------------------------------------------------
     # Write helpers

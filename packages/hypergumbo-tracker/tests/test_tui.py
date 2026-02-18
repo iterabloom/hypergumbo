@@ -4340,3 +4340,70 @@ class TestDeliverScreenshot:
                 await pilot.pause()
             svgs = list(fake_downloads.glob("*.svg"))
             assert len(svgs) == 1
+
+
+class TestYankAction:
+    """Tests for the 'y' keybinding that copies detail text to clipboard."""
+
+    @pytest.fixture()
+    def tracker_set(self, tmp_path: Path) -> TrackerSet:
+        return _make_tracker_set(tmp_path)
+
+    @pytest.mark.asyncio
+    async def test_yank_no_item_warns(self, tmp_path: Path) -> None:
+        """Pressing 'y' with no items shows warning."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_empty_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            for _ in range(5):
+                await pilot.pause()
+            await pilot.press("y")
+            await pilot.pause()
+            # No crash; warning notification shown
+
+    @pytest.mark.asyncio
+    async def test_yank_standard_copies_to_clipboard(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        """Pressing 'y' in standard layout copies detail text."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+
+            with patch.object(app, "copy_to_clipboard") as mock_copy:
+                await pilot.press("y")
+                await pilot.pause()
+                mock_copy.assert_called_once()
+                text = mock_copy.call_args[0][0]
+                assert item.title in text
+                assert item.id in text
+
+    @pytest.mark.asyncio
+    async def test_yank_compact_copies_to_clipboard(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        """Pressing 'y' in compact detail view copies detail text."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(50, 18)) as pilot:
+            # Wait for compact table
+            table = app.query_one("#item-table")
+            for _ in range(50):
+                await pilot.pause()
+                if table.row_count > 0:
+                    break
+
+            with patch.object(app, "copy_to_clipboard") as mock_copy:
+                await pilot.press("y")
+                await pilot.pause()
+                mock_copy.assert_called_once()
+                text = mock_copy.call_args[0][0]
+                assert "Title:" in text
+                assert "Status:" in text
