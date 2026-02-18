@@ -233,13 +233,20 @@ def _find_open_pr(
     api_base: str,
     token: str,
     branch: str,
+    *,
+    title: str = "",
 ) -> tuple[int, str] | None:
-    """Find an open PR by head branch name.
+    """Find an open PR by head branch name or title.
+
+    When pushing via Forgejo's AGit flow (``refs/for/``), the PR's
+    ``head.ref`` is ``refs/pull/N/head`` rather than the branch name.
+    To handle this, we also match by title when provided.
 
     Args:
         api_base: Forgejo API base URL for the repo.
         token: API bearer token.
         branch: Head branch name to search for.
+        title: PR title to match as fallback (for AGit flow PRs).
 
     Returns:
         ``(pr_number, head_sha)`` if found, else ``None``.
@@ -256,6 +263,13 @@ def _find_open_pr(
         head = pr.get("head", {})
         if head.get("ref") == branch or head.get("label") == branch:
             return (pr["number"], head.get("sha", ""))
+
+    # Fallback: match by title (AGit flow sets refs/pull/N/head as ref)
+    if title:
+        for pr in body:
+            if pr.get("title") == title:
+                head = pr.get("head", {})
+                return (pr["number"], head.get("sha", ""))
 
     return None
 
@@ -687,7 +701,10 @@ def do_sync(
         # 6. Find PR (with brief initial delay)
         time.sleep(2)
         pr_info = _find_open_pr(
-            preflight.api_base, preflight.forgejo_token, sync_branch
+            preflight.api_base,
+            preflight.forgejo_token,
+            sync_branch,
+            title=push_title,
         )
         if pr_info is None:
             return SyncResult(

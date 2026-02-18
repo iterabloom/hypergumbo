@@ -470,6 +470,96 @@ class TestFindOpenPr:
         )
         assert result is None
 
+    @patch("hypergumbo_tracker.sync._api_call")
+    def test_found_by_title_agit_flow(self, mock_api: MagicMock) -> None:
+        """AGit flow PRs have refs/pull/N/head as ref — match by title."""
+        mock_api.return_value = (
+            200,
+            [
+                {
+                    "number": 77,
+                    "title": "tracker: sync 1 file(s)",
+                    "head": {"ref": "refs/pull/77/head", "sha": "aaa111"},
+                },
+            ],
+        )
+        result = _find_open_pr(
+            "https://api.example.com/repos/o/r",
+            "token",
+            "tracker-sync/20260218",
+            title="tracker: sync 1 file(s)",
+        )
+        assert result == (77, "aaa111")
+
+    @patch("hypergumbo_tracker.sync._api_call")
+    def test_title_fallback_not_used_when_branch_matches(
+        self, mock_api: MagicMock
+    ) -> None:
+        """Branch match takes priority over title match."""
+        mock_api.return_value = (
+            200,
+            [
+                {
+                    "number": 10,
+                    "title": "tracker: sync 1 file(s)",
+                    "head": {
+                        "ref": "tracker-sync/20260218",
+                        "sha": "bbb222",
+                    },
+                },
+            ],
+        )
+        result = _find_open_pr(
+            "https://api.example.com/repos/o/r",
+            "token",
+            "tracker-sync/20260218",
+            title="tracker: sync 1 file(s)",
+        )
+        assert result == (10, "bbb222")
+
+    @patch("hypergumbo_tracker.sync._api_call")
+    def test_title_fallback_no_match(self, mock_api: MagicMock) -> None:
+        """No match when neither branch nor title match."""
+        mock_api.return_value = (
+            200,
+            [
+                {
+                    "number": 5,
+                    "title": "feat: something else",
+                    "head": {"ref": "refs/pull/5/head", "sha": "ccc333"},
+                },
+            ],
+        )
+        result = _find_open_pr(
+            "https://api.example.com/repos/o/r",
+            "token",
+            "tracker-sync/20260218",
+            title="tracker: sync 1 file(s)",
+        )
+        assert result is None
+
+    @patch("hypergumbo_tracker.sync._api_call")
+    def test_no_title_fallback_without_title_arg(
+        self, mock_api: MagicMock
+    ) -> None:
+        """Without title arg, AGit flow PR is not found."""
+        mock_api.return_value = (
+            200,
+            [
+                {
+                    "number": 77,
+                    "title": "tracker: sync 1 file(s)",
+                    "head": {"ref": "refs/pull/77/head", "sha": "aaa111"},
+                },
+            ],
+        )
+        result = _find_open_pr(
+            "https://api.example.com/repos/o/r",
+            "token",
+            "tracker-sync/20260218",
+        )
+        assert result is None
+
 
 # ---------------------------------------------------------------------------
 # TestPollCi
