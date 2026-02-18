@@ -630,13 +630,20 @@ def _check_config_ownership(root: Path) -> CheckResult:
     )
 
 
-def _check_group_permissions(root: Path) -> CheckResult:
+def _check_group_permissions(
+    root: Path, repo_root: Path | None = None
+) -> CheckResult:
     """Check #11: Verify two-user group setup on writable directories.
 
     Checks whether tracker-workspace (which holds tui_preferences.json),
-    .ops, and stealth directories have a shared group with group-write
-    and setgid permissions.  This is read-only — it reports problems but
-    does not fix them, since group/permission changes require sudo.
+    .ops, stealth, and .git/ directories have a shared group with
+    group-write and setgid permissions.  The .git/ directory is included
+    because ``htrac sync`` creates branches, commits, and pushes — all
+    of which require write access to .git/refs/heads/, .git/objects/,
+    and .git/logs/.
+
+    This is read-only — it reports problems but does not fix them, since
+    group/permission changes require sudo.
 
     If directories are owned by the user's primary group (not a shared
     group), the two-user setup is not active and the check passes with
@@ -644,12 +651,20 @@ def _check_group_permissions(root: Path) -> CheckResult:
     """
     import stat
 
-    ops_dirs = [
+    ops_dirs: list[Path] = [
         root / "tracker" / ".ops",
         root / "tracker-workspace",
         root / "tracker-workspace" / ".ops",
         root / "tracker-workspace" / "stealth",
     ]
+    # Include .git/ subdirectories that sync needs to write to
+    if repo_root is not None:
+        git_dir = repo_root / ".git"
+        if git_dir.is_dir():
+            for sub in ("refs/heads", "refs/tags", "objects", "logs"):
+                candidate = git_dir / sub
+                if candidate.is_dir():
+                    ops_dirs.append(candidate)
     existing = [d for d in ops_dirs if d.exists()]
     if not existing:
         return CheckResult(
@@ -717,21 +732,28 @@ def _check_group_permissions(root: Path) -> CheckResult:
 
     if problems:
         grp_label = detected_group or "GROUP"
+        fix_lines = [
+            *problems,
+            "",
+            "Fix with (as a user with sudo):",
+            f"  sudo chgrp -R {grp_label}"
+            " .agent/tracker .agent/tracker-workspace",
+            "  sudo chmod -R g+rws .agent/tracker/.ops"
+            " .agent/tracker-workspace"
+            " .agent/tracker-workspace/.ops"
+            " .agent/tracker-workspace/stealth",
+        ]
+        if repo_root is not None and (repo_root / ".git").is_dir():
+            fix_lines.extend([
+                f"  sudo chgrp -R {grp_label} .git/",
+                "  sudo chmod -R g+w .git/",
+                "  sudo find .git/ -type d -exec chmod g+s {} +",
+            ])
         return CheckResult(
             name="group_permissions",
             status="error",
             message=f"Two-user group setup has {len(problems)} problem{'s' if len(problems) != 1 else ''}",
-            details=[
-                *problems,
-                "",
-                "Fix with (as a user with sudo):",
-                f"  sudo chgrp -R {grp_label}"
-                " .agent/tracker .agent/tracker-workspace",
-                "  sudo chmod -R g+rws .agent/tracker/.ops"
-                " .agent/tracker-workspace"
-                " .agent/tracker-workspace/.ops"
-                " .agent/tracker-workspace/stealth",
-            ],
+            details=fix_lines,
         )
 
     return CheckResult(
@@ -1473,7 +1495,7 @@ def run_setup(root: Path, repo_root: Path | None = None) -> list[CheckResult]:
     results.append(_check_config_drift(root))              # 8
     results.append(_check_actor_resolution(root))          # 9
     results.append(_check_config_ownership(root))          # 10
-    results.append(_check_group_permissions(root))         # 11
+    results.append(_check_group_permissions(root, repo_root))  # 11
     results.append(_check_ops_writable(root))              # 12
     results.append(_check_textconv(root, repo_root))       # 13
     results.append(_check_existing_data(root))             # 14
@@ -1627,6 +1649,14 @@ def generate_human_shim(root: Path) -> str:
             f" {repo_root / '.agent' / 'tracker-workspace' / '.ops'}"
             f" {repo_root / '.agent' / 'tracker-workspace' / 'stealth'}"
         )
+        # .git/ needs group-write too for htrac sync (branch create, commit)
+        git_dir = repo_root / ".git"
+        if git_dir.is_dir():
+            lines.append(f"sudo chgrp -R {group_name} {git_dir}")
+            lines.append(f"sudo chmod -R g+w {git_dir}")
+            lines.append(
+                f"sudo find {git_dir} -type d -exec chmod g+s {{}} +"
+            )
         lines.append(f"newgrp {group_name}")
         lines.append("")
 

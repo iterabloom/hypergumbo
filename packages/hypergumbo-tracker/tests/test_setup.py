@@ -881,6 +881,110 @@ class TestCheckGroupPermissions:
         # check problems added, permissions are correct, so it passes.
         assert result.status == "ok"
 
+    def test_git_dirs_checked_when_repo_root_given(self, tmp_path: Path) -> None:
+        """When repo_root is given, .git/ subdirs are included in checks."""
+        import stat
+
+        root = _make_full_agent_dir(tmp_path)
+        repo_root = tmp_path
+        git_dir = repo_root / ".git"
+        for sub in ("refs/heads", "refs/tags", "objects", "logs"):
+            (git_dir / sub).mkdir(parents=True)
+
+        current_gid = os.stat(root / "tracker" / ".ops").st_gid
+        fake_gid = current_gid + 1
+
+        # .ops dirs are fine (correct group), but .git dirs are wrong
+        real_ops = {
+            str(root / "tracker" / ".ops"),
+            str(root / "tracker-workspace"),
+            str(root / "tracker-workspace" / ".ops"),
+            str(root / "tracker-workspace" / "stealth"),
+        }
+
+        good_stat = MagicMock()
+        good_stat.st_gid = fake_gid
+        good_stat.st_mode = (
+            stat.S_IFDIR | stat.S_IRWXU | stat.S_IRWXG | stat.S_ISGID
+        )
+        good_stat.st_uid = os.getuid()
+
+        bad_stat = MagicMock()
+        bad_stat.st_gid = fake_gid
+        bad_stat.st_mode = (
+            stat.S_IFDIR | stat.S_IRWXU | stat.S_IRGRP  # No group write
+        )
+        bad_stat.st_uid = os.getuid()
+
+        original_stat = Path.stat
+
+        def selective_stat(self, *args, **kwargs):
+            if str(self) in real_ops:
+                return good_stat
+            if ".git" in str(self):
+                return bad_stat
+            return original_stat(self, *args, **kwargs)
+
+        fake_grp = MagicMock()
+        fake_grp.gr_name = "project-dev"
+        fake_grp.gr_mem = [os.environ.get("USER", "testuser")]
+
+        with (
+            patch.object(Path, "stat", selective_stat),
+            patch("hypergumbo_tracker.setup.grp.getgrgid", return_value=fake_grp),
+            patch(
+                "hypergumbo_tracker.setup.pwd.getpwuid",
+                return_value=MagicMock(
+                    pw_name=os.environ.get("USER", "testuser"),
+                    pw_gid=current_gid,
+                ),
+            ),
+        ):
+            result = _check_group_permissions(root, repo_root=repo_root)
+        assert result.status == "error"
+        assert "group-write" in str(result.details)
+        # Fix commands include .git/ paths
+        assert "sudo chgrp -R project-dev .git/" in str(result.details)
+        assert "sudo chmod -R g+w .git/" in str(result.details)
+        assert "sudo find .git/ -type d -exec chmod g+s" in str(result.details)
+
+    def test_git_dirs_skipped_without_repo_root(self, tmp_path: Path) -> None:
+        """Without repo_root, .git/ dirs are not checked."""
+        import stat
+
+        root = _make_full_agent_dir(tmp_path)
+        # Create .git dirs that would fail — but repo_root is None
+        git_dir = tmp_path / ".git"
+        for sub in ("refs/heads", "refs/tags", "objects", "logs"):
+            (git_dir / sub).mkdir(parents=True)
+
+        current_gid = os.stat(root / "tracker" / ".ops").st_gid
+        fake_gid = current_gid + 1
+
+        fake_stat = MagicMock()
+        fake_stat.st_gid = fake_gid
+        fake_stat.st_mode = stat.S_IRWXU | stat.S_IRWXG | stat.S_ISGID
+        fake_stat.st_uid = os.getuid()
+
+        fake_grp = MagicMock()
+        fake_grp.gr_name = "project-dev"
+        fake_grp.gr_mem = [os.environ.get("USER", "testuser")]
+
+        with (
+            patch.object(Path, "stat", return_value=fake_stat),
+            patch("hypergumbo_tracker.setup.grp.getgrgid", return_value=fake_grp),
+            patch(
+                "hypergumbo_tracker.setup.pwd.getpwuid",
+                return_value=MagicMock(
+                    pw_name=os.environ.get("USER", "testuser"),
+                    pw_gid=current_gid,
+                ),
+            ),
+        ):
+            result = _check_group_permissions(root)  # No repo_root
+        # Only .ops dirs checked, all fine → passes
+        assert result.status == "ok"
+
 
 # ---------------------------------------------------------------------------
 # Check #12: .ops/ writable
@@ -2219,6 +2323,63 @@ class TestGenerateHumanShim:
         (root / "tracker" / ".ops").mkdir(parents=True)
         shim = generate_human_shim(root)
         assert f"cd {repo}" in shim
+
+    def test_shim_includes_git_dir_perms(self, tmp_path: Path) -> None:
+        """Shim includes .git/ permission fix commands when shared group detected."""
+        repo = tmp_path / "myrepo"
+        git_dir = repo / ".git"
+        git_dir.mkdir(parents=True)
+        root = repo / ".agent"
+        ops_dir = root / "tracker" / ".ops"
+        ops_dir.mkdir(parents=True)
+
+        with (
+            patch("hypergumbo_tracker.setup.pwd.getpwuid") as mock_pwd,
+            patch("hypergumbo_tracker.setup.grp.getgrgid") as mock_grp,
+        ):
+            mock_pwd.return_value = MagicMock(pw_gid=1000)
+            mock_grp.return_value = MagicMock(gr_name="project-dev")
+            real_stat = os.stat(ops_dir)
+            mock_stat = MagicMock()
+            mock_stat.st_gid = 9999
+            mock_stat.st_mode = real_stat.st_mode
+            with patch.object(Path, "stat", return_value=mock_stat):
+                shim = generate_human_shim(root)
+        assert f"sudo chgrp -R project-dev {git_dir}" in shim
+        assert f"sudo chmod -R g+w {git_dir}" in shim
+        assert f"sudo find {git_dir} -type d -exec chmod g+s" in shim
+
+    def test_shim_no_git_dir_perms_without_git(self, tmp_path: Path) -> None:
+        """No .git/ perm commands when .git/ doesn't exist."""
+        # Put root in a subdir where no .git/ directory exists
+        project = tmp_path / "no_git_project"
+        project.mkdir()
+        root = project / ".agent"
+        ops_dir = root / "tracker" / ".ops"
+        ops_dir.mkdir(parents=True)
+
+        original_stat = Path.stat
+
+        def stat_for_ops_only(self, *args, **kwargs):
+            """Return mock stat only for .ops dirs; real stat elsewhere."""
+            if str(self) == str(ops_dir):
+                mock_st = MagicMock()
+                mock_st.st_gid = 9999
+                mock_st.st_mode = original_stat(self).st_mode
+                return mock_st
+            return original_stat(self, *args, **kwargs)
+
+        with (
+            patch("hypergumbo_tracker.setup.pwd.getpwuid") as mock_pwd,
+            patch("hypergumbo_tracker.setup.grp.getgrgid") as mock_grp,
+            patch.object(Path, "stat", stat_for_ops_only),
+        ):
+            mock_pwd.return_value = MagicMock(pw_gid=1000)
+            mock_grp.return_value = MagicMock(gr_name="project-dev")
+            shim = generate_human_shim(root)
+        # Has tracker perms but not .git/ perms
+        assert "sudo chgrp -R project-dev" in shim
+        assert "chmod -R g+w" not in shim  # No .git/ specific command
 
 
 # ---------------------------------------------------------------------------
