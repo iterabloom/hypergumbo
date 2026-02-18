@@ -311,11 +311,30 @@ def resolve_workdir(args_workdir: str = None, env_var: str = "BAKEOFF_WORKDIR",
     return workdir
 
 
-def cmd_init(args):
-    """Initialize a new bakeoff session.
+def _find_latest_session(base_workdir: str, prefix: str = "broad-") -> Optional[str]:
+    """Find the most recent session directory under *base_workdir*.
 
-    Creates a timestamped session directory (broad-YYYYMMDD-HHMMSS/) inside
-    the resolved workdir so multiple sessions never collide.
+    Returns the path to the latest ``{prefix}*`` subdirectory that contains
+    a ``state.json``, or ``None`` if no session exists.
+    """
+    if not os.path.isdir(base_workdir):
+        return None
+    sessions = []
+    for entry in os.scandir(base_workdir):
+        if entry.is_dir() and entry.name.startswith(prefix):
+            if os.path.exists(os.path.join(entry.path, "state.json")):
+                sessions.append(entry.path)
+    if not sessions:
+        return None
+    sessions.sort()
+    return sessions[-1]
+
+
+def cmd_init(args):
+    """Initialize a new bakeoff session (idempotent).
+
+    If a session already exists, reuses it instead of creating a new one.
+    Use ``--force`` to create a fresh session regardless.
     """
     pool_path = os.path.abspath(os.path.expanduser(args.pool))
     base_workdir = resolve_workdir(args.workdir, auto_discover=False)
@@ -323,6 +342,24 @@ def cmd_init(args):
     if not os.path.isdir(pool_path):
         print(f"Error: Pool directory does not exist: {pool_path}", file=sys.stderr)
         return 1
+
+    # Idempotent: reuse existing session unless --force
+    if not getattr(args, "force", False):
+        existing = _find_latest_session(base_workdir, prefix="broad-")
+        if existing:
+            state = load_state(existing)
+            if state:
+                if state.pool_path != pool_path:
+                    print(f"Warning: --pool {pool_path} differs from session pool "
+                          f"{state.pool_path} (use --force to create a new session)",
+                          file=sys.stderr)
+                print(f"Reusing existing session: {state.session_id}")
+                print(f"  Workdir: {existing}")
+                print(f"  Pool: {state.pool_path}")
+                print(f"  Cohorts: {state.cohort_number}")
+                print()
+                print("Next: Run `bakeoff cohort` to select repos for testing")
+                return 0
 
     # Create timestamped session directory to prevent artifact overwrites
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -1109,6 +1146,8 @@ def main():
     p_init = subparsers.add_parser("init", help="Initialize bakeoff session")
     p_init.add_argument("--pool", required=True, help="Path to repo pool")
     p_init.add_argument("--workdir", help=f"Working directory for outputs (default: {DEFAULT_BAKEOFF_DIR})")
+    p_init.add_argument("--force", action="store_true",
+                         help="Create a new session even if one already exists")
 
     # cohort
     p_cohort = subparsers.add_parser("cohort", help="Select next cohort")
