@@ -8,6 +8,9 @@ on:
   # Triggered after PR merges to dev
   push:
     branches: [ "dev" ]
+    paths-ignore:
+      - '.agent/tracker/.ops/**'
+      - '.agent/tracker-workspace/.ops/**'
   # Manual trigger for debugging
   workflow_dispatch:
   # Nightly validation
