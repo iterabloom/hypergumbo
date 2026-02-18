@@ -51,7 +51,7 @@ scripts/tracker add work_item --title "..." --status todo_soft --priority N
 2. **DEEP/BROAD priority queue:** Check `AGENTS.md` for the next item in the current mode's priority queue.
 3. **Bakeoff or artifact analysis:** Only if 1-2 yielded nothing actionable.
 
-**When you write `notes` in Section 8:** Be specific and implementation-oriented. Not "investigate slice quality" but "add Go library-export patterns to frameworks/library-exports.yaml — Go exported functions in non-internal packages should be detected as LIBRARY_EXPORT entrypoints." The notes field is injected into the cooldown prompt, so future-you will act on exactly what you write.
+**When you write `notes` in Section 8:** Be specific and implementation-oriented. Not "investigate brake feel" but "add **service-access point patterns** to the maintenance checklist (the shop's checklist file) — **adjusters/grease fittings/test ports on non-sealed, externally accessible assemblies** should be automatically recognized as **ROUTINE_SERVICE entry points**." The notes field is injected into the cooldown prompt, so future-you will act on exactly what you write.
 
 ## 6. Artifact Analysis (If Needed)
 Use analysis when you need data to inform an implementation decision, not as a destination in itself. Every analysis session should end with a concrete "what to implement" conclusion written into either the lab notebook or `last_stop_check.json` notes.
