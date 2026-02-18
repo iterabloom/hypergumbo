@@ -410,16 +410,22 @@ def assess_metric(name: str, value: float) -> tuple:
 # Commands
 # =============================================================================
 
-def resolve_workdir(args_workdir: str = None, env_var: str = "BAKEOFF_FEATURES_WORKDIR") -> str:
+def resolve_workdir(args_workdir: str = None, env_var: str = "BAKEOFF_FEATURES_WORKDIR",
+                    auto_discover: bool = True) -> str:
     """Resolve workdir from CLI arg, env var, or canonical default.
 
     Resolution order: CLI --workdir > env var > canonical default.
 
-    If the resolved directory has no state.json but contains session
-    subdirectories (broad-*/deep-*), returns the most recent one.
+    When *auto_discover* is True (default), if the resolved directory has
+    no state.json but contains session subdirectories (broad-*/deep-*),
+    returns the most recent one.  Set *auto_discover* to False in
+    ``cmd_init`` to avoid nesting new sessions inside existing ones.
     """
     workdir = args_workdir or os.environ.get(env_var) or DEFAULT_BAKEOFF_DIR
     workdir = os.path.abspath(os.path.expanduser(workdir))
+
+    if not auto_discover:
+        return workdir
 
     # If the workdir itself has state.json, use it directly
     if os.path.exists(os.path.join(workdir, "state.json")):
@@ -447,7 +453,7 @@ def cmd_init(args):
     the resolved workdir so multiple sessions never collide.
     """
     pool_path = os.path.abspath(os.path.expanduser(args.pool))
-    base_workdir = resolve_workdir(args.workdir)
+    base_workdir = resolve_workdir(args.workdir, auto_discover=False)
 
     if not os.path.isdir(pool_path):
         print(f"Error: Pool directory does not exist: {pool_path}", file=sys.stderr)
