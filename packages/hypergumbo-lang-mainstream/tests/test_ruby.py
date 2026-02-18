@@ -567,6 +567,140 @@ end
         ]
         assert len(cross_file_edges) >= 1, f"Expected cross-file bare call edge: {call_edges}"
 
+    def test_bare_call_same_class_priority(self, tmp_path: Path) -> None:
+        """Bare method call prefers same-class method over cross-class method.
+
+        When Worker#run calls 'process' as a bare identifier, it should resolve
+        to Worker#process (same class) rather than Billing#process (different class).
+        This prevents false cross-domain edges from common method name collisions.
+        """
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        rb_file = tmp_path / "models.rb"
+        rb_file.write_text("""
+class Worker
+  def process
+    "working"
+  end
+
+  def run
+    process
+  end
+end
+
+class Billing
+  def process
+    "billing"
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        # Edge from Worker#run should go to Worker#process, NOT Billing#process
+        bare_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "run" in e.src and "process" in e.dst
+        ]
+        assert len(bare_edges) >= 1, f"Expected bare call edge: {result.edges}"
+        for edge in bare_edges:
+            assert "Worker" in edge.dst, (
+                f"Expected same-class resolution to Worker#process, got: {edge.dst}"
+            )
+
+    def test_bare_call_same_class_higher_confidence(self, tmp_path: Path) -> None:
+        """Same-class bare method call has higher confidence than cross-class."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        rb_file = tmp_path / "app.rb"
+        rb_file.write_text("""
+class Controller
+  def validate
+    "checking"
+  end
+
+  def handle
+    validate
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        bare_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "handle" in e.src and "validate" in e.dst
+        ]
+        assert len(bare_edges) >= 1
+        # Same-class bare call should have confidence >= 0.85
+        for edge in bare_edges:
+            assert edge.confidence >= 0.85, (
+                f"Same-class bare call should have high confidence, got: {edge.confidence}"
+            )
+
+    def test_bare_call_cross_class_falls_back(self, tmp_path: Path) -> None:
+        """Bare method call that doesn't exist in same class falls back to other classes."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        rb_file = tmp_path / "services.rb"
+        rb_file.write_text("""
+class Helper
+  def format_data
+    "formatted"
+  end
+end
+
+class Processor
+  def run
+    format_data
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        # Should still resolve to Helper#format_data via fallback
+        bare_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "run" in e.src and "format_data" in e.dst
+        ]
+        assert len(bare_edges) >= 1, f"Expected fallback bare call edge: {result.edges}"
+
+    def test_bare_call_module_method_same_module_priority(self, tmp_path: Path) -> None:
+        """Bare call within module prefers same-module methods."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        rb_file = tmp_path / "utils.rb"
+        rb_file.write_text("""
+module Utils
+  def self.normalize
+    "normalized"
+  end
+
+  def self.process
+    normalize
+  end
+end
+
+module Formatting
+  def self.normalize
+    "format-normalized"
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        bare_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "process" in e.src and "normalize" in e.dst
+        ]
+        assert len(bare_edges) >= 1
+        for edge in bare_edges:
+            assert "Utils" in edge.dst, (
+                f"Expected same-module resolution to Utils.normalize, got: {edge.dst}"
+            )
+
 
 class TestRubyRequires:
     """Tests for detecting Ruby require statements."""

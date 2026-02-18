@@ -277,6 +277,61 @@ def _get_enclosing_method(
     return None  # pragma: no cover - defensive
 
 
+def _enclosing_class_from_method(method: Symbol) -> Optional[str]:
+    """Extract the enclosing class/module name from a method's qualified name.
+
+    Ruby method names are qualified as 'ClassName#method' (instance) or
+    'ClassName.method' (class/module method). Returns None for top-level methods.
+    """
+    name = method.name
+    if "#" in name:
+        return name.split("#", 1)[0]
+    if "." in name:
+        return name.split(".", 1)[0]
+    return None
+
+
+def _symbol_belongs_to_class(symbol: Symbol, class_name: str) -> bool:
+    """Check if a symbol belongs to the given class/module.
+
+    Matches both instance methods (Class#method) and class methods (Class.method).
+    """
+    return (
+        symbol.name.startswith(f"{class_name}#")
+        or symbol.name.startswith(f"{class_name}.")
+    )
+
+
+def _resolve_bare_call_class_aware(
+    callee_name: str,
+    enclosing_class: Optional[str],
+    local_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Resolve a bare method call with class-aware priority.
+
+    Priority cascade:
+    1. Same-class qualified lookup: 'EnclosingClass#callee' or 'EnclosingClass.callee'
+    2. Unqualified lookup: 'callee' in local_symbols (may match any class)
+
+    Returns the resolved symbol, or None if not found in local_symbols.
+    """
+    if enclosing_class is not None:
+        # Try instance method in same class
+        qualified_instance = f"{enclosing_class}#{callee_name}"
+        if qualified_instance in local_symbols:
+            return local_symbols[qualified_instance]
+        # Try class/module method in same class
+        qualified_class = f"{enclosing_class}.{callee_name}"
+        if qualified_class in local_symbols:
+            return local_symbols[qualified_class]
+
+    # Fall back to unqualified lookup
+    if callee_name in local_symbols:
+        return local_symbols[callee_name]
+
+    return None
+
+
 def _extract_ruby_signature(
     node: "tree_sitter.Node", source: bytes
 ) -> Optional[str]:
@@ -1795,17 +1850,35 @@ def _extract_edges_from_file(
             current_method = _get_enclosing_method(node, source, local_symbols)
             if current_method is not None:
                 callee_name = _node_text(node, source)
-                # Check if this identifier is a known method
-                if callee_name in local_symbols:
-                    callee = local_symbols[callee_name]
+
+                # Class-aware resolution: extract enclosing class/module
+                # from the current method's qualified name (e.g. "Worker#run"
+                # → "Worker", "Utils.process" → "Utils").
+                enclosing_class = _enclosing_class_from_method(current_method)
+
+                # Priority cascade:
+                # 1. Same-class qualified lookup (confidence 0.90)
+                # 2. Unqualified local_symbols lookup (confidence 0.75)
+                # 3. Global resolver fallback (confidence 0.70 * resolver)
+                callee = _resolve_bare_call_class_aware(
+                    callee_name, enclosing_class, local_symbols
+                )
+
+                if callee is not None:
                     if callee.kind == "method" and callee.id != current_method.id:
+                        # Same-class match gets higher confidence
+                        same_class = (
+                            enclosing_class is not None
+                            and _symbol_belongs_to_class(callee, enclosing_class)
+                        )
+                        confidence = 0.90 if same_class else 0.75
                         edges.append(Edge.create(
                             src=current_method.id,
                             dst=callee.id,
                             edge_type="calls",
                             line=node.start_point[0] + 1,
                             evidence_type="bare_method_call",
-                            confidence=0.75,
+                            confidence=confidence,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         ))
