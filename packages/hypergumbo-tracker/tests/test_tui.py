@@ -43,6 +43,8 @@ from hypergumbo_tracker.store import (
     LockedFieldError,
 )
 from hypergumbo_tracker.trackerset import TierMovementError, TrackerSet
+from rich.text import Text
+
 from hypergumbo_tracker.tui import (
     BeforeScreen,
     ConfirmScreen,
@@ -57,6 +59,7 @@ from hypergumbo_tracker.tui import (
     _format_activity_lines,
     _format_detail_lines,
     _format_timestamp,
+    _label,
     _shortest_unique_prefix_len,
     _truncate_id,
 )
@@ -65,6 +68,15 @@ from hypergumbo_tracker.tui import (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _strip_markup(text: str) -> str:
+    """Strip Rich markup from text, returning plain content.
+
+    Converts ``[bold reverse]Title:[/] value`` → ``Title: value``
+    and ``\\[locked]`` → ``[locked]``.
+    """
+    return Text.from_markup(text).plain
 
 
 def _make_config() -> TrackerConfig:
@@ -392,7 +404,7 @@ class TestFormatDetailLines:
             ],
         )
         lines = _format_detail_lines(item)
-        text = "\n".join(lines)
+        text = _strip_markup("\n".join(lines))
         assert "Symbol IDs must be stable" in text
         assert "canonical" in text
         assert "quality" in text
@@ -416,7 +428,7 @@ class TestFormatDetailLines:
             tier=Tier.WORKSPACE,
         )
         lines = _format_detail_lines(item)
-        text = "\n".join(lines)
+        text = _strip_markup("\n".join(lines))
         assert "Minimal item" in text
         assert "workspace" in text
         assert "Tags:" not in text
@@ -434,7 +446,7 @@ class TestFormatDetailLines:
             status="in_progress",
         )
         lines = _format_detail_lines(item)
-        text = "\n".join(lines)
+        text = _strip_markup("\n".join(lines))
         assert "unknown" in text
 
     def test_wide_tier_shows_extra_fields(self) -> None:
@@ -452,7 +464,7 @@ class TestFormatDetailLines:
             cross_tier_conflict=True,
         )
         lines = _format_detail_lines(item, tier="wide")
-        text = "\n".join(lines)
+        text = _strip_markup("\n".join(lines))
         assert "Created: 2026-02-15 10:00" in text
         assert "Updated: 2026-02-15 12:00" in text
         assert "[locked]" in text
@@ -479,7 +491,7 @@ class TestFormatDetailLines:
             ],
         )
         lines = _format_detail_lines(item, tier="wide")
-        text = "\n".join(lines)
+        text = _strip_markup("\n".join(lines))
         assert "entries):" not in text
         assert "Should not appear" not in text
 
@@ -495,7 +507,7 @@ class TestFormatDetailLines:
             description="Line one\n\nLine two\n\nLine three",
         )
         lines = _format_detail_lines(item)
-        text = "\n".join(lines)
+        text = _strip_markup("\n".join(lines))
         assert "Line one\nLine two\nLine three" in text
         assert "\n\n" not in text.split("Description:\n", 1)[-1]
 
@@ -511,10 +523,95 @@ class TestFormatDetailLines:
             description="Para one line one\nPara one line two\n\nPara two line one",
         )
         lines = _format_detail_lines(item)
-        text = "\n".join(lines)
+        text = _strip_markup("\n".join(lines))
         desc_part = text.split("Description:\n", 1)[-1]
         assert "Para one line one\nPara one line two" in desc_part
         assert "Para one line two\n\nPara two line one" in desc_part
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _label and markup presence
+# ---------------------------------------------------------------------------
+
+
+class TestLabelMarkup:
+    """Verify that _label() produces correct Rich markup and _format_detail_lines
+    emits styled labels with properly escaped brackets."""
+
+    def test_label_wraps_plain_text(self) -> None:
+        """_label wraps a plain label in bold-reverse markup."""
+        result = _label("Title:")
+        assert result == "[bold reverse]Title:[/]"
+
+    def test_label_escapes_brackets(self) -> None:
+        """_label escapes literal [ so Rich doesn't interpret them as tags."""
+        result = _label("Status [locked]:")
+        assert result == "[bold reverse]Status \\[locked]:[/]"
+
+    def test_detail_lines_contain_bold_reverse_markup(self) -> None:
+        """Structural labels in _format_detail_lines carry [bold reverse] markup."""
+        item = CompiledItem(
+            id="WI-markup",
+            kind="work_item",
+            title="Markup test",
+            status="done",
+            priority=2,
+            tier=Tier.WORKSPACE,
+        )
+        lines = _format_detail_lines(item)
+        raw = "\n".join(lines)
+        assert "[bold reverse]Title:[/]" in raw
+        assert "[bold reverse]ID:[/]" in raw
+        assert "[bold reverse]Status:[/]" in raw
+        assert "[bold reverse]Priority:[/]" in raw
+        assert "[bold reverse]Tier:[/]" in raw
+
+    def test_discussion_brackets_escaped_in_detail(self) -> None:
+        """Discussion timestamp brackets are escaped so Rich doesn't swallow them."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        item = CompiledItem(
+            id="INV-esc",
+            kind="invariant",
+            title="Escape test",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="agent", actor="bot", at="2026-01-15T10:00:00Z",
+                    message="note",
+                ),
+            ],
+        )
+        lines = _format_detail_lines(item)
+        raw = "\n".join(lines)
+        # Timestamp bracket is escaped
+        assert "\\[2026-01-15T10:00:00Z]" in raw
+        # And resolves to plain text correctly
+        plain = _strip_markup(raw)
+        assert "[2026-01-15T10:00:00Z]" in plain
+
+    def test_activity_lines_brackets_escaped(self) -> None:
+        """Activity lines escape [by] brackets so Rich doesn't swallow them."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        item = CompiledItem(
+            id="INV-actesc",
+            kind="invariant",
+            title="Activity escape test",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="agent", actor="bot", at="2026-01-15T10:00:00Z",
+                    message="note",
+                ),
+            ],
+        )
+        lines = _format_activity_lines(item)
+        raw = lines[0]
+        # [agent] bracket is escaped
+        assert "\\[agent]" in raw
+        # And resolves to plain text correctly
+        assert "[agent]" in _strip_markup(raw)
 
 
 # ---------------------------------------------------------------------------
@@ -3830,7 +3927,7 @@ class TestSchemaAwareRendering:
             "root_cause": FieldSchema(type="text", description="Why it fails"),
         }
         lines = _format_detail_lines(item, fields_schema=schema)
-        text = "\n".join(lines)
+        text = _strip_markup("\n".join(lines))
         # Known fields in schema order (statement before root_cause)
         stmt_pos = text.index("statement")
         rc_pos = text.index("root_cause")
@@ -3852,7 +3949,7 @@ class TestSchemaAwareRendering:
             fields={"key1": "val1", "key2": "val2"},
         )
         lines = _format_detail_lines(item, fields_schema=None)
-        text = "\n".join(lines)
+        text = _strip_markup("\n".join(lines))
         assert "key1" in text
         assert "key2" in text
         assert "Other:" not in text
@@ -3872,7 +3969,7 @@ class TestSchemaAwareRendering:
             "statement": FieldSchema(type="text"),
         }
         lines = _format_detail_lines(item, fields_schema=schema)
-        text = "\n".join(lines)
+        text = _strip_markup("\n".join(lines))
         assert "statement" in text
         assert "()" not in text  # No empty parens
 
@@ -3891,7 +3988,7 @@ class TestSchemaAwareRendering:
             "statement": FieldSchema(type="text", description="Required"),
         }
         lines = _format_detail_lines(item, fields_schema=schema)
-        text = "\n".join(lines)
+        text = _strip_markup("\n".join(lines))
         assert "Other:" in text
         assert "custom1" in text
 
@@ -3963,7 +4060,7 @@ class TestPerFieldLockIcons:
             locked_fields={"status"},
         )
         lines = _format_detail_lines(item)
-        text = "\n".join(lines)
+        text = _strip_markup("\n".join(lines))
         assert "Status [locked]:" in text
         assert "Priority:" in text  # Not locked
 
@@ -3977,7 +4074,7 @@ class TestPerFieldLockIcons:
             locked_fields={"priority"},
         )
         lines = _format_detail_lines(item)
-        text = "\n".join(lines)
+        text = _strip_markup("\n".join(lines))
         assert "Status:" in text  # Not locked
         assert "Priority [locked]:" in text
 
@@ -3992,7 +4089,7 @@ class TestPerFieldLockIcons:
             locked_fields={"description"},
         )
         lines = _format_detail_lines(item)
-        text = "\n".join(lines)
+        text = _strip_markup("\n".join(lines))
         assert "Description [locked]:" in text
 
     def test_locked_discussion_shows_indicator(self) -> None:
@@ -4013,7 +4110,7 @@ class TestPerFieldLockIcons:
             ],
         )
         lines = _format_detail_lines(item)
-        text = "\n".join(lines)
+        text = _strip_markup("\n".join(lines))
         assert "Discussion [locked]" in text
 
     def test_locked_fields_in_schema(self) -> None:
@@ -4033,7 +4130,7 @@ class TestPerFieldLockIcons:
             "root_cause": FieldSchema(type="text"),
         }
         lines = _format_detail_lines(item, fields_schema=schema)
-        text = "\n".join(lines)
+        text = _strip_markup("\n".join(lines))
         assert "statement (Principle) [locked]:" in text
         assert "root_cause:" in text
         assert "root_cause [locked]" not in text
@@ -4066,7 +4163,7 @@ class TestDiscussionBadge:
             discussion=entries,
         )
         lines = _format_detail_lines(item)
-        text = "\n".join(lines)
+        text = _strip_markup("\n".join(lines))
         assert "Discussion (5 entries):" in text
         assert "[20+ msgs]" not in text
 
@@ -4089,7 +4186,7 @@ class TestDiscussionBadge:
             discussion=entries,
         )
         lines = _format_detail_lines(item)
-        text = "\n".join(lines)
+        text = _strip_markup("\n".join(lines))
         assert "[20+ msgs]" in text
 
     def test_badge_in_activity_lines(self) -> None:
@@ -4111,7 +4208,7 @@ class TestDiscussionBadge:
             discussion=entries,
         )
         lines = _format_activity_lines(item)
-        assert "[20+ msgs]" in lines[0]
+        assert "[20+ msgs]" in _strip_markup(lines[0])
 
     def test_no_badge_in_activity_under_20(self) -> None:
         """Activity lines with < 20 entries should NOT show badge."""
@@ -4132,7 +4229,7 @@ class TestDiscussionBadge:
             discussion=entries,
         )
         lines = _format_activity_lines(item)
-        assert not any("[20+ msgs]" in line for line in lines)
+        assert not any("[20+ msgs]" in _strip_markup(line) for line in lines)
 
 
 # ---------------------------------------------------------------------------

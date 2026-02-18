@@ -239,7 +239,7 @@ def _format_activity_lines(item: CompiledItem, limit: int = 10) -> list[str]:
     lines: list[str] = []
 
     if len(entries) >= 20:
-        lines.append("[20+ msgs]")
+        lines.append("\\[20+ msgs]")
 
     if len(entries) > limit:
         lines.append(f"(showing last {limit} of {len(entries)} entries)")
@@ -247,7 +247,7 @@ def _format_activity_lines(item: CompiledItem, limit: int = 10) -> list[str]:
 
     for entry in entries:
         ts = _format_timestamp(entry.at)
-        lines.append(f"{ts} [{entry.by}]: {entry.message}")
+        lines.append(f"{ts} \\[{entry.by}]: {entry.message}")
 
     return lines
 
@@ -257,6 +257,17 @@ _TIER_INDICATOR = {
     Tier.WORKSPACE: "W",
     Tier.STEALTH: "S",
 }
+
+
+def _label(name: str) -> str:
+    """Wrap a structural field label in Rich bold-reverse markup.
+
+    Escapes any literal ``[`` characters (e.g. ``[locked]``, ``[20+ msgs]``)
+    so Rich doesn't swallow them as style tags.  The ``Static`` widget
+    already renders Rich text, so the markup is applied automatically.
+    """
+    escaped = name.replace("[", "\\[")
+    return f"[bold reverse]{escaped}[/]"
 
 
 def _collapse_double_spacing(text: str) -> str:
@@ -302,66 +313,66 @@ def _format_detail_lines(
     Discussion badge ``[20+ msgs]`` appears when entry count >= 20 (D9).
     """
     lines: list[str] = []
-    lines.append(f"Title: {item.title}")
-    lines.append(f"ID: {item.id}")
+    lines.append(f"{_label('Title:')} {item.title}")
+    lines.append(f"{_label('ID:')} {item.id}")
 
     lock_s = " [locked]" if "status" in item.locked_fields else ""
-    lines.append(f"Status{lock_s}: {item.status}")
+    lines.append(f"{_label(f'Status{lock_s}:')} {item.status}")
 
     lock_p = " [locked]" if "priority" in item.locked_fields else ""
-    lines.append(f"Priority{lock_p}: P{item.priority}")
+    lines.append(f"{_label(f'Priority{lock_p}:')} P{item.priority}")
 
     tier_str = item.tier.value if item.tier else "unknown"
-    lines.append(f"Tier: {tier_str}")
+    lines.append(f"{_label('Tier:')} {tier_str}")
 
     if tier == "wide":
         if item.created_at:
-            lines.append(f"Created: {_format_timestamp(item.created_at)}")
+            lines.append(f"{_label('Created:')} {_format_timestamp(item.created_at)}")
         if item.updated_at:
-            lines.append(f"Updated: {_format_timestamp(item.updated_at)}")
+            lines.append(f"{_label('Updated:')} {_format_timestamp(item.updated_at)}")
         if item.cross_tier_conflict:
-            lines.append("Cross-tier conflict: YES")
+            lines.append(f"{_label('Cross-tier conflict:')} YES")
 
     if item.tags:
-        lines.append(f"Tags: {', '.join(item.tags)}")
+        lines.append(f"{_label('Tags:')} {', '.join(item.tags)}")
     if item.parent:
-        lines.append(f"Parent: {item.parent}")
+        lines.append(f"{_label('Parent:')} {item.parent}")
 
     lock_desc = " [locked]" if "description" in item.locked_fields else ""
     if item.description:
         desc = _collapse_double_spacing(item.description)
-        lines.append(f"\nDescription{lock_desc}:\n{desc}")
+        lines.append(f"\n{_label(f'Description{lock_desc}:')}\n{desc}")
 
     if item.fields:
         if fields_schema:
-            lines.append("\nFields:")
+            lines.append(f"\n{_label('Fields:')}")
             # Known fields in schema declaration order
             for fname, fschema in fields_schema.items():
                 if fname in item.fields:
-                    label = f" ({fschema.description})" if fschema.description else ""
+                    flabel = f" ({fschema.description})" if fschema.description else ""
                     lock = " [locked]" if fname in item.locked_fields else ""
-                    lines.append(f"  {fname}{label}{lock}: {item.fields[fname]}")
+                    lines.append(f"  {_label(f'{fname}{flabel}{lock}:')} {item.fields[fname]}")
             # Unknown fields (not in schema)
             unknown = {k: v for k, v in item.fields.items() if k not in fields_schema}
             if unknown:
-                lines.append("\n  Other:")
+                lines.append(f"\n  {_label('Other:')}")
                 for k, v in unknown.items():
                     lock = " [locked]" if k in item.locked_fields else ""
-                    lines.append(f"    {k}{lock}: {v}")
+                    lines.append(f"    {_label(f'{k}{lock}:')} {v}")
         else:
-            lines.append("\nFields:")
+            lines.append(f"\n{_label('Fields:')}")
             for k, v in item.fields.items():
                 lock = " [locked]" if k in item.locked_fields else ""
-                lines.append(f"  {k}{lock}: {v}")
+                lines.append(f"  {_label(f'{k}{lock}:')} {v}")
 
     # In wide mode, discussion is shown in the activity panel
     if tier != "wide" and item.discussion:
         count = len(item.discussion)
         badge = " [20+ msgs]" if count >= 20 else ""
         lock_d = " [locked]" if "discussion" in item.locked_fields else ""
-        lines.append(f"\nDiscussion{lock_d} ({count} entries){badge}:")
+        lines.append(f"\n{_label(f'Discussion{lock_d} ({count} entries){badge}:')}")
         for entry in item.discussion[-5:]:
-            lines.append(f"  [{entry.at}] {entry.by}: {entry.message}")
+            lines.append(f"  \\[{entry.at}] {entry.by}: {entry.message}")
 
     return lines
 
@@ -1533,7 +1544,12 @@ class TrackerApp(App):
         ``copy_to_clipboard``.  This sidesteps the fact that Textual's
         mouse protocol prevents terminal-native click-and-drag selection
         in clients like Royal TSX.
+
+        Rich markup is stripped so the clipboard receives plain text
+        (e.g. ``Title:`` not ``[bold reverse]Title:[/]``).
         """
+        from rich.text import Text
+
         item = self._get_selected_item()
         if not item:
             self.notify("No item selected", severity="warning")
@@ -1542,7 +1558,8 @@ class TrackerApp(App):
         lines = _format_detail_lines(
             item, tier=self._layout_tier, fields_schema=fields_schema,
         )
-        self.copy_to_clipboard("\n".join(lines))
+        plain_text = Text.from_markup("\n".join(lines)).plain
+        self.copy_to_clipboard(plain_text)
         self.notify(f"Copied {item.id} to clipboard")
 
     # ------------------------------------------------------------------
