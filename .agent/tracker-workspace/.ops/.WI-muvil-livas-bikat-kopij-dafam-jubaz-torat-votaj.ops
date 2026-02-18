@@ -34,3 +34,10 @@
   clock: 3  # 70d4
   nonce: 70d4  # 70d4
   message: "Kconfig analyzer: Linux kernel configuration files use a custom syntax with config, menuconfig, choice, depends on, select, and tristate keywords. No tree-sitter grammar exists; regex-based parsing of menu hierarchy and dependency graphs would work."  # 70d4
+- op: discuss  # b777
+  at: '2026-02-18T14:55:13Z'  # b777
+  by: agent  # b777
+  actor: jgstern_agent  # b777
+  clock: 4  # b777
+  nonce: b777  # b777
+  message: "Kconfig tristate options (y/m/n) control whether code compiles as built-in, module, or excluded. The analyzer should model these as conditional compilation edges affecting which source files participate in the build."  # b777

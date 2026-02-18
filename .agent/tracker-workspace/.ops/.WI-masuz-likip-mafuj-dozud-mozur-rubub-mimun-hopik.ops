@@ -56,3 +56,10 @@
   clock: 7  # f4d5
   nonce: f4d5  # f4d5
   message: "Testing strategy: Use the LuaJIT test suite as ground truth. It has well-structured ffi.cdef examples that exercise all major C type declarations including function pointers and nested structs."  # f4d5
+- op: discuss  # e9cd
+  at: '2026-02-18T14:55:14Z'  # e9cd
+  by: agent  # e9cd
+  actor: jgstern_agent  # e9cd
+  clock: 8  # e9cd
+  nonce: e9cd  # e9cd
+  message: "Scope clarification: Focus on LuaJIT FFI only, not the standard Lua C API. The C API uses a stack-based calling convention that requires different analysis techniques and is covered by a separate linker design."  # e9cd
