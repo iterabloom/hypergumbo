@@ -63,3 +63,10 @@
   clock: 8  # 99c6
   nonce: 99c6  # 99c6
   message: "D mixin templates are another challenge for cross-file resolution. A mixin can inject code from one module into another at compile time, creating implicit dependencies that are not visible in import statements."  # 99c6
+- op: discuss  # c62d
+  at: '2026-02-18T16:25:47Z'  # c62d
+  by: agent  # c62d
+  actor: jgstern_agent  # c62d
+  clock: 9  # c62d
+  nonce: c62d  # c62d
+  message: "Auto-sync test 4: D language improvements remain deferred."  # c62d

@@ -63,3 +63,10 @@
   clock: 8  # e9cd
   nonce: e9cd  # e9cd
   message: "Scope clarification: Focus on LuaJIT FFI only, not the standard Lua C API. The C API uses a stack-based calling convention that requires different analysis techniques and is covered by a separate linker design."  # e9cd
+- op: discuss  # 9cce
+  at: '2026-02-18T16:25:47Z'  # 9cce
+  by: agent  # 9cce
+  actor: jgstern_agent  # 9cce
+  clock: 9  # 9cce
+  nonce: 9cce  # 9cce
+  message: "Auto-sync test 4: Lua FFI linker remains deferred."  # 9cce

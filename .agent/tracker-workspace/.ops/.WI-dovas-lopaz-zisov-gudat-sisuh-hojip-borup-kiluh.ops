@@ -64,3 +64,10 @@
   clock: 8  # 5103
   nonce: '5103'  # 5103
   message: "Priority note: Node N-API addons are most commonly found in packages like sharp, bcrypt, and sqlite3. Testing against these real packages would validate the linker design against actual usage patterns."  # 5103
+- op: discuss  # 5748
+  at: '2026-02-18T16:25:47Z'  # 5748
+  by: agent  # 5748
+  actor: jgstern_agent  # 5748
+  clock: 9  # 5748
+  nonce: '5748'  # 5748
+  message: "Auto-sync test 4: N-API linker remains deferred."  # 5748
