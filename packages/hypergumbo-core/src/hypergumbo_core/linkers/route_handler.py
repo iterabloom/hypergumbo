@@ -124,6 +124,28 @@ def _resolve_rails_handler(
         if name.endswith(hash_suffix) or name.endswith(dot_suffix):
             return sym
 
+    # Case-insensitive fallback for Rails acronym inflections.
+    # Rails treats words like IP, HTTP, SMTP, API as acronyms:
+    # 'ip_pool_rules' → 'IPPoolRulesController', not 'IpPoolRulesController'.
+    # Our naive CamelCase conversion can't replicate Rails' custom acronym list,
+    # so we fall back to case-insensitive matching after exact match fails.
+    controller_lower = controller_class.lower()
+    for name, sym in symbol_by_name.items():
+        # Check ClassName#action or ClassName.action (case-insensitive on class)
+        for sep in ("#", "."):
+            if sep not in name:
+                continue
+            sym_class_part, sym_action = name.rsplit(sep, 1)
+            if sym_action != action:
+                continue
+            # Full match (case-insensitive on controller class portion)
+            if sym_class_part.lower() == controller_lower:
+                return sym
+            # Suffix match for deeply namespaced controllers
+            ci_suffix = f"::{controller_lower}"
+            if sym_class_part.lower().endswith(ci_suffix):
+                return sym
+
     return None
 
 

@@ -468,6 +468,168 @@ class TestRouteHandlerLinker:
         assert len(result.edges) == 1
         assert result.edges[0].dst == exact_handler.id
 
+    def test_rails_acronym_controller_resolution(self) -> None:
+        """Rails controllers with acronym words (IP, HTTP, SMTP, API) are resolved.
+
+        Rails inflector treats certain words as acronyms: 'ip_pool_rules' becomes
+        'IPPoolRulesController', not 'IpPoolRulesController'.  The linker should
+        handle this via case-insensitive fallback.
+        """
+        route = Symbol(
+            id="ruby:/config/routes.rb:30-30:GET /ip_pool_rules:route",
+            name="GET /ip_pool_rules",
+            kind="route",
+            language="ruby",
+            path="/config/routes.rb",
+            span=Span(start_line=30, end_line=30, start_col=0, end_col=60),
+            meta={"controller_action": "ip_pool_rules#index"},
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+
+        # Actual controller uses Rails acronym inflection (IP not Ip)
+        handler = Symbol(
+            id="ruby:/app/controllers/ip_pool_rules_controller.rb:5-10:IPPoolRulesController#index:method",
+            name="IPPoolRulesController#index",
+            kind="method",
+            language="ruby",
+            path="/app/controllers/ip_pool_rules_controller.rb",
+            span=Span(start_line=5, end_line=10, start_col=2, end_col=5),
+            meta={"class": "IPPoolRulesController"},
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == handler.id
+
+    def test_rails_acronym_http_endpoints_controller(self) -> None:
+        """HTTPEndpointsController (not HttpEndpointsController) is resolved."""
+        route = Symbol(
+            id="ruby:/config/routes.rb:28-28:GET /http_endpoints:route",
+            name="GET /http_endpoints",
+            kind="route",
+            language="ruby",
+            path="/config/routes.rb",
+            span=Span(start_line=28, end_line=28, start_col=0, end_col=60),
+            meta={"controller_action": "http_endpoints#index"},
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+
+        handler = Symbol(
+            id="ruby:/app/controllers/http_endpoints_controller.rb:5-10:HTTPEndpointsController#index:method",
+            name="HTTPEndpointsController#index",
+            kind="method",
+            language="ruby",
+            path="/app/controllers/http_endpoints_controller.rb",
+            span=Span(start_line=5, end_line=10, start_col=2, end_col=5),
+            meta={"class": "HTTPEndpointsController"},
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == handler.id
+
+    def test_rails_acronym_with_namespace(self) -> None:
+        """Acronym controllers under a namespace are resolved."""
+        route = Symbol(
+            id="ruby:/config/routes.rb:50-50:GET /api/v1/ip_addresses:route",
+            name="GET /api/v1/ip_addresses",
+            kind="route",
+            language="ruby",
+            path="/config/routes.rb",
+            span=Span(start_line=50, end_line=50, start_col=0, end_col=60),
+            meta={"controller_action": "api/v1/ip_addresses#index"},
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+
+        handler = Symbol(
+            id="ruby:/app/controllers/api/v1/ip_addresses_controller.rb:5-10:Api::V1::IPAddressesController#index:method",
+            name="Api::V1::IPAddressesController#index",
+            kind="method",
+            language="ruby",
+            path="/app/controllers/api/v1/ip_addresses_controller.rb",
+            span=Span(start_line=5, end_line=10, start_col=2, end_col=5),
+            meta={"class": "Api::V1::IPAddressesController"},
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == handler.id
+
+    def test_rails_acronym_deep_namespace_suffix(self) -> None:
+        """Acronym controllers match via case-insensitive suffix in deep namespaces.
+
+        Route says 'ip_pools#index' → normalized 'IpPoolsController', but the
+        actual symbol is 'Admin::IPPoolsController#index'.  Neither exact match
+        nor the case-sensitive suffix match works; the case-insensitive suffix
+        match resolves it.
+        """
+        route = Symbol(
+            id="ruby:/config/routes.rb:60-60:GET /ip_pools:route",
+            name="GET /ip_pools",
+            kind="route",
+            language="ruby",
+            path="/config/routes.rb",
+            span=Span(start_line=60, end_line=60, start_col=0, end_col=60),
+            meta={"controller_action": "ip_pools#index"},
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+
+        handler = Symbol(
+            id="ruby:/app/controllers/admin/ip_pools_controller.rb:5-10:Admin::IPPoolsController#index:method",
+            name="Admin::IPPoolsController#index",
+            kind="method",
+            language="ruby",
+            path="/app/controllers/admin/ip_pools_controller.rb",
+            span=Span(start_line=5, end_line=10, start_col=2, end_col=5),
+            meta={"class": "Admin::IPPoolsController"},
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == handler.id
+
+    def test_rails_acronym_skips_wrong_action(self) -> None:
+        """Case-insensitive fallback skips symbols whose action does not match."""
+        route = Symbol(
+            id="ruby:/config/routes.rb:30-30:GET /ip_pools:route",
+            name="GET /ip_pools",
+            kind="route",
+            language="ruby",
+            path="/config/routes.rb",
+            span=Span(start_line=30, end_line=30, start_col=0, end_col=60),
+            meta={"controller_action": "ip_pools#index"},
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+
+        # Handler has the right controller but wrong action
+        wrong_action = Symbol(
+            id="ruby:/app/controllers/ip_pools_controller.rb:5-10:IPPoolsController#show:method",
+            name="IPPoolsController#show",
+            kind="method",
+            language="ruby",
+            path="/app/controllers/ip_pools_controller.rb",
+            span=Span(start_line=5, end_line=10, start_col=2, end_col=5),
+            meta={"class": "IPPoolsController"},
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, wrong_action], [])
+        assert len(result.edges) == 0
+
     def test_phoenix_namespaced_controller_with_dot(self) -> None:
         """Phoenix handler with .Controller.action pattern is found."""
         route = Symbol(

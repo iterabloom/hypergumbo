@@ -58,9 +58,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Bidirectional centrality ranking**: Uses `in_degree * (1 + ln(1 + out_degree))` instead of pure in-degree, rewarding connectors over pure sinks.
 - **Entrypoint improvements**: Transitive out-degree scoring, connectivity-based fallback when no patterns match, library export detection (Go, Elixir, Python), aggressive test demotion (90% penalty), and `--entry auto` now respects `--exclude-tests`/`--max-tier`.
 - **Test edge filtering**: `--exclude-tests` now preserves `extends`/`implements` edges from test files.
-- **Default exclusions**: Documentation/config nodes, CSS variables/at-rules, npm_package/module_file symbols, and TypeScript type/interface declarations excluded from output by default.
+- **Default exclusions**: Documentation/config nodes, CSS variables/at-rules, npm_package/module_file symbols, and TypeScript type/interface declarations excluded from output by default. CSS custom properties (`--var`) and SCSS variables (`$var`) now also filtered from behavior maps via `_NOISE_KINDS`.
 - **D language improvements**: Import-scope disambiguation, import edge resolution to actual module symbols, and method extraction with qualified names inside struct/class/interface bodies.
 - **Ruby analyzer improvements**: Class method (`def self.method`) extraction, `.new` → `#initialize` resolution, namespaced receiver resolution, receiver-qualified call linking, chained constructor calls (`Service.new(args).perform`), job enqueue edge detection (`perform_later`/`perform_async`), Rails callback edges (controller actions, model lifecycle, block-style), delegate macro edges, and ActiveRecord association edges.
+- **Rails acronym-aware controller resolution**: Route-handler linker now uses case-insensitive fallback to match controllers with Rails acronym inflections (`ip_pool_rules` → `IPPoolRulesController`, `http_endpoints` → `HTTPEndpointsController`). Previously missed ~53 routes in repos like postal.
 - **C++ improvements**: Template function call detection, pointer/reference return type extraction, and stack object construction detection.
 - **Go interface-implementation assertion detection**: Compile-time assertions (`var _ Interface = &Struct{}`) produce inheritance edges.
 
