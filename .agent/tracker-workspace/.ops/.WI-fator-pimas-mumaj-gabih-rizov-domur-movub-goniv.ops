@@ -35,3 +35,10 @@
   nonce: '1e75'  # 1e75
   set:  # 1e75
     priority: 1  # 1e75
+- op: discuss  # a1aa
+  at: '2026-02-18T13:44:21Z'  # a1aa
+  by: agent  # a1aa
+  actor: jgstern_agent  # a1aa
+  clock: 5  # a1aa
+  nonce: a1aa  # a1aa
+  message: "Approach: Use file-level heuristics (shebang, imports like import matlab.engine) to disambiguate .m files. The Wolfram analyzer should check for Mathematica-style patterns (e.g. SetDelayed, Module) while MATLAB checks for function/classdef keywords."  # a1aa

@@ -27,3 +27,10 @@
   nonce: 96bd  # 96bd
   set:  # 96bd
     status: todo_soft  # 96bd
+- op: discuss  # 41e6
+  at: '2026-02-18T13:44:38Z'  # 41e6
+  by: agent  # 41e6
+  actor: jgstern_agent  # 41e6
+  clock: 3  # 41e6
+  nonce: '41e6'  # 41e6
+  message: "Rego analyzer: OPA Rego files use a unique rule-based syntax. tree-sitter-rego exists but may need building from source. Key constructs: package declarations, import statements, rule definitions (allow, deny patterns), and built-in function calls."  # 41e6

@@ -36,3 +36,10 @@
   nonce: fd0a  # fd0a
   set:  # fd0a
     priority: 2  # fd0a
+- op: discuss  # f90e
+  at: '2026-02-18T13:44:21Z'  # f90e
+  by: agent  # f90e
+  actor: jgstern_agent  # f90e
+  clock: 5  # f90e
+  nonce: f90e  # f90e
+  message: "Node.js N-API linker design: Should detect napi_create_function in C/C++ addon source, map the registered function name to the JS export, and create cross-language edges in the call graph. Also handle node-addon-api C++ wrapper patterns."  # f90e

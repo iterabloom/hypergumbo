@@ -35,3 +35,10 @@
   nonce: 603e  # 603e
   set:  # 603e
     priority: 2  # 603e
+- op: discuss  # 1ffc
+  at: '2026-02-18T13:44:37Z'  # 1ffc
+  by: agent  # 1ffc
+  actor: jgstern_agent  # 1ffc
+  clock: 5  # 1ffc
+  nonce: 1ffc  # 1ffc
+  message: "D language cross-file resolution: The current analyzer resolves calls within a single file. For cross-file, need to handle D module imports (import std.algorithm) and track exported symbols per module to build accurate call edges across files."  # 1ffc

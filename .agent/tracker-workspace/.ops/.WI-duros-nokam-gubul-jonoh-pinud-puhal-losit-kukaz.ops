@@ -35,3 +35,10 @@
   nonce: c6ea  # c6ea
   set:  # c6ea
     priority: 3  # c6ea
+- op: discuss  # 79a6
+  at: '2026-02-18T13:44:37Z'  # 79a6
+  by: agent  # 79a6
+  actor: jgstern_agent  # 79a6
+  clock: 5  # 79a6
+  nonce: 79a6  # 79a6
+  message: "Assembly analyzer scope: Start with x86/x86-64 AT&T and Intel syntax. Detect labels as symbols, call/jmp targets as call edges. Could use tree-sitter-asm if available, otherwise regex-based parsing of common directives (.global, .text, .data)."  # 79a6

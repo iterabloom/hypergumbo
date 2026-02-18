@@ -35,3 +35,10 @@
   nonce: b78b  # b78b
   set:  # b78b
     priority: 2  # b78b
+- op: discuss  # 8bca
+  at: '2026-02-18T13:44:21Z'  # 8bca
+  by: agent  # 8bca
+  actor: jgstern_agent  # 8bca
+  clock: 5  # 8bca
+  nonce: 8bca  # 8bca
+  message: "Lua FFI linker should parse ffi.cdef string literals to extract C function declarations, then match ffi.C.func_name calls to those declarations. LuaJIT metatype patterns also need handling for C struct method binding."  # 8bca
