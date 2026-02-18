@@ -35,11 +35,20 @@ gather input, then call TrackerSet write methods on dismiss. Errors are shown
 via ``self.notify(str(e), severity="error")``. After each write, _load_items()
 refreshes the tables and _restore_selection() keeps the cursor stable.
 
+Status visibility toggles (``c``/``w``) hide or show items with ``done``
+and ``wont_do`` statuses respectively.  A status filter bar below the table
+shows the current show/hide state for each resolved status.
+
+Manual display reordering (``<``/``>``) lets users visually group related
+items without changing their priority.  The reorder is persisted to a
+``tui_preferences.json`` file alongside toggle state.
+
 See ADR-0013 §TUI for the responsive design specification.
 """
 
 from __future__ import annotations
 
+import json
 import re
 from functools import partial
 from pathlib import Path
@@ -291,6 +300,76 @@ def _collapse_double_spacing(text: str) -> str:
         return "\n\n".join(paragraphs)
     # All-double-spaced: collapse to single-spaced
     return "\n".join(paragraphs)
+
+
+def _load_tui_preferences(path: Path) -> dict:
+    """Load TUI preferences from disk. Returns defaults on missing/corrupt file.
+
+    Expected format::
+
+        {
+            "version": 1,
+            "hidden_statuses": ["done", "wont_do"],
+            "display_order": ["INV-bolil-...", "WI-dabab-...", ...]
+        }
+
+    Returns ``{"hidden_statuses": [], "display_order": []}`` when the file
+    is absent, unreadable, or contains invalid JSON.
+    """
+    defaults: dict = {"hidden_statuses": [], "display_order": []}
+    if not path.is_file():
+        return defaults
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return defaults
+        hs = data.get("hidden_statuses", [])
+        do = data.get("display_order", [])
+        if not isinstance(hs, list) or not isinstance(do, list):
+            return defaults
+        return {"hidden_statuses": hs, "display_order": do}
+    except (json.JSONDecodeError, OSError):
+        return defaults
+
+
+def _save_tui_preferences(
+    path: Path, hidden_statuses: set[str], display_order: list[str],
+) -> None:
+    """Persist TUI preferences to disk.
+
+    Writes a JSON file with ``version``, ``hidden_statuses``, and
+    ``display_order`` keys.  Creates parent directories as needed.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {
+        "version": 1,
+        "hidden_statuses": sorted(hidden_statuses),
+        "display_order": list(display_order),
+    }
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def _apply_custom_order(
+    items: list[CompiledItem],
+    custom_order: list[str],
+) -> list[CompiledItem]:
+    """Reorder items per custom display order.
+
+    Items in *custom_order* appear first, in that order.
+    Remaining items appear after, in their original (default) sort order.
+    Stale IDs (not matching any item) are silently skipped.
+    """
+    id_to_item = {item.id: item for item in items}
+    ordered: list[CompiledItem] = []
+    seen: set[str] = set()
+    for item_id in custom_order:
+        if item_id in id_to_item and item_id not in seen:
+            ordered.append(id_to_item[item_id])
+            seen.add(item_id)
+    for item in items:
+        if item.id not in seen:
+            ordered.append(item)
+    return ordered
 
 
 def _format_detail_lines(
@@ -1010,6 +1089,12 @@ class TrackerApp(App):
         height: 40%;
         overflow-y: auto;
     }
+
+    #status-filter-bar {
+        display: none;
+        height: 1;
+        dock: bottom;
+    }
     """
 
     BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
@@ -1017,6 +1102,10 @@ class TrackerApp(App):
         ("escape", "back", "Back"),
         ("t", "toggle_tree", "Tree"),
         ("f", "toggle_filter", "Filter"),
+        ("c", "toggle_done", "Done"),
+        ("w", "toggle_wont_do", "Wont Do"),
+        ("less_than_sign", "move_up", "Move Up"),
+        ("greater_than_sign", "move_down", "Move Down"),
         ("d", "discuss", "Discuss"),
         ("D", "discuss_clear", "Clear Disc."),
         ("m", "tier_move", "Move Tier"),
@@ -1063,6 +1152,11 @@ class TrackerApp(App):
         self._filter_active: bool = False
         self._filter_text: str = ""
         self._show_full_ids: bool = False
+        self._hidden_statuses: set[str] = set()
+        self._custom_order: list[str] = []
+        self._prefs_path = (
+            tracker_set._tracker_root / "tracker-workspace" / "tui_preferences.json"
+        )
 
     def compose(self) -> ComposeResult:
         """Build the widget tree.
@@ -1091,12 +1185,17 @@ class TrackerApp(App):
                 yield VerticalScroll(
                     Static("", id="activity-content"), id="activity-view"
                 )
+        yield Static("", id="status-filter-bar")
         yield Footer()
 
     def on_mount(self) -> None:
-        """Initialize layout on mount."""
+        """Initialize layout on mount, loading persisted preferences."""
+        prefs = _load_tui_preferences(self._prefs_path)
+        self._hidden_statuses = set(prefs["hidden_statuses"])
+        self._custom_order = list(prefs["display_order"])
         self._refresh_tier()
         self._load_items()
+        self._update_status_filter_bar()
 
     def on_resize(self, event: Resize) -> None:
         """Re-evaluate layout tier when terminal is resized.
@@ -1216,25 +1315,36 @@ class TrackerApp(App):
             self._populate_compact_table()
 
     def _filtered_items(self) -> list[CompiledItem]:
-        """Return items matching the current filter text.
+        """Return items matching the current filter text and status toggles.
+
+        Pipeline:
+        1. Exclude items whose status is in ``_hidden_statuses``
+        2. Apply text-based filter (title, status, tags, kind)
+        3. Apply custom display order (if any)
 
         Matches against title, status, tags, and kind (case-insensitive).
-        Empty filter returns all items.
+        Empty filter returns all (non-hidden) items.
         """
-        if not self._filter_text:
-            return list(self._items)
-        needle = self._filter_text.lower()
-        result: list[CompiledItem] = []
-        for item in self._items:
-            if needle in item.title.lower():
-                result.append(item)
-            elif needle in item.status.lower():
-                result.append(item)
-            elif needle in item.kind.lower():
-                result.append(item)
-            elif any(needle in tag.lower() for tag in item.tags):
-                result.append(item)
-        return result
+        # 1. Exclude hidden statuses
+        base = [i for i in self._items if i.status not in self._hidden_statuses]
+        # 2. Apply text filter
+        if self._filter_text:
+            needle = self._filter_text.lower()
+            result: list[CompiledItem] = []
+            for item in base:
+                if needle in item.title.lower():
+                    result.append(item)
+                elif needle in item.status.lower():
+                    result.append(item)
+                elif needle in item.kind.lower():
+                    result.append(item)
+                elif any(needle in tag.lower() for tag in item.tags):
+                    result.append(item)
+            base = result
+        # 3. Apply custom display order
+        if self._custom_order:
+            base = _apply_custom_order(base, self._custom_order)
+        return base
 
     def _populate_table(self, table: DataTable, width: int, tier: str) -> None:
         """Populate a DataTable with items, adapting columns to width and tier.
@@ -1536,6 +1646,114 @@ class TrackerApp(App):
         self._show_full_ids = not self._show_full_ids
         self._reload_active_table()
         self._restore_selection()
+
+    def action_toggle_done(self) -> None:
+        """Toggle visibility of items with ``done`` status."""
+        self._toggle_status("done")
+
+    def action_toggle_wont_do(self) -> None:
+        """Toggle visibility of items with ``wont_do`` status."""
+        self._toggle_status("wont_do")
+
+    def _toggle_status(self, status: str) -> None:
+        """Show or hide items with the given *status*.
+
+        Toggles the status in ``_hidden_statuses``, updates the status
+        filter bar, reloads the active table, and tries to restore the
+        cursor to the previously selected item.
+        """
+        if status in self._hidden_statuses:
+            self._hidden_statuses.discard(status)
+        else:
+            self._hidden_statuses.add(status)
+        self._update_status_filter_bar()
+        self._reload_active_table()
+        self._restore_selection()
+
+    def _update_status_filter_bar(self) -> None:
+        """Refresh the status filter bar text.
+
+        Shows one ``[status: shown/hidden]`` badge per resolved status
+        defined in the tracker config.  The bar is visible when at least
+        one resolved status exists in the config.
+        """
+        bar = self.query_one("#status-filter-bar", Static)
+        resolved = self._tracker_set.config.resolved_statuses
+        if not resolved:
+            bar.display = False
+            return
+        parts: list[str] = []
+        for s in resolved:
+            state = "hidden" if s in self._hidden_statuses else "shown"
+            parts.append(f"[{s}: {state}]")
+        bar.update("  ".join(parts))
+        bar.display = True
+
+    def action_move_up(self) -> None:
+        """Move the selected item up one row in the display order."""
+        self._move_selected(-1)
+
+    def action_move_down(self) -> None:
+        """Move the selected item down one row in the display order."""
+        self._move_selected(1)
+
+    def _move_selected(self, direction: int) -> None:
+        """Move selected item up (-1) or down (+1) in custom display order.
+
+        Operates on the flat table view only (not tree view).  At list
+        boundaries the move is a no-op.  After moving, the custom order
+        is persisted immediately and the table is refreshed.
+        """
+        item = self._get_selected_item()
+        if not item:
+            return
+        displayed = self._filtered_items()
+        idx = next((i for i, it in enumerate(displayed) if it.id == item.id), None)
+        if idx is None:
+            return  # pragma: no cover
+        target = idx + direction
+        if target < 0 or target >= len(displayed):
+            return  # boundary — no-op
+        # Ensure custom_order is populated from current display
+        self._ensure_custom_order(displayed)
+        # Swap in custom_order
+        a_id, b_id = item.id, displayed[target].id
+        a_idx = self._custom_order.index(a_id)
+        b_idx = self._custom_order.index(b_id)
+        self._custom_order[a_idx], self._custom_order[b_idx] = (
+            self._custom_order[b_idx], self._custom_order[a_idx]
+        )
+        _save_tui_preferences(
+            self._prefs_path, self._hidden_statuses, self._custom_order,
+        )
+        self._selected_item_id = item.id
+        self._reload_active_table()
+        self._restore_selection()
+
+    def _ensure_custom_order(self, displayed: list[CompiledItem]) -> None:
+        """Populate ``_custom_order`` from *displayed* items if incomplete.
+
+        If any displayed item is missing from the current order list, the
+        order is rebuilt from the currently displayed items, preserving
+        existing positions for items already present.
+        """
+        displayed_ids = {it.id for it in displayed}
+        if displayed_ids <= set(self._custom_order):
+            return  # all displayed items are already in the order
+        # Rebuild: keep existing order for known items, append new ones
+        existing = [oid for oid in self._custom_order if oid in displayed_ids]
+        existing_set = set(existing)
+        for it in displayed:
+            if it.id not in existing_set:
+                existing.append(it.id)
+        self._custom_order = existing
+
+    async def action_quit(self) -> None:
+        """Save TUI preferences and exit."""
+        _save_tui_preferences(
+            self._prefs_path, self._hidden_statuses, self._custom_order,
+        )
+        await super().action_quit()
 
     def action_yank(self) -> None:
         """Copy the selected item's detail text to the system clipboard.

@@ -54,12 +54,15 @@ from hypergumbo_tracker.tui import (
     NewItemScreen,
     ParentScreen,
     TierMoveScreen,
+    _apply_custom_order,
     _collapse_double_spacing,
     _compute_tier,
     _format_activity_lines,
     _format_detail_lines,
     _format_timestamp,
     _label,
+    _load_tui_preferences,
+    _save_tui_preferences,
     _shortest_unique_prefix_len,
     _truncate_id,
 )
@@ -4504,3 +4507,478 @@ class TestYankAction:
                 text = mock_copy.call_args[0][0]
                 assert "Title:" in text
                 assert "Status:" in text
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _apply_custom_order
+# ---------------------------------------------------------------------------
+
+
+class TestApplyCustomOrder:
+    """Test the custom display order pure function."""
+
+    def _make_items(self) -> list[CompiledItem]:
+        return [
+            CompiledItem(id="A", kind="invariant", title="Alpha", status="todo_hard"),
+            CompiledItem(id="B", kind="work_item", title="Bravo", status="done"),
+            CompiledItem(id="C", kind="invariant", title="Charlie", status="in_progress"),
+        ]
+
+    def test_full_order(self) -> None:
+        """Items reordered when custom_order covers all IDs."""
+        items = self._make_items()
+        result = _apply_custom_order(items, ["C", "A", "B"])
+        assert [i.id for i in result] == ["C", "A", "B"]
+
+    def test_partial_order(self) -> None:
+        """Ordered items first, rest at end in original order."""
+        items = self._make_items()
+        result = _apply_custom_order(items, ["C"])
+        assert [i.id for i in result] == ["C", "A", "B"]
+
+    def test_empty_order(self) -> None:
+        """Empty custom_order returns items unchanged."""
+        items = self._make_items()
+        result = _apply_custom_order(items, [])
+        assert [i.id for i in result] == ["A", "B", "C"]
+
+    def test_stale_ids_skipped(self) -> None:
+        """IDs not matching any item are silently ignored."""
+        items = self._make_items()
+        result = _apply_custom_order(items, ["STALE", "B", "MISSING", "A"])
+        assert [i.id for i in result] == ["B", "A", "C"]
+
+    def test_duplicate_ids_in_order(self) -> None:
+        """Duplicate IDs in custom_order only include the item once."""
+        items = self._make_items()
+        result = _apply_custom_order(items, ["A", "A", "B"])
+        assert [i.id for i in result] == ["A", "B", "C"]
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _load_tui_preferences / _save_tui_preferences
+# ---------------------------------------------------------------------------
+
+
+class TestTuiPreferences:
+    """Test TUI preferences persistence pure functions."""
+
+    def test_missing_file_returns_defaults(self, tmp_path: Path) -> None:
+        result = _load_tui_preferences(tmp_path / "nonexistent.json")
+        assert result == {"hidden_statuses": [], "display_order": []}
+
+    def test_corrupt_file_returns_defaults(self, tmp_path: Path) -> None:
+        p = tmp_path / "bad.json"
+        p.write_text("not json!", encoding="utf-8")
+        result = _load_tui_preferences(p)
+        assert result == {"hidden_statuses": [], "display_order": []}
+
+    def test_non_dict_returns_defaults(self, tmp_path: Path) -> None:
+        p = tmp_path / "array.json"
+        p.write_text("[1, 2, 3]", encoding="utf-8")
+        result = _load_tui_preferences(p)
+        assert result == {"hidden_statuses": [], "display_order": []}
+
+    def test_invalid_types_returns_defaults(self, tmp_path: Path) -> None:
+        """Non-list values for hidden_statuses/display_order → defaults."""
+        import json
+        p = tmp_path / "bad_types.json"
+        p.write_text(json.dumps({"hidden_statuses": "not-a-list", "display_order": 42}))
+        result = _load_tui_preferences(p)
+        assert result == {"hidden_statuses": [], "display_order": []}
+
+    def test_valid_file_loads(self, tmp_path: Path) -> None:
+        import json
+        p = tmp_path / "prefs.json"
+        data = {"version": 1, "hidden_statuses": ["done"], "display_order": ["A", "B"]}
+        p.write_text(json.dumps(data), encoding="utf-8")
+        result = _load_tui_preferences(p)
+        assert result["hidden_statuses"] == ["done"]
+        assert result["display_order"] == ["A", "B"]
+
+    def test_save_then_load_roundtrip(self, tmp_path: Path) -> None:
+        p = tmp_path / "prefs.json"
+        _save_tui_preferences(p, {"done", "wont_do"}, ["C", "B", "A"])
+        result = _load_tui_preferences(p)
+        assert set(result["hidden_statuses"]) == {"done", "wont_do"}
+        assert result["display_order"] == ["C", "B", "A"]
+
+    def test_save_creates_parent_dirs(self, tmp_path: Path) -> None:
+        p = tmp_path / "sub" / "dir" / "prefs.json"
+        _save_tui_preferences(p, set(), [])
+        assert p.is_file()
+        result = _load_tui_preferences(p)
+        assert result == {"hidden_statuses": [], "display_order": []}
+
+
+# ---------------------------------------------------------------------------
+# Pilot tests: status toggles (c/w keys)
+# ---------------------------------------------------------------------------
+
+
+def _make_tracker_set_with_resolved(tmp_path: Path) -> TrackerSet:
+    """Create a TrackerSet with items in done and wont_do statuses."""
+    from helpers import make_test_config_dict
+
+    root = tmp_path / ".agent"
+    for d in [
+        root / "tracker" / ".ops",
+        root / "tracker-workspace" / ".ops",
+        root / "tracker-workspace" / "stealth",
+    ]:
+        d.mkdir(parents=True, exist_ok=True)
+
+    config = _make_config()
+    config_path = root / "tracker" / "config.yaml"
+    import yaml
+
+    config_path.write_text(yaml.dump(make_test_config_dict()))
+
+    ts = TrackerSet(root, config=config)
+
+    ts.add(kind="invariant", title="Active item 1",
+           status="todo_hard", priority=1)
+    ts.add(kind="work_item", title="In progress item",
+           status="in_progress", priority=2)
+    ts.add(kind="invariant", title="Done item",
+           status="done", priority=0)
+    ts.add(kind="work_item", title="Wont do item",
+           status="wont_do", priority=3)
+
+    return ts
+
+
+class TestStatusToggles:
+    """Test the 'c' (toggle done) and 'w' (toggle wont_do) keybindings."""
+
+    @pytest.fixture()
+    def tracker_set(self, tmp_path: Path) -> TrackerSet:
+        return _make_tracker_set_with_resolved(tmp_path)
+
+    async def test_toggle_done_hides_done_items(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        """Pressing 'c' should hide done items."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            assert table.row_count == 4
+            await pilot.press("c")
+            await pilot.pause()
+            assert table.row_count == 3
+            assert "done" in app._hidden_statuses
+
+    async def test_toggle_done_twice_restores(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        """Pressing 'c' twice should show done items again."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            await pilot.press("c")
+            await pilot.pause()
+            assert table.row_count == 3
+            await pilot.press("c")
+            await pilot.pause()
+            assert table.row_count == 4
+            assert "done" not in app._hidden_statuses
+
+    async def test_toggle_wont_do_hides(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        """Pressing 'w' should hide wont_do items."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            assert table.row_count == 4
+            await pilot.press("w")
+            await pilot.pause()
+            assert table.row_count == 3
+            assert "wont_do" in app._hidden_statuses
+
+    async def test_both_toggles(self, tracker_set: TrackerSet) -> None:
+        """Pressing 'c' and 'w' should hide both done and wont_do."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            await pilot.press("c")
+            await pilot.pause()
+            await pilot.press("w")
+            await pilot.pause()
+            assert table.row_count == 2
+            assert app._hidden_statuses == {"done", "wont_do"}
+
+    async def test_status_bar_updates(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        """Status filter bar should update on toggle."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            bar = app.query_one("#status-filter-bar")
+            assert bar.display is True
+            text = str(bar.content)
+            assert "done: shown" in text
+            assert "wont_do: shown" in text
+
+            await pilot.press("c")
+            await pilot.pause()
+            text = str(bar.content)
+            assert "done: hidden" in text
+            assert "wont_do: shown" in text
+
+    async def test_status_bar_hidden_when_no_resolved(
+        self, tmp_path: Path,
+    ) -> None:
+        """Status bar should be hidden when config has no resolved statuses."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        root = tmp_path / ".agent"
+        for d in [
+            root / "tracker" / ".ops",
+            root / "tracker-workspace" / ".ops",
+            root / "tracker-workspace" / "stealth",
+        ]:
+            d.mkdir(parents=True, exist_ok=True)
+        import yaml
+        (root / "tracker" / "config.yaml").write_text(yaml.dump({
+            "kinds": {"invariant": {"prefix": "INV", "description": "Test"}},
+            "statuses": ["todo_hard", "in_progress"],
+            "stop_hook": {"blocking_statuses": ["todo_hard"], "resolved_statuses": []},
+            "actor_resolution": {"agent_usernames": ["*_agent"]},
+            "lamport_branches": ["dev"],
+        }))
+        from hypergumbo_tracker.models import TrackerConfig, KindConfig
+        config = TrackerConfig(
+            kinds={"invariant": KindConfig(prefix="INV", description="Test")},
+            statuses=["todo_hard", "in_progress"],
+            blocking_statuses=["todo_hard"],
+            resolved_statuses=[],
+            agent_usernames=["*_agent"],
+            lamport_branches=["dev"],
+        )
+        ts = TrackerSet(root, config=config)
+        ts.add(kind="invariant", title="Item", status="todo_hard", priority=1)
+
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            bar = app.query_one("#status-filter-bar")
+            assert bar.display is False
+
+
+# ---------------------------------------------------------------------------
+# Pilot tests: manual display reordering (</>)
+# ---------------------------------------------------------------------------
+
+
+class TestManualReorder:
+    """Test the '<' (move up) and '>' (move down) keybindings."""
+
+    @pytest.fixture()
+    def tracker_set(self, tmp_path: Path) -> TrackerSet:
+        return _make_tracker_set(tmp_path)
+
+    async def test_move_down(self, tracker_set: TrackerSet) -> None:
+        """Pressing '>' should move item down one row."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            # Get first item's ID
+            first_key = next(iter(table.rows.keys()))
+            first_id = str(first_key.value)
+            # Move it down
+            await pilot.press("greater_than_sign")
+            await pilot.pause()
+            # Now first_id should be at row 1
+            keys_after = [str(k.value) for k in table.rows.keys()]
+            assert keys_after[1] == first_id
+
+    async def test_move_up(self, tracker_set: TrackerSet) -> None:
+        """Pressing '<' on second row should move item to first row."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            # Move cursor to second row
+            await pilot.press("down")
+            await pilot.pause()
+            second_key = list(table.rows.keys())[1]
+            second_id = str(second_key.value)
+            # Move it up
+            await pilot.press("less_than_sign")
+            await pilot.pause()
+            keys_after = [str(k.value) for k in table.rows.keys()]
+            assert keys_after[0] == second_id
+
+    async def test_move_up_at_top_noop(self, tracker_set: TrackerSet) -> None:
+        """Pressing '<' at top should be a no-op (no crash)."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            keys_before = [str(k.value) for k in table.rows.keys()]
+            await pilot.press("less_than_sign")
+            await pilot.pause()
+            keys_after = [str(k.value) for k in table.rows.keys()]
+            assert keys_before == keys_after
+
+    async def test_move_down_at_bottom_noop(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        """Pressing '>' at bottom should be a no-op."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            # Move to last row
+            for _ in range(table.row_count - 1):
+                await pilot.press("down")
+                await pilot.pause()
+            keys_before = [str(k.value) for k in table.rows.keys()]
+            await pilot.press("greater_than_sign")
+            await pilot.pause()
+            keys_after = [str(k.value) for k in table.rows.keys()]
+            assert keys_before == keys_after
+
+    async def test_move_on_empty_table_noop(self, tmp_path: Path) -> None:
+        """Moving on an empty table should not crash."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_empty_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            for _ in range(5):
+                await pilot.pause()
+            await pilot.press("greater_than_sign")
+            await pilot.pause()
+            await pilot.press("less_than_sign")
+            await pilot.pause()
+            # No crash
+
+    async def test_second_move_uses_existing_order(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        """Second move reuses existing custom_order (early return path)."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # First move populates _custom_order
+            await pilot.press("greater_than_sign")
+            await pilot.pause()
+            order_after_first = list(app._custom_order)
+            # Second move uses the existing order (hits early return)
+            await pilot.press("greater_than_sign")
+            await pilot.pause()
+            # Order should have changed (item moved further down)
+            assert app._custom_order != order_after_first
+
+    async def test_order_persists_to_file(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        """After move, the preferences file should contain the new order."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            await pilot.press("greater_than_sign")
+            await pilot.pause()
+            # Check the prefs file was written
+            assert app._prefs_path.is_file()
+            prefs = _load_tui_preferences(app._prefs_path)
+            assert len(prefs["display_order"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# Pilot tests: persistence (quit/mount roundtrip)
+# ---------------------------------------------------------------------------
+
+
+class TestPersistence:
+    """Test that toggle state and display order survive TUI restart."""
+
+    async def test_quit_saves_hidden_statuses(self, tmp_path: Path) -> None:
+        """Quitting should save current hidden_statuses to file."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_resolved(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            await pilot.press("c")  # hide done
+            await pilot.pause()
+            assert "done" in app._hidden_statuses
+            await pilot.press("q")
+            await pilot.pause()
+        # After quit, file should contain the hidden status
+        prefs = _load_tui_preferences(app._prefs_path)
+        assert "done" in prefs["hidden_statuses"]
+
+    async def test_mount_loads_hidden_statuses(self, tmp_path: Path) -> None:
+        """Opening TUI with a prefs file should restore hidden_statuses."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_resolved(tmp_path)
+        prefs_path = ts._tracker_root / "tracker-workspace" / "tui_preferences.json"
+        _save_tui_preferences(prefs_path, {"done"}, [])
+
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            # Should have 3 items (1 done hidden)
+            assert table.row_count == 3
+            assert "done" in app._hidden_statuses
+
+    async def test_first_run_no_file_all_shown(self, tmp_path: Path) -> None:
+        """First run (no prefs file): all items shown, no crash."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_resolved(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            assert table.row_count == 4
+            assert app._hidden_statuses == set()
+
+    async def test_display_order_saved_after_move(
+        self, tmp_path: Path,
+    ) -> None:
+        """After a move operation, the order is persisted to file."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            await pilot.press("greater_than_sign")
+            await pilot.pause()
+            prefs = _load_tui_preferences(app._prefs_path)
+            assert len(prefs["display_order"]) >= 3
