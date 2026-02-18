@@ -2454,14 +2454,10 @@ class TestPreWriteValidation:
         with pytest.raises(CorruptFileError, match="uncompilable"):
             store.update(item_id, set_fields={"status": "done"})
 
-    def test_append_op_ensures_group_write(
+    def test_new_ops_file_has_group_write(
         self, ops_dir: Path, config_yaml: Path, mock_human_uid: None,
     ) -> None:
-        """_append_op adds group-write permission when missing.
-
-        In a two-user setup the creating process's umask may strip g+w.
-        The store ensures it's always set so the other user can append.
-        """
+        """New .ops files are created with group-write regardless of umask."""
         import stat
 
         config = TrackerConfig(
@@ -2478,13 +2474,66 @@ class TestPreWriteValidation:
             priority=2,
         )
         ops_path = store.item_path(item_id)
-        # Simulate restrictive umask: strip group-write
+        assert ops_path.stat().st_mode & stat.S_IWGRP
+
+    def test_append_op_restores_group_write(
+        self, ops_dir: Path, config_yaml: Path, mock_human_uid: None,
+    ) -> None:
+        """Owner appending to a file without g+w restores the permission."""
+        import stat
+
+        config = TrackerConfig(
+            kinds={"work_item": KindConfig(prefix="WI", description="Work item")},
+            statuses=["todo_hard", "done"],
+            blocking_statuses=["todo_hard"],
+            resolved_statuses=["done"],
+            agent_usernames=["*_agent"],
+            lamport_branches=["dev"],
+        )
+        store = Store(ops_dir, config)
+        item_id = store.add(
+            kind="work_item", title="Group write test", status="todo_hard",
+            priority=2,
+        )
+        ops_path = store.item_path(item_id)
+        # Simulate old file without g+w
         current = ops_path.stat().st_mode
         ops_path.chmod(current & ~stat.S_IWGRP)
         assert not (ops_path.stat().st_mode & stat.S_IWGRP)
-        # Update should restore group-write
+        # Owner update should restore group-write
         store.update(item_id, set_fields={"status": "done"})
         assert ops_path.stat().st_mode & stat.S_IWGRP
+
+    def test_append_op_tolerates_fchmod_failure(
+        self, ops_dir: Path, config_yaml: Path, mock_human_uid: None,
+    ) -> None:
+        """Non-owner fchmod failure is silently tolerated."""
+        import stat
+        from unittest.mock import patch
+
+        config = TrackerConfig(
+            kinds={"work_item": KindConfig(prefix="WI", description="Work item")},
+            statuses=["todo_hard", "done"],
+            blocking_statuses=["todo_hard"],
+            resolved_statuses=["done"],
+            agent_usernames=["*_agent"],
+            lamport_branches=["dev"],
+        )
+        store = Store(ops_dir, config)
+        item_id = store.add(
+            kind="work_item", title="Fchmod fail test", status="todo_hard",
+            priority=2,
+        )
+        ops_path = store.item_path(item_id)
+        # Strip g+w to trigger the fchmod path
+        current = ops_path.stat().st_mode
+        ops_path.chmod(current & ~stat.S_IWGRP)
+        # Mock fchmod to simulate non-owner
+        with patch("os.fchmod", side_effect=PermissionError("not owner")):
+            store.update(item_id, set_fields={"status": "done"})
+        # Update succeeded despite fchmod failure
+        compiled = store.get(item_id)
+        assert compiled.status == "done"
 
     def test_discuss_clear_on_corrupt_item_raises(
         self, ops_dir: Path, config_yaml: Path, mock_human_uid: None,

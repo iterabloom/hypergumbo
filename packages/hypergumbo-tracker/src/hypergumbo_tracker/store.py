@@ -937,9 +937,24 @@ class Store:
 
         serialized = _serialize_op(op_dict)
 
-        # Write with flock
+        # Write with flock.  Use os.open with explicit mode (0o664) and
+        # temporarily clear umask so group-write is preserved for two-user
+        # setups where agent and human share the ops directory.
+        import stat as stat_mod
+
         self._ops_dir.mkdir(parents=True, exist_ok=True)
-        with open(item_path, "w") as f:
+        wr_flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        wr_mode = (
+            stat_mod.S_IRUSR | stat_mod.S_IWUSR
+            | stat_mod.S_IRGRP | stat_mod.S_IWGRP
+            | stat_mod.S_IROTH
+        )
+        old_umask = os.umask(0)
+        try:
+            fd = os.open(item_path, wr_flags, wr_mode)
+        finally:
+            os.umask(old_umask)
+        with os.fdopen(fd, "w") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:
                 f.write(serialized)
@@ -1204,16 +1219,31 @@ class Store:
                         f"A human must inspect the ops file before further writes."
                     ) from None
 
-        with open(filepath, "a") as f:
+        # Open with explicit mode (0o664 = rw-rw-r--) so both human and
+        # agent users can append in a two-user setup.  Plain open("a")
+        # respects umask, which typically strips group-write (0o022).
+        # Temporarily clear the umask so os.open honours our mode bits.
+        import stat
+
+        flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND
+        mode = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH
+        old_umask = os.umask(0)
+        try:
+            fd = os.open(filepath, flags, mode)
+        finally:
+            os.umask(old_umask)
+        with os.fdopen(fd, "a") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:
-                # Ensure group-write so both human and agent users can
-                # append ops in a two-user setup (umask may strip g+w).
-                import stat
-
+                # For existing files opened by the owner, ensure g+w is
+                # set even if the file predates this fix.  Non-owners
+                # cannot fchmod, so tolerate OSError silently.
                 st_mode = os.fstat(f.fileno()).st_mode
                 if not (st_mode & stat.S_IWGRP):
-                    os.fchmod(f.fileno(), st_mode | stat.S_IWGRP)
+                    try:
+                        os.fchmod(f.fileno(), st_mode | stat.S_IWGRP)
+                    except OSError:
+                        pass  # non-owner — can't chmod, but can still append if g+w
 
                 clock = _compute_lamport_clock(filepath, self._config.lamport_branches)
                 op_dict["clock"] = clock
