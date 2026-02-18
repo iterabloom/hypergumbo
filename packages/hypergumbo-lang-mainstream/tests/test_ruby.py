@@ -1444,6 +1444,161 @@ end
         )
 
 
+class TestRailsNamespaceRoutes:
+    """Tests for namespace-aware Rails route extraction.
+
+    Rails namespace DSL blocks (namespace :admin do ... end) prepend a module
+    path to all routes defined within them. This affects both the URL path
+    (/admin/users) and the controller lookup (admin/users#index → Admin::UsersController).
+    """
+
+    def test_namespace_resources(self, tmp_path: Path) -> None:
+        """resources inside namespace :admin should get admin/ prefix on controller_action."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  namespace :admin do
+    resources :users
+  end
+end
+""")
+        result = analyze_ruby(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+
+        # Should have 7 RESTful routes under admin namespace
+        assert len(route_symbols) == 7
+
+        routes_by_action = {s.meta["controller_action"]: s for s in route_symbols}
+
+        # Controller_action should include namespace prefix
+        assert "admin/users#index" in routes_by_action
+        assert "admin/users#create" in routes_by_action
+        assert "admin/users#show" in routes_by_action
+
+        # Route paths should also include namespace prefix
+        index_route = routes_by_action["admin/users#index"]
+        assert index_route.meta["route_path"] == "/admin/users"
+
+        show_route = routes_by_action["admin/users#show"]
+        assert show_route.meta["route_path"] == "/admin/users/:id"
+
+    def test_nested_namespaces(self, tmp_path: Path) -> None:
+        """Nested namespaces should accumulate prefixes."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  namespace :api do
+    namespace :v1 do
+      resources :posts
+    end
+  end
+end
+""")
+        result = analyze_ruby(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+
+        assert len(route_symbols) == 7
+
+        routes_by_action = {s.meta["controller_action"]: s for s in route_symbols}
+
+        assert "api/v1/posts#index" in routes_by_action
+        index_route = routes_by_action["api/v1/posts#index"]
+        assert index_route.meta["route_path"] == "/api/v1/posts"
+
+    def test_namespace_with_http_route(self, tmp_path: Path) -> None:
+        """HTTP routes inside namespace should get namespaced controller_action."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  namespace :admin do
+    get '/dashboard', to: 'dashboard#index'
+  end
+end
+""")
+        result = analyze_ruby(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+
+        assert len(route_symbols) == 1
+        route = route_symbols[0]
+        assert route.meta["controller_action"] == "admin/dashboard#index"
+        assert route.meta["route_path"] == "/admin/dashboard"
+
+    def test_scope_module_resources(self, tmp_path: Path) -> None:
+        """scope module: :admin should prefix controller_action but not URL path."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  scope module: :admin do
+    resources :settings
+  end
+end
+""")
+        result = analyze_ruby(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+
+        assert len(route_symbols) == 7
+
+        routes_by_action = {s.meta["controller_action"]: s for s in route_symbols}
+
+        # scope module: prefixes controller but NOT URL path
+        assert "admin/settings#index" in routes_by_action
+        index_route = routes_by_action["admin/settings#index"]
+        # URL path stays /settings (no /admin prefix)
+        assert index_route.meta["route_path"] == "/settings"
+
+    def test_routes_outside_namespace_not_affected(self, tmp_path: Path) -> None:
+        """Routes outside namespace blocks should not be prefixed."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  namespace :admin do
+    resources :users
+  end
+  resources :posts
+end
+""")
+        result = analyze_ruby(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+
+        # 7 admin routes + 7 post routes = 14
+        assert len(route_symbols) == 14
+
+        routes_by_action = {s.meta["controller_action"]: s for s in route_symbols}
+
+        # Admin routes are prefixed
+        assert "admin/users#index" in routes_by_action
+        # Post routes are NOT prefixed
+        assert "posts#index" in routes_by_action
+
+
+    def test_scope_path_not_treated_as_module(self, tmp_path: Path) -> None:
+        """scope path: '/admin' should NOT prefix controller_action (path-only scope)."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "routes.rb").write_text("""
+Rails.application.routes.draw do
+  scope path: '/admin' do
+    resources :dashboards
+  end
+end
+""")
+        result = analyze_ruby(tmp_path)
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+
+        assert len(route_symbols) == 7
+
+        routes_by_action = {s.meta["controller_action"]: s for s in route_symbols}
+
+        # scope path: does NOT prefix controller (only affects URL)
+        # Since we don't handle scope path: yet, controller stays unprefixed
+        assert "dashboards#index" in routes_by_action
+
+
 class TestRubyBlockCallAttribution:
     """Tests for call edge attribution inside Ruby blocks.
 

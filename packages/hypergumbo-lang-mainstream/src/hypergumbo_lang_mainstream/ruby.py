@@ -345,6 +345,138 @@ def _extract_ruby_signature(
     return f"({params_str})"
 
 
+@dataclass
+class _NamespaceBlock:
+    """A Rails namespace or scope-module block with byte range and prefix."""
+
+    start_byte: int
+    end_byte: int
+    prefix: str
+    prefixes_path: bool  # True for namespace (prefixes URL), False for scope module:
+
+
+def _find_namespace_blocks(
+    root: "tree_sitter.Node",
+    source: bytes,
+) -> list[_NamespaceBlock]:
+    """Pre-scan tree for Rails namespace and scope-module blocks.
+
+    Finds ``namespace :name do ... end`` and ``scope module: :name do ... end``
+    call nodes and records their byte ranges and prefix strings. Supports
+    arbitrarily deep nesting by recursive descent.
+
+    Returns:
+        Flat list of _NamespaceBlock entries. Nesting is determined by
+        containment of byte ranges at query time.
+    """
+    blocks: list[_NamespaceBlock] = []
+
+    for n in iter_tree(root):
+        if n.type != "call":
+            continue
+
+        method_node = None
+        for child in n.children:
+            if child.type == "identifier":
+                method_node = child
+                break
+        if method_node is None:  # pragma: no cover
+            continue
+
+        method_name = _node_text(method_node, source).lower()
+
+        if method_name == "namespace":
+            # namespace :admin do ... end
+            args_node = _find_child_by_field(n, "arguments")
+            if not args_node:  # pragma: no cover - namespace always has arguments
+                continue
+            for arg in args_node.children:
+                if arg.type == "simple_symbol":
+                    ns_name = _node_text(arg, source).strip(":")
+                    # Find the do_block to get the byte range
+                    for child in n.children:
+                        if child.type in ("do_block", "block"):
+                            blocks.append(_NamespaceBlock(
+                                start_byte=child.start_byte,
+                                end_byte=child.end_byte,
+                                prefix=ns_name,
+                                prefixes_path=True,
+                            ))
+                    break
+
+        elif method_name == "scope":
+            # scope module: :admin do ... end
+            args_node = _find_child_by_field(n, "arguments")
+            if not args_node:  # pragma: no cover - scope always has arguments
+                continue
+            for arg in args_node.children:
+                if arg.type == "pair":
+                    # Look for module: :name pattern
+                    # pair children: hash_key_symbol("module"), :, simple_symbol(":admin")
+                    pair_children = list(arg.children)
+                    has_module_key = any(
+                        c.type == "hash_key_symbol"
+                        and _node_text(c, source).strip(":") == "module"
+                        for c in pair_children
+                    )
+                    if not has_module_key:
+                        continue
+                    # Find the value (simple_symbol after the key)
+                    val_node = None
+                    for c in pair_children:
+                        if c.type == "simple_symbol":
+                            text = _node_text(c, source).strip(":")
+                            if text != "module":
+                                val_node = c
+                                break
+                    if val_node is not None:
+                        mod_name = _node_text(val_node, source).strip(":")
+                        for child in n.children:
+                            if child.type in ("do_block", "block"):
+                                blocks.append(_NamespaceBlock(
+                                    start_byte=child.start_byte,
+                                    end_byte=child.end_byte,
+                                    prefix=mod_name,
+                                    prefixes_path=False,
+                                ))
+                        break
+
+    return blocks
+
+
+def _get_namespace_context(
+    node: "tree_sitter.Node",
+    ns_blocks: list[_NamespaceBlock],
+) -> tuple[str, str]:
+    """Determine the namespace prefix for a route call node.
+
+    Checks which namespace blocks contain this node (by byte range) and
+    accumulates their prefixes. Returns separate path_prefix and
+    module_prefix since ``scope module:`` only affects the controller
+    lookup, not the URL path.
+
+    Returns:
+        (path_prefix, module_prefix) where each is a slash-separated
+        prefix string like "admin" or "api/v1", or "" if no namespace.
+    """
+    path_parts: list[str] = []
+    module_parts: list[str] = []
+
+    # Sort by start_byte to get outermost-first ordering
+    containing = [
+        b for b in ns_blocks
+        if b.start_byte <= node.start_byte and node.end_byte <= b.end_byte
+    ]
+    containing.sort(key=lambda b: b.start_byte)
+
+    for block in containing:
+        module_parts.append(block.prefix)
+        if block.prefixes_path:
+            path_parts.append(block.prefix)
+
+    return "/".join(path_parts), "/".join(module_parts)
+
+
 def _extract_rails_routes(
     node: "tree_sitter.Node",
     source: bytes,
@@ -358,8 +490,14 @@ def _extract_rails_routes(
     - Rails: get '/users', to: 'users#index'
     - Rails: post '/login', to: 'sessions#create'
     - Rails: resources :users, resource :profile
+    - Rails: namespace :admin do resources :users end
+    - Rails: scope module: :admin do resources :settings end
     - Sinatra: get '/path' do ... end
     - Sinatra: post '/users' do ... end
+
+    Namespace DSL blocks (``namespace :admin do ... end``) prepend a module
+    path to controller_action and URL path. ``scope module: :name`` only
+    prefixes the controller lookup, not the URL path.
 
     The has_block metadata field distinguishes Sinatra (with block) from Rails (with to: option).
 
@@ -369,6 +507,9 @@ def _extract_rails_routes(
     """
     contexts: list[UsageContext] = []
     route_symbols: list[Symbol] = []
+
+    # Pre-scan for namespace/scope-module blocks
+    ns_blocks = _find_namespace_blocks(node, source)
 
     for n in iter_tree(node):
         if n.type != "call":
@@ -397,6 +538,7 @@ def _extract_rails_routes(
 
         route_path = None
         controller_action = None
+        resource_name = None  # Original resource name before namespace prefix
 
         for arg in args_node.children:
             # String path for HTTP method routes
@@ -407,7 +549,8 @@ def _extract_rails_routes(
                     break
             # Symbol for resources/resource
             elif arg.type == "simple_symbol" and method_name in ("resources", "resource"):
-                route_path = _node_text(arg, source).strip(":")
+                resource_name = _node_text(arg, source).strip(":")
+                route_path = resource_name
                 break
             # Handle "path" => "controller#action" syntax (pair with string key)
             elif arg.type == "pair" and method_name in HTTP_METHODS:
@@ -450,6 +593,20 @@ def _extract_rails_routes(
                 has_block = True
                 break
 
+        # Apply namespace prefix (e.g., namespace :admin do resources :users end)
+        path_prefix, module_prefix = _get_namespace_context(n, ns_blocks)
+
+        # Prefix the URL path for namespace blocks (not for scope module:)
+        if path_prefix:
+            if route_path.startswith("/"):
+                route_path = f"/{path_prefix}{route_path}"
+            else:
+                route_path = f"{path_prefix}/{route_path}"
+
+        # Prefix the controller_action for both namespace and scope module:
+        if module_prefix and controller_action:
+            controller_action = f"{module_prefix}/{controller_action}"
+
         # Build metadata
         http_method = method_name.upper() if method_name in HTTP_METHODS else "RESOURCES"
         metadata: dict[str, str | bool] = {
@@ -459,11 +616,14 @@ def _extract_rails_routes(
         }
         if controller_action:
             metadata["controller_action"] = controller_action
-        elif method_name in ("resources", "resource"):
+        elif method_name in ("resources", "resource") and resource_name is not None:
             # For resources :users, infer controller_action from resource name
             # Rails convention: resources :users → UsersController#index (primary entry)
             # This enables route-handler linking for resource routes
-            metadata["controller_action"] = f"{route_path}#index"
+            if module_prefix:
+                metadata["controller_action"] = f"{module_prefix}/{resource_name}#index"
+            else:
+                metadata["controller_action"] = f"{resource_name}#index"
 
         # Create span
         span = Span(
@@ -502,8 +662,12 @@ def _extract_rails_routes(
                 ("PATCH", f"{normalized_path}/:id", "update"),  # PATCH /users/:id
                 ("DELETE", f"{normalized_path}/:id", "destroy"),  # DELETE /users/:id
             ]
-            # Controller name from resource (users → users)
-            controller_name = route_path
+            # Controller name from resource with namespace prefix
+            # e.g., namespace :admin do resources :users end → admin/users
+            assert resource_name is not None
+            controller_name = (
+                f"{module_prefix}/{resource_name}" if module_prefix else resource_name
+            )
             for http_meth, route_pth, action in restful_routes:
                 route_name = f"{http_meth} {route_pth}"
                 route_id = _make_symbol_id(
@@ -542,7 +706,11 @@ def _extract_rails_routes(
             ]
             # Rails convention: resource :profile → ProfilesController (pluralized)
             # Don't double the 's' if name already ends in 's' (audit_logs, settings)
-            controller_name = route_path if route_path.endswith("s") else f"{route_path}s"
+            assert resource_name is not None
+            base_name = resource_name if resource_name.endswith("s") else f"{resource_name}s"
+            controller_name = (
+                f"{module_prefix}/{base_name}" if module_prefix else base_name
+            )
             for http_meth, route_pth, action in restful_routes:
                 route_name = f"{http_meth} {route_pth}"
                 route_id = _make_symbol_id(

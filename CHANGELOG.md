@@ -23,6 +23,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Java improvements**: Inherited method fallback (edges to class symbol when method unresolvable) and array initializer annotation path unwrapping.
 - **Chained member access call resolution**: `this.field.method()` / `self.field.method()` call graph extraction fixed in Kotlin, C#, Scala, and Python.
 - **Route path prefix inheritance**: Class-level route annotations now correctly combine with method-level annotations in Spring Boot, JAX-RS, Micronaut, and ASP.NET.
+- **Rails namespace-aware route extraction**: `namespace :admin do resources :users end` correctly generates `admin/users#index` controller_action and `/admin/users` URL paths. Supports nested namespaces (`api/v1/posts#index`) and `scope module:` (controller prefix without URL prefix).
 - **Django & Flask framework patterns**: Django template tags/filters and signal receivers; Flask Jinja2 customizations, Blinker signals, and Flask-RESTful support.
 - **Framework detection for 16 additional languages**: Haskell, Clojure, R, Lua, C++, Erlang, F#, Kotlin, C#, Dart, Julia, OCaml, Nim, Zig, D, Groovy.
 - **Test framework patterns for 16 additional languages**: Elixir, Scala, Dart, Clojure, Haskell, Erlang, F#, Ruby, Julia, OCaml, Lua, R, Nim, Zig, D, Groovy.
