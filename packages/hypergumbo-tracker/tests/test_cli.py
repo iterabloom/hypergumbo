@@ -10,10 +10,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import textwrap
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -21,12 +22,14 @@ from hypergumbo_tracker.cli import (
     EXIT_INTERNAL_ERROR,
     EXIT_SUCCESS,
     EXIT_USER_ERROR,
+    _MUTATION_COMMANDS,
     _build_parser,
     _detect_screen_altscreen_off,
     _find_tracker_root,
     _format_item_full,
     _format_item_short,
     _item_to_dict,
+    _maybe_auto_sync,
     _print_screen_warning,
     main,
     textconv_main,
@@ -1782,3 +1785,356 @@ class TestCheckMessages:
         ids = [item["id"] for item in data]
         assert "WI-ws" in ids
         assert "WI-can" not in ids
+
+
+# ---------------------------------------------------------------------------
+# Auto-sync
+# ---------------------------------------------------------------------------
+
+
+def _make_completed_process(
+    stdout: str = "",
+    stderr: str = "",
+    returncode: int = 0,
+) -> subprocess.CompletedProcess[str]:
+    """Build a CompletedProcess for mocking subprocess.run."""
+    return subprocess.CompletedProcess(
+        args=["git"],
+        returncode=returncode,
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+
+class TestAutoSync:
+    """Tests for _maybe_auto_sync and its wiring into main()."""
+
+    def test_mutation_command_triggers_check(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A mutation command (add) calls _maybe_auto_sync on success."""
+        tracker_root = _setup_tracker(tmp_path)
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "0")  # disabled
+        with patch(
+            "hypergumbo_tracker.cli._maybe_auto_sync",
+        ) as mock_sync:
+            with pytest.raises(SystemExit) as exc:
+                main([
+                    "--tracker-root", str(tracker_root),
+                    "add", "--kind", "work_item", "--title", "T",
+                ])
+            assert exc.value.code == EXIT_SUCCESS
+            mock_sync.assert_called_once_with(tracker_root)
+
+    def test_read_command_skips_auto_sync(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """A read-only command (list) does not call _maybe_auto_sync."""
+        tracker_root = _setup_tracker(tmp_path)
+        with patch(
+            "hypergumbo_tracker.cli._maybe_auto_sync",
+        ) as mock_sync:
+            with pytest.raises(SystemExit) as exc:
+                main(["--tracker-root", str(tracker_root), "list"])
+            assert exc.value.code == EXIT_SUCCESS
+            mock_sync.assert_not_called()
+
+    def test_no_auto_sync_flag(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """--no-auto-sync prevents the check even for mutation commands."""
+        tracker_root = _setup_tracker(tmp_path)
+        with patch(
+            "hypergumbo_tracker.cli._maybe_auto_sync",
+        ) as mock_sync:
+            with pytest.raises(SystemExit) as exc:
+                main([
+                    "--tracker-root", str(tracker_root),
+                    "--no-auto-sync",
+                    "add", "--kind", "work_item", "--title", "T",
+                ])
+            assert exc.value.code == EXIT_SUCCESS
+            mock_sync.assert_not_called()
+
+    def test_failed_command_skips_auto_sync(
+        self, tmp_path: Path, mock_agent_uid: None,
+    ) -> None:
+        """A failed mutation command (exit != 0) skips auto-sync."""
+        tracker_root = _setup_tracker(tmp_path)
+        with patch(
+            "hypergumbo_tracker.cli._maybe_auto_sync",
+        ) as mock_sync:
+            with pytest.raises(SystemExit) as exc:
+                main([
+                    "--tracker-root", str(tracker_root),
+                    "update", "WI-nonexistent", "--status", "done",
+                ])
+            assert exc.value.code != EXIT_SUCCESS
+            mock_sync.assert_not_called()
+
+    def test_threshold_zero_disables(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """TRACKER_AUTO_SYNC_THRESHOLD=0 disables auto-sync."""
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "0")
+        # Should return immediately without calling pending_sync_lines
+        with patch(
+            "hypergumbo_tracker.sync.pending_sync_lines",
+        ) as mock_psl:
+            _maybe_auto_sync(tmp_path)
+            mock_psl.assert_not_called()
+
+    def test_below_threshold_no_sync(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Lines below threshold: no sync triggered."""
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "50")
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed_process(
+                stdout=str(tmp_path)
+            )
+            with patch(
+                "hypergumbo_tracker.sync.pending_sync_lines",
+                return_value=10,
+            ) as mock_psl:
+                with patch(
+                    "hypergumbo_tracker.sync.preflight_check",
+                ) as mock_pre:
+                    _maybe_auto_sync(tmp_path)
+                    mock_psl.assert_called_once()
+                    mock_pre.assert_not_called()
+
+    def test_above_threshold_triggers_sync(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ) -> None:
+        """Lines above threshold: preflight + do_sync are called."""
+        from hypergumbo_tracker.sync import PreflightResult, SyncResult
+
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "10")
+
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir(exist_ok=True)
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed_process(
+                stdout=str(tmp_path)
+            )
+            with patch(
+                "hypergumbo_tracker.sync.pending_sync_lines",
+                return_value=15,
+            ):
+                with patch(
+                    "hypergumbo_tracker.sync.preflight_check",
+                ) as mock_pre:
+                    mock_pre.return_value = PreflightResult(
+                        ok=True,
+                        repo_root=tmp_path,
+                        git_dir=git_dir,
+                        original_branch="dev",
+                        changed_files=[".agent/tracker/.ops/.WI-x.ops"],
+                        api_base="https://codeberg.org/api/v1/repos/o/r",
+                        forgejo_user="user",
+                        forgejo_token="tok",
+                    )
+                    with patch(
+                        "hypergumbo_tracker.sync.do_sync",
+                    ) as mock_sync:
+                        mock_sync.return_value = SyncResult(
+                            success=True, pr_number=99,
+                            files_synced=1, exit_code=0,
+                        )
+                        _maybe_auto_sync(tmp_path)
+                        mock_sync.assert_called_once()
+
+        captured = capsys.readouterr()
+        assert "auto-sync:" in captured.err
+        assert "15 lines" in captured.err
+        assert "PR #99" in captured.err
+
+    def test_preflight_failure_warns(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ) -> None:
+        """Preflight failure prints warning but doesn't raise."""
+        from hypergumbo_tracker.sync import PreflightResult
+
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "5")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed_process(
+                stdout=str(tmp_path)
+            )
+            with patch(
+                "hypergumbo_tracker.sync.pending_sync_lines",
+                return_value=100,
+            ):
+                with patch(
+                    "hypergumbo_tracker.sync.preflight_check",
+                ) as mock_pre:
+                    mock_pre.return_value = PreflightResult(
+                        ok=False, error="auto-pr in flight",
+                    )
+                    _maybe_auto_sync(tmp_path)
+
+        captured = capsys.readouterr()
+        assert "preflight failed" in captured.err
+        assert "auto-pr in flight" in captured.err
+
+    def test_sync_failure_warns(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ) -> None:
+        """Sync failure prints warning but doesn't raise."""
+        from hypergumbo_tracker.sync import PreflightResult, SyncResult
+
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "5")
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir(exist_ok=True)
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed_process(
+                stdout=str(tmp_path)
+            )
+            with patch(
+                "hypergumbo_tracker.sync.pending_sync_lines",
+                return_value=100,
+            ):
+                with patch(
+                    "hypergumbo_tracker.sync.preflight_check",
+                ) as mock_pre:
+                    mock_pre.return_value = PreflightResult(
+                        ok=True,
+                        repo_root=tmp_path,
+                        git_dir=git_dir,
+                        original_branch="dev",
+                        changed_files=[".agent/tracker/.ops/.WI-x.ops"],
+                        api_base="https://codeberg.org/api/v1/repos/o/r",
+                        forgejo_user="u",
+                        forgejo_token="t",
+                    )
+                    with patch(
+                        "hypergumbo_tracker.sync.do_sync",
+                    ) as mock_sync:
+                        mock_sync.return_value = SyncResult(
+                            success=False, error="CI failed", exit_code=1,
+                        )
+                        _maybe_auto_sync(tmp_path)
+
+        captured = capsys.readouterr()
+        assert "sync failed" in captured.err
+
+    def test_exception_swallowed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ) -> None:
+        """Unexpected exceptions are caught and logged."""
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "5")
+
+        with patch("subprocess.run", side_effect=RuntimeError("boom")):
+            _maybe_auto_sync(tmp_path)
+
+        captured = capsys.readouterr()
+        assert "unexpected error" in captured.err
+        assert "boom" in captured.err
+
+    def test_git_rev_parse_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """If git rev-parse --show-toplevel fails, returns silently."""
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "5")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed_process(returncode=1)
+            with patch(
+                "hypergumbo_tracker.sync.pending_sync_lines",
+            ) as mock_psl:
+                _maybe_auto_sync(tmp_path)
+                mock_psl.assert_not_called()
+
+    def test_invalid_threshold_uses_default(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Non-integer threshold falls back to default."""
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "not_a_number")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed_process(
+                stdout=str(tmp_path)
+            )
+            with patch(
+                "hypergumbo_tracker.sync.pending_sync_lines",
+                return_value=10,
+            ) as mock_psl:
+                # Default is 50, 10 < 50, so no sync
+                _maybe_auto_sync(tmp_path)
+                mock_psl.assert_called_once()
+
+    def test_preflight_ok_but_no_changed_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Preflight passes but no changed files — do_sync not called."""
+        from hypergumbo_tracker.sync import PreflightResult
+
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "5")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = _make_completed_process(
+                stdout=str(tmp_path)
+            )
+            with patch(
+                "hypergumbo_tracker.sync.pending_sync_lines",
+                return_value=100,
+            ):
+                with patch(
+                    "hypergumbo_tracker.sync.preflight_check",
+                ) as mock_pre:
+                    mock_pre.return_value = PreflightResult(
+                        ok=True,
+                        repo_root=tmp_path,
+                        git_dir=tmp_path / ".git",
+                        original_branch="dev",
+                        changed_files=[],
+                    )
+                    with patch(
+                        "hypergumbo_tracker.sync.do_sync",
+                    ) as mock_sync:
+                        _maybe_auto_sync(tmp_path)
+                        mock_sync.assert_not_called()
+
+    def test_tui_triggers_auto_sync(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """TUI is a mutation command, so auto-sync check runs after."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "0")
+
+        with patch(
+            "hypergumbo_tracker.cli._detect_screen_altscreen_off",
+            return_value=False,
+        ), patch(
+            "hypergumbo_tracker.tui.TrackerApp.run",
+        ), patch(
+            "hypergumbo_tracker.cli._maybe_auto_sync",
+        ) as mock_sync:
+            with pytest.raises(SystemExit) as exc:
+                main(["--tracker-root", str(tracker_root), "tui"])
+            assert exc.value.code == EXIT_SUCCESS
+            mock_sync.assert_called_once_with(tracker_root)
+
+    def test_mutation_commands_set(self) -> None:
+        """_MUTATION_COMMANDS contains expected commands."""
+        assert "add" in _MUTATION_COMMANDS
+        assert "update" in _MUTATION_COMMANDS
+        assert "discuss" in _MUTATION_COMMANDS
+        assert "tui" in _MUTATION_COMMANDS
+        # Read-only commands should NOT be in the set
+        assert "list" not in _MUTATION_COMMANDS
+        assert "show" not in _MUTATION_COMMANDS
+        assert "ready" not in _MUTATION_COMMANDS
+        assert "sync" not in _MUTATION_COMMANDS

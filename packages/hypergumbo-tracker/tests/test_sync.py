@@ -35,7 +35,9 @@ from hypergumbo_tracker.sync import (
     _load_env,
     _merge_pr,
     _poll_ci,
+    _sum_added_lines,
     do_sync,
+    pending_sync_lines,
     preflight_check,
 )
 
@@ -1579,6 +1581,154 @@ class TestCmdSync:
             call_kwargs = mock_sync.call_args
             assert call_kwargs.kwargs["base_branch"] == "main"
             assert call_kwargs.kwargs["ci_timeout"] == 600
+
+
+# ---------------------------------------------------------------------------
+# TestSumAddedLines
+# ---------------------------------------------------------------------------
+
+
+class TestSumAddedLines:
+    """Tests for _sum_added_lines — git diff --numstat parser."""
+
+    def test_normal_output(self) -> None:
+        output = "10\t5\t.agent/tracker/.ops/.WI-a.ops\n3\t0\t.agent/tracker/.ops/.WI-b.ops\n"
+        assert _sum_added_lines(output) == 13
+
+    def test_empty_output(self) -> None:
+        assert _sum_added_lines("") == 0
+
+    def test_binary_file_skipped(self) -> None:
+        output = "-\t-\tbinary_file.bin\n5\t2\tnormal.txt\n"
+        assert _sum_added_lines(output) == 5
+
+    def test_malformed_input(self) -> None:
+        output = "not a number\t0\tfile.txt\nok\n"
+        assert _sum_added_lines(output) == 0
+
+    def test_short_lines_ignored(self) -> None:
+        output = "incomplete\n5\t2\tgood.txt\n"
+        assert _sum_added_lines(output) == 5
+
+
+# ---------------------------------------------------------------------------
+# TestPendingSyncLines
+# ---------------------------------------------------------------------------
+
+
+class TestPendingSyncLines:
+    """Tests for pending_sync_lines — counts pending tracker ops lines."""
+
+    @patch("hypergumbo_tracker.sync._git")
+    def test_with_changes(
+        self, mock_git: MagicMock, tmp_path: Path,
+    ) -> None:
+        mock_git.side_effect = [
+            _make_completed_process(
+                stdout="10\t2\t.agent/tracker/.ops/.WI-a.ops\n"
+            ),  # diff HEAD --numstat
+            _make_completed_process(stdout=""),  # ls-files
+        ]
+        assert pending_sync_lines(tmp_path) == 10
+
+    @patch("hypergumbo_tracker.sync._git")
+    def test_no_changes(
+        self, mock_git: MagicMock, tmp_path: Path,
+    ) -> None:
+        mock_git.side_effect = [
+            _make_completed_process(stdout=""),  # diff HEAD
+            _make_completed_process(stdout=""),  # ls-files
+        ]
+        assert pending_sync_lines(tmp_path) == 0
+
+    @patch("hypergumbo_tracker.sync._git")
+    def test_git_failure(
+        self, mock_git: MagicMock, tmp_path: Path,
+    ) -> None:
+        mock_git.side_effect = [
+            _make_completed_process(returncode=1),  # diff HEAD fails
+            _make_completed_process(returncode=1),  # ls-files fails
+        ]
+        assert pending_sync_lines(tmp_path) == 0
+
+    @patch("hypergumbo_tracker.sync._git")
+    def test_untracked_files(
+        self, mock_git: MagicMock, tmp_path: Path,
+    ) -> None:
+        # Create an untracked ops file
+        ops_dir = tmp_path / ".agent" / "tracker" / ".ops"
+        ops_dir.mkdir(parents=True)
+        ops_file = ops_dir / ".WI-new.ops"
+        ops_file.write_text("line1\nline2\nline3\n")
+
+        mock_git.side_effect = [
+            _make_completed_process(stdout=""),  # diff HEAD (no tracked changes)
+            _make_completed_process(
+                stdout=".agent/tracker/.ops/.WI-new.ops\n"
+            ),  # ls-files
+        ]
+        assert pending_sync_lines(tmp_path) == 3
+
+    @patch("hypergumbo_tracker.sync._git")
+    def test_combined_tracked_and_untracked(
+        self, mock_git: MagicMock, tmp_path: Path,
+    ) -> None:
+        # Create an untracked file
+        ops_dir = tmp_path / ".agent" / "tracker-workspace" / ".ops"
+        ops_dir.mkdir(parents=True)
+        (ops_dir / ".WI-u.ops").write_text("a\nb\n")
+
+        mock_git.side_effect = [
+            _make_completed_process(
+                stdout="5\t0\t.agent/tracker/.ops/.WI-t.ops\n"
+            ),  # tracked changes
+            _make_completed_process(
+                stdout=".agent/tracker-workspace/.ops/.WI-u.ops\n"
+            ),  # untracked
+        ]
+        assert pending_sync_lines(tmp_path) == 7
+
+    @patch("hypergumbo_tracker.sync._git")
+    def test_untracked_file_missing(
+        self, mock_git: MagicMock, tmp_path: Path,
+    ) -> None:
+        """ls-files lists a file that doesn't exist on disk (race condition)."""
+        mock_git.side_effect = [
+            _make_completed_process(stdout=""),
+            _make_completed_process(
+                stdout=".agent/tracker/.ops/.WI-gone.ops\n"
+            ),
+        ]
+        # File doesn't exist, so is_file() returns False; counted as 0
+        assert pending_sync_lines(tmp_path) == 0
+
+    @patch("hypergumbo_tracker.sync._git")
+    def test_untracked_file_oserror(
+        self, mock_git: MagicMock, tmp_path: Path,
+    ) -> None:
+        """OSError reading an untracked file is silently skipped."""
+        ops_dir = tmp_path / ".agent" / "tracker" / ".ops"
+        ops_dir.mkdir(parents=True)
+        ops_file = ops_dir / ".WI-err.ops"
+        ops_file.write_text("line1\n")
+
+        mock_git.side_effect = [
+            _make_completed_process(stdout=""),  # diff HEAD
+            _make_completed_process(
+                stdout=".agent/tracker/.ops/.WI-err.ops\n"
+            ),  # ls-files
+        ]
+
+        original_read = Path.read_text
+
+        def failing_read(self_path: Path, *a: Any, **kw: Any) -> str:
+            if self_path.name == ".WI-err.ops":
+                raise OSError("permission denied")
+            return original_read(self_path, *a, **kw)
+
+        with patch.object(Path, "read_text", failing_read):
+            result = pending_sync_lines(tmp_path)
+        assert result == 0
 
 
 # ---------------------------------------------------------------------------

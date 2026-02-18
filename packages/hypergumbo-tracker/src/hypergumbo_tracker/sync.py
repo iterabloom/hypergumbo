@@ -6,6 +6,10 @@ files via a lightweight PR workflow: branch → commit → push → poll CI →
 merge → cleanup.  Completes in ~45-60 seconds vs ~3.5 minutes for the
 general-purpose ``auto-pr`` script.
 
+Also provides ``pending_sync_lines()`` for auto-sync: counts pending
+uncommitted ops-file changes so the CLI can trigger sync after a
+configurable threshold of accumulated changes.
+
 Design:
 - All git calls go through ``_git()`` for testability (single mock point).
 - All Forgejo API calls go through ``_api_call()`` using only stdlib
@@ -363,14 +367,77 @@ def _merge_pr(
 _TRACKER_PATHS = (
     ".agent/tracker/.ops/",
     ".agent/tracker-workspace/.ops/",
-    ".agent/tracker-workspace/tui_preferences.json",
 )
 
 _TRACKER_PATH_RE = re.compile(
-    r"^\.agent/tracker(-workspace)?/("
-    r"\.ops/|tui_preferences\.json"
-    r")"
+    r"^\.agent/tracker(-workspace)?/\.ops/"
 )
+
+_OPS_PATHS = (
+    ".agent/tracker/.ops/",
+    ".agent/tracker-workspace/.ops/",
+)
+
+AUTO_SYNC_DEFAULT_THRESHOLD = 50
+
+
+def _sum_added_lines(numstat_output: str) -> int:
+    """Parse ``git diff --numstat`` output and sum the 'added' column.
+
+    Each line has the format ``<added>\\t<deleted>\\t<path>``.
+    Binary files show ``-`` instead of numbers; they are skipped.
+    Malformed lines are silently ignored.
+
+    Returns:
+        Total number of added lines across all entries.
+    """
+    total = 0
+    for line in numstat_output.splitlines():
+        parts = line.split("\t", 2)
+        if len(parts) < 2:
+            continue
+        added = parts[0]
+        if added == "-":
+            continue
+        try:
+            total += int(added)
+        except ValueError:
+            continue
+    return total
+
+
+def pending_sync_lines(repo_root: Path) -> int:
+    """Count pending tracker ops lines (staged + unstaged + untracked).
+
+    Uses ``git diff HEAD --numstat`` for tracked file changes, plus
+    ``git ls-files --others --exclude-standard`` for new untracked ops
+    files (counts their line count directly).
+
+    Returns 0 if git fails or no changes exist.
+    """
+    total = 0
+
+    # 1. Tracked changes (staged + unstaged) relative to HEAD
+    numstat_args = ["diff", "HEAD", "--numstat", "--"]
+    numstat_args.extend(_OPS_PATHS)
+    result = _git(repo_root, *numstat_args, check=False)
+    if result.returncode == 0 and result.stdout.strip():
+        total += _sum_added_lines(result.stdout)
+
+    # 2. Untracked files in ops directories
+    untracked_args = ["ls-files", "--others", "--exclude-standard", "--"]
+    untracked_args.extend(_OPS_PATHS)
+    result = _git(repo_root, *untracked_args, check=False)
+    if result.returncode == 0 and result.stdout.strip():
+        for fpath in result.stdout.strip().splitlines():
+            full = repo_root / fpath
+            if full.is_file():
+                try:
+                    total += len(full.read_text().splitlines())
+                except OSError:
+                    pass
+
+    return total
 
 
 def preflight_check(repo_root: Path) -> PreflightResult:

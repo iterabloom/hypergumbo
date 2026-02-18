@@ -68,6 +68,17 @@ EXIT_INTERNAL_ERROR = 2
 
 
 # ---------------------------------------------------------------------------
+# Auto-sync constants
+# ---------------------------------------------------------------------------
+
+_MUTATION_COMMANDS: frozenset[str] = frozenset({
+    "add", "update", "discuss", "lock", "unlock",
+    "promote", "demote", "stealth", "unstealth",
+    "reconcile-reset", "fork-setup", "tui",
+})
+
+
+# ---------------------------------------------------------------------------
 # Cache directory discovery
 # ---------------------------------------------------------------------------
 
@@ -925,6 +936,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--json", action="store_true", default=False,
         help="Machine-readable JSON output",
     )
+    parser.add_argument(
+        "--no-auto-sync", dest="no_auto_sync", action="store_true",
+        default=False,
+        help="Disable auto-sync check after mutation commands",
+    )
 
     sub = parser.add_subparsers(dest="command")
 
@@ -1106,6 +1122,88 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 # ---------------------------------------------------------------------------
+# Auto-sync
+# ---------------------------------------------------------------------------
+
+
+def _maybe_auto_sync(tracker_root: Path) -> None:
+    """Check if pending tracker ops exceed the threshold and trigger sync.
+
+    Reads the threshold from ``TRACKER_AUTO_SYNC_THRESHOLD`` env var
+    (default: 50, 0 = disabled).  Runs ``preflight_check()`` and
+    ``do_sync()`` if the threshold is exceeded.  All output goes to stderr
+    to preserve ``--json`` stdout.  Exceptions are caught and logged — this
+    function never raises.
+    """
+    from hypergumbo_tracker.sync import (
+        AUTO_SYNC_DEFAULT_THRESHOLD,
+        do_sync,
+        pending_sync_lines,
+        preflight_check,
+    )
+
+    try:
+        threshold_str = os.environ.get(
+            "TRACKER_AUTO_SYNC_THRESHOLD",
+            str(AUTO_SYNC_DEFAULT_THRESHOLD),
+        )
+        try:
+            threshold = int(threshold_str)
+        except ValueError:
+            threshold = AUTO_SYNC_DEFAULT_THRESHOLD
+
+        if threshold <= 0:
+            return
+
+        # Find repo root
+        result = subprocess.run(  # nosec B603, B607
+            ["git", "rev-parse", "--show-toplevel"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return
+        repo_root = Path(result.stdout.strip())
+
+        lines = pending_sync_lines(repo_root)
+        if lines < threshold:
+            return
+
+        print(
+            f"auto-sync: {lines} lines of tracker changes exceed "
+            f"threshold ({threshold}), syncing...",
+            file=sys.stderr,
+        )
+
+        pre = preflight_check(repo_root)
+        if not pre.ok:
+            print(
+                f"auto-sync: preflight failed: {pre.error}",
+                file=sys.stderr,
+            )
+            return
+
+        if not pre.changed_files:
+            return
+
+        sync_result = do_sync(repo_root=repo_root, preflight=pre)
+        if sync_result.success:
+            print(
+                f"auto-sync: synced {sync_result.files_synced} file(s) "
+                f"via PR #{sync_result.pr_number}",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"auto-sync: sync failed: {sync_result.error}",
+                file=sys.stderr,
+            )
+    except Exception as e:
+        print(f"auto-sync: unexpected error: {e}", file=sys.stderr)
+
+
+# ---------------------------------------------------------------------------
 # Main entry points
 # ---------------------------------------------------------------------------
 
@@ -1206,6 +1304,13 @@ def main(argv: list[str] | None = None) -> None:
     except Exception as e:
         print(f"error: {e}", file=sys.stderr)
         raise SystemExit(EXIT_INTERNAL_ERROR) from e
+
+    if (
+        exit_code == EXIT_SUCCESS
+        and args.command in _MUTATION_COMMANDS
+        and not args.no_auto_sync
+    ):
+        _maybe_auto_sync(tracker_root)
 
     raise SystemExit(exit_code)
 

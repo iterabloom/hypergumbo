@@ -6,7 +6,6 @@ on:
     paths:
       - '.agent/tracker/.ops/**'
       - '.agent/tracker-workspace/.ops/**'
-      - '.agent/tracker-workspace/tui_preferences.json'
 
 jobs:
   tracker-ci:
