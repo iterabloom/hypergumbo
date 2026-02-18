@@ -15,6 +15,10 @@ How It Works
 3. Looks up the parent symbol and creates a `contains` edge
 4. Handles nested types: Outer.Inner.method → Inner contains method
 5. Handles module nesting: Postal::MessageDB → Postal contains MessageDB
+6. **Span fallback**: When naming conventions fail (unqualified names),
+   checks if any container symbol in the same file has a span that fully
+   encloses the unqualified symbol.  Prefers the tightest (smallest span)
+   enclosing container.
 
 Naming Conventions by Language
 ------------------------------
@@ -22,6 +26,14 @@ Naming Conventions by Language
 - Ruby instance methods use `#`: ClassName#method_name
 - Ruby/Elixir modules use `::`: Postal::HTTP, MyApp.Repo
 - Rust uses `::`: ImplTarget::method_name
+
+Span-Based Fallback
+-------------------
+Ruby analyzers sometimes emit unqualified names: ``module Postal; class HTTP``
+produces "Postal" (module) and "HTTP" (class) instead of "Postal::HTTP".  The
+naming convention approach cannot link these because ``_extract_parent_name("HTTP")``
+returns None.  The span fallback handles this by checking if any container in the
+same file encloses the symbol's line range.
 
 Why a Linker Instead of Per-Analyzer Logic
 -----------------------------------------
@@ -166,6 +178,63 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
             evidence_type="naming_convention",
         ))
         # Track to avoid duplicates within this run
+        existing_contains.add(pair)
+
+    # --- Phase 2: Span-based fallback for unqualified names ---
+    # Handles cases where analyzers emit unqualified names (e.g., Ruby
+    # analyzer emits "HTTP" instead of "Postal::HTTP").  For each symbol
+    # that wasn't connected by naming convention, check if any container
+    # in the same file has a span that fully encloses it.
+    containers_by_file: dict[str, list[Symbol]] = {}
+    for sym in ctx.symbols:
+        if sym.kind in CONTAINER_KINDS and sym.span is not None:
+            containers_by_file.setdefault(sym.path, []).append(sym)
+
+    for sym in ctx.symbols:
+        if sym.kind not in CONTAINABLE_KINDS and sym.kind not in CONTAINER_KINDS:
+            continue
+        if sym.span is None:
+            continue
+
+        # Skip if naming convention already found a parent
+        parent_name = _extract_parent_name(sym.name)
+        if parent_name is not None:
+            continue
+
+        # Find the tightest enclosing container in the same file
+        file_containers = containers_by_file.get(sym.path, [])
+        best: Symbol | None = None
+        best_span_size = float("inf")
+        for container in file_containers:
+            if container.id == sym.id:
+                continue
+            assert container.span is not None  # guaranteed by filter above
+            if (
+                container.span.start_line <= sym.span.start_line
+                and sym.span.end_line <= container.span.end_line
+            ):
+                span_size = container.span.end_line - container.span.start_line
+                if span_size < best_span_size:
+                    best = container
+                    best_span_size = span_size
+
+        if best is None:
+            continue
+
+        pair = (best.id, sym.id)
+        if pair in existing_contains:
+            continue
+
+        edges.append(Edge.create(
+            src=best.id,
+            dst=sym.id,
+            edge_type="contains",
+            line=sym.span.start_line,
+            confidence=0.9,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            evidence_type="span_overlap",
+        ))
         existing_contains.add(pair)
 
     run.duration_ms = int((time.time() - start_time) * 1000)

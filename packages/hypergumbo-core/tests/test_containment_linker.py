@@ -675,3 +675,186 @@ class TestModuleContainment:
         assert len(contains) == 1
         assert contains[0].src == mod.id
         assert contains[0].dst == method.id
+
+
+class TestSpanBasedContainment:
+    """Tests for span-based containment fallback.
+
+    When a symbol has an unqualified name (no :: or . separator), the naming
+    convention approach cannot find its parent.  The span-based fallback checks
+    if any container symbol in the same file has a span that fully encloses the
+    unqualified symbol's span.
+    """
+
+    def test_span_containment_module_class(self) -> None:
+        """Module contains class when spans overlap and names are unqualified."""
+        mod = _sym(
+            "ruby:lib/postal.rb:1-50:Postal:module",
+            "Postal", "module", language="ruby", path="lib/postal.rb",
+            start=1, end=50,
+        )
+        cls = _sym(
+            "ruby:lib/postal.rb:5-25:HTTP:class",
+            "HTTP", "class", language="ruby", path="lib/postal.rb",
+            start=5, end=25,
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[mod, cls], edges=[],
+        )
+        result = link_containment(ctx)
+
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 1
+        assert contains[0].src == mod.id
+        assert contains[0].dst == cls.id
+        assert contains[0].evidence_type == "span_overlap"
+
+    def test_span_containment_module_method(self) -> None:
+        """Module contains method when names are unqualified and spans overlap."""
+        mod = _sym(
+            "ruby:lib/helpers.rb:1-30:Helpers:module",
+            "Helpers", "module", language="ruby", path="lib/helpers.rb",
+            start=1, end=30,
+        )
+        method = _sym(
+            "ruby:lib/helpers.rb:5-10:format:method",
+            "format", "method", language="ruby", path="lib/helpers.rb",
+            start=5, end=10,
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[mod, method], edges=[],
+        )
+        result = link_containment(ctx)
+
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 1
+        assert contains[0].src == mod.id
+        assert contains[0].dst == method.id
+
+    def test_span_containment_prefers_tightest_container(self) -> None:
+        """When nested containers both enclose a symbol, pick the tightest one."""
+        outer = _sym(
+            "ruby:lib/postal.rb:1-100:Postal:module",
+            "Postal", "module", language="ruby", path="lib/postal.rb",
+            start=1, end=100,
+        )
+        inner = _sym(
+            "ruby:lib/postal.rb:10-50:MessageDB:module",
+            "MessageDB", "module", language="ruby", path="lib/postal.rb",
+            start=10, end=50,
+        )
+        cls = _sym(
+            "ruby:lib/postal.rb:15-30:Database:class",
+            "Database", "class", language="ruby", path="lib/postal.rb",
+            start=15, end=30,
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[outer, inner, cls], edges=[],
+        )
+        result = link_containment(ctx)
+
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        # outer → inner (span), inner → cls (span)
+        assert len(contains) == 2
+        inner_to_cls = [e for e in contains if e.dst == cls.id]
+        assert len(inner_to_cls) == 1
+        assert inner_to_cls[0].src == inner.id
+
+    def test_span_containment_different_file_no_match(self) -> None:
+        """Span overlap only applies within the same file."""
+        mod = _sym(
+            "ruby:lib/postal.rb:1-50:Postal:module",
+            "Postal", "module", language="ruby", path="lib/postal.rb",
+            start=1, end=50,
+        )
+        cls = _sym(
+            "ruby:lib/other.rb:5-25:HTTP:class",
+            "HTTP", "class", language="ruby", path="lib/other.rb",
+            start=5, end=25,
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[mod, cls], edges=[],
+        )
+        result = link_containment(ctx)
+
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 0
+
+    def test_span_containment_no_span_no_match(self) -> None:
+        """Symbols without span data don't participate in span containment."""
+        mod = Symbol(
+            id="ruby:lib/postal.rb:1-50:Postal:module",
+            name="Postal", kind="module", language="ruby",
+            path="lib/postal.rb",
+            span=Span(start_line=1, end_line=50, start_col=0, end_col=0),
+            origin="test", origin_run_id="test-run",
+        )
+        cls = Symbol(
+            id="ruby:lib/postal.rb:5-25:HTTP:class",
+            name="HTTP", kind="class", language="ruby",
+            path="lib/postal.rb",
+            span=None,
+            origin="test", origin_run_id="test-run",
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[mod, cls], edges=[],
+        )
+        result = link_containment(ctx)
+
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 0
+
+    def test_span_containment_naming_convention_takes_priority(self) -> None:
+        """When naming convention works, span fallback is not needed."""
+        mod = _sym(
+            "ruby:lib/postal.rb:1-50:Postal:module",
+            "Postal", "module", language="ruby", path="lib/postal.rb",
+            start=1, end=50,
+        )
+        cls = _sym(
+            "ruby:lib/postal.rb:5-25:Postal::HTTP:class",
+            "Postal::HTTP", "class", language="ruby", path="lib/postal.rb",
+            start=5, end=25,
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[mod, cls], edges=[],
+        )
+        result = link_containment(ctx)
+
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 1
+        assert contains[0].src == mod.id
+        assert contains[0].dst == cls.id
+        assert contains[0].evidence_type == "naming_convention"
+
+    def test_span_containment_dedup_with_existing_edges(self) -> None:
+        """Span containment doesn't duplicate edges already in ctx.edges."""
+        mod = _sym(
+            "ruby:lib/postal.rb:1-50:Postal:module",
+            "Postal", "module", language="ruby", path="lib/postal.rb",
+            start=1, end=50,
+        )
+        cls = _sym(
+            "ruby:lib/postal.rb:5-25:HTTP:class",
+            "HTTP", "class", language="ruby", path="lib/postal.rb",
+            start=5, end=25,
+        )
+
+        existing_edge = Edge.create(
+            src=mod.id, dst=cls.id, edge_type="contains",
+            line=5, confidence=1.0, origin="test", origin_run_id="test-run",
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[mod, cls], edges=[existing_edge],
+        )
+        result = link_containment(ctx)
+
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        assert len(contains) == 0
