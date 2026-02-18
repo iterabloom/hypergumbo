@@ -49,3 +49,10 @@
   clock: 6  # 8a46
   nonce: 8a46  # 8a46
   message: "D module system: Each file defines a module based on its path (std/algorithm.d -> std.algorithm). Public symbols are exported by default unless marked private. The cross-file resolver needs to build a module-to-symbol map from the filesystem layout."  # 8a46
+- op: discuss  # 85a8
+  at: '2026-02-18T14:41:45Z'  # 85a8
+  by: agent  # 85a8
+  actor: jgstern_agent  # 85a8
+  clock: 7  # 85a8
+  nonce: 85a8  # 85a8
+  message: "D also supports selective imports (import std.algorithm : sort) and renamed imports (import io = std.stdio). The cross-file resolver needs to track both the module path and the specific imported symbols."  # 85a8

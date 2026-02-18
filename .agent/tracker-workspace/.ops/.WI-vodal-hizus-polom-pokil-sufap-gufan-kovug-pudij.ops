@@ -56,3 +56,10 @@
   clock: 8  # 6cf4
   nonce: 6cf4  # 6cf4
   message: "Concrete proposal: Add an optional --alias flag to bakeoff-features init that assigns a short human-readable name (e.g. deep-chatwoot-1) alongside the timestamp directory. The alias would be a symlink in the artifacts directory."  # 6cf4
+- op: discuss  # a5a3
+  at: '2026-02-18T14:41:45Z'  # a5a3
+  by: agent  # a5a3
+  actor: jgstern_agent  # a5a3
+  clock: 9  # a5a3
+  nonce: a5a3  # a5a3
+  message: "Another option: use git tags on the session directory. The symlink approach has cross-platform issues on Windows. A simple JSON index mapping aliases to session paths would be more portable."  # a5a3

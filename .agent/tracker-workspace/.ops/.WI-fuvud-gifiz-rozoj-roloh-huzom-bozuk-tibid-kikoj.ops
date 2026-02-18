@@ -34,3 +34,10 @@
   clock: 3  # 41e6
   nonce: '41e6'  # 41e6
   message: "Rego analyzer: OPA Rego files use a unique rule-based syntax. tree-sitter-rego exists but may need building from source. Key constructs: package declarations, import statements, rule definitions (allow, deny patterns), and built-in function calls."  # 41e6
+- op: discuss  # 4871
+  at: '2026-02-18T14:41:46Z'  # 4871
+  by: agent  # 4871
+  actor: jgstern_agent  # 4871
+  clock: 4  # 4871
+  nonce: '4871'  # 4871
+  message: "OPA Rego has interesting control flow: rules are evaluated as logical assertions and the order of rule definitions affects short-circuit behavior. The analyzer should represent rules as symbols with data-flow edges."  # 4871

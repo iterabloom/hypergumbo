@@ -50,3 +50,10 @@
   clock: 6  # b671
   nonce: b671  # b671
   message: "Implementation note: The N-API linker should also handle node-gyp binding.gyp files to identify which C/C++ sources are compiled into the addon, linking the build graph to the runtime call graph."  # b671
+- op: discuss  # 3189
+  at: '2026-02-18T14:41:45Z'  # 3189
+  by: agent  # 3189
+  actor: jgstern_agent  # 3189
+  clock: 7  # 3189
+  nonce: '3189'  # 3189
+  message: "Consider also WASM-based addons. node-gyp is the traditional approach but wasm-bindgen and wasm-pack are increasingly common. The linker should at minimum detect binding.gyp and wasm-pack metadata."  # 3189

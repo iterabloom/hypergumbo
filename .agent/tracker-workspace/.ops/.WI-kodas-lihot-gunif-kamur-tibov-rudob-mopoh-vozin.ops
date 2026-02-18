@@ -49,3 +49,10 @@
   clock: 6  # d6fb
   nonce: d6fb  # d6fb
   message: "Root cause hypothesis: The tier classifier uses directory name matching (test, spec, tests, specs) but Chatwoot places spec files in app/javascript/spec/ which may not match the expected top-level test directory pattern."  # d6fb
+- op: discuss  # c04a
+  at: '2026-02-18T14:41:44Z'  # c04a
+  by: agent  # c04a
+  actor: jgstern_agent  # c04a
+  clock: 7  # c04a
+  nonce: c04a  # c04a
+  message: "Follow-up: Should also check app/javascript/dashboard/spec/ and app/javascript/shared/spec/ directories. These are Chatwoot-specific paths that contain Vue component specs using vitest."  # c04a

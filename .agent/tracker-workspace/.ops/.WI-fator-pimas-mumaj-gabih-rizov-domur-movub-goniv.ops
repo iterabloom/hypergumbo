@@ -49,3 +49,10 @@
   clock: 6  # 76f8
   nonce: 76f8  # 76f8
   message: "Alternative approach: Instead of file-level heuristics, check the project for a MATLAB project file (*.prj) or Mathematica package file (*.wl, *.nb). If neither exists, fall back to content-based detection using AST patterns."  # 76f8
+- op: discuss  # a93c
+  at: '2026-02-18T14:41:44Z'  # a93c
+  by: agent  # a93c
+  actor: jgstern_agent  # a93c
+  clock: 7  # a93c
+  nonce: a93c  # a93c
+  message: "Third thought: We could also use tree-sitter parse results as a tiebreaker. If the MATLAB grammar parses cleanly but Wolfram does not, the file is likely MATLAB. This avoids heuristics entirely."  # a93c

@@ -49,3 +49,10 @@
   clock: 6  # 077e
   nonce: 077e  # 077e
   message: "Priority consideration: Assembly files are rare in most repos but critical in OS kernels, bootloaders, and embedded projects. Consider starting with ELF-targeted x86-64 since that covers Linux kernel and most open-source assembly usage."  # 077e
+- op: discuss  # 0d3b
+  at: '2026-02-18T14:41:45Z'  # 0d3b
+  by: agent  # 0d3b
+  actor: jgstern_agent  # 0d3b
+  clock: 7  # 0d3b
+  nonce: 0d3b  # 0d3b
+  message: "ARM assembly should also be on the roadmap given the prevalence of ARM in mobile and embedded. ARM syntax is sufficiently different from x86 that it would need its own detection logic."  # 0d3b

@@ -49,3 +49,10 @@
   clock: 6  # ba8c
   nonce: ba8c  # ba8c
   message: "Edge case: LuaJIT ffi.cdef can span multiple calls that accumulate declarations. The linker needs to track all cdef calls in order and build a cumulative type/function namespace for accurate resolution."  # ba8c
+- op: discuss  # f4d5
+  at: '2026-02-18T14:41:45Z'  # f4d5
+  by: agent  # f4d5
+  actor: jgstern_agent  # f4d5
+  clock: 7  # f4d5
+  nonce: f4d5  # f4d5
+  message: "Testing strategy: Use the LuaJIT test suite as ground truth. It has well-structured ffi.cdef examples that exercise all major C type declarations including function pointers and nested structs."  # f4d5
