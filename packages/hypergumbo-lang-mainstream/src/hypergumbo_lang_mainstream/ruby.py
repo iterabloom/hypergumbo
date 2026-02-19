@@ -9,6 +9,8 @@ This analyzer uses tree-sitter to parse Ruby files and extract:
 - Rails callback edges (before_action, after_action, around_action)
 - ActiveRecord association edges (has_many, belongs_to, has_one)
 - Ruby delegate macro edges (delegate :method, to: :association)
+- Receiver-type tracking for variable-receiver calls
+- Method parameter filtering to prevent bare-identifier false positives
 
 If tree-sitter with Ruby support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -21,6 +23,10 @@ How It Works
    - Pass 1: Parse all files, extract all symbols into global registry
    - Pass 2: Detect calls and resolve against global symbol registry
 4. Detect method calls and require statements
+5. Track variable types from constructor/factory calls (``var = Class.new``)
+   to resolve ``var.method`` → ``Class#method`` (typed_receiver_call evidence)
+6. Filter method parameters from bare-identifier handler to prevent
+   false-positive edges from parameter references
 
 Why This Design
 ---------------
@@ -275,6 +281,34 @@ def _get_enclosing_method(
                     return local_symbols[method_name]
         current = current.parent
     return None  # pragma: no cover - defensive
+
+
+def _get_enclosing_method_params(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> set[str]:
+    """Extract parameter names from the enclosing method definition.
+
+    Walks up the tree to find the nearest ``method`` or ``singleton_method``
+    node, then collects all ``identifier`` children of the ``method_parameters``
+    child.  Handles simple params, keyword params, and splat params.
+
+    Returns the set of bare parameter names (without ``*``, ``**``, ``&``, or
+    ``:`` prefixes).
+    """
+    current = node.parent
+    while current is not None:
+        if current.type in ("method", "singleton_method"):
+            params_node = _find_child_by_type(current, "method_parameters")
+            if params_node is None:
+                return set()
+            names: set[str] = set()
+            for param in iter_tree(params_node):
+                if param.type == "identifier":
+                    names.add(_node_text(param, source))
+            return names
+        current = current.parent
+    return set()  # pragma: no cover - defensive
 
 
 def _enclosing_class_from_method(method: Symbol) -> Optional[str]:
@@ -1968,6 +2002,53 @@ def _try_job_enqueue(
     return True
 
 
+def _extract_ruby_var_types(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract variable-to-class-name mappings from assignment patterns.
+
+    Scans for single-assignment statements where a variable is assigned
+    from a class method call on a constant receiver.  Recognized patterns:
+
+        var = ClassName.new(...)       → var has type ClassName
+        var = ClassName.find(...)      → var has type ClassName
+        var = ClassName.create(...)    → var has type ClassName
+        var = ClassName.where(...)     → var has type ClassName (AR query)
+
+    More generally, ``var = Constant.method(...)`` where the receiver starts
+    with an uppercase letter maps *var* → *Constant*.  Only the first
+    assignment to a variable wins (single-assignment SSA assumption
+    within a method body).
+
+    Returns a dict mapping variable names to inferred class names.
+    """
+    var_types: dict[str, str] = {}
+    for node in iter_tree(tree.root_node):
+        if node.type != "assignment":
+            continue
+        # LHS must be a simple identifier
+        lhs = node.child_by_field_name("left")
+        if lhs is None or lhs.type != "identifier":
+            continue
+        var_name = _node_text(lhs, source)
+        if var_name in var_types:
+            continue  # first-assignment wins
+        # RHS must be a call node with a constant receiver
+        rhs = node.child_by_field_name("right")
+        if rhs is None or rhs.type != "call":
+            continue
+        receiver = rhs.child_by_field_name("receiver")
+        if receiver is None:
+            continue
+        if receiver.type == "constant":
+            var_types[var_name] = _node_text(receiver, source)
+        elif receiver.type == "scope_resolution":
+            # Namespace::Class.new → use full qualified name
+            var_types[var_name] = _node_text(receiver, source)
+    return var_types
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -1994,6 +2075,7 @@ def _extract_edges_from_file(
 
     edges: list[Edge] = []
     file_id = _make_file_id(str(file_path))
+    var_types = _extract_ruby_var_types(tree, source)
 
     for node in iter_tree(tree.root_node):
         # Detect call nodes (require statements and method calls)
@@ -2047,7 +2129,44 @@ def _extract_edges_from_file(
                             node.start_point[0] + 1, edges, run,
                         ):
                             pass  # Resolved via receiver
-                        # Check local symbols first
+                        elif receiver_node is not None:
+                            # Variable receiver — _try_receiver_call only handles
+                            # constant receivers (User.find), so reaching here
+                            # means the receiver is a local variable or expression.
+                            # Try typed receiver resolution: if var was assigned
+                            # from ClassName.new / ClassName.find, resolve
+                            # var.method → ClassName#method.
+                            receiver_text = _node_text(receiver_node, source)
+                            inferred_class = var_types.get(receiver_text)
+                            if inferred_class is not None:
+                                # Build candidate keys: full name first, then
+                                # short name for scope_resolution (Admin::User → User)
+                                candidates = [f"{inferred_class}#{callee_name}"]
+                                if "::" in inferred_class:
+                                    short = inferred_class.rsplit("::", 1)[-1]
+                                    candidates.append(f"{short}#{callee_name}")
+                                callee = None
+                                for key in candidates:
+                                    callee = global_symbols.get(key)
+                                    if callee is not None:
+                                        break
+                                if (
+                                    callee is not None
+                                    and callee.id != current_method.id
+                                ):
+                                    edges.append(Edge.create(
+                                        src=current_method.id,
+                                        dst=callee.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1,
+                                        evidence_type="typed_receiver_call",
+                                        confidence=0.80,
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                    ))
+                            # else: variable receiver with unknown type — no edge
+                            # (avoids false positives from bare-name matching)
+                        # Check local symbols (bare calls only, no receiver)
                         elif callee_name in local_symbols:
                             callee = local_symbols[callee_name]
                             # Skip self-referential edges (e.g., logger method
@@ -2063,12 +2182,7 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                 ))
-                        # Check global symbols via resolver (only for bare calls)
-                        # Skip when receiver is a variable — _try_receiver_call
-                        # only handles constant receivers (e.g., User.find), so a
-                        # variable receiver like ``user.account`` would fall through
-                        # to bare-name lookup and match an arbitrary ``account``
-                        # method from a different class.
+                        # Check global symbols via resolver (bare calls only)
                         elif receiver_node is None:
                             # Use require hints for disambiguation
                             path_hint = require_hints.get(callee_name)
@@ -2096,6 +2210,15 @@ def _extract_edges_from_file(
             current_method = _get_enclosing_method(node, source, local_symbols)
             if current_method is not None:
                 callee_name = _node_text(node, source)
+
+                # Skip identifiers that match method parameter names.
+                # In Ruby, ``def initialize(ip); @ip = ip; end`` — the
+                # second ``ip`` is a parameter reference, not a method call.
+                # Without this guard, ``ip`` would match any ``ip`` method
+                # in the codebase via bare-name lookup.
+                method_params = _get_enclosing_method_params(node, source)
+                if callee_name in method_params:
+                    continue
 
                 # Class-aware resolution: extract enclosing class/module
                 # from the current method's qualified name (e.g. "Worker#run"

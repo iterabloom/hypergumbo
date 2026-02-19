@@ -3925,3 +3925,250 @@ end
         assert len(false_edges) == 0, (
             "Simple.new should NOT create false edges to arbitrary methods"
         )
+
+
+class TestRubyReceiverTypeTracking:
+    """Tests for receiver-type tracking on variable-receiver calls.
+
+    When a variable is assigned from a class method call (e.g.,
+    ``user = User.find(id)``), the variable's type is inferred as the
+    class. Subsequent calls on the variable (e.g., ``user.name``) can
+    then be resolved to ``User#name`` instead of matching any ``name``
+    method in the codebase.
+    """
+
+    def test_new_constructor_type_tracking(self, tmp_path: Path) -> None:
+        """var = ClassName.new resolves var.method to ClassName#method."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "app.rb").write_text("""
+class Account
+  def balance
+    @balance
+  end
+end
+
+class Controller
+  def show
+    account = Account.new
+    account.balance
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        # Should resolve account.balance → Account#balance
+        show = next((s for s in result.symbols if s.name == "Controller#show"), None)
+        balance = next((s for s in result.symbols if s.name == "Account#balance"), None)
+        assert show is not None, "Should find Controller#show"
+        assert balance is not None, "Should find Account#balance"
+
+        edge = next(
+            (e for e in result.edges if e.src == show.id and e.dst == balance.id),
+            None,
+        )
+        assert edge is not None, (
+            f"Expected edge from Controller#show to Account#balance. "
+            f"Edges from show: {[e for e in result.edges if e.src == show.id]}"
+        )
+        assert edge.evidence_type == "typed_receiver_call"
+        assert edge.confidence >= 0.75
+
+    def test_find_factory_type_tracking(self, tmp_path: Path) -> None:
+        """var = ClassName.find(id) resolves var.method to ClassName#method."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "app.rb").write_text("""
+class User
+  def email
+    @email
+  end
+end
+
+class UsersController
+  def show
+    user = User.find(params[:id])
+    user.email
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        show = next((s for s in result.symbols if s.name == "UsersController#show"), None)
+        email = next((s for s in result.symbols if s.name == "User#email"), None)
+        assert show is not None
+        assert email is not None
+
+        edge = next(
+            (e for e in result.edges if e.src == show.id and e.dst == email.id),
+            None,
+        )
+        assert edge is not None, (
+            "Expected edge from UsersController#show to User#email"
+        )
+        assert edge.evidence_type == "typed_receiver_call"
+
+    def test_variable_receiver_without_type_no_false_edge(self, tmp_path: Path) -> None:
+        """Variable calls without tracked type still don't create false edges."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "app.rb").write_text("""
+class SessionsController
+  def ip
+    request.ip
+  end
+end
+
+class Incoming
+  def initialize(ip)
+    # ip here is a parameter, NOT SessionsController#ip
+    @ip = ip
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        init = next((s for s in result.symbols if s.name == "Incoming#initialize"), None)
+        sess_ip = next((s for s in result.symbols if s.name == "SessionsController#ip"), None)
+        assert init is not None
+        assert sess_ip is not None
+
+        # No false edge from Incoming#initialize to SessionsController#ip
+        false_edge = next(
+            (e for e in result.edges if e.src == init.id and e.dst == sess_ip.id),
+            None,
+        )
+        assert false_edge is None, (
+            "Should NOT create false edge from ip parameter to SessionsController#ip"
+        )
+
+    def test_reassignment_first_type_wins(self, tmp_path: Path) -> None:
+        """When var is reassigned, the first assignment's type is used."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "app.rb").write_text("""
+class Dog
+  def bark
+    "woof"
+  end
+end
+
+class Cat
+  def bark
+    "meow"
+  end
+end
+
+class Main
+  def run
+    pet = Dog.new
+    pet.bark
+    pet = Cat.new
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        run_sym = next((s for s in result.symbols if s.name == "Main#run"), None)
+        dog_bark = next((s for s in result.symbols if s.name == "Dog#bark"), None)
+        cat_bark = next((s for s in result.symbols if s.name == "Cat#bark"), None)
+        assert run_sym is not None
+        assert dog_bark is not None
+        assert cat_bark is not None
+
+        # First assignment wins: pet.bark → Dog#bark, not Cat#bark
+        edge = next(
+            (e for e in result.edges if e.src == run_sym.id and e.dst == dog_bark.id),
+            None,
+        )
+        assert edge is not None, "pet.bark should resolve to Dog#bark (first assignment)"
+        assert edge.evidence_type == "typed_receiver_call"
+
+        cat_edge = next(
+            (e for e in result.edges if e.src == run_sym.id and e.dst == cat_bark.id),
+            None,
+        )
+        assert cat_edge is None, "pet.bark should NOT also resolve to Cat#bark"
+
+    def test_namespaced_class_type_tracking(self, tmp_path: Path) -> None:
+        """var = Namespace::Class.new resolves var.method via scope_resolution."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "app.rb").write_text("""
+module Admin
+  class User
+    def email
+      @email
+    end
+  end
+end
+
+class Dashboard
+  def show
+    user = Admin::User.new
+    user.email
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        show = next((s for s in result.symbols if s.name == "Dashboard#show"), None)
+        # Ruby analyzer uses short class name: User#email (not Admin::User#email)
+        email = next((s for s in result.symbols if s.name == "User#email"), None)
+        assert show is not None
+        assert email is not None
+
+        edge = next(
+            (e for e in result.edges if e.src == show.id and e.dst == email.id),
+            None,
+        )
+        assert edge is not None, (
+            f"Expected edge from Dashboard#show to User#email via Admin::User. "
+            f"Edges from show: {[e for e in result.edges if e.src == show.id]}"
+        )
+        assert edge.evidence_type == "typed_receiver_call"
+
+    def test_bare_call_rhs_no_type_inferred(self, tmp_path: Path) -> None:
+        """var = some_method() does not infer type (no constant receiver)."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "app.rb").write_text("""
+class Account
+  def balance
+    @balance
+  end
+end
+
+class Service
+  def process
+    account = build_account()
+    account.balance
+  end
+
+  def build_account
+    Account.new
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        process = next((s for s in result.symbols if s.name == "Service#process"), None)
+        balance = next((s for s in result.symbols if s.name == "Account#balance"), None)
+        assert process is not None
+        assert balance is not None
+
+        # build_account has no constant receiver, so no type is inferred.
+        # account.balance should NOT resolve to Account#balance.
+        edge = next(
+            (e for e in result.edges if e.src == process.id and e.dst == balance.id),
+            None,
+        )
+        assert edge is None, (
+            "var = bare_method() should not infer type; account.balance should not resolve"
+        )
