@@ -149,6 +149,52 @@ end
         # Should have a call to hello
         assert len(call_edges) >= 1
 
+    def test_method_call_lower_confidence_than_direct(self, tmp_path: Path) -> None:
+        """Colon-syntax method calls get lower confidence than direct calls.
+
+        Lua lacks static types, so obj:method() cannot determine the receiver
+        type. Direct calls (func()) are less ambiguous because function names
+        tend to be unique. Method calls should get significantly lower confidence
+        to signal this ambiguity to downstream consumers (slicing, centrality).
+        """
+        from hypergumbo_lang_mainstream.lua import analyze_lua
+
+        make_lua_file(tmp_path, "main.lua", """
+local MyClass = {}
+
+function MyClass:process()
+    return 1
+end
+
+function helper()
+    return 2
+end
+
+function main()
+    local obj = MyClass
+    obj:process()
+    helper()
+end
+""")
+
+        result = analyze_lua(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        method_edge = next(
+            (e for e in call_edges if "process" in e.dst), None
+        )
+        direct_edge = next(
+            (e for e in call_edges if "helper" in e.dst), None
+        )
+        assert method_edge is not None, "Method call edge to process not found"
+        assert direct_edge is not None, "Direct call edge to helper not found"
+        # Method call confidence should be lower than direct call
+        assert method_edge.confidence < direct_edge.confidence
+        # Method call should be <= 0.50 (ambiguous due to no receiver type)
+        assert method_edge.confidence <= 0.50
+        # Direct call should remain at 0.85 (name-only but less ambiguous)
+        assert direct_edge.confidence >= 0.80
+
 
 class TestLuaImportEdges:
     """Tests for Lua require (import) edge extraction."""

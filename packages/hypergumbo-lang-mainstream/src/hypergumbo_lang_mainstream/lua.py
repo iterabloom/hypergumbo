@@ -31,7 +31,10 @@ Lua-Specific Considerations
   (`local function foo()`)
 - Method-style definitions (`Table:method`) are common for OOP patterns
 - require() is the standard import mechanism
-- Lua is dynamically typed, so call resolution is based on name matching
+- Lua is dynamically typed, so call resolution is based on name matching.
+  Method calls (obj:method()) get lower confidence (0.40x) than direct
+  calls (func(), 0.85x) because common method names like connect, send,
+  close collide across unrelated receiver objects
 """
 from __future__ import annotations
 
@@ -249,10 +252,19 @@ def _extract_edges_from_file(
     # Build local symbol map for this file (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}
 
+    # Confidence multipliers for call resolution. Direct calls (func())
+    # use a higher base because function names tend to be unique. Method
+    # calls (obj:method()) use a lower base because Lua lacks static types
+    # and common method names (connect, send, close) collide across
+    # unrelated receiver objects, producing false positive edges.
+    CONFIDENCE_DIRECT_CALL = 0.85
+    CONFIDENCE_METHOD_CALL = 0.40
+
     for node in iter_tree(tree.root_node):
         if node.type == "function_call":
             # Extract function name being called
             callee_name = None
+            is_method_call = False
 
             # Direct call: identifier(args)
             first_child = node.children[0] if node.children else None
@@ -262,6 +274,7 @@ def _extract_edges_from_file(
                 elif first_child.type == "method_index_expression":
                     # Method call: obj:method(args)
                     # Get the method name (last identifier)
+                    is_method_call = True
                     for child in first_child.children:
                         if child.type == "identifier":
                             callee_name = _node_text(child, source)
@@ -298,7 +311,8 @@ def _extract_edges_from_file(
                     # Resolve callee via global resolver
                     lookup_result = resolver.lookup(callee_name)
                     callee = lookup_result.symbol if lookup_result.found else None
-                    confidence = 0.85 * lookup_result.confidence if lookup_result.found else 0.50
+                    base = CONFIDENCE_METHOD_CALL if is_method_call else CONFIDENCE_DIRECT_CALL
+                    confidence = base * lookup_result.confidence if lookup_result.found else 0.50
                     if callee:
                         edge = Edge.create(
                             src=caller.id,
