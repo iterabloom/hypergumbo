@@ -2201,3 +2201,235 @@ func main() {
 
         assert len(start_calls) >= 1
         assert any("Server.Start" in e.dst for e in start_calls)
+
+
+class TestGoFunctionReferenceArgs:
+    """Tests for function-reference-as-argument call edge detection.
+
+    When a known function/method identifier is passed as an argument to
+    another function call (e.g., ``r.Get("/path", handler)``), the analyzer
+    should create a call edge from the enclosing function to the referenced
+    function. This enables reverse slices for route handlers and callback
+    patterns.
+    """
+
+    def test_simple_function_reference_arg(self, tmp_path: Path) -> None:
+        """Function identifier passed as argument creates call edge.
+
+        Pattern: ``register(handler)`` where handler is a known function.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+func handler() {}
+
+func register(fn func()) {
+    fn()
+}
+
+func main() {
+    register(handler)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        main_calls = [e for e in call_edges if "main:function" in e.src]
+
+        # main should have an edge to handler (via function reference)
+        handler_refs = [e for e in main_calls if "handler" in e.dst]
+        assert len(handler_refs) >= 1, (
+            f"main should have call edge to handler (function reference arg), "
+            f"found edges: {[e.dst for e in main_calls]}"
+        )
+
+    def test_route_handler_reference(self, tmp_path: Path) -> None:
+        """Route handler pattern creates call edge for reverse slices.
+
+        Pattern: ``m.Get("/issues", ViewIssue)`` should create edge
+        from the enclosing function to ViewIssue.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "routes.go"
+        go_file.write_text("""package main
+
+func ViewIssue() {}
+func ListIssues() {}
+
+func setupRoutes() {
+    m.Get("/issues", ListIssues)
+    m.Get("/issues/:id", ViewIssue)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        setup_calls = [e for e in call_edges if "setupRoutes" in e.src]
+
+        # setupRoutes should have edges to both handlers
+        assert any("ViewIssue" in e.dst for e in setup_calls), (
+            f"setupRoutes should have call edge to ViewIssue, "
+            f"found: {[e.dst for e in setup_calls]}"
+        )
+        assert any("ListIssues" in e.dst for e in setup_calls), (
+            f"setupRoutes should have call edge to ListIssues, "
+            f"found: {[e.dst for e in setup_calls]}"
+        )
+
+    def test_function_reference_evidence_type(self, tmp_path: Path) -> None:
+        """Function reference args should have 'function_reference_arg' evidence type."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+func handler() {}
+
+func main() {
+    register(handler)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        main_calls = [e for e in call_edges if "main:function" in e.src]
+        handler_refs = [e for e in main_calls if "handler" in e.dst]
+
+        assert len(handler_refs) >= 1
+        assert handler_refs[0].evidence_type == "function_reference_arg", (
+            f"Expected evidence_type='function_reference_arg', "
+            f"got '{handler_refs[0].evidence_type}'"
+        )
+
+    def test_selector_expression_reference(self, tmp_path: Path) -> None:
+        """Selector expression as argument: ``register(pkg.Handler)``.
+
+        When a selector expression (like handlers.Get) appears as an argument,
+        it should be resolved as a function reference.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Handlers struct{}
+
+func (h *Handlers) GetAPI() {}
+
+func setup() {
+    h := &Handlers{}
+    m.Get("/api", h.GetAPI)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        setup_calls = [e for e in call_edges if "setup" in e.src]
+
+        # Should have edge to GetAPI via selector reference
+        assert any("GetAPI" in e.dst for e in setup_calls), (
+            f"setup should have call edge to GetAPI, "
+            f"found: {[e.dst for e in setup_calls]}"
+        )
+
+    def test_does_not_create_edge_for_non_function_args(self, tmp_path: Path) -> None:
+        """String and numeric literals as arguments should NOT create edges."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+func main() {
+    fmt.Println("hello", 42)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        main_calls = [e for e in call_edges if "main:function" in e.src]
+
+        # Should NOT have edges for "hello" or 42
+        for e in main_calls:
+            assert "hello" not in e.dst
+            assert "42" not in e.dst
+
+    def test_cross_file_function_reference(self, tmp_path: Path) -> None:
+        """Function reference to a function defined in another file.
+
+        When the referenced function is not in local_symbols, it should
+        be resolved via the global symbol registry.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        # File 1: Define handler
+        (tmp_path / "handler.go").write_text("""package main
+
+func ViewIssue() {}
+""")
+
+        # File 2: Register route
+        (tmp_path / "routes.go").write_text("""package main
+
+func setupRoutes() {
+    m.Get("/issues/:id", ViewIssue)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        setup_calls = [e for e in call_edges if "setupRoutes" in e.src]
+
+        # Should resolve ViewIssue via global symbols
+        assert any("ViewIssue" in e.dst for e in setup_calls), (
+            f"setupRoutes should have call edge to ViewIssue (cross-file), "
+            f"found: {[e.dst for e in setup_calls]}"
+        )
+
+    def test_function_reference_lower_confidence(self, tmp_path: Path) -> None:
+        """Function reference args should have lower confidence than direct calls."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+func handler() {}
+
+func direct() {
+    handler()
+}
+
+func indirect() {
+    register(handler)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        direct_call = next(
+            (e for e in call_edges if "direct" in e.src and "handler" in e.dst),
+            None,
+        )
+        indirect_ref = next(
+            (e for e in call_edges if "indirect" in e.src and "handler" in e.dst),
+            None,
+        )
+
+        assert direct_call is not None, "direct() should have call edge to handler"
+        assert indirect_ref is not None, "indirect() should have ref edge to handler"
+
+        # Function reference should have lower confidence
+        assert indirect_ref.confidence < direct_call.confidence, (
+            f"Function reference confidence ({indirect_ref.confidence}) should be "
+            f"lower than direct call confidence ({direct_call.confidence})"
+        )

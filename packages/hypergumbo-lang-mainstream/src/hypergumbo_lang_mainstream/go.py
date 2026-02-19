@@ -733,6 +733,96 @@ def _type_identifier_from_node(
     return None
 
 
+def _extract_function_reference_edges(
+    args_node: "tree_sitter.Node",
+    source: bytes,
+    current_function: Symbol,
+    local_symbols: dict[str, Symbol],
+    global_symbols: dict[str, list[Symbol]],
+    resolver: ListNameResolver,
+    line: int,
+    edges: list[Edge],
+    run: AnalysisRun,
+) -> None:
+    """Detect function identifiers passed as arguments and create call edges.
+
+    In Go, functions are first-class values.  When a known function is passed
+    as an argument to another function — e.g. ``r.Get("/path", ViewIssue)`` —
+    it will typically be called by the receiving function.  This creates a
+    ``calls`` edge with ``evidence_type="function_reference_arg"`` and lower
+    confidence (0.70) to enable reverse-slice navigation from route handlers
+    and callback targets.
+
+    Handles two forms:
+    - ``identifier``: simple function reference like ``handler``
+    - ``selector_expression``: qualified reference like ``h.GetAPI``
+    """
+    for arg in args_node.children:
+        if arg.type == "identifier":
+            ref_name = node_text(arg, source)
+            # Check if it's a known function/method (local or global)
+            if ref_name in local_symbols:
+                sym = local_symbols[ref_name]
+                if sym.kind in ("function", "method") and sym.id != current_function.id:
+                    edges.append(Edge.create(
+                        src=current_function.id,
+                        dst=sym.id,
+                        edge_type="calls",
+                        line=line,
+                        evidence_type="function_reference_arg",
+                        confidence=0.70,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                    ))
+            else:
+                lookup_result = resolver.lookup(ref_name)
+                if lookup_result.found and lookup_result.symbol.kind in ("function", "method"):
+                    edges.append(Edge.create(
+                        src=current_function.id,
+                        dst=lookup_result.symbol.id,
+                        edge_type="calls",
+                        line=line,
+                        evidence_type="function_reference_arg",
+                        confidence=0.70 * lookup_result.confidence,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                    ))
+        elif arg.type == "selector_expression":
+            # h.GetAPI or pkg.Handler
+            field_node = find_child_by_field(arg, "field")
+            if field_node:
+                ref_name = node_text(field_node, source)
+                # Try full selector text first (e.g., "handlers.GetAPI")
+                full_ref = node_text(arg, source)
+                if full_ref in local_symbols:  # pragma: no cover - selector text rarely matches symbol name
+                    sym = local_symbols[full_ref]
+                    if sym.kind in ("function", "method") and sym.id != current_function.id:
+                        edges.append(Edge.create(
+                            src=current_function.id,
+                            dst=sym.id,
+                            edge_type="calls",
+                            line=line,
+                            evidence_type="function_reference_arg",
+                            confidence=0.70,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                        ))
+                        continue
+                # Try short name via resolver
+                lookup_result = resolver.lookup(ref_name)
+                if lookup_result.found and lookup_result.symbol.kind in ("function", "method"):
+                    edges.append(Edge.create(
+                        src=current_function.id,
+                        dst=lookup_result.symbol.id,
+                        edge_type="calls",
+                        line=line,
+                        evidence_type="function_reference_arg",
+                        confidence=0.70 * lookup_result.confidence,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                    ))
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -914,6 +1004,16 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                 ))
+
+                # Detect function references passed as arguments
+                # e.g., register(handler), r.Get("/path", ViewIssue)
+                args_node = find_child_by_field(node, "arguments")
+                if args_node and current_function is not None:
+                    _extract_function_reference_edges(
+                        args_node, source, current_function,
+                        local_symbols, global_symbols, resolver,
+                        node.start_point[0] + 1, edges, run,
+                    )
 
     return edges
 
