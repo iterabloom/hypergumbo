@@ -4229,6 +4229,79 @@ class TestRailsPatterns:
         assert len(results) == 1
         assert results[0]["concept"] == "route"
 
+    def test_rails_application_scheduled_task_pattern(self) -> None:
+        """Rails ApplicationScheduledTask base class matches scheduled_task."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:check_dns.rb:1:CheckDNSScheduledTask:class",
+            name="CheckDNSScheduledTask",
+            kind="class",
+            language="ruby",
+            path="app/scheduled_tasks/check_dns_scheduled_task.rb",
+            span=Span(1, 15, 0, 0),
+            meta={
+                "base_classes": ["ApplicationScheduledTask"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "scheduled_task"
+        assert results[0]["matched_base_class"] == "ApplicationScheduledTask"
+
+    def test_rails_base_job_pattern(self) -> None:
+        """Rails BaseJob base class matches task pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:process_job.rb:1:ProcessQueuedMessagesJob:class",
+            name="ProcessQueuedMessagesJob",
+            kind="class",
+            language="ruby",
+            path="app/lib/worker/jobs/process_queued_messages_job.rb",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "base_classes": ["BaseJob"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "task"
+        assert results[0]["matched_base_class"] == "BaseJob"
+
+    def test_rails_middleware_pattern(self) -> None:
+        """Rack middleware classes ending in Middleware match event_handler."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:tracking_middleware.rb:1:TrackingMiddleware:class",
+            name="TrackingMiddleware",
+            kind="class",
+            language="ruby",
+            path="lib/tracking_middleware.rb",
+            span=Span(1, 40, 0, 0),
+            meta={},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        assert len(results) == 1
+        assert results[0]["concept"] == "event_handler"
+        assert results[0]["matched_symbol_name"] == "TrackingMiddleware"
+
 
 class TestPhoenixPatterns:
     """Tests for Phoenix (Elixir) framework pattern matching."""

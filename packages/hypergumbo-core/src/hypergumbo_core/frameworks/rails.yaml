@@ -120,6 +120,22 @@ patterns:
   - concept: task
     base_class: "^Sidekiq::Worker$"
 
+  # BaseJob (app-specific job base class, e.g., postal)
+  - concept: task
+    base_class: "^BaseJob$"
+
+  # Scheduled tasks (cron-like entry points, e.g., postal's ApplicationScheduledTask)
+  - concept: scheduled_task
+    base_class: "^ApplicationScheduledTask$"
+
+  - concept: scheduled_task
+    base_class: "^ScheduledTask$"
+
+  # Rack middleware (classes ending in Middleware are HTTP request interceptors)
+  - concept: event_handler
+    symbol_name: "Middleware$"
+    symbol_kind: "^class$"
+
   # Rake tasks are not classes, so can't be matched here
 
 linkers:

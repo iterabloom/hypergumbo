@@ -28,6 +28,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Framework detection for 16 additional languages**: Haskell, Clojure, R, Lua, C++, Erlang, F#, Kotlin, C#, Dart, Julia, OCaml, Nim, Zig, D, Groovy.
 - **Test framework patterns for 16 additional languages**: Elixir, Scala, Dart, Clojure, Haskell, Erlang, F#, Ruby, Julia, OCaml, Lua, R, Nim, Zig, D, Groovy.
 - **Main function entrypoint detection for 7 more languages**: D, Nim, Zig, V, Odin, Gleam, Haxe.
+- **Rails entrypoint patterns**: Scheduled tasks (`ApplicationScheduledTask`, `ScheduledTask` base classes), custom job base classes (`BaseJob`), and Rack middleware (classes named `*Middleware`) now detected as entrypoints. Previously these critical infrastructure components were invisible to hypergumbo.
 - **Test classification improvements**: Test directories/files classified as tier 2; test functions registered as entrypoints with 90% penalty to avoid dominating `--entry auto`.
 
 #### Tracker
