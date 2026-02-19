@@ -1,10 +1,11 @@
 """Lua analysis pass using tree-sitter-lua.
 
 This analyzer uses tree-sitter to parse Lua files and extract:
-- Function declarations (global and local)
-- Method-style function definitions (Table:method)
-- Function call relationships
-- require statements (imports)
+- Function declarations (global, local, dot-index `Table.func`)
+- Method-style function definitions (`Table:method`)
+- Function call relationships (direct, dot-index, method)
+- require statements (imports) with alias tracking
+- Cross-file require-alias call resolution
 
 If tree-sitter with Lua support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -14,9 +15,12 @@ How It Works
 1. Check if tree-sitter-lua is available
 2. If not available, return skipped result (not an error)
 3. Two-pass analysis:
-   - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls and resolve against global symbol registry
-4. Detect function calls and require statements
+   - Pass 1: Parse all files, extract symbols, build module path mapping
+   - Pass 2: Detect calls and resolve via require-alias, type-based, or
+     name-based strategies (in priority order)
+4. Module path mapping: each file's relative path is converted to Lua
+   module paths (e.g., `foo/bar.lua` -> `foo.bar`, `foo/init.lua` -> `foo`).
+   This enables require-alias resolution.
 
 Why This Design
 ---------------
@@ -30,6 +34,8 @@ Lua-Specific Considerations
 - Lua has both global functions (`function foo()`) and local functions
   (`local function foo()`)
 - Method-style definitions (`Table:method`) are common for OOP patterns
+- Dot-index definitions (`function _M.process()`) are the dominant
+  export pattern in OpenResty/Kong Lua modules
 - require() is the standard import mechanism
 - Lua is dynamically typed, so call resolution is based on name matching.
   Method calls (obj:method()) get lower confidence (0.40x) than direct
@@ -40,6 +46,10 @@ Lua-Specific Considerations
   the receiver type is tracked. Method calls on typed receivers resolve to
   `ReceiverType.method` with higher confidence (0.80x). This eliminates
   false positive edges from name collisions (e.g., sock:send vs pdk.response:send)
+- Require-alias resolution: when `local X = require("foo.bar")` is followed
+  by `X.method()` or `X:method()`, the call resolves to symbols defined in
+  `foo/bar.lua` with 0.85 confidence. This is the dominant calling convention
+  in Kong/OpenResty and eliminates the largest class of unresolved call edges.
 """
 from __future__ import annotations
 
@@ -153,7 +163,11 @@ def _get_function_name(
     """Extract function name and kind from function_declaration.
 
     Returns:
-        Tuple of (name, kind) where kind is "function" or "method"
+        Tuple of (name, kind) where kind is "function" or "method".
+        Handles three patterns:
+        - ``function foo()`` → ("foo", "function")
+        - ``function Table:method()`` → ("Table.method", "method")
+        - ``function Table.func()`` → ("Table.func", "function")
     """
     # Look for direct identifier (global/local function)
     name_node = _find_child_by_type(node, "identifier")
@@ -174,6 +188,20 @@ def _get_function_name(
                     method_id = _node_text(child, source)
         if table_id and method_id:
             return f"{table_id}.{method_id}", "method"
+
+    # Look for dot_index_expression (Table.func)
+    dot_expr = _find_child_by_type(node, "dot_index_expression")
+    if dot_expr:
+        table_id = None
+        func_id = None
+        for child in dot_expr.children:
+            if child.type == "identifier":
+                if table_id is None:
+                    table_id = _node_text(child, source)
+                else:
+                    func_id = _node_text(child, source)
+        if table_id and func_id:
+            return f"{table_id}.{func_id}", "function"
 
     return "", "function"  # pragma: no cover - fallback for unparseable functions
 
@@ -299,6 +327,83 @@ def _extract_var_types(
     return var_types
 
 
+def _extract_require_aliases(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract require-alias mappings from local variable declarations.
+
+    Detects the pattern ``local X = require("foo.bar")`` and maps variable
+    name ``X`` to module path ``foo.bar``. Only tracks the first assignment
+    to each variable.
+
+    Returns:
+        Dict mapping variable name to the require'd module path string
+        (e.g., ``{"bar": "foo.bar", "utils": "kong.tools.utils"}``).
+    """
+    aliases: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "variable_declaration":
+            continue
+
+        assign = _find_child_by_type(node, "assignment_statement")
+        if assign is None:  # pragma: no cover
+            continue
+
+        var_list = _find_child_by_type(assign, "variable_list")
+        if var_list is None:  # pragma: no cover
+            continue
+        var_id = _find_child_by_type(var_list, "identifier")
+        if var_id is None:  # pragma: no cover
+            continue
+        var_name = _node_text(var_id, source)
+
+        expr_list = _find_child_by_type(assign, "expression_list")
+        if expr_list is None:  # pragma: no cover
+            continue
+
+        # Look for require("...") call in expression list
+        for child in expr_list.children:
+            if child.type == "function_call":
+                func_id = _find_child_by_type(child, "identifier")
+                if func_id and _node_text(func_id, source) == "require":
+                    args = _find_child_by_type(child, "arguments")
+                    if args:
+                        for arg in args.children:
+                            if arg.type == "string":
+                                content = _find_child_by_type(arg, "string_content")
+                                if content and var_name not in aliases:
+                                    aliases[var_name] = _node_text(content, source)
+                break  # Only check first expression
+
+    return aliases
+
+
+def _build_module_path(file_path: str) -> list[str]:
+    """Compute possible Lua module paths for a file.
+
+    Maps file paths to the module names that ``require()`` would use:
+    - ``foo/bar.lua`` → ``foo.bar``
+    - ``foo/bar/init.lua`` → ``foo.bar`` (directory module)
+
+    Returns a list because a file might match multiple module paths
+    (e.g., ``foo/init.lua`` matches both ``foo.init`` and ``foo``).
+    """
+    parts = file_path.replace("\\", "/").split("/")
+    # Strip .lua extension from last part
+    if parts and parts[-1].endswith(".lua"):
+        parts[-1] = parts[-1][:-4]
+
+    paths = [".".join(parts)]
+
+    # init.lua → directory module (foo/init.lua → foo)
+    if parts and parts[-1] == "init":
+        paths.append(".".join(parts[:-1]))
+
+    return paths
+
+
 def _infer_type_from_expr(
     expr: "tree_sitter.Node",
     source: bytes,
@@ -359,18 +464,30 @@ def _extract_edges_from_file(
     file_symbols: list[Symbol],
     resolver: NameResolver,
     run_id: str,
+    module_symbols: dict[str, list[Symbol]] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a parsed Lua file.
 
     Detects:
     - function_call: Direct function calls
     - Method calls (obj:method()) with optional type-based resolution
+    - Dot-index calls (X.method()) with require-alias resolution
     - require statements
 
     Type-based resolution: when a method call's receiver has a known type
     (from single-assignment tracking via ``_extract_var_types``), the call
     is resolved to ``ReceiverType.method`` with 0.80 confidence instead of
     falling back to name-only lookup at 0.40 confidence.
+
+    Require-alias resolution: when ``local X = require("foo.bar")`` is
+    followed by ``X.method()`` or ``X:method()``, the call is resolved
+    to symbols defined in the module file (foo/bar.lua) with 0.85 confidence
+    and evidence_type ``require_alias_call``.
+
+    Args:
+        module_symbols: mapping from module path (e.g., "foo.bar") to
+            symbols defined in that module's file. Built during Pass 1
+            from the file→module path mapping.
     """
     edges: list[Edge] = []
     file_id = _make_file_id(file_path)
@@ -386,15 +503,22 @@ def _extract_edges_from_file(
     CONFIDENCE_DIRECT_CALL = 0.85
     CONFIDENCE_METHOD_CALL = 0.40
     CONFIDENCE_TYPED_METHOD_CALL = 0.80
+    CONFIDENCE_REQUIRE_ALIAS = 0.85
 
     # Extract variable type assignments for receiver-based method resolution
     var_types = _extract_var_types(tree, source)
+
+    # Extract require aliases for module-scoped call resolution
+    require_aliases = _extract_require_aliases(tree, source)
+    if module_symbols is None:  # pragma: no cover - backward compat guard
+        module_symbols = {}
 
     for node in iter_tree(tree.root_node):
         if node.type == "function_call":
             # Extract function name being called
             callee_name = None
             is_method_call = False
+            is_dot_call = False
             receiver_name = None
 
             # Direct call: identifier(args)
@@ -414,6 +538,18 @@ def _extract_edges_from_file(
                         receiver_name = identifiers[0]
                         callee_name = identifiers[1]
                     elif len(identifiers) == 1:  # pragma: no cover - method_index always has 2 ids
+                        callee_name = identifiers[0]
+                elif first_child.type == "dot_index_expression":
+                    # Dot call: X.method(args)
+                    is_dot_call = True
+                    identifiers = []
+                    for child in first_child.children:
+                        if child.type == "identifier":
+                            identifiers.append(_node_text(child, source))
+                    if len(identifiers) >= 2:
+                        receiver_name = identifiers[0]
+                        callee_name = identifiers[1]
+                    elif len(identifiers) == 1:  # pragma: no cover
                         callee_name = identifiers[0]
 
             # Check for require() call - special handling for imports
@@ -445,33 +581,120 @@ def _extract_edges_from_file(
                 # Find the caller (enclosing function)
                 caller = _find_enclosing_lua_function(node, source, local_symbols)
                 if caller:
-                    # Try type-based resolution for method calls
-                    typed_resolved = False
-                    if is_method_call and receiver_name and receiver_name in var_types:
-                        receiver_type = var_types[receiver_name]
-                        qualified_name = f"{receiver_type}.{callee_name}"
-                        typed_lookup = resolver.lookup(qualified_name)
-                        if typed_lookup.found:
-                            confidence = CONFIDENCE_TYPED_METHOD_CALL * typed_lookup.confidence
+                    # Try require-alias resolution first (highest signal)
+                    require_resolved = False
+                    recv = receiver_name
+                    if recv and recv in require_aliases and (is_dot_call or is_method_call):
+                        mod_path = require_aliases[recv]
+                        mod_syms = module_symbols.get(mod_path, [])
+                        # Search for a symbol whose name ends with .callee_name
+                        target = _find_module_symbol(mod_syms, callee_name)
+                        if target:
                             edge = Edge.create(
                                 src=caller.id,
-                                dst=typed_lookup.symbol.id,
+                                dst=target.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
-                                evidence_type="method_call_typed",
-                                confidence=confidence,
+                                evidence_type="require_alias_call",
+                                confidence=CONFIDENCE_REQUIRE_ALIAS,
                             )
                             edges.append(edge)
-                            typed_resolved = True
+                            require_resolved = True
 
-                    if not typed_resolved:
-                        # Fallback: name-only resolution
+                    if require_resolved:
+                        pass  # Already resolved via require alias
+                    elif is_method_call:
+                        # Try type-based resolution for method calls
+                        typed_resolved = False
+                        if receiver_name and receiver_name in var_types:
+                            receiver_type = var_types[receiver_name]
+                            qualified_name = f"{receiver_type}.{callee_name}"
+                            typed_lookup = resolver.lookup(qualified_name)
+                            if typed_lookup.found:
+                                confidence = CONFIDENCE_TYPED_METHOD_CALL * typed_lookup.confidence
+                                edge = Edge.create(
+                                    src=caller.id,
+                                    dst=typed_lookup.symbol.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    origin=PASS_ID,
+                                    origin_run_id=run_id,
+                                    evidence_type="method_call_typed",
+                                    confidence=confidence,
+                                )
+                                edges.append(edge)
+                                typed_resolved = True
+
+                        if not typed_resolved:
+                            # Fallback: name-only resolution
+                            lookup_result = resolver.lookup(callee_name)
+                            callee = lookup_result.symbol if lookup_result.found else None
+                            base = CONFIDENCE_METHOD_CALL
+                            confidence = base * lookup_result.confidence if lookup_result.found else 0.50
+                            if callee:
+                                edge = Edge.create(
+                                    src=caller.id,
+                                    dst=callee.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    origin=PASS_ID,
+                                    origin_run_id=run_id,
+                                    evidence_type="function_call",
+                                    confidence=confidence,
+                                )
+                                edges.append(edge)
+                            else:
+                                # Unresolved call
+                                unresolved_id = f"lua:?:0-0:{callee_name}:function"
+                                edge = Edge.create(
+                                    src=caller.id,
+                                    dst=unresolved_id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    origin=PASS_ID,
+                                    origin_run_id=run_id,
+                                    evidence_type="function_call",
+                                    confidence=0.50,
+                                )
+                                edges.append(edge)
+                    elif is_dot_call:
+                        # Dot call without require alias — try qualified name
+                        if receiver_name:
+                            qualified = f"{receiver_name}.{callee_name}"
+                            lookup_result = resolver.lookup(qualified)
+                            if lookup_result.found:
+                                confidence = CONFIDENCE_DIRECT_CALL * lookup_result.confidence
+                                edge = Edge.create(
+                                    src=caller.id,
+                                    dst=lookup_result.symbol.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    origin=PASS_ID,
+                                    origin_run_id=run_id,
+                                    evidence_type="function_call",
+                                    confidence=confidence,
+                                )
+                                edges.append(edge)
+                            else:
+                                unresolved_id = f"lua:?:0-0:{qualified}:function"
+                                edge = Edge.create(
+                                    src=caller.id,
+                                    dst=unresolved_id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    origin=PASS_ID,
+                                    origin_run_id=run_id,
+                                    evidence_type="function_call",
+                                    confidence=0.50,
+                                )
+                                edges.append(edge)
+                    else:
+                        # Direct call: func(args)
                         lookup_result = resolver.lookup(callee_name)
                         callee = lookup_result.symbol if lookup_result.found else None
-                        base = CONFIDENCE_METHOD_CALL if is_method_call else CONFIDENCE_DIRECT_CALL
-                        confidence = base * lookup_result.confidence if lookup_result.found else 0.50
+                        confidence = CONFIDENCE_DIRECT_CALL * lookup_result.confidence if lookup_result.found else 0.50
                         if callee:
                             edge = Edge.create(
                                 src=caller.id,
@@ -485,7 +708,6 @@ def _extract_edges_from_file(
                             )
                             edges.append(edge)
                         else:
-                            # Unresolved call - create edge to unknown target
                             unresolved_id = f"lua:?:0-0:{callee_name}:function"
                             edge = Edge.create(
                                 src=caller.id,
@@ -500,6 +722,28 @@ def _extract_edges_from_file(
                             edges.append(edge)
 
     return edges
+
+
+def _find_module_symbol(symbols: list[Symbol], method_name: str) -> Symbol | None:
+    """Find a symbol in a module's exports that matches the given method name.
+
+    Searches for symbols whose name ends with ``.method_name`` (e.g.,
+    ``_M.process`` matches method_name ``process``). This handles the
+    common Lua pattern where modules export via a local table:
+
+    .. code-block:: lua
+
+        local _M = {}
+        function _M.process(data) ... end
+        return _M
+
+    Returns the first matching symbol, or None if no match found.
+    """
+    suffix = f".{method_name}"
+    for sym in symbols:
+        if sym.name.endswith(suffix):
+            return sym
+    return None
 
 
 @register_analyzer("lua")
@@ -581,6 +825,14 @@ def analyze_lua(repo_root: Path) -> LuaAnalysisResult:
         ))
         files_analyzed += 1
 
+    # Build module path → symbols mapping for require-alias resolution.
+    # Maps each possible module path (e.g., "foo.bar") to the symbols
+    # defined in its file (e.g., foo/bar.lua).
+    module_symbols: dict[str, list[Symbol]] = {}
+    for fa in file_analyses:
+        for mod_path in _build_module_path(fa.path):
+            module_symbols[mod_path] = fa.symbols
+
     # Pass 2: Extract edges with cross-file resolution
     all_edges: list[Edge] = []
     resolver = NameResolver(global_symbol_registry)
@@ -593,6 +845,7 @@ def analyze_lua(repo_root: Path) -> LuaAnalysisResult:
             fa.symbols,
             resolver,
             run_id,
+            module_symbols=module_symbols,
         )
         all_edges.extend(edges)
 

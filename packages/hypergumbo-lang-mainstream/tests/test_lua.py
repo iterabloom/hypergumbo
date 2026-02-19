@@ -604,3 +604,176 @@ end
         assert helper_edge is not None
         assert helper_edge.evidence_type == "function_call"
         assert helper_edge.confidence >= 0.80
+
+
+class TestLuaRequireAliasResolution:
+    """Tests for require-alias call resolution.
+
+    When ``local X = require("foo.bar")`` is followed by ``X.method()``
+    or ``X:method()``, the call should resolve to foo/bar.lua's exported
+    method rather than relying on global name matching.
+    """
+
+    def test_require_alias_dot_call_resolves_to_module(self, tmp_path: Path) -> None:
+        """X.method() resolves to foo/bar.lua when X = require("foo.bar")."""
+        from hypergumbo_lang_mainstream.lua import analyze_lua
+
+        # Create the module file
+        mod_dir = tmp_path / "foo"
+        mod_dir.mkdir()
+        make_lua_file(mod_dir, "bar.lua", """
+local _M = {}
+
+function _M.process(data)
+    return data
+end
+
+return _M
+""")
+
+        # Create the caller file
+        make_lua_file(tmp_path, "main.lua", """
+local bar = require("foo.bar")
+
+function handler()
+    bar.process("hello")
+end
+""")
+
+        result = analyze_lua(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        process_edge = next(
+            (e for e in call_edges if "process" in e.dst and "handler" in e.src), None
+        )
+        assert process_edge is not None, (
+            f"Call edge from handler to process not found. Edges: {call_edges}"
+        )
+        # Should resolve via require alias, not global name match
+        assert process_edge.evidence_type == "require_alias_call"
+        assert process_edge.confidence >= 0.80
+        # Target should be the symbol in foo/bar.lua
+        assert "foo/bar.lua" in process_edge.dst or "foo" in process_edge.dst
+
+    def test_require_alias_colon_call_resolves_to_module(self, tmp_path: Path) -> None:
+        """X:method() resolves to foo/bar.lua when X = require("foo.bar")."""
+        from hypergumbo_lang_mainstream.lua import analyze_lua
+
+        # Create the module file
+        mod_dir = tmp_path / "foo"
+        mod_dir.mkdir()
+        make_lua_file(mod_dir, "bar.lua", """
+local Handler = {}
+
+function Handler:access(conf)
+    return true
+end
+
+return Handler
+""")
+
+        # Create the caller file
+        make_lua_file(tmp_path, "main.lua", """
+local bar = require("foo.bar")
+
+function run()
+    bar:access({})
+end
+""")
+
+        result = analyze_lua(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        access_edge = next(
+            (e for e in call_edges if "access" in e.dst and "run" in e.src), None
+        )
+        assert access_edge is not None, (
+            f"Call edge from run to access not found. Edges: {call_edges}"
+        )
+        assert access_edge.evidence_type == "require_alias_call"
+        assert access_edge.confidence >= 0.80
+
+    def test_require_alias_init_lua_resolution(self, tmp_path: Path) -> None:
+        """require("foo") resolves to foo/init.lua."""
+        from hypergumbo_lang_mainstream.lua import analyze_lua
+
+        # Create init.lua module
+        mod_dir = tmp_path / "foo"
+        mod_dir.mkdir()
+        make_lua_file(mod_dir, "init.lua", """
+local _M = {}
+
+function _M.create()
+    return {}
+end
+
+return _M
+""")
+
+        # Create the caller
+        make_lua_file(tmp_path, "main.lua", """
+local foo = require("foo")
+
+function setup()
+    foo.create()
+end
+""")
+
+        result = analyze_lua(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        create_edge = next(
+            (e for e in call_edges if "create" in e.dst and "setup" in e.src), None
+        )
+        assert create_edge is not None, (
+            f"Call edge from setup to create not found. Edges: {call_edges}"
+        )
+        assert create_edge.evidence_type == "require_alias_call"
+
+    def test_unresolved_method_call_creates_edge(self, tmp_path: Path) -> None:
+        """Method call to unknown target still creates an unresolved edge."""
+        from hypergumbo_lang_mainstream.lua import analyze_lua
+
+        make_lua_file(tmp_path, "main.lua", """
+function handler(obj)
+    obj:totally_unknown_method()
+end
+""")
+
+        result = analyze_lua(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        edge = next(
+            (e for e in call_edges if "totally_unknown_method" in e.dst), None
+        )
+        assert edge is not None, (
+            f"Unresolved method call edge not found. Edges: {call_edges}"
+        )
+        assert "?" in edge.dst  # Unresolved target
+        assert edge.confidence == 0.50
+
+    def test_non_require_dot_call_unaffected(self, tmp_path: Path) -> None:
+        """Dot calls on non-require aliases still use regular resolution."""
+        from hypergumbo_lang_mainstream.lua import analyze_lua
+
+        make_lua_file(tmp_path, "main.lua", """
+local MyTable = {}
+
+function MyTable.helper()
+    return 1
+end
+
+function main()
+    MyTable.helper()
+end
+""")
+
+        result = analyze_lua(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        helper_edge = next(
+            (e for e in call_edges if "helper" in e.dst), None
+        )
+        assert helper_edge is not None
+        # Non-require dot calls should not have require_alias_call evidence
+        assert helper_edge.evidence_type != "require_alias_call"
