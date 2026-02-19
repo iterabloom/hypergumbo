@@ -9044,6 +9044,9 @@ class TestConfigConventionPatterns:
 
     def test_enrich_symbols_with_npm_dependency(self) -> None:
         """enrich_symbols enriches NPM dependency with npm_dependency concept."""
+        # Clear cache to avoid stale entries from tests that patch get_frameworks_dir
+        clear_pattern_cache()
+
         symbol = Symbol(
             id="json:package.json:5-5:lodash:dependency",
             name="lodash",
@@ -9066,6 +9069,9 @@ class TestConfigConventionPatterns:
 
     def test_enrich_symbols_with_cargo_dependency(self) -> None:
         """enrich_symbols enriches Cargo dependency with cargo_dependency concept."""
+        # Clear cache to avoid stale entries from tests that patch get_frameworks_dir
+        clear_pattern_cache()
+
         symbol = Symbol(
             id="toml:Cargo.toml:10-10:tokio:dependency",
             name="tokio",
