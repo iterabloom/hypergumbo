@@ -1296,9 +1296,17 @@ def format_tiered_behavior_map(
 
     # --- Post-selection budget enforcement ---
     # Check if the assembled output fits.  If not, shrink by removing
-    # lowest-centrality non-forced nodes (which also removes their edges
-    # and entrypoints).  This is the defence-in-depth that the old code
-    # lacked: edges and entrypoints are now accounted for.
+    # nodes that contribute least to the induced subgraph.  This is the
+    # defence-in-depth that the old code lacked: edges and entrypoints
+    # are now accounted for.
+    #
+    # Removal ordering considers LOCAL edge degree to preserve connectivity.
+    # Prior approach sorted only by (force_include, global_centrality), which
+    # removed non-forced nodes with low global centrality first — even if
+    # those nodes were the only ones providing edges.  Bakeoff cohort #5
+    # (iceberg) showed 169 nodes with 0 edges because all frontier-expanded
+    # production nodes (low global centrality) were removed before
+    # disconnected force-included test entrypoints.
     actual_tokens = estimate_behavior_map_tokens(tiered_map)
 
     if actual_tokens > target_tokens and len(included_symbols) > 1:
@@ -1306,23 +1314,36 @@ def format_tiered_behavior_map(
         raw_centrality = compute_centrality(symbols, edges)
         centrality = apply_tier_weights(raw_centrality, symbols)
 
-        # Sort included symbols by centrality ascending (lowest first to remove)
-        removable = sorted(
-            included_symbols,
-            key=lambda s: (s.id in force_include_ids, centrality.get(s.id, 0)),
-        )
+        while actual_tokens > target_tokens and len(included_symbols) > 1:
+            # Compute local edge degree from CURRENT induced edges.
+            # This changes each iteration as nodes are removed.
+            local_degree: dict[str, int] = {}
+            for e in induced_edges:
+                src, dst = e.get("src"), e.get("dst")
+                local_degree[src] = local_degree.get(src, 0) + 1
+                local_degree[dst] = local_degree.get(dst, 0) + 1
 
-        while actual_tokens > target_tokens and len(removable) > 1:
-            # Remove the least important symbol
-            victim = removable.pop(0)
+            # Pick victim: prefer removing nodes that contribute least.
+            # Sort key (ascending = remove first):
+            #   1. has_edges: False < True → remove 0-edge singletons first
+            #   2. is_forced: False < True → remove non-forced first
+            #   3. centrality: low centrality removed first
+            victim = min(
+                included_symbols,
+                key=lambda s: (
+                    local_degree.get(s.id, 0) > 0,
+                    s.id in force_include_ids,
+                    centrality.get(s.id, 0),
+                ),
+            )
             included_ids.discard(victim.id)
             included_symbols = [s for s in included_symbols if s.id != victim.id]
 
-            # Rebuild edges and entrypoints with reduced node set
+            # Incrementally filter edges: remove edges touching victim.
+            # This is O(current_edges) per step instead of O(all_edges).
             induced_edges = [
-                e for e in all_bmap_edges
-                if e.get("src") in included_ids and e.get("dst") in included_ids
-                and e.get("src") != e.get("dst")
+                e for e in induced_edges
+                if e.get("src") != victim.id and e.get("dst") != victim.id
             ]
             filtered_eps = [
                 ep for ep in all_bmap_eps

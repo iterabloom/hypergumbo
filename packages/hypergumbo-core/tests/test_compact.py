@@ -907,12 +907,27 @@ class TestIsTestPath:
         assert _is_test_path("types/component.test-d.ts")
         assert _is_test_path("dts-test/foo.test-d.tsx")
 
+    def test_java_integration_test_source_set(self):
+        """Gradle/Maven integration test source set detected."""
+        assert _is_test_path(
+            "aws/src/integration/java/org/apache/iceberg/aws/glue/TestGlueCatalogTable.java"
+        )
+        assert _is_test_path(
+            "core/src/integration/java/org/apache/TestBase.java"
+        )
+
     def test_production_files_not_detected(self):
         """Production files are not detected as tests."""
         assert not _is_test_path("src/app.py")
         assert not _is_test_path("lib/utils.ts")
         assert not _is_test_path("pkg/handler.go")
         assert not _is_test_path("components/Button.tsx")
+
+    def test_integration_directory_not_test(self):
+        """Non-src integration directories are not test paths."""
+        # Only /src/integration/ is a test convention, not arbitrary /integration/
+        assert not _is_test_path("services/integration/handler.go")
+        assert not _is_test_path("api/integration/client.py")
 
 
 class TestIsExamplePath:
@@ -2444,4 +2459,97 @@ class TestTieredTokenBudget:
         assert len(result["edges"]) >= 1, (
             f"4k tiered view has {len(result['nodes'])} nodes but 0 edges. "
             f"Connectivity-aware selection should produce connected output."
+        )
+
+    def test_shrink_loop_preserves_edges_with_disconnected_seeds(self):
+        """Shrink loop must preserve edges when seeds don't share edges.
+
+        Regression: DEEP bakeoff cohort #5 (iceberg) showed 64k tiered view
+        with 169 nodes but 0 edges, despite select_by_connectivity returning
+        362 nodes with 1056 induced edges. Root cause: the shrink loop sorted
+        removal candidates by (force_include, global_centrality). Force-included
+        seeds (test entrypoints) were protected, but frontier-expanded production
+        nodes (which provided all the edges) had LOW global centrality and were
+        removed first. After shrinking, only disconnected seeds remained.
+
+        Fix: Shrink loop considers local edge degree when choosing victims.
+        Nodes with zero local edges are removed first (they add no connectivity
+        value), and among nodes with edges, those with fewer local edges are
+        preferred for removal.
+        """
+        # 60 entrypoint seeds in integration test paths — each tests a
+        # different subsystem. They don't directly call each other.
+        seeds = [
+            make_symbol(f"test_ep_{i}", path=f"src/integration/Test{i}.java",
+                        kind="method", language="java")
+            for i in range(60)
+        ]
+
+        # 40 production code nodes — each seed calls 2 production funcs.
+        prod = [
+            make_symbol(f"prod_{i}", path="src/main/Prod.java",
+                        kind="method", language="java")
+            for i in range(40)
+        ]
+
+        # Edges: seeds → prod (each seed → 2 prod nodes, with overlap)
+        seed_prod_edges = []
+        for i, s in enumerate(seeds):
+            for j in range(2):
+                idx = (i * 2 + j) % len(prod)
+                seed_prod_edges.append(make_edge(s.id, prod[idx].id))
+
+        # Production backbone: connected chain providing inter-prod edges
+        backbone_edges = [
+            make_edge(prod[i].id, prod[i + 1].id) for i in range(len(prod) - 1)
+        ]
+
+        # 300 callers → 20 popular utilities: inflates global centrality
+        # to make prod nodes look unimportant by comparison.
+        utils = [
+            make_symbol(f"util_{i}", path="src/main/Utils.java",
+                        kind="method", language="java")
+            for i in range(20)
+        ]
+        callers = [
+            make_symbol(f"caller_{i}", path="src/main/Callers.java",
+                        kind="method", language="java")
+            for i in range(300)
+        ]
+        util_edges = []
+        for i, c in enumerate(callers):
+            for j in range(3):
+                idx = (i + j) % len(utils)
+                util_edges.append(make_edge(c.id, utils[idx].id))
+
+        all_symbols = seeds + prod + utils + callers
+        all_edges = seed_prod_edges + backbone_edges + util_edges
+
+        entrypoints = [
+            {"symbol_id": s.id, "kind": "test_function", "confidence": 1.0}
+            for s in seeds
+        ]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in all_edges],
+            "entrypoints": entrypoints,
+        }
+
+        # 4k budget: forces aggressive shrinking.
+        # Without the fix, the shrink loop removes all prod nodes (low global
+        # centrality, not force-included) leaving only disconnected seeds
+        # with 0 edges.
+        result = format_tiered_behavior_map(
+            behavior_map, all_symbols, all_edges,
+            target_tokens=4000,
+            force_include_entrypoints=True,
+        )
+
+        # The result must have edges — a graph with zero edges is useless
+        assert len(result["edges"]) > 0, (
+            f"Shrink loop produced {len(result['nodes'])} nodes but 0 edges. "
+            f"Production nodes providing connectivity were removed because "
+            f"they had low global centrality. Shrink should prefer removing "
+            f"disconnected singletons before nodes with local edges."
         )

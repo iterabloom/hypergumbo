@@ -103,6 +103,9 @@ def is_test_path(path: str) -> bool:
         return True
     if "/integrationtest/" in path_lower:
         return True
+    # Gradle/Maven integration test source set: src/integration/
+    if "/src/integration/" in path_lower:
+        return True
 
     # File name patterns: test_*.py, test_*.js, etc.
     if filename.startswith("test_"):
