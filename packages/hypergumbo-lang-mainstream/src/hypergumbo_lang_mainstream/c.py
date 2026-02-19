@@ -394,6 +394,72 @@ def _extract_edges(
                         )
                         edges.append(edge)
 
+    # Dispatch table detection: function pointers in static array initializers.
+    # Pattern: static struct Foo table[] = { { "name", func_ptr }, ... };
+    # Identifiers in initializer lists that resolve to known functions
+    # become dispatches_to edges, reducing orphan rate for C codebases.
+    _func_symbols = {
+        name: sym for name, sym in global_symbols.items()
+        if sym.kind == "function"
+    }
+    for node in iter_tree(tree.root_node):
+        if node.type != "init_declarator":
+            continue
+        # Must be inside a declaration (not inside a function body)
+        if not node.parent or node.parent.type != "declaration":
+            continue  # pragma: no cover - defensive
+        # Look for array declarator with initializer list
+        array_decl = None
+        init_list = None
+        for child in node.children:
+            if child.type == "array_declarator":
+                array_decl = child
+            elif child.type == "initializer_list":
+                init_list = child
+        if array_decl is None or init_list is None:
+            continue
+
+        # Get the array variable name
+        array_name = None
+        for child in array_decl.children:
+            if child.type == "identifier":
+                array_name = node_text(child, source)
+                break
+        if not array_name:
+            continue  # pragma: no cover - defensive
+
+        # Build a stable src ID for the dispatch table (array variable)
+        array_line = node.start_point[0] + 1
+        array_src_id = make_symbol_id(
+            "c", str(file_path), array_line, array_line, array_name, "variable",
+        )
+
+        # Scan nested initializer lists for identifiers that match functions
+        seen_funcs: set[str] = set()
+        for inner_node in iter_tree(init_list):
+            if inner_node.type != "identifier":
+                continue
+            ident_name = node_text(inner_node, source)
+            if ident_name in seen_funcs:
+                continue
+            # Only link to known function symbols
+            lookup_result = resolver.lookup(ident_name)
+            if not lookup_result.found or lookup_result.symbol is None:
+                continue
+            if lookup_result.symbol.kind != "function":
+                continue
+            seen_funcs.add(ident_name)
+            edges.append(Edge.create(
+                src=array_src_id,
+                dst=lookup_result.symbol.id,
+                edge_type="dispatches_to",
+                line=inner_node.start_point[0] + 1,
+                confidence=0.80 * lookup_result.confidence,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                evidence_type="dispatch_table_initializer",
+            ))
+
     return edges
 
 

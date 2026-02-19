@@ -905,3 +905,198 @@ void main_func() { helper(); }
         # Only impl.c should be analyzed (2 headers skipped, .cpp not a C file)
         assert result.run.files_analyzed == 1
 
+
+class TestCDispatchTableEdges:
+    """Tests for function pointer dispatch table detection.
+
+    C codebases commonly use static struct arrays where each element contains
+    a function pointer. For example, git.c has:
+
+        static struct cmd_struct commands[] = {
+            { "add", cmd_add, RUN_SETUP },
+            { "commit", cmd_commit, RUN_SETUP },
+        };
+
+    These function pointer references should be detected and create edges,
+    reducing the orphan rate for C codebases.
+    """
+
+    def test_dispatch_table_creates_edges(self, tmp_path: Path) -> None:
+        """Function pointers in static array initializers create edges."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        c_file = tmp_path / "dispatch.c"
+        c_file.write_text("""
+int cmd_add(int argc, char **argv) { return 0; }
+int cmd_commit(int argc, char **argv) { return 0; }
+int cmd_status(int argc, char **argv) { return 0; }
+
+struct cmd_struct {
+    const char *name;
+    int (*fn)(int, char **);
+};
+
+static struct cmd_struct commands[] = {
+    { "add", cmd_add },
+    { "commit", cmd_commit },
+    { "status", cmd_status },
+};
+
+int run_builtin(struct cmd_struct *p) {
+    return p->fn(0, 0);
+}
+""")
+
+        result = analyze_c(tmp_path)
+
+        # All 4 functions + 1 struct should be detected
+        func_names = [s.name for s in result.symbols if s.kind == "function"]
+        assert "cmd_add" in func_names
+        assert "cmd_commit" in func_names
+        assert "cmd_status" in func_names
+        assert "run_builtin" in func_names
+
+        # Dispatch table should create reference edges to cmd_add, cmd_commit, cmd_status
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "dispatches_to"
+        ]
+        ref_dsts = {e.dst for e in ref_edges}
+        cmd_add_id = next(s.id for s in result.symbols if s.name == "cmd_add")
+        cmd_commit_id = next(s.id for s in result.symbols if s.name == "cmd_commit")
+        cmd_status_id = next(s.id for s in result.symbols if s.name == "cmd_status")
+
+        assert cmd_add_id in ref_dsts, (
+            f"cmd_add not found in dispatch edges. Got: {ref_dsts}"
+        )
+        assert cmd_commit_id in ref_dsts
+        assert cmd_status_id in ref_dsts
+
+    def test_dispatch_table_cross_file(self, tmp_path: Path) -> None:
+        """Dispatch table references functions defined in other files."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "cmds.c").write_text("""
+int cmd_help(int argc, char **argv) { return 0; }
+""")
+
+        (tmp_path / "main.c").write_text("""
+int cmd_help(int, char **);  /* declaration */
+
+struct entry { const char *name; int (*fn)(int, char **); };
+
+static struct entry table[] = {
+    { "help", cmd_help },
+};
+""")
+
+        result = analyze_c(tmp_path)
+
+        ref_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
+        # Should have at least one dispatch edge to cmd_help
+        assert len(ref_edges) >= 1
+        cmd_help_sym = next(
+            (s for s in result.symbols if s.name == "cmd_help" and s.kind == "function"),
+            None,
+        )
+        assert cmd_help_sym is not None
+        assert any(e.dst == cmd_help_sym.id for e in ref_edges)
+
+    def test_non_function_identifiers_not_linked(self, tmp_path: Path) -> None:
+        """Constants and macros in initializers don't create false edges."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        c_file = tmp_path / "config.c"
+        c_file.write_text("""
+struct config_entry {
+    const char *key;
+    int value;
+};
+
+static struct config_entry config[] = {
+    { "timeout", 30 },
+    { "retries", 3 },
+};
+""")
+
+        result = analyze_c(tmp_path)
+
+        # No dispatch edges should be created (no function identifiers)
+        ref_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
+        assert len(ref_edges) == 0
+
+    def test_unresolved_identifiers_skipped(self, tmp_path: Path) -> None:
+        """Identifiers that don't resolve to known symbols are ignored."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        c_file = tmp_path / "dispatch.c"
+        c_file.write_text("""
+struct entry { const char *name; void (*fn)(void); };
+
+/* unknown_func is not defined anywhere */
+static struct entry table[] = {
+    { "test", unknown_func },
+};
+""")
+
+        result = analyze_c(tmp_path)
+
+        ref_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
+        assert len(ref_edges) == 0
+
+    def test_non_function_symbol_not_linked(self, tmp_path: Path) -> None:
+        """Identifiers resolving to non-function symbols don't create edges."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        c_file = tmp_path / "mixed.c"
+        c_file.write_text("""
+/* A typedef — registered as a symbol but not kind="function" */
+typedef int color;
+
+int real_func(void) { return 0; }
+
+struct entry { const char *name; int (*fn)(void); int tag; };
+
+/* "color" is a typedef identifier, not a function — should not dispatch.
+   Only real_func should create a dispatch edge. */
+static struct entry table[] = {
+    { "run", real_func, color },
+};
+""")
+
+        result = analyze_c(tmp_path)
+
+        # Verify 'color' is indeed a registered symbol (typedef)
+        color_sym = next((s for s in result.symbols if s.name == "color"), None)
+        assert color_sym is not None, "color typedef should be a registered symbol"
+        assert color_sym.kind == "typedef"
+
+        ref_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
+        # Only real_func should be linked, not color (typedef)
+        assert len(ref_edges) == 1
+        real_func_sym = next(s for s in result.symbols if s.name == "real_func")
+        assert ref_edges[0].dst == real_func_sym.id
+
+    def test_duplicate_function_refs_deduplicated(self, tmp_path: Path) -> None:
+        """Same function appearing multiple times in table creates one edge."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        c_file = tmp_path / "dedup.c"
+        c_file.write_text("""
+int handler(int argc, char **argv) { return 0; }
+
+struct entry { const char *name; int (*fn)(int, char **); };
+
+static struct entry table[] = {
+    { "first", handler },
+    { "second", handler },
+    { "third", handler },
+};
+""")
+
+        result = analyze_c(tmp_path)
+
+        ref_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
+        # handler appears 3 times but should create only 1 dispatch edge
+        assert len(ref_edges) == 1
+
