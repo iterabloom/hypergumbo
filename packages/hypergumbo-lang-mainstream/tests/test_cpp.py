@@ -140,6 +140,72 @@ class TestCppFileDiscovery:
         assert "main.cpp" in files
 
 
+class TestCppHeaderDedup:
+    """Tests for .h file dedup between C and C++ analyzers.
+
+    When a repo has .c files but NO C++ source files (.cpp/.cc/.cxx),
+    .h files should NOT be claimed by the C++ analyzer — they belong
+    to the C analyzer. This prevents phantom C++ symbols from header
+    files in pure C repos (e.g., git, Linux kernel).
+    """
+
+    def test_skips_h_files_in_pure_c_repo(self, tmp_path: Path) -> None:
+        """find_cpp_files should not include .h files when no .cpp/.cc/.cxx exist."""
+        (tmp_path / "main.c").write_text("int main() { return 0; }")
+        (tmp_path / "utils.h").write_text("void helper(void);")
+
+        files = list(find_cpp_files(tmp_path))
+        h_files = [f for f in files if f.suffix == ".h"]
+        assert len(h_files) == 0, (
+            f".h files should not be included in pure C repo, found: {h_files}"
+        )
+
+    def test_includes_h_files_when_cpp_exists(self, tmp_path: Path) -> None:
+        """find_cpp_files should include .h files when .cpp files exist."""
+        (tmp_path / "main.cpp").write_text("int main() { return 0; }")
+        (tmp_path / "utils.h").write_text("void helper();")
+
+        files = list(find_cpp_files(tmp_path))
+        h_files = [f for f in files if f.suffix == ".h"]
+        assert len(h_files) >= 1, (
+            f".h files should be included when .cpp exists, found files: {files}"
+        )
+
+    def test_includes_h_files_when_cc_exists(self, tmp_path: Path) -> None:
+        """find_cpp_files should include .h files when .cc files exist."""
+        (tmp_path / "main.cc").write_text("int main() { return 0; }")
+        (tmp_path / "utils.h").write_text("void helper();")
+
+        files = list(find_cpp_files(tmp_path))
+        h_files = [f for f in files if f.suffix == ".h"]
+        assert len(h_files) >= 1
+
+    def test_always_includes_hpp_files(self, tmp_path: Path) -> None:
+        """.hpp files are always included (unambiguously C++)."""
+        (tmp_path / "utils.hpp").write_text("void helper();")
+        # No .cpp files
+
+        files = list(find_cpp_files(tmp_path))
+        hpp_files = [f for f in files if f.suffix == ".hpp"]
+        assert len(hpp_files) >= 1
+
+    def test_no_phantom_symbols_in_pure_c_repo(self, tmp_path: Path) -> None:
+        """C++ analyzer should produce no symbols from .h files in a pure C repo."""
+        (tmp_path / "main.c").write_text("""
+int main() { return helper(); }
+""")
+        (tmp_path / "helper.h").write_text("""
+int helper(void);
+""")
+
+        result = analyze_cpp(tmp_path)
+        # Should have no symbols since only .h and .c files exist
+        assert len(result.symbols) == 0, (
+            f"C++ analyzer should not produce symbols from .h files in pure C repo, "
+            f"found: {[s.name for s in result.symbols]}"
+        )
+
+
 class TestCppSymbolExtraction:
     """Tests for symbol extraction from C++ files."""
 

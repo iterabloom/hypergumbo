@@ -122,7 +122,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
-- **Analyzer deduplication**: Vue analyzer no longer double-extracts `.vue` scripts (JS/TS analyzer already handles them); C analyzer skips `.h` files when C++ files exist.
+- **Analyzer deduplication**: Vue analyzer no longer double-extracts `.vue` scripts (JS/TS analyzer already handles them); C analyzer skips `.h` files when C++ files exist; C++ analyzer skips `.h` files when no C++ source files (`.cpp`/`.cc`/`.cxx`) exist (prevents phantom C++ symbols in pure C repos).
 - **Framework detection word-boundary matching**: Uses word-boundary regex instead of substring matching (fixes `"bottle"` matching `"bottleneck"`).
 - **Micronaut framework patterns**: Fixed YAML patterns to use correct field names and extraction paths.
 - **Go same-package method resolution**: Package-qualified calls no longer incorrectly resolve to local methods with the same short name.

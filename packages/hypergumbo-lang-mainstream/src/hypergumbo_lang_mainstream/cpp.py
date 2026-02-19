@@ -21,6 +21,9 @@ How It Works
    - Pass 1: Parse all files, extract all symbols into global registry
    - Pass 2: Detect calls, instantiations, and resolve against global symbol registry
 4. Detect include directives and new expressions
+5. Header dedup: ``.h`` files are only included when C++ source files
+   (``.cpp``/``.cc``/``.cxx``) exist.  In pure C repos, ``.h`` files
+   belong to the C analyzer.
 
 Why This Design
 ---------------
@@ -28,6 +31,7 @@ Why This Design
 - Uses tree-sitter-cpp package for grammar
 - Two-pass allows cross-file call resolution
 - Same pattern as other language analyzers for consistency
+- Header dedup avoids phantom C++ symbols in pure C repos (e.g., git, Linux kernel)
 - Uses iterative traversal to avoid RecursionError on deeply nested code
 """
 from __future__ import annotations
@@ -60,13 +64,32 @@ PASS_VERSION = "hypergumbo-0.1.0"
 CppAnalysisResult = AnalysisResult
 
 
+def _has_cpp_source_files(repo_root: Path) -> bool:
+    """Check if the repository contains C++ source files.
+
+    Checks for unambiguous C++ source extensions (.cpp, .cc, .cxx).
+    When none exist, .h files are presumed to be C headers and should
+    be processed only by the C analyzer to avoid phantom C++ symbols.
+    """
+    return any(find_files(repo_root, ["*.cpp", "*.cc", "*.cxx"]))
+
+
 def find_cpp_files(repo_root: Path) -> Iterator[Path]:
     """Yield all C++ files in the repository.
 
-    Headers (.h, .hpp, .hxx) are yielded before source files (.cpp, .cc, .cxx)
-    so that definitions can replace declarations when building the symbol registry.
+    Headers (.hpp, .hxx) are always included (unambiguously C++).
+    Plain .h headers are only included when C++ source files (.cpp, .cc, .cxx)
+    exist — otherwise they belong to the C analyzer.
+
+    Headers are yielded before source files so that definitions can replace
+    declarations when building the symbol registry.
     """
-    yield from find_files(repo_root, ["*.h", "*.hpp", "*.hxx", "*.cpp", "*.cc", "*.cxx"])
+    if _has_cpp_source_files(repo_root):
+        # Full C++ repo: include .h headers
+        yield from find_files(repo_root, ["*.h", "*.hpp", "*.hxx", "*.cpp", "*.cc", "*.cxx"])
+    else:
+        # No C++ source files: only unambiguously C++ files
+        yield from find_files(repo_root, ["*.hpp", "*.hxx"])
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
