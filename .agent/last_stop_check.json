@@ -1,11 +1,10 @@
 {
-  "last_completed_utc": "2026-02-18T23:15:00Z",
-  "branch": "jgstern-agent/feat/canonical-name-containment",
-  "last_pr": 1191,
-  "last_pr_state": "open_ci_stuck",
+  "last_completed_utc": "2026-02-19T18:00:00Z",
+  "branch": "dev",
+  "last_pr": 1222,
+  "last_pr_state": "merged",
   "pending_hard_todos": 0,
   "pending_soft_todos": 3,
   "unfixed_invariants": 0,
-  "notes": "PR #1191 (canonical_name containment for proto service→rpc) open but CI stuck (all 10 jobs pending, runners unavailable). merge-pr PID 2931270 polling with 1hr timeout. DEEP bakeoff-features-reflect completed: all 4 repos PARTIALLY_USEFUL. Extensive research done on 6 quality gaps. Implementation queue ready: (1) Lua/Luau dedup - remove *.lua from find_luau_files(), (2) OpenResty phase handler patterns - add definition-based patterns to openresty.yaml, (3) Ruby bare method call class-aware resolution, (4) Route nesting: scope path. Lab notebook at ~/hypergumbo_lab_notebook/notebookjournal_02182026_2040.md has full research findings. When CI recovers: ./scripts/merge-pr 1191 --wait-for-ci, then implement Sprint 1 items.",
-  "guidance_file": "/home/jgstern_agent/hypergumbo_lab_notebook/guidance_log/stop_guidance_02182026_2136.md"
+  "notes": "PR #1222 merged (ambiguous confidence scaling 1/sqrt(N) + autouse fixture fixing pre-existing CI cache poisoning in test_framework_patterns.py). PR #1221 (C dispatch table edges) merged earlier. DEEP bakeoff cohort #6 findings addressed. P4 tracker items remain: Rego/DTS/Kconfig analyzers."
 }
