@@ -2553,3 +2553,96 @@ class TestTieredTokenBudget:
             f"they had low global centrality. Shrink should prefer removing "
             f"disconnected singletons before nodes with local edges."
         )
+
+    def test_language_proportional_sketch(self):
+        """Dominant language must be represented in budget views.
+
+        Regression: DEEP bakeoff cohort #6 (git) showed 64k tiered view
+        with 99 Python nodes and 0 C nodes, despite git being 99%+ C code.
+        Root cause: Python entrypoints (git-p4.py main) had 33 frontier
+        edges while C entrypoints (common-main.c main) had only 3. BFS
+        frontier was 88% Python, so greedy selection picked Python nodes
+        exclusively.
+
+        Fix: After building the seed set from entrypoints, check language
+        distribution of the frontier. For any language with >10% of total
+        edges but underrepresented in the frontier, inject top-centrality
+        nodes from that language as additional seeds.
+        """
+        # 100 C nodes forming a dense call graph (the dominant language)
+        c_funcs = [
+            make_symbol(f"c_func_{i}", path=f"src/core_{i // 10}.c",
+                        kind="function", language="c")
+            for i in range(100)
+        ]
+        # Dense C call graph: chain + cross-calls = ~200 edges
+        c_edges = []
+        for i in range(99):
+            c_edges.append(make_edge(c_funcs[i].id, c_funcs[i + 1].id))
+        for i in range(0, 100, 5):
+            for j in range(i + 1, min(i + 5, 100)):
+                c_edges.append(make_edge(c_funcs[i].id, c_funcs[j].id))
+
+        # 15 Python nodes forming a small but dense cluster
+        py_funcs = [
+            make_symbol(f"py_func_{i}", path="scripts/tool.py",
+                        kind="function", language="python")
+            for i in range(15)
+        ]
+        py_edges = []
+        for i in range(14):
+            py_edges.append(make_edge(py_funcs[i].id, py_funcs[i + 1].id))
+        for i in range(0, 15, 3):
+            for j in range(i + 1, min(i + 3, 15)):
+                py_edges.append(make_edge(py_funcs[i].id, py_funcs[j].id))
+
+        # 1 C entrypoint with NO outgoing C call edges.
+        # This models git's common-main.c:main which dispatches via
+        # function pointer table — tree-sitter can't resolve those calls.
+        c_main = make_symbol("main", path="src/main.c",
+                             kind="function", language="c")
+        # c_main has zero edges to c_funcs — completely isolated
+
+        # 1 Python entrypoint with edges to all Python funcs (dense frontier)
+        py_main = make_symbol("py_main", path="scripts/tool.py",
+                              kind="function", language="python")
+        py_main_edges = [
+            make_edge(py_main.id, py_funcs[i].id) for i in range(15)
+        ]
+
+        all_symbols = [c_main, py_main] + c_funcs + py_funcs
+        all_edges = c_edges + py_main_edges + py_edges
+
+        entrypoints = [
+            {"symbol_id": c_main.id, "kind": "main_function", "confidence": 1.0},
+            {"symbol_id": py_main.id, "kind": "main_function", "confidence": 1.0},
+        ]
+
+        behavior_map = {
+            "nodes": [s.to_dict() for s in all_symbols],
+            "edges": [e.to_dict() for e in all_edges],
+            "entrypoints": entrypoints,
+        }
+
+        # 16k budget: should be enough for ~30 nodes.
+        result = format_tiered_behavior_map(
+            behavior_map, all_symbols, all_edges,
+            target_tokens=16000,
+            force_include_entrypoints=True,
+        )
+
+        result_nodes = result["nodes"]
+        c_nodes = [n for n in result_nodes if n.get("language") == "c"]
+        py_nodes = [n for n in result_nodes if n.get("language") == "python"]
+
+        # C has ~200 edges (87% of total) and 100 nodes.
+        # Without the fix: BFS from seeds finds no C frontier (c_main is
+        # isolated), so only Python nodes are selected.
+        # With the fix: top-centrality C nodes are injected as seeds,
+        # letting BFS expand into the C subgraph.
+        assert len(c_nodes) >= len(py_nodes), (
+            f"C has {len(c_nodes)} nodes vs Python {len(py_nodes)}. "
+            f"C is the dominant language (100 nodes, {len(c_edges)} edges) "
+            f"but was underrepresented because its entrypoint had zero "
+            f"frontier edges. Language-proportional seeding should fix this."
+        )

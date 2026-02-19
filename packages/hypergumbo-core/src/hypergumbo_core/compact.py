@@ -59,6 +59,7 @@ from .selection.filters import (
 )
 from .selection.language_proportional import (
     allocate_language_budget,
+    find_underrepresented_language_seeds,
     group_symbols_by_language,
 )
 from .selection.token_budget import (
@@ -1260,6 +1261,16 @@ def format_tiered_behavior_map(
         and not _is_test_path(s.path)
         and not _is_example_path(s.path)
     ]
+
+    # Language-proportional seeding: inject seeds for dominant languages
+    # whose entrypoints have no outgoing edges (e.g., C main() dispatching
+    # via function pointer tables invisible to tree-sitter).  Without this,
+    # BFS frontier is 100% in languages with dense entrypoints, and the
+    # dominant language gets 0 nodes in the sketch.
+    lang_seeds = find_underrepresented_language_seeds(
+        eligible_symbols, edges, force_include_ids
+    )
+    force_include_ids |= lang_seeds
 
     conn_result = select_by_connectivity(
         eligible_symbols, edges, force_include_ids, max_additional
