@@ -73,9 +73,11 @@ PASS_VERSION = "hypergumbo-0.1.0"
 # Gin/Echo use uppercase: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
 # Fiber uses lowercase: Get, Post, Put, Delete, Patch, Head, Options
 #
-# Note: Go web framework route detection uses method calls (r.GET, e.POST) rather
-# than decorators. These are now matched via UsageContext (ADR-0003 v1.1.x) which
-# enables YAML patterns for call-based frameworks.
+# Route detection produces two outputs from the same extraction pass:
+# 1. UsageContext records — matched by YAML patterns (ADR-0003 v1.1.x) to enrich
+#    handler symbols with concept: route metadata.
+# 2. Route symbols (kind="route") — consumed by the route_handler linker to
+#    create routes_to edges. See py.py docstring for full architecture notes.
 GO_HTTP_METHODS = {
     "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS",
     "Get", "Post", "Put", "Delete", "Patch", "Head", "Options",

@@ -23,6 +23,12 @@ Why This Design
 - Supports multiple frameworks via pluggable resolution strategies
 - Post-hoc linking works with complete symbol table
 
+Note: Route symbols (kind="route") are created by language analyzers, not by the
+framework pattern enrichment layer. Enrichment adds ``concept: route`` to handler
+symbols (tagging the view function); this linker connects route *entities* to
+handlers via ``routes_to`` edges. Both are derived from the same UsageContext
+extraction pass — see each analyzer's "Route Detection Architecture" docs.
+
 Supported Frameworks
 --------------------
 - Ruby/Rails: controller_action = "controller#action"

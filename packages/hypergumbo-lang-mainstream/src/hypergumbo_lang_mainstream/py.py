@@ -31,6 +31,26 @@ Detected Patterns
 - Class instantiation: ClassName()
 - Imports: from X import Y, import X
 - Django URL patterns: path(), re_path(), url() calls in urls.py
+- Flask URL rules: app.add_url_rule() calls
+
+Route Detection Architecture
+-----------------------------
+Call-based URL routing (Django path(), Flask add_url_rule()) produces two
+outputs that serve different downstream consumers:
+
+1. **UsageContext records** — matched by YAML framework patterns (django.yaml,
+   flask.yaml) to enrich *handler* symbols with ``concept: route`` metadata.
+   This lets the enrichment layer tag view functions as route handlers.
+
+2. **Route symbols** (``kind="route"``) — consumed by the ``route_handler``
+   linker to create ``routes_to`` edges from route entities to handler symbols.
+   These are first-class nodes in the IR representing the route itself.
+
+Both are derived from the same extraction pass (_extract_django_usage_contexts,
+_extract_flask_usage_contexts). Route symbols are created from the UsageContext
+metadata at the callsite. This avoids duplicating the AST-walking logic while
+preserving both outputs. Go and JS/TS analyzers follow the same dual-output
+pattern.
 
 ID Schemes
 ----------
@@ -55,7 +75,7 @@ Why This Design
 - Two-pass approach enables cross-file call resolution via imports
 - col_offset == 0 heuristic distinguishes top-level from nested functions
 - Import resolution handles both absolute and relative imports
-- Rich metadata enables future FRAMEWORK_PATTERNS phase for semantic detection
+- Rich metadata feeds YAML-driven framework pattern enrichment (ADR-0003)
 """
 import ast
 import hashlib
@@ -538,74 +558,6 @@ def _has_main_guard(tree: ast.Module) -> bool:
             return True
 
     return False
-
-
-def _extract_django_url_patterns(tree: ast.Module) -> list[tuple[int, int, str, str | None]]:
-    """Extract Django URL patterns from path(), re_path(), url() calls.
-
-    Returns list of (start_line, end_line, route_path, view_name).
-    """
-    patterns: list[tuple[int, int, str, str | None]] = []
-
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-
-        # Check if it's a Django URL function call
-        func_name = None
-        if isinstance(node.func, ast.Name):
-            func_name = node.func.id
-        elif isinstance(node.func, ast.Attribute):
-            func_name = node.func.attr
-
-        if func_name not in DJANGO_URL_FUNCTIONS:
-            continue
-
-        # Extract the URL pattern from the first argument
-        if not node.args:  # pragma: no cover
-            continue
-
-        first_arg = node.args[0]
-        route_path = None
-        if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
-            route_path = first_arg.value
-        elif isinstance(first_arg, ast.JoinedStr):  # pragma: no cover
-            continue  # Skip dynamic patterns (f-strings)
-
-        if route_path is None:  # pragma: no cover - unsupported pattern type
-            continue
-
-        # Extract view name from second argument
-        view_name = None
-        if len(node.args) >= 2:
-            second_arg = node.args[1]
-            if isinstance(second_arg, ast.Attribute):
-                # views.user_list -> "user_list"
-                view_name = second_arg.attr
-            elif isinstance(second_arg, ast.Name):
-                # user_list -> "user_list"
-                view_name = second_arg.id
-            elif isinstance(second_arg, ast.Call):
-                # views.LoginView.as_view() -> "LoginView"
-                # TemplateView.as_view(template_name='...') -> "TemplateView"
-                call_func = second_arg.func
-                if isinstance(call_func, ast.Attribute) and call_func.attr == "as_view":
-                    # Extract the class name from the as_view() call
-                    if isinstance(call_func.value, ast.Attribute):
-                        # views.LoginView.as_view() -> LoginView
-                        view_name = call_func.value.attr
-                    elif isinstance(call_func.value, ast.Name):
-                        # LoginView.as_view() -> LoginView
-                        view_name = call_func.value.id
-
-        patterns.append((
-            node.lineno,
-            getattr(node, "end_lineno", node.lineno),
-            route_path,
-            view_name,
-        ))
-
-    return patterns
 
 
 def _extract_django_usage_contexts(
@@ -1585,41 +1537,35 @@ def _extract_file_analysis(
                 symbols.append(symbol)
                 symbol_by_name[node.name] = symbol
 
-    # Detect Django URL patterns (path, re_path, url calls)
-    # Note: This is NOT deprecated - Django URL patterns use function calls,
-    # not decorators, so they cannot be detected via YAML patterns.
-    django_patterns = _extract_django_url_patterns(tree)
-    for start_line, end_line, route_path, view_name in django_patterns:
-        span = Span(
-            start_line=start_line,
-            end_line=end_line,
-            start_col=0,
-            end_col=0,
-        )
-        # Normalize route path - ensure it starts with /
-        normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
-        route_name = f"django:{view_name or 'unknown'}"
+    # Extract usage contexts for call-based frameworks (v1.1.x).
+    # UsageContext records feed into YAML-driven enrichment (concept tagging on
+    # handler symbols). Route symbols are derived from the same contexts for the
+    # route_handler linker, which needs kind="route" symbols to create routes_to
+    # edges. See "Route Detection Architecture" in this module's docstring.
+    usage_contexts: list[UsageContext] = []
+    django_contexts = _extract_django_usage_contexts(tree, str(py_file), symbol_by_name)
+    usage_contexts.extend(django_contexts)
+    usage_contexts.extend(_extract_flask_usage_contexts(tree, str(py_file), symbol_by_name))
+
+    # Create route symbols from Django usage contexts.
+    for ctx in django_contexts:
+        route_path = ctx.metadata.get("route_path", "")
+        view_name = ctx.metadata.get("view_name")
         symbol = Symbol(
-            id=_make_symbol_id(str(py_file), start_line, end_line, normalized_path, "route"),
-            name=route_name,
+            id=_make_symbol_id(str(py_file), ctx.span.start_line, ctx.span.end_line, route_path, "route"),
+            name=f"django:{view_name or 'unknown'}",
             kind="route",
             language="python",
             path=str(py_file),
-            span=span,
+            span=ctx.span,
             stable_id="GET",  # Django defaults to GET, all methods allowed
             meta={
-                "route_path": normalized_path,
+                "route_path": route_path,
                 "http_method": "GET",
                 "view_name": view_name,
             },
         )
         symbols.append(symbol)
-
-    # Extract usage contexts for call-based frameworks (v1.1.x)
-    # This enables YAML-driven pattern matching for Django, Flask, etc.
-    usage_contexts: list[UsageContext] = []
-    usage_contexts.extend(_extract_django_usage_contexts(tree, str(py_file), symbol_by_name))
-    usage_contexts.extend(_extract_flask_usage_contexts(tree, str(py_file), symbol_by_name))
 
     # Compute module name for import resolution
     if repo_root is not None:

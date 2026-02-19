@@ -1,4 +1,4 @@
-"""Framework pattern matching for symbol enrichment (ADR-0003 v0.8.x).
+"""Framework pattern matching for symbol enrichment (ADR-0003).
 
 This module provides data-driven framework detection using YAML pattern files.
 Instead of hardcoding framework-specific logic in analyzers, patterns are
@@ -13,10 +13,28 @@ How It Works
 
 Pattern Types
 -------------
+**Definition-based (v0.8.x):** Match against symbol definition metadata.
+
 - Decorator patterns: Match function/method decorators (e.g., @app.get)
 - Base class patterns: Match class inheritance (e.g., BaseModel)
 - Annotation patterns: Match Java annotations (e.g., @RequestMapping)
 - Parameter type patterns: Match function parameter types (e.g., Depends)
+
+**Usage-based (v1.1.x):** Match against UsageContext records for call-based
+frameworks where routing is done via function calls rather than decorators.
+
+- Usage patterns: Match UsageContext kind/name/position (e.g., Django path(),
+  Flask add_url_rule(), Go gin.GET())
+- Extraction expressions: Pull route paths and methods from UsageContext metadata
+
+Relationship to Route Symbols
+-----------------------------
+Enrichment adds ``concept: route`` to *handler* symbols (e.g., a Django view
+function gets tagged as a route handler). This is complementary to — not a
+replacement for — the ``kind="route"`` symbols that language analyzers create.
+Route symbols are first-class IR entities representing the route itself, consumed
+by the ``route_handler`` linker to create ``routes_to`` edges. Both outputs are
+derived from the same UsageContext extraction pass in each analyzer.
 
 Why This Design
 ---------------
