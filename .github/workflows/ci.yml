@@ -671,6 +671,205 @@ jobs:
       # Coverage badge is updated by full-suite.yml, not here
       # (ci.yml skips pytest on push events)
 
+  # Retry job for pytest when Codeberg's hard 5-minute cap kills the primary.
+  # Runs on self-hosted runner (no time limit). Analogous to full-suite.yml retries.
+  # always() ensures the if-condition is evaluated even when pytest is cancelled
+  # (without it, Forgejo skips the dependent entirely).
+  pytest-retry:
+    needs: [changes, stop-the-line, build-grammars, pytest]
+    if: >-
+      always() &&
+      needs.changes.outputs.code == 'true' &&
+      needs.stop-the-line.result != 'failure' &&
+      needs.build-grammars.result != 'failure' &&
+      (needs.pytest.result == 'failure' || needs.pytest.result == 'cancelled')
+    runs-on: self-hosted
+    timeout-minutes: 15
+    env:
+      SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Cache venv
+        id: cache-venv
+        uses: actions/cache@v3
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-py3.11-${{ hashFiles('**/pyproject.toml') }}
+      - name: Create venv and install dependencies
+        if: steps.cache-venv.outputs.cache-hit != 'true'
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          if [ -d "packages/hypergumbo-core" ]; then
+            pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
+            pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo-tracker[dev,tui]"
+          else
+            pip install -e .[dev]
+          fi
+      - name: Add venv to PATH
+        run: echo "${{ github.workspace }}/.venv/bin" >> $GITHUB_PATH
+      - name: Fix pytest wrapper
+        run: ./scripts/install-hooks --repair-shims
+      - name: Restore grammar wheels
+        uses: actions/cache@v3
+        with:
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Install grammars from wheels
+        run: ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+      - name: Check for sentence-transformers
+        run: |
+          if python -c "import sentence_transformers" 2>/dev/null; then
+            echo "sentence-transformers available"
+            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "sentence-transformers not installed, embedding tests will be skipped"
+            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
+      - name: Validate test manifest (smart test selection)
+        id: manifest
+        run: |
+          MANIFEST=".ci/affected-tests.txt"
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+
+            if [ ! -f "$MANIFEST" ]; then
+              echo "❌ No manifest committed"
+              exit 1
+            fi
+
+            echo "=== Validating committed manifest (retry) ==="
+            grep "^#" "$MANIFEST" | head -10
+            TEST_COUNT=$(grep -c "^packages/" "$MANIFEST" || echo 0)
+            echo "# (manifest lists $TEST_COUNT test files)"
+
+            if grep -q "^# Mode: full-suite" "$MANIFEST"; then
+              echo "❌ Fast-CI cannot run full-suite manifests"
+              exit 1
+            fi
+
+            echo "✅ Manifest validated"
+            echo "use_manifest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Push event - skipping pytest"
+            echo "skip_tests=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run tests with coverage
+        if: steps.manifest.outputs.skip_tests != 'true'
+        run: |
+          MANIFEST=".ci/affected-tests.txt"
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
+          else
+            WORKERS=$(nproc)
+          fi
+
+          if [ ! -f "$MANIFEST" ] || [ "${{ steps.manifest.outputs.use_manifest }}" != "true" ]; then
+            echo "❌ No valid manifest - cannot run tests"
+            exit 1
+          fi
+
+          MANIFEST_MODE=$(grep '^# Mode:' "$MANIFEST" | cut -d: -f2 | tr -d ' ' || echo "unknown")
+
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          CHANGED_SOURCE_FILES=$(sed -n '/^# === CHANGED_SOURCE_FILES ===/,/^# === SELECTED_TESTS ===/p' "$MANIFEST" | grep -v '^#' | grep -v '^$' || echo "")
+          ACTUAL_SOURCE_FILES=$(git diff --name-only "$BASE" "$HEAD" | grep -E '^packages/.*/src/.*\.py$' | sort || echo "")
+
+          if [ -z "$ACTUAL_SOURCE_FILES" ] && [ -z "$CHANGED_SOURCE_FILES" ]; then
+            echo "✅ No Python source files changed - skipping pytest"
+            exit 0
+          fi
+
+          # Use actual PR diff files for coverage if manifest is missing any
+          MISSING=""
+          MANIFEST_SOURCE_FILES=$(echo "$CHANGED_SOURCE_FILES" | sort || echo "")
+          for f in $ACTUAL_SOURCE_FILES; do
+            if ! echo "$MANIFEST_SOURCE_FILES" | grep -qF "$f"; then
+              MISSING="$MISSING $f"
+            fi
+          done
+          if [ -n "$MISSING" ]; then
+            CHANGED_SOURCE_FILES="$ACTUAL_SOURCE_FILES"
+          fi
+
+          if [ -n "$CHANGED_SOURCE_FILES" ]; then
+            PKG_DIRS=$(echo "$CHANGED_SOURCE_FILES" | sed 's|^\(packages/[^/]*/src\)/.*|\1|' | sort -u)
+            COV_PATHS=""
+            for pkg in $PKG_DIRS; do
+              COV_PATHS="$COV_PATHS --cov=$pkg"
+            done
+            COV_PATHS="$COV_PATHS --cov-report= --cov-config=.coveragerc.no-embeddings"
+          else
+            COV_PATHS=""
+          fi
+
+          EMBEDDING_FILES="sketch_embeddings.py _embedding_data.py"
+          COVERABLE_SOURCE_FILES=""
+          for f in $CHANGED_SOURCE_FILES; do
+            IS_EMBEDDING=false
+            for ef in $EMBEDDING_FILES; do
+              if echo "$f" | grep -qE "/$ef$"; then
+                IS_EMBEDDING=true
+                break
+              fi
+            done
+            if [ "$IS_EMBEDDING" = "false" ]; then
+              COVERABLE_SOURCE_FILES="$COVERABLE_SOURCE_FILES $f"
+            fi
+          done
+          COVERABLE_SOURCE_FILES=$(echo "$COVERABLE_SOURCE_FILES" | xargs)
+
+          SELECTED_TESTS=$(sed -n '/^# === SELECTED_TESTS ===/,$p' "$MANIFEST" | grep -v '^#' | grep -v '^$' | tr '\n' ' ')
+          TEST_COUNT=$(echo "$SELECTED_TESTS" | wc -w)
+
+          echo "=== Running $TEST_COUNT selected tests (retry on self-hosted) ==="
+          SMART_TEST_ACTIVE=1 pytest -n "$WORKERS" --tb=short $COV_PATHS $SELECTED_TESTS
+          TEST_EXIT=$?
+
+          if [ $TEST_EXIT -eq 0 ] && [ -n "$COVERABLE_SOURCE_FILES" ]; then
+            echo ""
+            echo "=== Checking 100% coverage for changed source files ==="
+            EXISTING_FILES=""
+            for f in $COVERABLE_SOURCE_FILES; do
+              if [ -f "$f" ]; then
+                EXISTING_FILES="$EXISTING_FILES $f"
+              fi
+            done
+            EXISTING_FILES=$(echo "$EXISTING_FILES" | xargs)
+
+            if [ -z "$EXISTING_FILES" ]; then
+              echo "✅ All changed files were deleted - no coverage check needed"
+            else
+              INCLUDE_PATTERN=$(echo "$EXISTING_FILES" | tr ' ' ',' | sed 's/,$//')
+              if ! coverage report --include="$INCLUDE_PATTERN" --fail-under=100; then
+                echo ""
+                echo "❌ Changed source files are not at 100% coverage:"
+                coverage report --include="$INCLUDE_PATTERN" --show-missing
+                exit 1
+              else
+                echo "✅ All changed source files are at 100% coverage"
+              fi
+            fi
+          fi
+
+          exit $TEST_EXIT
+
   tracker-validate:
     needs: [changes, stop-the-line]
     if: >-
@@ -694,7 +893,7 @@ jobs:
   # Final gate job - ensures workflow completes even when jobs are skipped
   # This fixes Forgejo Actions bug where skipped jobs leave workflow in "running" state
   ci-complete:
-    needs: [changes, stop-the-line, lint, audit, verify-generated, build-grammars, pytest, dco, tracker-validate]
+    needs: [changes, stop-the-line, lint, audit, verify-generated, build-grammars, pytest, pytest-retry, dco, tracker-validate]
     if: always()
     runs-on: codeberg-small-lazy
     timeout-minutes: 5
@@ -709,8 +908,16 @@ jobs:
           echo "  verify-generated: ${{ needs.verify-generated.result }}"
           echo "  build-grammars: ${{ needs.build-grammars.result }}"
           echo "  pytest: ${{ needs.pytest.result }}"
+          echo "  pytest-retry: ${{ needs.pytest-retry.result }}"
           echo "  dco: ${{ needs.dco.result }}"
           echo "  tracker-validate: ${{ needs.tracker-validate.result }}"
+
+          # pytest passes if primary OR retry succeeded
+          pytest_ok=false
+          [[ "${{ needs.pytest.result }}" == "success" ]] && pytest_ok=true
+          [[ "${{ needs.pytest-retry.result }}" == "success" ]] && pytest_ok=true
+          # If pytest was skipped (no code changes), that's OK too
+          [[ "${{ needs.pytest.result }}" == "skipped" ]] && pytest_ok=true
 
           # Fail if any required job failed (skipped is OK)
           if [[ "${{ needs.changes.result }}" == "failure" ]] || \
@@ -718,7 +925,7 @@ jobs:
              [[ "${{ needs.lint.result }}" == "failure" ]] || \
              [[ "${{ needs.audit.result }}" == "failure" ]] || \
              [[ "${{ needs.verify-generated.result }}" == "failure" ]] || \
-             [[ "${{ needs.pytest.result }}" == "failure" ]] || \
+             [[ "$pytest_ok" != "true" ]] || \
              [[ "${{ needs.dco.result }}" == "failure" ]] || \
              [[ "${{ needs.tracker-validate.result }}" == "failure" ]]; then
             echo "❌ One or more jobs failed"
