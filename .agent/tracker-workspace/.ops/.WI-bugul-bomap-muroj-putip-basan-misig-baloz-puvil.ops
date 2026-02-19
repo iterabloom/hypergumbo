@@ -1,0 +1,20 @@
+- op: create  # fa28
+  at: '2026-02-19T05:09:34Z'  # fa28
+  by: agent  # fa28
+  actor: jgstern_agent  # fa28
+  clock: 1  # fa28
+  nonce: fa28  # fa28
+  data:  # fa28
+    kind: work_item  # fa28
+    title: "Analyzer refactor: TreeSitterAnalyzer base class and migration"  # fa28
+    status: todo_soft  # fa28
+    priority: 1  # fa28
+    parent:  # fa28
+    tags: []  # fa28
+    before: []  # fa28
+    duplicate_of: []  # fa28
+    not_duplicate_of: []  # fa28
+    pr_ref:  # fa28
+    justification:  # fa28
+    description: "Comprehensive plan to eliminate ~18,800 lines of duplicated boilerplate across 105 language analyzers via a TreeSitterAnalyzer base class. Five phases: (1) base.py utility adoption, (2) base class implementation, (3) extended1 migration, (4) common+mainstream migration, (5) selective complex analyzer migration. Full plan at ~/analyzer_refactor_plan.md"  # fa28
+    fields: {}  # fa28
