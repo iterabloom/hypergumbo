@@ -205,22 +205,34 @@ fast-ci:
         # Fetch commit status (no auth needed for public repos)
         STATUS_JSON=$(curl -s "$API_BASE/commits/$BASE_SHA/status")
 
-        # Parse to find Full Test Suite failures
+        # Check only the aggregate job — it is the authoritative verdict.
+        # Individual jobs like test-core may fail due to Codeberg runner
+        # timeouts while their retries (on self-hosted) succeed.
         RESULT=$(echo "$STATUS_JSON" | python3 -c '
         import json, sys, re
         d = json.load(sys.stdin)
-        full_suite = [s for s in d.get("statuses", [])
-                      if "Full Test Suite" in s.get("context", "")]
-        failed = [s for s in full_suite if s.get("status") == "failure"]
-        if failed:
-            url = failed[0].get("target_url", "")
+        statuses = d.get("statuses", [])
+        aggregate = [s for s in statuses
+                     if "Full Test Suite / aggregate" in s.get("context", "")]
+        if not aggregate:
+            full_suite = [s for s in statuses
+                          if "Full Test Suite" in s.get("context", "")]
+            if not full_suite:
+                print("none|unknown")
+            else:
+                print("none|pending")
+            sys.exit(0)
+        agg = aggregate[0]
+        agg_status = agg.get("status", "unknown")
+        if agg_status == "failure":
+            url = agg.get("target_url", "")
             match = re.search(r"/runs/(\d+)/", url)
             run_id = match.group(1) if match else "unknown"
             print(f"{run_id}|failure")
-        elif full_suite:
+        elif agg_status == "success":
             print("ok|success")
         else:
-            print("none|unknown")
+            print("none|pending")
         ')
 
         RUN_ID=$(echo "$RESULT" | cut -d'|' -f1)
