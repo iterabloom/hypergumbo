@@ -267,11 +267,14 @@ jobs:
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
   # Retry jobs for heavy packages that may hit Codeberg's 5-min deadline.
-  # These run ONLY when the primary job fails, and ONLY on the local runner
-  # (via the 'self-hosted' label), which has no such time limit.
+  # These run when the primary job fails OR is cancelled (Codeberg's infra
+  # reports timed-out jobs as 'cancelled', not 'failure'). Retries run on
+  # the local runner (via the 'self-hosted' label), which has no time limit.
   test-core-retry:
     needs: [changes, prep, test-core]
-    if: needs.changes.outputs.code == 'true' && needs.test-core.result == 'failure'
+    if: >-
+      needs.changes.outputs.code == 'true' &&
+      (needs.test-core.result == 'failure' || needs.test-core.result == 'cancelled')
     runs-on: self-hosted
     timeout-minutes: 15
     outputs:
@@ -336,7 +339,9 @@ jobs:
 
   test-mainstream-retry:
     needs: [changes, prep, test-mainstream]
-    if: needs.changes.outputs.code == 'true' && needs.test-mainstream.result == 'failure'
+    if: >-
+      needs.changes.outputs.code == 'true' &&
+      (needs.test-mainstream.result == 'failure' || needs.test-mainstream.result == 'cancelled')
     runs-on: self-hosted
     timeout-minutes: 15
     outputs:
@@ -575,7 +580,9 @@ jobs:
 
   test-tracker-retry:
     needs: [changes, prep, test-tracker]
-    if: needs.changes.outputs.code == 'true' && needs.test-tracker.result == 'failure'
+    if: >-
+      needs.changes.outputs.code == 'true' &&
+      (needs.test-tracker.result == 'failure' || needs.test-tracker.result == 'cancelled')
     runs-on: self-hosted
     timeout-minutes: 15
     outputs:
