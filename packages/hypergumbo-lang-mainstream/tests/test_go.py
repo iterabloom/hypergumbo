@@ -1793,3 +1793,411 @@ var _ entity.Interface[string] = &MyImpl{}
         assert any("Interface" in b for b in bases), (
             f"Should have Interface in base_classes, got: {bases}"
         )
+
+
+class TestGoReceiverTypeDisambiguation:
+    """Tests for receiver-type method disambiguation.
+
+    When multiple Go types define a method with the same name (e.g., String()),
+    the analyzer should use the receiver variable's inferred type to resolve
+    the call to the correct type's method, rather than picking alphabetically.
+
+    Go patterns that establish variable types:
+    - Short variable declaration: ``s := &Server{}`` → s has type Server
+    - Function parameters: ``func foo(s *Server)`` → s has type Server
+    - Var declaration: ``var s Server`` → s has type Server
+    """
+
+    def test_disambiguates_same_name_methods_via_composite_literal(self, tmp_path: Path) -> None:
+        """Resolves s.String() to Server.String when s := &Server{}.
+
+        Two types (Server and Client) both define String(). When we see
+        ``s := &Server{}`` followed by ``s.String()``, the call should resolve
+        to Server.String, not Client.String.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Server struct{}
+type Client struct{}
+
+func (s *Server) String() string {
+    return "server"
+}
+
+func (c *Client) String() string {
+    return "client"
+}
+
+func main() {
+    s := &Server{}
+    _ = s.String()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        # Find call edges from main function
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        main_calls = [e for e in call_edges if "main:function" in e.src]
+
+        # Should have a call to String
+        string_calls = [e for e in main_calls if "String" in e.dst]
+        assert len(string_calls) >= 1, (
+            f"main should call String, found edges: {main_calls}"
+        )
+
+        # The call should resolve to Server.String, NOT Client.String
+        assert any("Server.String" in e.dst for e in string_calls), (
+            f"s.String() should resolve to Server.String (not Client.String), "
+            f"found destinations: {[e.dst for e in string_calls]}"
+        )
+
+    def test_disambiguates_via_function_parameter(self, tmp_path: Path) -> None:
+        """Resolves s.Get() to Server.Get when s is a *Server parameter.
+
+        When a function parameter has a typed receiver, the call should resolve
+        to the correct type's method.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Server struct{}
+type Client struct{}
+
+func (s *Server) Get() string {
+    return "server-get"
+}
+
+func (c *Client) Get() string {
+    return "client-get"
+}
+
+func process(s *Server) {
+    _ = s.Get()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        process_calls = [e for e in call_edges if "process" in e.src]
+
+        # The call should resolve to Server.Get, NOT Client.Get
+        get_calls = [e for e in process_calls if "Get" in e.dst]
+        assert len(get_calls) >= 1, (
+            f"process should call Get, found edges: {process_calls}"
+        )
+        assert any("Server.Get" in e.dst for e in get_calls), (
+            f"s.Get() should resolve to Server.Get (not Client.Get), "
+            f"found destinations: {[e.dst for e in get_calls]}"
+        )
+
+    def test_disambiguates_via_var_declaration(self, tmp_path: Path) -> None:
+        """Resolves s.Close() to Server.Close when var s Server.
+
+        Explicit var declarations with type annotations should be tracked.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Server struct{}
+type Client struct{}
+
+func (s *Server) Close() {
+}
+
+func (c *Client) Close() {
+}
+
+func main() {
+    var s Server
+    s.Close()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        main_calls = [e for e in call_edges if "main:function" in e.src]
+
+        close_calls = [e for e in main_calls if "Close" in e.dst]
+        assert len(close_calls) >= 1, (
+            f"main should call Close, found edges: {main_calls}"
+        )
+        assert any("Server.Close" in e.dst for e in close_calls), (
+            f"s.Close() should resolve to Server.Close, "
+            f"found destinations: {[e.dst for e in close_calls]}"
+        )
+
+    def test_higher_confidence_for_typed_resolution(self, tmp_path: Path) -> None:
+        """Typed receiver resolution should have higher confidence than untyped.
+
+        When we know the receiver type, the confidence should be 0.85 (type-tracked)
+        rather than 0.80 * 0.70 = 0.56 (ListNameResolver ambiguous).
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Server struct{}
+type Client struct{}
+
+func (s *Server) Handle() {}
+func (c *Client) Handle() {}
+
+func main() {
+    s := &Server{}
+    s.Handle()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        main_calls = [e for e in call_edges if "main:function" in e.src]
+        handle_calls = [e for e in main_calls if "Handle" in e.dst]
+        assert len(handle_calls) >= 1
+
+        # Typed resolution should have higher confidence than ambiguous
+        assert handle_calls[0].confidence >= 0.80, (
+            f"Typed receiver resolution should have confidence >= 0.80, "
+            f"got {handle_calls[0].confidence}"
+        )
+
+    def test_evidence_type_for_typed_resolution(self, tmp_path: Path) -> None:
+        """Typed receiver resolution should use 'typed_receiver_call' evidence type."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Server struct{}
+type Client struct{}
+
+func (s *Server) Run() {}
+func (c *Client) Run() {}
+
+func main() {
+    s := &Server{}
+    s.Run()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        main_calls = [e for e in call_edges if "main:function" in e.src]
+        run_calls = [e for e in main_calls if "Run" in e.dst]
+        assert len(run_calls) >= 1
+
+        assert run_calls[0].evidence_type == "typed_receiver_call", (
+            f"Expected evidence_type='typed_receiver_call', got '{run_calls[0].evidence_type}'"
+        )
+
+    def test_disambiguates_cross_file_via_global_symbols(self, tmp_path: Path) -> None:
+        """Resolves s.String() via global_symbols when method is in another file.
+
+        When the method definition is in a different file, it won't be in
+        local_symbols but should be found via global_symbols using the
+        qualified name (Type.Method).
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        # File 1: Define types and methods
+        types_file = tmp_path / "types.go"
+        types_file.write_text("""package main
+
+type Server struct{}
+type Client struct{}
+
+func (s *Server) String() string {
+    return "server"
+}
+
+func (c *Client) String() string {
+    return "client"
+}
+""")
+
+        # File 2: Use the types
+        main_file = tmp_path / "main.go"
+        main_file.write_text("""package main
+
+func main() {
+    s := &Server{}
+    _ = s.String()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        main_calls = [e for e in call_edges if "main:function" in e.src]
+
+        string_calls = [e for e in main_calls if "String" in e.dst]
+        assert len(string_calls) >= 1, (
+            f"main should call String, found edges: {main_calls}"
+        )
+        # Should resolve to Server.String via global_symbols
+        assert any("Server.String" in e.dst for e in string_calls), (
+            f"s.String() should resolve to Server.String across files, "
+            f"found destinations: {[e.dst for e in string_calls]}"
+        )
+
+    def test_first_assignment_wins_across_functions(self, tmp_path: Path) -> None:
+        """First type assignment to a variable name wins (file-level SSA).
+
+        When the same variable name appears in multiple functions with
+        different types, the first occurrence (in file order) wins.
+        This exercises the first-assignment-wins guard in var_types.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Server struct{}
+type Client struct{}
+
+func (s *Server) Run() {}
+func (c *Client) Run() {}
+
+func foo() {
+    s := &Server{}
+    s.Run()
+}
+
+func bar() {
+    s := &Client{}
+    s.Run()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        foo_calls = [e for e in call_edges if "foo" in e.src]
+        bar_calls = [e for e in call_edges if "bar" in e.src]
+
+        # foo's s is Server, bar's s is also treated as Server (first-assignment wins)
+        # Both should resolve to something with Run
+        assert any("Run" in e.dst for e in foo_calls), (
+            f"foo should call Run, found: {foo_calls}"
+        )
+        assert any("Run" in e.dst for e in bar_calls), (
+            f"bar should call Run, found: {bar_calls}"
+        )
+
+    def test_first_assignment_wins_var_vs_param(self, tmp_path: Path) -> None:
+        """First binding wins when same name is used as var and param.
+
+        If a short_var_declaration with name 's' appears before a parameter
+        declaration with name 's' in file order, the var binding wins.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Server struct{}
+type Client struct{}
+
+func (s *Server) Do() {}
+func (c *Client) Do() {}
+
+func first() {
+    s := &Server{}
+    s.Do()
+}
+
+func second(s *Client) {
+    s.Do()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        first_calls = [e for e in call_edges if "first" in e.src]
+        second_calls = [e for e in call_edges if "second" in e.src]
+
+        # first() should resolve s.Do() to Server.Do
+        assert any("Server.Do" in e.dst for e in first_calls), (
+            f"first's s.Do() should resolve to Server.Do, "
+            f"found: {[e.dst for e in first_calls]}"
+        )
+        # second() has s as *Client param, but first-assignment-wins means
+        # s is still treated as Server. This is a known limitation of
+        # file-level (not scope-level) type tracking.
+        assert any("Do" in e.dst for e in second_calls), (
+            f"second's s.Do() should resolve to some Do method, "
+            f"found: {[e.dst for e in second_calls]}"
+        )
+
+    def test_skips_builtin_type_parameters(self, tmp_path: Path) -> None:
+        """Parameters with builtin types (string, int) are not tracked.
+
+        Built-in types don't have user-defined methods, so tracking them
+        would waste memory and never produce useful disambiguation.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Server struct{}
+
+func (s *Server) Name() string {
+    return "server"
+}
+
+func process(name string, s *Server) {
+    _ = s.Name()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        process_calls = [e for e in call_edges if "process" in e.src]
+
+        # Should resolve s.Name() to Server.Name
+        name_calls = [e for e in process_calls if "Name" in e.dst]
+        assert len(name_calls) >= 1
+        assert any("Server.Name" in e.dst for e in name_calls)
+
+    def test_var_declaration_with_pointer_type(self, tmp_path: Path) -> None:
+        """var s *Server should track s as type Server."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Server struct{}
+type Client struct{}
+
+func (s *Server) Start() {}
+func (c *Client) Start() {}
+
+func main() {
+    var s *Server
+    s.Start()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        main_calls = [e for e in call_edges if "main:function" in e.src]
+        start_calls = [e for e in main_calls if "Start" in e.dst]
+
+        assert len(start_calls) >= 1
+        assert any("Server.Start" in e.dst for e in start_calls)

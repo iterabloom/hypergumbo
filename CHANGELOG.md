@@ -19,7 +19,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Assembly language analyzer**: Tree-sitter-based analyzer for assembly files (`.s`, `.asm`, `.S`). Extracts labels as function/variable symbols, detects call instructions as call edges with cross-file resolution.
 - **ORM query linker**: Detects Django ORM and Flask-SQLAlchemy query patterns, linking calling functions to Model classes.
 - **Elixir/OTP improvements**: GenServer dispatch linking (`call`/`cast` → `handle_call`/`handle_cast`), behaviour callback detection (11 behaviours including Phoenix LiveView), `live` route detection, multi-clause function edge targeting, and cross-file module-qualified call resolution.
-- **Go improvements**: Generic interface assertion detection, route-handler linking (Gin, Echo, Fiber, Chi, Gorilla mux), and HTTP client detection (`net/http`) for cross-language linking.
+- **Go improvements**: Receiver-type method disambiguation (tracks variable types from `:=`, `var`, and function parameters to resolve `s.Method()` to the correct type when multiple types define the same method), generic interface assertion detection, route-handler linking (Gin, Echo, Fiber, Chi, Gorilla mux), and HTTP client detection (`net/http`) for cross-language linking.
 - **Java improvements**: Inherited method fallback (edges to class symbol when method unresolvable) and array initializer annotation path unwrapping.
 - **Chained member access call resolution**: `this.field.method()` / `self.field.method()` call graph extraction fixed in Kotlin, C#, Scala, and Python.
 - **Route path prefix inheritance**: Class-level route annotations now correctly combine with method-level annotations in Spring Boot, JAX-RS, Micronaut, and ASP.NET.

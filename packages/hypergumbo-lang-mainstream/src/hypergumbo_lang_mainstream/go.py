@@ -18,7 +18,13 @@ How It Works
 2. If not available, return skipped result (not an error)
 3. Two-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls, imports, and routes
+   - Pass 2: Extract variable-type bindings, detect calls, imports, and routes
+5. Receiver-type disambiguation:
+   - Tracks variable types from ``:=`` composite literals, ``var`` declarations,
+     and function parameters (e.g., ``s := &Server{}`` → s has type Server)
+   - When resolving ``s.Method()``, looks up ``Server.Method`` before falling
+     back to short-name resolution, preventing incorrect disambiguation when
+     multiple types define the same method name
 4. Route detection:
    - Gin/Echo: r.GET("/path", handler), e.POST("/path", handler)
    - Fiber: app.Get("/path", handler) (lowercase methods)
@@ -553,6 +559,180 @@ def _get_enclosing_function(
     return None  # pragma: no cover - defensive
 
 
+def _extract_go_var_types(
+    root_node: "tree_sitter.Node",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract variable-to-type-name mappings from Go assignment patterns.
+
+    Scans for statements and declarations where a variable is bound to a
+    known type.  Recognized patterns:
+
+        s := &Server{}            → s has type Server
+        s := Server{}             → s has type Server
+        var c Client              → c has type Client
+        var p *Client             → p has type Client
+        func foo(s *Server)       → s has type Server (parameter)
+
+    Only the first assignment to a variable wins (single-assignment SSA
+    assumption within a function body).  Built-in types (string, int, etc.)
+    are excluded because they don't correspond to user-defined methods.
+
+    Returns a dict mapping variable names to inferred type names.
+    """
+    # Go built-in types that don't have user-defined methods
+    _GO_BUILTINS = frozenset({
+        "string", "int", "int8", "int16", "int32", "int64",
+        "uint", "uint8", "uint16", "uint32", "uint64",
+        "float32", "float64", "complex64", "complex128",
+        "bool", "byte", "rune", "error", "any",
+    })
+    var_types: dict[str, str] = {}
+
+    for node in iter_tree(root_node):
+        # Pattern 1: Short var declaration  s := &Server{} or s := Server{}
+        if node.type == "short_var_declaration":
+            # Left side: expression_list with identifier(s)
+            lhs = node.children[0] if node.children else None
+            rhs = node.children[-1] if len(node.children) >= 3 else None
+            if lhs is None or rhs is None:
+                continue  # pragma: no cover - tree-sitter always produces valid AST
+
+            # Get var name from first identifier in left expression_list
+            var_name = None
+            if lhs.type == "expression_list":
+                for child in lhs.children:
+                    if child.type == "identifier":
+                        var_name = node_text(child, source)
+                        break
+            if var_name is None or var_name in var_types:
+                continue  # first-assignment wins (SSA assumption)
+
+            # Get type from right side
+            type_name = _type_from_rhs(rhs, source)
+            if type_name and type_name not in _GO_BUILTINS:
+                var_types[var_name] = type_name
+
+        # Pattern 2: Var declaration  var c Client  or  var p *Client
+        elif node.type == "var_spec":
+            # var_spec children: identifier, type_identifier (or pointer_type)
+            name_node = None
+            type_node = None
+            for child in node.children:
+                if child.type == "identifier" and name_node is None:
+                    name_node = child
+                elif child.type in ("type_identifier", "pointer_type"):
+                    type_node = child
+
+            if name_node is None or type_node is None:
+                continue
+
+            var_name = node_text(name_node, source)
+            if var_name in var_types:
+                continue
+
+            type_name = _type_identifier_from_node(type_node, source)
+            if type_name and type_name not in _GO_BUILTINS:
+                var_types[var_name] = type_name
+
+        # Pattern 3: Function/method parameters
+        elif node.type == "parameter_declaration":
+            # Only extract params that are inside a parameter_list of a
+            # function_declaration or method_declaration (not return types)
+            parent = node.parent
+            if parent is None or parent.type != "parameter_list":
+                continue  # pragma: no cover - params always in parameter_list
+            grandparent = parent.parent
+            if grandparent is None or grandparent.type not in (
+                "function_declaration", "method_declaration",
+            ):
+                continue
+            # Must be the *parameters* list, not the result list
+            params_node = find_child_by_field(grandparent, "parameters")
+            if params_node is None or params_node.id != parent.id:
+                continue
+
+            name_node = None
+            type_node = None
+            for child in node.children:
+                if child.type == "identifier" and name_node is None:
+                    name_node = child
+                elif child.type in ("type_identifier", "pointer_type"):
+                    type_node = child
+
+            if name_node is None or type_node is None:
+                continue
+
+            var_name = node_text(name_node, source)
+            if var_name in var_types:
+                continue
+
+            type_name = _type_identifier_from_node(type_node, source)
+            if type_name and type_name not in _GO_BUILTINS:
+                var_types[var_name] = type_name
+
+    return var_types
+
+
+def _type_from_rhs(
+    rhs_node: "tree_sitter.Node",
+    source: bytes,
+) -> str | None:
+    """Extract a type name from the right side of a short var declaration.
+
+    Handles:
+    - expression_list wrapping: ``expression_list -> unary_expression / composite_literal``
+    - ``&Server{}`` → unary_expression(&, composite_literal(type_identifier=Server))
+    - ``Server{}`` → composite_literal(type_identifier=Server)
+
+    Returns the type name string or None.
+    """
+    node = rhs_node
+    # Unwrap expression_list
+    if node.type == "expression_list":
+        for child in node.children:
+            if child.type in ("unary_expression", "composite_literal"):
+                node = child
+                break
+        else:
+            return None
+
+    # &Server{} → unary_expression with & operator
+    if node.type == "unary_expression":
+        for child in node.children:
+            if child.type == "composite_literal":
+                node = child
+                break
+        else:
+            return None  # pragma: no cover - defensive for unrecognized unary
+
+    # Server{} → composite_literal with type_identifier
+    if node.type == "composite_literal":
+        for child in node.children:
+            if child.type == "type_identifier":
+                return node_text(child, source)
+    return None  # pragma: no cover - defensive for non-composite literal RHS
+
+
+def _type_identifier_from_node(
+    type_node: "tree_sitter.Node",
+    source: bytes,
+) -> str | None:
+    """Extract the type name from a type node, stripping pointer indirection.
+
+    Handles:
+    - ``type_identifier`` → direct type name
+    - ``pointer_type`` → unwrap * to get type_identifier
+    """
+    if type_node.type == "type_identifier":
+        return node_text(type_node, source)
+    elif type_node.type == "pointer_type":
+        for child in type_node.children:
+            if child.type == "type_identifier":
+                return node_text(child, source)
+    return None
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -566,6 +746,8 @@ def _extract_edges_from_file(
 
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
     Uses import_aliases to disambiguate when multiple files define the same symbol.
+    Tracks variable types from assignments and parameters to disambiguate
+    method calls when multiple types define the same method name.
     """
     if import_aliases is None:
         import_aliases = {}
@@ -580,6 +762,9 @@ def _extract_edges_from_file(
 
     edges: list[Edge] = []
     file_id = make_file_id("go", str(file_path))
+
+    # Extract variable-to-type bindings for receiver disambiguation
+    var_types = _extract_go_var_types(tree.root_node, source)
 
     for node in iter_tree(tree.root_node):
         # Detect import statements
@@ -640,6 +825,40 @@ def _extract_edges_from_file(
                             alias = node_text(operand_node, source)
                             if alias in import_aliases:
                                 import_path_hint = import_aliases[alias]
+                            # Check if operand has an inferred type for
+                            # receiver-type method disambiguation
+                            elif alias in var_types:
+                                receiver_type = var_types[alias]
+                                qualified_name = f"{receiver_type}.{callee_name}"
+                                # Try qualified name in local or global symbols
+                                if qualified_name in local_symbols:
+                                    callee = local_symbols[qualified_name]
+                                    edges.append(Edge.create(
+                                        src=current_function.id,
+                                        dst=callee.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1,
+                                        evidence_type="typed_receiver_call",
+                                        confidence=0.85,
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                    ))
+                                    callee_name = None  # Already resolved
+                                elif qualified_name in global_symbols:
+                                    # Direct lookup by qualified name
+                                    candidates = global_symbols[qualified_name]
+                                    if candidates:
+                                        edges.append(Edge.create(
+                                            src=current_function.id,
+                                            dst=candidates[0].id,
+                                            edge_type="calls",
+                                            line=node.start_point[0] + 1,
+                                            evidence_type="typed_receiver_call",
+                                            confidence=0.85,
+                                            origin=PASS_ID,
+                                            origin_run_id=run.execution_id,
+                                        ))
+                                        callee_name = None  # Already resolved
 
                     if callee_name:
                         # Check local symbols first — but NOT when the call
