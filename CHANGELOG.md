@@ -11,99 +11,102 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Added
 
-#### Language & framework support
+#### Linkers
 
-- **JS/TS module resolution linker**: Resolves import edges to file symbols via relative imports (extension/index probing), `tsconfig.json`/`jsconfig.json`/`vite.config` path aliases, and monorepo tsconfig discovery.
-- **Vue linkers**: Template-method linker connects event handlers (`@click`, `v-on:input`) to `<script>` symbols; component linker resolves import paths to `.vue` files on disk.
-- **FFI linkers**: Python (ctypes/cffi/PyO3), Ruby (FFI gem, C extensions), Go (Cgo), Node.js (N-API/node-addon-api), and Lua (LuaJIT ffi.C/ffi.load) cross-language call linking to C/C++ symbols.
-- **Assembly language analyzer**: Tree-sitter-based analyzer for assembly files (`.s`, `.asm`, `.S`). Extracts labels as function/variable symbols, detects call instructions as call edges with cross-file resolution.
-- **ORM query linker**: Detects Django ORM and Flask-SQLAlchemy query patterns, linking calling functions to Model classes.
-- **Elixir/OTP improvements**: GenServer dispatch linking (`call`/`cast` → `handle_call`/`handle_cast`), behaviour callback detection (11 behaviours including Phoenix LiveView), `live` route detection, multi-clause function edge targeting, and cross-file module-qualified call resolution.
-- **Go improvements**: Function-reference-as-argument call edges (enables reverse slices for route handlers like `r.Get("/path", ViewIssue)` and callbacks), receiver-type method disambiguation (tracks variable types from `:=`, `var`, and function parameters to resolve `s.Method()` to the correct type when multiple types define the same method), generic interface assertion detection, route-handler linking (Gin, Echo, Fiber, Chi, Gorilla mux), and HTTP client detection (`net/http`) for cross-language linking.
-- **Java improvements**: Inherited method fallback (edges to class symbol when method unresolvable) and array initializer annotation path unwrapping.
-- **Chained member access call resolution**: `this.field.method()` / `self.field.method()` call graph extraction fixed in Kotlin, C#, Scala, and Python.
-- **Route path prefix inheritance**: Class-level route annotations now correctly combine with method-level annotations in Spring Boot, JAX-RS, Micronaut, and ASP.NET.
-- **Rails view template linker**: Convention-based linking from controller actions to view templates (`UsersController#show` → `app/views/users/show.html.erb`). Supports ERB, Haml, Slim, and Jbuilder templates. Handles namespaced controllers (`Admin::UsersController` → `app/views/admin/users/`). Completes the route → controller → template navigation path.
-- **Rails namespace-aware route extraction**: `namespace :admin do resources :users end` correctly generates `admin/users#index` controller_action and `/admin/users` URL paths. Supports nested namespaces (`api/v1/posts#index`) and `scope module:` (controller prefix without URL prefix).
-- **Django & Flask framework patterns**: Django template tags/filters and signal receivers; Flask Jinja2 customizations, Blinker signals, and Flask-RESTful support.
-- **Framework detection for 16 additional languages**: Haskell, Clojure, R, Lua, C++, Erlang, F#, Kotlin, C#, Dart, Julia, OCaml, Nim, Zig, D, Groovy.
-- **Test framework patterns for 16 additional languages**: Elixir, Scala, Dart, Clojure, Haskell, Erlang, F#, Ruby, Julia, OCaml, Lua, R, Nim, Zig, D, Groovy.
-- **Main function entrypoint detection for 7 more languages**: D, Nim, Zig, V, Odin, Gleam, Haxe.
-- **Rails entrypoint patterns**: Scheduled tasks (`ApplicationScheduledTask`, `ScheduledTask` base classes), custom job base classes (`BaseJob`), and Rack middleware (classes named `*Middleware`) now detected as entrypoints. Previously these critical infrastructure components were invisible to hypergumbo.
-- **Test classification improvements**: Test directories/files classified as tier 2; test functions registered as entrypoints with 90% penalty to avoid dominating `--entry auto`.
+- **JS/TS module resolution**: Resolves import edges to file symbols via relative imports (extension/index probing), `tsconfig.json`/`jsconfig.json`/`vite.config` path aliases, and monorepo tsconfig discovery.
+- **Vue**: Template-method linker connects event handlers (`@click`, `v-on:input`) to `<script>` symbols; component linker resolves import paths to `.vue` files on disk.
+- **FFI (5 languages)**: Python (ctypes/cffi/PyO3), Ruby (FFI gem, C extensions), Go (Cgo), Node.js (N-API/node-addon-api), and Lua (LuaJIT ffi.C/ffi.load) cross-language call linking to C/C++ symbols.
+- **ORM query**: Detects Django ORM and Flask-SQLAlchemy query patterns, linking calling functions to Model classes.
+- **Containment**: Creates `contains` edges from classes/interfaces/modules/services to their methods/RPCs/nested members across 15 languages. Handles nested classes and struct/trait/enum containers.
+- **Rails view template**: Convention-based linking from controller actions to view templates (`UsersController#show` → `app/views/users/show.html.erb`). Supports ERB, Haml, Slim, Jbuilder. Handles namespaced controllers.
 
-#### Tracker
+#### Analyzers
 
-- **Tier 2 embedding-based near-duplicate detection**: `validate --deep-similar` uses dense embeddings (ONNX ModernBERT, ~140 MB) to detect semantically similar tracker items beyond lexical SimHash. Includes semantic tags for interpretability. Requires `pip install hypergumbo-tracker[dedup]`.
-- **SQLite read cache**: Read operations (`list`, `ready`, `count-todos`) consult a per-tier cache, avoiding YAML reparse on every invocation. Discussion-only appends use a fast path that skips data recompilation.
-- **Positional alias persistence**: `:N` aliases from `list`/`ready` output now persist across CLI invocations.
-
-#### Tracker TUI
-
-- **Textual 7.x upgrade**: Bumped from `~=3.0` to `~=7.5`.
-- **Three responsive layout tiers**: Compact (40x16+, stacked detail), standard (60x20+, two-pane with tree/table toggle and filters), wide (120x38+, extra columns and split detail/activity panel). Dynamic resize preserves selection.
-- **Write keybindings**: 8 modal dialogs for discuss, move, new, edit, set parent, edit dependencies, and lock/unlock operations.
-- **Snapshot tests**: SVG-based visual regression tests for all layout tiers.
-
-#### Documentation
-
-- **Tracker quick-start guide**: Comprehensive guide covering install, two-user deployment, core concepts, agent/human workflows, stop hook integration, configuration, and fork workflow.
+- **Assembly language**: Tree-sitter-based analyzer for `.s`/`.asm`/`.S` files. Extracts labels as function/variable symbols, detects call instructions with cross-file resolution.
 
 #### Analysis core
 
-- **Edge deduplication by relationship**: At most one edge per (src, dst, edge_type), eliminating false centrality inflation from repeated calls.
-- **Containment linker**: Creates `contains` edges from classes, interfaces, modules, services, and messages to their methods/RPCs/nested members across all 15 supported languages. Handles nested classes and struct/trait/enum containers. Three-phase resolution: naming convention (qualified names), canonical_name fallback (proto service→rpc and nested message containment), and span-based fallback (unqualified names like Ruby `module Postal; class HTTP`).
 - **Inheritance linker struct support**: Go structs with `base_classes` metadata now produce `implements`/`extends` edges.
-- **Decorator/annotation edge detection**: Decorator applications create edges in Python, TypeScript, Java, C#, and Rust, making registration patterns visible in centrality and slices.
-- **Return type tracking**: Variable type inference now handles function return type annotations in Python, TypeScript, Java, Kotlin, C#, and Dart. Simple (non-generic) return types only.
-- **Slice improvements**: Forward slices skip structural edges (`extends`/`implements`/`contains`), preventing BFS explosion. New `--hub-threshold N` flag (default 50) prunes high-degree nodes. Class/interface entry points auto-expand to include member methods.
-- **Bidirectional centrality ranking**: Uses `in_degree * (1 + ln(1 + out_degree))` instead of pure in-degree, rewarding connectors over pure sinks.
-- **Hub in-degree saturation**: Symbols with in-degree above 100 get their effective in-degree saturated to `threshold + ln(1 + in_degree − threshold)` before normalization. Prevents infrastructure utilities (error sentinels like `ErrUserNotExist.Error` with 1514 in-edges, or `strbuf_release` with 1126 in-edges) from dominating centrality rankings. Connectors (moderate in-degree + high out-degree) now rank above pure sinks.
-- **Entrypoint improvements**: Transitive out-degree scoring, connectivity-based fallback when no patterns match, library export detection (Go, Elixir, Python), aggressive test demotion (90% penalty), and `--entry auto` now respects `--exclude-tests`/`--max-tier`.
-- **Test edge filtering**: `--exclude-tests` now preserves `extends`/`implements` edges from test files.
-- **Default exclusions**: Documentation/config nodes, CSS variables/at-rules, npm_package/module_file symbols, and TypeScript type/interface declarations excluded from output by default. CSS custom properties (`--var`) and SCSS variables (`$var`) now also filtered from behavior maps via `_NOISE_KINDS`.
-- **D language improvements**: Import-scope disambiguation, import edge resolution to actual module symbols, and method extraction with qualified names inside struct/class/interface bodies.
-- **Ruby analyzer improvements**: Class method (`def self.method`) extraction, `.new` → `#initialize` resolution, namespaced receiver resolution, receiver-qualified call linking, chained constructor calls (`Service.new(args).perform`), job enqueue edge detection (`perform_later`/`perform_async`), Rails callback edges (controller actions, model lifecycle, block-style), delegate macro edges, ActiveRecord association edges, receiver-type tracking for variable-receiver calls (`user = User.find(id); user.email` → `User#email`), and method parameter filtering to prevent bare-identifier false positives.
-- **Lua method call confidence reduction**: Colon-syntax method calls (`obj:method()`) now get 0.40x confidence multiplier instead of 0.85x, properly signaling ambiguity from Lua's lack of static types. Direct calls (`func()`) retain 0.85x. This prevents common method names like `connect`, `send`, `close` from creating high-confidence false edges.
-- **Lua single-assignment type tracking**: When a local variable is assigned from a known table/class (e.g., `local sock = MySocket`, `local obj = MyClass:new()`, `local s = mod.tcp()`), the receiver type is tracked. Method calls on typed receivers resolve to `ReceiverType.method` with 0.80x confidence instead of the untyped 0.40x. Eliminates false positive edges from name collisions (e.g., `sock:send` vs `pdk.response:send` in Kong).
-- **Lua require-alias call resolution**: When `local X = require("foo.bar")` is followed by `X.method()` or `X:method()`, the call resolves to symbols defined in `foo/bar.lua` (or `foo/init.lua` for directory modules) with 0.85 confidence. Also adds dot-index function declaration detection (`function _M.process()`), which is the dominant export pattern in OpenResty/Kong modules. This was the #1 improvement identified by cohort-004 DEEP assessment — 50.5% of Kong's call edges were previously unresolved because this calling convention wasn't handled.
-- **Rails acronym-aware controller resolution**: Route-handler linker now uses case-insensitive fallback to match controllers with Rails acronym inflections (`ip_pool_rules` → `IPPoolRulesController`, `http_endpoints` → `HTTPEndpointsController`). Previously missed ~53 routes in repos like postal.
-- **C++ improvements**: Template function call detection, pointer/reference return type extraction, and stack object construction detection.
-- **Language-proportional sketch seeding**: When a dominant language's entrypoint has no outgoing edges (e.g., C `main()` dispatching via function pointer tables invisible to tree-sitter), the BFS frontier is 100% other languages and the dominant language gets 0 nodes. Now detects languages with >10% of total edges but zero frontier representation, and injects the highest-degree node from each as an additional seed. Fixed git bakeoff showing 99 Python nodes and 0 C nodes despite being 99%+ C code.
-- **Route symbol entrypoint promotion**: Symbols with `kind="route"` (created directly by Go and other analyzers) are now promoted to HTTP_ROUTE entrypoints with 0.90 confidence. Previously only concept-enriched routes were detected, causing a gap where 1272 routes were found but only 38 became entrypoints. Deduplicates against concept-detected routes to avoid double-counting.
-- **Cross-language containment filtering**: The containment linker now filters by language when matching containers to members. Previously, a JS `Source` class could be incorrectly linked to Go `Source` struct methods when both shared the same name — `_find_parent` returned the first candidate without checking language. Now prefers same-file, then same-language, and refuses to cross language boundaries.
-- **Event symbol ID format fix**: Event publisher/subscriber symbol IDs now use the standard `{language}:{path}:{line}-{line}:{name}:{kind}` format instead of the malformed `{path}::{kind}::{line}`. Fixes `uses` and `event_publishes` edges that showed file paths as language prefixes.
-- **C dispatch table edge detection**: Static array initializers with function pointer references (e.g., `static struct cmd commands[] = { {"add", cmd_add}, ... }`) now produce `dispatches_to` edges from the array variable to each referenced function. Common C pattern in projects like git (command dispatch), nginx (module tables), and Linux kernel (operation structs). Deduplicates repeated function references and filters non-function identifiers.
-- **Ambiguous method confidence scaling**: When multiple symbols share the same name (e.g., Go interface methods `Close()`, `String()`, `Name()` defined on 50+ types), ambiguous resolution confidence now scales as `1/sqrt(N)` instead of a flat 0.70. Two candidates gives ~0.71 (same as before); 50 candidates gives ~0.14. Eliminates false centrality inflation from common interface methods like `DbfsMeta.Name` (was 610 false in-degree in forgejo) and `outputType.String` (was 536).
+- **Decorator/annotation edge detection**: Decorator applications create edges in Python, TypeScript, Java, C#, and Rust.
+- **Return type tracking**: Variable type inference handles function return type annotations in Python, TypeScript, Java, Kotlin, C#, and Dart (simple, non-generic types).
+- **C dispatch table edge detection**: Static array initializers with function pointer references (e.g., `static struct cmd commands[] = { {"add", cmd_add}, ... }`) produce `dispatches_to` edges. Common in C projects like git, nginx, Linux kernel.
 - **Go interface-implementation assertion detection**: Compile-time assertions (`var _ Interface = &Struct{}`) produce inheritance edges.
+
+#### Language & framework support
+
+- **Framework detection for 16 languages**: Haskell, Clojure, R, Lua, C++, Erlang, F#, Kotlin, C#, Dart, Julia, OCaml, Nim, Zig, D, Groovy.
+- **Test framework patterns for 16 languages**: Elixir, Scala, Dart, Clojure, Haskell, Erlang, F#, Ruby, Julia, OCaml, Lua, R, Nim, Zig, D, Groovy.
+- **Main function entrypoint detection for 7 more languages**: D, Nim, Zig, V, Odin, Gleam, Haxe.
+- **Rails entrypoint patterns**: Scheduled tasks, custom job base classes (`BaseJob`), and Rack middleware now detected as entrypoints.
+- **Rails namespace-aware route extraction**: `namespace :admin do resources :users end` correctly generates `admin/users#index` controller_action and `/admin/users` URL paths. Supports nested namespaces and `scope module:`.
+- **Django & Flask framework patterns**: Django template tags/filters and signal receivers; Flask Jinja2 customizations, Blinker signals, and Flask-RESTful support.
+- **Test classification**: Test directories/files classified as tier 2; test functions registered as entrypoints with 90% penalty to avoid dominating `--entry auto`.
 
 #### CLI & developer tooling
 
 - **Secret scanning with gitleaks**: `hypergumbo sketch` scans output for potential secrets. Install with `hypergumbo install-gitleaks`. Opt out with `--no-secret-scan`.
 - **CLI extras management**: Subcommands for optional dependencies: `add-extras`, `remove-extras`, `install-embeddings`, `uninstall-embeddings`, `uninstall-gitleaks`.
 - **Cache management**: `hypergumbo cache-status` and `hypergumbo cache-clear` for managing `~/.cache/hypergumbo/`.
-- **`bakeoff-reflect` redesign**: Structured two-phase LLM assessment pipeline for BROAD bakeoff (mirrors `bakeoff-features-reflect`). Generates per-repo prompts with 3 fixed parse-correctness tasks + 8 stratified questions + 1 journal question; aggregates YAML assessments into `summary.yaml`.
+- **`bakeoff-reflect` redesign**: Structured two-phase LLM assessment pipeline for BROAD bakeoff.
+
+#### Tracker
+
+- **Tier 2 embedding-based near-duplicate detection**: `validate --deep-similar` uses dense embeddings (ONNX ModernBERT) to detect semantically similar items. Requires `pip install hypergumbo-tracker[dedup]`.
+- **SQLite read cache**: Read operations consult a per-tier cache, avoiding YAML reparse on every invocation.
+- **Positional alias persistence**: `:N` aliases from `list`/`ready` output persist across CLI invocations.
+
+#### Tracker TUI
+
+- **Textual 7.x upgrade**: Bumped from `~=3.0` to `~=7.5`.
+- **Three responsive layout tiers**: Compact (40x16+), standard (60x20+, two-pane), wide (120x38+). Dynamic resize preserves selection.
+- **Write keybindings**: 8 modal dialogs for discuss, move, new, edit, set parent, edit dependencies, lock/unlock.
+- **Snapshot tests**: SVG-based visual regression tests for all layout tiers.
+
+#### Documentation
+
+- **Tracker quick-start guide**: Covers install, deployment, core concepts, agent/human workflows, stop hook integration, and fork workflow.
 
 #### Testing & CI infrastructure
 
 - **Scoped coverage for smart-test (ADR-0011)**: Enforces 100% coverage only for changed source files. Enables fast feedback (~45 tests in <1s vs 5700+).
 - **Per-package coverage check**: `scripts/check-package-coverage` verifies each package achieves 100% coverage in isolation.
-- **CI auto-retry for heavy test jobs**: Jobs exceeding Codeberg's runner deadline automatically retry on a self-hosted runner.
+- **CI auto-retry for heavy test jobs**: Jobs exceeding Codeberg's 5-minute runner cap automatically retry on a self-hosted runner. Covers both full-suite (per-package) and PR CI (pytest) jobs.
 - **`ci-debug logs` subcommand**: Fetches plain-text CI job logs without the web UI.
 
 ### Changed
 
+#### Language analyzer improvements
+
+- **Elixir/OTP**: GenServer dispatch linking (`call`/`cast` → `handle_call`/`handle_cast`), behaviour callback detection (11 behaviours including Phoenix LiveView), `live` route detection, multi-clause function edge targeting, and cross-file module-qualified call resolution.
+- **Go**: Function-reference-as-argument call edges, receiver-type method disambiguation, route-handler linking (Gin, Echo, Fiber, Chi, Gorilla mux), and HTTP client detection for cross-language linking.
+- **Java**: Inherited method fallback (edges to class symbol when method unresolvable) and array initializer annotation path unwrapping.
+- **Ruby**: Class method (`def self.method`) extraction, `.new` → `#initialize` resolution, namespaced receiver resolution, chained constructor calls, job enqueue edge detection (`perform_later`/`perform_async`), Rails callback edges (controller actions, model lifecycle, block-style), delegate macro edges, ActiveRecord association edges, receiver-type tracking for variable-receiver calls, and method parameter filtering.
+- **Lua**: Colon-syntax method calls confidence reduced to 0.40x (from 0.85x) to reflect ambiguity. Single-assignment type tracking for typed receivers (0.80x). `require`-alias call resolution linking `X.method()` to symbols in the required module. Dot-index function declaration detection (`function _M.process()`).
+- **C++**: Template function call detection, pointer/reference return type extraction, and stack object construction detection.
+- **D**: Import-scope disambiguation, import edge resolution to actual module symbols, and method extraction with qualified names inside struct/class/interface bodies.
+
+#### Analysis algorithms
+
+- **Edge deduplication**: At most one edge per (src, dst, edge_type), eliminating false centrality inflation from repeated calls.
+- **Bidirectional centrality ranking**: Uses `in_degree * (1 + ln(1 + out_degree))` instead of pure in-degree, rewarding connectors over pure sinks.
+- **Hub in-degree saturation**: Symbols above 100 in-degree get saturated to `threshold + ln(1 + in_degree − threshold)`. Prevents infrastructure utilities from dominating centrality rankings.
+- **Ambiguous method confidence scaling**: Scales as `1/sqrt(N)` instead of flat 0.70 for N matching symbols. Two candidates: ~0.71; fifty candidates: ~0.14.
+- **Slice improvements**: Forward slices skip structural edges (`extends`/`implements`/`contains`). New `--hub-threshold N` flag (default 50). Class/interface entry points auto-expand to include member methods.
+- **Entrypoint improvements**: Transitive out-degree scoring, connectivity-based fallback, library export detection (Go, Elixir, Python), aggressive test demotion, `--entry auto` respects `--exclude-tests`/`--max-tier`.
+- **Test edge filtering**: `--exclude-tests` now preserves `extends`/`implements` edges from test files.
+- **Default exclusions**: Documentation/config nodes, CSS variables/at-rules, npm_package/module_file symbols, TypeScript type/interface declarations, and SCSS variables excluded from output by default.
+
 #### Output quality
 
-- **Tiered view overhaul**: Budget enforcement on full output (previously exceeded by up to 2.7x), connectivity-aware node selection from entrypoints (replacing disconnected centrality-only selection), and confidence-filtered force-includes.
+- **Tiered view overhaul**: Budget enforcement on full output, connectivity-aware node selection from entrypoints, and confidence-filtered force-includes.
 - **Self-loop edge filtering**: Removed from output, adjacency lists, and connectivity scoring.
-- **Route improvements**: `hypergumbo routes` supports `-x`/`--exclude-tests` and now shows `kind=route` symbols. Django routes no longer hardcode `GET`. Routes with `controller_action` metadata (Rails resources, explicit `to:` mappings) now display `controller#action` instead of the raw symbol name (e.g., `[GET] /users -> users#index` instead of `[GET] /users -> GET /users`).
-- **Migration noise de-weighting**: Symbols in `db/migrate/` and `migrations/` paths get 0.1x centrality multiplier, preventing database migration classes from inflating centrality rankings. A migration class with 28 subclass edges previously ranked 4th — now it ranks appropriately lower.
+- **Route improvements**: `hypergumbo routes` supports `-x`/`--exclude-tests` and shows `kind=route` symbols. Django routes no longer hardcode `GET`. Rails routes display `controller#action` instead of raw symbol names.
+- **Migration noise de-weighting**: Symbols in migration paths get 0.1x centrality multiplier.
 - **Symbol ranking**: `hypergumbo symbols` sorts by per-symbol degree instead of file-total-degree.
 - **Exclude derived/minified files by default**: Tier 4 symbols excluded. Use `--max-tier 4` to include.
 - **Increase default `--max-files` for slice**: 20 → 50.
 - **TypeScript decorator kind filtering**: Rejects class/interface/type symbols as decorator targets.
-- **C/C++ test file tier classification**: `unit_tests/` and `test_*.{cpp,cc,cxx,c,h,hpp}` patterns now classified as tier 2.
+- **C/C++ test file tier classification**: `unit_tests/` and `test_*.{cpp,cc,cxx,c,h,hpp}` patterns classified as tier 2.
 
 #### Dependencies & configuration
 
@@ -115,34 +118,45 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **smart-test improvements**: Detects committed, staged, and unstaged changes. Uses `--cov-branch` locally. Manifest includes `Mode:` field.
 - **Infrastructure-only PRs skip pytest**: PRs changing only scripts, YAML, or config skip pytest in CI.
 - **Shared Forgejo API library**: Extracted duplicated logic from `auto-pr`, `ci-debug`, and `contribute` into `scripts/lib/forgejo-api.sh`.
-- **`merge-pr` recovery script**: Merges existing PRs with optional `--wait-for-ci` polling when `auto-pr` fails.
+- **`merge-pr` improvements**: Retry-aware CI check — when aggregate status is "failure" but `ci-complete` (gate job) succeeded, recognizes that retries handled the failure.
 - **Parallel `check-package-coverage`**: Packages run in parallel by default.
 
 #### Agent governance
 
-- **Three-way stop hook logic**: TODO blocking, cooldown, or full reflection (replaces unconditional blocking).
+- **Three-way stop hook logic**: TODO blocking, cooldown, or full reflection.
 - **Post-compaction state recovery**: `.agent/last_stop_check.json` captures context for recovering after compression.
 - **Pre-push hook**: Blocks direct pushes to `dev`/`main`. Warns on workspace tracker files pushed to upstream.
-- **Remove legacy grep fallback from stop hook**: Now uses only the structured tracker CLI. Fail-closed on tracker errors.
+- **Remove legacy grep fallback from stop hook**: Uses only structured tracker CLI. Fail-closed on tracker errors.
 - **Fork workflow hardening**: End-to-end fork workflow test and documentation.
 - **Bakeoff improvements**: Stable timestamped artifact paths, deeper slices (`--max-hops 5`).
 
+#### Internal
+
+- **Standardized pass IDs and versions**: All analyzers and linkers derive `PASS_ID` via `make_pass_id()` (canonical format: `{name}-v1`) and `PASS_VERSION` from the package version. Eliminates 4 competing ID formats and 4 stale version strings across ~105 files. `TreeSitterAnalyzer` subclasses auto-derive both from `lang`. Affects the `origin` field in output symbols (e.g., `bitbake.tree_sitter` → `bitbake-v1`).
+
 ### Fixed
 
-- **Analyzer deduplication**: Vue analyzer no longer double-extracts `.vue` scripts (JS/TS analyzer already handles them); C analyzer skips `.h` files when C++ files exist; C++ analyzer skips `.h` files when no C++ source files (`.cpp`/`.cc`/`.cxx`) exist (prevents phantom C++ symbols in pure C repos).
-- **Framework detection word-boundary matching**: Uses word-boundary regex instead of substring matching (fixes `"bottle"` matching `"bottleneck"`).
-- **Micronaut framework patterns**: Fixed YAML patterns to use correct field names and extraction paths.
-- **Go same-package method resolution**: Package-qualified calls no longer incorrectly resolve to local methods with the same short name.
-- **ListNameResolver full-path disambiguation**: Tries the full import path as a disambiguation suffix, not just progressively shorter segments.
+- **Chained member access call resolution**: `this.field.method()` / `self.field.method()` call graph extraction in Kotlin, C#, Scala, and Python.
+- **Route path prefix inheritance**: Class-level route annotations now correctly combine with method-level annotations in Spring Boot, JAX-RS, Micronaut, and ASP.NET.
+- **Cross-language containment filtering**: Containment linker now filters by language when matching containers to members. Prefers same-file, then same-language; refuses to cross language boundaries.
+- **Event symbol ID format**: Now uses standard `{language}:{path}:{line}-{line}:{name}:{kind}` format instead of malformed `{path}::{kind}::{line}`.
+- **Language-proportional sketch seeding**: When a dominant language's entrypoint has no outgoing edges, injects highest-degree nodes from underrepresented languages as seeds.
+- **Route symbol entrypoint promotion**: Symbols with `kind="route"` now promoted to HTTP_ROUTE entrypoints. Previously only concept-enriched routes were detected.
+- **Rails acronym-aware controller resolution**: Case-insensitive fallback for acronym inflections (`ip_pool_rules` → `IPPoolRulesController`).
+- **Analyzer deduplication**: Vue analyzer no longer double-extracts `.vue` scripts; C/C++ analyzers properly handle `.h` file ownership.
+- **Framework detection word-boundary matching**: Uses word-boundary regex instead of substring matching.
+- **Micronaut framework patterns**: Fixed YAML patterns to use correct field names.
+- **Go same-package method resolution**: Package-qualified calls no longer incorrectly resolve to local methods.
+- **ListNameResolver full-path disambiguation**: Tries full import path as disambiguation suffix.
 - **Java field_access receiver call extraction**: Fixed `this.repo.findById()` patterns using tree-sitter field names and class field type tracking.
-- **JS/TS resolution fixes**: Import-path disambiguation for duplicate class names (e.g., NestJS monorepos) instead of last-processed-wins; position-based enclosing function lookup replacing name-based lookup that silently dropped call edges.
-- **Ruby false positive fixes**: Variable-receiver calls no longer fall through to bare-name global lookup; route detection restricted by file context (test directories skipped).
-- **Name-collision edge fixes**: Bare-name fallback emits single best match instead of fan-out (JS/TS, PHP); import-aware disambiguation for `extends` edges (Python, JS/TS, Ruby, Kotlin, Java); containment linker prefers same-file class.
+- **JS/TS resolution fixes**: Import-path disambiguation for duplicate class names; position-based enclosing function lookup replacing name-based lookup.
+- **Ruby false positive fixes**: Variable-receiver calls no longer fall through to bare-name global lookup; route detection restricted by file context.
+- **Name-collision edge fixes**: Bare-name fallback emits single best match instead of fan-out (JS/TS, PHP); import-aware disambiguation for `extends` edges; containment linker prefers same-file class.
 - **Tiered view token budget compliance**: Was exceeding budget by up to 177x. Force-includes now capped and sorted.
-- **Tiered view shrink loop preserves connectivity**: Budget enforcement no longer reduces edge count to zero. Shrink loop now considers local edge degree when choosing removal victims — nodes with zero local edges (disconnected singletons) are removed before nodes that contribute edges. Previously, global centrality alone determined removal order, causing connected frontier nodes to be removed before disconnected force-included seeds. Discovered via DEEP bakeoff cohort #5 (iceberg: 169 nodes, 0 edges in 64k view).
-- **Java integration test path detection**: `is_test_path` now catches Gradle/Maven integration test source sets (`/src/integration/`). Previously, test methods in integration source sets were misclassified as production code, polluting budget views with disconnected test entrypoints.
+- **Tiered view shrink loop preserves connectivity**: Shrink loop considers local edge degree when choosing removal victims — disconnected singletons removed before nodes that contribute edges.
+- **Java integration test path detection**: `is_test_path` now catches Gradle/Maven integration test source sets (`/src/integration/`).
 - **Supply chain tier deserialization**: Cached nodes always had tier=1 due to key mismatch.
-- **Route-handler linking fixes**: Route symbols no longer overwrite handler functions in lookup. Rails suffix matching for namespaced controllers; singular resource no longer double-pluralizes names ending in "s". Django `view_name` support and `.as_view()` extraction. Phoenix route symbols get "route" concept. Ruby hash rocket syntax (`"path" => "controller#action"`) recognized.
+- **Route-handler linking fixes**: Route symbols no longer overwrite handler functions. Rails suffix matching for namespaced controllers; Django `view_name` support and `.as_view()` extraction; Phoenix route "route" concept; Ruby hash rocket syntax.
 - **Rust impl method names**: Reference and generic types now extract only the base identifier.
 - **Dangling edge dst after tier filtering**: Edges pointing to tier-filtered nodes no longer create dangling references.
 - **WebSocket generic event edge explosion**: Generic `send_text()`/`ws.send()` no longer create NxM combinatorial edges.
