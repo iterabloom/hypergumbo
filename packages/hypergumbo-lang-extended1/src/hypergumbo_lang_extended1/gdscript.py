@@ -40,11 +40,10 @@ import importlib.util
 import time
 import uuid
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, node_text, find_child_by_type, make_symbol_id, make_file_id
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -76,43 +75,9 @@ def is_gdscript_tree_sitter_available() -> bool:
         return False
 
 
-@dataclass
-class GDScriptAnalysisResult:
-    """Result of analyzing GDScript files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"gdscript:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a GDScript file node (used as import edge source)."""
-    return f"gdscript:{path}:1-1:file:file"
-
-
 def _make_edge_id() -> str:
     """Generate a unique edge ID."""
     return f"edge:gdscript:{uuid.uuid4().hex[:12]}"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None  # pragma: no cover - defensive
 
 
 def _extract_function_signature(func_node: "tree_sitter.Node", source: bytes) -> str:
@@ -127,22 +92,22 @@ def _extract_function_signature(func_node: "tree_sitter.Node", source: bytes) ->
     return_type: Optional[str] = None
 
     # Find parameters
-    params_node = _find_child_by_type(func_node, "parameters")
+    params_node = find_child_by_type(func_node, "parameters")
     if params_node:
         for child in params_node.children:
             if child.type == "typed_parameter":
                 # Extract identifier and type
-                ident = _find_child_by_type(child, "identifier")
-                type_node = _find_child_by_type(child, "type")
+                ident = find_child_by_type(child, "identifier")
+                type_node = find_child_by_type(child, "type")
                 if ident:
-                    param_str = _node_text(ident, source).strip()
+                    param_str = node_text(ident, source).strip()
                     if type_node:
-                        type_str = _node_text(type_node, source).strip()
+                        type_str = node_text(type_node, source).strip()
                         param_str = f"{param_str}: {type_str}"
                     params_parts.append(param_str)
             elif child.type == "identifier":
                 # Untyped parameter
-                params_parts.append(_node_text(child, source).strip())
+                params_parts.append(node_text(child, source).strip())
 
     # Find return type (type node after ->)
     found_arrow = False
@@ -150,7 +115,7 @@ def _extract_function_signature(func_node: "tree_sitter.Node", source: bytes) ->
         if child.type == "->":
             found_arrow = True
         elif found_arrow and child.type == "type":
-            return_type = _node_text(child, source).strip()
+            return_type = node_text(child, source).strip()
             break
 
     sig = f"({', '.join(params_parts)})"
@@ -168,9 +133,9 @@ def _get_enclosing_function_gdscript(
     current = node.parent
     while current is not None:
         if current.type == "function_definition":
-            name_node = _find_child_by_type(current, "name")
+            name_node = find_child_by_type(current, "name")
             if name_node:
-                func_name = _node_text(name_node, source).strip()
+                func_name = node_text(name_node, source).strip()
                 return local_symbols.get(func_name)
         current = current.parent
     return None  # pragma: no cover - no enclosing function found
@@ -196,7 +161,7 @@ def _make_gd_symbol(
         start_col=start_col,
         end_col=end_col,
     )
-    sym_id = _make_symbol_id(file_path, start_line, end_line, name, kind)
+    sym_id = make_symbol_id("gdscript",file_path, start_line, end_line, name, kind)
     return Symbol(
         id=sym_id,
         name=name,
@@ -223,36 +188,36 @@ def _extract_gdscript_symbols(
 
     for node in iter_tree(tree.root_node):
         if node.type == "function_definition":
-            name_node = _find_child_by_type(node, "name")
+            name_node = find_child_by_type(node, "name")
             if name_node:
-                func_name = _node_text(name_node, source).strip()
+                func_name = node_text(name_node, source).strip()
                 sig = _extract_function_signature(node, source)
                 sym = _make_gd_symbol(node, func_name, "function", file_path, run_id, signature=sig)
                 symbols.append(sym)
                 local_symbols[func_name] = sym
 
         elif node.type == "variable_statement":
-            name_node = _find_child_by_type(node, "name")
+            name_node = find_child_by_type(node, "name")
             if name_node:
-                var_name = _node_text(name_node, source).strip()
+                var_name = node_text(name_node, source).strip()
                 symbols.append(_make_gd_symbol(node, var_name, "variable", file_path, run_id))
 
         elif node.type == "signal_statement":
-            name_node = _find_child_by_type(node, "name")
+            name_node = find_child_by_type(node, "name")
             if name_node:
-                signal_name = _node_text(name_node, source).strip()
+                signal_name = node_text(name_node, source).strip()
                 symbols.append(_make_gd_symbol(node, signal_name, "signal", file_path, run_id))
 
         elif node.type == "class_name_statement":
-            name_node = _find_child_by_type(node, "name")
+            name_node = find_child_by_type(node, "name")
             if name_node:
-                class_name = _node_text(name_node, source).strip()
+                class_name = node_text(name_node, source).strip()
                 symbols.append(_make_gd_symbol(node, class_name, "class", file_path, run_id))
 
         elif node.type == "class_definition":
-            name_node = _find_child_by_type(node, "name")
+            name_node = find_child_by_type(node, "name")
             if name_node:
-                class_name = _node_text(name_node, source).strip()
+                class_name = node_text(name_node, source).strip()
                 symbols.append(_make_gd_symbol(node, class_name, "class", file_path, run_id))
 
     return symbols
@@ -270,20 +235,20 @@ def _extract_gdscript_edges(
 
     for node in iter_tree(tree.root_node):
         if node.type == "call":
-            ident_node = _find_child_by_type(node, "identifier")
+            ident_node = find_child_by_type(node, "identifier")
             if ident_node:
-                called_name = _node_text(ident_node, source).strip()
+                called_name = node_text(ident_node, source).strip()
 
                 # Check for preload/load imports
                 if called_name in ("preload", "load"):
-                    args_node = _find_child_by_type(node, "arguments")
+                    args_node = find_child_by_type(node, "arguments")
                     if args_node:
                         for arg_child in args_node.children:
                             if arg_child.type == "string":
-                                path_str = _node_text(arg_child, source).strip().strip('"\'')
+                                path_str = node_text(arg_child, source).strip().strip('"\'')
                                 edges.append(Edge(
                                     id=_make_edge_id(),
-                                    src=_make_file_id(file_path),
+                                    src=make_file_id("gdscript",file_path),
                                     dst=f"gdscript:{path_str}:file",
                                     edge_type="imports",
                                     line=node.start_point[0] + 1,
@@ -320,7 +285,7 @@ def _extract_gdscript_edges(
 
 
 @register_analyzer("gdscript")
-def analyze_gdscript(repo_root: Path) -> GDScriptAnalysisResult:
+def analyze_gdscript(repo_root: Path) -> AnalysisResult:
     """Analyze all GDScript files in the repository.
 
     Uses two-pass analysis for cross-file call resolution.
@@ -329,11 +294,11 @@ def analyze_gdscript(repo_root: Path) -> GDScriptAnalysisResult:
         repo_root: Path to the repository root.
 
     Returns:
-        GDScriptAnalysisResult with symbols and edges found.
+        AnalysisResult with symbols and edges found.
     """
     if not is_gdscript_tree_sitter_available():
         warnings.warn("GDScript analysis skipped: tree-sitter-language-pack not available")
-        return GDScriptAnalysisResult(skipped=True, skip_reason="tree-sitter-language-pack not available")
+        return AnalysisResult(skipped=True, skip_reason="tree-sitter-language-pack not available")
 
     from tree_sitter_language_pack import get_parser
 
@@ -392,7 +357,7 @@ def analyze_gdscript(repo_root: Path) -> GDScriptAnalysisResult:
         duration_ms=duration_ms,
     )
 
-    return GDScriptAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

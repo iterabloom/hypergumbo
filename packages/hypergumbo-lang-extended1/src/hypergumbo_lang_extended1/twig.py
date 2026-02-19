@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -50,24 +51,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "twig.tree_sitter"
 PASS_VERSION = "0.1.0"
-
-
-class TwigAnalysisResult:
-    """Result of Twig template analysis."""
-
-    def __init__(
-        self,
-        symbols: list[Symbol],
-        edges: list[Edge],
-        run: AnalysisRun | None = None,
-        skipped: bool = False,
-        skip_reason: str = "",
-    ) -> None:
-        self.symbols = symbols
-        self.edges = edges
-        self.run = run
-        self.skipped = skipped
-        self.skip_reason = skip_reason
 
 
 def is_twig_tree_sitter_available() -> bool:
@@ -110,13 +93,13 @@ class TwigAnalyzer:
         self._files_analyzed = 0
         self._template_registry: dict[str, str] = {}  # template name -> symbol id
 
-    def analyze(self) -> TwigAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Run the Twig analysis."""
         start_time = time.time()
 
         files = find_twig_files(self.repo_root)
         if not files:
-            return TwigAnalysisResult(
+            return AnalysisResult(
                 symbols=[],
                 edges=[],
                 run=None,
@@ -146,7 +129,7 @@ class TwigAnalyzer:
             files_analyzed=self._files_analyzed,
         )
 
-        return TwigAnalysisResult(
+        return AnalysisResult(
             symbols=self._symbols,
             edges=self._edges,
             run=run,
@@ -537,14 +520,14 @@ class TwigAnalyzer:
 
 
 @register_analyzer("twig")
-def analyze_twig(repo_root: Path) -> TwigAnalysisResult:
+def analyze_twig(repo_root: Path) -> AnalysisResult:
     """Analyze Twig template files in a repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        TwigAnalysisResult containing extracted symbols and edges
+        AnalysisResult containing extracted symbols and edges
     """
     if not is_twig_tree_sitter_available():
         warnings.warn(
@@ -552,7 +535,7 @@ def analyze_twig(repo_root: Path) -> TwigAnalysisResult:
             UserWarning,
             stacklevel=2,
         )
-        return TwigAnalysisResult(
+        return AnalysisResult(
             symbols=[],
             edges=[],
             run=AnalysisRun(

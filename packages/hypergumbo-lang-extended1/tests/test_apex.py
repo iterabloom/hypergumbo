@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_extended1 import apex as apex_module
 from hypergumbo_lang_extended1.apex import (
-    ApexAnalysisResult,
     analyze_apex,
     find_apex_files,
     is_apex_tree_sitter_available,

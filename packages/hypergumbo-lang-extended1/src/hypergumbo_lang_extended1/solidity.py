@@ -42,7 +42,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -66,40 +66,6 @@ def is_solidity_tree_sitter_available() -> bool:
     return True
 
 
-@dataclass
-class SolidityAnalysisResult:
-    """Result of analyzing Solidity files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"solidity:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a Solidity file node (used as import edge source)."""
-    return f"solidity:{path}:1-1:file:file"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None
-
-
 def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:
     """Find child by field name."""
     return node.child_by_field_name(field_name)
@@ -110,9 +76,9 @@ def _get_enclosing_contract(node: "tree_sitter.Node", source: bytes) -> Optional
     current = node.parent
     while current is not None:
         if current.type in ("contract_declaration", "interface_declaration", "library_declaration"):
-            name_node = _find_child_by_type(current, "identifier")
+            name_node = find_child_by_type(current, "identifier")
             if name_node:
-                return _node_text(name_node, source)
+                return node_text(name_node, source)
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -129,7 +95,7 @@ def _get_enclosing_function_solidity(
         if current.type == "function_definition":
             name_node = _find_child_by_field(current, "name")
             if name_node:
-                func_name = _node_text(name_node, source)
+                func_name = node_text(name_node, source)
                 sym = local_symbols.get(func_name) or global_symbols.get(func_name)
                 if sym:
                     return sym
@@ -140,7 +106,7 @@ def _get_enclosing_function_solidity(
         elif current.type == "modifier_definition":
             name_node = _find_child_by_field(current, "name")
             if name_node:
-                mod_name = _node_text(name_node, source)
+                mod_name = node_text(name_node, source)
                 sym = local_symbols.get(mod_name) or global_symbols.get(mod_name)
                 if sym:
                     return sym
@@ -162,12 +128,12 @@ def _extract_solidity_signature(
     for child in node.children:
         # Parameters are direct children with type "parameter"
         if child.type == "parameter":
-            param_text = _node_text(child, source).strip()
+            param_text = node_text(child, source).strip()
             if param_text:
                 params.append(param_text)
         elif child.type == "return_type_definition":
             # Return type definition: returns (type)
-            return_type = _node_text(child, source).strip()
+            return_type = node_text(child, source).strip()
 
     sig = "(" + ", ".join(params) + ")"
     if return_type:
@@ -212,7 +178,7 @@ def _extract_symbols_from_file(
         full_name = f"{prefix}.{name}" if prefix else name
 
         symbol = Symbol(
-            id=_make_symbol_id(str(file_path), start_line, end_line, full_name, kind),
+            id=make_symbol_id("solidity", str(file_path), start_line, end_line, full_name, kind),
             name=full_name,
             kind=kind,
             language="solidity",
@@ -235,30 +201,30 @@ def _extract_symbols_from_file(
     for node in iter_tree(tree.root_node):
         # Contract declaration
         if node.type == "contract_declaration":
-            name_node = _find_child_by_type(node, "identifier")
+            name_node = find_child_by_type(node, "identifier")
             if name_node:
-                contract_name = _node_text(name_node, source)
+                contract_name = node_text(name_node, source)
                 add_symbol(contract_name, "contract", node)
 
         # Interface declaration
         elif node.type == "interface_declaration":
-            name_node = _find_child_by_type(node, "identifier")
+            name_node = find_child_by_type(node, "identifier")
             if name_node:
-                interface_name = _node_text(name_node, source)
+                interface_name = node_text(name_node, source)
                 add_symbol(interface_name, "interface", node)
 
         # Library declaration
         elif node.type == "library_declaration":
-            name_node = _find_child_by_type(node, "identifier")
+            name_node = find_child_by_type(node, "identifier")
             if name_node:
-                lib_name = _node_text(name_node, source)
+                lib_name = node_text(name_node, source)
                 add_symbol(lib_name, "library", node)
 
         # Function definition
         elif node.type == "function_definition":
             name_node = _find_child_by_field(node, "name")
             if name_node:
-                func_name = _node_text(name_node, source)
+                func_name = node_text(name_node, source)
                 current_contract = _get_enclosing_contract(node, source) or ""
                 signature = _extract_solidity_signature(node, source)
                 add_symbol(func_name, "function", node, current_contract, signature=signature)
@@ -272,7 +238,7 @@ def _extract_symbols_from_file(
         elif node.type == "modifier_definition":
             name_node = _find_child_by_field(node, "name")
             if name_node:
-                mod_name = _node_text(name_node, source)
+                mod_name = node_text(name_node, source)
                 current_contract = _get_enclosing_contract(node, source) or ""
                 add_symbol(mod_name, "modifier", node, current_contract)
 
@@ -280,7 +246,7 @@ def _extract_symbols_from_file(
         elif node.type == "event_definition":
             name_node = _find_child_by_field(node, "name")
             if name_node:
-                event_name = _node_text(name_node, source)
+                event_name = node_text(name_node, source)
                 current_contract = _get_enclosing_contract(node, source) or ""
                 add_symbol(event_name, "event", node, current_contract)
 
@@ -305,9 +271,9 @@ def _extract_import_aliases(
     aliases: dict[str, str] = {}
 
     # Find the import path (string node)
-    string_node = _find_child_by_type(node, "string")
+    string_node = find_child_by_type(node, "string")
     if string_node:
-        import_path = _node_text(string_node, source).strip('"\'')
+        import_path = node_text(string_node, source).strip('"\'')
 
     if not import_path:
         return "", {}  # pragma: no cover - defensive
@@ -323,7 +289,7 @@ def _extract_import_aliases(
             # The next identifier is the alias
             next_child = children[i + 1]
             if next_child.type == "identifier":
-                alias = _node_text(next_child, source)
+                alias = node_text(next_child, source)
                 aliases[alias] = import_path
         i += 1
 
@@ -353,7 +319,7 @@ def _extract_edges_from_file(
 
     edges: list[Edge] = []
     import_aliases: dict[str, str] = {}
-    file_id = _make_file_id(str(file_path))
+    file_id = make_file_id("solidity", str(file_path))
 
     # First pass: extract import aliases
     for node in iter_tree(tree.root_node):
@@ -381,7 +347,7 @@ def _extract_edges_from_file(
                 node, source, local_symbols, global_symbols
             )
             if func_node and current_function:
-                call_name = _node_text(func_node, source)
+                call_name = node_text(func_node, source)
                 # Try to resolve the called function - local first
                 target = local_symbols.get(call_name)
                 if target:
@@ -416,17 +382,17 @@ def _extract_edges_from_file(
 
 
 @register_analyzer("solidity")
-def analyze_solidity(repo_root: Path) -> SolidityAnalysisResult:
+def analyze_solidity(repo_root: Path) -> AnalysisResult:
     """Analyze Solidity files in a repository.
 
     Args:
         repo_root: Path to the repository root.
 
     Returns:
-        SolidityAnalysisResult with symbols, edges, and analysis run info.
+        AnalysisResult with symbols, edges, and analysis run info.
     """
     if not is_solidity_tree_sitter_available():
-        return SolidityAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-solidity not installed. Install with: pip install tree-sitter-solidity",
         )
@@ -475,7 +441,7 @@ def analyze_solidity(repo_root: Path) -> SolidityAnalysisResult:
     end_time = time.time()
     run.duration_ms = int((end_time - start_time) * 1000)
 
-    return SolidityAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

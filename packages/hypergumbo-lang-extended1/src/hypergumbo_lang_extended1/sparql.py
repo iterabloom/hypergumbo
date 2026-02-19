@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -45,24 +46,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "sparql.tree_sitter"
 PASS_VERSION = "0.1.0"
-
-
-class SPARQLAnalysisResult:
-    """Result of SPARQL analysis."""
-
-    def __init__(
-        self,
-        symbols: list[Symbol],
-        edges: list[Edge],
-        run: AnalysisRun | None = None,
-        skipped: bool = False,
-        skip_reason: str = "",
-    ) -> None:
-        self.symbols = symbols
-        self.edges = edges
-        self.run = run
-        self.skipped = skipped
-        self.skip_reason = skip_reason
 
 
 def is_sparql_tree_sitter_available() -> bool:
@@ -116,13 +99,13 @@ class SPARQLAnalyzer:
         self._current_prefixes: dict[str, str] = {}  # prefix -> IRI
         self._query_counter = 0
 
-    def analyze(self) -> SPARQLAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Run the SPARQL analysis."""
         start_time = time.time()
 
         files = find_sparql_files(self.repo_root)
         if not files:
-            return SPARQLAnalysisResult(
+            return AnalysisResult(
                 symbols=[],
                 edges=[],
                 run=None,
@@ -154,7 +137,7 @@ class SPARQLAnalyzer:
             files_analyzed=self._files_analyzed,
         )
 
-        return SPARQLAnalysisResult(
+        return AnalysisResult(
             symbols=self._symbols,
             edges=self._edges,
             run=run,
@@ -377,14 +360,14 @@ class SPARQLAnalyzer:
 
 
 @register_analyzer("sparql")
-def analyze_sparql(repo_root: Path) -> SPARQLAnalysisResult:
+def analyze_sparql(repo_root: Path) -> AnalysisResult:
     """Analyze SPARQL files in a repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        SPARQLAnalysisResult containing extracted symbols and edges
+        AnalysisResult containing extracted symbols and edges
     """
     if not is_sparql_tree_sitter_available():
         warnings.warn(
@@ -392,7 +375,7 @@ def analyze_sparql(repo_root: Path) -> SPARQLAnalysisResult:
             UserWarning,
             stacklevel=2,
         )
-        return SPARQLAnalysisResult(
+        return AnalysisResult(
             symbols=[],
             edges=[],
             run=AnalysisRun(

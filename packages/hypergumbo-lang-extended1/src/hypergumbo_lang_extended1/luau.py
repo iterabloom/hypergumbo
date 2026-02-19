@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -107,24 +108,6 @@ def is_luau_tree_sitter_available() -> bool:
         return False
 
 
-class LuauAnalysisResult:
-    """Result of Luau analysis."""
-
-    def __init__(
-        self,
-        symbols: list[Symbol] | None = None,
-        edges: list[Edge] | None = None,
-        run: AnalysisRun | None = None,
-        skipped: bool = False,
-        skip_reason: str = "",
-    ):
-        self.symbols = symbols or []
-        self.edges = edges or []
-        self.run = run
-        self.skipped = skipped
-        self.skip_reason = skip_reason
-
-
 class LuauAnalyzer:
     """Analyzer for Luau files."""
 
@@ -136,7 +119,7 @@ class LuauAnalyzer:
         self._run_id: str = ""
         self._current_function: Optional[str] = None
 
-    def analyze(self) -> LuauAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Analyze all Luau files in the repository."""
         from tree_sitter_language_pack import get_parser
 
@@ -147,7 +130,7 @@ class LuauAnalyzer:
         luau_files = find_luau_files(self.repo_root)
 
         if not luau_files:
-            return LuauAnalysisResult()
+            return AnalysisResult()
 
         # Pass 1: Collect all symbols
         for path in luau_files:
@@ -191,7 +174,7 @@ class LuauAnalyzer:
             duration_ms=int(elapsed * 1000),
         )
 
-        return LuauAnalysisResult(
+        return AnalysisResult(
             symbols=self.symbols,
             edges=self.edges,
             run=run,
@@ -482,14 +465,14 @@ class LuauAnalyzer:
 
 
 @register_analyzer("luau")
-def analyze_luau(repo_root: Path) -> LuauAnalysisResult:
+def analyze_luau(repo_root: Path) -> AnalysisResult:
     """Analyze Luau files in the repository.
 
     Args:
         repo_root: Root path of the repository to analyze
 
     Returns:
-        LuauAnalysisResult containing symbols and edges
+        AnalysisResult containing symbols and edges
     """
     if not is_luau_tree_sitter_available():
         warnings.warn(
@@ -497,7 +480,7 @@ def analyze_luau(repo_root: Path) -> LuauAnalysisResult:
             UserWarning,
             stacklevel=2,
         )
-        return LuauAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-luau not available",
         )

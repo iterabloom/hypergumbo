@@ -47,7 +47,7 @@ from typing import TYPE_CHECKING, Iterator
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -60,16 +60,6 @@ PASS_VERSION = "hypergumbo-0.1.0"
 def find_llvm_ir_files(repo_root: Path) -> Iterator[Path]:
     """Yield all LLVM IR files in the repository."""
     yield from find_files(repo_root, ["*.ll"])
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID for a symbol."""
-    return f"llvm_ir:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:  # pragma: no cover - reserved for future file-level symbols
-    """Generate ID for a LLVM IR file node."""
-    return f"llvm_ir:{path}:1-1:file:file"
 
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
@@ -95,17 +85,6 @@ def is_llvm_tree_sitter_available() -> bool:
 
 
 @dataclass
-class LLVMIRAnalysisResult:
-    """Result of analyzing LLVM IR files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-@dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file.
 
@@ -118,11 +97,6 @@ class FileAnalysis:
     # calls = [(caller_name, callee_name, line, col), ...]
 
 
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text content from a node."""
-    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-
-
 def _get_function_name(header_node: "tree_sitter.Node", source: bytes) -> str | None:
     """Extract function name from function_header node.
 
@@ -130,7 +104,7 @@ def _get_function_name(header_node: "tree_sitter.Node", source: bytes) -> str | 
     """
     for child in iter_tree(header_node):
         if child.type == "global_var":
-            name = _node_text(child, source)
+            name = node_text(child, source)
             # Remove @ prefix for internal use
             return name.lstrip("@")
     return None  # pragma: no cover - defensive fallback
@@ -140,7 +114,7 @@ def _get_global_var_name(global_node: "tree_sitter.Node", source: bytes) -> str 
     """Extract global variable name from global_global node."""
     for child in global_node.children:
         if child.type == "global_var":
-            name = _node_text(child, source)
+            name = node_text(child, source)
             return name.lstrip("@")
     return None  # pragma: no cover - defensive fallback
 
@@ -152,7 +126,7 @@ def _get_call_target(call_node: "tree_sitter.Node", source: bytes) -> str | None
     """
     for child in iter_tree(call_node):
         if child.type == "global_var":
-            name = _node_text(child, source)
+            name = node_text(child, source)
             return name.lstrip("@")
     return None  # pragma: no cover - defensive fallback
 
@@ -176,7 +150,7 @@ def _extract_arguments(header_node: "tree_sitter.Node", source: bytes) -> str:
     """Extract function signature from function_header."""
     for child in iter_tree(header_node):
         if child.type == "argument_list":
-            return _node_text(child, source)
+            return node_text(child, source)
     return "()"  # pragma: no cover - defensive fallback
 
 
@@ -184,7 +158,7 @@ def _get_return_type(header_node: "tree_sitter.Node", source: bytes) -> str | No
     """Extract return type from function_header."""
     for child in header_node.children:
         if child.type == "type":
-            return _node_text(child, source)
+            return node_text(child, source)
     return None  # pragma: no cover - defensive fallback
 
 
@@ -215,7 +189,7 @@ def _analyze_file(
                     signature = f"{ret_type or 'void'} @{name}{args}"
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
-                    sym_id = _make_symbol_id(rel_path, start_line, end_line, name, "function")
+                    sym_id = make_symbol_id("llvm_ir", rel_path, start_line, end_line, name, "function")
 
                     symbol = Symbol(
                         id=sym_id,
@@ -252,7 +226,7 @@ def _analyze_file(
                     signature = f"{ret_type or 'void'} @{name}{args}"
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
-                    sym_id = _make_symbol_id(rel_path, start_line, end_line, name, "declaration")
+                    sym_id = make_symbol_id("llvm_ir", rel_path, start_line, end_line, name, "declaration")
 
                     symbol = Symbol(
                         id=sym_id,
@@ -279,7 +253,7 @@ def _analyze_file(
             if name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                sym_id = _make_symbol_id(rel_path, start_line, end_line, name, "variable")
+                sym_id = make_symbol_id("llvm_ir", rel_path, start_line, end_line, name, "variable")
 
                 symbol = Symbol(
                     id=sym_id,
@@ -358,14 +332,14 @@ def _resolve_calls(
 
 
 @register_analyzer("llvm_ir")
-def analyze_llvm_ir(repo_root: Path) -> LLVMIRAnalysisResult:
+def analyze_llvm_ir(repo_root: Path) -> AnalysisResult:
     """Analyze LLVM IR files in a repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        LLVMIRAnalysisResult containing symbols, edges, and analysis metadata
+        AnalysisResult containing symbols, edges, and analysis metadata
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
@@ -377,7 +351,7 @@ def analyze_llvm_ir(repo_root: Path) -> LLVMIRAnalysisResult:
         )
         warnings.warn(skip_reason, UserWarning, stacklevel=2)
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return LLVMIRAnalysisResult(
+        return AnalysisResult(
             run=run, skipped=True, skip_reason="tree-sitter-llvm not available"
         )
 
@@ -421,7 +395,7 @@ def analyze_llvm_ir(repo_root: Path) -> LLVMIRAnalysisResult:
     run.files_analyzed = files_analyzed
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return LLVMIRAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=edges,
         run=run,

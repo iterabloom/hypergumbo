@@ -40,13 +40,12 @@ import importlib.util
 import time
 import uuid
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, node_text, find_child_by_type, make_symbol_id, make_file_id
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -75,43 +74,9 @@ def is_capnp_tree_sitter_available() -> bool:
         return False
 
 
-@dataclass
-class CapnpAnalysisResult:
-    """Result of analyzing Cap'n Proto files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"capnp:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a Cap'n Proto file node (used as import edge source)."""
-    return f"capnp:{path}:1-1:file:file"
-
-
 def _make_edge_id() -> str:
     """Generate a unique edge ID."""
     return f"edge:capnp:{uuid.uuid4().hex[:12]}"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None  # pragma: no cover - defensive
 
 
 def _extract_method_signature(method_node: "tree_sitter.Node", source: bytes) -> str:
@@ -127,9 +92,9 @@ def _extract_method_signature(method_node: "tree_sitter.Node", source: bytes) ->
 
     for child in method_node.children:
         if child.type == "method_parameters":
-            params = _node_text(child, source).strip()
+            params = node_text(child, source).strip()
         elif child.type == "return_type":
-            returns = _node_text(child, source).strip()
+            returns = node_text(child, source).strip()
 
     sig = params or "()"
     if returns:
@@ -147,9 +112,9 @@ def _get_struct_prefix(node: "tree_sitter.Node", source: bytes) -> Optional[str]
     while current is not None:
         # If parent is "nested_struct", its parent is "field", and field's parent is "struct"
         if current.type == "struct":
-            name_node = _find_child_by_type(current, "type_identifier")
+            name_node = find_child_by_type(current, "type_identifier")
             if name_node:
-                parts.append(_node_text(name_node, source).strip())
+                parts.append(node_text(name_node, source).strip())
         current = current.parent
     if parts:
         # Reverse because we walked up the tree
@@ -162,9 +127,9 @@ def _get_interface_name_for_method(node: "tree_sitter.Node", source: bytes) -> O
     current = node.parent
     while current is not None:
         if current.type == "interface":
-            name_node = _find_child_by_type(current, "type_identifier")
+            name_node = find_child_by_type(current, "type_identifier")
             if name_node:
-                return _node_text(name_node, source).strip()
+                return node_text(name_node, source).strip()
         current = current.parent  # pragma: no cover - loop continuation
     return None  # pragma: no cover - defensive
 
@@ -207,7 +172,7 @@ def _extract_symbols_and_edges(
             start_col=start_col,
             end_col=end_col,
         )
-        sym_id = _make_symbol_id(file_path, start_line, end_line, name, kind)
+        sym_id = make_symbol_id("capnp", file_path, start_line, end_line, name, kind)
         return Symbol(
             id=sym_id,
             name=name,
@@ -224,24 +189,24 @@ def _extract_symbols_and_edges(
     # Process all nodes using iterative traversal
     for node in iter_tree(tree.root_node):
         if node.type == "struct":
-            name_node = _find_child_by_type(node, "type_identifier")
+            name_node = find_child_by_type(node, "type_identifier")
             if name_node:
-                struct_name = _node_text(name_node, source).strip()
+                struct_name = node_text(name_node, source).strip()
                 prefix = _get_struct_prefix(node, source)
                 symbols.append(make_symbol(node, struct_name, "struct", prefix=prefix))
 
         elif node.type == "interface":
-            name_node = _find_child_by_type(node, "type_identifier")
+            name_node = find_child_by_type(node, "type_identifier")
             if name_node:
-                interface_name = _node_text(name_node, source).strip()
+                interface_name = node_text(name_node, source).strip()
                 interface_sym = make_symbol(node, interface_name, "interface")
                 symbols.append(interface_sym)
                 interface_symbols[interface_name] = interface_sym
 
         elif node.type == "method":
-            method_name_node = _find_child_by_type(node, "method_identifier")
+            method_name_node = find_child_by_type(node, "method_identifier")
             if method_name_node:
-                method_name = _node_text(method_name_node, source).strip()
+                method_name = node_text(method_name_node, source).strip()
                 interface_name = _get_interface_name_for_method(node, source)
                 method_sig = _extract_method_signature(node, source)
                 method_sym = make_symbol(
@@ -263,15 +228,15 @@ def _extract_symbols_and_edges(
                     ))
 
         elif node.type == "enum":
-            name_node = _find_child_by_type(node, "enum_identifier")
+            name_node = find_child_by_type(node, "enum_identifier")
             if name_node:
-                enum_name = _node_text(name_node, source).strip()
+                enum_name = node_text(name_node, source).strip()
                 symbols.append(make_symbol(node, enum_name, "enum"))
 
         elif node.type == "const":
-            name_node = _find_child_by_type(node, "const_identifier")
+            name_node = find_child_by_type(node, "const_identifier")
             if name_node:
-                const_name = _node_text(name_node, source).strip()
+                const_name = node_text(name_node, source).strip()
                 symbols.append(make_symbol(node, const_name, "const"))
 
         elif node.type == "using_directive":
@@ -282,10 +247,10 @@ def _extract_symbols_and_edges(
                         if import_child.type == "import_path":
                             for path_child in import_child.children:
                                 if path_child.type == "string_fragment":
-                                    import_path = _node_text(path_child, source).strip()
+                                    import_path = node_text(path_child, source).strip()
                                     edges.append(Edge(
                                         id=_make_edge_id(),
-                                        src=_make_file_id(file_path),
+                                        src=make_file_id("capnp", file_path),
                                         dst=f"capnp:{import_path}:1-1:file:file",
                                         edge_type="imports",
                                         line=node.start_point[0] + 1,
@@ -295,18 +260,18 @@ def _extract_symbols_and_edges(
 
 
 @register_analyzer("capnp")
-def analyze_capnp(repo_root: Path) -> CapnpAnalysisResult:
+def analyze_capnp(repo_root: Path) -> AnalysisResult:
     """Analyze all Cap'n Proto files in the repository.
 
     Args:
         repo_root: Path to the repository root.
 
     Returns:
-        CapnpAnalysisResult with symbols and edges found.
+        AnalysisResult with symbols and edges found.
     """
     if not is_capnp_tree_sitter_available():
         warnings.warn("Cap'n Proto analysis skipped: tree-sitter-language-pack not available")
-        return CapnpAnalysisResult(skipped=True, skip_reason="tree-sitter-language-pack not available")
+        return AnalysisResult(skipped=True, skip_reason="tree-sitter-language-pack not available")
 
     from tree_sitter_language_pack import get_parser
 
@@ -343,7 +308,7 @@ def analyze_capnp(repo_root: Path) -> CapnpAnalysisResult:
         duration_ms=duration_ms,
     )
 
-    return CapnpAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

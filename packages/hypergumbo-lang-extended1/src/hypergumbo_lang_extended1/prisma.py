@@ -21,12 +21,12 @@ Key constructs extracted:
 
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -34,17 +34,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "prisma.tree_sitter"
 PASS_VERSION = "hypergumbo-0.1.0"
-
-
-@dataclass
-class PrismaAnalysisResult:
-    """Result of analyzing Prisma files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: Optional[AnalysisRun] = None
-    skipped: bool = False
-    skip_reason: str = ""
 
 
 def is_prisma_tree_sitter_available() -> bool:
@@ -115,7 +104,7 @@ class PrismaAnalyzer:
         self._model_registry: dict[str, str] = {}  # model_name -> symbol_id
         self._run_id: str = ""
 
-    def analyze(self) -> PrismaAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Analyze all Prisma files in the repository."""
         if not is_prisma_tree_sitter_available():
             warnings.warn(
@@ -123,7 +112,7 @@ class PrismaAnalyzer:
                 UserWarning,
                 stacklevel=2,
             )
-            return PrismaAnalysisResult(
+            return AnalysisResult(
                 skipped=True,
                 skip_reason="tree-sitter-language-pack not available",
             )
@@ -138,7 +127,7 @@ class PrismaAnalyzer:
         prisma_files = list(find_prisma_files(self.repo_root))
 
         if not prisma_files:
-            return PrismaAnalysisResult()
+            return AnalysisResult()
 
         # Pass 1: Collect all models and enums
         for path in prisma_files:
@@ -174,7 +163,7 @@ class PrismaAnalyzer:
             duration_ms=int(elapsed * 1000),
         )
 
-        return PrismaAnalysisResult(
+        return AnalysisResult(
             symbols=self.symbols,
             edges=self.edges,
             run=run,
@@ -319,14 +308,14 @@ class PrismaAnalyzer:
 
 
 @register_analyzer("prisma")
-def analyze_prisma(repo_root: Path) -> PrismaAnalysisResult:
+def analyze_prisma(repo_root: Path) -> AnalysisResult:
     """Analyze Prisma schema files in a repository.
 
     Args:
         repo_root: Root directory of the repository to analyze
 
     Returns:
-        PrismaAnalysisResult containing symbols, edges, and analysis metadata
+        AnalysisResult containing symbols, edges, and analysis metadata
     """
     analyzer = PrismaAnalyzer(repo_root)
     return analyzer.analyze()

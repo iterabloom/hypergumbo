@@ -21,12 +21,12 @@ Key constructs extracted:
 
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -34,17 +34,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "gleam.tree_sitter"
 PASS_VERSION = "hypergumbo-0.1.0"
-
-
-@dataclass
-class GleamAnalysisResult:
-    """Result of analyzing Gleam files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: Optional[AnalysisRun] = None
-    skipped: bool = False
-    skip_reason: str = ""
 
 
 def is_gleam_tree_sitter_available() -> bool:
@@ -144,7 +133,7 @@ class GleamAnalyzer:
         self._symbol_registry: dict[str, str] = {}  # name -> id
         self._run_id: str = ""
 
-    def analyze(self) -> GleamAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Analyze all Gleam files in the repository."""
         if not is_gleam_tree_sitter_available():
             warnings.warn(
@@ -152,7 +141,7 @@ class GleamAnalyzer:
                 UserWarning,
                 stacklevel=2,
             )
-            return GleamAnalysisResult(
+            return AnalysisResult(
                 skipped=True,
                 skip_reason="tree-sitter-language-pack not available",
             )
@@ -167,7 +156,7 @@ class GleamAnalyzer:
         gleam_files = list(find_gleam_files(self.repo_root))
 
         if not gleam_files:
-            return GleamAnalysisResult()
+            return AnalysisResult()
 
         # Pass 1: Collect all symbols
         for path in gleam_files:
@@ -202,7 +191,7 @@ class GleamAnalyzer:
             duration_ms=int(elapsed * 1000),
         )
 
-        return GleamAnalysisResult(
+        return AnalysisResult(
             symbols=self.symbols,
             edges=self.edges,
             run=run,
@@ -382,14 +371,14 @@ class GleamAnalyzer:
 
 
 @register_analyzer("gleam")
-def analyze_gleam(repo_root: Path) -> GleamAnalysisResult:
+def analyze_gleam(repo_root: Path) -> AnalysisResult:
     """Analyze Gleam source files in a repository.
 
     Args:
         repo_root: Root directory of the repository to analyze
 
     Returns:
-        GleamAnalysisResult containing symbols, edges, and analysis metadata
+        AnalysisResult containing symbols, edges, and analysis metadata
     """
     analyzer = GleamAnalyzer(repo_root)
     return analyzer.analyze()

@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -40,23 +41,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "bibtex.tree_sitter"
 PASS_VERSION = "0.1.0"
-
-
-class BibtexAnalysisResult:
-    """Result of BibTeX bibliography analysis."""
-
-    def __init__(
-        self,
-        symbols: list[Symbol],
-        run: AnalysisRun | None = None,
-        skipped: bool = False,
-        skip_reason: str = "",
-    ) -> None:
-        self.symbols = symbols
-        self.edges: list = []  # BibTeX files typically don't have edges
-        self.run = run
-        self.skipped = skipped
-        self.skip_reason = skip_reason
 
 
 def is_bibtex_tree_sitter_available() -> bool:
@@ -97,13 +81,13 @@ class BibtexAnalyzer:
         self._execution_id = f"uuid:{uuid.uuid4()}"
         self._files_analyzed = 0
 
-    def analyze(self) -> BibtexAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Run the BibTeX analysis."""
         start_time = time.time()
 
         files = find_bibtex_files(self.repo_root)
         if not files:
-            return BibtexAnalysisResult(
+            return AnalysisResult(
                 symbols=[],
                 run=None,
             )
@@ -132,7 +116,7 @@ class BibtexAnalyzer:
             files_analyzed=self._files_analyzed,
         )
 
-        return BibtexAnalysisResult(
+        return AnalysisResult(
             symbols=self._symbols,
             run=run,
         )
@@ -213,14 +197,14 @@ class BibtexAnalyzer:
 
 
 @register_analyzer("bibtex")
-def analyze_bibtex(repo_root: Path) -> BibtexAnalysisResult:
+def analyze_bibtex(repo_root: Path) -> AnalysisResult:
     """Analyze BibTeX bibliography files in a repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        BibtexAnalysisResult containing extracted symbols
+        AnalysisResult containing extracted symbols
     """
     if not is_bibtex_tree_sitter_available():
         warnings.warn(
@@ -228,7 +212,7 @@ def analyze_bibtex(repo_root: Path) -> BibtexAnalysisResult:
             UserWarning,
             stacklevel=2,
         )
-        return BibtexAnalysisResult(
+        return AnalysisResult(
             symbols=[],
             run=AnalysisRun(
                 pass_id=PASS_ID,

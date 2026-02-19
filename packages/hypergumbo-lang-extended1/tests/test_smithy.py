@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_extended1 import smithy as smithy_module
 from hypergumbo_lang_extended1.smithy import (
-    SmithyAnalysisResult,
     analyze_smithy,
     find_smithy_files,
     is_smithy_tree_sitter_available,

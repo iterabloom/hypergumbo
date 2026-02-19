@@ -32,13 +32,12 @@ import hashlib
 import importlib.util
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, node_text, find_child_by_type, make_symbol_id
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -62,49 +61,20 @@ def is_verilog_tree_sitter_available() -> bool:
     return True
 
 
-@dataclass
-class VerilogAnalysisResult:
-    """Result of analyzing Verilog files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"verilog:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
     """Generate deterministic edge ID."""
     content = f"{edge_type}:{src}:{dst}"
     return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
 
 
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None  # pragma: no cover
-
-
 def _extract_module_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract module name from module_declaration node."""
     # Look for module_header -> simple_identifier
-    header = _find_child_by_type(node, "module_header")
+    header = find_child_by_type(node, "module_header")
     if header:
         for child in header.children:
             if child.type == "simple_identifier":
-                return _node_text(child, source)
+                return node_text(child, source)
     return None  # pragma: no cover
 
 
@@ -115,17 +85,17 @@ def _extract_interface_name(node: "tree_sitter.Node", source: bytes) -> Optional
         if child.type in ("interface_ansi_header", "interface_nonansi_header"):
             for subchild in child.children:
                 if subchild.type == "interface_identifier":
-                    ident = _find_child_by_type(subchild, "simple_identifier")
+                    ident = find_child_by_type(subchild, "simple_identifier")
                     if ident:
-                        return _node_text(ident, source)
+                        return node_text(ident, source)
                 elif subchild.type == "simple_identifier":  # pragma: no cover
-                    return _node_text(subchild, source)  # pragma: no cover
+                    return node_text(subchild, source)  # pragma: no cover
         elif child.type == "interface_identifier":  # pragma: no cover
-            ident = _find_child_by_type(child, "simple_identifier")  # pragma: no cover
+            ident = find_child_by_type(child, "simple_identifier")  # pragma: no cover
             if ident:  # pragma: no cover
-                return _node_text(ident, source)  # pragma: no cover
+                return node_text(ident, source)  # pragma: no cover
         elif child.type == "simple_identifier":  # pragma: no cover
-            return _node_text(child, source)  # pragma: no cover
+            return node_text(child, source)  # pragma: no cover
     return None  # pragma: no cover
 
 
@@ -140,16 +110,16 @@ def _extract_instantiation_info(node: "tree_sitter.Node", source: bytes) -> Opti
 
     for child in node.children:
         if child.type == "simple_identifier" and module_type is None:
-            module_type = _node_text(child, source)
+            module_type = node_text(child, source)
         elif child.type == "hierarchical_instance":
             # Look for name_of_instance -> instance_identifier -> simple_identifier
-            name_of_inst = _find_child_by_type(child, "name_of_instance")
+            name_of_inst = find_child_by_type(child, "name_of_instance")
             if name_of_inst:
-                inst_ident = _find_child_by_type(name_of_inst, "instance_identifier")
+                inst_ident = find_child_by_type(name_of_inst, "instance_identifier")
                 if inst_ident:
-                    ident = _find_child_by_type(inst_ident, "simple_identifier")
+                    ident = find_child_by_type(inst_ident, "simple_identifier")
                     if ident:
-                        instance_name = _node_text(ident, source)
+                        instance_name = node_text(ident, source)
 
     if module_type and instance_name:
         return (module_type, instance_name)
@@ -197,7 +167,7 @@ def _process_verilog_tree(
             if module_name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, module_name, "module")
+                symbol_id = make_symbol_id("verilog",rel_path, start_line, end_line, module_name, "module")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -226,7 +196,7 @@ def _process_verilog_tree(
             if interface_name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, interface_name, "interface")
+                symbol_id = make_symbol_id("verilog",rel_path, start_line, end_line, interface_name, "interface")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -278,17 +248,17 @@ def _process_verilog_tree(
 
 
 @register_analyzer("verilog")
-def analyze_verilog_files(repo_root: Path) -> VerilogAnalysisResult:
+def analyze_verilog_files(repo_root: Path) -> AnalysisResult:
     """Analyze Verilog/SystemVerilog files in the repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        VerilogAnalysisResult with symbols and edges
+        AnalysisResult with symbols and edges
     """
     if not is_verilog_tree_sitter_available():  # pragma: no cover
-        return VerilogAnalysisResult(  # pragma: no cover
+        return AnalysisResult(  # pragma: no cover
             skipped=True,  # pragma: no cover
             skip_reason="tree-sitter-verilog not installed (pip install tree-sitter-verilog)",  # pragma: no cover
         )  # pragma: no cover
@@ -312,7 +282,7 @@ def analyze_verilog_files(repo_root: Path) -> VerilogAnalysisResult:
         parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_verilog.language()))
     except Exception as e:  # pragma: no cover
         warnings.warn(f"Failed to initialize Verilog parser: {e}")
-        return VerilogAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason=f"Failed to initialize parser: {e}",
         )
@@ -348,7 +318,7 @@ def analyze_verilog_files(repo_root: Path) -> VerilogAnalysisResult:
     run.duration_ms = duration_ms
     run.warnings = warnings_list
 
-    return VerilogAnalysisResult(
+    return AnalysisResult(
         symbols=symbols,
         edges=edges,
         run=run,

@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -111,24 +112,6 @@ def is_hack_tree_sitter_available() -> bool:
         return False
 
 
-class HackAnalysisResult:
-    """Result of Hack analysis."""
-
-    def __init__(
-        self,
-        symbols: list[Symbol] | None = None,
-        edges: list[Edge] | None = None,
-        run: AnalysisRun | None = None,
-        skipped: bool = False,
-        skip_reason: str = "",
-    ):
-        self.symbols = symbols or []
-        self.edges = edges or []
-        self.run = run
-        self.skipped = skipped
-        self.skip_reason = skip_reason
-
-
 class HackAnalyzer:
     """Analyzer for Hack source files."""
 
@@ -141,7 +124,7 @@ class HackAnalyzer:
         self._current_namespace: Optional[str] = None
         self._current_class: Optional[str] = None
 
-    def analyze(self) -> HackAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Analyze all Hack files in the repository."""
         from tree_sitter_language_pack import get_parser
 
@@ -152,7 +135,7 @@ class HackAnalyzer:
         hack_files = find_hack_files(self.repo_root)
 
         if not hack_files:
-            return HackAnalysisResult()
+            return AnalysisResult()
 
         # Pass 1: Collect all symbols
         for path in hack_files:
@@ -194,7 +177,7 @@ class HackAnalyzer:
             duration_ms=int(elapsed * 1000),
         )
 
-        return HackAnalysisResult(
+        return AnalysisResult(
             symbols=self.symbols,
             edges=self.edges,
             run=run,
@@ -534,14 +517,14 @@ class HackAnalyzer:
 
 
 @register_analyzer("hack")
-def analyze_hack(repo_root: Path) -> HackAnalysisResult:
+def analyze_hack(repo_root: Path) -> AnalysisResult:
     """Analyze Hack files in the repository.
 
     Args:
         repo_root: Root path of the repository to analyze
 
     Returns:
-        HackAnalysisResult containing symbols and edges
+        AnalysisResult containing symbols and edges
     """
     if not is_hack_tree_sitter_available():
         warnings.warn(
@@ -549,7 +532,7 @@ def analyze_hack(repo_root: Path) -> HackAnalysisResult:
             UserWarning,
             stacklevel=2,
         )
-        return HackAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-hack not available",
         )

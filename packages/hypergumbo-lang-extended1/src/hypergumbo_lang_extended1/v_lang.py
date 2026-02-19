@@ -22,12 +22,12 @@ Key constructs extracted:
 
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -35,17 +35,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "v.tree_sitter"
 PASS_VERSION = "hypergumbo-0.1.0"
-
-
-@dataclass
-class VAnalysisResult:
-    """Result of analyzing V files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: Optional[AnalysisRun] = None
-    skipped: bool = False
-    skip_reason: str = ""
 
 
 def is_v_tree_sitter_available() -> bool:
@@ -162,7 +151,7 @@ class VAnalyzer:
         self._symbol_registry: dict[str, str] = {}  # name -> id
         self._run_id: str = ""
 
-    def analyze(self) -> VAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Analyze all V files in the repository."""
         if not is_v_tree_sitter_available():
             warnings.warn(
@@ -170,7 +159,7 @@ class VAnalyzer:
                 UserWarning,
                 stacklevel=2,
             )
-            return VAnalysisResult(
+            return AnalysisResult(
                 skipped=True,
                 skip_reason="tree-sitter-language-pack not available",
             )
@@ -185,7 +174,7 @@ class VAnalyzer:
         v_files = list(find_v_files(self.repo_root))
 
         if not v_files:
-            return VAnalysisResult()
+            return AnalysisResult()
 
         # Pass 1: Collect all symbols
         for path in v_files:
@@ -220,7 +209,7 @@ class VAnalyzer:
             duration_ms=int(elapsed * 1000),
         )
 
-        return VAnalysisResult(
+        return AnalysisResult(
             symbols=self.symbols,
             edges=self.edges,
             run=run,
@@ -401,14 +390,14 @@ class VAnalyzer:
 
 
 @register_analyzer("v")
-def analyze_v(repo_root: Path) -> VAnalysisResult:
+def analyze_v(repo_root: Path) -> AnalysisResult:
     """Analyze V source files in a repository.
 
     Args:
         repo_root: Root directory of the repository to analyze
 
     Returns:
-        VAnalysisResult containing symbols, edges, and analysis metadata
+        AnalysisResult containing symbols, edges, and analysis metadata
     """
     analyzer = VAnalyzer(repo_root)
     return analyzer.analyze()

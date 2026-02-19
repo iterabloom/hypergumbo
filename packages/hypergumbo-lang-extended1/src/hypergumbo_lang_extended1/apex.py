@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -118,24 +119,6 @@ def is_apex_tree_sitter_available() -> bool:
         return False
 
 
-class ApexAnalysisResult:
-    """Result of Apex analysis."""
-
-    def __init__(
-        self,
-        symbols: list[Symbol] | None = None,
-        edges: list[Edge] | None = None,
-        run: AnalysisRun | None = None,
-        skipped: bool = False,
-        skip_reason: str = "",
-    ):
-        self.symbols = symbols or []
-        self.edges = edges or []
-        self.run = run
-        self.skipped = skipped
-        self.skip_reason = skip_reason
-
-
 class ApexAnalyzer:
     """Analyzer for Salesforce Apex files."""
 
@@ -147,7 +130,7 @@ class ApexAnalyzer:
         self._run_id: str = ""
         self._current_class: Optional[str] = None
 
-    def analyze(self) -> ApexAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Analyze all Apex files in the repository."""
         from tree_sitter_language_pack import get_parser
 
@@ -158,7 +141,7 @@ class ApexAnalyzer:
         apex_files = find_apex_files(self.repo_root)
 
         if not apex_files:
-            return ApexAnalysisResult()
+            return AnalysisResult()
 
         # Pass 1: Collect all symbols
         for path in apex_files:
@@ -199,7 +182,7 @@ class ApexAnalyzer:
             duration_ms=int(elapsed * 1000),
         )
 
-        return ApexAnalysisResult(
+        return AnalysisResult(
             symbols=self.symbols,
             edges=self.edges,
             run=run,
@@ -830,14 +813,14 @@ class ApexAnalyzer:
 
 
 @register_analyzer("apex")
-def analyze_apex(repo_root: Path) -> ApexAnalysisResult:
+def analyze_apex(repo_root: Path) -> AnalysisResult:
     """Analyze Apex files in the repository.
 
     Args:
         repo_root: Root path of the repository to analyze
 
     Returns:
-        ApexAnalysisResult containing symbols and edges
+        AnalysisResult containing symbols and edges
     """
     if not is_apex_tree_sitter_available():
         warnings.warn(
@@ -845,7 +828,7 @@ def analyze_apex(repo_root: Path) -> ApexAnalysisResult:
             UserWarning,
             stacklevel=2,
         )
-        return ApexAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-apex not available",
         )

@@ -364,8 +364,8 @@ class TestSolidityEdgeCases:
         assert aliases == {}
 
     def test_find_child_by_type_returns_none(self, temp_repo: Path) -> None:
-        """_find_child_by_type returns None when child type not found."""
-        from hypergumbo_lang_extended1.solidity import _find_child_by_type
+        """find_child_by_type returns None when child type not found."""
+        from hypergumbo_core.analyze.base import find_child_by_type
         import tree_sitter
         import tree_sitter_solidity
         import warnings
@@ -382,7 +382,7 @@ class TestSolidityEdgeCases:
         tree = parser.parse(source)
 
         # Try to find a non-existent child type
-        result = _find_child_by_type(tree.root_node, "nonexistent_type")
+        result = find_child_by_type(tree.root_node, "nonexistent_type")
         assert result is None
 
     def test_contract_without_name(self, temp_repo: Path) -> None:

@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_extended1 import haxe as haxe_module
 from hypergumbo_lang_extended1.haxe import (
-    HaxeAnalysisResult,
     analyze_haxe,
     find_haxe_files,
     is_haxe_tree_sitter_available,

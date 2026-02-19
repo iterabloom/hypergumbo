@@ -38,14 +38,14 @@ from __future__ import annotations
 import importlib.util
 import time
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from hypergumbo_core.discovery import classify_dot_m_file, find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -79,16 +79,6 @@ def is_wolfram_tree_sitter_available() -> bool:
     return True
 
 
-@dataclass
-class WolframAnalysisResult:
-    """Result of analyzing Wolfram files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
 
 @dataclass
 class FileAnalysis:
@@ -103,34 +93,11 @@ class FileAnalysis:
     symbols: list[Symbol]
 
 
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"wolfram:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a Wolfram file node (used as edge source)."""
-    return f"wolfram:{path}:1-1:file:file"
-
 
 def _make_module_id(module_name: str) -> str:
     """Generate ID for a Wolfram module (used as import edge target)."""
     return f"wolfram:{module_name}:0-0:module:module"
 
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(
-    node: "tree_sitter.Node", type_name: str
-) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None  # pragma: no cover - defensive
 
 
 def _extract_wolfram_signature(
@@ -166,7 +133,7 @@ def _extract_wolfram_signature(
         if child.type in ("pattern", "blank", "blank_sequence", "blank_null_sequence",
                           "pattern_blank", "pattern_blank_sequence", "pattern_blank_null_sequence",
                           "symbol"):
-            param_text = _node_text(child, source).strip()
+            param_text = node_text(child, source).strip()
             if param_text:
                 params.append(param_text)
 
@@ -212,7 +179,7 @@ def _extract_symbols_from_file(
             start_col=node.start_point[1],
             end_col=node.end_point[1],
         )
-        sym_id = _make_symbol_id(file_path, start_line, end_line, name, kind)
+        sym_id = make_symbol_id("wolfram",file_path, start_line, end_line, name, kind)
         sym = Symbol(
             id=sym_id,
             name=name,
@@ -253,29 +220,29 @@ def _extract_symbols_from_file(
                     # Left side is usually a call like f[x_]
                     if left_node.type == "call":
                         # Get the function name from the call
-                        func_name_node = _find_child_by_type(left_node, "symbol")
+                        func_name_node = find_child_by_type(left_node, "symbol")
                         if func_name_node:
-                            func_name = _node_text(func_name_node, source).strip()
+                            func_name = node_text(func_name_node, source).strip()
                             if func_name:
                                 # Extract signature from the call pattern
                                 signature = _extract_wolfram_signature(left_node, source)
                                 add_symbol(node, func_name, "function", signature=signature)
                     elif left_node.type == "symbol":  # pragma: no cover - simple pattern
                         # Could be a simple pattern like f := ...
-                        sym_name = _node_text(left_node, source).strip()  # pragma: no cover
+                        sym_name = node_text(left_node, source).strip()  # pragma: no cover
                         if sym_name:  # pragma: no cover
                             add_symbol(node, sym_name, "function")  # pragma: no cover
                 elif op_node.type == "=":
                     # Set - variable assignment
                     if left_node.type == "symbol":
-                        var_name = _node_text(left_node, source).strip()
+                        var_name = node_text(left_node, source).strip()
                         if var_name:
                             add_symbol(node, var_name, "variable")
                     elif left_node.type == "call":  # pragma: no cover - immediate def
                         # Could be like f[x_] = ... (immediate definition)
-                        func_name_node = _find_child_by_type(left_node, "symbol")  # pragma: no cover
+                        func_name_node = find_child_by_type(left_node, "symbol")  # pragma: no cover
                         if func_name_node:  # pragma: no cover
-                            func_name = _node_text(func_name_node, source).strip()  # pragma: no cover
+                            func_name = node_text(func_name_node, source).strip()  # pragma: no cover
                             if func_name:  # pragma: no cover
                                 add_symbol(node, func_name, "function")  # pragma: no cover
 
@@ -299,23 +266,23 @@ def _extract_edges_from_file(
     Uses iterative traversal to avoid RecursionError on deeply nested code.
     """
     edges: list[Edge] = []
-    file_id = _make_file_id(file_path)
+    file_id = make_file_id("wolfram",file_path)
     seen_calls: set[str] = set()
 
     for node in iter_tree(tree.root_node):
         # Look for function calls
         if node.type == "call":
             # First child should be the function name
-            func_name_node = _find_child_by_type(node, "symbol")
+            func_name_node = find_child_by_type(node, "symbol")
             if func_name_node:
-                func_name = _node_text(func_name_node, source).strip()
+                func_name = node_text(func_name_node, source).strip()
                 if func_name:
                     # Check for import functions
                     if func_name in ("Get", "Needs", "Import"):
                         # Find the string argument
-                        string_node = _find_child_by_type(node, "string")
+                        string_node = find_child_by_type(node, "string")
                         if string_node:
-                            string_text = _node_text(string_node, source).strip()
+                            string_text = node_text(string_node, source).strip()
                             # Remove quotes
                             module_name = string_text.strip('"').strip("'")
                             if module_name:
@@ -360,10 +327,10 @@ def _extract_edges_from_file(
 
 
 @register_analyzer("wolfram")
-def analyze_wolfram(repo_root: Path) -> WolframAnalysisResult:
+def analyze_wolfram(repo_root: Path) -> AnalysisResult:
     """Analyze Wolfram files in a repository.
 
-    Returns a WolframAnalysisResult with symbols, edges, and provenance.
+    Returns a AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-wolfram is not available, returns a skipped result.
     """
     start_time = time.time()
@@ -378,7 +345,7 @@ def analyze_wolfram(repo_root: Path) -> WolframAnalysisResult:
         )
         warnings.warn(skip_reason)
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return WolframAnalysisResult(
+        return AnalysisResult(
             run=run,
             skipped=True,
             skip_reason=skip_reason,
@@ -411,7 +378,7 @@ def analyze_wolfram(repo_root: Path) -> WolframAnalysisResult:
 
         # Create file symbol
         file_symbol = Symbol(
-            id=_make_file_id(rel_path),
+            id=make_file_id("wolfram",rel_path),
             name="file",
             kind="file",
             language="wolfram",
@@ -456,7 +423,7 @@ def analyze_wolfram(repo_root: Path) -> WolframAnalysisResult:
     run.files_analyzed = files_analyzed
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return WolframAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

@@ -25,12 +25,12 @@ Odin grammar key patterns:
 import importlib.util
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -38,17 +38,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "odin.tree_sitter"
 PASS_VERSION = "hypergumbo-0.1.0"
-
-
-@dataclass
-class OdinAnalysisResult:
-    """Result of analyzing Odin files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: Optional[AnalysisRun] = None
-    skipped: bool = False
-    skip_reason: str = ""
 
 
 def is_odin_tree_sitter_available() -> bool:
@@ -141,7 +130,7 @@ class OdinAnalyzer:
         self._symbol_registry: dict[str, str] = {}  # name -> id
         self._run_id: str = ""  # Set during analysis
 
-    def analyze(self) -> OdinAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Analyze all Odin files in the repository."""
         if not is_odin_tree_sitter_available():
             warnings.warn(
@@ -149,7 +138,7 @@ class OdinAnalyzer:
                 UserWarning,
                 stacklevel=2,
             )
-            return OdinAnalysisResult(
+            return AnalysisResult(
                 skipped=True,
                 skip_reason="tree-sitter-odin grammar not available",
             )
@@ -168,7 +157,7 @@ class OdinAnalyzer:
         odin_files = list(find_odin_files(self.repo_root))
 
         if not odin_files:
-            return OdinAnalysisResult()
+            return AnalysisResult()
 
         # Pass 1: Collect symbols from all files
         for path in odin_files:
@@ -205,7 +194,7 @@ class OdinAnalyzer:
             duration_ms=int(elapsed * 1000),
         )
 
-        return OdinAnalysisResult(
+        return AnalysisResult(
             symbols=self.symbols,
             edges=self.edges,
             run=run,
@@ -442,14 +431,14 @@ class OdinAnalyzer:
 
 
 @register_analyzer("odin")
-def analyze_odin(repo_root: Path) -> OdinAnalysisResult:
+def analyze_odin(repo_root: Path) -> AnalysisResult:
     """Analyze Odin source files in a repository.
 
     Args:
         repo_root: Root directory of the repository to analyze
 
     Returns:
-        OdinAnalysisResult containing symbols, edges, and analysis metadata
+        AnalysisResult containing symbols, edges, and analysis metadata
     """
     analyzer = OdinAnalyzer(repo_root)
     return analyzer.analyze()

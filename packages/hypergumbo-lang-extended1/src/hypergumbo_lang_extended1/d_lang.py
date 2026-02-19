@@ -44,7 +44,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, node_text, find_child_by_type
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -62,17 +62,6 @@ def find_d_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.d", "*.di"])
 
 
-@dataclass
-class DAnalysisResult:
-    """Result of analyzing D files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
 def is_d_tree_sitter_available() -> bool:
     """Check if tree-sitter-d is available."""
     if importlib.util.find_spec("tree_sitter") is None:
@@ -86,21 +75,6 @@ def is_d_tree_sitter_available() -> bool:
         return True
     except Exception:  # pragma: no cover - d grammar not available
         return False
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text from a tree-sitter node."""
-    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(
-    node: "tree_sitter.Node", child_type: str
-) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == child_type:
-            return child
-    return None  # pragma: no cover - defensive
 
 
 @dataclass
@@ -147,11 +121,11 @@ def _make_symbol(ctx: _FileContext, node: "tree_sitter.Node", name: str, kind: s
 def _process_module_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process a module declaration."""
     # module_fqn contains the module name
-    fqn = _find_child_by_type(node, "module_fqn")
+    fqn = find_child_by_type(node, "module_fqn")
     if not fqn:
         return  # pragma: no cover - defensive
 
-    mod_name = _node_text(fqn, ctx.source)
+    mod_name = node_text(fqn, ctx.source)
     ctx.symbols.append(_make_symbol(ctx, node, mod_name, "module"))
 
 
@@ -168,15 +142,15 @@ def _process_import_declaration(
     format used for external / standard-library imports.
     """
     # Find the imported module
-    imported = _find_child_by_type(node, "imported")
+    imported = find_child_by_type(node, "imported")
     if not imported:
         return  # pragma: no cover - defensive
 
-    fqn = _find_child_by_type(imported, "module_fqn")
+    fqn = find_child_by_type(imported, "module_fqn")
     if not fqn:
         return  # pragma: no cover - defensive
 
-    import_name = _node_text(fqn, ctx.source)
+    import_name = node_text(fqn, ctx.source)
 
     # Resolve to actual module symbol if available
     if module_registry and import_name in module_registry:
@@ -212,9 +186,9 @@ def _find_parent_container(
     current = node.parent
     while current is not None:
         if current.type in _CONTAINER_NODE_TYPES:
-            name_node = _find_child_by_type(current, "identifier")
+            name_node = find_child_by_type(current, "identifier")
             if name_node:
-                return _node_text(name_node, source)
+                return node_text(name_node, source)
         current = current.parent
     return None
 
@@ -226,15 +200,15 @@ def _process_function_declaration(ctx: _FileContext, node: "tree_sitter.Node") -
     extracted as a method with a qualified name (e.g., ``Searcher.search``).
     Top-level functions keep ``kind="function"``.
     """
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
         return  # pragma: no cover - defensive
 
-    func_name = _node_text(name_node, ctx.source)
+    func_name = node_text(name_node, ctx.source)
 
     # Get parameters for signature
-    params = _find_child_by_type(node, "parameters")
-    signature = _node_text(params, ctx.source) if params else "()"
+    params = find_child_by_type(node, "parameters")
+    signature = node_text(params, ctx.source) if params else "()"
 
     # Check if function is inside a container (struct/class/interface)
     parent_name = _find_parent_container(node, ctx.source)
@@ -247,31 +221,31 @@ def _process_function_declaration(ctx: _FileContext, node: "tree_sitter.Node") -
 
 def _process_struct_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process a struct declaration."""
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
         return  # pragma: no cover - defensive
 
-    struct_name = _node_text(name_node, ctx.source)
+    struct_name = node_text(name_node, ctx.source)
     ctx.symbols.append(_make_symbol(ctx, node, struct_name, "struct"))
 
 
 def _process_class_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process a class declaration."""
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
         return  # pragma: no cover - defensive
 
-    class_name = _node_text(name_node, ctx.source)
+    class_name = node_text(name_node, ctx.source)
     ctx.symbols.append(_make_symbol(ctx, node, class_name, "class"))
 
 
 def _process_interface_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process an interface declaration."""
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
         return  # pragma: no cover - defensive
 
-    iface_name = _node_text(name_node, ctx.source)
+    iface_name = node_text(name_node, ctx.source)
     ctx.symbols.append(_make_symbol(ctx, node, iface_name, "interface"))
 
 
@@ -289,9 +263,9 @@ def _find_enclosing_function_d(
     current = node.parent
     while current is not None:
         if current.type == "function_declaration":
-            name_node = _find_child_by_type(current, "identifier")
+            name_node = find_child_by_type(current, "identifier")
             if name_node:
-                name = _node_text(name_node, source)
+                name = node_text(name_node, source)
                 # Try bare name first (top-level function)
                 sym = local_symbols.get(name)
                 if sym:
@@ -324,7 +298,7 @@ def _extract_import_aliases(
             continue
 
         # Find imported node containing alias = module_fqn
-        imported = _find_child_by_type(node, "imported")
+        imported = find_child_by_type(node, "imported")
         if not imported:  # pragma: no cover - defensive
             continue
 
@@ -334,9 +308,9 @@ def _extract_import_aliases(
 
         for child in imported.children:
             if child.type == "identifier":
-                alias_name = _node_text(child, source)
+                alias_name = node_text(child, source)
             elif child.type == "module_fqn":
-                module_path = _node_text(child, source)
+                module_path = node_text(child, source)
 
         if alias_name and module_path:
             aliases[alias_name] = module_path
@@ -364,15 +338,15 @@ def _extract_imported_modules(
         if node.type != "import_declaration":
             continue
 
-        imported = _find_child_by_type(node, "imported")
+        imported = find_child_by_type(node, "imported")
         if not imported:  # pragma: no cover - defensive
             continue
 
-        fqn = _find_child_by_type(imported, "module_fqn")
+        fqn = find_child_by_type(imported, "module_fqn")
         if not fqn:
             continue  # pragma: no cover - defensive
 
-        module_name = _node_text(fqn, source)
+        module_name = node_text(fqn, source)
         # Convert D module path (dots) to file path (slashes)
         # e.g., "dmd.errors" -> "dmd/errors"
         modules.append(module_name.replace(".", "/"))
@@ -395,20 +369,20 @@ def _get_call_target_name_d(
     """
     for child in node.children:
         if child.type == "identifier":
-            return (_node_text(child, source), None)
+            return (node_text(child, source), None)
         elif child.type == "type":
             # Check for template_instance first: to!string(42)
             for subchild in child.children:
                 if subchild.type == "template_instance":
-                    tmpl_name = _find_child_by_type(subchild, "identifier")
+                    tmpl_name = find_child_by_type(subchild, "identifier")
                     if tmpl_name:
-                        return (_node_text(tmpl_name, source), None)
+                        return (node_text(tmpl_name, source), None)
             # Qualified call like math.sin()
             # type has: identifier (math), '.', identifier (sin)
             parts = []
             for subchild in child.children:
                 if subchild.type == "identifier":
-                    parts.append(_node_text(subchild, source))
+                    parts.append(node_text(subchild, source))
             if len(parts) >= 2:
                 return (parts[-1], parts[0])
             elif len(parts) == 1:  # pragma: no cover - defensive
@@ -428,9 +402,9 @@ def _get_ufcs_template_name(
     """
     for child in node.children:
         if child.type == "template_instance":
-            tmpl_name = _find_child_by_type(child, "identifier")
+            tmpl_name = find_child_by_type(child, "identifier")
             if tmpl_name:
-                return _node_text(tmpl_name, source)
+                return node_text(tmpl_name, source)
     return None
 
 
@@ -487,19 +461,19 @@ def _resolve_and_emit_call_edge(
 
 
 @register_analyzer("d")
-def analyze_d(repo_root: Path) -> DAnalysisResult:
+def analyze_d(repo_root: Path) -> AnalysisResult:
     """Analyze D language files in a repository.
 
     Uses two-pass analysis:
     - Pass 1: Extract all symbols from all files
     - Pass 2: Extract edges (imports + calls) using NameResolver
 
-    Returns a DAnalysisResult with symbols for modules, functions, structs,
+    Returns a AnalysisResult with symbols for modules, functions, structs,
     classes, and interfaces, plus edges for imports and calls.
     """
     if not is_d_tree_sitter_available():
         warnings.warn("D analysis skipped: tree-sitter-d unavailable")
-        return DAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-d unavailable",
         )
@@ -633,7 +607,7 @@ def analyze_d(repo_root: Path) -> DAnalysisResult:
                         )
 
     duration_ms = int((time.time() - start_time) * 1000)
-    return DAnalysisResult(
+    return AnalysisResult(
         symbols=symbols,
         edges=edges,
         run=AnalysisRun(

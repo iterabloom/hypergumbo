@@ -14,8 +14,8 @@ from unittest.mock import patch
 import pytest
 
 from hypergumbo_lang_extended1 import asm as asm_module
+from hypergumbo_core.analyze.base import find_child_by_type
 from hypergumbo_lang_extended1.asm import (
-    _find_child_by_type,
     analyze_asm,
     find_asm_files,
     is_asm_tree_sitter_available,
@@ -201,7 +201,7 @@ local_func:
 
 
 class TestFindChildByType:
-    """Tests for _find_child_by_type utility function."""
+    """Tests for find_child_by_type utility function."""
 
     def test_returns_none_when_no_match(self) -> None:
         """Returns None when no child has the requested type."""
@@ -209,7 +209,7 @@ class TestFindChildByType:
         child_b = SimpleNamespace(type="number")
         parent = SimpleNamespace(children=[child_a, child_b])
 
-        result = _find_child_by_type(parent, "nonexistent_type")
+        result = find_child_by_type(parent, "nonexistent_type")
         assert result is None
 
     def test_returns_matching_child(self) -> None:
@@ -218,7 +218,7 @@ class TestFindChildByType:
         child_b = SimpleNamespace(type="word")
         parent = SimpleNamespace(children=[child_a, child_b])
 
-        result = _find_child_by_type(parent, "word")
+        result = find_child_by_type(parent, "word")
         assert result is child_b
 
 

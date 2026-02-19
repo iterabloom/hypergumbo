@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -40,23 +41,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "kdl.tree_sitter"
 PASS_VERSION = "0.1.0"
-
-
-class KdlAnalysisResult:
-    """Result of KDL configuration analysis."""
-
-    def __init__(
-        self,
-        symbols: list[Symbol],
-        run: AnalysisRun | None = None,
-        skipped: bool = False,
-        skip_reason: str = "",
-    ) -> None:
-        self.symbols = symbols
-        self.edges: list = []  # KDL files typically don't have cross-file edges
-        self.run = run
-        self.skipped = skipped
-        self.skip_reason = skip_reason
 
 
 def is_kdl_tree_sitter_available() -> bool:
@@ -96,13 +80,13 @@ class KdlAnalyzer:
         self._execution_id = f"uuid:{uuid.uuid4()}"
         self._files_analyzed = 0
 
-    def analyze(self) -> KdlAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Run the KDL analysis."""
         start_time = time.time()
 
         files = find_kdl_files(self.repo_root)
         if not files:
-            return KdlAnalysisResult(
+            return AnalysisResult(
                 symbols=[],
                 run=None,
             )
@@ -131,7 +115,7 @@ class KdlAnalyzer:
             files_analyzed=self._files_analyzed,
         )
 
-        return KdlAnalysisResult(
+        return AnalysisResult(
             symbols=self._symbols,
             run=run,
         )
@@ -268,14 +252,14 @@ class KdlAnalyzer:
 
 
 @register_analyzer("kdl")
-def analyze_kdl(repo_root: Path) -> KdlAnalysisResult:
+def analyze_kdl(repo_root: Path) -> AnalysisResult:
     """Analyze KDL configuration files in a repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        KdlAnalysisResult containing extracted symbols
+        AnalysisResult containing extracted symbols
     """
     if not is_kdl_tree_sitter_available():
         warnings.warn(
@@ -283,7 +267,7 @@ def analyze_kdl(repo_root: Path) -> KdlAnalysisResult:
             UserWarning,
             stacklevel=2,
         )
-        return KdlAnalysisResult(
+        return AnalysisResult(
             symbols=[],
             run=AnalysisRun(
                 pass_id=PASS_ID,

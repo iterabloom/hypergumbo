@@ -42,14 +42,14 @@ from __future__ import annotations
 import importlib.util
 import time
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -73,16 +73,6 @@ def is_lean_tree_sitter_available() -> bool:
     return True
 
 
-@dataclass
-class LeanAnalysisResult:
-    """Result of analyzing Lean files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
 
 @dataclass
 class FileAnalysis:
@@ -97,44 +87,21 @@ class FileAnalysis:
     symbols: list[Symbol]
 
 
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"lean:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a Lean file node (used as import edge source)."""
-    return f"lean:{path}:1-1:file:file"
-
 
 def _make_module_id(module_name: str) -> str:
     """Generate ID for a Lean module (used as import edge target)."""
     return f"lean:{module_name}:0-0:module:module"
 
 
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(
-    node: "tree_sitter.Node", type_name: str
-) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None  # pragma: no cover - defensive
-
 
 def _get_identifier_text(node: "tree_sitter.Node", source: bytes) -> str:
     """Extract the identifier text from a node or its children."""
     if node.type == "identifier":
-        return _node_text(node, source).strip()
+        return node_text(node, source).strip()
     # Look for identifier child
-    id_node = _find_child_by_type(node, "identifier")  # pragma: no cover
+    id_node = find_child_by_type(node, "identifier")  # pragma: no cover
     if id_node:  # pragma: no cover
-        return _node_text(id_node, source).strip()  # pragma: no cover
+        return node_text(id_node, source).strip()  # pragma: no cover
     return ""  # pragma: no cover
 
 
@@ -169,7 +136,7 @@ def _extract_lean_signature(
 
         # Collect binders (parameters)
         if child.type == "binders":
-            binders_text = _node_text(child, source).strip()
+            binders_text = node_text(child, source).strip()
             if binders_text:
                 parts.append(binders_text)
 
@@ -185,7 +152,7 @@ def _extract_lean_signature(
 
         # Collect the return type expression
         if found_return_colon and child.type not in (":=", "tactics"):
-            type_text = _node_text(child, source).strip()
+            type_text = node_text(child, source).strip()
             if type_text:
                 parts.append(type_text)
 
@@ -233,7 +200,7 @@ def _extract_symbols_from_file(
             start_col=node.start_point[1],
             end_col=node.end_point[1],
         )
-        sym_id = _make_symbol_id(file_path, start_line, end_line, name, kind)
+        sym_id = make_symbol_id("lean",file_path, start_line, end_line, name, kind)
         sym = Symbol(
             id=sym_id,
             name=name,
@@ -255,7 +222,7 @@ def _extract_symbols_from_file(
             for child in node.children:
                 if child.type == "def":
                     # def name ...
-                    id_node = _find_child_by_type(child, "identifier")
+                    id_node = find_child_by_type(child, "identifier")
                     if id_node:
                         name = _get_identifier_text(id_node, source)
                         if name:
@@ -264,7 +231,7 @@ def _extract_symbols_from_file(
 
                 elif child.type == "theorem":
                     # theorem name ...
-                    id_node = _find_child_by_type(child, "identifier")
+                    id_node = find_child_by_type(child, "identifier")
                     if id_node:
                         name = _get_identifier_text(id_node, source)
                         if name:
@@ -273,7 +240,7 @@ def _extract_symbols_from_file(
 
                 elif child.type == "lemma":  # pragma: no cover - similar to theorem
                     # lemma name ...
-                    id_node = _find_child_by_type(child, "identifier")
+                    id_node = find_child_by_type(child, "identifier")
                     if id_node:
                         name = _get_identifier_text(id_node, source)
                         if name:
@@ -282,7 +249,7 @@ def _extract_symbols_from_file(
 
                 elif child.type == "structure":
                     # structure name where ...
-                    id_node = _find_child_by_type(child, "identifier")
+                    id_node = find_child_by_type(child, "identifier")
                     if id_node:
                         name = _get_identifier_text(id_node, source)
                         if name:
@@ -290,7 +257,7 @@ def _extract_symbols_from_file(
 
                 elif child.type == "inductive":
                     # inductive name where ...
-                    id_node = _find_child_by_type(child, "identifier")
+                    id_node = find_child_by_type(child, "identifier")
                     if id_node:
                         name = _get_identifier_text(id_node, source)
                         if name:
@@ -298,7 +265,7 @@ def _extract_symbols_from_file(
 
                 elif child.type == "class":  # pragma: no cover - class detection
                     # class name where ...
-                    id_node = _find_child_by_type(child, "identifier")
+                    id_node = find_child_by_type(child, "identifier")
                     if id_node:
                         name = _get_identifier_text(id_node, source)
                         if name:
@@ -306,7 +273,7 @@ def _extract_symbols_from_file(
 
                 elif child.type == "instance":  # pragma: no cover - instance detection
                     # instance name : ...
-                    id_node = _find_child_by_type(child, "identifier")
+                    id_node = find_child_by_type(child, "identifier")
                     if id_node:
                         name = _get_identifier_text(id_node, source)
                         if name:
@@ -314,7 +281,7 @@ def _extract_symbols_from_file(
 
                 elif child.type == "abbrev":  # pragma: no cover - abbrev detection
                     # abbrev name ...
-                    id_node = _find_child_by_type(child, "identifier")
+                    id_node = find_child_by_type(child, "identifier")
                     if id_node:
                         name = _get_identifier_text(id_node, source)
                         if name:
@@ -338,7 +305,7 @@ def _extract_edges_from_file(
     - import: Import statements (import Module.Name)
     """
     edges: list[Edge] = []
-    file_id = _make_file_id(file_path)
+    file_id = make_file_id("lean",file_path)
 
     for node in iter_tree(tree.root_node):
         # Look for import statements at module level
@@ -346,10 +313,10 @@ def _extract_edges_from_file(
         # In the tree: import node with identifier child containing the dotted path
         if node.type == "import":
             # Find the identifier child which contains the module path
-            id_node = _find_child_by_type(node, "identifier")
+            id_node = find_child_by_type(node, "identifier")
             if id_node:
                 # The identifier contains the full dotted path
-                module_name = _node_text(id_node, source).strip()
+                module_name = node_text(id_node, source).strip()
                 if module_name:
                     module_id = _make_module_id(module_name)
                     edge = Edge.create(
@@ -368,10 +335,10 @@ def _extract_edges_from_file(
 
 
 @register_analyzer("lean")
-def analyze_lean(repo_root: Path) -> LeanAnalysisResult:
+def analyze_lean(repo_root: Path) -> AnalysisResult:
     """Analyze Lean files in a repository.
 
-    Returns a LeanAnalysisResult with symbols, edges, and provenance.
+    Returns a AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-lean is not available, returns a skipped result.
     """
     start_time = time.time()
@@ -386,7 +353,7 @@ def analyze_lean(repo_root: Path) -> LeanAnalysisResult:
         )
         warnings.warn(skip_reason)
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return LeanAnalysisResult(
+        return AnalysisResult(
             run=run,
             skipped=True,
             skip_reason=skip_reason,
@@ -419,7 +386,7 @@ def analyze_lean(repo_root: Path) -> LeanAnalysisResult:
 
         # Create file symbol
         file_symbol = Symbol(
-            id=_make_file_id(rel_path),
+            id=make_file_id("lean",rel_path),
             name="file",
             kind="file",
             language="lean",
@@ -464,7 +431,7 @@ def analyze_lean(repo_root: Path) -> LeanAnalysisResult:
     run.files_analyzed = files_analyzed
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return LeanAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

@@ -32,13 +32,12 @@ import hashlib
 import importlib.util
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, node_text, make_symbol_id
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -62,38 +61,17 @@ def is_vhdl_tree_sitter_available() -> bool:
     return True
 
 
-@dataclass
-class VHDLAnalysisResult:
-    """Result of analyzing VHDL files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"vhdl:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
     """Generate deterministic edge ID."""
     content = f"{edge_type}:{src}:{dst}"
     return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
 
 
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
 def _get_entity_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract entity name from entity_declaration node."""
     for child in node.children:
         if child.type == "identifier":
-            return _node_text(child, source)
+            return node_text(child, source)
     return None  # pragma: no cover
 
 
@@ -108,9 +86,9 @@ def _get_architecture_info(node: "tree_sitter.Node", source: bytes) -> Optional[
 
     for child in node.children:
         if child.type == "identifier" and arch_name is None:
-            arch_name = _node_text(child, source)
+            arch_name = node_text(child, source)
         elif child.type == "name":
-            entity_name = _node_text(child, source)
+            entity_name = node_text(child, source)
 
     if arch_name and entity_name:
         return (arch_name, entity_name)
@@ -121,7 +99,7 @@ def _get_package_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract package name from package_declaration node."""
     for child in node.children:
         if child.type == "identifier":
-            return _node_text(child, source)
+            return node_text(child, source)
     return None  # pragma: no cover
 
 
@@ -149,7 +127,7 @@ def _process_vhdl_tree(
             if entity_name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, entity_name, "entity")
+                symbol_id = make_symbol_id("vhdl",rel_path, start_line, end_line, entity_name, "entity")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -178,7 +156,7 @@ def _process_vhdl_tree(
                 arch_name, entity_name = arch_info
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, arch_name, "architecture")
+                symbol_id = make_symbol_id("vhdl",rel_path, start_line, end_line, arch_name, "architecture")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -226,7 +204,7 @@ def _process_vhdl_tree(
             if pkg_name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, pkg_name, "package")
+                symbol_id = make_symbol_id("vhdl",rel_path, start_line, end_line, pkg_name, "package")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -253,10 +231,10 @@ def _process_vhdl_tree(
             # Component declaration within architecture
             for child in node.children:  # pragma: no cover
                 if child.type == "identifier":  # pragma: no cover
-                    comp_name = _node_text(child, source)  # pragma: no cover
+                    comp_name = node_text(child, source)  # pragma: no cover
                     start_line = node.start_point[0] + 1  # pragma: no cover
                     end_line = node.end_point[0] + 1  # pragma: no cover
-                    symbol_id = _make_symbol_id(rel_path, start_line, end_line, comp_name, "component")  # pragma: no cover
+                    symbol_id = make_symbol_id("vhdl",rel_path, start_line, end_line, comp_name, "component")  # pragma: no cover
 
                     sym = Symbol(  # pragma: no cover
                         id=symbol_id,
@@ -281,17 +259,17 @@ def _process_vhdl_tree(
 
 
 @register_analyzer("vhdl")
-def analyze_vhdl_files(repo_root: Path) -> VHDLAnalysisResult:
+def analyze_vhdl_files(repo_root: Path) -> AnalysisResult:
     """Analyze VHDL files in the repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        VHDLAnalysisResult with symbols and edges
+        AnalysisResult with symbols and edges
     """
     if not is_vhdl_tree_sitter_available():  # pragma: no cover
-        return VHDLAnalysisResult(  # pragma: no cover
+        return AnalysisResult(  # pragma: no cover
             skipped=True,  # pragma: no cover
             skip_reason="tree-sitter-vhdl not installed (pip install tree-sitter-vhdl)",  # pragma: no cover
         )  # pragma: no cover
@@ -315,7 +293,7 @@ def analyze_vhdl_files(repo_root: Path) -> VHDLAnalysisResult:
         parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_vhdl.language()))
     except Exception as e:  # pragma: no cover
         warnings.warn(f"Failed to initialize VHDL parser: {e}")
-        return VHDLAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason=f"Failed to initialize parser: {e}",
         )
@@ -351,7 +329,7 @@ def analyze_vhdl_files(repo_root: Path) -> VHDLAnalysisResult:
     run.duration_ms = duration_ms
     run.warnings = warnings_list
 
-    return VHDLAnalysisResult(
+    return AnalysisResult(
         symbols=symbols,
         edges=edges,
         run=run,

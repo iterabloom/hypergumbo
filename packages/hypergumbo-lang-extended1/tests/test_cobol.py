@@ -251,6 +251,6 @@ class TestAnalyzeCOBOLFallback:
             with pytest.warns(UserWarning, match="tree-sitter-language-pack"):
                 result = analyze_cobol(tmp_path)
             assert result.skipped
-            assert "not available" in result.skipped_reason
+            assert "not available" in result.skip_reason
         finally:
             cobol_mod.is_cobol_tree_sitter_available = original_func

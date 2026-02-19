@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_extended1 import bibtex as bibtex_module
 from hypergumbo_lang_extended1.bibtex import (
-    BibtexAnalysisResult,
     analyze_bibtex,
     find_bibtex_files,
     is_bibtex_tree_sitter_available,

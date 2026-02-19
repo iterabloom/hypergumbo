@@ -40,7 +40,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, node_text, find_child_by_type
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -53,17 +53,6 @@ PASS_VERSION = "hypergumbo-0.1.0"
 def find_nim_files(repo_root: Path) -> Iterator[Path]:
     """Find all Nim files in the repository."""
     yield from find_files(repo_root, ["*.nim", "*.nims", "*.nimble"])
-
-
-@dataclass
-class NimAnalysisResult:
-    """Result of analyzing Nim files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
 
 
 def is_nim_tree_sitter_available() -> bool:
@@ -79,21 +68,6 @@ def is_nim_tree_sitter_available() -> bool:
         return True
     except Exception:  # pragma: no cover - nim grammar not available
         return False
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text from a tree-sitter node."""
-    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(
-    node: "tree_sitter.Node", child_type: str
-) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == child_type:
-            return child
-    return None  # pragma: no cover - defensive
 
 
 @dataclass
@@ -139,45 +113,45 @@ def _make_symbol(ctx: _FileContext, node: "tree_sitter.Node", name: str, kind: s
 
 def _process_proc_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process a proc declaration."""
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
         return  # pragma: no cover - defensive
 
-    proc_name = _node_text(name_node, ctx.source)
+    proc_name = node_text(name_node, ctx.source)
 
     # Get parameters for signature
-    params = _find_child_by_type(node, "parameter_declaration_list")
-    signature = _node_text(params, ctx.source) if params else "()"
+    params = find_child_by_type(node, "parameter_declaration_list")
+    signature = node_text(params, ctx.source) if params else "()"
 
     ctx.symbols.append(_make_symbol(ctx, node, proc_name, "function", signature=signature))
 
 
 def _process_func_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process a func declaration (pure function)."""
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
         return  # pragma: no cover - defensive
 
-    func_name = _node_text(name_node, ctx.source)
+    func_name = node_text(name_node, ctx.source)
 
     # Get parameters for signature
-    params = _find_child_by_type(node, "parameter_declaration_list")
-    signature = _node_text(params, ctx.source) if params else "()"
+    params = find_child_by_type(node, "parameter_declaration_list")
+    signature = node_text(params, ctx.source) if params else "()"
 
     ctx.symbols.append(_make_symbol(ctx, node, func_name, "function", signature=signature))
 
 
 def _process_method_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process a method declaration."""
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
         return  # pragma: no cover - defensive
 
-    method_name = _node_text(name_node, ctx.source)
+    method_name = node_text(name_node, ctx.source)
 
     # Get parameters for signature
-    params = _find_child_by_type(node, "parameter_declaration_list")
-    signature = _node_text(params, ctx.source) if params else "()"
+    params = find_child_by_type(node, "parameter_declaration_list")
+    signature = node_text(params, ctx.source) if params else "()"
 
     ctx.symbols.append(_make_symbol(ctx, node, method_name, "method", signature=signature))
 
@@ -185,15 +159,15 @@ def _process_method_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> 
 def _process_type_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process a type declaration."""
     # Look for type_symbol_declaration > identifier
-    type_sym = _find_child_by_type(node, "type_symbol_declaration")
+    type_sym = find_child_by_type(node, "type_symbol_declaration")
     if not type_sym:
         return  # pragma: no cover - defensive
 
-    name_node = _find_child_by_type(type_sym, "identifier")
+    name_node = find_child_by_type(type_sym, "identifier")
     if not name_node:
         return  # pragma: no cover - defensive
 
-    type_name = _node_text(name_node, ctx.source)
+    type_name = node_text(name_node, ctx.source)
     ctx.symbols.append(_make_symbol(ctx, node, type_name, "type"))
 
 
@@ -215,7 +189,7 @@ def _extract_import_aliases(
             continue
 
         # Find expression_list containing imports
-        expr_list = _find_child_by_type(node, "expression_list")
+        expr_list = find_child_by_type(node, "expression_list")
         if not expr_list:  # pragma: no cover - defensive for malformed import
             continue
 
@@ -229,9 +203,9 @@ def _extract_import_aliases(
                 for subchild in child.children:
                     if subchild.type == "identifier":
                         if not found_as:
-                            module_name = _node_text(subchild, source)
+                            module_name = node_text(subchild, source)
                         else:
-                            alias_name = _node_text(subchild, source)
+                            alias_name = node_text(subchild, source)
                     elif subchild.type == "as":
                         found_as = True
 
@@ -244,11 +218,11 @@ def _extract_import_aliases(
 def _process_import_statement(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process an import statement."""
     # Find expression_list with imported modules
-    expr_list = _find_child_by_type(node, "expression_list")
+    expr_list = find_child_by_type(node, "expression_list")
     if expr_list:
         for child in expr_list.children:
             if child.type == "identifier":
-                import_name = _node_text(child, ctx.source)
+                import_name = node_text(child, ctx.source)
                 ctx.edges.append(
                     Edge(
                         id=f"edge:nim:{uuid.uuid4().hex[:12]}",
@@ -265,7 +239,7 @@ def _process_import_statement(ctx: _FileContext, node: "tree_sitter.Node") -> No
                 # import X as Y -> extract base module name
                 for subchild in child.children:
                     if subchild.type == "identifier":
-                        import_name = _node_text(subchild, ctx.source)
+                        import_name = node_text(subchild, ctx.source)
                         ctx.edges.append(
                             Edge(
                                 id=f"edge:nim:{uuid.uuid4().hex[:12]}",
@@ -290,9 +264,9 @@ def _find_enclosing_proc_nim(
     current = node.parent
     while current is not None:
         if current.type in ("proc_declaration", "func_declaration", "method_declaration"):
-            name_node = _find_child_by_type(current, "identifier")
+            name_node = find_child_by_type(current, "identifier")
             if name_node:
-                name = _node_text(name_node, source)
+                name = node_text(name_node, source)
                 sym = local_symbols.get(name)
                 if sym:
                     return sym
@@ -310,13 +284,13 @@ def _get_call_target_name_nim(
     """
     for child in node.children:
         if child.type == "identifier":
-            return (_node_text(child, source), None)
+            return (node_text(child, source), None)
         elif child.type == "dot_expression":
             # Qualified call like su.strip()
             parts = []
             for subchild in child.children:
                 if subchild.type == "identifier":
-                    parts.append(_node_text(subchild, source))
+                    parts.append(node_text(subchild, source))
             if len(parts) >= 2:
                 # Last part is the function name, first is the receiver
                 return (parts[-1], parts[0])
@@ -326,19 +300,19 @@ def _get_call_target_name_nim(
 
 
 @register_analyzer("nim")
-def analyze_nim(repo_root: Path) -> NimAnalysisResult:
+def analyze_nim(repo_root: Path) -> AnalysisResult:
     """Analyze Nim files in a repository.
 
     Uses two-pass analysis:
     - Pass 1: Extract all symbols from all files
     - Pass 2: Extract edges (imports + calls) using NameResolver
 
-    Returns a NimAnalysisResult with symbols for procs, funcs, methods, and types,
+    Returns a AnalysisResult with symbols for procs, funcs, methods, and types,
     plus edges for imports and calls.
     """
     if not is_nim_tree_sitter_available():
         warnings.warn("Nim analysis skipped: tree-sitter-nim unavailable")
-        return NimAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-nim unavailable",
         )
@@ -461,7 +435,7 @@ def analyze_nim(repo_root: Path) -> NimAnalysisResult:
                         ))
 
     duration_ms = int((time.time() - start_time) * 1000)
-    return NimAnalysisResult(
+    return AnalysisResult(
         symbols=symbols,
         edges=edges,
         run=AnalysisRun(

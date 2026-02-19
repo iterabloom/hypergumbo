@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, node_text
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -56,17 +56,6 @@ def find_fish_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.fish"])
 
 
-@dataclass
-class FishAnalysisResult:
-    """Result of analyzing Fish shell files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
 def is_fish_tree_sitter_available() -> bool:
     """Check if tree-sitter-fish is available."""
     if importlib.util.find_spec("tree_sitter") is None:
@@ -80,11 +69,6 @@ def is_fish_tree_sitter_available() -> bool:
         return True
     except Exception:  # pragma: no cover - fish grammar not available
         return False
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text from a tree-sitter node."""
-    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
 
 
 def _find_children_by_type(
@@ -146,7 +130,7 @@ def _get_enclosing_function_fish(
         if current.type == "function_definition":
             words = _find_children_by_type(current, "word")
             if words:
-                func_name = _node_text(words[0], source)
+                func_name = node_text(words[0], source)
                 return local_symbols.get(func_name)
         current = current.parent  # pragma: no cover - loop until function found
     return None  # pragma: no cover - no enclosing function found
@@ -164,7 +148,7 @@ def _process_function(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     in_arguments = False
 
     for word in words:
-        text = _node_text(word, ctx.source)
+        text = node_text(word, ctx.source)
         if func_name is None:
             func_name = text
         elif text == "--argument":
@@ -187,11 +171,11 @@ def _process_command_symbols(ctx: _FileContext, node: "tree_sitter.Node") -> Non
     if not words:
         return  # pragma: no cover
 
-    cmd_name = _node_text(words[0], ctx.source)
+    cmd_name = node_text(words[0], ctx.source)
 
     if cmd_name == "alias" and len(words) >= 2:
         # alias name "value"
-        alias_name = _node_text(words[1], ctx.source)
+        alias_name = node_text(words[1], ctx.source)
         ctx.symbols.append(_make_symbol(ctx, node, alias_name, "alias"))
 
     elif cmd_name == "set" and len(words) >= 2:
@@ -200,7 +184,7 @@ def _process_command_symbols(ctx: _FileContext, node: "tree_sitter.Node") -> Non
         is_global = False
 
         for word in words[1:]:
-            text = _node_text(word, ctx.source)
+            text = node_text(word, ctx.source)
             if text in ["-g", "-gx", "-U", "-Ux", "-x"]:
                 is_global = True
             elif not text.startswith("-") and var_name is None:
@@ -221,7 +205,7 @@ def _process_command_edges(
     if not words:
         return  # pragma: no cover - defensive
 
-    cmd_name = _node_text(words[0], ctx.source)
+    cmd_name = node_text(words[0], ctx.source)
 
     if cmd_name == "source":
         # source path
@@ -230,14 +214,14 @@ def _process_command_edges(
         found_source_cmd = False
         for child in node.children:
             if child.type == "word":
-                text = _node_text(child, ctx.source)
+                text = node_text(child, ctx.source)
                 if text == "source":
                     found_source_cmd = True
                 elif found_source_cmd:
                     source_path = text
                     break
             elif child.type == "concatenation" and found_source_cmd:
-                source_path = _node_text(child, ctx.source)
+                source_path = node_text(child, ctx.source)
                 break
 
         if source_path:
@@ -303,17 +287,17 @@ def _extract_fish_edges(
 
 
 @register_analyzer("fish")
-def analyze_fish(repo_root: Path) -> FishAnalysisResult:
+def analyze_fish(repo_root: Path) -> AnalysisResult:
     """Analyze Fish shell files in a repository.
 
-    Returns a FishAnalysisResult with symbols for functions, aliases, and variables,
+    Returns a AnalysisResult with symbols for functions, aliases, and variables,
     plus edges for source statements and function calls.
 
     Uses two-pass analysis for cross-file call resolution.
     """
     if not is_fish_tree_sitter_available():
         warnings.warn("Fish analysis skipped: tree-sitter-fish unavailable")
-        return FishAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-fish unavailable",
         )
@@ -386,7 +370,7 @@ def analyze_fish(repo_root: Path) -> FishAnalysisResult:
         _extract_fish_edges(ctx, tree, resolver)
 
     duration_ms = int((time.time() - start_time) * 1000)
-    return FishAnalysisResult(
+    return AnalysisResult(
         symbols=symbols,
         edges=edges,
         run=AnalysisRun(

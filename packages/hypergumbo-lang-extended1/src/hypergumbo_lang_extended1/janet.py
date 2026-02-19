@@ -20,12 +20,12 @@ Key constructs extracted:
 
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -33,17 +33,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "janet.tree_sitter"
 PASS_VERSION = "hypergumbo-0.1.0"
-
-
-@dataclass
-class JanetAnalysisResult:
-    """Result of analyzing Janet files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: Optional[AnalysisRun] = None
-    skipped: bool = False
-    skip_reason: str = ""
 
 
 def is_janet_tree_sitter_available() -> bool:
@@ -119,7 +108,7 @@ class JanetAnalyzer:
         self._symbol_registry: dict[str, str] = {}  # name -> id
         self._run_id: str = ""
 
-    def analyze(self) -> JanetAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Analyze all Janet files in the repository."""
         if not is_janet_tree_sitter_available():
             warnings.warn(
@@ -127,7 +116,7 @@ class JanetAnalyzer:
                 UserWarning,
                 stacklevel=2,
             )
-            return JanetAnalysisResult(
+            return AnalysisResult(
                 skipped=True,
                 skip_reason="tree-sitter-language-pack not available",
             )
@@ -142,7 +131,7 @@ class JanetAnalyzer:
         janet_files = list(find_janet_files(self.repo_root))
 
         if not janet_files:
-            return JanetAnalysisResult()
+            return AnalysisResult()
 
         # Pass 1: Collect all symbols
         for path in janet_files:
@@ -177,7 +166,7 @@ class JanetAnalyzer:
             duration_ms=int(elapsed * 1000),
         )
 
-        return JanetAnalysisResult(
+        return AnalysisResult(
             symbols=self.symbols,
             edges=self.edges,
             run=run,
@@ -310,14 +299,14 @@ class JanetAnalyzer:
 
 
 @register_analyzer("janet")
-def analyze_janet(repo_root: Path) -> JanetAnalysisResult:
+def analyze_janet(repo_root: Path) -> AnalysisResult:
     """Analyze Janet source files in a repository.
 
     Args:
         repo_root: Root directory of the repository to analyze
 
     Returns:
-        JanetAnalysisResult containing symbols, edges, and analysis metadata
+        AnalysisResult containing symbols, edges, and analysis metadata
     """
     analyzer = JanetAnalyzer(repo_root)
     return analyzer.analyze()

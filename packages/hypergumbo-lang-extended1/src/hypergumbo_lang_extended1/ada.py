@@ -42,7 +42,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, node_text, find_child_by_type
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -55,17 +55,6 @@ PASS_VERSION = "hypergumbo-0.1.0"
 def find_ada_files(repo_root: Path) -> Iterator[Path]:
     """Find all Ada files in the repository."""
     yield from find_files(repo_root, ["*.ads", "*.adb", "*.ada"])
-
-
-@dataclass
-class AdaAnalysisResult:
-    """Result of analyzing Ada files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
 
 
 def is_ada_tree_sitter_available() -> bool:
@@ -81,21 +70,6 @@ def is_ada_tree_sitter_available() -> bool:
         return True
     except Exception:  # pragma: no cover - ada grammar not available
         return False
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text from a tree-sitter node."""
-    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(
-    node: "tree_sitter.Node", child_type: str
-) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == child_type:
-            return child
-    return None  # pragma: no cover - defensive
 
 
 @dataclass
@@ -141,37 +115,37 @@ def _make_symbol(ctx: _FileContext, node: "tree_sitter.Node", name: str, kind: s
 
 def _extract_formal_part(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract parameters from formal_part node."""
-    formal_part = _find_child_by_type(node, "formal_part")
+    formal_part = find_child_by_type(node, "formal_part")
     if formal_part:
-        return _node_text(formal_part, source)
+        return node_text(formal_part, source)
     return None
 
 
 def _process_package_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process a package declaration (spec)."""
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
         return  # pragma: no cover - defensive
 
-    pkg_name = _node_text(name_node, ctx.source)
+    pkg_name = node_text(name_node, ctx.source)
     ctx.symbols.append(_make_symbol(ctx, node, pkg_name, "package"))
 
 
 def _process_package_body(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process a package body."""
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
         return  # pragma: no cover - defensive
 
-    pkg_name = _node_text(name_node, ctx.source)
+    pkg_name = node_text(name_node, ctx.source)
     ctx.symbols.append(_make_symbol(ctx, node, pkg_name, "package"))
 
 
 def _process_subprogram_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process a function or procedure declaration."""
     # Look for function_specification or procedure_specification
-    func_spec = _find_child_by_type(node, "function_specification")
-    proc_spec = _find_child_by_type(node, "procedure_specification")
+    func_spec = find_child_by_type(node, "function_specification")
+    proc_spec = find_child_by_type(node, "procedure_specification")
 
     if func_spec:
         _process_function_spec(ctx, func_spec)
@@ -181,8 +155,8 @@ def _process_subprogram_declaration(ctx: _FileContext, node: "tree_sitter.Node")
 
 def _process_subprogram_body(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process a function or procedure body (implementation)."""
-    func_spec = _find_child_by_type(node, "function_specification")
-    proc_spec = _find_child_by_type(node, "procedure_specification")
+    func_spec = find_child_by_type(node, "function_specification")
+    proc_spec = find_child_by_type(node, "procedure_specification")
 
     if func_spec:
         _process_function_spec(ctx, func_spec)
@@ -192,11 +166,11 @@ def _process_subprogram_body(ctx: _FileContext, node: "tree_sitter.Node") -> Non
 
 def _process_function_spec(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process a function specification."""
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
         return  # pragma: no cover - defensive
 
-    func_name = _node_text(name_node, ctx.source)
+    func_name = node_text(name_node, ctx.source)
 
     # Build signature from formal_part and result_profile
     signature_parts = []
@@ -204,9 +178,9 @@ def _process_function_spec(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     if formal_part:
         signature_parts.append(formal_part)
 
-    result = _find_child_by_type(node, "result_profile")
+    result = find_child_by_type(node, "result_profile")
     if result:
-        signature_parts.append(_node_text(result, ctx.source))
+        signature_parts.append(node_text(result, ctx.source))
 
     signature = " ".join(signature_parts) if signature_parts else None
     ctx.symbols.append(_make_symbol(ctx, node, func_name, "function", signature=signature))
@@ -214,35 +188,35 @@ def _process_function_spec(ctx: _FileContext, node: "tree_sitter.Node") -> None:
 
 def _process_procedure_spec(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process a procedure specification."""
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
         return  # pragma: no cover - defensive
 
-    proc_name = _node_text(name_node, ctx.source)
+    proc_name = node_text(name_node, ctx.source)
     signature = _extract_formal_part(node, ctx.source)
     ctx.symbols.append(_make_symbol(ctx, node, proc_name, "procedure", signature=signature))
 
 
 def _process_type_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process a type declaration (record, enum, etc.)."""
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
         return  # pragma: no cover - defensive
 
-    type_name = _node_text(name_node, ctx.source)
+    type_name = node_text(name_node, ctx.source)
     ctx.symbols.append(_make_symbol(ctx, node, type_name, "type"))
 
 
 def _process_object_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process an object declaration (constant or variable)."""
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
         return  # pragma: no cover - defensive
 
-    obj_name = _node_text(name_node, ctx.source)
+    obj_name = node_text(name_node, ctx.source)
 
     # Check if it's a constant
-    is_constant = _find_child_by_type(node, "constant") is not None
+    is_constant = find_child_by_type(node, "constant") is not None
     kind = "constant" if is_constant else "variable"
 
     ctx.symbols.append(_make_symbol(ctx, node, obj_name, kind))
@@ -253,7 +227,7 @@ def _process_with_clause(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     # Find selected_component or identifier for the imported package
     for child in node.children:
         if child.type == "selected_component":
-            import_name = _node_text(child, ctx.source)
+            import_name = node_text(child, ctx.source)
             ctx.edges.append(
                 Edge(
                     id=f"edge:ada:{uuid.uuid4().hex[:12]}",
@@ -267,7 +241,7 @@ def _process_with_clause(ctx: _FileContext, node: "tree_sitter.Node") -> None:
                 )
             )
         elif child.type == "identifier":
-            text = _node_text(child, ctx.source)
+            text = node_text(child, ctx.source)
             if text != "with":  # Skip the keyword
                 ctx.edges.append(
                     Edge(
@@ -304,9 +278,9 @@ def _extract_package_renames(
 
         for child in node.children:
             if child.type == "identifier" and alias_name is None:
-                alias_name = _node_text(child, source)
+                alias_name = node_text(child, source)
             elif child.type == "selected_component":
-                full_path = _node_text(child, source)
+                full_path = node_text(child, source)
 
         if alias_name and full_path:
             renames[alias_name] = full_path
@@ -325,13 +299,13 @@ def _get_call_target_name(node: "tree_sitter.Node", source: bytes) -> tuple[Opti
     # For function_call: first child is identifier or selected_component
     for child in node.children:
         if child.type == "identifier":
-            return (_node_text(child, source), None)
+            return (node_text(child, source), None)
         elif child.type == "selected_component":
             # Get all identifiers for qualified calls
             identifiers: list[str] = []
             for sub in child.children:
                 if sub.type == "identifier":
-                    identifiers.append(_node_text(sub, source))
+                    identifiers.append(node_text(sub, source))
             if identifiers:
                 # last is target, first is receiver
                 target_name = identifiers[-1]
@@ -350,13 +324,13 @@ def _find_enclosing_subprogram(
     while current is not None:
         if current.type == "subprogram_body":
             # Find the function/procedure name
-            func_spec = _find_child_by_type(current, "function_specification")
-            proc_spec = _find_child_by_type(current, "procedure_specification")
+            func_spec = find_child_by_type(current, "function_specification")
+            proc_spec = find_child_by_type(current, "procedure_specification")
             spec = func_spec or proc_spec
             if spec:
-                name_node = _find_child_by_type(spec, "identifier")
+                name_node = find_child_by_type(spec, "identifier")
                 if name_node:
-                    name = _node_text(name_node, source)
+                    name = node_text(name_node, source)
                     sym = local_symbols.get(name)
                     if sym:
                         return sym
@@ -381,19 +355,19 @@ def _process_node(ctx: _FileContext, node: "tree_sitter.Node") -> None:
 
 
 @register_analyzer("ada")
-def analyze_ada(repo_root: Path) -> AdaAnalysisResult:
+def analyze_ada(repo_root: Path) -> AnalysisResult:
     """Analyze Ada files in a repository.
 
     Uses two-pass analysis:
     - Pass 1: Extract all symbols from all files
     - Pass 2: Extract edges (imports + calls) using NameResolver
 
-    Returns an AdaAnalysisResult with symbols for packages, functions, procedures,
+    Returns an AnalysisResult with symbols for packages, functions, procedures,
     types, and constants, plus edges for with clauses (imports) and calls.
     """
     if not is_ada_tree_sitter_available():
         warnings.warn("Ada analysis skipped: tree-sitter-ada unavailable")
-        return AdaAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-ada unavailable",
         )
@@ -536,7 +510,7 @@ def analyze_ada(repo_root: Path) -> AdaAnalysisResult:
                         ))
 
     duration_ms = int((time.time() - start_time) * 1000)
-    return AdaAnalysisResult(
+    return AnalysisResult(
         symbols=symbols,
         edges=edges,
         run=AnalysisRun(

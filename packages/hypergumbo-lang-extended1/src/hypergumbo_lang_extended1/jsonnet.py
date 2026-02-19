@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -114,24 +115,6 @@ def is_jsonnet_tree_sitter_available() -> bool:
         return False
 
 
-class JsonnetAnalysisResult:
-    """Result of Jsonnet analysis."""
-
-    def __init__(
-        self,
-        symbols: list[Symbol] | None = None,
-        edges: list[Edge] | None = None,
-        run: AnalysisRun | None = None,
-        skipped: bool = False,
-        skip_reason: str = "",
-    ):
-        self.symbols = symbols or []
-        self.edges = edges or []
-        self.run = run
-        self.skipped = skipped
-        self.skip_reason = skip_reason
-
-
 class JsonnetAnalyzer:
     """Analyzer for Jsonnet configuration files."""
 
@@ -144,7 +127,7 @@ class JsonnetAnalyzer:
         self._current_file: Optional[Path] = None
         self._local_functions: set[str] = set()  # Functions in current file
 
-    def analyze(self) -> JsonnetAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Analyze all Jsonnet files in the repository."""
         from tree_sitter_language_pack import get_parser
 
@@ -155,7 +138,7 @@ class JsonnetAnalyzer:
         jsonnet_files = find_jsonnet_files(self.repo_root)
 
         if not jsonnet_files:
-            return JsonnetAnalysisResult()
+            return AnalysisResult()
 
         # Pass 1: Collect all symbols
         for path in jsonnet_files:
@@ -197,7 +180,7 @@ class JsonnetAnalyzer:
             duration_ms=int(elapsed * 1000),
         )
 
-        return JsonnetAnalysisResult(
+        return AnalysisResult(
             symbols=self.symbols,
             edges=self.edges,
             run=run,
@@ -404,14 +387,14 @@ class JsonnetAnalyzer:
 
 
 @register_analyzer("jsonnet")
-def analyze_jsonnet(repo_root: Path) -> JsonnetAnalysisResult:
+def analyze_jsonnet(repo_root: Path) -> AnalysisResult:
     """Analyze Jsonnet files in the repository.
 
     Args:
         repo_root: Root path of the repository to analyze
 
     Returns:
-        JsonnetAnalysisResult containing symbols and edges
+        AnalysisResult containing symbols and edges
     """
     if not is_jsonnet_tree_sitter_available():
         warnings.warn(
@@ -419,7 +402,7 @@ def analyze_jsonnet(repo_root: Path) -> JsonnetAnalysisResult:
             UserWarning,
             stacklevel=2,
         )
-        return JsonnetAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-jsonnet not available",
         )

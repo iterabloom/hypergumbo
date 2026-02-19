@@ -20,12 +20,12 @@ Key constructs extracted:
 
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -33,17 +33,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "tcl.tree_sitter"
 PASS_VERSION = "hypergumbo-0.1.0"
-
-
-@dataclass
-class TclAnalysisResult:
-    """Result of analyzing Tcl files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: Optional[AnalysisRun] = None
-    skipped: bool = False
-    skip_reason: str = ""
 
 
 def is_tcl_tree_sitter_available() -> bool:
@@ -135,7 +124,7 @@ class TclAnalyzer:
         self._symbol_registry: dict[str, str] = {}  # name -> id
         self._run_id: str = ""
 
-    def analyze(self) -> TclAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Analyze all Tcl files in the repository."""
         if not is_tcl_tree_sitter_available():
             warnings.warn(
@@ -143,7 +132,7 @@ class TclAnalyzer:
                 UserWarning,
                 stacklevel=2,
             )
-            return TclAnalysisResult(
+            return AnalysisResult(
                 skipped=True,
                 skip_reason="tree-sitter-language-pack not available",
             )
@@ -158,7 +147,7 @@ class TclAnalyzer:
         tcl_files = list(find_tcl_files(self.repo_root))
 
         if not tcl_files:
-            return TclAnalysisResult()
+            return AnalysisResult()
 
         # Pass 1: Collect all symbols
         for path in tcl_files:
@@ -193,7 +182,7 @@ class TclAnalyzer:
             duration_ms=int(elapsed * 1000),
         )
 
-        return TclAnalysisResult(
+        return AnalysisResult(
             symbols=self.symbols,
             edges=self.edges,
             run=run,
@@ -353,14 +342,14 @@ class TclAnalyzer:
 
 
 @register_analyzer("tcl")
-def analyze_tcl(repo_root: Path) -> TclAnalysisResult:
+def analyze_tcl(repo_root: Path) -> AnalysisResult:
     """Analyze Tcl source files in a repository.
 
     Args:
         repo_root: Root directory of the repository to analyze
 
     Returns:
-        TclAnalysisResult containing symbols, edges, and analysis metadata
+        AnalysisResult containing symbols, edges, and analysis metadata
     """
     analyzer = TclAnalyzer(repo_root)
     return analyzer.analyze()

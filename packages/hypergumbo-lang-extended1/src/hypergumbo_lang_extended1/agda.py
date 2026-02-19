@@ -50,7 +50,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -74,16 +74,6 @@ def is_agda_tree_sitter_available() -> bool:
     return True
 
 
-@dataclass
-class AgdaAnalysisResult:
-    """Result of analyzing Agda files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
 
 @dataclass
 class FileAnalysis:
@@ -99,34 +89,11 @@ class FileAnalysis:
     import_aliases: dict[str, str] = field(default_factory=dict)  # alias → module_path
 
 
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"agda:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for an Agda file node (used as import edge source)."""
-    return f"agda:{path}:1-1:file:file"
-
 
 def _make_module_id(module_name: str) -> str:
     """Generate ID for an Agda module (used as import edge target)."""
     return f"agda:{module_name}:0-0:module:module"
 
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(
-    node: "tree_sitter.Node", type_name: str
-) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None
 
 
 def _get_function_name_from_lhs(lhs_node: "tree_sitter.Node", source: bytes) -> str:
@@ -140,14 +107,14 @@ def _get_function_name_from_lhs(lhs_node: "tree_sitter.Node", source: bytes) -> 
     - An 'atom' child as first element (for pattern clauses)
     """
     # Try function_name first (type signature)
-    fn_name = _find_child_by_type(lhs_node, "function_name")
+    fn_name = find_child_by_type(lhs_node, "function_name")
     if fn_name:
-        return _node_text(fn_name, source).strip()
+        return node_text(fn_name, source).strip()
 
     # Try first atom (pattern clause like "double zero = zero")
     for child in lhs_node.children:  # pragma: no cover - pattern clause case
         if child.type == "atom":
-            text = _node_text(child, source).strip()
+            text = node_text(child, source).strip()
             # Skip if it looks like a pattern (contains parens)
             if "(" not in text:
                 return text
@@ -158,7 +125,7 @@ def _get_function_name_from_lhs(lhs_node: "tree_sitter.Node", source: bytes) -> 
 
 def _is_type_signature(rhs_node: "tree_sitter.Node", source: bytes) -> bool:
     """Check if this function node is a type signature (starts with :)."""
-    text = _node_text(rhs_node, source).strip()
+    text = node_text(rhs_node, source).strip()
     return text.startswith(":")
 
 
@@ -178,7 +145,7 @@ def _extract_agda_signature(
     Returns signature like ": Nat -> Nat".
     """
     # The rhs node text already starts with ":"
-    sig_text = _node_text(rhs_node, source).strip()
+    sig_text = node_text(rhs_node, source).strip()
     if sig_text.startswith(":"):
         return sig_text
     return None  # pragma: no cover - defensive, called only for type signatures
@@ -221,7 +188,7 @@ def _extract_symbols_from_file(
             start_col=node.start_point[1],
             end_col=node.end_point[1],
         )
-        sym_id = _make_symbol_id(file_path, start_line, end_line, name, kind)
+        sym_id = make_symbol_id("agda",file_path, start_line, end_line, name, kind)
         sym = Symbol(
             id=sym_id,
             name=name,
@@ -258,20 +225,20 @@ def _extract_symbols_from_file(
     for node in iter_tree(tree.root_node):
         if node.type == "module":
             # Module declaration
-            name_node = _find_child_by_type(node, "module_name")
+            name_node = find_child_by_type(node, "module_name")
             if name_node:
                 # Get the qid inside module_name
-                qid = _find_child_by_type(name_node, "qid")
+                qid = find_child_by_type(name_node, "qid")
                 if qid:
-                    name = _node_text(qid, source).strip()
+                    name = node_text(qid, source).strip()
                 else:  # pragma: no cover - fallback when no qid
-                    name = _node_text(name_node, source).strip()
+                    name = node_text(name_node, source).strip()
                 add_symbol(node, name, "module")
 
         elif node.type == "function":
             # Function declaration (type signature or pattern clause)
-            lhs = _find_child_by_type(node, "lhs")
-            rhs = _find_child_by_type(node, "rhs")
+            lhs = find_child_by_type(node, "lhs")
+            rhs = find_child_by_type(node, "rhs")
             if lhs and rhs:
                 # Only extract type signatures (name : Type), not pattern clauses
                 if _is_type_signature(rhs, source):
@@ -288,16 +255,16 @@ def _extract_symbols_from_file(
 
         elif node.type == "data":
             # Data type definition
-            name_node = _find_child_by_type(node, "data_name")
+            name_node = find_child_by_type(node, "data_name")
             if name_node:
-                name = _node_text(name_node, source).strip()
+                name = node_text(name_node, source).strip()
                 add_symbol(node, name, "data")
 
         elif node.type == "record":
             # Record type definition
-            name_node = _find_child_by_type(node, "record_name")
+            name_node = find_child_by_type(node, "record_name")
             if name_node:
-                name = _node_text(name_node, source).strip()
+                name = node_text(name_node, source).strip()
                 add_symbol(node, name, "record")
 
     return symbols
@@ -327,8 +294,8 @@ def _extract_renamings(
             # Structure: id (original), 'to', id (alias)
             ids = [c for c in child.children if c.type == "id"]
             if len(ids) >= 2:
-                original_name = _node_text(ids[0], source).strip()
-                alias_name = _node_text(ids[1], source).strip()
+                original_name = node_text(ids[0], source).strip()
+                alias_name = node_text(ids[1], source).strip()
                 # Map alias to qualified path: Module.original_name
                 aliases[alias_name] = f"{module_name}.{original_name}"
 
@@ -353,16 +320,16 @@ def _extract_edges_from_file(
     """
     edges: list[Edge] = []
     import_aliases: dict[str, str] = {}
-    file_id = _make_file_id(file_path)
+    file_id = make_file_id("agda",file_path)
 
     for node in iter_tree(tree.root_node):
         if node.type == "open":
             # open import ... statement
-            import_node = _find_child_by_type(node, "import")
+            import_node = find_child_by_type(node, "import")
             if import_node:
-                module_name_node = _find_child_by_type(import_node, "module_name")
+                module_name_node = find_child_by_type(import_node, "module_name")
                 if module_name_node:
-                    module_name = _node_text(module_name_node, source).strip()
+                    module_name = node_text(module_name_node, source).strip()
                     module_id = _make_module_id(module_name)
                     edge = Edge.create(
                         src=file_id,
@@ -377,7 +344,7 @@ def _extract_edges_from_file(
                     edges.append(edge)
 
                     # Extract renaming aliases from import_directive
-                    directive = _find_child_by_type(node, "import_directive")
+                    directive = find_child_by_type(node, "import_directive")
                     if directive:
                         renamings = _extract_renamings(directive, source, module_name)
                         import_aliases.update(renamings)
@@ -386,9 +353,9 @@ def _extract_edges_from_file(
             # Plain import statement (not inside open)
             # Check parent is not 'open'
             if node.parent and node.parent.type != "open":
-                module_name_node = _find_child_by_type(node, "module_name")
+                module_name_node = find_child_by_type(node, "module_name")
                 if module_name_node:
-                    module_name = _node_text(module_name_node, source).strip()
+                    module_name = node_text(module_name_node, source).strip()
                     module_id = _make_module_id(module_name)
                     edge = Edge.create(
                         src=file_id,
@@ -406,10 +373,10 @@ def _extract_edges_from_file(
 
 
 @register_analyzer("agda")
-def analyze_agda(repo_root: Path) -> AgdaAnalysisResult:
+def analyze_agda(repo_root: Path) -> AnalysisResult:
     """Analyze Agda files in a repository.
 
-    Returns an AgdaAnalysisResult with symbols, edges, and provenance.
+    Returns an AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-agda is not available, returns a skipped result.
     """
     start_time = time.time()
@@ -424,7 +391,7 @@ def analyze_agda(repo_root: Path) -> AgdaAnalysisResult:
         )
         warnings.warn(skip_reason)
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return AgdaAnalysisResult(
+        return AnalysisResult(
             run=run,
             skipped=True,
             skip_reason=skip_reason,
@@ -457,7 +424,7 @@ def analyze_agda(repo_root: Path) -> AgdaAnalysisResult:
 
         # Create file symbol
         file_symbol = Symbol(
-            id=_make_file_id(rel_path),
+            id=make_file_id("agda",rel_path),
             name="file",
             kind="file",
             language="agda",
@@ -503,7 +470,7 @@ def analyze_agda(repo_root: Path) -> AgdaAnalysisResult:
     run.files_analyzed = files_analyzed
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return AgdaAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

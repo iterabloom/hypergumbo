@@ -33,17 +33,13 @@ import hashlib
 import importlib.util
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, node_text, find_child_by_type, make_symbol_id
 from hypergumbo_core.analyze.registry import register_analyzer
-
-if TYPE_CHECKING:
-    import tree_sitter
 
 PASS_ID = "asm-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -69,37 +65,6 @@ def is_asm_tree_sitter_available() -> bool:
         return False
 
 
-@dataclass
-class AsmAnalysisResult:
-    """Result of analyzing assembly files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text from a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(
-    node: "tree_sitter.Node", child_type: str
-) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == child_type:
-            return child
-    return None
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID for a symbol."""
-    return f"asm:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
     """Generate deterministic edge ID."""
     content = f"{edge_type}:{src}:{dst}"
@@ -118,18 +83,18 @@ def _determine_label_kind(current_section: str) -> str:
 
 
 @register_analyzer("asm")
-def analyze_asm(repo_root: Path) -> AsmAnalysisResult:
+def analyze_asm(repo_root: Path) -> AnalysisResult:
     """Analyze assembly language files in a repository.
 
     Uses two-pass analysis:
     - Pass 1: Extract all labels as symbols
     - Pass 2: Detect call instructions and resolve targets
 
-    Returns an AsmAnalysisResult with symbols for labels and edges for calls.
+    Returns an AnalysisResult with symbols for labels and edges for calls.
     """
     if not is_asm_tree_sitter_available():
         warnings.warn("Assembly analysis skipped: tree-sitter-asm unavailable")
-        return AsmAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-asm unavailable",
         )
@@ -168,26 +133,26 @@ def analyze_asm(repo_root: Path) -> AsmAnalysisResult:
         for node in iter_tree(tree.root_node):
             # Track section changes
             if node.type == "meta":
-                meta_ident = _find_child_by_type(node, "meta_ident")
+                meta_ident = find_child_by_type(node, "meta_ident")
                 if meta_ident:
-                    directive = _node_text(meta_ident, source)
+                    directive = node_text(meta_ident, source)
                     if directive == ".section":
-                        ident = _find_child_by_type(node, "ident")
+                        ident = find_child_by_type(node, "ident")
                         if ident:
-                            section_name = _node_text(ident, source)
+                            section_name = node_text(ident, source)
                             current_section = section_name
 
             # Extract labels
             elif node.type == "label":
-                ident = _find_child_by_type(node, "ident")
+                ident = find_child_by_type(node, "ident")
                 if ident:
-                    label_name = _node_text(ident, source)
+                    label_name = node_text(ident, source)
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
                     kind = _determine_label_kind(current_section)
 
                     sym = Symbol(
-                        id=_make_symbol_id(rel_path, start_line, end_line, label_name, kind),
+                        id=make_symbol_id("asm", rel_path, start_line, end_line, label_name, kind),
                         name=label_name,
                         canonical_name=label_name,
                         kind=kind,
@@ -222,18 +187,18 @@ def analyze_asm(repo_root: Path) -> AsmAnalysisResult:
                 continue
 
             # Check if this is a call instruction
-            word_node = _find_child_by_type(node, "word")
+            word_node = find_child_by_type(node, "word")
             if not word_node:
                 continue  # pragma: no cover - defensive against unusual AST shape
-            opcode = _node_text(word_node, source).lower()
+            opcode = node_text(word_node, source).lower()
             if opcode != "call":
                 continue
 
             # Get call target
-            target_node = _find_child_by_type(node, "ident")
+            target_node = find_child_by_type(node, "ident")
             if not target_node:
                 continue  # pragma: no cover - defensive
-            target_name = _node_text(target_node, source)
+            target_name = node_text(target_node, source)
 
             # Find enclosing label (function) for this call instruction
             call_line = node.start_point[0] + 1
@@ -262,7 +227,7 @@ def analyze_asm(repo_root: Path) -> AsmAnalysisResult:
             ))
 
     duration_ms = int((time.time() - start_time) * 1000)
-    return AsmAnalysisResult(
+    return AnalysisResult(
         symbols=symbols,
         edges=edges,
         run=AnalysisRun(
