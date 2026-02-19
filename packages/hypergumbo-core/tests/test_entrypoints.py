@@ -2287,3 +2287,119 @@ class TestTestFunctionConceptDetection:
 
         test_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.TEST_FUNCTION]
         assert len(test_eps) == 1
+
+
+class TestRouteKindEntrypointDetection:
+    """Tests for direct kind='route' entrypoint detection.
+
+    Go and other analyzers create symbols with kind='route' and metadata
+    (route_path, http_method) directly, bypassing YAML concept enrichment.
+    These must be promoted to HTTP_ROUTE entrypoints.
+    """
+
+    def test_route_kind_promoted_to_entrypoint(self) -> None:
+        """Symbol with kind='route' and route metadata becomes HTTP_ROUTE."""
+        sym = make_symbol(
+            "ListUsers",
+            path="routers/api/v1/user.go",
+            kind="route",
+            language="go",
+            meta={
+                "route_path": "/api/v1/users",
+                "http_method": "GET",
+                "handler_name": "ListUsers",
+            },
+        )
+        entrypoints = detect_entrypoints([sym], [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+        assert route_eps[0].symbol_id == sym.id
+        assert route_eps[0].confidence == 0.90
+        assert "GET" in route_eps[0].label
+        assert "/api/v1/users" in route_eps[0].label
+
+    def test_route_kind_method_only(self) -> None:
+        """Route with method but no path still gets a label."""
+        sym = make_symbol(
+            "handler",
+            path="routes.go",
+            kind="route",
+            language="go",
+            meta={"http_method": "POST"},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+        assert "POST" in route_eps[0].label
+
+    def test_route_kind_path_only(self) -> None:
+        """Route with path but no method still gets a label."""
+        sym = make_symbol(
+            "handler",
+            path="routes.go",
+            kind="route",
+            language="go",
+            meta={"route_path": "/health"},
+        )
+        entrypoints = detect_entrypoints([sym], [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+        assert "/health" in route_eps[0].label
+
+    def test_route_kind_no_metadata(self) -> None:
+        """Route symbol with no meta still becomes entrypoint."""
+        sym = make_symbol(
+            "handler",
+            path="routes.go",
+            kind="route",
+            language="go",
+        )
+        entrypoints = detect_entrypoints([sym], [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+        assert route_eps[0].label == "HTTP route"
+
+    def test_no_duplicate_with_concept_route(self) -> None:
+        """Route kind + route concept doesn't produce duplicate entrypoints."""
+        sym = make_symbol(
+            "ListUsers",
+            path="routes.go",
+            kind="route",
+            language="go",
+            meta={
+                "route_path": "/users",
+                "http_method": "GET",
+                "concepts": [
+                    {"concept": "route", "path": "/users", "method": "GET"},
+                ],
+            },
+        )
+        entrypoints = detect_entrypoints([sym], [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        # Should be exactly 1, not 2
+        assert len(route_eps) == 1
+
+    def test_multiple_route_symbols(self) -> None:
+        """Multiple route symbols each become entrypoints."""
+        sym1 = make_symbol(
+            "GetUser", path="api.go", kind="route", language="go",
+            meta={"route_path": "/users/:id", "http_method": "GET"},
+            start_line=1, end_line=1,
+        )
+        sym2 = make_symbol(
+            "CreateUser", path="api.go", kind="route", language="go",
+            meta={"route_path": "/users", "http_method": "POST"},
+            start_line=10, end_line=10,
+        )
+        entrypoints = detect_entrypoints([sym1, sym2], [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 2
+        ep_ids = {ep.symbol_id for ep in route_eps}
+        assert sym1.id in ep_ids
+        assert sym2.id in ep_ids

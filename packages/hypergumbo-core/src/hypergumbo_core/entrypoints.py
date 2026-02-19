@@ -517,6 +517,38 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 ))
                 added_kinds.add(EntrypointKind.TEST_FUNCTION)
 
+    # --- Pass 2: Direct route symbol detection ---
+    # Go (and potentially other analyzers) create symbols with kind="route"
+    # that carry route metadata (route_path, http_method) directly in sym.meta
+    # rather than going through YAML concept enrichment.  These symbols are
+    # found by the routes CLI command (which checks both concepts and kind)
+    # but were missed by entrypoint detection until now.
+    # Track existing route entrypoint symbol_ids to avoid duplicates.
+    route_ep_ids = {ep.symbol_id for ep in entrypoints if ep.kind == EntrypointKind.HTTP_ROUTE}
+
+    for sym in symbols:
+        if sym.kind != "route":
+            continue
+        if sym.id in route_ep_ids:
+            continue
+        meta = sym.meta or {}
+        method = meta.get("http_method", "")
+        path = meta.get("route_path", "")
+        if method and path:
+            label = f"HTTP {method.upper()} {path}"
+        elif method:
+            label = f"HTTP {method.upper()} route"
+        elif path:
+            label = f"HTTP route {path}"
+        else:
+            label = "HTTP route"
+        entrypoints.append(Entrypoint(
+            symbol_id=sym.id,
+            kind=EntrypointKind.HTTP_ROUTE,
+            confidence=0.90,  # Slightly lower than concept-enriched (0.95)
+            label=label,
+        ))
+
     return entrypoints
 
 
