@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from . import __version__
 
-PASS_VERSION = __version__
+PASS_VERSION: str = __version__
 """Canonical pass version derived from the package version.
 
 All analyzers and linkers use this as their version string, ensuring
