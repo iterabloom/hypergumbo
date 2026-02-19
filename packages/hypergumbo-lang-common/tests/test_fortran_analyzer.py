@@ -10,9 +10,9 @@ Tests verify that the analyzer correctly extracts:
 """
 
 from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import PASS_VERSION
 from hypergumbo_lang_common.fortran import (
     PASS_ID,
-    PASS_VERSION,
     analyze_fortran_files,
     find_fortran_files,
 )
@@ -20,7 +20,7 @@ from hypergumbo_lang_common.fortran import (
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "fortran-v1"
-    assert PASS_VERSION == "hypergumbo-0.1.0"
+    assert PASS_VERSION == "2.0.2"
 
 def test_analyze_module(tmp_path):
     """Test detection of module definitions."""

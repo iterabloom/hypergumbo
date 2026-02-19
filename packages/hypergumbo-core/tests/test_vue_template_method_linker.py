@@ -34,7 +34,7 @@ class TestVueTemplateMethodLinker:
                 "directive_type": "v-on",
                 "handler_expression": "handleDelete",
             },
-            origin="vue.tree_sitter",
+            origin="vue-v1",
             origin_run_id="test-run",
         )
 
@@ -75,7 +75,7 @@ class TestVueTemplateMethodLinker:
                 "directive_type": "v-on",
                 "handler_expression": "handleClick",
             },
-            origin="vue.tree_sitter",
+            origin="vue-v1",
             origin_run_id="test-run",
         )
 
@@ -112,7 +112,7 @@ class TestVueTemplateMethodLinker:
                 "directive_type": "v-on",
                 "handler_expression": "nonexistentMethod",
             },
-            origin="vue.tree_sitter",
+            origin="vue-v1",
             origin_run_id="test-run",
         )
 
@@ -148,7 +148,7 @@ class TestVueTemplateMethodLinker:
                 "element": "img",
                 "directive_type": "v-bind",
             },
-            origin="vue.tree_sitter",
+            origin="vue-v1",
             origin_run_id="test-run",
         )
 
@@ -185,7 +185,7 @@ class TestVueTemplateMethodLinker:
                 "directive_type": "v-on",
                 "handler_expression": "handleClick",
             },
-            origin="vue.tree_sitter",
+            origin="vue-v1",
             origin_run_id="test-run",
         )
 
@@ -223,7 +223,7 @@ class TestVueTemplateMethodLinker:
                 "directive_type": "v-on",
                 "handler_expression": "handleSave",
             },
-            origin="vue.tree_sitter",
+            origin="vue-v1",
             origin_run_id="test-run",
         )
 
@@ -239,7 +239,7 @@ class TestVueTemplateMethodLinker:
                 "directive_type": "v-on",
                 "handler_expression": "handleCancel",
             },
-            origin="vue.tree_sitter",
+            origin="vue-v1",
             origin_run_id="test-run",
         )
 
@@ -287,7 +287,7 @@ class TestVueTemplateMethodLinker:
                 "directive_type": "v-on",
                 "handler_expression": "close",
             },
-            origin="vue.tree_sitter",
+            origin="vue-v1",
             origin_run_id="test-run",
         )
 
@@ -320,7 +320,7 @@ class TestVueTemplateMethodLinker:
             path="src/App.vue",
             span=Span(start_line=5, end_line=5, start_col=2, end_col=20),
             meta={"import_path": "./Modal.vue"},
-            origin="vue.tree_sitter",
+            origin="vue-v1",
             origin_run_id="test-run",
         )
 
@@ -362,7 +362,7 @@ class TestLinkerRegistryIntegration:
             path="src/App.vue",
             span=Span(start_line=5, end_line=5, start_col=2, end_col=40),
             meta={"directive_type": "v-on", "handler_expression": "handleClick"},
-            origin="vue.tree_sitter",
+            origin="vue-v1",
             origin_run_id="test-run",
         )
 
@@ -374,7 +374,7 @@ class TestLinkerRegistryIntegration:
             path="src/App.vue",
             span=Span(start_line=8, end_line=8, start_col=2, end_col=30),
             meta={"directive_type": "v-if"},
-            origin="vue.tree_sitter",
+            origin="vue-v1",
             origin_run_id="test-run",
         )
 
@@ -410,7 +410,7 @@ class TestLinkerRegistryIntegration:
                 "directive_type": "v-on",
                 "handler_expression": "handleClick",
             },
-            origin="vue.tree_sitter",
+            origin="vue-v1",
             origin_run_id="test-run",
         )
 

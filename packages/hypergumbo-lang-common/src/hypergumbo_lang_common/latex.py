@@ -42,7 +42,7 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
 )
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.ir import Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -50,7 +50,7 @@ if TYPE_CHECKING:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.symbol_resolution import NameResolver
 
-PASS_ID = "latex"
+PASS_ID = make_pass_id("latex")
 
 
 def _extract_text(node: "tree_sitter.Node", source_bytes: bytes) -> str:
@@ -349,7 +349,6 @@ class LatexAnalyzer(TreeSitterAnalyzer):
     """LaTeX document analyzer using tree-sitter-language-pack."""
 
     lang = "latex"
-    pass_id = PASS_ID
     pass_version = "0.1.0"
     file_patterns: ClassVar[list[str]] = ["*.tex", "*.sty", "*.cls"]
     language_pack_name = "latex"
@@ -407,7 +406,7 @@ class LatexAnalyzer(TreeSitterAnalyzer):
         run_module = __import__("hypergumbo_core.ir", fromlist=["AnalysisRun"])
         AnalysisRun = run_module.AnalysisRun
 
-        run = AnalysisRun.create(pass_id=self.pass_id, version=self.pass_version)
+        run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
         if not self._check_grammar_available():
             warnings.warn(

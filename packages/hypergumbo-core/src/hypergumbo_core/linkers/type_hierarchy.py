@@ -37,7 +37,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
-from ..ir import AnalysisRun, Edge, Symbol
+from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -48,7 +48,7 @@ from .registry import (
 if TYPE_CHECKING:
     pass
 
-PASS_ID = "type-hierarchy-v1"
+PASS_ID = make_pass_id("type-hierarchy")
 
 
 def build_inheritance_maps(
@@ -206,7 +206,7 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
     Returns:
         LinkerResult with new dispatches_to edges
     """
-    run = AnalysisRun.create(pass_id=PASS_ID, version="hypergumbo-0.1.0")
+    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
     # Build inheritance maps
     parent_to_children, interface_to_impls = build_inheritance_maps(

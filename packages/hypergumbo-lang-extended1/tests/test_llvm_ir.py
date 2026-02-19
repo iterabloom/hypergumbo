@@ -289,7 +289,7 @@ attributes #0 = { noinline nounwind optnone uwtable }
 
         result = analyze_llvm_ir(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "llvm-v1"
+        assert result.run.pass_id == "llvm_ir-v1"
         assert result.run.files_analyzed == 1
         assert result.run.duration_ms >= 0
 

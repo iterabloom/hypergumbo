@@ -54,7 +54,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -62,8 +62,7 @@ if TYPE_CHECKING:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.symbol_resolution import NameResolver
 
-PASS_ID = "gdscript-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("gdscript")
 
 
 def find_gdscript_files(repo_root: Path) -> Iterator[Path]:
@@ -182,8 +181,6 @@ class GDScriptAnalyzer(TreeSitterAnalyzer):
     """GDScript language analyzer using tree-sitter-language-pack."""
 
     lang = "gdscript"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = ["*.gd"]
     language_pack_name = "gdscript"
 

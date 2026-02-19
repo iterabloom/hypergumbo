@@ -51,7 +51,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..ir import PASS_VERSION, AnalysisRun, Edge, Span, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -62,7 +62,7 @@ from .registry import (
 if TYPE_CHECKING:
     pass
 
-PASS_ID = "js-module-linker-v1"
+PASS_ID = make_pass_id("js-module-linker")
 
 # Extensions to probe when import path has no extension, in priority order.
 # .js first because it's the most common in real-world JS/TS projects.
@@ -640,7 +640,7 @@ def link_js_modules(
         LinkerResult with new symbols and edges.
     """
     start_time = time.time()
-    run = AnalysisRun.create(pass_id=PASS_ID, version="0.1.0")
+    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
     new_symbols: list[Symbol] = []
     new_edges: list[Edge] = []

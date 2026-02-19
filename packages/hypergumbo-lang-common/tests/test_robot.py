@@ -232,13 +232,13 @@ Test Keyword
         result = analyze_robot(tmp_path)
         keyword = next((s for s in result.symbols if s.kind == "keyword"), None)
         assert keyword is not None
-        assert keyword.origin == "robot.tree_sitter"
+        assert keyword.origin == "robot-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_robot_file(tmp_path, "test.robot", "*** Test Cases ***\nTest 1\n    Log    Hello")
         result = analyze_robot(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "robot.tree_sitter"
+        assert result.run.pass_id == "robot-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 

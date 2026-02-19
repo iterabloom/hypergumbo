@@ -21,5 +21,7 @@ format has breaking changes, while the tool version changes with any release.
 
 See ADR-0010 for the modular package architecture.
 """
-__all__ = ["__version__"]
+__all__ = ["PASS_VERSION", "__version__", "make_pass_id"]
 __version__ = "2.0.2"
+
+from .ir import PASS_VERSION, make_pass_id

@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -52,8 +52,7 @@ if TYPE_CHECKING:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.symbol_resolution import NameResolver
 
-PASS_ID = "nim-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("nim")
 
 
 def find_nim_files(repo_root: Path) -> Iterator[Path]:
@@ -303,8 +302,6 @@ class NimAnalyzer(TreeSitterAnalyzer):
     """Nim language analyzer using tree-sitter-language-pack."""
 
     lang = "nim"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = ["*.nim", "*.nims", "*.nimble"]
     language_pack_name = "nim"
 

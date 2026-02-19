@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -62,8 +62,7 @@ if TYPE_CHECKING:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.symbol_resolution import NameResolver
 
-PASS_ID = "capnp-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("capnp")
 
 
 def find_capnp_files(repo_root: Path) -> Iterator[Path]:
@@ -265,8 +264,6 @@ class CapnpAnalyzer(TreeSitterAnalyzer):
     """Analyzer for Cap'n Proto files using TreeSitterAnalyzer base class."""
 
     lang = "capnp"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = ["*.capnp"]
     language_pack_name = "capnp"
 

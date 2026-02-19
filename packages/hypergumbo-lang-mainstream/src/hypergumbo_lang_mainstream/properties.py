@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Span, Symbol
+from hypergumbo_core.ir import Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -50,8 +50,7 @@ if TYPE_CHECKING:
     from hypergumbo_core.ir import AnalysisRun
 
 
-PASS_ID = "properties.tree_sitter"
-PASS_VERSION = "0.1.0"
+PASS_ID = make_pass_id("properties")
 
 
 def find_properties_files(repo_root: Path) -> list[Path]:
@@ -176,8 +175,6 @@ class PropertiesAnalyzer(TreeSitterAnalyzer):
     """Analyzer for Java properties files using tree-sitter-language-pack."""
 
     lang = "properties"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = ["*.properties"]
     language_pack_name = "properties"
 

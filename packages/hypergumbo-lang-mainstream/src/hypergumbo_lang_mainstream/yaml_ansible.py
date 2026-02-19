@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Optional
 
 from hypergumbo_core.discovery import is_excluded
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
@@ -38,8 +38,7 @@ from hypergumbo_core.analyze.registry import register_analyzer
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = "ansible-v1"
-PASS_VERSION = "1.0.0"
+PASS_ID = make_pass_id("yaml_ansible")
 
 
 def find_ansible_files(root: Path) -> list[Path]:
@@ -298,8 +297,6 @@ class AnsibleAnalyzer(TreeSitterAnalyzer):
     """
 
     lang = "yaml_ansible"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = ["*.yml", "*.yaml"]
     grammar_module = "tree_sitter_yaml"
 
@@ -317,7 +314,7 @@ class AnsibleAnalyzer(TreeSitterAnalyzer):
         import warnings as _warnings
 
         start_time = _time.time()
-        run = AnalysisRun.create(pass_id=self.pass_id, version=self.pass_version)
+        run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
         if not self._check_grammar_available():
             _warnings.warn(

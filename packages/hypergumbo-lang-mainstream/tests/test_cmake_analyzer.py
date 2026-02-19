@@ -11,9 +11,9 @@ Tests verify that the analyzer correctly extracts:
 """
 
 from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import PASS_VERSION
 from hypergumbo_lang_mainstream.cmake import (
     PASS_ID,
-    PASS_VERSION,
     analyze_cmake_files,
     find_cmake_files,
 )
@@ -21,7 +21,7 @@ from hypergumbo_lang_mainstream.cmake import (
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "cmake-v1"
-    assert PASS_VERSION == "hypergumbo-0.1.0"
+    assert PASS_VERSION == "2.0.2"
 
 def test_analyze_project(tmp_path):
     """Test detection of project definition."""

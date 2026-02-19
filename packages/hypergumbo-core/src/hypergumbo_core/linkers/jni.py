@@ -39,7 +39,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
-from ..ir import AnalysisRun, Edge, Symbol
+from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -48,8 +48,7 @@ from .registry import (
     register_linker,
 )
 
-PASS_ID = "jni-linker-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("jni-linker")
 
 
 # Requirement check functions for the linker contract

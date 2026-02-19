@@ -69,11 +69,10 @@ from typing import Iterator
 from urllib.parse import urlparse
 
 from ..discovery import find_files
-from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
 
-PASS_ID = "http-linker-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("http-linker")
 
 
 @dataclass

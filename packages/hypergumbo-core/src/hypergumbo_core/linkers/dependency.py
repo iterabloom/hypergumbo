@@ -26,11 +26,10 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-from ..ir import AnalysisRun, Edge, Symbol
+from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
 
-PASS_ID = "dependency-linker-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("dependency-linker")
 
 
 @dataclass

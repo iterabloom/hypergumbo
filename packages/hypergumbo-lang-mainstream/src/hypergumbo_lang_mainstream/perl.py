@@ -49,15 +49,14 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = "perl-v1"
-PASS_VERSION = "hypergumbo-0.6.0"
+PASS_ID = make_pass_id("perl")
 
 
 def find_perl_files(repo_root: Path) -> Iterator[Path]:
@@ -169,8 +168,6 @@ class PerlAnalyzer(TreeSitterAnalyzer):
     """
 
     lang = "perl"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = ["*.pl", "*.pm", "*.t"]
     language_pack_name = "perl"
     create_file_symbols = True

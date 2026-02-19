@@ -43,7 +43,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-from ..ir import AnalysisRun, Edge, Symbol
+from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -52,8 +52,7 @@ from .registry import (
     register_linker,
 )
 
-PASS_ID = "cgo-linker-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("cgo-linker")
 
 # The prefix for cgo unresolved edges created by the Go analyzer
 CGO_UNRESOLVED_PREFIX = "go:C:0-0:"

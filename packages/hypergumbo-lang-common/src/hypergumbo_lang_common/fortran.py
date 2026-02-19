@@ -53,7 +53,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -61,8 +61,7 @@ if TYPE_CHECKING:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.symbol_resolution import NameResolver
 
-PASS_ID = "fortran-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("fortran")
 
 # Fortran file extensions
 FORTRAN_EXTENSIONS = ["*.f", "*.f90", "*.f95", "*.f03", "*.f08", "*.F", "*.F90", "*.F95", "*.F03", "*.F08", "*.for", "*.fpp"]
@@ -552,8 +551,6 @@ class FortranAnalyzer(TreeSitterAnalyzer):
     """Fortran language analyzer using tree-sitter-fortran."""
 
     lang = "fortran"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = FORTRAN_EXTENSIONS
     grammar_module = "tree_sitter_fortran"
     create_file_symbols = False

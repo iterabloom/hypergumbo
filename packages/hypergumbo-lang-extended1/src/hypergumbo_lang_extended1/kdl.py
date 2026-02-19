@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Span, Symbol
+from hypergumbo_core.ir import Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -45,8 +45,7 @@ if TYPE_CHECKING:
     from hypergumbo_core.ir import AnalysisRun
 
 
-PASS_ID = "kdl.tree_sitter"
-PASS_VERSION = "0.1.0"
+PASS_ID = make_pass_id("kdl")
 
 
 def find_kdl_files(repo_root: Path) -> list[Path]:
@@ -209,8 +208,6 @@ class KdlAnalyzer(TreeSitterAnalyzer):
     """Analyzer for KDL configuration files using TreeSitterAnalyzer base class."""
 
     lang = "kdl"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = ["*.kdl"]
     language_pack_name = "kdl"
 

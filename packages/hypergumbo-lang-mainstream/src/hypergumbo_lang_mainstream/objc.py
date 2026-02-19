@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Optional
 
 from hypergumbo_core.discovery import classify_dot_m_file, find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -43,8 +43,7 @@ from hypergumbo_core.analyze.registry import register_analyzer
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = "objc-v1"
-PASS_VERSION = "1.0.0"
+PASS_ID = make_pass_id("objective-c")
 
 
 def _is_objc_tree_sitter_available_legacy() -> bool:  # pragma: no cover - replaced by TreeSitterAnalyzer
@@ -550,8 +549,6 @@ class ObjCAnalyzer(TreeSitterAnalyzer):
     """
 
     lang = "objective-c"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = ["*.m", "*.mm", "*.h"]
     grammar_module = "tree_sitter_objc"
 

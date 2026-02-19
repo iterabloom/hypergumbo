@@ -227,7 +227,7 @@ class TestAnsibleSymbolProperties:
 
         for symbol in result.symbols:
             assert symbol.language == "ansible"
-            assert symbol.origin == "ansible-v1"
+            assert symbol.origin == "yaml_ansible-v1"
 
 class TestAnsibleEdgeProperties:
     """Tests for edge property correctness."""

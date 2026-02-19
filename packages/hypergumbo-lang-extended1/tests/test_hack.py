@@ -251,13 +251,13 @@ function add(): int { return 1; }
         result = analyze_hack(tmp_path)
         func = next((s for s in result.symbols if s.name == "add"), None)
         assert func is not None
-        assert func.origin == "hack.tree_sitter"
+        assert func.origin == "hack-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_hack_file(tmp_path, "test.hack", "<?hh\necho 'test';")
         result = analyze_hack(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "hack.tree_sitter"
+        assert result.run.pass_id == "hack-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 

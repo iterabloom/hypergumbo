@@ -193,13 +193,13 @@ class TestAnalyzeSvelte:
         result = analyze_svelte(tmp_path)
         slot = next((s for s in result.symbols if s.kind == "slot"), None)
         assert slot is not None
-        assert slot.origin == "svelte.tree_sitter"
+        assert slot.origin == "svelte-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_svelte_file(tmp_path, "App.svelte", "<h1>Hello</h1>")
         result = analyze_svelte(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "svelte.tree_sitter"
+        assert result.run.pass_id == "svelte-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 

@@ -45,7 +45,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -63,8 +63,7 @@ if TYPE_CHECKING:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.symbol_resolution import NameResolver
 
-PASS_ID = "lean-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("lean")
 
 
 def find_lean_files(repo_root: Path) -> Iterator[Path]:
@@ -321,8 +320,6 @@ class LeanAnalyzer(TreeSitterAnalyzer):
     """Lean 4 language analyzer using tree-sitter-lean."""
 
     lang = "lean"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = ["*.lean"]
     grammar_module = "tree_sitter_lean"
     create_file_symbols = True
