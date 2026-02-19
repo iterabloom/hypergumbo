@@ -85,7 +85,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Tiered view overhaul**: Budget enforcement on full output (previously exceeded by up to 2.7x), connectivity-aware node selection from entrypoints (replacing disconnected centrality-only selection), and confidence-filtered force-includes.
 - **Self-loop edge filtering**: Removed from output, adjacency lists, and connectivity scoring.
-- **Route improvements**: `hypergumbo routes` supports `-x`/`--exclude-tests` and now shows `kind=route` symbols. Django routes no longer hardcode `GET`.
+- **Route improvements**: `hypergumbo routes` supports `-x`/`--exclude-tests` and now shows `kind=route` symbols. Django routes no longer hardcode `GET`. Routes with `controller_action` metadata (Rails resources, explicit `to:` mappings) now display `controller#action` instead of the raw symbol name (e.g., `[GET] /users -> users#index` instead of `[GET] /users -> GET /users`).
 - **Symbol ranking**: `hypergumbo symbols` sorts by per-symbol degree instead of file-total-degree.
 - **Exclude derived/minified files by default**: Tier 4 symbols excluded. Use `--max-tier 4` to include.
 - **Increase default `--max-files` for slice**: 20 → 50.

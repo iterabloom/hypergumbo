@@ -1435,17 +1435,25 @@ def cmd_routes(args: argparse.Namespace) -> int:
             # or from direct meta fields (kind="route" symbols from analyzers)
             route_path = None
             method = None
+            controller_action = None
             concepts = meta.get("concepts", [])
             for concept in concepts:
                 if isinstance(concept, dict) and concept.get("concept") == "route":
                     route_path = concept.get("path")
                     method = concept.get("method")
+                    controller_action = concept.get("controller_action")
                     break
 
             # Fallback: kind="route" symbols store route info in meta directly
             if route_path is None and route.get("kind") == "route":
                 route_path = meta.get("route_path")
                 method = method or meta.get("http_method")
+            # controller_action may also be in top-level meta (Rails routes)
+            if controller_action is None:
+                controller_action = meta.get("controller_action")
+
+            # Display label: prefer controller_action, fall back to symbol name
+            display_target = controller_action or name
 
             method = method.upper() if method else ""
             if route_path:
@@ -1453,7 +1461,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
                 # (defense-in-depth; framework_patterns already normalizes)
                 if route_path and not route_path.startswith("/"):  # pragma: no cover
                     route_path = "/" + route_path
-                print(f"  [{method}] {route_path} -> {name} (line {line})")
+                print(f"  [{method}] {route_path} -> {display_target} (line {line})")
             else:
                 print(f"  [{method}] {name} (line {line})")
         print()

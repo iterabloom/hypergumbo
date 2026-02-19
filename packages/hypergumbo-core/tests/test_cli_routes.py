@@ -621,6 +621,130 @@ def test_cmd_routes_shows_kind_route_symbols(tmp_path: Path, capsys) -> None:
     assert "Found 2 API route" in out
 
 
+def test_cmd_routes_shows_controller_action(tmp_path: Path, capsys) -> None:
+    """Routes with controller_action in meta display it instead of symbol name.
+
+    Rails route symbols have controller_action populated (e.g. 'users#index').
+    The output should show this mapping so developers can navigate from route
+    to handler: [GET] /users -> users#index (line 5).
+    """
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "ruby:config/routes.rb:5-5:GET /users:route",
+                "name": "GET /users",
+                "kind": "route",
+                "language": "ruby",
+                "path": "config/routes.rb",
+                "span": {"start_line": 5, "end_line": 5, "start_col": 0, "end_col": 30},
+                "stable_id": "sha256:abc123",
+                "meta": {
+                    "http_method": "GET",
+                    "route_path": "/users",
+                    "controller_action": "users#index",
+                },
+            },
+            {
+                "id": "ruby:config/routes.rb:6-6:POST /users:route",
+                "name": "POST /users",
+                "kind": "route",
+                "language": "ruby",
+                "path": "config/routes.rb",
+                "span": {"start_line": 6, "end_line": 6, "start_col": 0, "end_col": 30},
+                "stable_id": "sha256:def456",
+                "meta": {
+                    "http_method": "POST",
+                    "route_path": "/users",
+                    "controller_action": "users#create",
+                },
+            },
+            {
+                "id": "ruby:config/routes.rb:10-10:GET /health:route",
+                "name": "GET /health",
+                "kind": "route",
+                "language": "ruby",
+                "path": "config/routes.rb",
+                "span": {"start_line": 10, "end_line": 10, "start_col": 0, "end_col": 30},
+                "stable_id": "sha256:ghi789",
+                "meta": {
+                    "http_method": "GET",
+                    "route_path": "/health",
+                    # No controller_action - should fall back to name
+                },
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+
+    result = cmd_routes(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    # Routes with controller_action should show it
+    assert "users#index" in out
+    assert "users#create" in out
+    # Route without controller_action falls back to name
+    assert "GET /health" in out
+    # controller_action should appear after the arrow
+    assert "[GET] /users -> users#index" in out
+    assert "[POST] /users -> users#create" in out
+
+
+def test_cmd_routes_controller_action_from_concept(tmp_path: Path, capsys) -> None:
+    """Routes with controller_action in concept metadata display it.
+
+    Concept-enriched routes (from YAML pattern matching) may also carry
+    controller_action in the concept dict.
+    """
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "python:src/api.py:1-5:get_user:function",
+                "name": "get_user",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+                "stable_id": "sha256:abc123",
+                "meta": {
+                    "concepts": [
+                        {
+                            "concept": "route",
+                            "path": "/users/{id}",
+                            "method": "GET",
+                            "controller_action": "UserController.get_user",
+                        }
+                    ]
+                },
+            },
+        ],
+        "edges": [],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.language = None
+
+    result = cmd_routes(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    assert "UserController.get_user" in out
+    assert "[GET] /users/{id} -> UserController.get_user" in out
+
+
 def test_cmd_routes_excludes_test_routes_with_flag(tmp_path: Path, capsys) -> None:
     """Routes from test files are excluded when --exclude-tests is used.
 
