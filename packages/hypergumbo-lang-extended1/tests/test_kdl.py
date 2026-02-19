@@ -170,7 +170,7 @@ class TestAnalyzeKdl:
         make_kdl_file(tmp_path, "config.kdl", "node")
         result = analyze_kdl(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "kdl.tree_sitter"
+        assert result.run.pass_id == "kdl-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
         assert result.run.files_analyzed == 1
@@ -187,7 +187,7 @@ class TestAnalyzeKdl:
         result = analyze_kdl(tmp_path)
         node = next((s for s in result.symbols if s.kind == "node"), None)
         assert node is not None
-        assert node.origin == "kdl.tree_sitter"
+        assert node.origin == "kdl-v1"
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_kdl_file(tmp_path, "config.kdl", "node")

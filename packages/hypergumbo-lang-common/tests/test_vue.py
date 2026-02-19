@@ -381,7 +381,7 @@ export default {
         make_vue_file(tmp_path, "App.vue", "<template></template>")
         result = analyze_vue(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "vue.tree_sitter"
+        assert result.run.pass_id == "vue-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
         assert result.run.files_analyzed == 1
@@ -398,7 +398,7 @@ export default {
         result = analyze_vue(tmp_path)
         comp = next((s for s in result.symbols if s.kind == "component_ref"), None)
         assert comp is not None
-        assert comp.origin == "vue.tree_sitter"
+        assert comp.origin == "vue-v1"
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_vue_file(tmp_path, "App.vue", "<template><Header/></template>")

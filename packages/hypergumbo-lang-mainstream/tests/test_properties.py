@@ -187,13 +187,13 @@ database.name=mydb
         result = analyze_properties(tmp_path)
         prop = next((s for s in result.symbols if s.kind == "property"), None)
         assert prop is not None
-        assert prop.origin == "properties.tree_sitter"
+        assert prop.origin == "properties-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_properties_file(tmp_path, "test.properties", "key=value\n")
         result = analyze_properties(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "properties.tree_sitter"
+        assert result.run.pass_id == "properties-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 

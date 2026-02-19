@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -57,8 +57,7 @@ if TYPE_CHECKING:
     from hypergumbo_core.symbol_resolution import NameResolver
 
 
-PASS_ID = "twig.tree_sitter"
-PASS_VERSION = "0.1.0"
+PASS_ID = make_pass_id("twig")
 
 
 def find_twig_files(repo_root: Path) -> list[Path]:
@@ -507,8 +506,6 @@ class TwigAnalyzer(TreeSitterAnalyzer):
     """Analyzer for Twig template files using TreeSitterAnalyzer base class."""
 
     lang = "twig"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = ["*.twig", "*.html.twig"]
     language_pack_name = "twig"
 

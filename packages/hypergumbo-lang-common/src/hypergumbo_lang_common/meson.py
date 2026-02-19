@@ -28,15 +28,14 @@ from pathlib import Path
 from typing import ClassVar, Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = "meson.tree_sitter"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("meson")
 
 
 def find_meson_files(root: Path) -> Iterator[Path]:
@@ -329,8 +328,6 @@ class MesonAnalyzer(TreeSitterAnalyzer):
     """
 
     lang = "meson"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = ["meson.build", "meson_options.txt", "meson.options"]
     language_pack_name = "meson"
 

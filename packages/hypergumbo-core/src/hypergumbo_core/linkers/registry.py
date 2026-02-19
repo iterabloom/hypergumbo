@@ -522,10 +522,10 @@ def run_all_linkers(ctx: LinkerContext) -> list[tuple[str, LinkerResult]]:
     # Post-process: connect synthetic nodes to enclosing functions
     enclosure_edges = _connect_synthetic_to_enclosing(ctx, all_linker_symbols)
     if enclosure_edges:
-        from ..ir import AnalysisRun
+        from ..ir import PASS_VERSION, AnalysisRun, make_pass_id
         run = AnalysisRun.create(  # nosec B106 - pass_id is not a password
-            pass_id="enclosure-linker-v1",
-            version="hypergumbo-0.1.0",
+            pass_id=make_pass_id("enclosure-linker"),
+            version=PASS_VERSION,
         )
         results.append(("enclosure", LinkerResult(edges=enclosure_edges, run=run)))
 

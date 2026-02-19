@@ -39,7 +39,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol, UsageContext
+from hypergumbo_core.ir import Edge, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -57,8 +57,7 @@ if TYPE_CHECKING:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.symbol_resolution import NameResolver
 
-PASS_ID = "rust-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("rust")
 
 # Axum HTTP method functions that define route handlers
 # Used by _extract_axum_usage_contexts for YAML pattern matching
@@ -916,8 +915,6 @@ class RustAnalyzer(TreeSitterAnalyzer):
     """Rust language analyzer using tree-sitter-rust."""
 
     lang = "rust"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = ["*.rs"]
     grammar_module = "tree_sitter_rust"
 

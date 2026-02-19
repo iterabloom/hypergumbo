@@ -57,15 +57,14 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = "erlang-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("erlang")
 
 
 def find_erlang_files(repo_root: Path) -> Iterator[Path]:
@@ -473,8 +472,6 @@ class ErlangAnalyzer(TreeSitterAnalyzer):
     """
 
     lang = "erlang"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = ["*.erl", "*.hrl"]
     language_pack_name = "erlang"
     create_file_symbols = True

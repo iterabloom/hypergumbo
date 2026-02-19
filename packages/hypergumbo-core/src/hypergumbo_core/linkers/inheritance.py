@@ -24,13 +24,13 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
-from ..ir import AnalysisRun, Edge, Symbol
+from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
 
 if TYPE_CHECKING:
     pass
 
-PASS_ID = "inheritance-linker-v1"
+PASS_ID = make_pass_id("inheritance-linker")
 
 
 def _build_symbol_maps(
@@ -234,7 +234,7 @@ def link_inheritance(ctx: LinkerContext) -> LinkerResult:
     """
     start_time = time.time()
 
-    run = AnalysisRun.create(pass_id=PASS_ID, version="hypergumbo-0.1.0")
+    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
     # Build multi-value lookup maps (INV-015: handles name collisions)
     class_by_name, interface_by_name = _build_symbol_maps(ctx.symbols)

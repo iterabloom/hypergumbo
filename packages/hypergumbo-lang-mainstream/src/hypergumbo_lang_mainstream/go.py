@@ -48,7 +48,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -66,8 +66,7 @@ from hypergumbo_core.symbol_resolution import ListNameResolver
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = "go-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("go")
 
 # Go web framework HTTP method names
 # Gin/Echo use uppercase: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
@@ -108,8 +107,6 @@ class GoTreeSitterAnalyzer(TreeSitterAnalyzer):
     """
 
     lang = "go"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = ["*.go"]
     grammar_module = "tree_sitter_go"
 

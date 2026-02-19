@@ -24,15 +24,14 @@ from pathlib import Path
 from typing import Iterator, Optional, ClassVar, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = "racket.tree_sitter"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("racket")
 
 
 
@@ -403,8 +402,6 @@ class RacketAnalyzer(TreeSitterAnalyzer):
     """
 
     lang = "racket"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = ["**/*.rkt", "**/*.rktl", "**/*.rktd"]
     language_pack_name = "racket"
 

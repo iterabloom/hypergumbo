@@ -314,7 +314,7 @@ $spacing: 16px;
         make_scss_file(tmp_path, "styles.scss", "$color: red;")
         result = analyze_scss(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "scss.tree_sitter"
+        assert result.run.pass_id == "scss-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
         assert result.run.files_analyzed == 1
@@ -331,7 +331,7 @@ $spacing: 16px;
         result = analyze_scss(tmp_path)
         var = next((s for s in result.symbols if s.kind == "variable"), None)
         assert var is not None
-        assert var.origin == "scss.tree_sitter"
+        assert var.origin == "scss-v1"
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_scss_file(tmp_path, "styles.scss", "$color: red;")

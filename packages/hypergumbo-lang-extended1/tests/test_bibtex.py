@@ -177,7 +177,7 @@ class TestAnalyzeBibtex:
         make_bibtex_file(tmp_path, "refs.bib", "@article{test, author={A}}")
         result = analyze_bibtex(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "bibtex.tree_sitter"
+        assert result.run.pass_id == "bibtex-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
         assert result.run.files_analyzed == 1
@@ -194,7 +194,7 @@ class TestAnalyzeBibtex:
         result = analyze_bibtex(tmp_path)
         entry = next((s for s in result.symbols if s.kind == "entry"), None)
         assert entry is not None
-        assert entry.origin == "bibtex.tree_sitter"
+        assert entry.origin == "bibtex-v1"
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_bibtex_file(tmp_path, "refs.bib", "@article{test, author={A}}")

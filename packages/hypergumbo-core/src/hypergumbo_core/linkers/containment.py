@@ -48,13 +48,13 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
-from ..ir import AnalysisRun, Edge
+from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
 
 if TYPE_CHECKING:
     from ..ir import Symbol
 
-PASS_ID = "containment-linker-v1"
+PASS_ID = make_pass_id("containment-linker")
 
 # Symbol kinds that can be "contained" by a class/interface/service
 CONTAINABLE_KINDS = frozenset({"method", "getter", "setter", "rpc", "message"})
@@ -165,7 +165,7 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
         LinkerResult with new `contains` edges.
     """
     start_time = time.time()
-    run = AnalysisRun.create(pass_id=PASS_ID, version="hypergumbo-0.1.0")
+    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
     # Build multimap of class/interface names to symbols.
     # Multiple classes can share the same name (e.g., Django has 238 classes

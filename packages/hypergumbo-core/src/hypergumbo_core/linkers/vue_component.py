@@ -35,7 +35,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..ir import AnalysisRun, Edge, Span, Symbol
+from ..ir import PASS_VERSION, AnalysisRun, Edge, Span, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -46,7 +46,7 @@ from .registry import (
 if TYPE_CHECKING:
     pass
 
-PASS_ID = "vue-component-linker-v1"
+PASS_ID = make_pass_id("vue-component-linker")
 
 # Common @ alias targets in Vue/Nuxt projects
 _AT_ALIAS_CANDIDATES = ("src", "app", ".")
@@ -148,7 +148,7 @@ def link_vue_components(ctx: LinkerContext) -> LinkerResult:
         LinkerResult with new component_file symbols and resolved edges.
     """
     start_time = time.time()
-    run = AnalysisRun.create(pass_id=PASS_ID, version="0.1.0")
+    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
     new_symbols: list[Symbol] = []
     new_edges: list[Edge] = []

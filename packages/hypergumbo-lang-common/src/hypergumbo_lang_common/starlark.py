@@ -40,15 +40,14 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = "starlark-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("starlark")
 
 # Starlark file patterns
 STARLARK_PATTERNS = ["BUILD", "BUILD.bazel", "BUCK", "*.bzl"]
@@ -422,8 +421,6 @@ class StarlarkAnalyzer(TreeSitterAnalyzer):
     """Analyzer for Starlark files using TreeSitterAnalyzer base class."""
 
     lang = "starlark"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = STARLARK_PATTERNS
     language_pack_name = "starlark"
 

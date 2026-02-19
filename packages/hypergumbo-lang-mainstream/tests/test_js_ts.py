@@ -392,7 +392,8 @@ const x = require(name);
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         """Analysis run has correct metadata."""
-        from hypergumbo_lang_mainstream.js_ts import analyze_javascript, PASS_ID, PASS_VERSION
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript, PASS_ID
+        from hypergumbo_core.ir import PASS_VERSION
 
         (tmp_path / "app.js").write_text("function foo() {}")
 

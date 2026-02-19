@@ -42,11 +42,10 @@ from pathlib import Path
 from typing import Iterator
 
 from ..discovery import find_files
-from ..ir import AnalysisRun, Edge, Symbol
+from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
 
-PASS_ID = "orm-linker-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("orm-linker")
 
 
 @dataclass

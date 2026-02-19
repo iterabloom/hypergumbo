@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
@@ -57,8 +57,7 @@ def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
     return f"edge:sha256:{hashlib.sha256(key.encode()).hexdigest()[:16]}"
 
 
-PASS_ID = "toml-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("toml")
 
 
 def find_toml_files(root: Path) -> Iterator[Path]:
@@ -299,8 +298,6 @@ class TomlAnalyzer(TreeSitterAnalyzer):
     """
 
     lang = "toml"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = ["*.toml"]
     grammar_module = "tree_sitter_toml"
 
@@ -319,7 +316,7 @@ class TomlAnalyzer(TreeSitterAnalyzer):
         import warnings as _warnings
 
         start_time = _time.time()
-        run = AnalysisRun.create(pass_id=self.pass_id, version=self.pass_version)
+        run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
         if not self._check_grammar_available():
             _warnings.warn(

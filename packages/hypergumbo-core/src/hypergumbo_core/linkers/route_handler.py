@@ -44,14 +44,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from ..ir import AnalysisRun, Edge, Symbol
+from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
 
 if TYPE_CHECKING:
     pass
 
-PASS_ID = "route-handler-linker-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("route-handler-linker")
 
 
 @dataclass

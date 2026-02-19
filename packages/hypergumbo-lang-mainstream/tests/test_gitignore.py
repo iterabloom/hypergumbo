@@ -266,13 +266,13 @@ node_modules/
         result = analyze_gitignore(tmp_path)
         pattern = next((s for s in result.symbols if s.kind == "pattern"), None)
         assert pattern is not None
-        assert pattern.origin == "gitignore.tree_sitter"
+        assert pattern.origin == "gitignore-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_gitignore_file(tmp_path, ".gitignore", "*.log\n")
         result = analyze_gitignore(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "gitignore.tree_sitter"
+        assert result.run.pass_id == "gitignore-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 

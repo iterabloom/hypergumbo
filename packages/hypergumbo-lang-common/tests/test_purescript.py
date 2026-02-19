@@ -196,13 +196,13 @@ foo = 42
         result = analyze_purescript(tmp_path)
         func = next((s for s in result.symbols if "foo" in s.name), None)
         assert func is not None
-        assert func.origin == "purescript.tree_sitter"
+        assert func.origin == "purescript-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_purescript_file(tmp_path, "Test.purs", "module Test where")
         result = analyze_purescript(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "purescript.tree_sitter"
+        assert result.run.pass_id == "purescript-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 

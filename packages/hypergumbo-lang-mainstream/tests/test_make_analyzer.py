@@ -13,10 +13,10 @@ from unittest.mock import patch
 import pytest
 
 from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import PASS_VERSION
 from hypergumbo_lang_mainstream import make as make_module
 from hypergumbo_lang_mainstream.make import (
     PASS_ID,
-    PASS_VERSION,
     analyze_make_files,
     find_make_files,
 )
@@ -24,7 +24,7 @@ from hypergumbo_lang_mainstream.make import (
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "make-v1"
-    assert PASS_VERSION == "hypergumbo-0.1.0"
+    assert PASS_VERSION == "2.0.2"
 
 def test_analyze_variable(tmp_path):
     """Test detection of variable definitions."""

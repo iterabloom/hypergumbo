@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import classify_dot_m_file, find_files
-from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -59,8 +59,7 @@ if TYPE_CHECKING:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.symbol_resolution import NameResolver
 
-PASS_ID = "wolfram-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("wolfram")
 
 
 def find_wolfram_files(repo_root: Path) -> Iterator[Path]:
@@ -313,8 +312,6 @@ class WolframAnalyzer(TreeSitterAnalyzer):
     """Wolfram Language analyzer using tree-sitter-wolfram."""
 
     lang = "wolfram"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = ["*.wl", "*.wls", "*.nb"]
     grammar_module = "tree_sitter_wolfram"
     create_file_symbols = True

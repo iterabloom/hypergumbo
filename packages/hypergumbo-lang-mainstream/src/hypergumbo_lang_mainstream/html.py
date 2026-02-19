@@ -43,12 +43,11 @@ from pathlib import Path
 from typing import Iterator
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
-PASS_ID = "html-pattern-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("html-pattern")
 
 # Regex to match <script src="..."> or <script src='...'>
 SCRIPT_SRC_PATTERN = re.compile(

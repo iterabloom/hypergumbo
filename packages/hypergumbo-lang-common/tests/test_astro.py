@@ -242,7 +242,7 @@ import Counter from './Counter.astro';
         make_astro_file(tmp_path, "index.astro", "---\n---\n<h1>Hello</h1>")
         result = analyze_astro(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "astro.tree_sitter"
+        assert result.run.pass_id == "astro-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
         assert result.run.files_analyzed == 1
@@ -264,7 +264,7 @@ import Header from './Header.astro';
         result = analyze_astro(tmp_path)
         comp = next((s for s in result.symbols if s.kind == "component_ref"), None)
         assert comp is not None
-        assert comp.origin == "astro.tree_sitter"
+        assert comp.origin == "astro-v1"
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_astro_file(tmp_path, "index.astro", """---

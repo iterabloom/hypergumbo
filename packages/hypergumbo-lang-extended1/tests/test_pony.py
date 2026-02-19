@@ -268,13 +268,13 @@ actor Main
         result = analyze_pony(tmp_path)
         actor = next((s for s in result.symbols if s.kind == "actor"), None)
         assert actor is not None
-        assert actor.origin == "pony.tree_sitter"
+        assert actor.origin == "pony-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_pony_file(tmp_path, "test.pony", "actor Main")
         result = analyze_pony(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "pony.tree_sitter"
+        assert result.run.pass_id == "pony-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 

@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional
 
 from ..discovery import find_files
-from ..ir import AnalysisRun, Edge, Span, Symbol, UsageContext
+from ..ir import PASS_VERSION, AnalysisRun, Edge, Span, Symbol, UsageContext, make_pass_id
 from ..symbol_resolution import NameResolver
 
 if TYPE_CHECKING:
@@ -329,8 +329,6 @@ class TreeSitterAnalyzer:
 
         class NimAnalyzer(TreeSitterAnalyzer):
             lang = "nim"
-            pass_id = "nim-v1"
-            pass_version = "hypergumbo-0.1.0"
             file_patterns = ["*.nim", "*.nims"]
             language_pack_name = "nim"
 
@@ -621,7 +619,9 @@ class TreeSitterAnalyzer:
             AnalysisResult with symbols, edges, usage_contexts, and run.
         """
         start_time = time.time()
-        run = AnalysisRun.create(pass_id=self.pass_id, version=self.pass_version)
+        effective_pass_id = self.pass_id or make_pass_id(self.lang)
+        effective_pass_version = self.pass_version or PASS_VERSION
+        run = AnalysisRun.create(pass_id=effective_pass_id, version=effective_pass_version)
 
         # 1. Check grammar availability
         if not self._check_grammar_available():
@@ -672,7 +672,7 @@ class TreeSitterAnalyzer:
                     language=self.lang,
                     path=rel_path,
                     span=Span(start_line=1, start_col=0, end_line=1, end_col=0),
-                    origin=self.pass_id,
+                    origin=effective_pass_id,
                     origin_run_id=run.execution_id,
                 )
                 analysis.symbols.insert(0, file_sym)

@@ -39,7 +39,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -47,8 +47,7 @@ if TYPE_CHECKING:
     from hypergumbo_core.ir import AnalysisRun
     from hypergumbo_core.symbol_resolution import NameResolver
 
-PASS_ID = "hcl-v1"
-PASS_VERSION = "1.0.0"
+PASS_ID = make_pass_id("hcl")
 
 
 def find_hcl_files(root: Path) -> list[Path]:
@@ -437,8 +436,6 @@ class HclAnalyzer(TreeSitterAnalyzer):
     """HCL/Terraform language analyzer using tree-sitter-hcl."""
 
     lang = "hcl"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = ["*.tf", "*.hcl"]
     grammar_module = "tree_sitter_hcl"
     create_file_symbols = False

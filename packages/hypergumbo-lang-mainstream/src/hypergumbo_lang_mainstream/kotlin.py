@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -53,8 +53,7 @@ from hypergumbo_core.analyze.registry import register_analyzer
 if TYPE_CHECKING:
     import tree_sitter
 
-PASS_ID = "kotlin-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("kotlin")
 
 
 def find_kotlin_files(repo_root: Path) -> Iterator[Path]:
@@ -952,8 +951,6 @@ class KotlinAnalyzer(TreeSitterAnalyzer):
     """Kotlin analyzer using tree-sitter-kotlin grammar."""
 
     lang = "kotlin"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = ["*.kt"]
     grammar_module = "tree_sitter_kotlin"
 

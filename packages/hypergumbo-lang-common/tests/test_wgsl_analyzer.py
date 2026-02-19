@@ -13,10 +13,10 @@ from unittest.mock import patch
 import pytest
 
 from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import PASS_VERSION
 from hypergumbo_lang_common import wgsl as wgsl_module
 from hypergumbo_lang_common.wgsl import (
     PASS_ID,
-    PASS_VERSION,
     analyze_wgsl_files,
     find_wgsl_files,
     is_wgsl_tree_sitter_available,
@@ -25,7 +25,7 @@ from hypergumbo_lang_common.wgsl import (
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "wgsl-v1"
-    assert PASS_VERSION == "hypergumbo-0.1.0"
+    assert PASS_VERSION == "2.0.2"
 
 def test_is_wgsl_tree_sitter_available():
     """Availability check returns True when grammar installed."""

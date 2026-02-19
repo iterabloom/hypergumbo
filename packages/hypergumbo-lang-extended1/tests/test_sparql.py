@@ -224,13 +224,13 @@ SELECT * WHERE { ?s ?p ?o }
         result = analyze_sparql(tmp_path)
         prefix = next((s for s in result.symbols if s.kind == "prefix"), None)
         assert prefix is not None
-        assert prefix.origin == "sparql.tree_sitter"
+        assert prefix.origin == "sparql-v1"
 
     def test_analysis_run_metadata(self, tmp_path: Path) -> None:
         make_sparql_file(tmp_path, "test.sparql", "SELECT * WHERE { ?s ?p ?o }")
         result = analyze_sparql(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "sparql.tree_sitter"
+        assert result.run.pass_id == "sparql-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
 

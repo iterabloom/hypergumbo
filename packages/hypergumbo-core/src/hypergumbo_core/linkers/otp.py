@@ -41,11 +41,10 @@ from pathlib import Path
 from typing import Iterator
 
 from ..discovery import find_files
-from ..ir import AnalysisRun, Edge, Symbol
+from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
 
-PASS_ID = "otp-linker-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("otp-linker")
 
 # Handler function suffixes that indicate OTP callbacks
 HANDLER_SUFFIXES = (".handle_call", ".handle_cast", ".handle_info")

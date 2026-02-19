@@ -35,11 +35,10 @@ from __future__ import annotations
 from collections import defaultdict
 from pathlib import Path
 
-from ..ir import AnalysisRun, Edge, Symbol
+from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
 
-PASS_ID = "vue-template-method-linker-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("vue-template-method-linker")
 
 # Symbol kinds that can be template handler targets.
 _HANDLER_KINDS = frozenset({"method", "function", "getter", "setter"})

@@ -42,7 +42,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -56,8 +56,7 @@ if TYPE_CHECKING:
     from hypergumbo_core.symbol_resolution import NameResolver
 
 
-PASS_ID = "pony.tree_sitter"
-PASS_VERSION = "0.1.0"
+PASS_ID = make_pass_id("pony")
 
 # Built-in Pony types and functions to filter
 PONY_BUILTINS = frozenset({
@@ -492,8 +491,6 @@ class PonyAnalyzer(TreeSitterAnalyzer):
     """Analyzer for Pony files using TreeSitterAnalyzer base class."""
 
     lang = "pony"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = ["*.pony"]
     language_pack_name = "pony"
 

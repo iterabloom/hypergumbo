@@ -85,7 +85,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterator
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
+from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -910,8 +910,7 @@ def _compute_shape_id(node: ast.FunctionDef | ast.ClassDef) -> str:
     return f"sha256:{hash_val}"
 
 
-PASS_ID = "python-ast-v1"
-PASS_VERSION = "hypergumbo-0.1.0"
+PASS_ID = make_pass_id("python-ast")
 
 
 def _compute_cyclomatic_complexity(node: ast.AST) -> int:

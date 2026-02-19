@@ -27,6 +27,27 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 
+from . import __version__
+
+PASS_VERSION: str = __version__
+"""Canonical pass version derived from the package version.
+
+All analyzers and linkers use this as their version string, ensuring
+cache signatures correctly invalidate on release.  Single source of truth.
+"""
+
+
+def make_pass_id(name: str) -> str:
+    """Return the canonical pass ID for an analyzer or linker.
+
+    Analyzers: ``make_pass_id("go")`` → ``"go-v1"``
+    Linkers:   ``make_pass_id("containment-linker")`` → ``"containment-linker-v1"``
+
+    The ``-v1`` suffix is backend-neutral and provides an escape hatch
+    for future versioning if an analyzer's output format changes.
+    """
+    return f"{name}-v1"
+
 
 @dataclass
 class Span:

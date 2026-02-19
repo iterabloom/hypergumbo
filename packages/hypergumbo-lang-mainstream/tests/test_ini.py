@@ -231,7 +231,7 @@ host = localhost
         make_ini_file(tmp_path, "config.ini", "[section]\nkey=value")
         result = analyze_ini(tmp_path)
         assert result.run is not None
-        assert result.run.pass_id == "ini.tree_sitter"
+        assert result.run.pass_id == "ini-v1"
         assert result.run.execution_id.startswith("uuid:")
         assert result.run.duration_ms >= 0
         assert result.run.files_analyzed == 1
@@ -248,7 +248,7 @@ host = localhost
         result = analyze_ini(tmp_path)
         section = next((s for s in result.symbols if s.kind == "section"), None)
         assert section is not None
-        assert section.origin == "ini.tree_sitter"
+        assert section.origin == "ini-v1"
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_ini_file(tmp_path, "config.ini", "[section]\nkey=value")

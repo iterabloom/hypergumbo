@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Span, Symbol
+from hypergumbo_core.ir import Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -46,8 +46,7 @@ if TYPE_CHECKING:
     from hypergumbo_core.ir import AnalysisRun
 
 
-PASS_ID = "bibtex.tree_sitter"
-PASS_VERSION = "0.1.0"
+PASS_ID = make_pass_id("bibtex")
 
 
 def find_bibtex_files(repo_root: Path) -> list[Path]:
@@ -144,8 +143,6 @@ class BibtexAnalyzer(TreeSitterAnalyzer):
     """Analyzer for BibTeX bibliography files using TreeSitterAnalyzer base class."""
 
     lang = "bibtex"
-    pass_id = PASS_ID
-    pass_version = PASS_VERSION
     file_patterns: ClassVar[list[str]] = ["*.bib", "*.bibtex"]
     language_pack_name = "bibtex"
 
