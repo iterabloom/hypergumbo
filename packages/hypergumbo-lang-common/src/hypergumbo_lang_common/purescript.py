@@ -22,13 +22,12 @@ Key constructs extracted:
 """
 
 import time
-import warnings
 from pathlib import Path
-from typing import Iterator, Optional, TYPE_CHECKING
+from typing import Iterator, Optional, ClassVar, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -37,15 +36,6 @@ if TYPE_CHECKING:
 PASS_ID = "purescript.tree_sitter"
 PASS_VERSION = "hypergumbo-0.1.0"
 
-
-def is_purescript_tree_sitter_available() -> bool:
-    """Check if tree-sitter-language-pack with PureScript support is available."""
-    try:
-        from tree_sitter_language_pack import get_parser
-        get_parser("purescript")
-        return True
-    except (ImportError, Exception):  # pragma: no cover
-        return False  # pragma: no cover
 
 
 def find_purescript_files(root: Path) -> Iterator[Path]:
@@ -135,7 +125,7 @@ def _get_call_name(node: "tree_sitter.Node") -> Optional[str]:
     return None  # pragma: no cover
 
 
-class PureScriptAnalyzer:
+class _PureScriptExtractor:
     """Analyzer for PureScript source files."""
 
     def __init__(self, repo_root: Path):
@@ -148,7 +138,11 @@ class PureScriptAnalyzer:
 
     def analyze(self) -> AnalysisResult:
         """Analyze all PureScript files in the repository."""
-        if not is_purescript_tree_sitter_available():
+        if not is_purescript_tree_sitter_available():  # pragma: no cover
+            # Defense-in-depth: PureScriptAnalyzer.analyze() gates on
+            # _check_grammar_available() before constructing this extractor,
+            # so this branch is unreachable through the public API.
+            import warnings
             warnings.warn(
                 "PureScript analysis skipped: tree-sitter-language-pack not available",
                 UserWarning,
@@ -473,6 +467,46 @@ class PureScriptAnalyzer:
         return None  # pragma: no cover
 
 
+class PureScriptAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based analyzer for PureScript source files.
+
+    Extracts modules, functions, data types, type aliases, classes, instances,
+    and call edges. Uses language_pack_name for the purescript grammar.
+    """
+
+    lang = "purescript"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["**/*.purs"]
+    language_pack_name = "purescript"
+
+    def analyze(self, repo_root: Path, max_files: int | None = None) -> AnalysisResult:
+        """Run PureScript analysis with cross-file symbol registry."""
+        if not self._check_grammar_available():
+            import warnings
+            warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return AnalysisResult(
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        extractor = _PureScriptExtractor(repo_root)
+        return extractor.analyze()
+
+
+_analyzer = PureScriptAnalyzer()
+
+
+def is_purescript_tree_sitter_available() -> bool:
+    """Check if tree-sitter-language-pack with PureScript support is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("purescript")
 def analyze_purescript(repo_root: Path) -> AnalysisResult:
     """Analyze PureScript source files in a repository.
@@ -483,5 +517,4 @@ def analyze_purescript(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult containing symbols, edges, and analysis metadata
     """
-    analyzer = PureScriptAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

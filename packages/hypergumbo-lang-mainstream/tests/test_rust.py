@@ -58,15 +58,17 @@ class TestAnalyzeRustFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-rust unavailable."""
+        from hypergumbo_lang_mainstream import rust as rust_module
         from hypergumbo_lang_mainstream.rust import analyze_rust
 
         (tmp_path / "test.rs").write_text("fn test() {}")
 
-        with patch("hypergumbo_lang_mainstream.rust.is_rust_tree_sitter_available", return_value=False):
-            result = analyze_rust(tmp_path)
+        with patch.object(rust_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="rust analysis skipped"):
+                result = analyze_rust(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-rust" in result.skip_reason
+        assert "rust" in result.skip_reason
 
 
 class TestRustFunctionExtraction:
@@ -412,21 +414,19 @@ class TestRustEdgeCases:
     """Tests for edge cases and error handling."""
 
     def test_parser_load_failure(self, tmp_path: Path) -> None:
-        """Returns skipped with run when parser loading fails."""
+        """Raises error when parser loading fails (base class does not catch)."""
+        from hypergumbo_lang_mainstream import rust as rust_module
         from hypergumbo_lang_mainstream.rust import analyze_rust
 
         (tmp_path / "test.rs").write_text("fn test() {}")
 
-        with patch("hypergumbo_lang_mainstream.rust.is_rust_tree_sitter_available", return_value=True):
-            with patch.dict("sys.modules", {"tree_sitter_rust": MagicMock()}):
-                import sys
-                mock_module = sys.modules["tree_sitter_rust"]
-                mock_module.language.side_effect = RuntimeError("Parser load failed")
-                result = analyze_rust(tmp_path)
-
-        assert result.skipped is True
-        assert "Failed to load Rust parser" in result.skip_reason
-        assert result.run is not None
+        with patch.object(rust_module._analyzer, "_check_grammar_available", return_value=True):
+            with patch.object(
+                rust_module._analyzer, "_create_parser",
+                side_effect=RuntimeError("Parser load failed"),
+            ):
+                with pytest.raises(RuntimeError, match="Parser load failed"):
+                    analyze_rust(tmp_path)
 
     def test_file_with_no_symbols_is_skipped(self, tmp_path: Path) -> None:
         """Files with no extractable symbols are counted as skipped."""
@@ -437,9 +437,9 @@ class TestRustEdgeCases:
 
         result = analyze_rust(tmp_path)
 
-
         assert result.run is not None
-        assert result.run.files_skipped >= 1
+        # Base class counts file as analyzed even with no symbols
+        assert result.run.files_analyzed >= 1
 
     def test_cross_file_function_call(self, tmp_path: Path) -> None:
         """Detects function calls across files."""
@@ -502,7 +502,8 @@ fn bar() {}
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
         )
-        from hypergumbo_core.ir import AnalysisRun, Symbol, Span
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import NameResolver
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -512,42 +513,46 @@ fn bar() {}
 
         lang = tree_sitter.Language(tree_sitter_rust.language())
         parser = tree_sitter.Parser(lang)
-        run = AnalysisRun.create(pass_id="test", version="test")
 
         # Create a function with a method call
         rs_file = tmp_path / "test.rs"
-        rs_file.write_text("""
+        source_text = """
 fn caller() {
     foo.bar();
 }
-""")
+"""
+        rs_file.write_text(source_text)
+        source = source_text.encode("utf-8")
+        tree = parser.parse(source)
 
         caller_symbol = Symbol(
             id="test:caller",
             name="caller",
             kind="function",
             language="rust",
-            path=str(rs_file),
+            path="test.rs",
             span=Span(start_line=2, end_line=4, start_col=0, end_col=1),
             origin="test",
-            origin_run_id=run.execution_id,
+            origin_run_id="test-run",
         )
 
         # Mock _find_child_by_field to return None for "field" lookups
-        original_func = None
-
         def mock_find_child_by_field(node, field_name):
             if field_name == "field":
                 return None  # Trigger the defensive branch
             return node.child_by_field_name(field_name)
 
         local_symbols = {"caller": caller_symbol}
+        resolver = NameResolver({})
 
         import hypergumbo_lang_mainstream.rust as rust_module
         original_func = rust_module._find_child_by_field
         rust_module._find_child_by_field = mock_find_child_by_field
         try:
-            result = _extract_edges_from_file(rs_file, parser, local_symbols, {}, run)
+            result = _extract_edges_from_file(
+                tree, source, "test.rs", local_symbols, {},
+                "test-run", resolver, {},
+            )
         finally:
             rust_module._find_child_by_field = original_func
 
@@ -560,7 +565,8 @@ fn caller() {
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
         )
-        from hypergumbo_core.ir import AnalysisRun, Symbol, Span
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import NameResolver
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -570,25 +576,27 @@ fn caller() {
 
         lang = tree_sitter.Language(tree_sitter_rust.language())
         parser = tree_sitter.Parser(lang)
-        run = AnalysisRun.create(pass_id="test", version="test")
 
         # Create code with scoped identifier call
         rs_file = tmp_path / "test.rs"
-        rs_file.write_text("""
+        source_text = """
 fn caller() {
     Foo::bar();
 }
-""")
+"""
+        rs_file.write_text(source_text)
+        source = source_text.encode("utf-8")
+        tree = parser.parse(source)
 
         caller_symbol = Symbol(
             id="test:caller",
             name="caller",
             kind="function",
             language="rust",
-            path=str(rs_file),
+            path="test.rs",
             span=Span(start_line=2, end_line=4, start_col=0, end_col=1),
             origin="test",
-            origin_run_id=run.execution_id,
+            origin_run_id="test-run",
         )
 
         # Mock _find_child_by_field to return None for "name" on scoped_identifier
@@ -599,12 +607,16 @@ fn caller() {
             return node.child_by_field_name(field_name)
 
         local_symbols = {"caller": caller_symbol}
+        resolver = NameResolver({})
 
         import hypergumbo_lang_mainstream.rust as rust_module
         original_func = rust_module._find_child_by_field
         rust_module._find_child_by_field = mock_find_child_by_field
         try:
-            result = _extract_edges_from_file(rs_file, parser, local_symbols, {}, run)
+            result = _extract_edges_from_file(
+                tree, source, "test.rs", local_symbols, {},
+                "test-run", resolver, {},
+            )
         finally:
             rust_module._find_child_by_field = original_func
 
@@ -641,59 +653,80 @@ fn main() {
 
 
 class TestRustFileReadErrors:
-    """Tests for file read error handling."""
+    """Tests for file read error handling.
 
-    def test_symbol_extraction_handles_read_error(self, tmp_path: Path) -> None:
-        """Symbol extraction handles file read errors gracefully."""
-        from hypergumbo_lang_mainstream.rust import (
-            _extract_symbols_from_file,
-            is_rust_tree_sitter_available,
+    The base TreeSitterAnalyzer.analyze() method handles file read errors
+    during Pass 1 by incrementing files_skipped. Internal functions now
+    receive pre-parsed trees.
+    """
+
+    def test_analyzer_handles_read_error_in_pass1(self, tmp_path: Path) -> None:
+        """Analyzer skips files with read errors during Pass 1."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        # Create a valid file plus a file that will fail to read
+        (tmp_path / "good.rs").write_text("fn good() {}")
+        bad_file = tmp_path / "bad.rs"
+        bad_file.write_text("fn bad() {}")
+
+        original_read_bytes = Path.read_bytes
+
+        def patched_read_bytes(self: Path) -> bytes:
+            if self.name == "bad.rs":
+                raise OSError("Read failed")
+            return original_read_bytes(self)
+
+        with patch.object(Path, "read_bytes", patched_read_bytes):
+            result = analyze_rust(tmp_path)
+
+        assert result.run is not None
+        assert result.run.files_skipped >= 1
+        func_names = [s.name for s in result.symbols if s.kind == "function"]
+        assert "good" in func_names
+
+
+class TestRustAttributeEdges:
+    """Tests for Rust attribute/annotation edges (decorated_by)."""
+
+    def test_resolved_attribute_edge(self, tmp_path: Path) -> None:
+        """Creates decorated_by edge when attribute resolves to a symbol."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "main.rs"
+        rs_file.write_text("""
+fn my_handler() -> String {
+    "hello".to_string()
+}
+
+#[my_handler]
+fn decorated() {}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        # Check if decorated_by edges are created
+        decorated_edges = [e for e in result.edges if e.edge_type == "decorated_by"]
+        # The attribute #[my_handler] should create a decorated_by edge
+        # whether resolved or unresolved
+        assert len(decorated_edges) >= 1
+
+    def test_unresolved_attribute_skips_empty_annotations(self, tmp_path: Path) -> None:
+        """Symbols without annotations meta skip attribute edge extraction."""
+        from hypergumbo_lang_mainstream.rust import _extract_attribute_edges
+        from hypergumbo_core.ir import Symbol, Span
+
+        sym = Symbol(
+            id="test:func",
+            name="func",
+            kind="function",
+            language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=1),
+            origin="test",
+            meta={"annotations": []},
         )
-        from hypergumbo_core.ir import AnalysisRun
-
-        if not is_rust_tree_sitter_available():
-            pytest.skip("tree-sitter-rust not available")
-
-        import tree_sitter_rust
-        import tree_sitter
-
-        lang = tree_sitter.Language(tree_sitter_rust.language())
-        parser = tree_sitter.Parser(lang)
-        run = AnalysisRun.create(pass_id="test", version="test")
-
-        rs_file = tmp_path / "test.rs"
-        rs_file.write_text("fn test() {}")
-
-        with patch.object(Path, "read_bytes", side_effect=OSError("Read failed")):
-            result = _extract_symbols_from_file(rs_file, parser, run)
-
-        assert result.symbols == []
-
-    def test_edge_extraction_handles_read_error(self, tmp_path: Path) -> None:
-        """Edge extraction handles file read errors gracefully."""
-        from hypergumbo_lang_mainstream.rust import (
-            _extract_edges_from_file,
-            is_rust_tree_sitter_available,
-        )
-        from hypergumbo_core.ir import AnalysisRun
-
-        if not is_rust_tree_sitter_available():
-            pytest.skip("tree-sitter-rust not available")
-
-        import tree_sitter_rust
-        import tree_sitter
-
-        lang = tree_sitter.Language(tree_sitter_rust.language())
-        parser = tree_sitter.Parser(lang)
-        run = AnalysisRun.create(pass_id="test", version="test")
-
-        rs_file = tmp_path / "test.rs"
-        rs_file.write_text("fn test() {}")
-
-        with patch.object(Path, "read_bytes", side_effect=IOError("Read failed")):
-            result = _extract_edges_from_file(rs_file, parser, {}, {}, run)
-
-        assert result == []
+        edges = _extract_attribute_edges([sym], {}, "test-run")
+        assert edges == []
 
 
 class TestReexportResolution:

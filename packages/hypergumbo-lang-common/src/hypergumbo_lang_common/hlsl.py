@@ -11,6 +11,10 @@ The tree-sitter-hlsl parser handles .hlsl, .hlsli, and .fx files.
 
 How It Works
 ------------
+Uses TreeSitterAnalyzer base class for two-pass orchestration.
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the HLSL-specific extraction logic.
+
 1. Check if tree-sitter with HLSL grammar is available
 2. If not available, return skipped result (not an error)
 3. Parse all .hlsl, .hlsli, and .fx files
@@ -27,22 +31,26 @@ Why This Design
 """
 from __future__ import annotations
 
-import importlib.util
-import time
-import uuid
-import warnings
-from dataclasses import dataclass, field
+import hashlib
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, node_text
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    node_text,
+)
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = "hlsl-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -51,33 +59,6 @@ PASS_VERSION = "hypergumbo-0.1.0"
 def find_hlsl_files(repo_root: Path) -> Iterator[Path]:
     """Find all HLSL files in the repository."""
     yield from find_files(repo_root, ["*.hlsl", "*.hlsli", "*.fx"])
-
-
-def is_hlsl_tree_sitter_available() -> bool:
-    """Check if tree-sitter-hlsl is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover - tree-sitter not installed
-    if importlib.util.find_spec("tree_sitter_language_pack") is None:
-        return False  # pragma: no cover - language pack not installed
-    try:
-        from tree_sitter_language_pack import get_language
-
-        get_language("hlsl")
-        return True
-    except Exception:  # pragma: no cover - hlsl grammar not available
-        return False
-
-
-@dataclass
-class _FileContext:
-    """Context for processing a single file."""
-
-    source: bytes
-    rel_path: str
-    run_id: str
-    symbols: list[Symbol]
-    edges: list[Edge]
-    local_symbols: dict[str, Symbol] = field(default_factory=dict)
 
 
 def _find_enclosing_function_hlsl(
@@ -119,17 +100,17 @@ def _get_call_target_name_hlsl(node: "tree_sitter.Node", source: bytes) -> Optio
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
     """Generate deterministic edge ID."""
-    import hashlib
     content = f"{edge_type}:{src}:{dst}"
     return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
 
 
-def _make_symbol(ctx: _FileContext, node: "tree_sitter.Node", name: str, kind: str,
+def _make_symbol(rel_path: str, run_id: str, source: bytes, node: "tree_sitter.Node",
+                 name: str, kind: str,
                  signature: Optional[str] = None, meta: Optional[dict] = None) -> Symbol:
     """Create a Symbol with consistent formatting."""
     start_line = node.start_point[0] + 1
     end_line = node.end_point[0] + 1
-    sym_id = f"hlsl:{ctx.rel_path}:{start_line}-{end_line}:{name}:{kind}"
+    sym_id = f"hlsl:{rel_path}:{start_line}-{end_line}:{name}:{kind}"
     span = Span(
         start_line=start_line,
         start_col=node.start_point[1],
@@ -142,11 +123,11 @@ def _make_symbol(ctx: _FileContext, node: "tree_sitter.Node", name: str, kind: s
         canonical_name=name,
         kind=kind,
         language="hlsl",
-        path=ctx.rel_path,
+        path=rel_path,
         span=span,
         origin=PASS_ID,
-        origin_run_id=ctx.run_id,
-        stable_id=f"hlsl:{ctx.rel_path}:{name}",
+        origin_run_id=run_id,
+        stable_id=f"hlsl:{rel_path}:{name}",
         signature=signature,
         meta=meta,
     )
@@ -160,78 +141,58 @@ def _extract_function_signature(node: "tree_sitter.Node", source: bytes) -> str:
     return "()"  # pragma: no cover - HLSL functions always have parameter_list
 
 
-def _process_function(ctx: _FileContext, node: "tree_sitter.Node") -> None:
-    """Process a function definition."""
-    # Get function name from function_declarator > identifier
-    func_decl = find_child_by_type(node, "function_declarator")
-    if not func_decl:
-        return  # pragma: no cover
-
-    name_node = find_child_by_type(func_decl, "identifier")
-    if not name_node:
-        return  # pragma: no cover
-
-    func_name = node_text(name_node, ctx.source)
-    signature = _extract_function_signature(func_decl, ctx.source)
-
-    sym = _make_symbol(ctx, node, func_name, "function", signature=signature)
-    ctx.symbols.append(sym)
-    ctx.local_symbols[func_name] = sym
-
-
-def _process_struct(ctx: _FileContext, node: "tree_sitter.Node") -> None:
-    """Process a struct definition."""
-    name_node = find_child_by_type(node, "type_identifier")
-    if not name_node:
-        return  # pragma: no cover
-
-    struct_name = node_text(name_node, ctx.source)
-    ctx.symbols.append(_make_symbol(ctx, node, struct_name, "struct"))
-
-
-def _process_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
-    """Process a declaration (variable, cbuffer, resource).
-
-    Handles:
-    - Regular variables: Texture2D diffuseTexture;
-    - cbuffer declarations: cbuffer Name : register(b0) { ... }
-    - Sampler declarations: SamplerState linearSampler;
-
-    The tree-sitter-hlsl parser exposes the identifier directly as a child node,
-    so we find it with find_child_by_type(node, "identifier").
-    """
-    name_node = find_child_by_type(node, "identifier")
-    if not name_node:
-        return  # pragma: no cover - defensive
-
-    var_name = node_text(name_node, ctx.source)
-    ctx.symbols.append(_make_symbol(ctx, node, var_name, "variable"))
-
-
-def _extract_hlsl_symbols(ctx: _FileContext, tree: "tree_sitter.Tree") -> None:
+def _extract_hlsl_symbols(
+    rel_path: str, run_id: str, source: bytes, tree: "tree_sitter.Tree",
+    symbols: list[Symbol], local_symbols: dict[str, Symbol],
+) -> None:
     """Extract symbols from a tree-sitter tree (pass 1)."""
     for node in iter_tree(tree.root_node):
         if node.type == "function_definition":
-            _process_function(ctx, node)
+            func_decl = find_child_by_type(node, "function_declarator")
+            if not func_decl:
+                continue  # pragma: no cover
+            name_node = find_child_by_type(func_decl, "identifier")
+            if not name_node:
+                continue  # pragma: no cover
+            func_name = node_text(name_node, source)
+            signature = _extract_function_signature(func_decl, source)
+            sym = _make_symbol(rel_path, run_id, source, node, func_name, "function",
+                               signature=signature)
+            symbols.append(sym)
+            local_symbols[func_name] = sym
+
         elif node.type == "struct_specifier":
-            _process_struct(ctx, node)
+            name_node = find_child_by_type(node, "type_identifier")
+            if not name_node:
+                continue  # pragma: no cover
+            struct_name = node_text(name_node, source)
+            symbols.append(_make_symbol(rel_path, run_id, source, node, struct_name, "struct"))
+
         elif node.type == "declaration":
-            _process_declaration(ctx, node)
+            name_node = find_child_by_type(node, "identifier")
+            if not name_node:
+                continue  # pragma: no cover - defensive
+            var_name = node_text(name_node, source)
+            symbols.append(_make_symbol(rel_path, run_id, source, node, var_name, "variable"))
 
 
 def _extract_hlsl_edges(
-    ctx: _FileContext,
+    rel_path: str,
+    source: bytes,
     tree: "tree_sitter.Tree",
-    resolver: NameResolver,
+    local_symbols: dict[str, Symbol],
+    resolver: "NameResolver",
+    run_id: str,
+    edges: list[Edge],
 ) -> None:
     """Extract call edges from a tree-sitter tree (pass 2)."""
     for node in iter_tree(tree.root_node):
         if node.type == "call_expression":
-            caller = _find_enclosing_function_hlsl(node, ctx.source, ctx.local_symbols)
+            caller = _find_enclosing_function_hlsl(node, source, local_symbols)
             if not caller:
                 continue
 
-            target_name = _get_call_target_name_hlsl(node, ctx.source)
+            target_name = _get_call_target_name_hlsl(node, source)
             if not target_name:
                 continue  # pragma: no cover - defensive for unknown call patterns
 
@@ -254,7 +215,65 @@ def _extract_hlsl_edges(
                 origin=PASS_ID,
                 evidence_type="static",
             )
-            ctx.edges.append(edge)
+            edges.append(edge)
+
+
+class HlslAnalyzer(TreeSitterAnalyzer):
+    """HLSL language analyzer using tree-sitter-language-pack."""
+
+    lang = "hlsl"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.hlsl", "*.hlsli", "*.fx"]
+    language_pack_name = "hlsl"
+
+    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+        """Only register function symbols for cross-file call resolution."""
+        if symbol.kind == "function":
+            global_symbols[symbol.name] = symbol
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract function, struct, and variable symbols from HLSL."""
+        analysis = FileAnalysis()
+        local_symbols: dict[str, Symbol] = {}
+
+        _extract_hlsl_symbols(
+            rel_path, run.execution_id, source, tree,
+            analysis.symbols, local_symbols,
+        )
+
+        # Populate symbol_by_name for callable symbols (functions only)
+        for sym in analysis.symbols:
+            if sym.kind == "function":
+                analysis.symbol_by_name[sym.name] = sym
+
+        return analysis
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract call edges from HLSL."""
+        edges: list[Edge] = []
+        _extract_hlsl_edges(
+            rel_path, source, tree, local_symbols,
+            resolver, run.execution_id, edges,
+        )
+        return edges
+
+
+_analyzer = HlslAnalyzer()
+
+
+def is_hlsl_tree_sitter_available() -> bool:
+    """Check if tree-sitter-hlsl is available."""
+    return _analyzer._check_grammar_available()
 
 
 @register_analyzer("hlsl")
@@ -264,94 +283,4 @@ def analyze_hlsl(repo_root: Path) -> AnalysisResult:
     Returns a AnalysisResult with symbols for functions, structs, and variables.
     Uses two-pass analysis for cross-file call resolution.
     """
-    if not is_hlsl_tree_sitter_available():
-        warnings.warn("HLSL analysis skipped: tree-sitter-hlsl unavailable")
-        return AnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-hlsl unavailable",
-        )
-
-    from tree_sitter_language_pack import get_parser
-
-    parser = get_parser("hlsl")
-
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-    files_analyzed = 0
-    run_id = str(uuid.uuid4())
-    start_time = time.time()
-
-    # Collect file data for two-pass processing
-    file_data: list[tuple[Path, bytes, "tree_sitter.Tree"]] = []
-
-    for file_path in find_hlsl_files(repo_root):
-        try:
-            source = file_path.read_bytes()
-        except (OSError, IOError):  # pragma: no cover
-            continue
-
-        tree = parser.parse(source)
-        files_analyzed += 1
-        file_data.append((file_path, source, tree))
-
-    # Build map of file path -> local symbols for caller lookup
-    file_local_symbols: dict[str, dict[str, Symbol]] = {}
-
-    # Pass 1: Extract all symbols from all files
-    for file_path, source, tree in file_data:
-        rel_path = str(file_path.relative_to(repo_root))
-        local_symbols: dict[str, Symbol] = {}
-
-        ctx = _FileContext(
-            source=source,
-            rel_path=rel_path,
-            run_id=run_id,
-            symbols=symbols,
-            edges=edges,
-            local_symbols=local_symbols,
-        )
-
-        _extract_hlsl_symbols(ctx, tree)
-
-        # Build local symbol map for this file (functions only, for caller lookup)
-        for sym in symbols:
-            if sym.path == rel_path and sym.kind == "function":
-                local_symbols[sym.name] = sym
-
-        file_local_symbols[rel_path] = local_symbols
-
-    # Build resolver from all function symbols
-    global_symbols: dict[str, Symbol] = {}
-    for sym in symbols:
-        if sym.kind == "function":
-            global_symbols[sym.name] = sym
-    resolver = NameResolver(global_symbols)
-
-    # Pass 2: Extract call edges using resolver
-    for file_path, source, tree in file_data:
-        rel_path = str(file_path.relative_to(repo_root))
-        local_symbols = file_local_symbols[rel_path]
-
-        ctx = _FileContext(
-            source=source,
-            rel_path=rel_path,
-            run_id=run_id,
-            symbols=[],  # Don't collect symbols again
-            edges=edges,
-            local_symbols=local_symbols,
-        )
-
-        _extract_hlsl_edges(ctx, tree, resolver)
-
-    duration_ms = int((time.time() - start_time) * 1000)
-    return AnalysisResult(
-        symbols=symbols,
-        edges=edges,
-        run=AnalysisRun(
-            execution_id=run_id,
-            pass_id=PASS_ID,
-            version=PASS_VERSION,
-            files_analyzed=files_analyzed,
-            duration_ms=duration_ms,
-        ),
-    )
+    return _analyzer.analyze(repo_root)

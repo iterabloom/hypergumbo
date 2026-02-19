@@ -15,6 +15,10 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
+Uses TreeSitterAnalyzer base class for two-pass orchestration.
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Julia-specific extraction logic.
+
 1. Check if tree-sitter-julia is available
 2. If not available, return skipped result (not an error)
 3. Two-pass analysis:
@@ -31,21 +35,27 @@ Why This Design
 """
 from __future__ import annotations
 
-import importlib.util
-import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
+from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = "julia-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -54,15 +64,6 @@ PASS_VERSION = "hypergumbo-0.1.0"
 def find_julia_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Julia files in the repository."""
     yield from find_files(repo_root, ["*.jl"])
-
-
-def is_julia_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Julia grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False
-    if importlib.util.find_spec("tree_sitter_julia") is None:
-        return False
-    return True
 
 
 def _get_enclosing_module(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -100,15 +101,6 @@ def _get_enclosing_function_julia(
                         return local_symbols[func_name]
         current = current.parent
     return None  # pragma: no cover - defensive
-
-
-@dataclass
-class FileAnalysis:
-    """Intermediate analysis result for a single file."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
-    import_aliases: dict[str, str] = field(default_factory=dict)
 
 
 def _extract_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -203,18 +195,13 @@ def _extract_julia_signature(
     return signature
 
 
-def _extract_symbols_from_file(
-    file_path: Path,
-    parser: "tree_sitter.Parser",
-    run: AnalysisRun,
+def _extract_symbols_from_tree(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: str,
+    run_id: str,
 ) -> FileAnalysis:
-    """Extract symbols from a single Julia file."""
-    try:
-        source = file_path.read_bytes()
-        tree = parser.parse(source)
-    except (OSError, IOError):  # pragma: no cover - file system edge case
-        return FileAnalysis()
-
+    """Extract symbols from a parsed Julia file's tree."""
     analysis = FileAnalysis()
 
     for node in iter_tree(tree.root_node):
@@ -227,11 +214,11 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
 
                 symbol = Symbol(
-                    id=make_symbol_id("julia", str(file_path), start_line, end_line, module_name, "module"),
+                    id=make_symbol_id("julia", file_path, start_line, end_line, module_name, "module"),
                     name=module_name,
                     kind="module",
                     language="julia",
-                    path=str(file_path),
+                    path=file_path,
                     span=Span(
                         start_line=start_line,
                         end_line=end_line,
@@ -239,7 +226,7 @@ def _extract_symbols_from_file(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[module_name] = symbol
@@ -258,11 +245,11 @@ def _extract_symbols_from_file(
                 signature = _extract_julia_signature(node, source, is_short_form=False)
 
                 symbol = Symbol(
-                    id=make_symbol_id("julia", str(file_path), start_line, end_line, full_name, "function"),
+                    id=make_symbol_id("julia", file_path, start_line, end_line, full_name, "function"),
                     name=func_name,
                     kind="function",
                     language="julia",
-                    path=str(file_path),
+                    path=file_path,
                     span=Span(
                         start_line=start_line,
                         end_line=end_line,
@@ -270,7 +257,7 @@ def _extract_symbols_from_file(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                     signature=signature,
                 )
                 analysis.symbols.append(symbol)
@@ -291,11 +278,11 @@ def _extract_symbols_from_file(
                     signature = _extract_julia_signature(node, source, is_short_form=True)
 
                     symbol = Symbol(
-                        id=make_symbol_id("julia", str(file_path), start_line, end_line, func_name, "function"),
+                        id=make_symbol_id("julia", file_path, start_line, end_line, func_name, "function"),
                         name=func_name,
                         kind="function",
                         language="julia",
-                        path=str(file_path),
+                        path=file_path,
                         span=Span(
                             start_line=start_line,
                             end_line=end_line,
@@ -303,7 +290,7 @@ def _extract_symbols_from_file(
                             end_col=node.end_point[1],
                         ),
                         origin=PASS_ID,
-                        origin_run_id=run.execution_id,
+                        origin_run_id=run_id,
                         signature=signature,
                     )
                     analysis.symbols.append(symbol)
@@ -327,11 +314,11 @@ def _extract_symbols_from_file(
                     end_line = node.end_point[0] + 1
 
                     symbol = Symbol(
-                        id=make_symbol_id("julia", str(file_path), start_line, end_line, struct_name, "struct"),
+                        id=make_symbol_id("julia", file_path, start_line, end_line, struct_name, "struct"),
                         name=struct_name,
                         kind="struct",
                         language="julia",
-                        path=str(file_path),
+                        path=file_path,
                         span=Span(
                             start_line=start_line,
                             end_line=end_line,
@@ -339,7 +326,7 @@ def _extract_symbols_from_file(
                             end_col=node.end_point[1],
                         ),
                         origin=PASS_ID,
-                        origin_run_id=run.execution_id,
+                        origin_run_id=run_id,
                     )
                     analysis.symbols.append(symbol)
                     analysis.symbol_by_name[struct_name] = symbol
@@ -355,11 +342,11 @@ def _extract_symbols_from_file(
                     end_line = node.end_point[0] + 1
 
                     symbol = Symbol(
-                        id=make_symbol_id("julia", str(file_path), start_line, end_line, abstract_name, "abstract"),
+                        id=make_symbol_id("julia", file_path, start_line, end_line, abstract_name, "abstract"),
                         name=abstract_name,
                         kind="abstract",
                         language="julia",
-                        path=str(file_path),
+                        path=file_path,
                         span=Span(
                             start_line=start_line,
                             end_line=end_line,
@@ -367,7 +354,7 @@ def _extract_symbols_from_file(
                             end_col=node.end_point[1],
                         ),
                         origin=PASS_ID,
-                        origin_run_id=run.execution_id,
+                        origin_run_id=run_id,
                     )
                     analysis.symbols.append(symbol)
                     analysis.symbol_by_name[abstract_name] = symbol
@@ -385,11 +372,11 @@ def _extract_symbols_from_file(
                         end_line = node.end_point[0] + 1
 
                         symbol = Symbol(
-                            id=make_symbol_id("julia", str(file_path), start_line, end_line, macro_name, "macro"),
+                            id=make_symbol_id("julia", file_path, start_line, end_line, macro_name, "macro"),
                             name=macro_name,
                             kind="macro",
                             language="julia",
-                            path=str(file_path),
+                            path=file_path,
                             span=Span(
                                 start_line=start_line,
                                 end_line=end_line,
@@ -397,7 +384,7 @@ def _extract_symbols_from_file(
                                 end_col=node.end_point[1],
                             ),
                             origin=PASS_ID,
-                            origin_run_id=run.execution_id,
+                            origin_run_id=run_id,
                         )
                         analysis.symbols.append(symbol)
                         analysis.symbol_by_name[macro_name] = symbol
@@ -413,11 +400,11 @@ def _extract_symbols_from_file(
                     end_line = node.end_point[0] + 1
 
                     symbol = Symbol(
-                        id=make_symbol_id("julia", str(file_path), start_line, end_line, const_name, "const"),
+                        id=make_symbol_id("julia", file_path, start_line, end_line, const_name, "const"),
                         name=const_name,
                         kind="const",
                         language="julia",
-                        path=str(file_path),
+                        path=file_path,
                         span=Span(
                             start_line=start_line,
                             end_line=end_line,
@@ -425,7 +412,7 @@ def _extract_symbols_from_file(
                             end_col=node.end_point[1],
                         ),
                         origin=PASS_ID,
-                        origin_run_id=run.execution_id,
+                        origin_run_id=run_id,
                     )
                     analysis.symbols.append(symbol)
                     analysis.symbol_by_name[const_name] = symbol
@@ -472,28 +459,18 @@ def _extract_import_aliases(
     return aliases
 
 
-def _extract_edges_from_file(
-    file_path: Path,
-    parser: "tree_sitter.Parser",
+def _extract_edges_from_tree(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: str,
     local_symbols: dict[str, Symbol],
-    global_symbols: dict[str, Symbol],
-    run: AnalysisRun,
-    resolver: NameResolver | None = None,
-    import_aliases: dict[str, str] | None = None,
+    run_id: str,
+    resolver: "NameResolver",
+    import_aliases: dict[str, str],
 ) -> list[Edge]:
-    """Extract call and import edges from a file."""
-    if resolver is None:  # pragma: no cover - defensive
-        resolver = NameResolver(global_symbols)
-    if import_aliases is None:  # pragma: no cover - defensive
-        import_aliases = {}
-    try:
-        source = file_path.read_bytes()
-        tree = parser.parse(source)
-    except (OSError, IOError):  # pragma: no cover - file system edge case
-        return []
-
+    """Extract call and import edges from a parsed Julia file."""
     edges: list[Edge] = []
-    file_id = make_file_id("julia", str(file_path))
+    file_id = make_file_id("julia", file_path)
 
     for node in iter_tree(tree.root_node):
         # Detect import/using statements
@@ -518,7 +495,7 @@ def _extract_edges_from_file(
                     evidence_type="import_statement",
                     confidence=0.95,
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                 ))
 
         # Detect function calls
@@ -556,7 +533,7 @@ def _extract_edges_from_file(
                             evidence_type="function_call",
                             confidence=0.85,
                             origin=PASS_ID,
-                            origin_run_id=run.execution_id,
+                            origin_run_id=run_id,
                         ))
                     # Check global symbols via resolver
                     else:
@@ -570,10 +547,54 @@ def _extract_edges_from_file(
                                 evidence_type="function_call",
                                 confidence=0.80 * lookup_result.confidence,
                                 origin=PASS_ID,
-                                origin_run_id=run.execution_id,
+                                origin_run_id=run_id,
                             ))
 
     return edges
+
+
+class JuliaAnalyzer(TreeSitterAnalyzer):
+    """Julia language analyzer using tree-sitter-julia."""
+
+    lang = "julia"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.jl"]
+    grammar_module = "tree_sitter_julia"
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract Julia symbols from a single file."""
+        return _extract_symbols_from_tree(tree, source, rel_path, run.execution_id)
+
+    def get_import_aliases(
+        self, tree: "tree_sitter.Tree", source: bytes,
+    ) -> dict[str, str]:
+        """Extract Julia import aliases (import Pkg as P)."""
+        return _extract_import_aliases(tree, source)
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract call and import edges from a Julia file."""
+        return _extract_edges_from_tree(
+            tree, source, rel_path, local_symbols,
+            run.execution_id, resolver, import_aliases,
+        )
+
+
+_analyzer = JuliaAnalyzer()
+
+
+def is_julia_tree_sitter_available() -> bool:
+    """Check if tree-sitter with Julia grammar is available."""
+    return _analyzer._check_grammar_available()
 
 
 @register_analyzer("julia")
@@ -583,91 +604,4 @@ def analyze_julia(repo_root: Path) -> AnalysisResult:
     Returns a AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-julia is not available, returns a skipped result.
     """
-    if not is_julia_tree_sitter_available():
-        warnings.warn(
-            "tree-sitter-julia not available. Install with: pip install hypergumbo[julia]",
-            stacklevel=2,
-        )
-        return AnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-julia not available",
-        )
-
-    start_time = time.time()
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    # Import tree-sitter-julia
-    try:
-        import tree_sitter_julia
-        import tree_sitter
-
-        lang = tree_sitter.Language(tree_sitter_julia.language())
-        parser = tree_sitter.Parser(lang)
-    except Exception as e:
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return AnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=f"Failed to load Julia parser: {e}",
-        )
-
-    # Pass 1: Extract all symbols
-    file_analyses: dict[Path, FileAnalysis] = {}
-    files_skipped = 0
-    all_files: list[Path] = []
-
-    for julia_file in find_julia_files(repo_root):
-        all_files.append(julia_file)
-        analysis = _extract_symbols_from_file(julia_file, parser, run)
-
-        # Extract import aliases for this file
-        try:
-            source = julia_file.read_bytes()
-            tree = parser.parse(source)
-            analysis.import_aliases = _extract_import_aliases(tree, source)
-        except (OSError, IOError):  # pragma: no cover
-            pass
-
-        if analysis.symbols:
-            file_analyses[julia_file] = analysis
-        else:
-            files_skipped += 1
-
-    # Build global symbol registry
-    global_symbols: dict[str, Symbol] = {}
-    for analysis in file_analyses.values():
-        for symbol in analysis.symbols:
-            global_symbols[symbol.name] = symbol
-
-    # Pass 2: Extract edges
-    resolver = NameResolver(global_symbols)
-    all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
-
-    for julia_file, analysis in file_analyses.items():
-        all_symbols.extend(analysis.symbols)
-
-        edges = _extract_edges_from_file(
-            julia_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
-            import_aliases=analysis.import_aliases,
-        )
-        all_edges.extend(edges)
-
-    # Also extract edges from files without symbols (for import-only files)
-    for julia_file in all_files:
-        if julia_file not in file_analyses:
-            edges = _extract_edges_from_file(
-                julia_file, parser, {}, global_symbols, run, resolver,
-                import_aliases={},
-            )
-            all_edges.extend(edges)
-
-    run.files_analyzed = len(file_analyses)
-    run.files_skipped = files_skipped
-    run.duration_ms = int((time.time() - start_time) * 1000)
-
-    return AnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

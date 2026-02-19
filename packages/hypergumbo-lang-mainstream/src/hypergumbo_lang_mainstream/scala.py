@@ -14,37 +14,45 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-1. Check if tree-sitter-scala is available
-2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
-   - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls and resolve against global symbol registry
-4. Detect function calls and import statements
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Extract functions, classes, objects, traits with signatures
+2. Pass 2: Extract call edges and import edges using NameResolver
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Scala-specific extraction
+logic.
 
 Why This Design
 ---------------
+- TreeSitterAnalyzer eliminates boilerplate orchestration code
 - Optional dependency keeps base install lightweight
 - Uses tree-sitter-scala package for grammar
 - Two-pass allows cross-file call resolution
-- Same pattern as Go/Ruby/Kotlin/Swift/Rust/Elixir/Java/PHP/C analyzers
+- Same pattern as other tree-sitter analyzers for consistency
 """
 from __future__ import annotations
 
-import importlib.util
-import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
+from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = "scala-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -53,15 +61,6 @@ PASS_VERSION = "hypergumbo-0.1.0"
 def find_scala_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Scala files in the repository."""
     yield from find_files(repo_root, ["*.scala"])
-
-
-def is_scala_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Scala grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False
-    if importlib.util.find_spec("tree_sitter_scala") is None:
-        return False
-    return True
 
 
 def _extract_extends_clause(node: "tree_sitter.Node", source: bytes) -> list[str]:
@@ -87,11 +86,8 @@ def _extract_extends_clause(node: "tree_sitter.Node", source: bytes) -> list[str
 
     for child in extends_clause.children:
         if child.type == "type_identifier":
-            # Simple type: extends BaseClass
             base_classes.append(node_text(child, source))
         elif child.type == "generic_type":
-            # Generic type: extends Repository[User]
-            # Extract just the type name, not the type arguments
             type_id = find_child_by_type(child, "type_identifier")
             if type_id:
                 base_classes.append(node_text(type_id, source))
@@ -118,8 +114,6 @@ def _extract_import_hints(
         if node.type != "import_declaration":
             continue
 
-        # Collect all identifier parts to build full path
-        # Scala imports are: import a.b.c.Name or import a.b.c.{A, B}
         identifiers: list[str] = []
         has_selectors = False
 
@@ -128,29 +122,22 @@ def _extract_import_hints(
                 identifiers.append(node_text(child, source))
             elif child.type == "namespace_selectors":
                 has_selectors = True
-                # Build base path from identifiers collected so far
                 base_path = ".".join(identifiers)
                 for selector in child.children:
                     if selector.type == "arrow_renamed_identifier":
-                        # Check for rename (A => B)
                         names = [sub for sub in selector.children if sub.type == "identifier"]
                         if len(names) >= 2:
-                            # Renamed import
                             original = node_text(names[0], source)
                             alias = node_text(names[-1], source)
                             full_path = f"{base_path}.{original}"
                             hints[alias] = full_path
                     elif selector.type == "identifier":
-                        # Simple selector: {A, B}
                         name = node_text(selector, source)
                         full_path = f"{base_path}.{name}"
                         hints[name] = full_path
 
         if identifiers and not has_selectors:
-            # Simple import without selectors
-            # Full path is all identifiers joined
             full_path = ".".join(identifiers)
-            # Short name is last component
             short_name = identifiers[-1]
             hints[short_name] = full_path
 
@@ -195,19 +182,11 @@ def _extract_scala_signature(
     Returns signature like:
     - "(x: Int, y: Int): Int" for regular functions
     - "(message: String)" for Unit functions (Unit omitted)
-
-    Args:
-        node: The function_definition or function_declaration node.
-        source: The source code bytes.
-
-    Returns:
-        The signature string, or None if extraction fails.
     """
     params: list[str] = []
     return_type = None
     found_params = False
 
-    # Iterate through children to find parameters and return type
     for child in node.children:
         if child.type == "parameters":
             found_params = True
@@ -223,7 +202,6 @@ def _extract_scala_signature(
                             param_type = node_text(pc, source)
                     if param_name and param_type:
                         params.append(f"{param_name}: {param_type}")
-        # Return type is a type_identifier that comes after parameters
         elif found_params and child.type in ("type_identifier", "generic_type",
                                               "tuple_type", "function_type", "infix_type"):
             return_type = node_text(child, source)
@@ -237,34 +215,18 @@ def _extract_scala_signature(
     return signature
 
 
-@dataclass
-class FileAnalysis:
-    """Intermediate analysis result for a single file."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
-    import_hints: dict[str, str] = field(default_factory=dict)
-
-
 def _extract_symbols_from_file(
-    file_path: Path,
-    parser: "tree_sitter.Parser",
-    run: AnalysisRun,
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: str,
+    run_id: str,
 ) -> FileAnalysis:
     """Extract symbols from a single Scala file."""
-    try:
-        source = file_path.read_bytes()
-        tree = parser.parse(source)
-    except (OSError, IOError):
-        return FileAnalysis()
-
     analysis = FileAnalysis()
 
     for node in iter_tree(tree.root_node):
-        # Function definition (def name(...))
         if node.type == "function_definition":
             name_node = find_child_by_type(node, "identifier")
-
             if name_node:
                 func_name = node_text(name_node, source)
                 enclosing_type = _get_enclosing_type(node, source)
@@ -277,8 +239,6 @@ def _extract_symbols_from_file(
 
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-
-                # Extract signature
                 signature = _extract_scala_signature(node, source)
 
                 symbol = Symbol(
@@ -294,17 +254,15 @@ def _extract_symbols_from_file(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                     signature=signature,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
 
-        # Function declaration (abstract method in trait)
         elif node.type == "function_declaration":
             name_node = find_child_by_type(node, "identifier")
-
             if name_node:
                 func_name = node_text(name_node, source)
                 enclosing_type = _get_enclosing_type(node, source)
@@ -315,8 +273,6 @@ def _extract_symbols_from_file(
 
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-
-                # Extract signature
                 signature = _extract_scala_signature(node, source)
 
                 symbol = Symbol(
@@ -332,23 +288,19 @@ def _extract_symbols_from_file(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                     signature=signature,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
 
-        # Class definition
         elif node.type == "class_definition":
             name_node = find_child_by_type(node, "identifier")
-
             if name_node:
                 type_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-
-                # Extract base classes from extends clause
                 base_classes = _extract_extends_clause(node, source)
                 meta = {"base_classes": base_classes} if base_classes else None
 
@@ -365,16 +317,14 @@ def _extract_symbols_from_file(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                     meta=meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
 
-        # Object definition
         elif node.type == "object_definition":
             name_node = find_child_by_type(node, "identifier")
-
             if name_node:
                 type_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
@@ -393,21 +343,17 @@ def _extract_symbols_from_file(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
 
-        # Trait definition
         elif node.type == "trait_definition":
             name_node = find_child_by_type(node, "identifier")
-
             if name_node:
                 type_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-
-                # Extract base traits from extends clause
                 base_classes = _extract_extends_clause(node, source)
                 meta = {"base_classes": base_classes} if base_classes else None
 
@@ -424,49 +370,31 @@ def _extract_symbols_from_file(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                     meta=meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
 
-    # Extract import hints for disambiguation
-    analysis.import_hints = _extract_import_hints(tree, source)
-
     return analysis
 
 
 def _extract_edges_from_file(
-    file_path: Path,
-    parser: "tree_sitter.Parser",
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: str,
     local_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
-    run: AnalysisRun,
-    resolver: NameResolver | None = None,
-    import_hints: dict[str, str] | None = None,
+    run_id: str,
+    resolver: "NameResolver",
+    import_aliases: dict[str, str],
 ) -> list[Edge]:
-    """Extract call and import edges from a file.
-
-    Args:
-        import_hints: Optional dict mapping short names to full qualified paths for disambiguation.
-    """
-    if resolver is None:  # pragma: no cover - defensive
-        resolver = NameResolver(global_symbols)
-    if import_hints is None:  # pragma: no cover - defensive default
-        import_hints = {}
-    try:
-        source = file_path.read_bytes()
-        tree = parser.parse(source)
-    except (OSError, IOError):
-        return []
-
+    """Extract call and import edges from a file."""
     edges: list[Edge] = []
     file_id = make_file_id("scala", str(file_path))
 
     for node in iter_tree(tree.root_node):
-        # Detect import statements
         if node.type == "import_declaration":
-            # Build full import path from identifier children
             identifiers = [child for child in node.children if child.type == "identifier"]
             if identifiers:
                 import_path = ".".join(node_text(id_node, source) for id_node in identifiers)
@@ -478,26 +406,18 @@ def _extract_edges_from_file(
                     evidence_type="import_statement",
                     confidence=0.95,
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                 ))
 
-        # Detect function calls
         elif node.type == "call_expression":
             current_function = _get_enclosing_function(node, source, local_symbols)
             if current_function is not None:
-                # Get the function being called
                 callee_node = find_child_by_type(node, "identifier")
                 if not callee_node:
-                    # Method call: obj.method() — field_expression has
-                    # [identifier(obj), ".", identifier(method)]
                     field_node = find_child_by_type(node, "field_expression")
                     if field_node:
-                        ids = [
-                            c for c in field_node.children
-                            if c.type == "identifier"
-                        ]
+                        ids = [c for c in field_node.children if c.type == "identifier"]
                         if len(ids) >= 2:
-                            # Last identifier is the method name
                             callee_node = ids[-1]
                         elif ids:  # pragma: no cover - defensive
                             callee_node = ids[0]
@@ -505,7 +425,6 @@ def _extract_edges_from_file(
                 if callee_node:
                     callee_name = node_text(callee_node, source)
 
-                    # Check local symbols first
                     if callee_name in local_symbols:
                         callee = local_symbols[callee_name]
                         edges.append(Edge.create(
@@ -516,12 +435,10 @@ def _extract_edges_from_file(
                             evidence_type="function_call",
                             confidence=0.85,
                             origin=PASS_ID,
-                            origin_run_id=run.execution_id,
+                            origin_run_id=run_id,
                         ))
-                    # Check global symbols via resolver
                     else:
-                        # Use import hints for disambiguation
-                        path_hint = import_hints.get(callee_name)
+                        path_hint = import_aliases.get(callee_name)
                         lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol is not None:
                             edges.append(Edge.create(
@@ -532,87 +449,66 @@ def _extract_edges_from_file(
                                 evidence_type="function_call",
                                 confidence=0.80 * lookup_result.confidence,
                                 origin=PASS_ID,
-                                origin_run_id=run.execution_id,
+                                origin_run_id=run_id,
                             ))
 
     return edges
 
 
+class ScalaAnalyzer(TreeSitterAnalyzer):
+    """Scala language analyzer using tree-sitter-scala."""
+
+    lang = "scala"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.scala"]
+    grammar_module = "tree_sitter_scala"
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract functions, classes, objects, traits from a Scala file."""
+        return _extract_symbols_from_file(tree, source, rel_path, run.execution_id)
+
+    def get_import_aliases(
+        self, tree: "tree_sitter.Tree", source: bytes,
+    ) -> dict[str, str]:
+        """Extract Scala import hints for disambiguation."""
+        return _extract_import_hints(tree, source)
+
+    def register_symbol(
+        self, symbol: Symbol, global_symbols: dict,
+    ) -> None:
+        """Register symbol globally, including short name for cross-file resolution."""
+        global_symbols[symbol.name] = symbol
+        short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
+        global_symbols[short_name] = symbol
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract call and import edges from a Scala file."""
+        return _extract_edges_from_file(
+            tree, source, rel_path,
+            local_symbols, global_symbols,
+            run.execution_id, resolver, import_aliases,
+        )
+
+
+_analyzer = ScalaAnalyzer()
+
+
+def is_scala_tree_sitter_available() -> bool:
+    """Check if tree-sitter with Scala grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("scala")
 def analyze_scala(repo_root: Path) -> AnalysisResult:
-    """Analyze all Scala files in a repository.
-
-    Returns a AnalysisResult with symbols, edges, and provenance.
-    If tree-sitter-scala is not available, returns a skipped result.
-    """
-    if not is_scala_tree_sitter_available():
-        warnings.warn(
-            "tree-sitter-scala not available. Install with: pip install hypergumbo[scala]",
-            stacklevel=2,
-        )
-        return AnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-scala not available",
-        )
-
-    start_time = time.time()
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    # Import tree-sitter-scala
-    try:
-        import tree_sitter_scala
-        import tree_sitter
-
-        lang = tree_sitter.Language(tree_sitter_scala.language())
-        parser = tree_sitter.Parser(lang)
-    except Exception as e:
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return AnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=f"Failed to load Scala parser: {e}",
-        )
-
-    # Pass 1: Extract all symbols
-    file_analyses: dict[Path, FileAnalysis] = {}
-    files_skipped = 0
-
-    for scala_file in find_scala_files(repo_root):
-        analysis = _extract_symbols_from_file(scala_file, parser, run)
-        if analysis.symbols:
-            file_analyses[scala_file] = analysis
-        else:
-            files_skipped += 1
-
-    # Build global symbol registry
-    global_symbols: dict[str, Symbol] = {}
-    for analysis in file_analyses.values():
-        for symbol in analysis.symbols:
-            # Store by short name for cross-file resolution
-            short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
-            global_symbols[short_name] = symbol
-            global_symbols[symbol.name] = symbol
-
-    # Pass 2: Extract edges
-    resolver = NameResolver(global_symbols)
-    all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
-
-    for scala_file, analysis in file_analyses.items():
-        all_symbols.extend(analysis.symbols)
-
-        edges = _extract_edges_from_file(
-            scala_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
-            import_hints=analysis.import_hints,
-        )
-        all_edges.extend(edges)
-
-    run.files_analyzed = len(file_analyses)
-    run.files_skipped = files_skipped
-    run.duration_ms = int((time.time() - start_time) * 1000)
-
-    return AnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    """Analyze Scala files in a repository."""
+    return _analyzer.analyze(repo_root)

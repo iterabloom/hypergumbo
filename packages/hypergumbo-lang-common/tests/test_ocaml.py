@@ -259,19 +259,20 @@ class TestOCamlSpanAccuracy:
 class TestOCamlAnalyzeFallback:
     """Tests for fallback when tree-sitter-ocaml is unavailable."""
 
-    def test_returns_skipped_when_unavailable(self, tmp_path: Path, monkeypatch) -> None:
+    def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-ocaml not available."""
+        from unittest.mock import patch
         from hypergumbo_lang_common import ocaml
-
-        # Mock tree-sitter-ocaml as unavailable
-        monkeypatch.setattr(ocaml, "is_ocaml_tree_sitter_available", lambda: False)
+        import pytest
 
         make_ocaml_file(tmp_path, "main.ml", "let main () = 1")
 
-        result = ocaml.analyze_ocaml(tmp_path)
+        with patch.object(ocaml._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="ocaml analysis skipped"):
+                result = ocaml.analyze_ocaml(tmp_path)
 
         assert result.skipped
-        assert "tree-sitter-ocaml" in result.skip_reason
+        assert "not available" in result.skip_reason
         # Run should still be created for provenance tracking
         assert result.run is not None
         assert result.run.pass_id == "ocaml-v1"

@@ -3,6 +3,8 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+from hypergumbo_lang_mainstream import go as go_module
+
 
 class TestFindGoFiles:
     """Tests for Go file discovery."""
@@ -26,31 +28,17 @@ class TestGoTreeSitterAvailability:
 
     def test_is_go_tree_sitter_available_true(self) -> None:
         """Returns True when tree-sitter-go is available."""
-        from hypergumbo_lang_mainstream.go import is_go_tree_sitter_available
-
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = object()  # Non-None = available
-            assert is_go_tree_sitter_available() is True
+        result = go_module.is_go_tree_sitter_available()
+        assert result is True
 
     def test_is_go_tree_sitter_available_false(self) -> None:
-        """Returns False when tree-sitter is not available."""
-        from hypergumbo_lang_mainstream.go import is_go_tree_sitter_available
+        """Returns False when grammar is not available."""
+        with patch.object(go_module._analyzer, "_check_grammar_available", return_value=False):
+            assert go_module.is_go_tree_sitter_available() is False
 
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = None
-            assert is_go_tree_sitter_available() is False
-
-    def test_is_go_tree_sitter_available_no_go(self) -> None:
-        """Returns False when tree-sitter is available but go grammar is not."""
-        from hypergumbo_lang_mainstream.go import is_go_tree_sitter_available
-
-        def mock_find_spec(name: str) -> object | None:
-            if name == "tree_sitter":
-                return object()  # tree-sitter available
-            return None  # go grammar not available
-
-        with patch("importlib.util.find_spec", side_effect=mock_find_spec):
-            assert is_go_tree_sitter_available() is False
+    def test_is_go_tree_sitter_available_via_analyzer(self) -> None:
+        """Availability check delegates to TreeSitterAnalyzer._check_grammar_available."""
+        assert go_module.is_go_tree_sitter_available() == go_module._analyzer._check_grammar_available()
 
 
 class TestAnalyzeGoFallback:
@@ -62,11 +50,11 @@ class TestAnalyzeGoFallback:
 
         (tmp_path / "test.go").write_text("package main")
 
-        with patch("hypergumbo_lang_mainstream.go.is_go_tree_sitter_available", return_value=False):
+        with patch.object(go_module._analyzer, "_check_grammar_available", return_value=False):
             result = analyze_go(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-go" in result.skip_reason
+        assert "not available" in result.skip_reason
 
 
 class TestGoFunctionExtraction:
@@ -275,7 +263,7 @@ class TestGoEdgeCases:
 
         (tmp_path / "test.go").write_text("package main")
 
-        with patch("hypergumbo_lang_mainstream.go.is_go_tree_sitter_available", return_value=True):
+        with patch.object(go_module._analyzer, "_check_grammar_available", return_value=True):
             with patch.dict("sys.modules", {"tree_sitter_go": MagicMock()}):
                 import sys
                 mock_module = sys.modules["tree_sitter_go"]

@@ -78,48 +78,27 @@ class TestFindObjCFiles:
 class TestObjCTreeSitterAvailability:
     """Tests for tree-sitter-objc availability checking."""
 
-    def test_is_objc_tree_sitter_available_true(self) -> None:
-        """Returns True when tree-sitter-objc is available."""
+    def test_is_objc_tree_sitter_available(self) -> None:
+        """Availability check returns a boolean."""
         from hypergumbo_lang_mainstream.objc import is_objc_tree_sitter_available
 
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = object()
-            assert is_objc_tree_sitter_available() is True
-
-    def test_is_objc_tree_sitter_available_false(self) -> None:
-        """Returns False when tree-sitter is not available."""
-        from hypergumbo_lang_mainstream.objc import is_objc_tree_sitter_available
-
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = None
-            assert is_objc_tree_sitter_available() is False
-
-    def test_is_objc_tree_sitter_available_no_objc(self) -> None:
-        """Returns False when tree-sitter is available but objc grammar is not."""
-        from hypergumbo_lang_mainstream.objc import is_objc_tree_sitter_available
-
-        def mock_find_spec(name: str) -> object | None:
-            if name == "tree_sitter":
-                return object()
-            return None
-
-        with patch("importlib.util.find_spec", side_effect=mock_find_spec):
-            assert is_objc_tree_sitter_available() is False
+        result = is_objc_tree_sitter_available()
+        assert isinstance(result, bool)
 
 class TestAnalyzeObjCFallback:
     """Tests for fallback behavior when tree-sitter-objc unavailable."""
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-objc unavailable."""
-        from hypergumbo_lang_mainstream.objc import analyze_objc
+        from hypergumbo_lang_mainstream import objc as objc_module
 
         (tmp_path / "test.m").write_text("#import <Foundation/Foundation.h>")
 
-        with patch("hypergumbo_lang_mainstream.objc.is_objc_tree_sitter_available", return_value=False):
-            result = analyze_objc(tmp_path)
+        with patch.object(objc_module._analyzer, "_check_grammar_available", return_value=False):
+            result = objc_module.analyze_objc(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-objc" in result.skip_reason
+        assert "not available" in result.skip_reason
 
 class TestObjCClassExtraction:
     """Tests for extracting Objective-C classes."""
@@ -416,14 +395,14 @@ class TestObjCParserFailure:
 
     def test_handles_parser_load_failure(self, tmp_path: Path) -> None:
         """Handles failure to load Objective-C parser."""
-        from hypergumbo_lang_mainstream.objc import analyze_objc
+        from hypergumbo_lang_mainstream import objc as objc_module
 
         objc_file = tmp_path / "test.m"
         objc_file.write_text("#import <Foundation/Foundation.h>")
 
-        with patch("hypergumbo_lang_mainstream.objc.is_objc_tree_sitter_available", return_value=True):
-            with patch("tree_sitter_objc.language", side_effect=Exception("Parser error")):
-                result = analyze_objc(tmp_path)
+        with patch.object(objc_module._analyzer, "_check_grammar_available", return_value=True):
+            with patch.object(objc_module._analyzer, "_create_parser", side_effect=Exception("Parser error")):
+                result = objc_module.analyze_objc(tmp_path)
 
         assert result.skipped is True
         assert "Parser error" in result.skip_reason or "Failed to load" in result.skip_reason

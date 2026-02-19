@@ -28,13 +28,19 @@ Why This Design
 from __future__ import annotations
 
 import hashlib
-import importlib.util
 import time
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_symbol_id, node_text
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -55,23 +61,6 @@ def find_r_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, R_EXTENSIONS)
 
 
-def is_r_tree_sitter_available() -> bool:
-    """Check if tree-sitter with R grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover
-    # Try tree_sitter_language_pack first (bundled languages)
-    if importlib.util.find_spec("tree_sitter_language_pack") is not None:
-        try:
-            from tree_sitter_language_pack import get_language
-
-            get_language("r")
-            return True
-        except Exception:  # pragma: no cover
-            pass  # pragma: no cover
-    # Fall back to standalone tree_sitter_r
-    if importlib.util.find_spec("tree_sitter_r") is not None:  # pragma: no cover
-        return True  # pragma: no cover
-    return False  # pragma: no cover
 
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
@@ -390,6 +379,134 @@ def _extract_r_edges(
                 edges.append(edge)
 
 
+class RAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based analyzer for R source files.
+
+    Extracts function definitions, library/require imports, source() calls,
+    and function call edges with NameResolver for cross-file resolution.
+    Uses language_pack_name for the r grammar with fallback to standalone tree_sitter_r.
+    """
+
+    lang = "r"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["**/*.R", "**/*.r"]
+    language_pack_name = "r"
+
+    def _create_parser(self) -> "tree_sitter.Parser":
+        """Create R parser, trying language pack first then standalone package."""
+        import tree_sitter
+
+        try:
+            from tree_sitter_language_pack import get_language
+
+            r_lang = get_language("r")
+            return tree_sitter.Parser(r_lang)
+        except Exception:  # pragma: no cover - language pack available
+            import tree_sitter_r  # pragma: no cover
+
+            return tree_sitter.Parser(tree_sitter.Language(tree_sitter_r.language()))  # pragma: no cover
+
+    def analyze(self, repo_root: Path, max_files: int | None = None) -> AnalysisResult:
+        """Run R analysis with cross-file NameResolver-based call resolution."""
+        if not self._check_grammar_available():  # pragma: no cover
+            return AnalysisResult(  # pragma: no cover
+                skipped=True,  # pragma: no cover
+                skip_reason="tree-sitter-r not installed (pip install tree-sitter-language-pack)",  # pragma: no cover
+            )  # pragma: no cover
+
+        start_time = time.time()
+        files_analyzed = 0
+        files_skipped = 0
+        warnings_list: list[str] = []
+
+        symbols: list[Symbol] = []
+        edges: list[Edge] = []
+
+        # Global symbol registry for cross-file resolution: name -> Symbol
+        global_symbol_registry: dict[str, Symbol] = {}
+
+        try:
+            parser = self._create_parser()
+        except Exception as e:  # pragma: no cover
+            warnings.warn(f"Failed to initialize R parser: {e}")
+            return AnalysisResult(
+                skipped=True,
+                skip_reason=f"Failed to initialize parser: {e}",
+            )
+
+        r_files = list(find_r_files(repo_root))
+
+        # Store parsed trees for pass 2: (rel_path, source, tree, loaded_packages)
+        parsed_files: list[tuple[str, bytes, object, set[str]]] = []
+
+        # Pass 1: Extract symbols from all files
+        for r_path in r_files:
+            try:
+                rel_path = str(r_path.relative_to(repo_root))
+                source = r_path.read_bytes()
+                tree = parser.parse(source)
+                files_analyzed += 1
+
+                # Extract symbols
+                _extract_r_symbols(
+                    tree.root_node,
+                    source,
+                    rel_path,
+                    symbols,
+                    global_symbol_registry,
+                )
+
+                # Extract loaded packages for ADR-0007
+                loaded_packages = _extract_loaded_packages(tree.root_node, source)
+
+                # Store for pass 2
+                parsed_files.append((rel_path, source, tree, loaded_packages))
+
+            except Exception as e:  # pragma: no cover
+                files_skipped += 1  # pragma: no cover
+                warnings_list.append(f"Failed to parse {r_path}: {e}")  # pragma: no cover
+
+        # Create resolver from global registry
+        resolver = NameResolver(global_symbol_registry)
+
+        # Pass 2: Extract edges using resolver
+        for rel_path, source, tree, loaded_packages in parsed_files:
+            # Build local symbol map for this file (functions only)
+            local_symbols = {s.name: s for s in symbols if s.path == rel_path and s.kind == "function"}
+
+            _extract_r_edges(
+                tree.root_node,  # type: ignore
+                source,
+                edges,
+                local_symbols,
+                resolver,
+                loaded_packages,
+            )
+
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+        run.files_analyzed = files_analyzed
+        run.files_skipped = files_skipped
+        run.duration_ms = duration_ms
+        run.warnings = warnings_list
+
+        return AnalysisResult(
+            symbols=symbols,
+            edges=edges,
+            run=run,
+        )
+
+
+_analyzer = RAnalyzer()
+
+
+def is_r_tree_sitter_available() -> bool:
+    """Check if tree-sitter with R grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("r")
 def analyze_r_files(repo_root: Path) -> AnalysisResult:
     """Analyze R files in the repository.
@@ -404,105 +521,7 @@ def analyze_r_files(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult with symbols and edges
     """
-    if not is_r_tree_sitter_available():  # pragma: no cover
-        return AnalysisResult(  # pragma: no cover
-            skipped=True,  # pragma: no cover
-            skip_reason="tree-sitter-r not installed (pip install tree-sitter-language-pack)",  # pragma: no cover
-        )  # pragma: no cover
-
-    import tree_sitter
-
-    start_time = time.time()
-    files_analyzed = 0
-    files_skipped = 0
-    warnings_list: list[str] = []
-
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-
-    # Global symbol registry for cross-file resolution: name -> Symbol
-    global_symbol_registry: dict[str, Symbol] = {}
-
-    # Create parser - try language pack first, then standalone
-    try:
-        try:
-            from tree_sitter_language_pack import get_language
-
-            r_lang = get_language("r")
-            parser = tree_sitter.Parser(r_lang)
-        except Exception:  # pragma: no cover - language pack available
-            import tree_sitter_r  # pragma: no cover
-
-            parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_r.language()))  # pragma: no cover
-    except Exception as e:  # pragma: no cover
-        warnings.warn(f"Failed to initialize R parser: {e}")
-        return AnalysisResult(
-            skipped=True,
-            skip_reason=f"Failed to initialize parser: {e}",
-        )
-
-    r_files = list(find_r_files(repo_root))
-
-    # Store parsed trees for pass 2: (rel_path, source, tree, loaded_packages)
-    parsed_files: list[tuple[str, bytes, object, set[str]]] = []
-
-    # Pass 1: Extract symbols from all files
-    for r_path in r_files:
-        try:
-            rel_path = str(r_path.relative_to(repo_root))
-            source = r_path.read_bytes()
-            tree = parser.parse(source)
-            files_analyzed += 1
-
-            # Extract symbols
-            _extract_r_symbols(
-                tree.root_node,
-                source,
-                rel_path,
-                symbols,
-                global_symbol_registry,
-            )
-
-            # Extract loaded packages for ADR-0007
-            loaded_packages = _extract_loaded_packages(tree.root_node, source)
-
-            # Store for pass 2
-            parsed_files.append((rel_path, source, tree, loaded_packages))
-
-        except Exception as e:  # pragma: no cover
-            files_skipped += 1  # pragma: no cover
-            warnings_list.append(f"Failed to parse {r_path}: {e}")  # pragma: no cover
-
-    # Create resolver from global registry
-    resolver = NameResolver(global_symbol_registry)
-
-    # Pass 2: Extract edges using resolver
-    for rel_path, source, tree, loaded_packages in parsed_files:
-        # Build local symbol map for this file (functions only)
-        local_symbols = {s.name: s for s in symbols if s.path == rel_path and s.kind == "function"}
-
-        _extract_r_edges(
-            tree.root_node,  # type: ignore
-            source,
-            edges,
-            local_symbols,
-            resolver,
-            loaded_packages,
-        )
-
-    duration_ms = int((time.time() - start_time) * 1000)
-
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-    run.files_analyzed = files_analyzed
-    run.files_skipped = files_skipped
-    run.duration_ms = duration_ms
-    run.warnings = warnings_list
-
-    return AnalysisResult(
-        symbols=symbols,
-        edges=edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)
 
 
 # Convenience alias

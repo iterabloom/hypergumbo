@@ -6,6 +6,7 @@ sections in a single file.
 
 How It Works
 ------------
+Uses TreeSitterAnalyzer base class for grammar checking and parser creation.
 1. Uses tree-sitter-vue grammar from tree-sitter-language-pack
 2. Extracts component structure (template, script, style)
 3. Identifies component references and directive usage
@@ -38,15 +39,16 @@ Why This Design
 from __future__ import annotations
 
 import re
-import time
 import uuid
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    TreeSitterAnalyzer,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -55,17 +57,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "vue.tree_sitter"
 PASS_VERSION = "0.1.0"
-
-
-def is_vue_tree_sitter_available() -> bool:
-    """Check if tree-sitter-vue is available."""
-    try:
-        from tree_sitter_language_pack import get_language
-
-        get_language("vue")
-        return True
-    except Exception:  # pragma: no cover
-        return False
 
 
 def find_vue_files(repo_root: Path) -> list[Path]:
@@ -149,22 +140,71 @@ VUE_BUILTINS = {
 }
 
 
-class VueAnalyzer:
-    """Analyzer for Vue component files."""
+def _extract_braced_content(text: str, start_pos: int) -> str:
+    """Extract content between matching braces, handling nesting."""
+    if start_pos >= len(text) or text[start_pos] != "{":
+        return ""  # pragma: no cover
 
-    def __init__(self, repo_root: Path) -> None:
-        self.repo_root = repo_root
-        self._symbols: list[Symbol] = []
-        self._edges: list[Edge] = []
-        self._execution_id = f"uuid:{uuid.uuid4()}"
-        self._files_analyzed = 0
-        self._current_imports: dict[str, str] = {}  # component name -> import path
+    depth = 0
+    i = start_pos
+    while i < len(text):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start_pos:i + 1]
+        i += 1
+    return ""  # pragma: no cover - unclosed brace
 
-    def analyze(self) -> AnalysisResult:
-        """Run the Vue analysis."""
-        start_time = time.time()
 
-        files = find_vue_files(self.repo_root)
+def _build_style_signature(is_scoped: bool, is_module: bool, lang: str) -> str:
+    """Build signature string for style block."""
+    parts = ["<style"]
+    if is_scoped:
+        parts.append(" scoped")
+    if is_module:
+        parts.append(" module")
+    if lang != "css":
+        parts.append(' lang="')
+        parts.append(lang)
+        parts.append('"')
+    parts.append(">")
+    return "".join(parts)
+
+
+class VueAnalyzer(TreeSitterAnalyzer):
+    """Analyzer for Vue component files using TreeSitterAnalyzer base class."""
+
+    lang = "vue"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.vue"]
+    language_pack_name = "vue"
+
+    def analyze(self, repo_root: Path, max_files: Optional[int] = None) -> AnalysisResult:
+        """Override analyze for Vue's single-file component parsing."""
+        import time as _time
+        import warnings
+
+        start_time = _time.time()
+        run = AnalysisRun.create(pass_id=self.pass_id, version=self.pass_version)
+
+        if not self._check_grammar_available():
+            warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            run.duration_ms = int((_time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        files = find_vue_files(repo_root)
         if not files:
             return AnalysisResult(
                 symbols=[],
@@ -172,112 +212,94 @@ class VueAnalyzer:
                 run=None,
             )
 
-        from tree_sitter_language_pack import get_parser
-
-        parser = get_parser("vue")
+        parser = self._create_parser()
+        symbols: list[Symbol] = []
+        edges: list[Edge] = []
+        files_analyzed = 0
+        current_imports: dict[str, str] = {}
 
         for path in files:
             try:
                 content = path.read_bytes()
                 tree = parser.parse(content)
-                self._current_imports = {}
-                self._extract_symbols(tree.root_node, path, content)
-                self._files_analyzed += 1
+                current_imports = {}
+                self._extract_symbols(
+                    tree.root_node, path, repo_root, content,
+                    symbols, edges, current_imports,
+                )
+                files_analyzed += 1
             except Exception:  # pragma: no cover  # noqa: S112  # nosec B112
                 continue
 
-        duration_ms = int((time.time() - start_time) * 1000)
-
-        run = AnalysisRun(
-            pass_id=PASS_ID,
-            execution_id=self._execution_id,
-            version=PASS_VERSION,
-            toolchain={"name": "vue", "version": "unknown"},
-            duration_ms=duration_ms,
-            files_analyzed=self._files_analyzed,
-        )
+        duration_ms = int((_time.time() - start_time) * 1000)
+        run.files_analyzed = files_analyzed
+        run.duration_ms = duration_ms
 
         return AnalysisResult(
-            symbols=self._symbols,
-            edges=self._edges,
+            symbols=symbols,
+            edges=edges,
             run=run,
         )
 
     def _extract_symbols(
-        self, node: "tree_sitter.Node", path: Path, content: bytes
+        self, node: "tree_sitter.Node", path: Path, repo_root: Path,
+        content: bytes, symbols: list[Symbol], edges: list[Edge],
+        current_imports: dict[str, str],
     ) -> None:
         """Extract symbols from a syntax tree node.
 
         Process in two passes: script first (to collect imports), then template.
         """
         # First pass: extract script content to populate imports
-        self._extract_script_pass(node, path, content)
+        self._extract_script_pass(node, path, repo_root, content, symbols, current_imports)
 
         # Second pass: extract template and style content
-        self._extract_template_style_pass(node, path, content)
+        self._extract_template_style_pass(node, path, repo_root, content, symbols, edges, current_imports)
 
     def _extract_script_pass(
-        self, node: "tree_sitter.Node", path: Path, content: bytes
+        self, node: "tree_sitter.Node", path: Path, repo_root: Path,
+        content: bytes, symbols: list[Symbol], current_imports: dict[str, str],
     ) -> None:
         """First pass: extract script content to populate imports."""
         if node.type == "script_element":
-            self._extract_script_content(node, path, content)
+            self._extract_script_content(node, path, repo_root, symbols, current_imports)
 
         for child in node.children:
-            self._extract_script_pass(child, path, content)
+            self._extract_script_pass(child, path, repo_root, content, symbols, current_imports)
 
     def _extract_template_style_pass(
-        self, node: "tree_sitter.Node", path: Path, content: bytes
+        self, node: "tree_sitter.Node", path: Path, repo_root: Path,
+        content: bytes, symbols: list[Symbol], edges: list[Edge],
+        current_imports: dict[str, str],
     ) -> None:
         """Second pass: extract template and style content."""
         if node.type == "template_element":
-            self._extract_template_content(node, path, content)
+            self._extract_template_content(node, path, repo_root, symbols, edges, current_imports)
         elif node.type == "style_element":
-            self._extract_style_info(node, path)
+            self._extract_style_info(node, path, repo_root, symbols)
 
         for child in node.children:
-            self._extract_template_style_pass(child, path, content)
+            self._extract_template_style_pass(child, path, repo_root, content, symbols, edges, current_imports)
 
     def _extract_script_content(
-        self, node: "tree_sitter.Node", path: Path, content: bytes
+        self, node: "tree_sitter.Node", path: Path, repo_root: Path,
+        symbols: list[Symbol], current_imports: dict[str, str],
     ) -> None:
         """Extract component definition from script element."""
-        # Find raw_text child which contains the script content
         for child in node.children:
             if child.type == "raw_text":
                 script_content = _get_node_text(child)
                 base_line = child.start_point[0] + 1
-                self._parse_script(script_content, path, base_line)
+                self._parse_script(script_content, path, repo_root, base_line, symbols, current_imports)
                 break
 
-    def _extract_braced_content(self, text: str, start_pos: int) -> str:
-        """Extract content between matching braces, handling nesting.
-
-        Args:
-            text: The full text to search in
-            start_pos: Position of the opening brace
-
-        Returns:
-            The content between the braces (including the braces)
-        """
-        if start_pos >= len(text) or text[start_pos] != "{":
-            return ""  # pragma: no cover
-
-        depth = 0
-        i = start_pos
-        while i < len(text):
-            if text[i] == "{":
-                depth += 1
-            elif text[i] == "}":
-                depth -= 1
-                if depth == 0:
-                    return text[start_pos:i + 1]
-            i += 1
-        return ""  # pragma: no cover - unclosed brace
-
-    def _parse_script(self, script: str, path: Path, base_line: int) -> None:
+    def _parse_script(
+        self, script: str, path: Path, repo_root: Path,
+        base_line: int, symbols: list[Symbol],
+        current_imports: dict[str, str],
+    ) -> None:
         """Parse script content for imports and component definition."""
-        rel_path = path.relative_to(self.repo_root)
+        rel_path = path.relative_to(repo_root)
 
         # Extract imports
         import_pattern = re.compile(
@@ -294,27 +316,21 @@ class VueAnalyzer:
                 # Track Vue component imports
                 if import_path.endswith(".vue"):
                     if default_import:
-                        self._current_imports[default_import] = import_path
+                        current_imports[default_import] = import_path
                     if named_imports:
                         for name in named_imports.split(","):
                             name = name.strip()
                             if name and name[0].isupper():
-                                self._current_imports[name] = import_path
+                                current_imports[name] = import_path
 
         # NOTE: Methods and computed properties are NOT extracted here.
-        # The JS/TS tree-sitter analyzer processes .vue <script> sections and
-        # emits these as language="javascript" symbols with full tree-sitter
-        # precision. Extracting them here with regex would create duplicates
-        # (1,093 orphaned vue/method symbols observed on Chatwoot).
 
         # Extract props (Options API)
-        # First try to find props: [ ... ] (array syntax)
         props_array_match = re.search(r"props\s*:\s*\[", script)
         props_object_match = re.search(r"props\s*:\s*\{", script)
 
         if props_array_match:
             # Array syntax: props: ['title', 'message']
-            # Find the closing bracket
             bracket_start = props_array_match.end() - 1
             depth = 0
             i = bracket_start
@@ -355,27 +371,25 @@ class VueAnalyzer:
                         signature=f"prop {prop_name}",
                         meta={"section": "props"},
                     )
-                    self._symbols.append(symbol)
+                    symbols.append(symbol)
 
         elif props_object_match:
             # Object syntax: props: { title: String, message: { type: String } }
-            props_content = self._extract_braced_content(
+            props_content = _extract_braced_content(
                 script, props_object_match.end() - 1
             )
             if props_content:
                 line_num = base_line + script[:props_object_match.start()].count("\n")
-                # Find top-level keys only (not nested keys like type, default)
-                # We need to be smarter: only match keys at the first level of nesting
-                self._extract_prop_names(props_content, rel_path, line_num)
+                self._extract_prop_names(props_content, rel_path, line_num, symbols)
 
     def _extract_prop_names(
-        self, props_content: str, rel_path: Path, line_num: int
+        self, props_content: str, rel_path: Path, line_num: int,
+        symbols: list[Symbol],
     ) -> None:
         """Extract prop names from props object content.
 
         Only extracts top-level keys, not nested properties like type, default.
         """
-        # Track brace depth to only capture top-level keys
         depth = 0
         i = 0
         key_start = None
@@ -386,16 +400,12 @@ class VueAnalyzer:
             if char == "{":
                 depth += 1
                 if depth == 1:
-                    # Start looking for keys after opening brace
                     key_start = i + 1
             elif char == "}":
                 depth -= 1
             elif depth == 1:
-                # We're at the top level of the props object
                 if char == ":" and key_start is not None:
-                    # Found a key
                     key_text = props_content[key_start:i].strip()
-                    # Extract the key name (handle whitespace and newlines)
                     key_match = re.search(r"(\w+)\s*$", key_text)
                     if key_match:
                         prop_name = key_match.group(1)
@@ -419,50 +429,58 @@ class VueAnalyzer:
                             signature=f"prop {prop_name}",
                             meta={"section": "props"},
                         )
-                        self._symbols.append(symbol)
+                        symbols.append(symbol)
                     key_start = None
                 elif char == ",":
-                    # Start looking for next key after comma
                     key_start = i + 1
             i += 1
 
     def _extract_template_content(
-        self, node: "tree_sitter.Node", path: Path, content: bytes
+        self, node: "tree_sitter.Node", path: Path, repo_root: Path,
+        symbols: list[Symbol], edges: list[Edge],
+        current_imports: dict[str, str],
     ) -> None:
         """Extract component usage from template element."""
-        self._extract_template_node(node, path)
+        self._extract_template_node(node, path, repo_root, symbols, edges, current_imports)
 
     def _extract_template_node(
-        self, node: "tree_sitter.Node", path: Path
+        self, node: "tree_sitter.Node", path: Path, repo_root: Path,
+        symbols: list[Symbol], edges: list[Edge],
+        current_imports: dict[str, str],
     ) -> None:
         """Recursively extract from template nodes."""
         if node.type == "element":
-            self._process_element(node, path)
-            # Recurse into element children but skip start_tag/self_closing_tag
-            # since _process_element already handled them
+            self._process_element(node, path, repo_root, symbols, edges, current_imports)
             for child in node.children:
                 if child.type not in ("start_tag", "self_closing_tag"):
-                    self._extract_template_node(child, path)
-            return  # Don't run default recursion
+                    self._extract_template_node(child, path, repo_root, symbols, edges, current_imports)
+            return
 
         for child in node.children:
-            self._extract_template_node(child, path)
+            self._extract_template_node(child, path, repo_root, symbols, edges, current_imports)
 
-    def _process_element(self, node: "tree_sitter.Node", path: Path) -> None:
+    def _process_element(
+        self, node: "tree_sitter.Node", path: Path, repo_root: Path,
+        symbols: list[Symbol], edges: list[Edge],
+        current_imports: dict[str, str],
+    ) -> None:
         """Process an element node."""
         for child in node.children:
             if child.type == "start_tag":
-                self._process_tag(child, path)
+                self._process_tag(child, path, repo_root, symbols, edges, current_imports)
                 break
             elif child.type == "self_closing_tag":
-                self._process_tag(child, path)
+                self._process_tag(child, path, repo_root, symbols, edges, current_imports)
                 break
 
-    def _process_tag(self, node: "tree_sitter.Node", path: Path) -> None:
+    def _process_tag(
+        self, node: "tree_sitter.Node", path: Path, repo_root: Path,
+        symbols: list[Symbol], edges: list[Edge],
+        current_imports: dict[str, str],
+    ) -> None:
         """Process a tag node (start_tag or self_closing_tag)."""
         tag_name = ""
         directives: list[str] = []
-        # Handler expressions for v-on directives (parallel to directives list)
         handler_expressions: list[str] = []
         has_slot_attr = False
 
@@ -471,7 +489,6 @@ class VueAnalyzer:
                 tag_name = _get_node_text(child)
             elif child.type == "directive_attribute":
                 directive_text = _get_node_text(child)
-                # Extract directive name
                 if directive_text.startswith("@"):
                     directives.append(f"v-on:{directive_text[1:].split('=')[0]}")
                     handler_expressions.append(
@@ -500,10 +517,9 @@ class VueAnalyzer:
         if not tag_name:
             return  # pragma: no cover
 
-        rel_path = path.relative_to(self.repo_root)
+        rel_path = path.relative_to(repo_root)
         line = node.start_point[0] + 1
 
-        # Check if this is a component reference (capitalized or kebab-case with uppercase)
         is_component = (
             tag_name[0].isupper()
             or (
@@ -512,6 +528,8 @@ class VueAnalyzer:
                 and tag_name.lower() not in VUE_BUILTINS
             )
         )
+
+        execution_id = f"uuid:{uuid.uuid4()}"
 
         if is_component:
             symbol_id = _make_symbol_id(rel_path, tag_name, "component_ref", line)
@@ -522,14 +540,12 @@ class VueAnalyzer:
                 end_col=node.end_point[1],
             )
 
-            # Check for import path (also check PascalCase version of kebab-case)
-            import_path = self._current_imports.get(tag_name, "")
+            import_path = current_imports.get(tag_name, "")
             if not import_path and "-" in tag_name:
-                # Convert my-component to MyComponent
                 pascal_name = "".join(
                     word.capitalize() for word in tag_name.split("-")
                 )
-                import_path = self._current_imports.get(pascal_name, "")
+                import_path = current_imports.get(pascal_name, "")
 
             symbol = Symbol(
                 id=symbol_id,
@@ -547,9 +563,8 @@ class VueAnalyzer:
                     "has_slot_attr": has_slot_attr,
                 },
             )
-            self._symbols.append(symbol)
+            symbols.append(symbol)
 
-            # Create edge if we have import info
             if import_path:
                 edge = Edge.create(
                     src=symbol_id,
@@ -557,11 +572,11 @@ class VueAnalyzer:
                     edge_type="imports_component",
                     line=line,
                     origin=PASS_ID,
-                    origin_run_id=self._execution_id,
+                    origin_run_id=execution_id,
                     evidence_type="import",
                     confidence=0.95,
                 )
-                self._edges.append(edge)
+                edges.append(edge)
 
         # Record directives
         for i, directive in enumerate(directives):
@@ -594,12 +609,11 @@ class VueAnalyzer:
                 signature=directive,
                 meta=meta,
             )
-            self._symbols.append(symbol)
+            symbols.append(symbol)
 
         # Check for slot elements
         if tag_name == "slot":
             slot_name = "default"
-            # Look for name attribute
             for child in node.children:
                 if child.type == "attribute":
                     attr_name = ""
@@ -632,30 +646,16 @@ class VueAnalyzer:
                 signature=f"<slot name=\"{slot_name}\">" if slot_name != "default" else "<slot>",
                 meta={"is_default": slot_name == "default"},
             )
-            self._symbols.append(symbol)
+            symbols.append(symbol)
 
-    def _build_style_signature(
-        self, is_scoped: bool, is_module: bool, lang: str
-    ) -> str:
-        """Build signature string for style block."""
-        parts = ["<style"]
-        if is_scoped:
-            parts.append(" scoped")
-        if is_module:
-            parts.append(" module")
-        if lang != "css":
-            parts.append(' lang="')
-            parts.append(lang)
-            parts.append('"')
-        parts.append(">")
-        return "".join(parts)
-
-    def _extract_style_info(self, node: "tree_sitter.Node", path: Path) -> None:
+    def _extract_style_info(
+        self, node: "tree_sitter.Node", path: Path, repo_root: Path,
+        symbols: list[Symbol],
+    ) -> None:
         """Extract style section info."""
-        rel_path = path.relative_to(self.repo_root)
+        rel_path = path.relative_to(repo_root)
         line = node.start_point[0] + 1
 
-        # Check for scoped or module attributes
         is_scoped = False
         is_module = False
         lang = "css"
@@ -696,14 +696,22 @@ class VueAnalyzer:
             path=str(rel_path),
             span=span,
             origin=PASS_ID,
-            signature=self._build_style_signature(is_scoped, is_module, lang),
+            signature=_build_style_signature(is_scoped, is_module, lang),
             meta={
                 "is_scoped": is_scoped,
                 "is_module": is_module,
                 "lang": lang,
             },
         )
-        self._symbols.append(symbol)
+        symbols.append(symbol)
+
+
+_analyzer = VueAnalyzer()
+
+
+def is_vue_tree_sitter_available() -> bool:
+    """Check if tree-sitter-vue is available."""
+    return _analyzer._check_grammar_available()
 
 
 @register_analyzer("vue")
@@ -716,26 +724,4 @@ def analyze_vue(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult containing extracted symbols and edges
     """
-    if not is_vue_tree_sitter_available():
-        warnings.warn(
-            "Vue analysis skipped: tree-sitter-vue not available",
-            UserWarning,
-            stacklevel=2,
-        )
-        return AnalysisResult(
-            symbols=[],
-            edges=[],
-            run=AnalysisRun(
-                pass_id=PASS_ID,
-                execution_id=f"uuid:{uuid.uuid4()}",
-                version=PASS_VERSION,
-                toolchain={"name": "vue", "version": "unknown"},
-                duration_ms=0,
-                files_analyzed=0,
-            ),
-            skipped=True,
-            skip_reason="tree-sitter-vue not available",
-        )
-
-    analyzer = VueAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

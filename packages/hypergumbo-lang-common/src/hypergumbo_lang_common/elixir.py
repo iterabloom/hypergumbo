@@ -13,33 +13,40 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-1. Check if tree-sitter-languages (with Elixir) is available
-2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
-   - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls and resolve against global symbol registry
-4. Detect function calls and import directives
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Parse all files, extract all symbols into global registry
+2. Pass 2: Detect calls, resolve against global registry, extract Phoenix
+   routes and OTP behaviour callback edges
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Elixir-specific
+extraction logic.
 
 Why This Design
 ---------------
-- Optional dependency keeps base install lightweight
-- Uses tree-sitter-languages package which bundles Elixir grammar
+- TreeSitterAnalyzer eliminates boilerplate orchestration code
+- Uses tree-sitter-language-pack for grammar (elixir)
 - Two-pass allows cross-file call resolution
-- Same pattern as Java/PHP/C analyzers for consistency
+- Multi-clause function support via global_symbols __multi__ index
+- Phoenix routes and OTP callbacks integrated into the two-pass pipeline
 """
 from __future__ import annotations
 
-import importlib.util
-import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
-from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
+from hypergumbo_core.ir import Edge, Span, Symbol, UsageContext
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 # Phoenix HTTP method macros for route detection
@@ -69,6 +76,8 @@ BEHAVIOUR_CALLBACKS: dict[str, list[str]] = {
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = "elixir-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -79,14 +88,6 @@ def find_elixir_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.ex", "*.exs"])
 
 
-def is_elixir_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Elixir grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False
-    # Check for tree_sitter_language_pack which includes Elixir
-    if importlib.util.find_spec("tree_sitter_language_pack") is None:
-        return False
-    return True
 
 
 def _extract_alias_hints(
@@ -297,7 +298,8 @@ def _extract_phoenix_routes(
     source: bytes,
     file_path: Path,
     symbol_by_name: dict[str, Symbol],
-    run: AnalysisRun,
+    run_id: str,
+    pass_id: str,
 ) -> tuple[list[UsageContext], list[Symbol]]:
     """Extract UsageContext records AND Symbol objects for Phoenix router DSL calls.
 
@@ -454,8 +456,8 @@ def _extract_phoenix_routes(
                         "controller": controller,
                         "action": act,
                     },
-                    origin=run.pass_id,
-                    origin_run_id=run.execution_id,
+                    origin=pass_id,
+                    origin_run_id=run_id,
                 )
                 route_symbols.append(route_symbol)
         else:
@@ -479,8 +481,8 @@ def _extract_phoenix_routes(
                     "http_method": http_method,
                     "route_path": normalized_path,
                 },
-                origin=run.pass_id,
-                origin_run_id=run.execution_id,
+                origin=pass_id,
+                origin_run_id=run_id,
             )
             if controller:
                 route_symbol.meta["controller"] = controller
@@ -497,7 +499,7 @@ def _extract_behaviour_callbacks(
     file_path: Path,
     file_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
-    run: AnalysisRun,
+    run_id: str,
     file_symbols_multi: dict[str, list[Symbol]] | None = None,
     global_symbols_multi: dict[str, list[Symbol]] | None = None,
 ) -> list[Edge]:
@@ -580,41 +582,28 @@ def _extract_behaviour_callbacks(
                     evidence_type="behaviour_callback",
                     confidence=0.9,
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                 ))
 
     return edges
 
 
-@dataclass
-class FileAnalysis:
-    """Intermediate analysis result for a single file.
+def _extract_symbols_from_tree(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: str,
+    run_id: str,
+) -> tuple[list[Symbol], dict[str, Symbol], dict[str, list[Symbol]]]:
+    """Extract symbols from a parsed Elixir tree.
 
-    symbol_by_name maps short names to the most recent symbol (for primary lookups).
-    symbols_by_name maps short names to ALL symbols with that name (for multi-clause
-    Elixir functions where the same name has multiple clauses with pattern matching).
+    Returns:
+        Tuple of (symbols, symbol_by_name, symbols_by_name).
+        symbol_by_name maps short names to the most recent symbol.
+        symbols_by_name maps short names to ALL symbols (for multi-clause).
     """
-
-    symbols: list[Symbol] = field(default_factory=list)
-    symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
-    symbols_by_name: dict[str, list[Symbol]] = field(default_factory=dict)
-    current_module: str = ""
-    alias_hints: dict[str, str] = field(default_factory=dict)
-
-
-def _extract_symbols_from_file(
-    file_path: Path,
-    parser: "tree_sitter.Parser",
-    run: AnalysisRun,
-) -> FileAnalysis:
-    """Extract symbols from a single Elixir file."""
-    try:
-        source = file_path.read_bytes()
-        tree = parser.parse(source)
-    except (OSError, IOError):
-        return FileAnalysis()
-
-    analysis = FileAnalysis()
+    symbols: list[Symbol] = []
+    symbol_by_name: dict[str, Symbol] = {}
+    symbols_by_name: dict[str, list[Symbol]] = {}
 
     for node in iter_tree(tree.root_node):
         # Check for defmodule
@@ -637,11 +626,11 @@ def _extract_symbols_from_file(
                         end_line = node.end_point[0] + 1
 
                         symbol = Symbol(
-                            id=make_symbol_id("elixir", str(file_path), start_line, end_line, full_name, "module"),
+                            id=make_symbol_id("elixir", file_path, start_line, end_line, full_name, "module"),
                             name=full_name,
                             kind="module",
                             language="elixir",
-                            path=str(file_path),
+                            path=file_path,
                             span=Span(
                                 start_line=start_line,
                                 end_line=end_line,
@@ -649,10 +638,10 @@ def _extract_symbols_from_file(
                                 end_col=node.end_point[1],
                             ),
                             origin=PASS_ID,
-                            origin_run_id=run.execution_id,
+                            origin_run_id=run_id,
                         )
-                        analysis.symbols.append(symbol)
-                        analysis.symbol_by_name[full_name] = symbol
+                        symbols.append(symbol)
+                        symbol_by_name[full_name] = symbol
 
                 elif target_name in ("def", "defp"):
                     func_name = _get_function_name(node, source)
@@ -668,11 +657,11 @@ def _extract_symbols_from_file(
                         modifiers = ["private"] if target_name == "defp" else []
 
                         symbol = Symbol(
-                            id=make_symbol_id("elixir", str(file_path), start_line, end_line, full_name, "function"),
+                            id=make_symbol_id("elixir", file_path, start_line, end_line, full_name, "function"),
                             name=full_name,
                             kind="function",
                             language="elixir",
-                            path=str(file_path),
+                            path=file_path,
                             span=Span(
                                 start_line=start_line,
                                 end_line=end_line,
@@ -680,14 +669,14 @@ def _extract_symbols_from_file(
                                 end_col=node.end_point[1],
                             ),
                             origin=PASS_ID,
-                            origin_run_id=run.execution_id,
+                            origin_run_id=run_id,
                             signature=_extract_elixir_signature(node, source),
                             modifiers=modifiers,
                         )
-                        analysis.symbols.append(symbol)
-                        analysis.symbol_by_name[func_name] = symbol  # Store by short name for local calls
+                        symbols.append(symbol)
+                        symbol_by_name[func_name] = symbol  # Store by short name for local calls
                         # Multi-clause index: all symbols with the same short name
-                        analysis.symbols_by_name.setdefault(func_name, []).append(symbol)
+                        symbols_by_name.setdefault(func_name, []).append(symbol)
 
                 elif target_name in ("defmacro", "defmacrop"):
                     macro_name = _get_function_name(node, source)
@@ -703,11 +692,11 @@ def _extract_symbols_from_file(
                         modifiers = ["private"] if target_name == "defmacrop" else []
 
                         symbol = Symbol(
-                            id=make_symbol_id("elixir", str(file_path), start_line, end_line, full_name, "macro"),
+                            id=make_symbol_id("elixir", file_path, start_line, end_line, full_name, "macro"),
                             name=full_name,
                             kind="macro",
                             language="elixir",
-                            path=str(file_path),
+                            path=file_path,
                             span=Span(
                                 start_line=start_line,
                                 end_line=end_line,
@@ -715,47 +704,38 @@ def _extract_symbols_from_file(
                                 end_col=node.end_point[1],
                             ),
                             origin=PASS_ID,
-                            origin_run_id=run.execution_id,
+                            origin_run_id=run_id,
                             signature=_extract_elixir_signature(node, source),
                             modifiers=modifiers,
                         )
-                        analysis.symbols.append(symbol)
-                        analysis.symbol_by_name[macro_name] = symbol
+                        symbols.append(symbol)
+                        symbol_by_name[macro_name] = symbol
 
-    # Extract alias hints for disambiguation
-    analysis.alias_hints = _extract_alias_hints(tree, source)
-
-    return analysis
+    return symbols, symbol_by_name, symbols_by_name
 
 
-def _extract_edges_from_file(
-    file_path: Path,
-    parser: "tree_sitter.Parser",
+def _extract_edges_from_tree(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: str,
     local_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
-    run: AnalysisRun,
-    resolver: NameResolver | None = None,
+    run_id: str,
+    resolver: "NameResolver",
     alias_hints: dict[str, str] | None = None,
     local_symbols_multi: dict[str, list[Symbol]] | None = None,
     global_symbols_multi: dict[str, list[Symbol]] | None = None,
 ) -> list[Edge]:
-    """Extract call and import edges from a file.
+    """Extract call and import edges from a parsed Elixir tree.
 
     Args:
         alias_hints: Optional dict mapping short names to full module paths for disambiguation.
     """
-    if resolver is None:  # pragma: no cover - defensive
-        resolver = NameResolver(global_symbols)
     if alias_hints is None:  # pragma: no cover - defensive default
         alias_hints = {}
-    try:
-        source = file_path.read_bytes()
-        tree = parser.parse(source)
-    except (OSError, IOError):
-        return []
 
     edges: list[Edge] = []
-    file_id = make_file_id("elixir", str(file_path))
+    file_id = make_file_id("elixir", file_path)
 
     for node in iter_tree(tree.root_node):
         if node.type == "call":
@@ -778,7 +758,7 @@ def _extract_edges_from_file(
                                     evidence_type="use_directive",
                                     confidence=0.95,
                                     origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
+                                    origin_run_id=run_id,
                                 ))
 
                 elif target_name == "import":
@@ -795,7 +775,7 @@ def _extract_edges_from_file(
                                     evidence_type="import_directive",
                                     confidence=0.95,
                                     origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
+                                    origin_run_id=run_id,
                                 ))
 
                 # Detect function calls within a function body
@@ -814,10 +794,10 @@ def _extract_edges_from_file(
                                     evidence_type="function_call",
                                     confidence=0.85,
                                     origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
+                                    origin_run_id=run_id,
                                 ))
                         # Fallback: single-match local lookup (modules, macros)
-                        elif target_name in local_symbols:
+                        elif target_name in local_symbols:  # pragma: no cover — defensive; multi index covers all symbols
                             callee = local_symbols[target_name]
                             edges.append(Edge.create(
                                 src=current_function.id,
@@ -827,7 +807,7 @@ def _extract_edges_from_file(
                                 evidence_type="function_call",
                                 confidence=0.85,
                                 origin=PASS_ID,
-                                origin_run_id=run.execution_id,
+                                origin_run_id=run_id,
                             ))
                         # Cross-file: multi-clause global lookup, then resolver
                         else:
@@ -842,7 +822,7 @@ def _extract_edges_from_file(
                                         evidence_type="function_call",
                                         confidence=0.80,
                                         origin=PASS_ID,
-                                        origin_run_id=run.execution_id,
+                                        origin_run_id=run_id,
                                     ))
                             else:  # pragma: no cover — multi-index has same keys as resolver
                                 # Use alias hints for disambiguation
@@ -857,7 +837,7 @@ def _extract_edges_from_file(
                                         evidence_type="function_call",
                                         confidence=0.80 * lookup_result.confidence,
                                         origin=PASS_ID,
-                                        origin_run_id=run.execution_id,
+                                        origin_run_id=run_id,
                                     ))
 
             # Module-qualified calls: Helper.greet(), App.Services.UserService.find()
@@ -867,7 +847,7 @@ def _extract_edges_from_file(
                 if dot_node:
                     _handle_dot_call(
                         node, dot_node, source, local_symbols,
-                        global_symbols, resolver, alias_hints, edges, run,
+                        global_symbols, resolver, alias_hints, edges, run_id,
                     )
 
     return edges
@@ -879,10 +859,10 @@ def _handle_dot_call(
     source: bytes,
     local_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
-    resolver: NameResolver,
+    resolver: "NameResolver",
     alias_hints: dict[str, str],
     edges: list[Edge],
-    run: AnalysisRun,
+    run_id: str,
 ) -> None:
     """Handle module-qualified calls like Helper.greet() or App.Module.func().
 
@@ -918,7 +898,7 @@ def _handle_dot_call(
             evidence_type="module_qualified_call",
             confidence=0.90,
             origin=PASS_ID,
-            origin_run_id=run.execution_id,
+            origin_run_id=run_id,
         ))
         return
 
@@ -936,7 +916,7 @@ def _handle_dot_call(
                 evidence_type="module_qualified_call",
                 confidence=0.85,
                 origin=PASS_ID,
-                origin_run_id=run.execution_id,
+                origin_run_id=run_id,
             ))
             return
 
@@ -952,7 +932,7 @@ def _handle_dot_call(
             evidence_type="module_qualified_call",
             confidence=0.75 * lookup_result.confidence,
             origin=PASS_ID,
-            origin_run_id=run.execution_id,
+            origin_run_id=run_id,
         ))
         return
 
@@ -967,8 +947,148 @@ def _handle_dot_call(
         evidence_type="unresolved_module_call",
         confidence=0.50,
         origin=PASS_ID,
-        origin_run_id=run.execution_id,
+        origin_run_id=run_id,
     ))
+
+
+class ElixirAnalyzer(TreeSitterAnalyzer):
+    """Elixir language analyzer using tree-sitter-language-pack.
+
+    Handles multi-clause functions (same name, different patterns),
+    Phoenix routes, OTP/Phoenix behaviour callbacks, and
+    module-qualified calls with alias resolution.
+
+    The multi-clause index is stored in global_symbols under a ``__multi__``
+    key to enable multi-clause edge resolution.
+    """
+
+    lang = "elixir"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.ex", "*.exs"]
+    language_pack_name = "elixir"
+    create_file_symbols = False
+
+    def register_symbol(
+        self,
+        symbol: Symbol,
+        global_symbols: dict,
+    ) -> None:
+        """Register symbol with both short and full names for cross-file resolution.
+
+        Also builds a multi-clause index under ``__multi__`` key.
+        """
+        short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
+        global_symbols[short_name] = symbol
+        global_symbols[symbol.name] = symbol
+        multi: dict[str, list[Symbol]] = global_symbols.setdefault("__multi__", {})
+        multi.setdefault(short_name, []).append(symbol)
+        multi.setdefault(symbol.name, []).append(symbol)
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract symbols from an Elixir file."""
+        # Stash run_id for extract_usage_contexts_from_file
+        self._current_run_id = run.execution_id
+        analysis = FileAnalysis()
+        symbols, symbol_by_name, _symbols_by_name = _extract_symbols_from_tree(
+            tree, source, rel_path, run.execution_id,
+        )
+        analysis.symbols = symbols
+        analysis.symbol_by_name = symbol_by_name
+        return analysis
+
+    def get_import_aliases(
+        self, tree: "tree_sitter.Tree", source: bytes,
+    ) -> dict[str, str]:
+        """Extract alias hints for disambiguation."""
+        return _extract_alias_hints(tree, source)
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract call, import, module-qualified call, and behaviour callback edges."""
+        global_multi: dict[str, list[Symbol]] | None = global_symbols.get("__multi__")
+
+        # Reconstruct local multi from global multi filtered to this file.
+        # We filter by path (not by local_symbols IDs) because local_symbols
+        # is a dict keyed by name, so multi-clause functions (3 handle_call
+        # clauses) only have one entry. Filtering by path captures all clauses.
+        local_symbols_multi: dict[str, list[Symbol]] | None = None
+        if global_multi:
+            local_symbols_multi = {}
+            for name, sym_list in global_multi.items():
+                local_matches = [s for s in sym_list if s.path == rel_path]
+                if local_matches:
+                    local_symbols_multi[name] = local_matches
+
+        edges = _extract_edges_from_tree(
+            tree, source, rel_path, local_symbols, global_symbols,
+            run.execution_id, resolver,
+            alias_hints=import_aliases,
+            local_symbols_multi=local_symbols_multi,
+            global_symbols_multi=global_multi,
+        )
+
+        # Behaviour callback edges (use GenServer, use Phoenix.LiveView, etc.)
+        callback_edges = _extract_behaviour_callbacks(
+            tree, source, file_path, local_symbols, global_symbols,
+            run.execution_id,
+            file_symbols_multi=local_symbols_multi,
+            global_symbols_multi=global_multi,
+        )
+        edges.extend(callback_edges)
+
+        return edges
+
+    def extract_usage_contexts_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, symbol_by_name: dict[str, Symbol],
+    ) -> list[UsageContext]:
+        """Extract Phoenix route usage contexts and stash route symbols."""
+        run_id = getattr(self, "_current_run_id", "")
+        usage_contexts, route_symbols = _extract_phoenix_routes(
+            tree.root_node, source, file_path, symbol_by_name,
+            run_id, self.pass_id,
+        )
+        # Stash route symbols to be added in post_process
+        self._pending_route_symbols.extend(route_symbols)
+        return usage_contexts
+
+    def post_process(
+        self,
+        symbols: list[Symbol],
+        edges: list[Edge],
+        usage_contexts: list[UsageContext],
+        run: "AnalysisRun",
+    ) -> tuple[list[Symbol], list[Edge], list[UsageContext]]:
+        """Add stashed route symbols to the final result."""
+        symbols.extend(self._pending_route_symbols)
+        return symbols, edges, usage_contexts
+
+    def analyze(
+        self,
+        repo_root: Path,
+        max_files: int | None = None,
+    ) -> AnalysisResult:
+        """Override to initialize pending route symbols before analysis."""
+        self._pending_route_symbols: list[Symbol] = []
+        self._current_run_id = ""
+        return super().analyze(repo_root, max_files=max_files)
+
+
+_analyzer = ElixirAnalyzer()
+
+
+def is_elixir_tree_sitter_available() -> bool:
+    """Check if tree-sitter with Elixir grammar is available."""
+    return _analyzer._check_grammar_available()
 
 
 @register_analyzer("elixir")
@@ -978,114 +1098,4 @@ def analyze_elixir(repo_root: Path) -> AnalysisResult:
     Returns an AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-elixir is not available, returns a skipped result.
     """
-    if not is_elixir_tree_sitter_available():
-        warnings.warn(
-            "tree-sitter-elixir not available. Install with: pip install hypergumbo[elixir]",
-            stacklevel=2,
-        )
-        return AnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-elixir not available",
-        )
-
-    start_time = time.time()
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    # Import tree-sitter-language-pack for Elixir
-    try:
-        from tree_sitter_language_pack import get_parser
-        parser = get_parser("elixir")
-    except Exception as e:
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return AnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=f"Failed to load Elixir parser: {e}",
-        )
-
-    # Pass 1: Extract all symbols
-    file_analyses: dict[Path, FileAnalysis] = {}
-    files_skipped = 0
-
-    for ex_file in find_elixir_files(repo_root):
-        analysis = _extract_symbols_from_file(ex_file, parser, run)
-        if analysis.symbols:
-            file_analyses[ex_file] = analysis
-        else:
-            files_skipped += 1
-
-    # Build global symbol registry
-    global_symbols: dict[str, Symbol] = {}
-    for analysis in file_analyses.values():
-        for symbol in analysis.symbols:
-            # Store by short name for cross-file resolution
-            short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
-            global_symbols[short_name] = symbol
-            global_symbols[symbol.name] = symbol
-
-    # Multi-clause index: maps name to ALL symbols with that name.
-    # Elixir functions with pattern matching have multiple clauses (same name,
-    # different patterns). The single-value global_symbols uses last-writer-wins,
-    # losing N-1 clauses. This index preserves all of them.
-    global_symbols_multi: dict[str, list[Symbol]] = {}
-    for analysis in file_analyses.values():
-        for symbol in analysis.symbols:
-            short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
-            global_symbols_multi.setdefault(short_name, []).append(symbol)
-            global_symbols_multi.setdefault(symbol.name, []).append(symbol)
-
-    # Pass 2: Extract edges and usage contexts
-    resolver = NameResolver(global_symbols)
-    all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
-    all_usage_contexts: list[UsageContext] = []
-
-    for ex_file, analysis in file_analyses.items():
-        all_symbols.extend(analysis.symbols)
-
-        edges = _extract_edges_from_file(
-            ex_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
-            alias_hints=analysis.alias_hints,
-            local_symbols_multi=analysis.symbols_by_name,
-            global_symbols_multi=global_symbols_multi,
-        )
-        all_edges.extend(edges)
-
-        # Extract Phoenix router usage contexts and route symbols
-        try:
-            source = ex_file.read_bytes()
-            tree = parser.parse(source)
-            usage_contexts, route_symbols = _extract_phoenix_routes(
-                tree.root_node, source, ex_file, analysis.symbol_by_name, run
-            )
-            all_usage_contexts.extend(usage_contexts)
-            all_symbols.extend(route_symbols)
-        except (OSError, IOError):  # pragma: no cover
-            pass
-
-    # Pass 2b: Extract OTP/Phoenix behaviour callback edges.
-    # `use GenServer`, `use Phoenix.LiveView`, etc. create invokes_callback edges
-    # from the module to its callback functions (init, mount, handle_event, ...).
-    for ex_file, analysis in file_analyses.items():
-        try:
-            source = ex_file.read_bytes()
-            tree = parser.parse(source)
-        except (OSError, IOError):  # pragma: no cover
-            continue
-        callback_edges = _extract_behaviour_callbacks(
-            tree, source, ex_file, analysis.symbol_by_name, global_symbols, run,
-            file_symbols_multi=analysis.symbols_by_name,
-            global_symbols_multi=global_symbols_multi,
-        )
-        all_edges.extend(callback_edges)
-
-    run.files_analyzed = len(file_analyses)
-    run.files_skipped = files_skipped
-    run.duration_ms = int((time.time() - start_time) * 1000)
-
-    return AnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        usage_contexts=all_usage_contexts,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

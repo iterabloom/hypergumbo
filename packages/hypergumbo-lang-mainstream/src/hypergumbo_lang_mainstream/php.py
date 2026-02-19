@@ -31,17 +31,22 @@ Why This Design
 """
 from __future__ import annotations
 
-import importlib.util
 import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
-from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, make_symbol_id, node_text
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    TreeSitterAnalyzer,
+    iter_tree,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -67,13 +72,9 @@ def find_php_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.php"])
 
 
-def is_php_tree_sitter_available() -> bool:
-    """Check if tree-sitter and PHP grammar are available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False
-    if importlib.util.find_spec("tree_sitter_php") is None:
-        return False
-    return True
+def _is_php_tree_sitter_available_legacy() -> bool:  # pragma: no cover - replaced by TreeSitterAnalyzer
+    """Legacy availability check -- replaced by TreeSitterAnalyzer._check_grammar_available."""
+    pass
 
 
 def _extract_use_aliases(
@@ -848,108 +849,131 @@ def _analyze_php_file(
     return symbols, edges, True
 
 
+class PHPAnalyzer(TreeSitterAnalyzer):
+    """PHP analyzer using tree-sitter-php.
+
+    Overrides ``analyze()`` because PHP uses a custom ``_get_php_parser()``
+    helper (which selects the ``language_php`` sub-grammar), a three-pass
+    structure (symbols, edges, usage contexts), and per-file use-alias
+    extraction.
+    """
+
+    lang = "php"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.php"]
+    grammar_module = "tree_sitter_php"
+
+    def analyze(
+        self,
+        repo_root: Path,
+        max_files: Optional[int] = None,
+    ) -> AnalysisResult:
+        """Run PHP analysis with three-pass symbol/edge/route extraction."""
+        start_time = time.time()
+
+        # Create analysis run for provenance
+        run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+
+        # Check for tree-sitter-php availability
+        if not self._check_grammar_available():
+            skip_reason = "PHP analysis skipped: requires tree-sitter-php (pip install tree-sitter-php)"
+            warnings.warn(skip_reason, stacklevel=2)
+            run.duration_ms = int((time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
+                skipped=True,
+                skip_reason=skip_reason,
+            )
+
+        parser = _get_php_parser()
+        if parser is None:
+            skip_reason = "PHP analysis skipped: requires tree-sitter-php (pip install tree-sitter-php)"
+            warnings.warn(skip_reason, stacklevel=2)
+            run.duration_ms = int((time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
+                skipped=True,
+                skip_reason=skip_reason,
+            )
+
+        # Pass 1: Parse all files and extract symbols
+        parsed_files: list[_ParsedFile] = []
+        all_symbols: list[Symbol] = []
+        files_analyzed = 0
+        files_skipped = 0
+
+        for file_path in find_php_files(repo_root):
+            try:
+                source = file_path.read_bytes()
+                tree = parser.parse(source)
+                use_aliases = _extract_use_aliases(tree, source)
+                parsed_files.append(_ParsedFile(
+                    path=file_path, tree=tree, source=source, use_aliases=use_aliases
+                ))
+                symbols = _extract_symbols(tree, source, file_path, run)
+                all_symbols.extend(symbols)
+                files_analyzed += 1
+            except (OSError, IOError):
+                files_skipped += 1
+
+        # Build global symbol registries
+        global_symbols: dict[str, Symbol] = {}
+        global_methods: dict[str, list[Symbol]] = {}
+        global_classes: dict[str, Symbol] = {}
+
+        for sym in all_symbols:
+            global_symbols[sym.name] = sym
+            if sym.kind == "method":
+                method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
+                if method_name not in global_methods:
+                    global_methods[method_name] = []
+                global_methods[method_name].append(sym)
+            elif sym.kind == "class":
+                global_classes[sym.name] = sym
+
+        # Pass 2: Extract edges using global symbol registry
+        symbol_resolver = NameResolver(global_symbols)
+        method_resolver = ListNameResolver(global_methods)
+        class_resolver = NameResolver(global_classes)
+        all_edges: list[Edge] = []
+        for pf in parsed_files:
+            edges = _extract_edges(
+                pf.tree, pf.source, pf.path, run,
+                global_symbols, global_methods, global_classes,
+                symbol_resolver, method_resolver, class_resolver,
+                use_aliases=pf.use_aliases,
+            )
+            all_edges.extend(edges)
+
+        # Pass 3: Extract UsageContexts and route symbols for framework pattern matching
+        all_usage_contexts: list[UsageContext] = []
+        for pf in parsed_files:
+            contexts, route_symbols = _extract_laravel_routes(pf.tree, pf.source, pf.path, run)
+            all_usage_contexts.extend(contexts)
+            all_symbols.extend(route_symbols)
+
+        run.files_analyzed = files_analyzed
+        run.files_skipped = files_skipped
+        run.duration_ms = int((time.time() - start_time) * 1000)
+
+        return AnalysisResult(
+            symbols=all_symbols,
+            edges=all_edges,
+            usage_contexts=all_usage_contexts,
+            run=run,
+        )
+
+
+_analyzer = PHPAnalyzer()
+
+
+def is_php_tree_sitter_available() -> bool:
+    """Check if tree-sitter with PHP grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("php")
 def analyze_php(repo_root: Path) -> AnalysisResult:
-    """Analyze all PHP files in a repository.
-
-    Uses a two-pass approach:
-    1. Parse all files and extract symbols into global registry
-    2. Detect calls and resolve against global symbol registry
-
-    Returns a AnalysisResult with symbols, edges, and provenance.
-    If tree-sitter-php is not available, returns empty result (silently skipped).
-    """
-    start_time = time.time()
-
-    # Create analysis run for provenance
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    # Check for tree-sitter-php availability
-    if not is_php_tree_sitter_available():
-        skip_reason = "PHP analysis skipped: requires tree-sitter-php (pip install tree-sitter-php)"
-        warnings.warn(skip_reason, stacklevel=2)
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return AnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=skip_reason,
-        )
-
-    parser = _get_php_parser()
-    if parser is None:
-        skip_reason = "PHP analysis skipped: requires tree-sitter-php (pip install tree-sitter-php)"
-        warnings.warn(skip_reason, stacklevel=2)
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return AnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=skip_reason,
-        )
-
-    # Pass 1: Parse all files and extract symbols
-    parsed_files: list[_ParsedFile] = []
-    all_symbols: list[Symbol] = []
-    files_analyzed = 0
-    files_skipped = 0
-
-    for file_path in find_php_files(repo_root):
-        try:
-            source = file_path.read_bytes()
-            tree = parser.parse(source)
-            use_aliases = _extract_use_aliases(tree, source)
-            parsed_files.append(_ParsedFile(
-                path=file_path, tree=tree, source=source, use_aliases=use_aliases
-            ))
-            symbols = _extract_symbols(tree, source, file_path, run)
-            all_symbols.extend(symbols)
-            files_analyzed += 1
-        except (OSError, IOError):
-            files_skipped += 1
-
-    # Build global symbol registries
-    global_symbols: dict[str, Symbol] = {}
-    global_methods: dict[str, list[Symbol]] = {}
-    global_classes: dict[str, Symbol] = {}
-
-    for sym in all_symbols:
-        global_symbols[sym.name] = sym
-        if sym.kind == "method":
-            # Extract just the method name (after the dot)
-            method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
-            if method_name not in global_methods:
-                global_methods[method_name] = []
-            global_methods[method_name].append(sym)
-        elif sym.kind == "class":
-            global_classes[sym.name] = sym
-
-    # Pass 2: Extract edges using global symbol registry
-    symbol_resolver = NameResolver(global_symbols)
-    method_resolver = ListNameResolver(global_methods)
-    class_resolver = NameResolver(global_classes)
-    all_edges: list[Edge] = []
-    for pf in parsed_files:
-        edges = _extract_edges(
-            pf.tree, pf.source, pf.path, run,
-            global_symbols, global_methods, global_classes,
-            symbol_resolver, method_resolver, class_resolver,
-            use_aliases=pf.use_aliases,
-        )
-        all_edges.extend(edges)
-
-    # Pass 3: Extract UsageContexts and route symbols for framework pattern matching
-    all_usage_contexts: list[UsageContext] = []
-    for pf in parsed_files:
-        contexts, route_symbols = _extract_laravel_routes(pf.tree, pf.source, pf.path, run)
-        all_usage_contexts.extend(contexts)
-        all_symbols.extend(route_symbols)
-
-    run.files_analyzed = files_analyzed
-    run.files_skipped = files_skipped
-    run.duration_ms = int((time.time() - start_time) * 1000)
-
-    return AnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        usage_contexts=all_usage_contexts,
-        run=run,
-    )
+    """Analyze all PHP files in a repository."""
+    return _analyzer.analyze(repo_root)

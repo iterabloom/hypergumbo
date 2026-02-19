@@ -21,16 +21,23 @@ Two-pass analysis:
 
 from __future__ import annotations
 
-import importlib.util
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, ClassVar, Optional
 
 from hypergumbo_core.discovery import classify_dot_m_file, find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -40,13 +47,9 @@ PASS_ID = "objc-v1"
 PASS_VERSION = "1.0.0"
 
 
-def is_objc_tree_sitter_available() -> bool:
-    """Check if tree-sitter and objc grammar are available."""
-    ts_spec = importlib.util.find_spec("tree_sitter")
-    if ts_spec is None:
-        return False
-    objc_spec = importlib.util.find_spec("tree_sitter_objc")
-    return objc_spec is not None
+def _is_objc_tree_sitter_available_legacy() -> bool:  # pragma: no cover - replaced by TreeSitterAnalyzer
+    """Legacy availability check -- replaced by TreeSitterAnalyzer._check_grammar_available."""
+    pass
 
 
 def find_objc_files(root: Path) -> list[Path]:
@@ -538,65 +541,92 @@ def _extract_edges_from_file(
     return edges
 
 
+class ObjCAnalyzer(TreeSitterAnalyzer):
+    """Objective-C analyzer using tree-sitter-objc.
+
+    Overrides ``analyze()`` because Objective-C uses a custom two-pass
+    structure with per-file FileAnalysis, global method registry, and
+    cross-file message-send resolution.
+    """
+
+    lang = "objective-c"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.m", "*.mm", "*.h"]
+    grammar_module = "tree_sitter_objc"
+
+    def analyze(
+        self,
+        repo_root: Path,
+        max_files: Optional[int] = None,
+    ) -> AnalysisResult:
+        """Run Objective-C analysis with two-pass symbol/edge extraction."""
+        if not self._check_grammar_available():
+            warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return AnalysisResult(
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        try:
+            parser = self._create_parser()
+        except Exception as e:
+            return AnalysisResult(
+                skipped=True,
+                skip_reason=f"Failed to load Objective-C parser: {e}",
+            )
+
+        run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+
+        all_files = find_objc_files(repo_root)
+        if not all_files:  # pragma: no cover - no ObjC files in test
+            return AnalysisResult(run=run)
+
+        # Pass 1: Extract symbols from all files
+        all_symbols: list[Symbol] = []
+        file_analyses: dict[Path, FileAnalysis] = {}
+        global_methods: dict[str, Symbol] = {}
+
+        for objc_file in all_files:
+            analysis = _extract_symbols_from_file(objc_file, parser, run)
+            file_analyses[objc_file] = analysis
+            all_symbols.extend(analysis.symbols)
+
+            # Collect methods globally for cross-file resolution
+            for selector, sym in analysis.methods_by_name.items():
+                global_methods[selector] = sym
+
+        # Pass 2: Extract edges using global symbol knowledge
+        method_resolver = NameResolver(global_methods)
+        all_edges: list[Edge] = []
+
+        for objc_file, analysis in file_analyses.items():
+            edges = _extract_edges_from_file(
+                objc_file, parser, analysis.methods_by_name, method_resolver, run
+            )
+            all_edges.extend(edges)
+
+        return AnalysisResult(
+            symbols=all_symbols,
+            edges=all_edges,
+            run=run,
+        )
+
+
+_analyzer = ObjCAnalyzer()
+
+
+def is_objc_tree_sitter_available() -> bool:
+    """Check if tree-sitter with Objective-C grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("objc")
 def analyze_objc(root: Path) -> AnalysisResult:
-    """Analyze Objective-C files in a directory.
-
-    Uses tree-sitter-objc for parsing. Falls back gracefully if not available.
-    """
-    if not is_objc_tree_sitter_available():
-        warnings.warn(
-            "tree-sitter-objc not available. Install with: pip install tree-sitter-objc"
-        )
-        return AnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-objc not available",
-        )
-
-    try:
-        import tree_sitter
-        import tree_sitter_objc
-
-        language = tree_sitter.Language(tree_sitter_objc.language())
-        parser = tree_sitter.Parser(language)
-    except Exception as e:
-        return AnalysisResult(
-            skipped=True,
-            skip_reason=f"Failed to load Objective-C parser: {e}",
-        )
-
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    all_files = find_objc_files(root)
-    if not all_files:  # pragma: no cover - no ObjC files in test
-        return AnalysisResult(run=run)
-
-    # Pass 1: Extract symbols from all files
-    all_symbols: list[Symbol] = []
-    file_analyses: dict[Path, FileAnalysis] = {}
-    global_methods: dict[str, Symbol] = {}
-
-    for objc_file in all_files:
-        analysis = _extract_symbols_from_file(objc_file, parser, run)
-        file_analyses[objc_file] = analysis
-        all_symbols.extend(analysis.symbols)
-
-        # Collect methods globally for cross-file resolution
-        for selector, sym in analysis.methods_by_name.items():
-            global_methods[selector] = sym
-
-    # Pass 2: Extract edges using global symbol knowledge
-    method_resolver = NameResolver(global_methods)
-    all_edges: list[Edge] = []
-
-    for objc_file, analysis in file_analyses.items():
-        edges = _extract_edges_from_file(
-            objc_file, parser, analysis.methods_by_name, method_resolver, run
-        )
-        all_edges.extend(edges)
-
-    return AnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    """Analyze Objective-C files in a directory."""
+    return _analyzer.analyze(root)

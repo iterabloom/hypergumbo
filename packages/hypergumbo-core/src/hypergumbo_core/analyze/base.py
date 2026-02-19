@@ -553,6 +553,22 @@ class TreeSitterAnalyzer:
         """
         global_symbols[symbol.name] = symbol
 
+    # -- Template methods: file discovery ------------------------------------
+
+    def _find_source_files(self, repo_root: Path) -> Iterator[Path]:
+        """Yield source files to analyze.
+
+        Default uses ``find_files(repo_root, self.file_patterns)``.
+        Override for custom filtering (e.g., F# skips Forth .fs files).
+
+        Args:
+            repo_root: Root directory of the repository.
+
+        Yields:
+            Paths to source files.
+        """
+        yield from find_files(repo_root, self.file_patterns)
+
     # -- Template methods: post-processing ---------------------------------
 
     def post_process(
@@ -630,7 +646,7 @@ class TreeSitterAnalyzer:
         files_analyzed = 0
         files_skipped = 0
 
-        for source_file in find_files(repo_root, self.file_patterns):
+        for source_file in self._find_source_files(repo_root):
             if max_files is not None and files_analyzed >= max_files:
                 break
 

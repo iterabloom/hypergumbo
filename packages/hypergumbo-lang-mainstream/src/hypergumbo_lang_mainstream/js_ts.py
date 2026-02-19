@@ -55,15 +55,15 @@ import time
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
 from hypergumbo_core.symbol_resolution import NameResolver, ListNameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
+    TreeSitterAnalyzer,
     find_child_by_field,
-    is_grammar_available,
     iter_tree,
     node_text as _node_text,
 )
@@ -205,9 +205,33 @@ def extract_vue_scripts(source: str) -> list[VueScriptBlock]:
     return blocks
 
 
+class JstsTreeSitterAnalyzer(TreeSitterAnalyzer):
+    """TreeSitterAnalyzer wrapper for JavaScript/TypeScript/Svelte/Vue files.
+
+    Overrides ``analyze()`` entirely because JS/TS analysis is extremely
+    complex: it handles multiple file types (JS, TS, Svelte, Vue), uses
+    three passes (symbols, edges, usage contexts), and has custom resolvers
+    (NameResolver, ListNameResolver). The base class provides grammar
+    availability checking via ``_check_grammar_available()``.
+    """
+
+    lang = "javascript"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.js", "*.jsx", "*.ts", "*.tsx", "*.svelte", "*.vue"]
+    grammar_module = "tree_sitter_javascript"
+
+    def analyze(self, repo_root: Path, max_files: int | None = None) -> AnalysisResult:
+        """Run the JS/TS analysis using the existing analyze logic."""
+        return _analyze_javascript_impl(repo_root, max_files=max_files)
+
+
+_jsts_analyzer = JstsTreeSitterAnalyzer()
+
+
 def is_tree_sitter_available() -> bool:
     """Check if tree-sitter and required grammars are available."""
-    return is_grammar_available("tree_sitter_javascript")
+    return _jsts_analyzer._check_grammar_available()
 
 
 # Backwards compatibility alias
@@ -2913,20 +2937,32 @@ def analyze_javascript(
         repo_root: Root directory of the repository
         max_files: Optional limit on number of files to analyze
     """
+    return _jsts_analyzer.analyze(repo_root, max_files=max_files)
+
+
+def _analyze_javascript_impl(
+    repo_root: Path, max_files: int | None = None
+) -> JsAnalysisResult:
+    """Internal implementation of JS/TS analysis.
+
+    Called by JstsTreeSitterAnalyzer.analyze() after grammar availability
+    has been checked by the base class.
+    """
     start_time = time.time()
 
     # Create analysis run for provenance
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
     # Check for tree-sitter availability
-    if not is_tree_sitter_available():
-        skip_reason = "JS/TS analysis skipped: requires tree-sitter (pip install hypergumbo[javascript])"
-        warnings.warn(skip_reason, stacklevel=2)
+    if not _jsts_analyzer._check_grammar_available():
+        skip_reason = "javascript analysis skipped: grammar not available. " \
+                      "Install the required tree-sitter grammar package."
+        warnings.warn(skip_reason, UserWarning, stacklevel=3)
         run.duration_ms = int((time.time() - start_time) * 1000)
         return JsAnalysisResult(
             run=run,
             skipped=True,
-            skip_reason=skip_reason,
+            skip_reason="javascript tree-sitter grammar not available",
         )
 
     # Pass 1: Parse all files and extract symbols

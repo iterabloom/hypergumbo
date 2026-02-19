@@ -12,32 +12,32 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
+Uses the TreeSitterAnalyzer base class with a custom ``analyze`` override
+because Makefile prerequisite references need the target registry built
+during the same pass (single-pass symbol+edge extraction).
+
 1. Check if tree-sitter-make is available
 2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
-   - Pass 1: Parse all files, extract all targets and variables
-   - Pass 2: Resolve prerequisites and create dependency edges
+3. Single-pass analysis: parse all files, extract all targets, variables,
+   and prerequisite dependency edges together
 4. Create depends_on edges for target dependencies
 
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
 - Uses tree-sitter-make package for grammar
-- Two-pass allows cross-file target resolution
+- Single-pass because target_link references need the registry built in-flight
 - Build-system-specific: targets, prerequisites, variables are first-class
 """
 from __future__ import annotations
 
 import hashlib
-import importlib.util
-import time
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, make_symbol_id, node_text
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, iter_tree, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -54,11 +54,7 @@ def find_make_files(repo_root: Path) -> Iterator[Path]:
 
 def is_make_tree_sitter_available() -> bool:
     """Check if tree-sitter with Make grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover
-    if importlib.util.find_spec("tree_sitter_make") is None:
-        return False  # pragma: no cover
-    return True
+    return _analyzer._check_grammar_available()
 
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
@@ -305,6 +301,106 @@ def _process_make_tree(
                 symbols.append(sym)
 
 
+class MakeAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based Makefile analyzer.
+
+    Uses tree-sitter-make to parse Makefiles (Makefile, makefile, *.mk, GNUmakefile).
+    Extracts variables, targets, pattern rules, special targets, prerequisites,
+    define blocks, and include directives.
+
+    Overrides ``analyze`` because Make prerequisite references need the target
+    registry built during the same pass (single-pass symbol+edge extraction),
+    similar to CMake's target_link_libraries.
+    """
+
+    lang = "make"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["Makefile", "makefile", "*.mk", "GNUmakefile"]
+    grammar_module = "tree_sitter_make"
+
+    def analyze(
+        self,
+        repo_root: Path,
+        max_files: Optional[int] = None,
+    ) -> AnalysisResult:
+        """Run Makefile analysis with single-pass symbol+edge extraction.
+
+        Make prerequisite references need the target registry built during
+        symbol extraction, so both symbols and edges are extracted in a
+        single pass through ``_process_make_tree``.
+        """
+        import time as _time
+        import warnings as _warnings
+
+        start_time = _time.time()
+        run = AnalysisRun.create(pass_id=self.pass_id, version=self.pass_version)
+
+        if not self._check_grammar_available():
+            _warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            run.duration_ms = int((_time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        parser = self._create_parser()
+
+        files_analyzed = 0
+        files_skipped = 0
+        warnings_list: list[str] = []
+
+        symbols: list[Symbol] = []
+        edges: list[Edge] = []
+        target_registry: dict[str, str] = {}
+
+        make_files = list(find_make_files(repo_root))
+
+        for make_path in make_files:
+            if max_files is not None and files_analyzed >= max_files:
+                break  # pragma: no cover
+
+            try:
+                rel_path = str(make_path.relative_to(repo_root))
+                source = make_path.read_bytes()
+                tree = parser.parse(source)
+                files_analyzed += 1
+
+                # Process this file
+                _process_make_tree(
+                    tree.root_node,
+                    source,
+                    rel_path,
+                    symbols,
+                    edges,
+                    target_registry,
+                )
+
+            except Exception as e:  # pragma: no cover
+                files_skipped += 1  # pragma: no cover
+                warnings_list.append(f"Failed to parse {make_path}: {e}")  # pragma: no cover
+
+        run.files_analyzed = files_analyzed
+        run.files_skipped = files_skipped
+        run.duration_ms = int((_time.time() - start_time) * 1000)
+        run.warnings = warnings_list
+
+        return AnalysisResult(
+            symbols=symbols,
+            edges=edges,
+            run=run,
+        )
+
+
+_analyzer = MakeAnalyzer()
+
+
 @register_analyzer("make")
 def analyze_make_files(repo_root: Path) -> AnalysisResult:
     """Analyze Makefile files in the repository.
@@ -315,69 +411,4 @@ def analyze_make_files(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult with symbols and edges
     """
-    if not is_make_tree_sitter_available():  # pragma: no cover
-        return AnalysisResult(  # pragma: no cover
-            skipped=True,  # pragma: no cover
-            skip_reason="tree-sitter-make not installed (pip install tree-sitter-make)",  # pragma: no cover
-        )  # pragma: no cover
-
-    import tree_sitter
-    import tree_sitter_make
-
-    start_time = time.time()
-    files_analyzed = 0
-    files_skipped = 0
-    warnings_list: list[str] = []
-
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-
-    # Target registry for cross-file resolution: name -> symbol_id
-    target_registry: dict[str, str] = {}
-
-    # Create parser
-    try:
-        parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_make.language()))
-    except Exception as e:  # pragma: no cover
-        warnings.warn(f"Failed to initialize Make parser: {e}")
-        return AnalysisResult(
-            skipped=True,
-            skip_reason=f"Failed to initialize parser: {e}",
-        )
-
-    make_files = list(find_make_files(repo_root))
-
-    for make_path in make_files:
-        try:
-            rel_path = str(make_path.relative_to(repo_root))
-            source = make_path.read_bytes()
-            tree = parser.parse(source)
-            files_analyzed += 1
-
-            # Process this file
-            _process_make_tree(
-                tree.root_node,
-                source,
-                rel_path,
-                symbols,
-                edges,
-                target_registry,
-            )
-
-        except Exception as e:  # pragma: no cover
-            files_skipped += 1  # pragma: no cover
-            warnings_list.append(f"Failed to parse {make_path}: {e}")  # pragma: no cover
-
-    duration_ms = int((time.time() - start_time) * 1000)
-
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-    run.files_analyzed = files_analyzed
-    run.files_skipped = files_skipped
-    run.duration_ms = duration_ms
-    run.warnings = warnings_list
-
-    return AnalysisResult(
-        symbols=symbols,
-        edges=edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

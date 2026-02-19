@@ -239,11 +239,11 @@ class TestTreeSitterUnavailable:
         from unittest.mock import patch
         import pytest
 
-        with patch.object(objc_module, "is_objc_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="tree-sitter-objc not available"):
+        with patch.object(objc_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="objective-c analysis skipped"):
                 result = objc_module.analyze_objc(tmp_path)
         assert result.skipped is True
-        assert "tree-sitter-objc" in result.skip_reason
+        assert "not available" in result.skip_reason
 
 class TestClassMethods:
     """Branch coverage for class method extraction."""

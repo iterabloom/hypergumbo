@@ -366,15 +366,26 @@ class TestClojureAnalyzer:
         make_clj_file(tmp_path, "core.clj", "(ns app.core)")
 
         with patch.object(
-            clojure_module,
-            "is_clojure_tree_sitter_available",
+            clojure_module._analyzer,
+            "_check_grammar_available",
             return_value=False,
         ):
-            with pytest.warns(UserWarning, match="Clojure analysis skipped"):
+            with pytest.warns(UserWarning, match="clojure analysis skipped"):
                 result = clojure_module.analyze_clojure(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-language-pack" in result.skip_reason
+        assert "not available" in result.skip_reason
+
+
+class TestClojureTreeSitterAvailability:
+    """Tests for tree-sitter-clojure availability checking."""
+
+    def test_is_clojure_tree_sitter_available(self) -> None:
+        """Returns True when grammar is available."""
+        from hypergumbo_lang_common.clojure import is_clojure_tree_sitter_available
+
+        # In a properly configured dev environment, this should be True
+        assert is_clojure_tree_sitter_available() is True
 
 
 class TestClojureSignatureExtraction:

@@ -3,6 +3,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+from hypergumbo_lang_mainstream import java as java_module
+
 
 class TestFindJavaFiles:
     """Tests for Java file discovery."""
@@ -26,31 +28,17 @@ class TestJavaTreeSitterAvailability:
 
     def test_is_java_tree_sitter_available_true(self) -> None:
         """Returns True when tree-sitter-java is available."""
-        from hypergumbo_lang_mainstream.java import is_java_tree_sitter_available
-
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = object()  # Non-None = available
-            assert is_java_tree_sitter_available() is True
+        result = java_module.is_java_tree_sitter_available()
+        assert result is True
 
     def test_is_java_tree_sitter_available_false(self) -> None:
-        """Returns False when tree-sitter is not available."""
-        from hypergumbo_lang_mainstream.java import is_java_tree_sitter_available
+        """Returns False when grammar is not available."""
+        with patch.object(java_module._java_analyzer, "_check_grammar_available", return_value=False):
+            assert java_module.is_java_tree_sitter_available() is False
 
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = None
-            assert is_java_tree_sitter_available() is False
-
-    def test_is_java_tree_sitter_available_no_java_grammar(self) -> None:
-        """Returns False when tree-sitter-java is not available."""
-        from hypergumbo_lang_mainstream.java import is_java_tree_sitter_available
-
-        def mock_find_spec(name: str):
-            if name == "tree_sitter":
-                return object()  # tree_sitter is available
-            return None  # tree_sitter_java is not
-
-        with patch("importlib.util.find_spec", side_effect=mock_find_spec):
-            assert is_java_tree_sitter_available() is False
+    def test_is_java_tree_sitter_available_via_analyzer(self) -> None:
+        """Availability check delegates to TreeSitterAnalyzer._check_grammar_available."""
+        assert java_module.is_java_tree_sitter_available() == java_module._java_analyzer._check_grammar_available()
 
 
 class TestAnalyzeJavaFallback:
@@ -62,11 +50,11 @@ class TestAnalyzeJavaFallback:
 
         (tmp_path / "Test.java").write_text("public class Test {}")
 
-        with patch("hypergumbo_lang_mainstream.java.is_java_tree_sitter_available", return_value=False):
+        with patch.object(java_module._java_analyzer, "_check_grammar_available", return_value=False):
             result = analyze_java(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-java" in result.skip_reason
+        assert "not available" in result.skip_reason
 
 
 class TestJavaClassExtraction:
@@ -883,8 +871,8 @@ class TestJavaEdgeCases:
         java_file = tmp_path / "Test.java"
         java_file.write_text("public class Test {}")
 
-        with patch(
-            "hypergumbo_lang_mainstream.java.is_java_tree_sitter_available",
+        with patch.object(
+            java_module._java_analyzer, "_check_grammar_available",
             return_value=True,
         ), patch(
             "hypergumbo_lang_mainstream.java._get_java_parser",
@@ -894,7 +882,7 @@ class TestJavaEdgeCases:
 
         assert result.run is not None
         assert result.skipped is True
-        assert "tree-sitter-java" in result.skip_reason
+        assert "not available" in result.skip_reason
 
 
 class TestJavaConstructors:

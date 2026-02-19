@@ -12,32 +12,33 @@ The tree-sitter-starlark parser handles BUILD, BUILD.bazel, BUCK, and .bzl files
 
 How It Works
 ------------
-1. Check if tree-sitter with Starlark grammar is available
-2. If not available, return skipped result (not an error)
-3. Parse all BUILD, BUILD.bazel, BUCK, and .bzl files
-4. Extract function definitions and signatures
-5. Extract build targets with rule types
-6. Track load statements as import edges
-7. Track target dependencies as depends_on edges
+Uses TreeSitterAnalyzer base class for grammar checking and parser creation.
+1. Parse all BUILD, BUILD.bazel, BUCK, and .bzl files
+2. Extract function definitions and signatures
+3. Extract build targets with rule types
+4. Track load statements as import edges
+5. Track target dependencies as depends_on edges
 
 Why This Design
 ---------------
-- Optional dependency keeps base install lightweight
+- TreeSitterAnalyzer eliminates boilerplate orchestration code
 - Uses tree-sitter-language-pack for Starlark grammar
 - Starlark is essential for Bazel/Buck build systems
 - Enables analysis of build configurations for understanding dependencies
 """
 from __future__ import annotations
 
-import importlib.util
-import time
 import uuid
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, node_text
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    node_text,
+)
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -57,21 +58,6 @@ def find_starlark_files(repo_root: Path) -> Iterator[Path]:
     """Find all Starlark files in the repository."""
     for pattern in STARLARK_PATTERNS:
         yield from find_files(repo_root, [pattern])
-
-
-def is_starlark_tree_sitter_available() -> bool:
-    """Check if tree-sitter-starlark is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover - tree-sitter not installed
-    if importlib.util.find_spec("tree_sitter_language_pack") is None:
-        return False  # pragma: no cover - language pack not installed
-    try:
-        from tree_sitter_language_pack import get_language
-
-        get_language("starlark")
-        return True
-    except Exception:  # pragma: no cover - starlark grammar not available
-        return False
 
 
 def _extract_string_content(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -105,18 +91,28 @@ def _extract_function_signature(
     return f"({', '.join(params)})"
 
 
-@dataclass
 class _FileContext:
     """Context for processing a single file."""
 
-    source: bytes
-    rel_path: str
-    file_stable_id: str
-    run_id: str
-    symbols: list[Symbol]
-    edges: list[Edge]
-    target_ids: dict[str, str]
-    load_aliases: dict[str, str] = field(default_factory=dict)  # alias → source_path
+    def __init__(
+        self,
+        source: bytes,
+        rel_path: str,
+        file_stable_id: str,
+        run_id: str,
+        symbols: list[Symbol],
+        edges: list[Edge],
+        target_ids: dict[str, str],
+        load_aliases: Optional[dict[str, str]] = None,
+    ) -> None:
+        self.source = source
+        self.rel_path = rel_path
+        self.file_stable_id = file_stable_id
+        self.run_id = run_id
+        self.symbols = symbols
+        self.edges = edges
+        self.target_ids = target_ids
+        self.load_aliases: dict[str, str] = load_aliases if load_aliases is not None else {}
 
 
 def _make_symbol(ctx: _FileContext, node: "tree_sitter.Node", name: str, kind: str,
@@ -422,6 +418,121 @@ def _extract_starlark_edges(ctx: _FileContext, root_node: "tree_sitter.Node",
                     ))
 
 
+class StarlarkAnalyzer(TreeSitterAnalyzer):
+    """Analyzer for Starlark files using TreeSitterAnalyzer base class."""
+
+    lang = "starlark"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = STARLARK_PATTERNS
+    language_pack_name = "starlark"
+
+    def analyze(self, repo_root: Path, max_files: Optional[int] = None) -> AnalysisResult:
+        """Override analyze for Starlark's custom two-pass with load aliases."""
+        import time as _time
+        import warnings
+
+        start_time = _time.time()
+
+        if not self._check_grammar_available():
+            warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return AnalysisResult(
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        parser = self._create_parser()
+
+        symbols: list[Symbol] = []
+        edges: list[Edge] = []
+        files_analyzed = 0
+        run_id = str(uuid.uuid4())
+
+        # Track targets by name for dependency resolution
+        target_ids: dict[str, str] = {}
+
+        # Global symbol registry for cross-file resolution
+        global_symbol_registry: dict[str, Symbol] = {}
+
+        # Store parsed files for pass 2 (with load_aliases)
+        parsed_files: list[tuple[str, bytes, object, dict[str, str]]] = []
+
+        # Pass 1: Extract symbols from all files
+        for file_path in find_starlark_files(repo_root):
+            try:
+                source = file_path.read_bytes()
+            except (OSError, IOError):  # pragma: no cover
+                continue
+
+            tree = parser.parse(source)
+            files_analyzed += 1
+
+            rel_path = str(file_path.relative_to(repo_root))
+            file_stable_id = f"starlark:{rel_path}:file:"
+
+            ctx = _FileContext(
+                source=source,
+                rel_path=rel_path,
+                file_stable_id=file_stable_id,
+                run_id=run_id,
+                symbols=symbols,
+                edges=edges,
+                target_ids=target_ids,
+            )
+
+            _extract_starlark_symbols(ctx, tree.root_node, global_symbol_registry)
+
+            # Store for pass 2 (including load_aliases for path_hint resolution)
+            parsed_files.append((rel_path, source, tree, ctx.load_aliases))
+
+        # Create resolver from global registry
+        resolver = NameResolver(global_symbol_registry)
+
+        # Pass 2: Extract call edges
+        for rel_path, source, tree, load_aliases in parsed_files:
+            # Build local symbol map for this file (functions only)
+            local_symbols = {s.name: s for s in symbols if s.path == rel_path and s.kind == "function"}
+
+            ctx = _FileContext(
+                source=source,
+                rel_path=rel_path,
+                file_stable_id=f"starlark:{rel_path}:file:",
+                run_id=run_id,
+                symbols=[],  # Not adding symbols in pass 2
+                edges=edges,
+                target_ids=target_ids,
+                load_aliases=load_aliases,
+            )
+
+            _extract_starlark_edges(ctx, tree.root_node, local_symbols, resolver, load_aliases)  # type: ignore
+
+        duration_ms = int((_time.time() - start_time) * 1000)
+        return AnalysisResult(
+            symbols=symbols,
+            edges=edges,
+            run=AnalysisRun(
+                execution_id=run_id,
+                pass_id=PASS_ID,
+                version=PASS_VERSION,
+                files_analyzed=files_analyzed,
+                duration_ms=duration_ms,
+            ),
+        )
+
+
+_analyzer = StarlarkAnalyzer()
+
+
+def is_starlark_tree_sitter_available() -> bool:
+    """Check if tree-sitter-starlark is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("starlark")
 def analyze_starlark(repo_root: Path) -> AnalysisResult:
     """Analyze Starlark files in a repository.
@@ -433,90 +544,4 @@ def analyze_starlark(repo_root: Path) -> AnalysisResult:
     Returns a AnalysisResult with symbols for functions, targets, and variables,
     plus edges for load statements, target dependencies, and function calls.
     """
-    if not is_starlark_tree_sitter_available():
-        warnings.warn("Starlark analysis skipped: tree-sitter-starlark unavailable")
-        return AnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-starlark unavailable",
-        )
-
-    from tree_sitter_language_pack import get_parser
-
-    parser = get_parser("starlark")
-
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-    files_analyzed = 0
-    run_id = str(uuid.uuid4())
-    start_time = time.time()
-
-    # Track targets by name for dependency resolution
-    target_ids: dict[str, str] = {}
-
-    # Global symbol registry for cross-file resolution
-    global_symbol_registry: dict[str, Symbol] = {}
-
-    # Store parsed files for pass 2 (with load_aliases)
-    parsed_files: list[tuple[str, bytes, object, dict[str, str]]] = []
-
-    # Pass 1: Extract symbols from all files
-    for file_path in find_starlark_files(repo_root):
-        try:
-            source = file_path.read_bytes()
-        except (OSError, IOError):  # pragma: no cover
-            continue
-
-        tree = parser.parse(source)
-        files_analyzed += 1
-
-        rel_path = str(file_path.relative_to(repo_root))
-        file_stable_id = f"starlark:{rel_path}:file:"
-
-        ctx = _FileContext(
-            source=source,
-            rel_path=rel_path,
-            file_stable_id=file_stable_id,
-            run_id=run_id,
-            symbols=symbols,
-            edges=edges,
-            target_ids=target_ids,
-        )
-
-        _extract_starlark_symbols(ctx, tree.root_node, global_symbol_registry)
-
-        # Store for pass 2 (including load_aliases for path_hint resolution)
-        parsed_files.append((rel_path, source, tree, ctx.load_aliases))
-
-    # Create resolver from global registry
-    resolver = NameResolver(global_symbol_registry)
-
-    # Pass 2: Extract call edges
-    for rel_path, source, tree, load_aliases in parsed_files:
-        # Build local symbol map for this file (functions only)
-        local_symbols = {s.name: s for s in symbols if s.path == rel_path and s.kind == "function"}
-
-        ctx = _FileContext(
-            source=source,
-            rel_path=rel_path,
-            file_stable_id=f"starlark:{rel_path}:file:",
-            run_id=run_id,
-            symbols=[],  # Not adding symbols in pass 2
-            edges=edges,
-            target_ids=target_ids,
-            load_aliases=load_aliases,
-        )
-
-        _extract_starlark_edges(ctx, tree.root_node, local_symbols, resolver, load_aliases)  # type: ignore
-
-    duration_ms = int((time.time() - start_time) * 1000)
-    return AnalysisResult(
-        symbols=symbols,
-        edges=edges,
-        run=AnalysisRun(
-            execution_id=run_id,
-            pass_id=PASS_ID,
-            version=PASS_VERSION,
-            files_analyzed=files_analyzed,
-            duration_ms=duration_ms,
-        ),
-    )
+    return _analyzer.analyze(repo_root)

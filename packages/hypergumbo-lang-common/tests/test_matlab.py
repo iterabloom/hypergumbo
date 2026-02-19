@@ -108,7 +108,7 @@ class TestIsMatlabTreeSitterAvailable:
     def test_returns_false_when_unavailable(self) -> None:
         """Should return False when tree-sitter-language-pack is not installed."""
         import hypergumbo_lang_common.matlab as matlab_module
-        with patch.object(matlab_module, "is_matlab_tree_sitter_available", return_value=False):
+        with patch.object(matlab_module._analyzer, "_check_grammar_available", return_value=False):
             assert matlab_module.is_matlab_tree_sitter_available() is False
 
 
@@ -119,7 +119,7 @@ class TestAnalyzeMatlab:
         """Should skip analysis and warn when tree-sitter is unavailable."""
         import hypergumbo_lang_common.matlab as matlab_module
 
-        with patch.object(matlab_module, "is_matlab_tree_sitter_available", return_value=False):
+        with patch.object(matlab_module._analyzer, "_check_grammar_available", return_value=False):
             with pytest.warns(UserWarning, match="tree-sitter-language-pack not available"):
                 result = matlab_module.analyze_matlab(matlab_repo)
 

@@ -14,15 +14,14 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-1. Check if tree-sitter with Thrift grammar is available
-2. If not available, return skipped result (not an error)
-3. Parse all .thrift files and extract symbols
-4. Detect include statements and create import edges
-5. Create contains edges from services to their functions
+Uses TreeSitterAnalyzer base class for grammar checking and parser creation.
+1. Parse all .thrift files and extract symbols
+2. Detect include statements and create import edges
+3. Create contains edges from services to their functions
 
 Why This Design
 ---------------
-- Optional dependency keeps base install lightweight
+- TreeSitterAnalyzer eliminates boilerplate orchestration code
 - Uses tree-sitter-language-pack for Thrift grammar
 - Thrift files define cross-language interfaces (similar to Proto/gRPC)
 - Enables full-stack tracing for Thrift-based microservices
@@ -38,16 +37,21 @@ Thrift-Specific Considerations
 """
 from __future__ import annotations
 
-import importlib.util
-import time
 import uuid
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -60,20 +64,6 @@ PASS_VERSION = "hypergumbo-0.1.0"
 def find_thrift_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Thrift files in the repository."""
     yield from find_files(repo_root, ["*.thrift"])
-
-
-def is_thrift_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Thrift grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover - tree-sitter not installed
-    if importlib.util.find_spec("tree_sitter_language_pack") is None:
-        return False  # pragma: no cover - language pack not installed
-    try:
-        from tree_sitter_language_pack import get_language
-        get_language("thrift")
-        return True
-    except Exception:  # pragma: no cover - thrift grammar not available
-        return False
 
 
 def _make_edge_id() -> str:
@@ -276,6 +266,81 @@ def _find_containing_service(
     return None  # pragma: no cover - defensive
 
 
+class ThriftAnalyzer(TreeSitterAnalyzer):
+    """Analyzer for Thrift files using TreeSitterAnalyzer base class."""
+
+    lang = "thrift"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.thrift"]
+    language_pack_name = "thrift"
+
+    def analyze(self, repo_root: Path, max_files: Optional[int] = None) -> AnalysisResult:
+        """Override analyze for Thrift's custom extraction logic."""
+        import time as _time
+        import warnings
+
+        start_time = _time.time()
+
+        if not self._check_grammar_available():
+            warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return AnalysisResult(
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        parser = self._create_parser()
+        run_id = f"uuid:{uuid.uuid4()}"
+        files_analyzed = 0
+
+        all_symbols: list[Symbol] = []
+        all_edges: list[Edge] = []
+
+        for file_path in find_thrift_files(repo_root):
+            try:
+                source = file_path.read_bytes()
+                tree = parser.parse(source)
+
+                rel_path = str(file_path.relative_to(repo_root))
+                symbols, edges = _extract_symbols_and_edges(tree, source, rel_path, run_id)
+
+                all_symbols.extend(symbols)
+                all_edges.extend(edges)
+                files_analyzed += 1
+
+            except (OSError, IOError):  # pragma: no cover - defensive
+                continue  # Skip files we can't read
+
+        duration_ms = int((_time.time() - start_time) * 1000)
+
+        run = AnalysisRun(
+            execution_id=run_id,
+            pass_id=PASS_ID,
+            version=PASS_VERSION,
+            files_analyzed=files_analyzed,
+            duration_ms=duration_ms,
+        )
+
+        return AnalysisResult(
+            symbols=all_symbols,
+            edges=all_edges,
+            run=run,
+        )
+
+
+_analyzer = ThriftAnalyzer()
+
+
+def is_thrift_tree_sitter_available() -> bool:
+    """Check if tree-sitter with Thrift grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("thrift")
 def analyze_thrift(repo_root: Path) -> AnalysisResult:
     """Analyze all Thrift files in the repository.
@@ -286,47 +351,4 @@ def analyze_thrift(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult with symbols and edges found.
     """
-    if not is_thrift_tree_sitter_available():
-        warnings.warn("Thrift analysis skipped: tree-sitter-language-pack not available")
-        return AnalysisResult(skipped=True, skip_reason="tree-sitter-language-pack not available")
-
-    from tree_sitter_language_pack import get_parser
-
-    parser = get_parser("thrift")
-    run_id = f"uuid:{uuid.uuid4()}"
-    start_time = time.time()
-    files_analyzed = 0
-
-    all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
-
-    for file_path in find_thrift_files(repo_root):
-        try:
-            source = file_path.read_bytes()
-            tree = parser.parse(source)
-
-            rel_path = str(file_path.relative_to(repo_root))
-            symbols, edges = _extract_symbols_and_edges(tree, source, rel_path, run_id)
-
-            all_symbols.extend(symbols)
-            all_edges.extend(edges)
-            files_analyzed += 1
-
-        except (OSError, IOError):  # pragma: no cover - defensive
-            continue  # Skip files we can't read
-
-    duration_ms = int((time.time() - start_time) * 1000)
-
-    run = AnalysisRun(
-        execution_id=run_id,
-        pass_id=PASS_ID,
-        version=PASS_VERSION,
-        files_analyzed=files_analyzed,
-        duration_ms=duration_ms,
-    )
-
-    return AnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

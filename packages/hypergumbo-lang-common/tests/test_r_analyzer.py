@@ -7,12 +7,16 @@ Tests verify that the analyzer correctly extracts:
 - Function calls
 """
 
+from unittest.mock import patch
+
 from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_lang_common import r_lang as r_lang_module
 from hypergumbo_lang_common.r_lang import (
     PASS_ID,
     PASS_VERSION,
     analyze_r_files,
     find_r_files,
+    is_r_tree_sitter_available,
 )
 
 def test_pass_metadata():
@@ -327,3 +331,20 @@ double_it <- function(x) {
         funcs = [s for s in result.symbols if s.kind == "function" and s.name == "double_it"]
         assert len(funcs) == 1
         assert funcs[0].signature == "(x)"
+
+
+class TestIsRTreeSitterAvailable:
+    """Tests for is_r_tree_sitter_available function."""
+
+    def test_returns_true_when_available(self) -> None:
+        """Returns True when tree-sitter-language-pack is installed."""
+        assert is_r_tree_sitter_available() is True
+
+    def test_returns_false_when_unavailable(self) -> None:
+        """Returns False when tree-sitter-language-pack is not installed."""
+        with patch.object(
+            r_lang_module._analyzer,
+            "_check_grammar_available",
+            return_value=False,
+        ):
+            assert is_r_tree_sitter_available() is False

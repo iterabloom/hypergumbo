@@ -20,13 +20,12 @@ Key constructs extracted:
 """
 
 import time
-import warnings
 from pathlib import Path
-from typing import Iterator, Optional, TYPE_CHECKING
+from typing import Iterator, Optional, ClassVar, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -35,15 +34,6 @@ if TYPE_CHECKING:
 PASS_ID = "racket.tree_sitter"
 PASS_VERSION = "hypergumbo-0.1.0"
 
-
-def is_racket_tree_sitter_available() -> bool:
-    """Check if tree-sitter-language-pack with Racket support is available."""
-    try:
-        from tree_sitter_language_pack import get_parser
-        get_parser("racket")
-        return True
-    except (ImportError, Exception):  # pragma: no cover
-        return False  # pragma: no cover
 
 
 def find_racket_files(root: Path) -> Iterator[Path]:
@@ -162,8 +152,8 @@ def _get_call_name(node: "tree_sitter.Node") -> Optional[str]:
     return None  # pragma: no cover
 
 
-class RacketAnalyzer:
-    """Analyzer for Racket source files."""
+class _RacketExtractor:
+    """Extraction logic for Racket source files."""
 
     def __init__(self, repo_root: Path):
         self.repo_root = repo_root
@@ -174,7 +164,11 @@ class RacketAnalyzer:
 
     def analyze(self) -> AnalysisResult:
         """Analyze all Racket files in the repository."""
-        if not is_racket_tree_sitter_available():
+        if not is_racket_tree_sitter_available():  # pragma: no cover
+            # Defense-in-depth: RacketAnalyzer.analyze() gates on
+            # _check_grammar_available() before constructing this extractor,
+            # so this branch is unreachable through the public API.
+            import warnings
             warnings.warn(
                 "Racket analysis skipped: tree-sitter-language-pack not available",
                 UserWarning,
@@ -401,6 +395,46 @@ class RacketAnalyzer:
         return None  # pragma: no cover
 
 
+class RacketAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based analyzer for Racket source files.
+
+    Extracts functions, variables, structs, and call edges.
+    Uses language_pack_name for the racket grammar.
+    """
+
+    lang = "racket"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["**/*.rkt", "**/*.rktl", "**/*.rktd"]
+    language_pack_name = "racket"
+
+    def analyze(self, repo_root: Path, max_files: int | None = None) -> AnalysisResult:
+        """Run Racket analysis with cross-file symbol registry."""
+        if not self._check_grammar_available():
+            import warnings
+            warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return AnalysisResult(
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        extractor = _RacketExtractor(repo_root)
+        return extractor.analyze()
+
+
+_analyzer = RacketAnalyzer()
+
+
+def is_racket_tree_sitter_available() -> bool:
+    """Check if tree-sitter-language-pack with Racket support is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("racket")
 def analyze_racket(repo_root: Path) -> AnalysisResult:
     """Analyze Racket source files in a repository.
@@ -411,5 +445,4 @@ def analyze_racket(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult containing symbols, edges, and analysis metadata
     """
-    analyzer = RacketAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

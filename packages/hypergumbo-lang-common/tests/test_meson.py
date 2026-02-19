@@ -49,7 +49,7 @@ class TestIsMesonTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(meson_module, "is_meson_tree_sitter_available", return_value=False):
+        with patch.object(meson_module._analyzer, "_check_grammar_available", return_value=False):
             assert meson_module.is_meson_tree_sitter_available() is False
 
 class TestAnalyzeMeson:
@@ -57,7 +57,7 @@ class TestAnalyzeMeson:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_meson_file(tmp_path, "meson.build", "project('test', 'c')")
-        with patch.object(meson_module, "is_meson_tree_sitter_available", return_value=False):
+        with patch.object(meson_module._analyzer, "_check_grammar_available", return_value=False):
             with pytest.warns(UserWarning, match="Meson analysis skipped"):
                 result = meson_module.analyze_meson(tmp_path)
         assert result.skipped is True

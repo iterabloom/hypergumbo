@@ -281,3 +281,17 @@ def test_analyze_mixed_selectors(tmp_path):
     assert any(c.name == ".sidebar" for c in classes)
     assert any(i.name == "#app" for i in ids)
     assert any(i.name == "#search-box" for i in ids)
+
+
+def test_skipped_when_grammar_unavailable(tmp_path):
+    """Returns skipped result when grammar is unavailable."""
+    from unittest.mock import patch
+    import pytest
+    import hypergumbo_lang_mainstream.css as module
+
+    with patch.object(module._analyzer, "_check_grammar_available", return_value=False):
+        with pytest.warns(UserWarning, match="css analysis skipped"):
+            result = module.analyze_css_files(tmp_path)
+
+    assert result.skipped is True
+    assert "not available" in result.skip_reason

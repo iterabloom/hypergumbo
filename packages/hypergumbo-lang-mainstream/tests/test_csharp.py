@@ -7,6 +7,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
+import hypergumbo_lang_mainstream.csharp as csharp_module
 from hypergumbo_lang_mainstream.csharp import (
     analyze_csharp,
     find_csharp_files,
@@ -884,8 +885,8 @@ class TestCSharpGracefulDegradation:
 
     def test_returns_skipped_when_unavailable(self) -> None:
         """Should return skipped result when tree-sitter unavailable."""
-        with patch(
-            "hypergumbo_lang_mainstream.csharp.is_csharp_tree_sitter_available",
+        with patch.object(
+            csharp_module._analyzer, "_check_grammar_available",
             return_value=False,
         ):
             import warnings
@@ -893,26 +894,23 @@ class TestCSharpGracefulDegradation:
                 warnings.simplefilter("always")
                 result = analyze_csharp(Path("/nonexistent"))
                 assert result.skipped
-                assert "tree-sitter-c-sharp" in result.skip_reason
+                assert "not available" in result.skip_reason
                 assert len(w) == 1
 
 
 class TestCSharpTreeSitterAvailability:
     """Tests for tree-sitter availability detection."""
 
-    def test_detects_missing_tree_sitter(self) -> None:
-        """Should detect when tree-sitter is not installed."""
-        with patch("importlib.util.find_spec", return_value=None):
-            assert not is_csharp_tree_sitter_available()
+    def test_detects_available(self) -> None:
+        """Should detect when tree-sitter-c-sharp is installed."""
+        assert is_csharp_tree_sitter_available() is True
 
-    def test_detects_missing_csharp_grammar(self) -> None:
-        """Should detect when tree-sitter-c-sharp is not installed."""
-        def find_spec_mock(name: str):
-            if name == "tree_sitter":
-                return True
-            return None
-
-        with patch("importlib.util.find_spec", side_effect=find_spec_mock):
+    def test_detects_missing_grammar(self) -> None:
+        """Should detect when grammar is not available."""
+        with patch.object(
+            csharp_module._analyzer, "_check_grammar_available",
+            return_value=False,
+        ):
             assert not is_csharp_tree_sitter_available()
 
 

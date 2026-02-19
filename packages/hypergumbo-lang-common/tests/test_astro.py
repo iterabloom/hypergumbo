@@ -39,7 +39,7 @@ class TestIsAstroTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(astro_module, "is_astro_tree_sitter_available", return_value=False):
+        with patch.object(astro_module._analyzer, "_check_grammar_available", return_value=False):
             assert astro_module.is_astro_tree_sitter_available() is False
 
 class TestAnalyzeAstro:
@@ -47,8 +47,8 @@ class TestAnalyzeAstro:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_astro_file(tmp_path, "index.astro", "---\n---\n<h1>Hello</h1>")
-        with patch.object(astro_module, "is_astro_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Astro analysis skipped"):
+        with patch.object(astro_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="astro analysis skipped"):
                 result = astro_module.analyze_astro(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -57,7 +57,8 @@ class TestAnalyzeAstro:
         result = analyze_astro(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
     def test_extracts_component_ref(self, tmp_path: Path) -> None:
         make_astro_file(tmp_path, "index.astro", """---

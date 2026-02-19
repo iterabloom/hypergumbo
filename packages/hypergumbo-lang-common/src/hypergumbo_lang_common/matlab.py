@@ -7,10 +7,11 @@ MATLAB is a high-level language and interactive environment for numerical
 computation, visualization, and programming, commonly used in engineering
 and scientific research.
 
-Implementation approach:
-- Uses tree-sitter-language-pack for MATLAB grammar
-- Two-pass analysis: First pass collects all symbols, second pass extracts edges
-- Handles MATLAB-specific constructs like classdef, properties, methods blocks
+Uses TreeSitterAnalyzer base class for grammar checking and parser creation.
+The analyze() method is fully overridden because MATLAB requires:
+- Custom .m file disambiguation (Objective-C vs Wolfram vs MATLAB)
+- Stateful symbol registry for cross-file call resolution
+- Recursive AST traversal with class context tracking
 
 Key constructs extracted:
 - function_definition: function output = name(args)
@@ -23,11 +24,11 @@ Key constructs extracted:
 import time
 import warnings
 from pathlib import Path
-from typing import Iterator, Optional, TYPE_CHECKING
+from typing import ClassVar, Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import classify_dot_m_file, find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -35,16 +36,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "matlab.tree_sitter"
 PASS_VERSION = "hypergumbo-0.1.0"
-
-
-def is_matlab_tree_sitter_available() -> bool:
-    """Check if tree-sitter-language-pack with MATLAB support is available."""
-    try:
-        from tree_sitter_language_pack import get_parser
-        get_parser("matlab")
-        return True
-    except (ImportError, Exception):  # pragma: no cover
-        return False  # pragma: no cover
 
 
 def find_matlab_files(root: Path) -> Iterator[Path]:
@@ -120,19 +111,169 @@ def _count_methods(node: "tree_sitter.Node") -> int:
     return count
 
 
-class MatlabAnalyzer:
-    """Analyzer for MATLAB source files."""
+def _extract_symbols_recursive(
+    node: "tree_sitter.Node",
+    path: Path,
+    repo_root: Path,
+    symbols: list[Symbol],
+    run_id: str,
+    class_name: Optional[str] = None,
+) -> None:
+    """Extract symbols from a syntax tree node recursively."""
+    if node.type == "function_definition":
+        name = _get_identifier(node)
+        if name:
+            params = _extract_function_params(node)
+            output = _extract_function_output(node)
 
-    def __init__(self, repo_root: Path):
-        self.repo_root = repo_root
-        self.symbols: list[Symbol] = []
-        self.edges: list[Edge] = []
-        self._symbol_registry: dict[str, str] = {}  # name -> id
-        self._run_id: str = ""
+            signature = f"function({', '.join(params)})"
+            if output:
+                signature = f"{output} = {signature}"
 
-    def analyze(self) -> AnalysisResult:
+            rel_path = str(path.relative_to(repo_root))
+
+            # Determine if this is a method (inside a class) or standalone function
+            kind = "method" if class_name else "function"
+            qualified_name = f"{class_name}.{name}" if class_name else name
+
+            sym = Symbol(
+                id=_make_stable_id(path, repo_root, qualified_name, "fn"),
+                stable_id=_make_stable_id(path, repo_root, qualified_name, "fn"),
+                name=name,
+                kind=kind,
+                language="matlab",
+                path=rel_path,
+                span=Span(
+                    start_line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                    start_col=node.start_point[1],
+                    end_col=node.end_point[1],
+                ),
+                origin=PASS_ID,
+                signature=signature,
+                meta={"class": class_name} if class_name else None,
+            )
+            symbols.append(sym)
+
+    elif node.type == "class_definition":
+        name = _get_identifier(node)
+        if name:
+            property_count = _count_properties(node)
+            method_count = _count_methods(node)
+            rel_path = str(path.relative_to(repo_root))
+            sym = Symbol(
+                id=_make_stable_id(path, repo_root, name, "class"),
+                stable_id=_make_stable_id(path, repo_root, name, "class"),
+                name=name,
+                kind="class",
+                language="matlab",
+                path=rel_path,
+                span=Span(
+                    start_line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                    start_col=node.start_point[1],
+                    end_col=node.end_point[1],
+                ),
+                origin=PASS_ID,
+                meta={"property_count": property_count, "method_count": method_count},
+            )
+            symbols.append(sym)
+
+            # Extract methods within the class
+            for child in node.children:
+                if child.type == "methods":
+                    for method_child in child.children:
+                        if method_child.type == "function_definition":
+                            _extract_symbols_recursive(
+                                method_child, path, repo_root, symbols, run_id, class_name=name
+                            )
+            return  # Don't recursively process class children again
+
+    # Recursively process children
+    for child in node.children:
+        _extract_symbols_recursive(child, path, repo_root, symbols, run_id, class_name)
+
+
+def _find_enclosing_function(
+    node: "tree_sitter.Node", path: Path, repo_root: Path,
+) -> Optional[str]:
+    """Find the enclosing function for a node."""
+    current = node.parent
+    class_name = None
+    func_name = None
+    # Walk all the way up to find both function and class context
+    while current is not None:
+        if current.type == "class_definition":
+            if class_name is None:
+                class_name = _get_identifier(current)
+        if current.type == "function_definition":
+            if func_name is None:  # Capture innermost function
+                func_name = _get_identifier(current)
+        current = current.parent
+
+    if func_name:
+        qualified_name = f"{class_name}.{func_name}" if class_name else func_name
+        return _make_stable_id(path, repo_root, qualified_name, "fn")
+    return None  # pragma: no cover
+
+
+def _extract_edges_recursive(
+    node: "tree_sitter.Node",
+    path: Path,
+    repo_root: Path,
+    edges: list[Edge],
+    symbol_registry: dict[str, str],
+    run_id: str,
+) -> None:
+    """Extract edges from a syntax tree node recursively."""
+    if node.type == "function_call":
+        caller_id = _find_enclosing_function(node, path, repo_root)
+        if caller_id:
+            callee_name = _get_identifier(node)
+
+            if callee_name:
+                callee_id = symbol_registry.get(callee_name)
+                confidence = 1.0 if callee_id else 0.6
+                if callee_id is None:
+                    callee_id = f"matlab:unresolved:{callee_name}"
+
+                line = node.start_point[0] + 1
+                edge = Edge.create(
+                    src=caller_id,
+                    dst=callee_id,
+                    edge_type="calls",
+                    line=line,
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                    evidence_type="ast_call_direct",
+                    confidence=confidence,
+                    evidence_lang="matlab",
+                )
+                edges.append(edge)
+
+    # Recursively process children
+    for child in node.children:
+        _extract_edges_recursive(child, path, repo_root, edges, symbol_registry, run_id)
+
+
+class MatlabAnalyzer(TreeSitterAnalyzer):
+    """MATLAB language analyzer using tree-sitter-language-pack.
+
+    Overrides analyze() entirely because MATLAB requires:
+    - Custom .m file disambiguation via classify_dot_m_file
+    - Stateful symbol registry for cross-file call resolution
+    - Empty result (no run) when no MATLAB files found
+    """
+
+    lang = "matlab"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.m"]
+    language_pack_name = "matlab"
+
+    def analyze(self, repo_root: Path, max_files=None) -> AnalysisResult:
         """Analyze all MATLAB files in the repository."""
-        if not is_matlab_tree_sitter_available():
+        if not self._check_grammar_available():
             warnings.warn(
                 "MATLAB analysis skipped: tree-sitter-language-pack not available",
                 UserWarning,
@@ -144,43 +285,48 @@ class MatlabAnalyzer:
             )
 
         import uuid as uuid_module
-        from tree_sitter_language_pack import get_parser
 
         start_time = time.time()
-        self._run_id = f"uuid:{uuid_module.uuid4()}"
+        run_id = f"uuid:{uuid_module.uuid4()}"
 
-        parser = get_parser("matlab")
-        matlab_files = list(find_matlab_files(self.repo_root))
+        parser = self._create_parser()
+        matlab_files = list(find_matlab_files(repo_root))
 
         if not matlab_files:
             return AnalysisResult()
+
+        symbols: list[Symbol] = []
+        edges: list[Edge] = []
+        symbol_registry: dict[str, str] = {}  # name -> id
 
         # Pass 1: Collect all symbols
         for path in matlab_files:
             try:
                 content = path.read_bytes()
                 tree = parser.parse(content)
-                self._extract_symbols(tree.root_node, path)
+                _extract_symbols_recursive(tree.root_node, path, repo_root, symbols, run_id)
             except Exception:  # pragma: no cover
                 pass
 
         # Build symbol registry
-        for sym in self.symbols:
-            self._symbol_registry[sym.name] = sym.id
+        for sym in symbols:
+            symbol_registry[sym.name] = sym.id
 
         # Pass 2: Extract edges
         for path in matlab_files:
             try:
                 content = path.read_bytes()
                 tree = parser.parse(content)
-                self._extract_edges(tree.root_node, path)
+                _extract_edges_recursive(
+                    tree.root_node, path, repo_root, edges, symbol_registry, run_id
+                )
             except Exception:  # pragma: no cover
                 pass
 
         elapsed = time.time() - start_time
 
         run = AnalysisRun(
-            execution_id=self._run_id,
+            execution_id=run_id,
             run_signature="",
             pass_id=PASS_ID,
             version=PASS_VERSION,
@@ -189,138 +335,18 @@ class MatlabAnalyzer:
         )
 
         return AnalysisResult(
-            symbols=self.symbols,
-            edges=self.edges,
+            symbols=symbols,
+            edges=edges,
             run=run,
         )
 
-    def _extract_symbols(
-        self, node: "tree_sitter.Node", path: Path, class_name: Optional[str] = None
-    ) -> None:
-        """Extract symbols from a syntax tree node."""
-        if node.type == "function_definition":
-            name = _get_identifier(node)
-            if name:
-                params = _extract_function_params(node)
-                output = _extract_function_output(node)
 
-                signature = f"function({', '.join(params)})"
-                if output:
-                    signature = f"{output} = {signature}"
+_analyzer = MatlabAnalyzer()
 
-                rel_path = str(path.relative_to(self.repo_root))
 
-                # Determine if this is a method (inside a class) or standalone function
-                kind = "method" if class_name else "function"
-                qualified_name = f"{class_name}.{name}" if class_name else name
-
-                sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, qualified_name, "fn"),
-                    stable_id=_make_stable_id(path, self.repo_root, qualified_name, "fn"),
-                    name=name,
-                    kind=kind,
-                    language="matlab",
-                    path=rel_path,
-                    span=Span(
-                        start_line=node.start_point[0] + 1,
-                        end_line=node.end_point[0] + 1,
-                        start_col=node.start_point[1],
-                        end_col=node.end_point[1],
-                    ),
-                    origin=PASS_ID,
-                    signature=signature,
-                    meta={"class": class_name} if class_name else None,
-                )
-                self.symbols.append(sym)
-
-        elif node.type == "class_definition":
-            name = _get_identifier(node)
-            if name:
-                property_count = _count_properties(node)
-                method_count = _count_methods(node)
-                rel_path = str(path.relative_to(self.repo_root))
-                sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, name, "class"),
-                    stable_id=_make_stable_id(path, self.repo_root, name, "class"),
-                    name=name,
-                    kind="class",
-                    language="matlab",
-                    path=rel_path,
-                    span=Span(
-                        start_line=node.start_point[0] + 1,
-                        end_line=node.end_point[0] + 1,
-                        start_col=node.start_point[1],
-                        end_col=node.end_point[1],
-                    ),
-                    origin=PASS_ID,
-                    meta={"property_count": property_count, "method_count": method_count},
-                )
-                self.symbols.append(sym)
-
-                # Extract methods within the class
-                for child in node.children:
-                    if child.type == "methods":
-                        for method_child in child.children:
-                            if method_child.type == "function_definition":
-                                self._extract_symbols(method_child, path, class_name=name)
-                return  # Don't recursively process class children again
-
-        # Recursively process children
-        for child in node.children:
-            self._extract_symbols(child, path, class_name)
-
-    def _extract_edges(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract edges from a syntax tree node."""
-        if node.type == "function_call":
-            caller_id = self._find_enclosing_function(node, path)
-            if caller_id:
-                callee_name = _get_identifier(node)
-
-                if callee_name:
-                    callee_id = self._symbol_registry.get(callee_name)
-                    confidence = 1.0 if callee_id else 0.6
-                    if callee_id is None:
-                        callee_id = f"matlab:unresolved:{callee_name}"
-
-                    line = node.start_point[0] + 1
-                    edge = Edge.create(
-                        src=caller_id,
-                        dst=callee_id,
-                        edge_type="calls",
-                        line=line,
-                        origin=PASS_ID,
-                        origin_run_id=self._run_id,
-                        evidence_type="ast_call_direct",
-                        confidence=confidence,
-                        evidence_lang="matlab",
-                    )
-                    self.edges.append(edge)
-
-        # Recursively process children
-        for child in node.children:
-            self._extract_edges(child, path)
-
-    def _find_enclosing_function(
-        self, node: "tree_sitter.Node", path: Path
-    ) -> Optional[str]:
-        """Find the enclosing function for a node."""
-        current = node.parent
-        class_name = None
-        func_name = None
-        # Walk all the way up to find both function and class context
-        while current is not None:
-            if current.type == "class_definition":
-                if class_name is None:
-                    class_name = _get_identifier(current)
-            if current.type == "function_definition":
-                if func_name is None:  # Capture innermost function
-                    func_name = _get_identifier(current)
-            current = current.parent
-
-        if func_name:
-            qualified_name = f"{class_name}.{func_name}" if class_name else func_name
-            return _make_stable_id(path, self.repo_root, qualified_name, "fn")
-        return None  # pragma: no cover
+def is_matlab_tree_sitter_available() -> bool:
+    """Check if tree-sitter-language-pack with MATLAB support is available."""
+    return _analyzer._check_grammar_available()
 
 
 @register_analyzer("matlab")
@@ -333,5 +359,4 @@ def analyze_matlab(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult containing symbols, edges, and analysis metadata
     """
-    analyzer = MatlabAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

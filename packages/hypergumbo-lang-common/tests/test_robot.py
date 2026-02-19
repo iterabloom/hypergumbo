@@ -39,7 +39,7 @@ class TestIsRobotTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(robot_module, "is_robot_tree_sitter_available", return_value=False):
+        with patch.object(robot_module._analyzer, "_check_grammar_available", return_value=False):
             assert robot_module.is_robot_tree_sitter_available() is False
 
 class TestAnalyzeRobot:
@@ -47,8 +47,8 @@ class TestAnalyzeRobot:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_robot_file(tmp_path, "test.robot", "*** Test Cases ***\nTest 1\n    Log    Hello")
-        with patch.object(robot_module, "is_robot_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Robot Framework analysis skipped"):
+        with patch.object(robot_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="robot analysis skipped"):
                 result = robot_module.analyze_robot(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason

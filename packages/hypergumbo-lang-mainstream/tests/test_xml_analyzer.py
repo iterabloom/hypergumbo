@@ -335,3 +335,24 @@ def test_syntax_error_handling(tmp_path):
 
     # Result should still be valid
     assert isinstance(result, AnalysisResult)
+
+
+def test_is_xml_tree_sitter_available():
+    """Check that XML tree-sitter availability returns True."""
+    from hypergumbo_lang_mainstream.xml_config import is_xml_tree_sitter_available
+
+    assert is_xml_tree_sitter_available() is True
+
+
+def test_skipped_when_grammar_unavailable(tmp_path):
+    """Returns skipped result when tree-sitter-xml grammar is unavailable."""
+    from unittest.mock import patch
+    import pytest
+    import hypergumbo_lang_mainstream.xml_config as xml_module
+
+    with patch.object(xml_module._analyzer, "_check_grammar_available", return_value=False):
+        with pytest.warns(UserWarning, match="xml analysis skipped"):
+            result = xml_module.analyze_xml_files(tmp_path)
+
+    assert result.skipped is True
+    assert "not available" in result.skip_reason

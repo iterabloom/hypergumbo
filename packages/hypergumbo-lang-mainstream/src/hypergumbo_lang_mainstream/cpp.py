@@ -32,10 +32,8 @@ Why This Design
 """
 from __future__ import annotations
 
-import time
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
@@ -43,8 +41,8 @@ from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    TreeSitterAnalyzer,
     find_child_by_type as _find_child_by_type,
-    is_grammar_available,
     iter_tree,
     make_file_id as _base_make_file_id,
     make_symbol_id as _base_make_symbol_id,
@@ -69,11 +67,6 @@ def find_cpp_files(repo_root: Path) -> Iterator[Path]:
     so that definitions can replace declarations when building the symbol registry.
     """
     yield from find_files(repo_root, ["*.h", "*.hpp", "*.hxx", "*.cpp", "*.cc", "*.cxx"])
-
-
-def is_cpp_tree_sitter_available() -> bool:
-    """Check if tree-sitter with C++ grammar is available."""
-    return is_grammar_available("tree_sitter_cpp")
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
@@ -181,12 +174,12 @@ def _extract_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[
     """
     declarator = _find_child_by_type(node, "function_declarator")
     if not declarator:
-        # Pointer return types: function_definition → pointer_declarator → function_declarator
+        # Pointer return types: function_definition -> pointer_declarator -> function_declarator
         ptr_decl = _find_child_by_type(node, "pointer_declarator")
         if ptr_decl:
             declarator = _find_child_by_type(ptr_decl, "function_declarator")
     if not declarator:
-        # Reference return types: function_definition → reference_declarator → function_declarator
+        # Reference return types: function_definition -> reference_declarator -> function_declarator
         ref_decl = _find_child_by_type(node, "reference_declarator")
         if ref_decl:
             declarator = _find_child_by_type(ref_decl, "function_declarator")
@@ -216,18 +209,14 @@ def _extract_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[
     return None  # pragma: no cover - defensive
 
 
-def _extract_symbols_from_file(
+def _extract_symbols_from_tree(
+    tree: "tree_sitter.Tree",
+    source: bytes,
     file_path: Path,
-    parser: "tree_sitter.Parser",
+    rel_path: str,
     run: AnalysisRun,
 ) -> FileAnalysis:
     """Extract symbols from a single C++ file."""
-    try:
-        source = file_path.read_bytes()
-        tree = parser.parse(source)
-    except (OSError, IOError):  # pragma: no cover - IO errors hard to trigger in tests
-        return FileAnalysis()
-
     analysis = FileAnalysis()
 
     # Extract namespace aliases for ADR-0007
@@ -367,7 +356,7 @@ def _extract_namespace_aliases(
     Namespace alias syntax:
         namespace fs = std::filesystem;
 
-    Returns dict mapping alias → qualified_namespace (e.g., "fs" → "std::filesystem").
+    Returns dict mapping alias -> qualified_namespace (e.g., "fs" -> "std::filesystem").
     """
     aliases: dict[str, str] = {}
     for node in iter_tree(root_node):
@@ -394,7 +383,7 @@ def _find_class_or_struct(
 
     In C++, constructors share the class name (``Config::Config()``) and may
     overwrite the class in the ``symbol_by_name`` dict.  This helper checks
-    local symbols first, then global, and finally the resolver — returning
+    local symbols first, then global, and finally the resolver -- returning
     the first match whose ``kind`` is ``class`` or ``struct``.
     """
     for pool in (local_symbols, global_symbols):
@@ -457,32 +446,26 @@ def _try_instantiation_edge(
             ))
 
 
-def _extract_edges_from_file(
+def _extract_edges_from_tree(
+    tree: "tree_sitter.Tree",
+    source: bytes,
     file_path: Path,
-    parser: "tree_sitter.Parser",
+    rel_path: str,
     local_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
     run: AnalysisRun,
-    resolver: NameResolver | None = None,
+    resolver: NameResolver,
     namespace_aliases: dict[str, str] | None = None,
 ) -> list[Edge]:
-    """Extract include, call, and instantiation edges from a file.
+    """Extract include, call, and instantiation edges from a parsed tree.
 
     Uses iterative traversal to avoid RecursionError on deeply nested code.
 
     Args:
-        namespace_aliases: Mapping of alias → qualified_namespace for path_hint (ADR-0007)
+        namespace_aliases: Mapping of alias -> qualified_namespace for path_hint (ADR-0007)
     """
-    if resolver is None:  # pragma: no cover - defensive
-        resolver = NameResolver(global_symbols)
     if namespace_aliases is None:
         namespace_aliases = {}  # pragma: no cover - always passed by caller
-    try:
-        source = file_path.read_bytes()
-        tree = parser.parse(source)
-    except (OSError, IOError):  # pragma: no cover - IO errors hard to trigger in tests
-        return []
-
     edges: list[Edge] = []
     file_id = _make_file_id(str(file_path))
 
@@ -491,9 +474,9 @@ def _extract_edges_from_file(
 
         Handles plain calls, qualified calls, field (method) calls,
         and template instantiation variants of each:
-          - process<int>(42)       → template_function → identifier
-          - obj.get<int>()         → field_expression → template_method → field_identifier
-          - NS::make<T>()          → qualified_identifier (contains template_function)
+          - process<int>(42)       -> template_function -> identifier
+          - obj.get<int>()         -> field_expression -> template_method -> field_identifier
+          - NS::make<T>()          -> qualified_identifier (contains template_function)
         """
         # Check for field_expression (obj.method() or obj.method<T>())
         field_expr = _find_child_by_type(node, "field_expression")
@@ -502,7 +485,7 @@ def _extract_edges_from_file(
             field_ident = _find_child_by_type(field_expr, "field_identifier")
             if field_ident:
                 return _node_text(field_ident, source)
-            # Template method: field_expression → template_method → field_identifier
+            # Template method: field_expression -> template_method -> field_identifier
             tmpl_method = _find_child_by_type(field_expr, "template_method")
             if tmpl_method:
                 field_ident = _find_child_by_type(tmpl_method, "field_identifier")
@@ -513,7 +496,7 @@ def _extract_edges_from_file(
         qualified = _find_child_by_type(node, "qualified_identifier")
         if qualified:
             # If the qualified name contains a template_function,
-            # reconstruct without template args: NS::func<T> → NS::func
+            # reconstruct without template args: NS::func<T> -> NS::func
             tmpl_in_qual = _find_child_by_type(qualified, "template_function")
             if tmpl_in_qual:
                 ident = _find_child_by_type(tmpl_in_qual, "identifier")
@@ -722,6 +705,87 @@ def _extract_edges_from_file(
     return edges
 
 
+class CppAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based C++ analyzer.
+
+    Uses tree-sitter-cpp to parse C++ files and extract classes, structs,
+    enums, functions, methods, include directives, call edges, and
+    instantiation edges. Overrides ``register_symbol`` to prefer
+    definitions (.cpp/.cc/.cxx) over declarations (.h/.hpp/.hxx).
+    """
+
+    lang = "cpp"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.cpp", "*.cc", "*.cxx", "*.h", "*.hpp", "*.hxx"]
+    grammar_module = "tree_sitter_cpp"
+
+    def _find_source_files(self, repo_root: Path) -> Iterator[Path]:
+        """Yield C++ files (headers before sources for declaration ordering)."""
+        yield from find_cpp_files(repo_root)
+
+    def extract_symbols_from_file(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+        file_path: Path,
+        rel_path: str,
+        run: AnalysisRun,
+    ) -> FileAnalysis:
+        return _extract_symbols_from_tree(tree, source, file_path, rel_path, run)
+
+    def register_symbol(
+        self,
+        symbol: Symbol,
+        global_symbols: dict,
+    ) -> None:
+        """Register symbol, preferring source files over headers for definitions."""
+        short_name = symbol.name.split("::")[-1] if "::" in symbol.name else symbol.name
+        sym_is_source = any(symbol.path.endswith(ext) for ext in ('.cpp', '.cc', '.cxx'))
+        for name in (short_name, symbol.name):
+            existing = global_symbols.get(name)
+            if existing is None:
+                global_symbols[name] = symbol
+            else:
+                existing_is_source = any(existing.path.endswith(ext) for ext in ('.cpp', '.cc', '.cxx'))
+                if sym_is_source and not existing_is_source:
+                    global_symbols[name] = symbol  # pragma: no cover
+
+    def extract_edges_from_file(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+        file_path: Path,
+        rel_path: str,
+        local_symbols: dict[str, Symbol],
+        global_symbols: dict,
+        run: AnalysisRun,
+        import_aliases: dict[str, str],
+        resolver: NameResolver,
+    ) -> list[Edge]:
+        return _extract_edges_from_tree(
+            tree, source, file_path, rel_path,
+            local_symbols, global_symbols, run, resolver,
+            namespace_aliases=import_aliases,
+        )
+
+    def get_import_aliases(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+    ) -> dict[str, str]:
+        """Extract namespace aliases from C++ source (ADR-0007)."""
+        return _extract_namespace_aliases(tree.root_node, source)
+
+
+_analyzer = CppAnalyzer()
+
+
+def is_cpp_tree_sitter_available() -> bool:
+    """Check if tree-sitter with C++ grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("cpp")
 def analyze_cpp(repo_root: Path) -> CppAnalysisResult:
     """Analyze all C++ files in a repository.
@@ -729,88 +793,4 @@ def analyze_cpp(repo_root: Path) -> CppAnalysisResult:
     Returns a CppAnalysisResult with symbols, edges, and provenance.
     If tree-sitter-cpp is not available, returns a skipped result.
     """
-    if not is_cpp_tree_sitter_available():
-        warnings.warn(
-            "tree-sitter-cpp not available. Install with: pip install hypergumbo[cpp]",
-            stacklevel=2,
-        )
-        return CppAnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-cpp not available",
-        )
-
-    start_time = time.time()
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    # Import tree-sitter-cpp
-    try:
-        import tree_sitter_cpp
-        import tree_sitter
-
-        lang = tree_sitter.Language(tree_sitter_cpp.language())
-        parser = tree_sitter.Parser(lang)
-    except Exception as e:  # pragma: no cover - parser load failure hard to trigger
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return CppAnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=f"Failed to load C++ parser: {e}",
-        )
-
-    # Pass 1: Extract all symbols
-    file_analyses: dict[Path, FileAnalysis] = {}
-    files_skipped = 0
-
-    for cpp_file in find_cpp_files(repo_root):
-        analysis = _extract_symbols_from_file(cpp_file, parser, run)
-        if analysis.symbols:
-            file_analyses[cpp_file] = analysis
-        else:
-            files_skipped += 1
-
-    # Build global symbol registry
-    # Prefer function definitions (.cpp/.cc/.cxx) over declarations (.h/.hpp/.hxx)
-    # This ensures call edges point to implementations (with outgoing calls)
-    global_symbols: dict[str, Symbol] = {}
-    for analysis in file_analyses.values():
-        for symbol in analysis.symbols:
-            # Store by short name for cross-file resolution
-            short_name = symbol.name.split("::")[-1] if "::" in symbol.name else symbol.name
-            # Check if this is a source file (definition) vs header (declaration)
-            sym_is_source = any(symbol.path.endswith(ext) for ext in ('.cpp', '.cc', '.cxx'))
-            for name in (short_name, symbol.name):
-                existing = global_symbols.get(name)
-                if existing is None:
-                    global_symbols[name] = symbol
-                else:
-                    # Prefer source files over headers
-                    # Note: Currently C++ analyzer only extracts function_definition nodes,
-                    # not forward declarations. This path handles potential future support
-                    # for declaration extraction or edge cases with duplicate definitions.
-                    existing_is_source = any(existing.path.endswith(ext) for ext in ('.cpp', '.cc', '.cxx'))
-                    if sym_is_source and not existing_is_source:
-                        global_symbols[name] = symbol  # pragma: no cover
-
-    # Pass 2: Extract edges
-    resolver = NameResolver(global_symbols)
-    all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
-
-    for cpp_file, analysis in file_analyses.items():
-        all_symbols.extend(analysis.symbols)
-
-        edges = _extract_edges_from_file(
-            cpp_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
-            namespace_aliases=analysis.import_aliases,
-        )
-        all_edges.extend(edges)
-
-    run.files_analyzed = len(file_analyses)
-    run.files_skipped = files_skipped
-    run.duration_ms = int((time.time() - start_time) * 1000)
-
-    return CppAnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

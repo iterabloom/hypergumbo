@@ -29,15 +29,14 @@ Why This Design
 from __future__ import annotations
 
 import hashlib
-import importlib.util
 import time
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -60,23 +59,32 @@ def find_json_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, JSON_EXTENSIONS)
 
 
+class JsonTreeSitterAnalyzer(TreeSitterAnalyzer):
+    """TreeSitterAnalyzer wrapper for JSON configuration files.
+
+    Overrides ``analyze()`` entirely because JSON analysis uses custom
+    type detection (package.json, tsconfig, composer) and file-specific
+    processing. The base class provides grammar availability checking
+    via ``_check_grammar_available()``.
+    """
+
+    lang = "json"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.json"]
+    language_pack_name = "json"
+
+    def analyze(self, repo_root: Path, max_files: int | None = None) -> AnalysisResult:
+        """Run the JSON analysis using the existing analyze logic."""
+        return _analyze_json_impl(repo_root)
+
+
+_json_analyzer = JsonTreeSitterAnalyzer()
+
+
 def is_json_tree_sitter_available() -> bool:
     """Check if tree-sitter with JSON grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover
-    # Try tree_sitter_language_pack first (bundled languages)
-    if importlib.util.find_spec("tree_sitter_language_pack") is not None:
-        try:
-            from tree_sitter_language_pack import get_language
-
-            get_language("json")
-            return True
-        except Exception:  # pragma: no cover
-            pass  # pragma: no cover
-    # Fall back to standalone tree_sitter_json
-    if importlib.util.find_spec("tree_sitter_json") is not None:  # pragma: no cover
-        return True  # pragma: no cover
-    return False  # pragma: no cover
+    return _json_analyzer._check_grammar_available()
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
@@ -604,10 +612,19 @@ def analyze_json_files(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult with symbols and edges
     """
-    if not is_json_tree_sitter_available():  # pragma: no cover
+    return _json_analyzer.analyze(repo_root)
+
+
+def _analyze_json_impl(repo_root: Path) -> AnalysisResult:
+    """Internal implementation of JSON analysis.
+
+    Called by JsonTreeSitterAnalyzer.analyze() after grammar availability
+    has been checked by the base class.
+    """
+    if not _json_analyzer._check_grammar_available():  # pragma: no cover
         return AnalysisResult(  # pragma: no cover
             skipped=True,  # pragma: no cover
-            skip_reason="tree-sitter-json not installed (pip install tree-sitter-json or tree-sitter-language-pack)",  # pragma: no cover
+            skip_reason="json tree-sitter grammar not available",  # pragma: no cover
         )  # pragma: no cover
 
     import tree_sitter

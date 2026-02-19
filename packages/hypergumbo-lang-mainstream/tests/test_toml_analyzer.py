@@ -320,3 +320,17 @@ path = "src/bin/main.rs"
     mybin = next(b for b in bins if b.name == "mybin")
     assert mybin.meta is not None
     assert mybin.meta.get("path") == "src/bin/main.rs"
+
+
+def test_skipped_when_grammar_unavailable(tmp_path):
+    """Returns skipped result when tree-sitter-toml grammar is unavailable."""
+    from unittest.mock import patch
+    import pytest
+    import hypergumbo_lang_mainstream.toml_config as toml_module
+
+    with patch.object(toml_module._analyzer, "_check_grammar_available", return_value=False):
+        with pytest.warns(UserWarning, match="toml analysis skipped"):
+            result = toml_module.analyze_toml_files(tmp_path)
+
+    assert result.skipped is True
+    assert "not available" in result.skip_reason

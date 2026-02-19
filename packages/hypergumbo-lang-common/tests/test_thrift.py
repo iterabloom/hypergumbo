@@ -241,8 +241,8 @@ class TestThriftAnalysisUnavailable:
         """Returns skipped result when tree-sitter unavailable."""
         (temp_repo / "user.thrift").write_text("service UserService {}")
 
-        with patch.object(thrift_module, "is_thrift_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Thrift analysis skipped"):
+        with patch.object(thrift_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="thrift analysis skipped"):
                 result = thrift_module.analyze_thrift(temp_repo)
 
         assert result.skipped is True

@@ -204,8 +204,8 @@ class TestStarlarkAnalysisUnavailable:
         """Returns skipped result when tree-sitter unavailable."""
         (temp_repo / "BUILD").write_text("py_binary(name = 'main')")
 
-        with patch.object(starlark_module, "is_starlark_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Starlark analysis skipped"):
+        with patch.object(starlark_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="starlark analysis skipped"):
                 result = starlark_module.analyze_starlark(temp_repo)
 
         assert result.skipped is True

@@ -41,44 +41,32 @@ class TestJuliaTreeSitterAvailability:
         """Returns True when tree-sitter-julia is available."""
         from hypergumbo_lang_common.julia import is_julia_tree_sitter_available
 
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = object()
-            assert is_julia_tree_sitter_available() is True
+        # Since tree-sitter-julia is installed, this should return True
+        assert is_julia_tree_sitter_available() is True
 
     def test_is_julia_tree_sitter_available_false(self) -> None:
-        """Returns False when tree-sitter is not available."""
-        from hypergumbo_lang_common.julia import is_julia_tree_sitter_available
+        """Returns False when grammar is not available."""
+        from hypergumbo_lang_common import julia as julia_module
 
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = None
-            assert is_julia_tree_sitter_available() is False
-
-    def test_is_julia_tree_sitter_available_no_julia(self) -> None:
-        """Returns False when tree-sitter is available but julia grammar is not."""
-        from hypergumbo_lang_common.julia import is_julia_tree_sitter_available
-
-        def mock_find_spec(name: str) -> object | None:
-            if name == "tree_sitter":
-                return object()
-            return None
-
-        with patch("importlib.util.find_spec", side_effect=mock_find_spec):
-            assert is_julia_tree_sitter_available() is False
+        with patch.object(julia_module._analyzer, "_check_grammar_available", return_value=False):
+            assert julia_module.is_julia_tree_sitter_available() is False
 
 class TestAnalyzeJuliaFallback:
     """Tests for fallback behavior when tree-sitter-julia unavailable."""
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-julia unavailable."""
-        from hypergumbo_lang_common.julia import analyze_julia
+        from hypergumbo_lang_common import julia as julia_module
 
         (tmp_path / "test.jl").write_text("function test() end")
 
-        with patch("hypergumbo_lang_common.julia.is_julia_tree_sitter_available", return_value=False):
-            result = analyze_julia(tmp_path)
+        with patch.object(julia_module._analyzer, "_check_grammar_available", return_value=False):
+            import pytest
+            with pytest.warns(UserWarning, match="julia analysis skipped"):
+                result = julia_module.analyze_julia(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-julia" in result.skip_reason
+        assert "not available" in result.skip_reason
 
 class TestJuliaModuleExtraction:
     """Tests for extracting Julia modules."""
@@ -363,18 +351,17 @@ class TestJuliaParserFailure:
     """Tests for parser failure handling."""
 
     def test_handles_parser_load_failure(self, tmp_path: Path) -> None:
-        """Handles failure to load Julia parser."""
-        from hypergumbo_lang_common.julia import analyze_julia
+        """Parser load failure propagates as exception (base class does not catch)."""
+        from hypergumbo_lang_common import julia as julia_module
 
         julia_file = tmp_path / "test.jl"
         julia_file.write_text("function test() end")
 
-        with patch("hypergumbo_lang_common.julia.is_julia_tree_sitter_available", return_value=True):
+        with patch.object(julia_module._analyzer, "_check_grammar_available", return_value=True):
             with patch("tree_sitter_julia.language", side_effect=Exception("Parser error")):
-                result = analyze_julia(tmp_path)
-
-        assert result.skipped is True
-        assert "Parser error" in result.skip_reason or "Failed to load" in result.skip_reason
+                import pytest
+                with pytest.raises(Exception, match="Parser error"):
+                    julia_module.analyze_julia(tmp_path)
 
 class TestJuliaConstExtraction:
     """Tests for extracting Julia constants."""

@@ -354,16 +354,15 @@ end
 class TestLuaAnalyzeFallback:
     """Tests for fallback when tree-sitter-lua is unavailable."""
 
-    def test_returns_skipped_when_unavailable(self, tmp_path: Path, monkeypatch) -> None:
+    def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-lua not available."""
         from hypergumbo_lang_mainstream import lua
-
-        # Mock tree-sitter-lua as unavailable
-        monkeypatch.setattr(lua, "is_lua_tree_sitter_available", lambda: False)
+        from unittest.mock import patch
 
         make_lua_file(tmp_path, "main.lua", "function test() end")
 
-        result = lua.analyze_lua(tmp_path)
+        with patch.object(lua._analyzer, "_check_grammar_available", return_value=False):
+            result = lua.analyze_lua(tmp_path)
 
         assert result.skipped
         assert "tree-sitter-lua" in result.skip_reason

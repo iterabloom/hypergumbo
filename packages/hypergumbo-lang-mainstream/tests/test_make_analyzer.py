@@ -8,7 +8,12 @@ Tests verify that the analyzer correctly extracts:
 - Define blocks (functions/macros)
 """
 
+from unittest.mock import patch
+
+import pytest
+
 from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_lang_mainstream import make as make_module
 from hypergumbo_lang_mainstream.make import (
     PASS_ID,
     PASS_VERSION,
@@ -226,6 +231,25 @@ def test_tree_sitter_not_available():
     # The function should return a boolean
     result = is_make_tree_sitter_available()
     assert isinstance(result, bool)
+
+def test_returns_skipped_when_unavailable(tmp_path):
+    """Returns skipped result when tree-sitter-make unavailable."""
+    (tmp_path / "Makefile").write_text("all:")
+
+    with patch.object(make_module._analyzer, "_check_grammar_available", return_value=False):
+        with pytest.warns(UserWarning, match="make analysis skipped"):
+            result = analyze_make_files(tmp_path)
+
+    assert result.skipped is True
+    assert "not available" in result.skip_reason
+    assert result.run is not None
+
+def test_empty_repo_has_run(tmp_path):
+    """Empty repo returns result with run metadata and zero files."""
+    result = analyze_make_files(tmp_path)
+
+    assert result.run is not None
+    assert result.run.files_analyzed == 0
 
 def test_multiple_make_files(tmp_path):
     """Test analysis across multiple Makefile files."""

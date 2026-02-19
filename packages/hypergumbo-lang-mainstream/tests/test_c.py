@@ -3,6 +3,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+import hypergumbo_lang_mainstream.c as c_module
+
 
 class TestFindCFiles:
     """Tests for C file discovery."""
@@ -30,28 +32,14 @@ class TestCTreeSitterAvailability:
         """Returns True when tree-sitter-c is available."""
         from hypergumbo_lang_mainstream.c import is_c_tree_sitter_available
 
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = object()  # Non-None = available
-            assert is_c_tree_sitter_available() is True
+        # tree-sitter-c is installed in the test env, so it should be True
+        assert is_c_tree_sitter_available() is True
 
     def test_is_c_tree_sitter_available_false(self) -> None:
-        """Returns False when tree-sitter is not available."""
+        """Returns False when grammar unavailable."""
         from hypergumbo_lang_mainstream.c import is_c_tree_sitter_available
 
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = None
-            assert is_c_tree_sitter_available() is False
-
-    def test_is_c_tree_sitter_available_no_c_grammar(self) -> None:
-        """Returns False when tree-sitter-c is not available."""
-        from hypergumbo_lang_mainstream.c import is_c_tree_sitter_available
-
-        def mock_find_spec(name: str):
-            if name == "tree_sitter":
-                return object()  # tree_sitter is available
-            return None  # tree_sitter_c is not
-
-        with patch("importlib.util.find_spec", side_effect=mock_find_spec):
+        with patch.object(c_module._analyzer, "_check_grammar_available", return_value=False):
             assert is_c_tree_sitter_available() is False
 
 
@@ -64,11 +52,14 @@ class TestAnalyzeCFallback:
 
         (tmp_path / "test.c").write_text("int main() { return 0; }")
 
-        with patch("hypergumbo_lang_mainstream.c.is_c_tree_sitter_available", return_value=False):
-            result = analyze_c(tmp_path)
-
-        assert result.skipped is True
-        assert "tree-sitter-c" in result.skip_reason
+        with patch.object(c_module._analyzer, "_check_grammar_available", return_value=False):
+            import warnings
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                result = analyze_c(tmp_path)
+                assert result.skipped is True
+                assert "not available" in result.skip_reason
+                assert len(w) == 1
 
 
 class TestCFunctionExtraction:
@@ -388,25 +379,22 @@ class TestCEdgeCases:
         assert result.run is not None
         assert result.run.files_skipped == 1
 
-    def test_analyze_c_parser_none_after_check(self, tmp_path: Path) -> None:
-        """analyze_c handles case where parser is None after availability check."""
+    def test_analyze_c_skipped_when_grammar_unavailable(self, tmp_path: Path) -> None:
+        """analyze_c returns skipped result when grammar unavailable."""
         from hypergumbo_lang_mainstream.c import analyze_c
 
         c_file = tmp_path / "test.c"
         c_file.write_text("int main() { return 0; }")
 
-        with patch(
-            "hypergumbo_lang_mainstream.c.is_c_tree_sitter_available",
-            return_value=True,
-        ), patch(
-            "hypergumbo_lang_mainstream.c._get_c_parser",
-            return_value=None,
-        ):
-            result = analyze_c(tmp_path)
+        with patch.object(c_module._analyzer, "_check_grammar_available", return_value=False):
+            import warnings
+            with warnings.catch_warnings(record=True):
+                warnings.simplefilter("always")
+                result = analyze_c(tmp_path)
 
         assert result.run is not None
         assert result.skipped is True
-        assert "tree-sitter-c" in result.skip_reason
+        assert "not available" in result.skip_reason
 
 
 class TestCFunctionDeclarations:

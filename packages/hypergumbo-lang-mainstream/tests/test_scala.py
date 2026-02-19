@@ -57,15 +57,17 @@ class TestAnalyzeScalaFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-scala unavailable."""
+        from hypergumbo_lang_mainstream import scala as scala_module
         from hypergumbo_lang_mainstream.scala import analyze_scala
 
         (tmp_path / "test.scala").write_text("object Test {}")
 
-        with patch("hypergumbo_lang_mainstream.scala.is_scala_tree_sitter_available", return_value=False):
-            result = analyze_scala(tmp_path)
+        with patch.object(scala_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="scala analysis skipped"):
+                result = analyze_scala(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-scala" in result.skip_reason
+        assert "scala" in result.skip_reason
 
 class TestScalaFunctionExtraction:
     """Tests for extracting Scala functions/methods."""
@@ -377,21 +379,19 @@ class TestScalaEdgeCases:
     """Tests for edge cases and error handling."""
 
     def test_parser_load_failure(self, tmp_path: Path) -> None:
-        """Returns skipped with run when parser loading fails."""
+        """Raises error when parser loading fails (base class does not catch)."""
+        from hypergumbo_lang_mainstream import scala as scala_module
         from hypergumbo_lang_mainstream.scala import analyze_scala
 
         (tmp_path / "test.scala").write_text("object Test {}")
 
-        with patch("hypergumbo_lang_mainstream.scala.is_scala_tree_sitter_available", return_value=True):
-            with patch.dict("sys.modules", {"tree_sitter_scala": MagicMock()}):
-                import sys
-                mock_module = sys.modules["tree_sitter_scala"]
-                mock_module.language.side_effect = RuntimeError("Parser load failed")
-                result = analyze_scala(tmp_path)
-
-        assert result.skipped is True
-        assert "Failed to load Scala parser" in result.skip_reason
-        assert result.run is not None
+        with patch.object(scala_module._analyzer, "_check_grammar_available", return_value=True):
+            with patch.object(
+                scala_module._analyzer, "_create_parser",
+                side_effect=RuntimeError("Parser load failed"),
+            ):
+                with pytest.raises(RuntimeError, match="Parser load failed"):
+                    analyze_scala(tmp_path)
 
     def test_file_with_no_symbols_is_skipped(self, tmp_path: Path) -> None:
         """Files with no extractable symbols are counted as skipped."""
@@ -450,59 +450,33 @@ class User(val name: String) {
         assert any("getName" in name for name in method_names)
 
 class TestScalaFileReadErrors:
-    """Tests for file read error handling."""
+    """Tests for file read error handling.
 
-    def test_symbol_extraction_handles_read_error(self, tmp_path: Path) -> None:
-        """Symbol extraction handles file read errors gracefully."""
-        from hypergumbo_lang_mainstream.scala import (
-            _extract_symbols_from_file,
-            is_scala_tree_sitter_available,
-        )
-        from hypergumbo_core.ir import AnalysisRun
+    The base TreeSitterAnalyzer.analyze() method handles file read errors
+    during Pass 1 by incrementing files_skipped.
+    """
 
-        if not is_scala_tree_sitter_available():
-            pytest.skip("tree-sitter-scala not available")
+    def test_analyzer_handles_read_error_in_pass1(self, tmp_path: Path) -> None:
+        """Analyzer skips files with read errors during Pass 1."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
 
-        import tree_sitter_scala
-        import tree_sitter
+        # Create a valid file plus a file that will fail to read
+        (tmp_path / "good.scala").write_text("object Good { def good(): Unit = {} }")
+        bad_file = tmp_path / "bad.scala"
+        bad_file.write_text("object Bad {}")
 
-        lang = tree_sitter.Language(tree_sitter_scala.language())
-        parser = tree_sitter.Parser(lang)
-        run = AnalysisRun.create(pass_id="test", version="test")
+        original_read_bytes = Path.read_bytes
 
-        scala_file = tmp_path / "test.scala"
-        scala_file.write_text("object Test {}")
+        def patched_read_bytes(self: Path) -> bytes:
+            if self.name == "bad.scala":
+                raise OSError("Read failed")
+            return original_read_bytes(self)
 
-        with patch.object(Path, "read_bytes", side_effect=OSError("Read failed")):
-            result = _extract_symbols_from_file(scala_file, parser, run)
+        with patch.object(Path, "read_bytes", patched_read_bytes):
+            result = analyze_scala(tmp_path)
 
-        assert result.symbols == []
-
-    def test_edge_extraction_handles_read_error(self, tmp_path: Path) -> None:
-        """Edge extraction handles file read errors gracefully."""
-        from hypergumbo_lang_mainstream.scala import (
-            _extract_edges_from_file,
-            is_scala_tree_sitter_available,
-        )
-        from hypergumbo_core.ir import AnalysisRun
-
-        if not is_scala_tree_sitter_available():
-            pytest.skip("tree-sitter-scala not available")
-
-        import tree_sitter_scala
-        import tree_sitter
-
-        lang = tree_sitter.Language(tree_sitter_scala.language())
-        parser = tree_sitter.Parser(lang)
-        run = AnalysisRun.create(pass_id="test", version="test")
-
-        scala_file = tmp_path / "test.scala"
-        scala_file.write_text("object Test {}")
-
-        with patch.object(Path, "read_bytes", side_effect=IOError("Read failed")):
-            result = _extract_edges_from_file(scala_file, parser, {}, {}, run)
-
-        assert result == []
+        assert result.run is not None
+        assert result.run.files_skipped >= 1
 
 class TestImportHintsExtraction:
     """Tests for import hints extraction for disambiguation."""

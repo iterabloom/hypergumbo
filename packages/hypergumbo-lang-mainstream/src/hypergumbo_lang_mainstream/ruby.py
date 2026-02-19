@@ -37,17 +37,24 @@ Why This Design
 """
 from __future__ import annotations
 
-import importlib.util
 import time
-import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -131,12 +138,12 @@ def find_ruby_files(repo_root: Path) -> Iterator[Path]:
 
 
 def is_ruby_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Ruby grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False
-    if importlib.util.find_spec("tree_sitter_ruby") is None:
-        return False
-    return True
+    """Check if tree-sitter with Ruby grammar is available.
+
+    Delegates to the RubyAnalyzer singleton (defined at module level below).
+    This function is kept for backward compatibility.
+    """
+    return _analyzer._check_grammar_available()
 
 
 def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:
@@ -740,7 +747,7 @@ def _extract_rails_routes(
     source: bytes,
     file_path: Path,
     symbol_by_name: dict[str, Symbol],
-    run: AnalysisRun,
+    run_id: str,
 ) -> tuple[list[UsageContext], list[Symbol]]:
     """Extract UsageContext records AND Symbol objects for Rails/Sinatra route DSL calls.
 
@@ -989,8 +996,8 @@ def _extract_rails_routes(
                         "route_path": route_pth,
                         "controller_action": f"{controller_name}#{action}",
                     },
-                    origin=run.pass_id,
-                    origin_run_id=run.execution_id,
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
                 )
                 route_symbols.append(route_symbol)
         elif method_name == "resource":
@@ -1032,8 +1039,8 @@ def _extract_rails_routes(
                         "route_path": route_pth,
                         "controller_action": f"{controller_name}#{action}",
                     },
-                    origin=run.pass_id,
-                    origin_run_id=run.execution_id,
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
                 )
                 route_symbols.append(route_symbol)
         else:
@@ -1061,8 +1068,8 @@ def _extract_rails_routes(
                 path=str(file_path),
                 span=span,
                 meta=route_meta,
-                origin=run.pass_id,
-                origin_run_id=run.execution_id,
+                origin=PASS_ID,
+                origin_run_id=run_id,
             )
             route_symbols.append(route_symbol)
 
@@ -1077,7 +1084,7 @@ def _extract_block_callback_edges(
     file_symbols: dict[str, "Symbol"],
     global_symbols: dict[str, "Symbol"],
     line: int,
-    run: "AnalysisRun",
+    run_id: str,
     edges: list["Edge"],
 ) -> None:
     """Extract method calls from a block-style callback body.
@@ -1133,7 +1140,7 @@ def _extract_block_callback_edges(
             evidence_type="rails_block_callback",
             confidence=0.85,
             origin=PASS_ID,
-            origin_run_id=run.execution_id,
+            origin_run_id=run_id,
         ))
 
 
@@ -1144,7 +1151,7 @@ def _extract_rails_callbacks(
     file_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
     resolver: NameResolver,
-    run: AnalysisRun,
+    run_id: str,
 ) -> list[Edge]:
     """Extract invokes_callback edges from Rails callback declarations.
 
@@ -1246,7 +1253,7 @@ def _extract_rails_callbacks(
                     evidence_type="rails_callback",
                     confidence=0.9,
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                 ))
 
         # Block-style callbacks: after_commit do...end or before_save { ... }
@@ -1261,7 +1268,7 @@ def _extract_rails_callbacks(
             _extract_block_callback_edges(
                 block_node, source, enclosing_class_name,
                 class_sym, file_symbols, global_symbols,
-                node.start_point[0] + 1, run, edges,
+                node.start_point[0] + 1, run_id, edges,
             )
 
     return edges
@@ -1323,7 +1330,7 @@ def _extract_activerecord_associations(
     file_path: Path,
     file_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
-    run: AnalysisRun,
+    run_id: str,
 ) -> list[Edge]:
     """Extract association edges from ActiveRecord model declarations.
 
@@ -1410,7 +1417,7 @@ def _extract_activerecord_associations(
                 evidence_type="activerecord_association",
                 confidence=0.90,
                 origin=PASS_ID,
-                origin_run_id=run.execution_id,
+                origin_run_id=run_id,
             ))
         else:
             # Unresolved: target model not found (may be in a gem)
@@ -1422,7 +1429,7 @@ def _extract_activerecord_associations(
                 evidence_type="activerecord_association",
                 confidence=0.70,
                 origin=PASS_ID,
-                origin_run_id=run.execution_id,
+                origin_run_id=run_id,
             ))
 
     return edges
@@ -1460,7 +1467,7 @@ def _extract_ruby_delegates(
     file_path: Path,
     file_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
-    run: AnalysisRun,
+    run_id: str,
 ) -> list[Edge]:
     """Extract delegate edges from Ruby class declarations.
 
@@ -1554,7 +1561,7 @@ def _extract_ruby_delegates(
                         evidence_type="ruby_delegate",
                         confidence=0.85,
                         origin=PASS_ID,
-                        origin_run_id=run.execution_id,
+                        origin_run_id=run_id,
                     ))
                 else:
                     # Target class exists but method not found
@@ -1566,7 +1573,7 @@ def _extract_ruby_delegates(
                         evidence_type="ruby_delegate",
                         confidence=0.65,
                         origin=PASS_ID,
-                        origin_run_id=run.execution_id,
+                        origin_run_id=run_id,
                     ))
             else:
                 # Target class not found at all
@@ -1579,33 +1586,30 @@ def _extract_ruby_delegates(
                     evidence_type="ruby_delegate",
                     confidence=0.65,
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                 ))
 
     return edges
 
 
-@dataclass
-class FileAnalysis:
-    """Intermediate analysis result for a single file."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
-    require_hints: dict[str, str] = field(default_factory=dict)
+# NOTE: We use the base FileAnalysis from hypergumbo_core.analyze.base.
+# Ruby's require_hints are stored in FileAnalysis.import_aliases.
 
 
 def _extract_symbols_from_file(
-    file_path: Path,
-    parser: "tree_sitter.Parser",
-    run: AnalysisRun,
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: str,
+    run_id: str,
 ) -> FileAnalysis:
-    """Extract symbols from a single Ruby file."""
-    try:
-        source = file_path.read_bytes()
-        tree = parser.parse(source)
-    except (OSError, IOError):
-        return FileAnalysis()
+    """Extract symbols from a single Ruby file.
 
+    Args:
+        tree: Parsed tree-sitter tree
+        source: Raw source bytes
+        file_path: Relative path to the file
+        run_id: Execution ID for provenance
+    """
     analysis = FileAnalysis()
 
     for node in iter_tree(tree.root_node):
@@ -1639,7 +1643,7 @@ def _extract_symbols_from_file(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                     signature=_extract_ruby_signature(node, source),
                 )
                 analysis.symbols.append(symbol)
@@ -1674,7 +1678,7 @@ def _extract_symbols_from_file(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                     signature=_extract_ruby_signature(node, source),
                 )
                 analysis.symbols.append(symbol)
@@ -1716,7 +1720,7 @@ def _extract_symbols_from_file(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                     meta=meta,
                 )
                 analysis.symbols.append(symbol)
@@ -1743,13 +1747,13 @@ def _extract_symbols_from_file(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[module_name] = symbol
 
-    # Extract require hints for disambiguation
-    analysis.require_hints = _extract_require_hints(tree, source)
+    # Extract require hints for disambiguation (stored in import_aliases)
+    analysis.import_aliases = _extract_require_hints(tree, source)
 
     return analysis
 
@@ -1769,7 +1773,7 @@ def _try_receiver_call(
     resolver: NameResolver,
     line: int,
     edges: list[Edge],
-    run: AnalysisRun,
+    run_id: str,
 ) -> bool:
     """Try to resolve a receiver-qualified method call.
 
@@ -1816,7 +1820,7 @@ def _try_receiver_call(
     if method_name in _JOB_ENQUEUE_METHODS:
         return _try_job_enqueue(
             receiver_class, short_name, current_method,
-            global_symbols, resolver, line, edges, run,
+            global_symbols, resolver, line, edges, run_id,
         )
 
     # Ruby constructor: SomeClass.new → SomeClass#initialize
@@ -1842,7 +1846,7 @@ def _try_receiver_call(
                         evidence_type="constructor_call",
                         confidence=0.90,
                         origin=PASS_ID,
-                        origin_run_id=run.execution_id,
+                        origin_run_id=run_id,
                     ))
                     return True
         # No user-defined #initialize found — inherits Object#initialize (not
@@ -1870,7 +1874,7 @@ def _try_receiver_call(
                         evidence_type="receiver_call",
                         confidence=0.85,
                         origin=PASS_ID,
-                        origin_run_id=run.execution_id,
+                        origin_run_id=run_id,
                     ))
                     return True
 
@@ -1887,7 +1891,7 @@ def _try_receiver_call(
                 evidence_type="receiver_call",
                 confidence=0.75 * lookup_result.confidence,
                 origin=PASS_ID,
-                origin_run_id=run.execution_id,
+                origin_run_id=run_id,
             ))
             return True
 
@@ -1902,7 +1906,7 @@ def _try_job_enqueue(
     resolver: NameResolver,
     line: int,
     edges: list[Edge],
-    run: AnalysisRun,
+    run_id: str,
 ) -> bool:
     """Create an enqueues edge from current method to a job's perform method.
 
@@ -1932,7 +1936,7 @@ def _try_job_enqueue(
                         evidence_type="job_enqueue",
                         confidence=0.90,
                         origin=PASS_ID,
-                        origin_run_id=run.execution_id,
+                        origin_run_id=run_id,
                     ))
                     return True
 
@@ -1949,7 +1953,7 @@ def _try_job_enqueue(
                     evidence_type="job_enqueue",
                     confidence=0.85,
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                 ))
                 return True
 
@@ -1962,7 +1966,7 @@ def _try_job_enqueue(
         evidence_type="job_enqueue",
         confidence=0.70,
         origin=PASS_ID,
-        origin_run_id=run.execution_id,
+        origin_run_id=run_id,
     ))
     return True
 
@@ -2015,29 +2019,27 @@ def _extract_ruby_var_types(
 
 
 def _extract_edges_from_file(
-    file_path: Path,
-    parser: "tree_sitter.Parser",
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: str,
     local_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
-    run: AnalysisRun,
-    resolver: NameResolver | None = None,
-    require_hints: dict[str, str] | None = None,
+    run_id: str,
+    resolver: NameResolver,
+    require_hints: dict[str, str],
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
     Args:
-        require_hints: Optional dict mapping class/module names to require paths for disambiguation.
+        tree: Parsed tree-sitter tree
+        source: Raw source bytes
+        file_path: Relative path to the file
+        local_symbols: File-local symbol lookup dict
+        global_symbols: Global symbol lookup dict
+        run_id: Execution ID for provenance
+        resolver: Name resolver for cross-file lookups
+        require_hints: Dict mapping class/module names to require paths for disambiguation.
     """
-    if resolver is None:  # pragma: no cover - defensive
-        resolver = NameResolver(global_symbols)
-    if require_hints is None:  # pragma: no cover - defensive default
-        require_hints = {}
-    try:
-        source = file_path.read_bytes()
-        tree = parser.parse(source)
-    except (OSError, IOError):
-        return []
-
     edges: list[Edge] = []
     file_id = make_file_id("ruby", str(file_path))
     var_types = _extract_ruby_var_types(tree, source)
@@ -2079,7 +2081,7 @@ def _extract_edges_from_file(
                                         evidence_type="require_statement",
                                         confidence=0.95,
                                         origin=PASS_ID,
-                                        origin_run_id=run.execution_id,
+                                        origin_run_id=run_id,
                                     ))
 
                 # Handle regular method calls
@@ -2091,7 +2093,7 @@ def _extract_edges_from_file(
                         if receiver_node is not None and _try_receiver_call(
                             receiver_node, callee_name, source,
                             current_method, global_symbols, resolver,
-                            node.start_point[0] + 1, edges, run,
+                            node.start_point[0] + 1, edges, run_id,
                         ):
                             pass  # Resolved via receiver
                         elif receiver_node is not None:
@@ -2127,7 +2129,7 @@ def _extract_edges_from_file(
                                         evidence_type="typed_receiver_call",
                                         confidence=0.80,
                                         origin=PASS_ID,
-                                        origin_run_id=run.execution_id,
+                                        origin_run_id=run_id,
                                     ))
                             # else: variable receiver with unknown type — no edge
                             # (avoids false positives from bare-name matching)
@@ -2145,7 +2147,7 @@ def _extract_edges_from_file(
                                     evidence_type="method_call",
                                     confidence=0.85,
                                     origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
+                                    origin_run_id=run_id,
                                 ))
                         # Check global symbols via resolver (bare calls only)
                         elif receiver_node is None:
@@ -2161,7 +2163,7 @@ def _extract_edges_from_file(
                                     evidence_type="method_call",
                                     confidence=0.80 * lookup_result.confidence,
                                     origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
+                                    origin_run_id=run_id,
                                 ))
 
         # Detect bare method calls (identifier nodes that are method names)
@@ -2214,7 +2216,7 @@ def _extract_edges_from_file(
                             evidence_type="bare_method_call",
                             confidence=confidence,
                             origin=PASS_ID,
-                            origin_run_id=run.execution_id,
+                            origin_run_id=run_id,
                         ))
                 else:
                     # Use require hints for disambiguation
@@ -2231,7 +2233,7 @@ def _extract_edges_from_file(
                                 evidence_type="bare_method_call",
                                 confidence=0.70 * lookup_result.confidence,
                                 origin=PASS_ID,
-                                origin_run_id=run.execution_id,
+                                origin_run_id=run_id,
                             ))
 
     return edges
@@ -2300,7 +2302,7 @@ def _extract_inheritance_edges(
     symbols: list[Symbol],
     class_by_name: dict[str, list[Symbol]],
     sym_file_require_hints: dict[str, dict[str, str]],
-    run: AnalysisRun,
+    run_id: str,
 ) -> list[Edge]:
     """Extract extends edges from class inheritance (META-001).
 
@@ -2353,7 +2355,7 @@ def _extract_inheritance_edges(
                 line=sym.span.start_line if sym.span else 0,
                 confidence=0.95,
                 origin=PASS_ID,
-                origin_run_id=run.execution_id,
+                origin_run_id=run_id,
                 evidence_type="ast_extends",
             )
             edges.append(edge)
@@ -2361,175 +2363,233 @@ def _extract_inheritance_edges(
     return edges
 
 
+class RubyAnalyzer(TreeSitterAnalyzer):
+    """Ruby language analyzer using tree-sitter-ruby.
+
+    Overrides ``analyze()`` because Ruby requires multiple custom passes
+    beyond the standard two-pass architecture:
+    - Pass 1: Symbol extraction (standard)
+    - Pass 2: Call/import edge extraction (standard)
+    - Pass 2b: Rails callback edges (before_action, after_action, etc.)
+    - Pass 2c: ActiveRecord association edges (has_many, belongs_to, etc.)
+    - Pass 2d: Ruby delegate edges (delegate :method, to: :association)
+    - Pass 3: Route extraction with test-file filtering
+    - Post: Inheritance edges with require-hint disambiguation
+    """
+
+    lang = "ruby"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.rb"]
+    grammar_module = "tree_sitter_ruby"
+
+    def register_symbol(
+        self, symbol: Symbol, global_symbols: dict,
+    ) -> None:
+        """Register symbol globally with short-name variants for cross-file resolution."""
+        # Store by short name for cross-file resolution
+        short_name = symbol.name.split("#")[-1] if "#" in symbol.name else symbol.name
+        short_name = short_name.split(".")[-1] if "." in short_name else short_name
+        global_symbols[short_name] = symbol
+        global_symbols[symbol.name] = symbol
+
+    def analyze(
+        self,
+        repo_root: Path,
+        max_files: int | None = None,
+    ) -> AnalysisResult:
+        """Run multi-pass Ruby analysis.
+
+        Overrides the base ``analyze()`` to add Rails callback, ActiveRecord
+        association, delegate, and route extraction passes.
+        """
+        start_time = time.time()
+        run = AnalysisRun.create(pass_id=self.pass_id, version=self.pass_version)
+
+        # 1. Check grammar availability
+        if not self._check_grammar_available():
+            import warnings
+
+            warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            run.duration_ms = int((time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        # 2. Initialize parser
+        try:
+            parser = self._create_parser()
+        except Exception as e:
+            run.duration_ms = int((time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
+                skipped=True,
+                skip_reason=f"Failed to load Ruby parser: {e}",
+            )
+
+        # Pass 1: Extract all symbols from all files
+        file_analyses: dict[Path, FileAnalysis] = {}
+        all_rb_files: list[Path] = list(find_ruby_files(repo_root))
+        files_skipped = 0
+
+        for rb_file in all_rb_files:
+            try:
+                source = rb_file.read_bytes()
+            except OSError:
+                files_skipped += 1
+                continue
+            tree = parser.parse(source)
+            rel_path = str(rb_file.relative_to(repo_root))
+            analysis = _extract_symbols_from_file(
+                tree, source, rel_path, run.execution_id,
+            )
+            if analysis.symbols:
+                file_analyses[rb_file] = analysis
+            else:
+                files_skipped += 1
+
+        # Build global symbol registry
+        global_symbols: dict[str, Symbol] = {}
+        for analysis in file_analyses.values():
+            for symbol in analysis.symbols:
+                self.register_symbol(symbol, global_symbols)
+
+        # Pass 2: Extract edges from files with symbols
+        resolver = NameResolver(global_symbols)
+        all_symbols: list[Symbol] = []
+        all_edges: list[Edge] = []
+        all_usage_contexts: list[UsageContext] = []
+
+        for rb_file, analysis in file_analyses.items():
+            all_symbols.extend(analysis.symbols)
+
+            source = rb_file.read_bytes()
+            tree = parser.parse(source)
+            rel_path = str(rb_file.relative_to(repo_root))
+
+            edges = _extract_edges_from_file(
+                tree, source, rel_path,
+                analysis.symbol_by_name, global_symbols,
+                run.execution_id, resolver,
+                require_hints=analysis.import_aliases,
+            )
+            all_edges.extend(edges)
+
+        # Pass 2b: Extract Rails callback edges (before_action, after_action, etc.)
+        # These create invokes_callback edges from controller class -> callback method.
+        for rb_file, analysis in file_analyses.items():
+            try:
+                source = rb_file.read_bytes()
+                tree = parser.parse(source)
+            except (OSError, IOError):  # pragma: no cover
+                continue
+            callback_edges = _extract_rails_callbacks(
+                tree, source, rb_file, analysis.symbol_by_name, global_symbols,
+                resolver, run.execution_id,
+            )
+            all_edges.extend(callback_edges)
+
+        # Pass 2c: Extract ActiveRecord association edges (has_many, belongs_to, etc.)
+        # These create association edges from model class -> target model class.
+        for rb_file, analysis in file_analyses.items():
+            try:
+                source = rb_file.read_bytes()
+                tree = parser.parse(source)
+            except (OSError, IOError):  # pragma: no cover
+                continue
+            assoc_edges = _extract_activerecord_associations(
+                tree, source, rb_file, analysis.symbol_by_name, global_symbols,
+                run.execution_id,
+            )
+            all_edges.extend(assoc_edges)
+
+        # Pass 2d: Extract Ruby delegate edges (delegate :method, to: :association)
+        # These create delegates_to edges from class -> target method.
+        for rb_file, analysis in file_analyses.items():
+            try:
+                source = rb_file.read_bytes()
+                tree = parser.parse(source)
+            except (OSError, IOError):  # pragma: no cover
+                continue
+            delegate_edges = _extract_ruby_delegates(
+                tree, source, rb_file, analysis.symbol_by_name, global_symbols,
+                run.execution_id,
+            )
+            all_edges.extend(delegate_edges)
+
+        # Pass 3: Extract usage contexts and route symbols with file-path filtering.
+        # Test files (spec/, test/, etc.) use get/post/delete as HTTP test helpers,
+        # NOT route definitions. Only detect routes in:
+        # 1. Route definition files (routes.rb, config/routes/*.rb)
+        # 2. Non-test app files with Sinatra-style do-block routes
+        for rb_file in all_rb_files:
+            is_test = _is_test_directory(rb_file, repo_root)
+            if is_test:
+                continue  # Skip test files entirely -- HTTP methods are test helpers
+            try:
+                source = rb_file.read_bytes()
+                tree = parser.parse(source)
+                symbol_by_name = file_analyses.get(rb_file, FileAnalysis()).symbol_by_name
+                usage_contexts, route_symbols = _extract_rails_routes(
+                    tree.root_node, source, rb_file, symbol_by_name, run.execution_id
+                )
+                if _is_route_definition_file(rb_file, repo_root):
+                    # Route definition files: include all detected routes
+                    all_usage_contexts.extend(usage_contexts)
+                    all_symbols.extend(route_symbols)
+                else:
+                    # Non-route app files: only Sinatra-style routes (with do blocks)
+                    # Bare get/post calls without blocks are likely HTTP client calls
+                    for ctx in usage_contexts:
+                        if ctx.metadata.get("has_block"):
+                            all_usage_contexts.append(ctx)
+                    for sym in route_symbols:
+                        if sym.meta.get("has_block"):
+                            all_symbols.append(sym)
+            except (OSError, IOError):  # pragma: no cover
+                pass
+
+        run.files_analyzed = len(file_analyses)
+        run.files_skipped = files_skipped
+        run.duration_ms = int((time.time() - start_time) * 1000)
+
+        # Extract inheritance edges (META-001: base_classes metadata -> extends edges)
+        # Build multi-value class lookup for disambiguation (INV-015)
+        class_by_name: dict[str, list[Symbol]] = {}
+        for s in all_symbols:
+            if s.kind == "class":
+                if s.name not in class_by_name:
+                    class_by_name[s.name] = []
+                class_by_name[s.name].append(s)
+        # Build per-symbol require_hints mapping for import disambiguation
+        sym_file_require_hints: dict[str, dict[str, str]] = {}
+        for _rb_file, analysis in file_analyses.items():
+            for sym in analysis.symbols:
+                sym_file_require_hints[sym.id] = analysis.import_aliases
+        inheritance_edges = _extract_inheritance_edges(
+            all_symbols, class_by_name, sym_file_require_hints, run.execution_id,
+        )
+        all_edges.extend(inheritance_edges)
+
+        return AnalysisResult(
+            symbols=all_symbols,
+            edges=all_edges,
+            usage_contexts=all_usage_contexts,
+            run=run,
+        )
+
+
+_analyzer = RubyAnalyzer()
+
+
 @register_analyzer("ruby")
 def analyze_ruby(repo_root: Path) -> AnalysisResult:
-    """Analyze all Ruby files in a repository.
-
-    Returns a AnalysisResult with symbols, edges, and provenance.
-    If tree-sitter-ruby is not available, returns a skipped result.
-    """
-    if not is_ruby_tree_sitter_available():
-        warnings.warn(
-            "tree-sitter-ruby not available. Install with: pip install hypergumbo[ruby]",
-            stacklevel=2,
-        )
-        return AnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-ruby not available",
-        )
-
-    start_time = time.time()
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    # Import tree-sitter-ruby
-    try:
-        import tree_sitter_ruby
-        import tree_sitter
-
-        lang = tree_sitter.Language(tree_sitter_ruby.language())
-        parser = tree_sitter.Parser(lang)
-    except Exception as e:
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return AnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=f"Failed to load Ruby parser: {e}",
-        )
-
-    # Pass 1: Extract all symbols from all files
-    file_analyses: dict[Path, FileAnalysis] = {}
-    all_rb_files: list[Path] = list(find_ruby_files(repo_root))
-    files_skipped = 0
-
-    for rb_file in all_rb_files:
-        analysis = _extract_symbols_from_file(rb_file, parser, run)
-        if analysis.symbols:
-            file_analyses[rb_file] = analysis
-        else:
-            files_skipped += 1
-
-    # Build global symbol registry
-    global_symbols: dict[str, Symbol] = {}
-    for analysis in file_analyses.values():
-        for symbol in analysis.symbols:
-            # Store by short name for cross-file resolution
-            short_name = symbol.name.split("#")[-1] if "#" in symbol.name else symbol.name
-            short_name = short_name.split(".")[-1] if "." in short_name else short_name
-            global_symbols[short_name] = symbol
-            global_symbols[symbol.name] = symbol
-
-    # Pass 2: Extract edges from files with symbols
-    resolver = NameResolver(global_symbols)
-    all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
-    all_usage_contexts: list[UsageContext] = []
-
-    for rb_file, analysis in file_analyses.items():
-        all_symbols.extend(analysis.symbols)
-
-        edges = _extract_edges_from_file(
-            rb_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
-            require_hints=analysis.require_hints,
-        )
-        all_edges.extend(edges)
-
-    # Pass 2b: Extract Rails callback edges (before_action, after_action, etc.)
-    # These create invokes_callback edges from controller class → callback method.
-    for rb_file, analysis in file_analyses.items():
-        try:
-            source = rb_file.read_bytes()
-            tree = parser.parse(source)
-        except (OSError, IOError):  # pragma: no cover
-            continue
-        callback_edges = _extract_rails_callbacks(
-            tree, source, rb_file, analysis.symbol_by_name, global_symbols,
-            resolver, run,
-        )
-        all_edges.extend(callback_edges)
-
-    # Pass 2c: Extract ActiveRecord association edges (has_many, belongs_to, etc.)
-    # These create association edges from model class → target model class.
-    for rb_file, analysis in file_analyses.items():
-        try:
-            source = rb_file.read_bytes()
-            tree = parser.parse(source)
-        except (OSError, IOError):  # pragma: no cover
-            continue
-        assoc_edges = _extract_activerecord_associations(
-            tree, source, rb_file, analysis.symbol_by_name, global_symbols, run,
-        )
-        all_edges.extend(assoc_edges)
-
-    # Pass 2d: Extract Ruby delegate edges (delegate :method, to: :association)
-    # These create delegates_to edges from class → target method.
-    for rb_file, analysis in file_analyses.items():
-        try:
-            source = rb_file.read_bytes()
-            tree = parser.parse(source)
-        except (OSError, IOError):  # pragma: no cover
-            continue
-        delegate_edges = _extract_ruby_delegates(
-            tree, source, rb_file, analysis.symbol_by_name, global_symbols, run,
-        )
-        all_edges.extend(delegate_edges)
-
-    # Pass 3: Extract usage contexts and route symbols with file-path filtering.
-    # Test files (spec/, test/, etc.) use get/post/delete as HTTP test helpers,
-    # NOT route definitions. Only detect routes in:
-    # 1. Route definition files (routes.rb, config/routes/*.rb)
-    # 2. Non-test app files with Sinatra-style do-block routes
-    for rb_file in all_rb_files:
-        is_test = _is_test_directory(rb_file, repo_root)
-        if is_test:
-            continue  # Skip test files entirely — HTTP methods are test helpers
-        try:
-            source = rb_file.read_bytes()
-            tree = parser.parse(source)
-            symbol_by_name = file_analyses.get(rb_file, FileAnalysis()).symbol_by_name
-            usage_contexts, route_symbols = _extract_rails_routes(
-                tree.root_node, source, rb_file, symbol_by_name, run
-            )
-            if _is_route_definition_file(rb_file, repo_root):
-                # Route definition files: include all detected routes
-                all_usage_contexts.extend(usage_contexts)
-                all_symbols.extend(route_symbols)
-            else:
-                # Non-route app files: only Sinatra-style routes (with do blocks)
-                # Bare get/post calls without blocks are likely HTTP client calls
-                for ctx in usage_contexts:
-                    if ctx.metadata.get("has_block"):
-                        all_usage_contexts.append(ctx)
-                for sym in route_symbols:
-                    if sym.meta.get("has_block"):
-                        all_symbols.append(sym)
-        except (OSError, IOError):  # pragma: no cover
-            pass
-
-    run.files_analyzed = len(file_analyses)
-    run.files_skipped = files_skipped
-    run.duration_ms = int((time.time() - start_time) * 1000)
-
-    # Extract inheritance edges (META-001: base_classes metadata -> extends edges)
-    # Build multi-value class lookup for disambiguation (INV-015)
-    class_by_name: dict[str, list[Symbol]] = {}
-    for s in all_symbols:
-        if s.kind == "class":
-            if s.name not in class_by_name:
-                class_by_name[s.name] = []
-            class_by_name[s.name].append(s)
-    # Build per-symbol require_hints mapping for import disambiguation
-    sym_file_require_hints: dict[str, dict[str, str]] = {}
-    for _rb_file, analysis in file_analyses.items():
-        for sym in analysis.symbols:
-            sym_file_require_hints[sym.id] = analysis.require_hints
-    inheritance_edges = _extract_inheritance_edges(
-        all_symbols, class_by_name, sym_file_require_hints, run
-    )
-    all_edges.extend(inheritance_edges)
-
-    return AnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        usage_contexts=all_usage_contexts,
-        run=run,
-    )
+    """Analyze all Ruby files in a repository."""
+    return _analyzer.analyze(repo_root)

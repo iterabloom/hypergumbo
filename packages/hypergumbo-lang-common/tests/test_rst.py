@@ -39,7 +39,7 @@ class TestIsRSTTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(rst_module, "is_rst_tree_sitter_available", return_value=False):
+        with patch.object(rst_module._analyzer, "_check_grammar_available", return_value=False):
             assert rst_module.is_rst_tree_sitter_available() is False
 
 class TestAnalyzeRST:
@@ -47,8 +47,8 @@ class TestAnalyzeRST:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_rst_file(tmp_path, "test.rst", "Title\n=====\n")
-        with patch.object(rst_module, "is_rst_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="RST analysis skipped"):
+        with patch.object(rst_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="rst analysis skipped"):
                 result = rst_module.analyze_rst(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason

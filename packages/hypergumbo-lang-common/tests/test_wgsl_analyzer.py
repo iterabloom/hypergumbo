@@ -8,18 +8,43 @@ Tests verify that the analyzer correctly extracts:
 - Binding attributes (@group/@binding)
 """
 
+from unittest.mock import patch
+
+import pytest
+
 from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_lang_common import wgsl as wgsl_module
 from hypergumbo_lang_common.wgsl import (
     PASS_ID,
     PASS_VERSION,
     analyze_wgsl_files,
     find_wgsl_files,
+    is_wgsl_tree_sitter_available,
 )
 
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "wgsl-v1"
     assert PASS_VERSION == "hypergumbo-0.1.0"
+
+def test_is_wgsl_tree_sitter_available():
+    """Availability check returns True when grammar installed."""
+    result = is_wgsl_tree_sitter_available()
+    assert result is True
+
+def test_returns_false_when_unavailable():
+    """Availability check returns False when grammar not installed."""
+    with patch.object(wgsl_module._analyzer, "_check_grammar_available", return_value=False):
+        assert is_wgsl_tree_sitter_available() is False
+
+def test_skipped_when_unavailable(tmp_path):
+    """Returns skipped result when tree-sitter unavailable."""
+    (tmp_path / "shader.wgsl").write_text("@vertex fn main() {}")
+    with patch.object(wgsl_module._analyzer, "_check_grammar_available", return_value=False):
+        with pytest.warns(UserWarning, match="wgsl analysis skipped"):
+            result = wgsl_module.analyze_wgsl_files(tmp_path)
+    assert result.skipped is True
+    assert "not available" in result.skip_reason
 
 def test_analyze_vertex_shader(tmp_path):
     """Test detection of @vertex entry point."""

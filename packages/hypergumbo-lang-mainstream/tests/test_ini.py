@@ -96,7 +96,7 @@ class TestIsIniTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(ini_module, "is_ini_tree_sitter_available", return_value=False):
+        with patch.object(ini_module._analyzer, "_check_grammar_available", return_value=False):
             assert ini_module.is_ini_tree_sitter_available() is False
 
 class TestAnalyzeIni:
@@ -104,16 +104,18 @@ class TestAnalyzeIni:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_ini_file(tmp_path, "config.ini", "[section]\nkey=value")
-        with patch.object(ini_module, "is_ini_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="INI analysis skipped"):
+        with patch.object(ini_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="ini analysis skipped"):
                 result = ini_module.analyze_ini(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
+        assert result.run is not None
 
     def test_empty_repo(self, tmp_path: Path) -> None:
         result = analyze_ini(tmp_path)
         assert result.symbols == []
-        assert result.run is None
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
     def test_extracts_section(self, tmp_path: Path) -> None:
         make_ini_file(tmp_path, "config.ini", """[database]

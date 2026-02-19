@@ -39,7 +39,7 @@ class TestIsSvelteTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(svelte_module, "is_svelte_tree_sitter_available", return_value=False):
+        with patch.object(svelte_module._analyzer, "_check_grammar_available", return_value=False):
             assert svelte_module.is_svelte_tree_sitter_available() is False
 
 class TestAnalyzeSvelte:
@@ -47,8 +47,8 @@ class TestAnalyzeSvelte:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_svelte_file(tmp_path, "App.svelte", "<h1>Hello</h1>")
-        with patch.object(svelte_module, "is_svelte_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Svelte analysis skipped"):
+        with patch.object(svelte_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="svelte analysis skipped"):
                 result = svelte_module.analyze_svelte(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason

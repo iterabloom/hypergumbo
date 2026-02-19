@@ -168,11 +168,12 @@ class TestHLSLAnalysisUnavailable:
         """Returns skipped result when tree-sitter unavailable."""
         (temp_repo / "shader.hlsl").write_text("float4 main() { return 0; }")
 
-        with patch.object(hlsl_module, "is_hlsl_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="HLSL analysis skipped"):
+        with patch.object(hlsl_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="hlsl analysis skipped"):
                 result = hlsl_module.analyze_hlsl(temp_repo)
 
         assert result.skipped is True
+        assert "not available" in result.skip_reason
 
 
 class TestHLSLAnalysisRun:

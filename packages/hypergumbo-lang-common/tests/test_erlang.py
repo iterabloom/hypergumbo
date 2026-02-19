@@ -21,7 +21,7 @@ from unittest.mock import patch
 import pytest
 
 from hypergumbo_lang_common import erlang as erlang_module
-from hypergumbo_lang_common.erlang import analyze_erlang
+from hypergumbo_lang_common.erlang import analyze_erlang, is_erlang_tree_sitter_available
 
 
 def make_erl_file(tmp: Path, name: str, content: str) -> Path:
@@ -325,15 +325,15 @@ fib(N) -> fib(N-1) + fib(N-2).
         make_erl_file(tmp_path, "test.erl", "-module(test).")
 
         with patch.object(
-            erlang_module,
-            "is_erlang_tree_sitter_available",
+            erlang_module._analyzer,
+            "_check_grammar_available",
             return_value=False,
         ):
-            with pytest.warns(UserWarning, match="Erlang analysis skipped"):
+            with pytest.warns(UserWarning, match="erlang analysis skipped"):
                 result = erlang_module.analyze_erlang(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-language-pack" in result.skip_reason
+        assert "not available" in result.skip_reason
 
 
 class TestErlangSignatureExtraction:
@@ -454,3 +454,20 @@ run(X) ->
 
         edge_pairs = [(e.src, e.dst) for e in call_edges]
         assert (run_sym.id, process_sym.id) in edge_pairs
+
+
+class TestIsErlangTreeSitterAvailable:
+    """Tests for is_erlang_tree_sitter_available function."""
+
+    def test_returns_true_when_available(self) -> None:
+        """Returns True when tree-sitter-language-pack is installed."""
+        assert is_erlang_tree_sitter_available() is True
+
+    def test_returns_false_when_unavailable(self) -> None:
+        """Returns False when tree-sitter-language-pack is not installed."""
+        with patch.object(
+            erlang_module._analyzer,
+            "_check_grammar_available",
+            return_value=False,
+        ):
+            assert is_erlang_tree_sitter_available() is False

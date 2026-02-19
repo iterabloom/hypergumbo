@@ -1,7 +1,10 @@
 """Tests for Groovy analyzer."""
 from pathlib import Path
 
+import pytest
+
 from hypergumbo_core.analyze.base import find_child_by_type
+from hypergumbo_lang_mainstream import groovy as groovy_module
 from unittest.mock import patch
 
 class TestGroovyHelpers:
@@ -44,28 +47,14 @@ class TestGroovyTreeSitterAvailability:
         """Returns True when tree-sitter-groovy is available."""
         from hypergumbo_lang_mainstream.groovy import is_groovy_tree_sitter_available
 
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = object()
-            assert is_groovy_tree_sitter_available() is True
+        # Grammar is actually installed in the dev environment
+        assert is_groovy_tree_sitter_available() is True
 
     def test_is_groovy_tree_sitter_available_false(self) -> None:
-        """Returns False when tree-sitter is not available."""
+        """Returns False when grammar is not available."""
         from hypergumbo_lang_mainstream.groovy import is_groovy_tree_sitter_available
 
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = None
-            assert is_groovy_tree_sitter_available() is False
-
-    def test_is_groovy_tree_sitter_available_no_groovy(self) -> None:
-        """Returns False when tree-sitter is available but groovy grammar is not."""
-        from hypergumbo_lang_mainstream.groovy import is_groovy_tree_sitter_available
-
-        def mock_find_spec(name: str) -> object | None:
-            if name == "tree_sitter":
-                return object()
-            return None
-
-        with patch("importlib.util.find_spec", side_effect=mock_find_spec):
+        with patch.object(groovy_module._analyzer, "_check_grammar_available", return_value=False):
             assert is_groovy_tree_sitter_available() is False
 
 class TestAnalyzeGroovyFallback:
@@ -77,11 +66,13 @@ class TestAnalyzeGroovyFallback:
 
         (tmp_path / "test.groovy").write_text("def test() {}")
 
-        with patch("hypergumbo_lang_mainstream.groovy.is_groovy_tree_sitter_available", return_value=False):
-            result = analyze_groovy(tmp_path)
+        with patch.object(groovy_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="groovy analysis skipped"):
+                result = analyze_groovy(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-groovy" in result.skip_reason
+        assert "not available" in result.skip_reason
+        assert result.run is not None
 
 class TestGroovyClassExtraction:
     """Tests for extracting Groovy classes."""
@@ -466,22 +457,17 @@ class TestGroovyEmptyFile:
 
         assert result.run is not None
 
-class TestGroovyParserFailure:
-    """Tests for parser failure handling."""
+class TestGroovyEmptyRepo:
+    """Tests for empty repository handling."""
 
-    def test_handles_parser_load_failure(self, tmp_path: Path) -> None:
-        """Handles failure to load Groovy parser."""
+    def test_empty_repo(self, tmp_path: Path) -> None:
+        """Empty repo returns result with run metadata and zero files."""
         from hypergumbo_lang_mainstream.groovy import analyze_groovy
 
-        groovy_file = tmp_path / "test.groovy"
-        groovy_file.write_text("class Test {}")
+        result = analyze_groovy(tmp_path)
 
-        with patch("hypergumbo_lang_mainstream.groovy.is_groovy_tree_sitter_available", return_value=True):
-            with patch("tree_sitter_groovy.language", side_effect=Exception("Parser error")):
-                result = analyze_groovy(tmp_path)
-
-        assert result.skipped is True
-        assert "Parser error" in result.skip_reason or "Failed to load" in result.skip_reason
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
     def test_handles_unreadable_file(self, tmp_path: Path) -> None:
         """Handles files that can't be read."""

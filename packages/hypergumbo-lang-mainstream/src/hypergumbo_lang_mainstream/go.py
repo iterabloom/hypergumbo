@@ -39,16 +39,16 @@ from __future__ import annotations
 import time
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    TreeSitterAnalyzer,
     find_child_by_field,
     find_child_by_type,
-    is_grammar_available,
     iter_tree,
     make_file_id,
     make_symbol_id,
@@ -90,9 +90,32 @@ def find_go_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.go"])
 
 
+class GoTreeSitterAnalyzer(TreeSitterAnalyzer):
+    """TreeSitterAnalyzer wrapper for Go files.
+
+    Overrides ``analyze()`` entirely because Go analysis uses a custom
+    two-pass approach with routes, usage contexts, import alias extraction,
+    and list-based global symbol resolution. The base class provides grammar
+    availability checking via ``_check_grammar_available()``.
+    """
+
+    lang = "go"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.go"]
+    grammar_module = "tree_sitter_go"
+
+    def analyze(self, repo_root: Path, max_files: int | None = None) -> AnalysisResult:
+        """Run the Go analysis using the existing analyze_go logic."""
+        return _analyze_go_impl(repo_root, max_files=max_files)
+
+
+_analyzer = GoTreeSitterAnalyzer()
+
+
 def is_go_tree_sitter_available() -> bool:
     """Check if tree-sitter with Go grammar is available."""
-    return is_grammar_available("tree_sitter_go")
+    return _analyzer._check_grammar_available()
 
 
 # Keep GoAnalysisResult as an alias for backwards compatibility
@@ -1075,14 +1098,25 @@ def analyze_go(repo_root: Path, max_files: int | None = None) -> AnalysisResult:
     Returns an AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-go is not available, returns a skipped result.
     """
-    if not is_go_tree_sitter_available():
+    return _analyzer.analyze(repo_root, max_files=max_files)
+
+
+def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisResult:
+    """Internal implementation of Go analysis.
+
+    Called by GoTreeSitterAnalyzer.analyze() after grammar availability
+    has been checked by the base class.
+    """
+    if not _analyzer._check_grammar_available():
         warnings.warn(
-            "tree-sitter-go not available. Install with: pip install hypergumbo[go]",
-            stacklevel=2,
+            "go analysis skipped: grammar not available. "
+            "Install the required tree-sitter grammar package.",
+            UserWarning,
+            stacklevel=3,
         )
         return AnalysisResult(
             skipped=True,
-            skip_reason="tree-sitter-go not available",
+            skip_reason="go tree-sitter grammar not available",
         )
 
     start_time = time.time()

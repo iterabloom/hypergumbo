@@ -15,17 +15,19 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-1. Check if tree-sitter-language-pack (erlang) is available
-2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
-   - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls and resolve against global symbol registry
-4. Detect function calls and import statements
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Extract modules, functions, records, macros, types with signatures
+2. Pass 2: Extract call edges and import edges using NameResolver
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Erlang-specific extraction
+logic.
 
 Why This Design
 ---------------
+- TreeSitterAnalyzer eliminates boilerplate orchestration code
 - Optional dependency keeps base install lightweight
-- Uses tree-sitter-language-pack for grammar (erlang)
+- Uses tree-sitter-language-pack for grammar (language_pack_name)
 - Two-pass allows cross-file call resolution
 - Same pattern as other tree-sitter analyzers for consistency
 
@@ -41,14 +43,19 @@ Erlang-Specific Considerations
 """
 from __future__ import annotations
 
-import importlib.util
-import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -66,33 +73,6 @@ def find_erlang_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.erl", "*.hrl"])
 
 
-def is_erlang_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Erlang grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover - tree-sitter not installed
-    if importlib.util.find_spec("tree_sitter_language_pack") is None:
-        return False  # pragma: no cover - language pack not installed
-    try:
-        from tree_sitter_language_pack import get_parser
-        get_parser("erlang")
-        return True
-    except Exception:  # pragma: no cover - erlang not supported
-        return False
-
-
-@dataclass
-class FileAnalysis:
-    """Intermediate analysis result for a single file.
-
-    Stored during pass 1 and processed in pass 2 for cross-file resolution.
-    """
-
-    path: str
-    source: bytes
-    tree: object  # tree_sitter.Tree
-    symbols: list[Symbol]
-    module_name: str  # Erlang module name from -module attribute
-    import_aliases: dict[str, str] = field(default_factory=dict)  # func -> module
 
 
 def _extract_import_aliases(
@@ -485,124 +465,127 @@ def _extract_edges_from_file(
     return edges
 
 
+class ErlangAnalyzer(TreeSitterAnalyzer):
+    """Erlang language analyzer using tree-sitter-language-pack.
+
+    Handles Erlang-specific registration: functions are indexed by full name
+    (name/arity), base name, and module-prefixed name for remote call resolution.
+    """
+
+    lang = "erlang"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.erl", "*.hrl"]
+    language_pack_name = "erlang"
+    create_file_symbols = True
+
+    # Track module names per file for cross-file resolution
+    _module_registry: dict[str, str]  # module_name -> file_path
+    _file_module_names: dict[str, str]  # rel_path -> module_name
+
+    def __init__(self) -> None:
+        self._module_registry = {}
+        self._file_module_names = {}
+
+    def extract_symbols_from_file(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+        file_path: Path,
+        rel_path: str,
+        run: AnalysisRun,
+    ) -> FileAnalysis:
+        """Extract modules, functions, records, macros, types from an Erlang file."""
+        analysis = FileAnalysis()
+
+        file_symbols, module_name = _extract_symbols_from_file(
+            tree, source, rel_path, run.execution_id,
+        )
+        analysis.symbols.extend(file_symbols)
+
+        # Store module name for this file (used in register_symbol)
+        if module_name:
+            self._file_module_names[rel_path] = module_name
+            self._module_registry[module_name] = rel_path
+
+        # Build symbol_by_name with base_name mapping for local call resolution
+        for sym in file_symbols:
+            analysis.symbol_by_name[sym.name] = sym
+            if sym.kind == "function" and sym.meta:
+                base = sym.meta.get("base_name")
+                if base:
+                    analysis.symbol_by_name[base] = sym
+
+        return analysis
+
+    def get_import_aliases(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+    ) -> dict[str, str]:
+        """Extract Erlang -import aliases for path hint resolution (ADR-0007)."""
+        return _extract_import_aliases(tree.root_node, source)
+
+    def register_symbol(
+        self,
+        symbol: Symbol,
+        global_symbols: dict,
+    ) -> None:
+        """Register symbol with Erlang-specific indexing.
+
+        Functions are indexed by full name (name/arity), base name, and
+        module-prefixed base name for remote call resolution.
+        """
+        global_symbols[symbol.name] = symbol
+        if symbol.kind == "function" and symbol.meta:
+            base_name = symbol.meta.get("base_name", "")
+            if base_name:
+                global_symbols[base_name] = symbol
+                module_name = self._file_module_names.get(symbol.path, "")
+                if module_name:
+                    global_symbols[f"{module_name}:{base_name}"] = symbol
+
+    def extract_edges_from_file(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+        file_path: Path,
+        rel_path: str,
+        local_symbols: dict[str, Symbol],
+        global_symbols: dict,
+        run: AnalysisRun,
+        import_aliases: dict[str, str],
+        resolver: NameResolver,
+    ) -> list[Edge]:
+        """Extract call and import edges from an Erlang file."""
+        # Rebuild local symbols with base_name mapping needed by edge extractor
+        file_symbols = list(local_symbols.values())
+        return _extract_edges_from_file(
+            tree, source, rel_path, file_symbols,
+            resolver, self._module_registry, run.execution_id,
+            import_aliases=import_aliases,
+        )
+
+    def analyze(
+        self,
+        repo_root: Path,
+        max_files: Optional[int] = None,
+    ) -> AnalysisResult:
+        """Reset per-run state and delegate to base class."""
+        self._module_registry = {}
+        self._file_module_names = {}
+        return super().analyze(repo_root, max_files)
+
+
+_analyzer = ErlangAnalyzer()
+
+
+def is_erlang_tree_sitter_available() -> bool:
+    """Check if tree-sitter with Erlang grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("erlang")
 def analyze_erlang(repo_root: Path) -> AnalysisResult:
-    """Analyze Erlang files in a repository.
-
-    Returns an AnalysisResult with symbols, edges, and provenance.
-    If tree-sitter-language-pack is not available, returns a skipped result.
-    """
-    start_time = time.time()
-
-    # Create analysis run for provenance
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    if not is_erlang_tree_sitter_available():  # pragma: no cover - tested via mock
-        skip_reason = (
-            "Erlang analysis skipped: requires tree-sitter-language-pack "
-            "(pip install tree-sitter-language-pack)"
-        )
-        warnings.warn(skip_reason)
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return AnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=skip_reason,
-        )
-
-    from tree_sitter_language_pack import get_parser
-
-    parser = get_parser("erlang")
-    run_id = run.execution_id
-
-    # Pass 1: Parse all files and extract symbols
-    file_analyses: list[FileAnalysis] = []
-    all_symbols: list[Symbol] = []
-    global_symbol_registry: dict[str, Symbol] = {}
-    module_registry: dict[str, str] = {}  # module_name -> file_path
-    files_analyzed = 0
-
-    for erl_file in find_erlang_files(repo_root):
-        try:
-            source = erl_file.read_bytes()
-        except OSError:  # pragma: no cover
-            continue
-
-        tree = parser.parse(source)
-        if tree.root_node is None:  # pragma: no cover - parser always returns root
-            continue
-
-        rel_path = str(erl_file.relative_to(repo_root))
-
-        # Create file symbol
-        file_symbol = Symbol(
-            id=make_file_id("erlang", rel_path),
-            name="file",
-            kind="file",
-            language="erlang",
-            path=rel_path,
-            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin=PASS_ID,
-            origin_run_id=run_id,
-        )
-        all_symbols.append(file_symbol)
-
-        # Extract symbols
-        file_symbols, module_name = _extract_symbols_from_file(tree, source, rel_path, run_id)
-        all_symbols.extend(file_symbols)
-
-        # Extract import aliases for cross-file resolution (ADR-0007)
-        import_aliases = _extract_import_aliases(tree.root_node, source)
-
-        # Register module
-        if module_name:
-            module_registry[module_name] = rel_path
-
-        # Register symbols globally (for cross-file resolution)
-        for sym in file_symbols:
-            global_symbol_registry[sym.name] = sym
-            # Also register with module prefix for remote calls and base_name for local calls
-            if sym.kind == "function" and sym.meta:
-                base_name = sym.meta.get("base_name", "")
-                if base_name:
-                    # Register by base_name for local function calls
-                    global_symbol_registry[base_name] = sym
-                    # Register with module prefix for remote calls
-                    if module_name:
-                        global_symbol_registry[f"{module_name}:{base_name}"] = sym
-
-        file_analyses.append(FileAnalysis(
-            path=rel_path,
-            source=source,
-            tree=tree,
-            symbols=file_symbols,
-            module_name=module_name,
-            import_aliases=import_aliases,
-        ))
-        files_analyzed += 1
-
-    # Pass 2: Extract edges with cross-file resolution
-    all_edges: list[Edge] = []
-    resolver = NameResolver(global_symbol_registry)
-
-    for fa in file_analyses:
-        edges = _extract_edges_from_file(
-            fa.tree,  # type: ignore
-            fa.source,
-            fa.path,
-            fa.symbols,
-            resolver,
-            module_registry,
-            run_id,
-            import_aliases=fa.import_aliases,
-        )
-        all_edges.extend(edges)
-
-    run.files_analyzed = files_analyzed
-    run.duration_ms = int((time.time() - start_time) * 1000)
-
-    return AnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    """Analyze Erlang files in a repository."""
+    return _analyzer.analyze(repo_root)

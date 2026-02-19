@@ -12,39 +12,43 @@ Node types handled:
 - attribute: Key-value pairs within blocks
 - variable_expr with get_attr: References (var.x, aws_instance.web.id)
 
-Two-pass analysis:
-- Pass 1: Extract all symbols (resources, data, modules, etc.)
-- Pass 2: Extract reference edges between symbols
+How It Works
+------------
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Extract all symbols (resources, data, modules, etc.)
+2. Pass 2: Extract reference edges between symbols
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the HCL-specific extraction
+logic.
 """
 
 from __future__ import annotations
 
-import importlib.util
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = "hcl-v1"
 PASS_VERSION = "1.0.0"
-
-
-def is_hcl_tree_sitter_available() -> bool:
-    """Check if tree-sitter and hcl grammar are available."""
-    ts_spec = importlib.util.find_spec("tree_sitter")
-    if ts_spec is None:
-        return False
-    hcl_spec = importlib.util.find_spec("tree_sitter_hcl")
-    return hcl_spec is not None
 
 
 def find_hcl_files(root: Path) -> list[Path]:
@@ -70,14 +74,6 @@ def _extract_string_value(node: "tree_sitter.Node", source: bytes) -> str | None
     if template_lit:
         return node_text(template_lit, source)
     return None  # pragma: no cover
-
-
-@dataclass
-class FileAnalysis:
-    """Intermediate analysis result for a single file."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
 
 
 def _extract_block_info(
@@ -118,22 +114,24 @@ def _extract_local_names(node: "tree_sitter.Node", source: bytes) -> list[str]:
     return names
 
 
-def _extract_symbols_from_file(
-    file_path: Path,
-    parser: "tree_sitter.Parser",
-    run: AnalysisRun,
-) -> FileAnalysis:
-    """Extract symbols from a single HCL file."""
-    analysis = FileAnalysis()
-    rel_path = str(file_path)
+def _extract_symbols_from_tree(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    rel_path: str,
+    run_id: str,
+    symbols: list[Symbol],
+    symbol_by_name: dict[str, Symbol],
+) -> None:
+    """Extract symbols from a parsed HCL tree.
 
-    try:
-        source = file_path.read_bytes()
-    except (OSError, IOError):  # pragma: no cover
-        return analysis
-
-    tree = parser.parse(source)
-
+    Args:
+        tree: Parsed tree-sitter tree
+        source: Source file bytes
+        rel_path: Relative path to file
+        run_id: The execution ID for provenance
+        symbols: List to append symbols to
+        symbol_by_name: Dict to register symbols by name
+    """
     for node in iter_tree(tree.root_node):
         if node.type == "block":
             block_type, labels = _extract_block_info(node, source)
@@ -155,10 +153,10 @@ def _extract_symbols_from_file(
                     path=rel_path,
                     span=Span(start_line, end_line, node.start_point[1], node.end_point[1]),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                 )
-                analysis.symbols.append(symbol)
-                analysis.symbol_by_name[name] = symbol
+                symbols.append(symbol)
+                symbol_by_name[name] = symbol
 
             elif block_type == "data" and len(labels) >= 2:
                 # data "type" "name" -> data.type.name
@@ -172,10 +170,10 @@ def _extract_symbols_from_file(
                     path=rel_path,
                     span=Span(start_line, end_line, node.start_point[1], node.end_point[1]),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                 )
-                analysis.symbols.append(symbol)
-                analysis.symbol_by_name[name] = symbol
+                symbols.append(symbol)
+                symbol_by_name[name] = symbol
 
             elif block_type == "variable" and len(labels) >= 1:
                 # variable "name" -> var.name
@@ -189,10 +187,10 @@ def _extract_symbols_from_file(
                     path=rel_path,
                     span=Span(start_line, end_line, node.start_point[1], node.end_point[1]),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                 )
-                analysis.symbols.append(symbol)
-                analysis.symbol_by_name[name] = symbol
+                symbols.append(symbol)
+                symbol_by_name[name] = symbol
 
             elif block_type == "output" and len(labels) >= 1:
                 # output "name" -> output.name
@@ -206,10 +204,10 @@ def _extract_symbols_from_file(
                     path=rel_path,
                     span=Span(start_line, end_line, node.start_point[1], node.end_point[1]),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                 )
-                analysis.symbols.append(symbol)
-                analysis.symbol_by_name[name] = symbol
+                symbols.append(symbol)
+                symbol_by_name[name] = symbol
 
             elif block_type == "module" and len(labels) >= 1:
                 # module "name" -> module.name
@@ -223,10 +221,10 @@ def _extract_symbols_from_file(
                     path=rel_path,
                     span=Span(start_line, end_line, node.start_point[1], node.end_point[1]),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                 )
-                analysis.symbols.append(symbol)
-                analysis.symbol_by_name[name] = symbol
+                symbols.append(symbol)
+                symbol_by_name[name] = symbol
 
             elif block_type == "provider" and len(labels) >= 1:
                 # provider "name" -> provider.name
@@ -240,10 +238,10 @@ def _extract_symbols_from_file(
                     path=rel_path,
                     span=Span(start_line, end_line, node.start_point[1], node.end_point[1]),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                 )
-                analysis.symbols.append(symbol)
-                analysis.symbol_by_name[name] = symbol
+                symbols.append(symbol)
+                symbol_by_name[name] = symbol
 
             elif block_type == "locals":
                 # Extract individual local values
@@ -259,12 +257,10 @@ def _extract_symbols_from_file(
                         path=rel_path,
                         span=Span(start_line, end_line, node.start_point[1], node.end_point[1]),
                         origin=PASS_ID,
-                        origin_run_id=run.execution_id,
+                        origin_run_id=run_id,
                     )
-                    analysis.symbols.append(symbol)
-                    analysis.symbol_by_name[name] = symbol
-
-    return analysis
+                    symbols.append(symbol)
+                    symbol_by_name[name] = symbol
 
 
 def _extract_reference_chain(node: "tree_sitter.Node", source: bytes) -> str | None:
@@ -358,27 +354,29 @@ def _find_enclosing_block_symbol(
     return None
 
 
-def _extract_edges_from_file(
-    file_path: Path,
-    parser: "tree_sitter.Parser",
+def _extract_edges_from_tree(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    rel_path: str,
     local_symbols: dict[str, Symbol],
-    global_symbols: dict[str, Symbol],
-    run: AnalysisRun,
-    resolver: NameResolver | None = None,
+    resolver: "NameResolver",
+    run_id: str,
 ) -> list[Edge]:
-    """Extract edges from a file using global symbol knowledge."""
-    if resolver is None:  # pragma: no cover - defensive
-        resolver = NameResolver(global_symbols)
+    """Extract edges from a parsed HCL tree using global symbol knowledge.
+
+    Args:
+        tree: Parsed tree-sitter tree
+        source: Source file bytes
+        rel_path: Relative path to file
+        local_symbols: Symbol-by-name dict for this file
+        resolver: NameResolver for cross-file symbol lookup
+        run_id: The execution ID for provenance
+
+    Returns:
+        List of Edge instances.
+    """
     edges: list[Edge] = []
-    rel_path = str(file_path)
     file_id = make_file_id("hcl", rel_path)
-
-    try:
-        source = file_path.read_bytes()
-    except (OSError, IOError):  # pragma: no cover
-        return edges
-
-    tree = parser.parse(source)
 
     for node in iter_tree(tree.root_node):
         if node.type == "block":
@@ -397,7 +395,7 @@ def _extract_edges_from_file(
                         evidence_type="module_source",
                         confidence=0.95,
                         origin=PASS_ID,
-                        origin_run_id=run.execution_id,
+                        origin_run_id=run_id,
                     ))
 
         # Find references in expressions
@@ -429,10 +427,56 @@ def _extract_edges_from_file(
                             evidence_type="reference",
                             confidence=confidence,
                             origin=PASS_ID,
-                            origin_run_id=run.execution_id,
+                            origin_run_id=run_id,
                         ))
 
     return edges
+
+
+class HclAnalyzer(TreeSitterAnalyzer):
+    """HCL/Terraform language analyzer using tree-sitter-hcl."""
+
+    lang = "hcl"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.tf", "*.hcl"]
+    grammar_module = "tree_sitter_hcl"
+    create_file_symbols = False
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract resources, data, variables, outputs, modules, providers, locals."""
+        analysis = FileAnalysis()
+
+        _extract_symbols_from_tree(
+            tree, source, rel_path, run.execution_id,
+            analysis.symbols, analysis.symbol_by_name,
+        )
+
+        return analysis
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract dependency and import edges from an HCL file."""
+        return _extract_edges_from_tree(
+            tree, source, rel_path,
+            local_symbols, resolver, run.execution_id,
+        )
+
+
+_analyzer = HclAnalyzer()
+
+
+def is_hcl_tree_sitter_available() -> bool:
+    """Check if tree-sitter and hcl grammar are available."""
+    return _analyzer._check_grammar_available()
 
 
 @register_analyzer("hcl")
@@ -441,59 +485,4 @@ def analyze_hcl(root: Path) -> AnalysisResult:
 
     Uses tree-sitter-hcl for parsing. Falls back gracefully if not available.
     """
-    if not is_hcl_tree_sitter_available():
-        warnings.warn(
-            "tree-sitter-hcl not available. Install with: pip install tree-sitter-hcl"
-        )
-        return AnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-hcl not available",
-        )
-
-    try:
-        import tree_sitter
-        import tree_sitter_hcl
-
-        language = tree_sitter.Language(tree_sitter_hcl.language())
-        parser = tree_sitter.Parser(language)
-    except Exception as e:
-        return AnalysisResult(
-            skipped=True,
-            skip_reason=f"Failed to load HCL parser: {e}",
-        )
-
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    all_files = find_hcl_files(root)
-    if not all_files:  # pragma: no cover - no HCL files in test
-        return AnalysisResult(run=run)
-
-    # Pass 1: Extract symbols from all files
-    all_symbols: list[Symbol] = []
-    file_analyses: dict[Path, FileAnalysis] = {}
-    global_symbols: dict[str, Symbol] = {}
-
-    for hcl_file in all_files:
-        analysis = _extract_symbols_from_file(hcl_file, parser, run)
-        file_analyses[hcl_file] = analysis
-        all_symbols.extend(analysis.symbols)
-
-        # Collect symbols globally for cross-file resolution
-        for name, sym in analysis.symbol_by_name.items():
-            global_symbols[name] = sym
-
-    # Pass 2: Extract edges using global symbol knowledge
-    resolver = NameResolver(global_symbols)
-    all_edges: list[Edge] = []
-
-    for hcl_file, analysis in file_analyses.items():
-        edges = _extract_edges_from_file(
-            hcl_file, parser, analysis.symbol_by_name, global_symbols, run, resolver
-        )
-        all_edges.extend(edges)
-
-    return AnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    return _analyzer.analyze(root)

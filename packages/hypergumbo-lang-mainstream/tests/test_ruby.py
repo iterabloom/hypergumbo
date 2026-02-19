@@ -57,15 +57,17 @@ class TestAnalyzeRubyFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-ruby unavailable."""
+        from hypergumbo_lang_mainstream import ruby as ruby_module
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "test.rb").write_text("class Test; end")
 
-        with patch("hypergumbo_lang_mainstream.ruby.is_ruby_tree_sitter_available", return_value=False):
-            result = analyze_ruby(tmp_path)
+        with patch.object(ruby_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="ruby analysis skipped"):
+                result = analyze_ruby(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-ruby" in result.skip_reason
+        assert "ruby" in result.skip_reason
 
 class TestRubyMethodExtraction:
     """Tests for extracting Ruby methods."""
@@ -718,15 +720,16 @@ class TestRubyEdgeCases:
 
     def test_parser_load_failure(self, tmp_path: Path) -> None:
         """Returns skipped with run when parser loading fails."""
+        from hypergumbo_lang_mainstream import ruby as ruby_module
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "test.rb").write_text("class Test; end")
 
-        with patch("hypergumbo_lang_mainstream.ruby.is_ruby_tree_sitter_available", return_value=True):
-            with patch.dict("sys.modules", {"tree_sitter_ruby": MagicMock()}):
-                import sys
-                mock_module = sys.modules["tree_sitter_ruby"]
-                mock_module.language.side_effect = RuntimeError("Parser load failed")
+        with patch.object(ruby_module._analyzer, "_check_grammar_available", return_value=True):
+            with patch.object(
+                ruby_module._analyzer, "_create_parser",
+                side_effect=RuntimeError("Parser load failed"),
+            ):
                 result = analyze_ruby(tmp_path)
 
         assert result.skipped is True
@@ -802,59 +805,38 @@ end
         assert any("get_name" in name for name in method_names)
 
 class TestRubyFileReadErrors:
-    """Tests for file read error handling."""
+    """Tests for file read error handling.
 
-    def test_symbol_extraction_handles_read_error(self, tmp_path: Path) -> None:
-        """Symbol extraction handles file read errors gracefully."""
-        from hypergumbo_lang_mainstream.ruby import (
-            _extract_symbols_from_file,
-            is_ruby_tree_sitter_available,
-        )
-        from hypergumbo_core.ir import AnalysisRun
+    The RubyAnalyzer.analyze() method handles file read errors during Pass 1
+    by incrementing files_skipped. The internal _extract_symbols_from_file and
+    _extract_edges_from_file functions now receive pre-parsed trees, so file
+    read errors are handled at the analyzer level.
+    """
 
-        if not is_ruby_tree_sitter_available():
-            pytest.skip("tree-sitter-ruby not available")
+    def test_analyzer_handles_read_error_in_pass1(self, tmp_path: Path) -> None:
+        """Analyzer skips files with read errors during Pass 1."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
-        import tree_sitter_ruby
-        import tree_sitter
+        # Create a valid file plus a file that will fail to read
+        (tmp_path / "good.rb").write_text("def good; end")
+        bad_file = tmp_path / "bad.rb"
+        bad_file.write_text("def bad; end")
 
-        lang = tree_sitter.Language(tree_sitter_ruby.language())
-        parser = tree_sitter.Parser(lang)
-        run = AnalysisRun.create(pass_id="test", version="test")
+        original_read_bytes = Path.read_bytes
 
-        rb_file = tmp_path / "test.rb"
-        rb_file.write_text("def test; end")
+        def patched_read_bytes(self: Path) -> bytes:
+            if self.name == "bad.rb":
+                raise OSError("Read failed")
+            return original_read_bytes(self)
 
-        with patch.object(Path, "read_bytes", side_effect=OSError("Read failed")):
-            result = _extract_symbols_from_file(rb_file, parser, run)
+        with patch.object(Path, "read_bytes", patched_read_bytes):
+            result = analyze_ruby(tmp_path)
 
-        assert result.symbols == []
-
-    def test_edge_extraction_handles_read_error(self, tmp_path: Path) -> None:
-        """Edge extraction handles file read errors gracefully."""
-        from hypergumbo_lang_mainstream.ruby import (
-            _extract_edges_from_file,
-            is_ruby_tree_sitter_available,
-        )
-        from hypergumbo_core.ir import AnalysisRun
-
-        if not is_ruby_tree_sitter_available():
-            pytest.skip("tree-sitter-ruby not available")
-
-        import tree_sitter_ruby
-        import tree_sitter
-
-        lang = tree_sitter.Language(tree_sitter_ruby.language())
-        parser = tree_sitter.Parser(lang)
-        run = AnalysisRun.create(pass_id="test", version="test")
-
-        rb_file = tmp_path / "test.rb"
-        rb_file.write_text("def test; end")
-
-        with patch.object(Path, "read_bytes", side_effect=IOError("Read failed")):
-            result = _extract_edges_from_file(rb_file, parser, {}, {}, run)
-
-        assert result == []
+        assert result.run is not None
+        # good.rb should be analyzed, bad.rb should be skipped
+        assert result.run.files_skipped >= 1
+        method_names = [s.name for s in result.symbols if s.kind == "method"]
+        assert "good" in method_names
 
 class TestRubyModuleMethods:
     """Tests for module-level methods."""

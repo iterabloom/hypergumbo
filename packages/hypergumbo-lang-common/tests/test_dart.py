@@ -34,6 +34,16 @@ class TestDartAnalyzerAvailability:
         # Should be True since we have tree-sitter-language-pack
         assert is_dart_tree_sitter_available() is True
 
+    def test_find_dart_files(self, tmp_path: Path) -> None:
+        """Finds .dart files in a directory."""
+        from hypergumbo_lang_common.dart import find_dart_files
+
+        (tmp_path / "app.dart").write_text("void main() {}")
+        (tmp_path / "other.txt").write_text("not dart")
+        files = list(find_dart_files(tmp_path))
+        assert len(files) == 1
+        assert files[0].suffix == ".dart"
+
 
 class TestDartClassDetection:
     """Tests for Dart class symbol extraction."""
@@ -502,19 +512,24 @@ class TestDartSpanAccuracy:
 class TestDartAnalyzeFallback:
     """Tests for fallback when tree-sitter is unavailable."""
 
-    def test_returns_skipped_when_unavailable(self, tmp_path: Path, monkeypatch) -> None:
+    def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter not available."""
+        from unittest.mock import patch
         from hypergumbo_lang_common import dart
-
-        # Mock tree-sitter as unavailable
-        monkeypatch.setattr(dart, "is_dart_tree_sitter_available", lambda: False)
 
         make_dart_file(tmp_path, "main.dart", "void test() {}")
 
-        result = dart.analyze_dart(tmp_path)
+        import pytest
+        with patch.object(
+            dart._analyzer,
+            "_check_grammar_available",
+            return_value=False,
+        ):
+            with pytest.warns(UserWarning, match="dart analysis skipped"):
+                result = dart.analyze_dart(tmp_path)
 
         assert result.skipped
-        assert "tree-sitter" in result.skip_reason.lower() or "dart" in result.skip_reason.lower()
+        assert "not available" in result.skip_reason
         # Run should still be created for provenance tracking
         assert result.run is not None
         assert result.run.pass_id == "dart-v1"

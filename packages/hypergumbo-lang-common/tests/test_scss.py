@@ -45,7 +45,7 @@ class TestIsScssTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(scss_module, "is_scss_tree_sitter_available", return_value=False):
+        with patch.object(scss_module._analyzer, "_check_grammar_available", return_value=False):
             assert scss_module.is_scss_tree_sitter_available() is False
 
 class TestAnalyzeScss:
@@ -53,8 +53,8 @@ class TestAnalyzeScss:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_scss_file(tmp_path, "styles.scss", "$color: red;")
-        with patch.object(scss_module, "is_scss_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="SCSS analysis skipped"):
+        with patch.object(scss_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="scss analysis skipped"):
                 result = scss_module.analyze_scss(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason

@@ -47,8 +47,8 @@ class TestAnalyzeProperties:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_properties_file(tmp_path, "test.properties", "key=value\n")
-        with patch.object(properties_module, "is_properties_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Properties analysis skipped"):
+        with patch.object(properties_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="properties analysis skipped"):
                 result = properties_module.analyze_properties(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -201,7 +201,7 @@ database.name=mydb
         result = analyze_properties(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None  # Base class always creates a run
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_properties_file(tmp_path, "test.properties", "key=value\n")

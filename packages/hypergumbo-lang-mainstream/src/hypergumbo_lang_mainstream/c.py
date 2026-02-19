@@ -34,17 +34,20 @@ Why This Design
 """
 from __future__ import annotations
 
-import importlib.util
-import time
-import warnings
-from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, make_symbol_id, node_text
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    iter_tree,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -83,14 +86,6 @@ def find_c_files(
     else:
         yield from find_files(repo_root, ["*.c"])
 
-
-def is_c_tree_sitter_available() -> bool:
-    """Check if tree-sitter and C grammar are available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False
-    if importlib.util.find_spec("tree_sitter_c") is None:
-        return False
-    return True
 
 
 def _find_identifier_in_children(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -200,14 +195,6 @@ def _get_c_parser() -> Optional["tree_sitter.Parser"]:
     parser.language = tree_sitter.Language(lang_ptr)
     return parser
 
-
-@dataclass
-class _ParsedFile:
-    """Holds parsed file data for two-pass analysis."""
-
-    path: Path
-    tree: "tree_sitter.Tree"
-    source: bytes
 
 
 def _extract_symbols(
@@ -441,6 +428,169 @@ def _analyze_c_file(
     return symbols, edges, True
 
 
+class CAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based C analyzer.
+
+    Uses tree-sitter-c to parse C files and extract functions, structs, enums,
+    typedefs, call edges, and JNI patterns. Overrides ``analyze`` to use
+    custom file discovery that skips .h files when C++ files exist (avoids
+    duplicates with the C++ analyzer). Overrides ``register_symbol`` to prefer
+    definitions in .c files over declarations in .h files.
+    """
+
+    lang = "c"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.h", "*.c"]
+    grammar_module = "tree_sitter_c"
+
+    def extract_symbols_from_file(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+        file_path: Path,
+        rel_path: str,
+        run: AnalysisRun,
+    ) -> FileAnalysis:
+        """Extract symbols from a single C file."""
+        analysis = FileAnalysis()
+        symbols = _extract_symbols(tree, source, file_path, run)
+        analysis.symbols = symbols
+        for sym in symbols:
+            analysis.symbol_by_name[sym.name] = sym
+        return analysis
+
+    def register_symbol(
+        self,
+        symbol: Symbol,
+        global_symbols: dict,
+    ) -> None:
+        """Register symbol, preferring .c definitions over .h declarations."""
+        existing = global_symbols.get(symbol.name)
+        if existing is None:
+            global_symbols[symbol.name] = symbol
+        else:
+            sym_is_source = symbol.path.endswith('.c')
+            existing_is_source = existing.path.endswith('.c')
+            if sym_is_source and not existing_is_source:
+                global_symbols[symbol.name] = symbol
+
+    def extract_edges_from_file(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+        file_path: Path,
+        rel_path: str,
+        local_symbols: dict[str, Symbol],
+        global_symbols: dict,
+        run: AnalysisRun,
+        import_aliases: dict[str, str],
+        resolver: NameResolver,
+    ) -> list[Edge]:
+        """Extract call edges from a single C file."""
+        return _extract_edges(tree, source, file_path, run, global_symbols, resolver)
+
+    def analyze(
+        self,
+        repo_root: Path,
+        max_files: Optional[int] = None,
+    ) -> AnalysisResult:
+        """Run analysis with custom file discovery for .h dedup.
+
+        Overrides the base ``analyze`` to use ``find_c_files`` which skips .h
+        files when C++ files exist in the repo.
+        """
+        import time as _time
+        import warnings as _warnings
+
+        start_time = _time.time()
+        run = AnalysisRun.create(pass_id=self.pass_id, version=self.pass_version)
+
+        if not self._check_grammar_available():
+            _warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            run.duration_ms = int((_time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        parser = self._create_parser()
+
+        # Custom file discovery: skip .h when C++ files exist
+        include_headers = not _has_cpp_files(repo_root)
+        source_files = find_c_files(repo_root, include_headers=include_headers)
+
+        file_analyses: dict[Path, tuple[FileAnalysis, dict[str, str]]] = {}
+        files_analyzed = 0
+        files_skipped = 0
+
+        for source_file in source_files:
+            if max_files is not None and files_analyzed >= max_files:
+                break  # pragma: no cover
+
+            try:
+                source = source_file.read_bytes()
+            except OSError:
+                files_skipped += 1
+                continue
+
+            tree = parser.parse(source)
+            rel_path = str(source_file.relative_to(repo_root))
+            analysis = self.extract_symbols_from_file(
+                tree, source, source_file, rel_path, run,
+            )
+            import_aliases = self.get_import_aliases(tree, source)
+            file_analyses[source_file] = (analysis, import_aliases)
+            files_analyzed += 1
+
+        # Build global symbol registry
+        global_symbols: dict = {}
+        for analysis, _ in file_analyses.values():
+            for symbol in analysis.symbols:
+                self.register_symbol(symbol, global_symbols)
+
+        # Pass 2: Extract edges
+        all_symbols: list[Symbol] = []
+        all_edges: list[Edge] = []
+        resolver = self.resolver_class(global_symbols)
+
+        for source_file, (analysis, import_aliases) in file_analyses.items():
+            all_symbols.extend(analysis.symbols)
+            source = source_file.read_bytes()
+            tree = parser.parse(source)
+            rel_path = str(source_file.relative_to(repo_root))
+            edges = self.extract_edges_from_file(
+                tree, source, source_file, rel_path,
+                analysis.symbol_by_name, global_symbols, run,
+                import_aliases, resolver,
+            )
+            all_edges.extend(edges)
+
+        run.files_analyzed = files_analyzed
+        run.files_skipped = files_skipped
+        run.duration_ms = int((_time.time() - start_time) * 1000)
+
+        return AnalysisResult(
+            symbols=all_symbols,
+            edges=all_edges,
+            run=run,
+        )
+
+
+_analyzer = CAnalyzer()
+
+
+def is_c_tree_sitter_available() -> bool:
+    """Check if tree-sitter and C grammar are available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("c", capture_symbols_as="c")
 def analyze_c(repo_root: Path) -> AnalysisResult:
     """Analyze all C files in a repository.
@@ -452,90 +602,4 @@ def analyze_c(repo_root: Path) -> AnalysisResult:
     Returns a AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-c is not available, returns empty result (silently skipped).
     """
-    start_time = time.time()
-
-    # Create analysis run for provenance
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    # Check for tree-sitter-c availability
-    if not is_c_tree_sitter_available():
-        skip_reason = "C analysis skipped: requires tree-sitter-c (pip install tree-sitter-c)"
-        warnings.warn(skip_reason, stacklevel=2)
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return AnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=skip_reason,
-        )
-
-    parser = _get_c_parser()
-    if parser is None:
-        skip_reason = "C analysis skipped: requires tree-sitter-c (pip install tree-sitter-c)"
-        warnings.warn(skip_reason, stacklevel=2)
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return AnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=skip_reason,
-        )
-
-    # Skip .h files when C++ files exist in the repo. The C++ analyzer
-    # already processes .h files with tree-sitter-cpp, so including them
-    # here creates duplicate symbols (e.g., 44/50 .h files duplicated on
-    # Falco, causing 92.1% C orphan rate).
-    include_headers = not _has_cpp_files(repo_root)
-
-    # Pass 1: Parse all files and extract symbols
-    parsed_files: list[_ParsedFile] = []
-    all_symbols: list[Symbol] = []
-    files_analyzed = 0
-    files_skipped = 0
-
-    for file_path in find_c_files(repo_root, include_headers=include_headers):
-        try:
-            source = file_path.read_bytes()
-            tree = parser.parse(source)
-            parsed_files.append(_ParsedFile(path=file_path, tree=tree, source=source))
-            symbols = _extract_symbols(tree, source, file_path, run)
-            all_symbols.extend(symbols)
-            files_analyzed += 1
-        except (OSError, IOError):
-            files_skipped += 1
-
-    # Build global symbol registry
-    # Prefer function definitions (.c files) over declarations (.h files)
-    # This ensures call edges point to the implementation (with outgoing calls)
-    # rather than the header declaration (no outgoing calls)
-    global_symbols: dict[str, Symbol] = {}
-
-    for sym in all_symbols:
-        existing = global_symbols.get(sym.name)
-        if existing is None:
-            global_symbols[sym.name] = sym
-        else:
-            # Prefer .c (definition) over .h (declaration)
-            sym_is_source = sym.path.endswith('.c')
-            existing_is_source = existing.path.endswith('.c')
-            if sym_is_source and not existing_is_source:
-                global_symbols[sym.name] = sym
-            # If both are source files, prefer the later one (already in dict)
-
-    # Pass 2: Extract edges using global symbol registry
-    resolver = NameResolver(global_symbols)
-    all_edges: list[Edge] = []
-    for pf in parsed_files:
-        edges = _extract_edges(
-            pf.tree, pf.source, pf.path, run,
-            global_symbols, resolver
-        )
-        all_edges.extend(edges)
-
-    run.files_analyzed = files_analyzed
-    run.files_skipped = files_skipped
-    run.duration_ms = int((time.time() - start_time) * 1000)
-
-    return AnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

@@ -276,8 +276,10 @@ class TestCppGracefulDegradation:
 
     def test_returns_skipped_when_unavailable(self) -> None:
         """Should return skipped result when tree-sitter unavailable."""
-        with patch(
-            "hypergumbo_lang_mainstream.cpp.is_cpp_tree_sitter_available",
+        import hypergumbo_lang_mainstream.cpp as cpp_module
+
+        with patch.object(
+            cpp_module._analyzer, "_check_grammar_available",
             return_value=False,
         ):
             import warnings
@@ -285,7 +287,7 @@ class TestCppGracefulDegradation:
                 warnings.simplefilter("always")
                 result = analyze_cpp(Path("/nonexistent"))
                 assert result.skipped
-                assert "tree-sitter-cpp" in result.skip_reason
+                assert "not available" in result.skip_reason
                 assert len(w) == 1
 
 

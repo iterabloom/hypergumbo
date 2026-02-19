@@ -65,14 +65,14 @@ import time
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
-    is_grammar_available,
+    TreeSitterAnalyzer,
     iter_tree,
     make_symbol_id as _base_make_symbol_id,
     node_text as _node_text,
@@ -94,9 +94,33 @@ def find_java_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.java"])
 
 
+class JavaTreeSitterAnalyzer(TreeSitterAnalyzer):
+    """TreeSitterAnalyzer wrapper for Java files.
+
+    Overrides ``analyze()`` entirely because Java analysis uses a complex
+    two-pass approach with annotations, JNI detection, class resolution,
+    position-based symbol lookup, and per-symbol file imports disambiguation.
+    The base class provides grammar availability checking via
+    ``_check_grammar_available()``.
+    """
+
+    lang = "java"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.java"]
+    grammar_module = "tree_sitter_java"
+
+    def analyze(self, repo_root: Path, max_files: int | None = None) -> AnalysisResult:
+        """Run the Java analysis using the existing analyze_java logic."""
+        return _analyze_java_impl(repo_root)
+
+
+_java_analyzer = JavaTreeSitterAnalyzer()
+
+
 def is_java_tree_sitter_available() -> bool:
     """Check if tree-sitter and Java grammar are available."""
-    return is_grammar_available("tree_sitter_java")
+    return _java_analyzer._check_grammar_available()
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
@@ -1374,31 +1398,42 @@ def analyze_java(repo_root: Path) -> JavaAnalysisResult:
     Returns a JavaAnalysisResult with symbols, edges, and provenance.
     If tree-sitter-java is not available, returns empty result (silently skipped).
     """
+    return _java_analyzer.analyze(repo_root)
+
+
+def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
+    """Internal implementation of Java analysis.
+
+    Called by JavaTreeSitterAnalyzer.analyze() after grammar availability
+    has been checked by the base class.
+    """
     start_time = time.time()
 
     # Create analysis run for provenance
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
     # Check for tree-sitter-java availability
-    if not is_java_tree_sitter_available():
-        skip_reason = "Java analysis skipped: requires tree-sitter-java (pip install tree-sitter-java)"
-        warnings.warn(skip_reason, stacklevel=2)
+    if not _java_analyzer._check_grammar_available():
+        skip_reason = "java analysis skipped: grammar not available. " \
+                      "Install the required tree-sitter grammar package."
+        warnings.warn(skip_reason, UserWarning, stacklevel=3)
         run.duration_ms = int((time.time() - start_time) * 1000)
         return JavaAnalysisResult(
             run=run,
             skipped=True,
-            skip_reason=skip_reason,
+            skip_reason="java tree-sitter grammar not available",
         )
 
     parser = _get_java_parser()
     if parser is None:
-        skip_reason = "Java analysis skipped: requires tree-sitter-java (pip install tree-sitter-java)"
-        warnings.warn(skip_reason, stacklevel=2)
+        skip_reason = "java analysis skipped: grammar not available. " \
+                      "Install the required tree-sitter grammar package."
+        warnings.warn(skip_reason, UserWarning, stacklevel=3)
         run.duration_ms = int((time.time() - start_time) * 1000)
         return JavaAnalysisResult(
             run=run,
             skipped=True,
-            skip_reason=skip_reason,
+            skip_reason="java tree-sitter grammar not available",
         )
 
     # Pass 1: Parse all files and extract symbols

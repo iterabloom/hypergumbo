@@ -30,17 +30,24 @@ Why This Design
 """
 from __future__ import annotations
 
-import importlib.util
 import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -55,13 +62,9 @@ def find_kotlin_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.kt"])
 
 
-def is_kotlin_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Kotlin grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False
-    if importlib.util.find_spec("tree_sitter_kotlin") is None:
-        return False
-    return True
+def _is_kotlin_tree_sitter_available_legacy() -> bool:  # pragma: no cover - replaced by TreeSitterAnalyzer
+    """Legacy availability check -- replaced by TreeSitterAnalyzer._check_grammar_available."""
+    pass
 
 
 def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:
@@ -945,104 +948,122 @@ def _extract_inheritance_edges(
     return edges
 
 
+class KotlinAnalyzer(TreeSitterAnalyzer):
+    """Kotlin analyzer using tree-sitter-kotlin grammar."""
+
+    lang = "kotlin"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.kt"]
+    grammar_module = "tree_sitter_kotlin"
+
+    def analyze(self, repo_root: Path, max_files: int | None = None) -> AnalysisResult:
+        """Analyze all Kotlin files in a repository.
+
+        Returns an AnalysisResult with symbols, edges, and provenance.
+        If tree-sitter-kotlin is not available, returns a skipped result.
+        """
+        if not self._check_grammar_available():
+            warnings.warn(
+                "tree-sitter-kotlin not available. Install with: pip install hypergumbo[kotlin]",
+                stacklevel=2,
+            )
+            return AnalysisResult(
+                skipped=True,
+                skip_reason="tree-sitter-kotlin not available",
+            )
+
+        start_time = time.time()
+        run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+
+        # Import tree-sitter-kotlin
+        try:
+            parser = self._create_parser()
+        except Exception as e:
+            run.duration_ms = int((time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
+                skipped=True,
+                skip_reason=f"Failed to load Kotlin parser: {e}",
+            )
+
+        # Pass 1: Extract all symbols
+        file_analyses: dict[Path, FileAnalysis] = {}
+        files_skipped = 0
+
+        for kt_file in find_kotlin_files(repo_root):
+            analysis = _extract_symbols_from_file(kt_file, parser, run)
+            if analysis.symbols:
+                file_analyses[kt_file] = analysis
+            else:
+                files_skipped += 1
+
+        # Build global symbol registry
+        global_symbols: dict[str, Symbol] = {}
+        for analysis in file_analyses.values():
+            for symbol in analysis.symbols:
+                # Store by short name for cross-file resolution
+                short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
+                global_symbols[short_name] = symbol
+                global_symbols[symbol.name] = symbol
+
+        # Pass 2: Extract edges
+        resolver = NameResolver(global_symbols)
+        all_symbols: list[Symbol] = []
+        all_edges: list[Edge] = []
+
+        for kt_file, analysis in file_analyses.items():
+            all_symbols.extend(analysis.symbols)
+
+            edges = _extract_edges_from_file(
+                kt_file, parser, analysis.symbol_by_name, global_symbols,
+                analysis.imports, run, resolver
+            )
+            all_edges.extend(edges)
+
+        run.files_analyzed = len(file_analyses)
+        run.files_skipped = files_skipped
+        run.duration_ms = int((time.time() - start_time) * 1000)
+
+        # Extract inheritance edges (META-001: base_classes metadata -> extends/implements edges)
+        # Build multi-value lookups for disambiguation (INV-015)
+        class_by_name: dict[str, list[Symbol]] = {}
+        interface_by_name: dict[str, list[Symbol]] = {}
+        for s in all_symbols:
+            if s.kind == "class":
+                if s.name not in class_by_name:
+                    class_by_name[s.name] = []
+                class_by_name[s.name].append(s)
+            elif s.kind == "interface":
+                if s.name not in interface_by_name:
+                    interface_by_name[s.name] = []
+                interface_by_name[s.name].append(s)
+        # Build per-symbol imports mapping for disambiguation
+        sym_file_imports: dict[str, dict[str, str]] = {}
+        for _kt_file, analysis in file_analyses.items():
+            for sym in analysis.symbols:
+                sym_file_imports[sym.id] = analysis.imports
+        inheritance_edges = _extract_inheritance_edges(
+            all_symbols, class_by_name, interface_by_name, sym_file_imports, run
+        )
+        all_edges.extend(inheritance_edges)
+
+        return AnalysisResult(
+            symbols=all_symbols,
+            edges=all_edges,
+            run=run,
+        )
+
+
+_analyzer = KotlinAnalyzer()
+
+
+def is_kotlin_tree_sitter_available() -> bool:
+    """Check if tree-sitter-kotlin grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("kotlin")
 def analyze_kotlin(repo_root: Path) -> AnalysisResult:
-    """Analyze all Kotlin files in a repository.
-
-    Returns a AnalysisResult with symbols, edges, and provenance.
-    If tree-sitter-kotlin is not available, returns a skipped result.
-    """
-    if not is_kotlin_tree_sitter_available():
-        warnings.warn(
-            "tree-sitter-kotlin not available. Install with: pip install hypergumbo[kotlin]",
-            stacklevel=2,
-        )
-        return AnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-kotlin not available",
-        )
-
-    start_time = time.time()
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    # Import tree-sitter-kotlin
-    try:
-        import tree_sitter_kotlin
-        import tree_sitter
-
-        lang = tree_sitter.Language(tree_sitter_kotlin.language())
-        parser = tree_sitter.Parser(lang)
-    except Exception as e:
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return AnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=f"Failed to load Kotlin parser: {e}",
-        )
-
-    # Pass 1: Extract all symbols
-    file_analyses: dict[Path, FileAnalysis] = {}
-    files_skipped = 0
-
-    for kt_file in find_kotlin_files(repo_root):
-        analysis = _extract_symbols_from_file(kt_file, parser, run)
-        if analysis.symbols:
-            file_analyses[kt_file] = analysis
-        else:
-            files_skipped += 1
-
-    # Build global symbol registry
-    global_symbols: dict[str, Symbol] = {}
-    for analysis in file_analyses.values():
-        for symbol in analysis.symbols:
-            # Store by short name for cross-file resolution
-            short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
-            global_symbols[short_name] = symbol
-            global_symbols[symbol.name] = symbol
-
-    # Pass 2: Extract edges
-    resolver = NameResolver(global_symbols)
-    all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
-
-    for kt_file, analysis in file_analyses.items():
-        all_symbols.extend(analysis.symbols)
-
-        edges = _extract_edges_from_file(
-            kt_file, parser, analysis.symbol_by_name, global_symbols,
-            analysis.imports, run, resolver
-        )
-        all_edges.extend(edges)
-
-    run.files_analyzed = len(file_analyses)
-    run.files_skipped = files_skipped
-    run.duration_ms = int((time.time() - start_time) * 1000)
-
-    # Extract inheritance edges (META-001: base_classes metadata -> extends/implements edges)
-    # Build multi-value lookups for disambiguation (INV-015)
-    class_by_name: dict[str, list[Symbol]] = {}
-    interface_by_name: dict[str, list[Symbol]] = {}
-    for s in all_symbols:
-        if s.kind == "class":
-            if s.name not in class_by_name:
-                class_by_name[s.name] = []
-            class_by_name[s.name].append(s)
-        elif s.kind == "interface":
-            if s.name not in interface_by_name:
-                interface_by_name[s.name] = []
-            interface_by_name[s.name].append(s)
-    # Build per-symbol imports mapping for disambiguation
-    sym_file_imports: dict[str, dict[str, str]] = {}
-    for _kt_file, analysis in file_analyses.items():
-        for sym in analysis.symbols:
-            sym_file_imports[sym.id] = analysis.imports
-    inheritance_edges = _extract_inheritance_edges(
-        all_symbols, class_by_name, interface_by_name, sym_file_imports, run
-    )
-    all_edges.extend(inheritance_edges)
-
-    return AnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    """Analyze all Kotlin files in a repository (wrapper)."""
+    return _analyzer.analyze(repo_root)

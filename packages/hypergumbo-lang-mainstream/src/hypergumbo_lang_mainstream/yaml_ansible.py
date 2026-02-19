@@ -18,15 +18,21 @@ Two-pass analysis:
 
 from __future__ import annotations
 
-import importlib.util
-import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar, Optional
 
 from hypergumbo_core.discovery import is_excluded
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -34,15 +40,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "ansible-v1"
 PASS_VERSION = "1.0.0"
-
-
-def is_yaml_tree_sitter_available() -> bool:
-    """Check if tree-sitter and yaml grammar are available."""
-    ts_spec = importlib.util.find_spec("tree_sitter")
-    if ts_spec is None:
-        return False
-    yaml_spec = importlib.util.find_spec("tree_sitter_yaml")
-    return yaml_spec is not None
 
 
 def find_ansible_files(root: Path) -> list[Path]:
@@ -288,49 +285,93 @@ def _extract_symbols_from_file(
     return symbols, edges
 
 
+class AnsibleAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based Ansible YAML analyzer.
+
+    Uses tree-sitter-yaml to parse Ansible playbook, task, handler, and
+    variable files. Extracts playbooks, tasks, handlers, variables, and
+    include/import reference edges.
+
+    Overrides ``analyze`` because Ansible uses a single-pass approach per
+    file (combined symbol+edge extraction) and custom file discovery logic
+    that searches Ansible-specific directories rather than simple glob patterns.
+    """
+
+    lang = "yaml_ansible"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.yml", "*.yaml"]
+    grammar_module = "tree_sitter_yaml"
+
+    def analyze(
+        self,
+        repo_root: Path,
+        max_files: Optional[int] = None,
+    ) -> AnalysisResult:
+        """Run Ansible analysis with custom file discovery and single-pass extraction.
+
+        Each file is processed with ``_extract_symbols_from_file`` which returns
+        both symbols and edges in a single pass.
+        """
+        import time as _time
+        import warnings as _warnings
+
+        start_time = _time.time()
+        run = AnalysisRun.create(pass_id=self.pass_id, version=self.pass_version)
+
+        if not self._check_grammar_available():
+            _warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            run.duration_ms = int((_time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        parser = self._create_parser()
+
+        all_files = find_ansible_files(repo_root)
+        if not all_files:
+            run.duration_ms = int((_time.time() - start_time) * 1000)
+            return AnalysisResult(run=run)
+
+        all_symbols: list[Symbol] = []
+        all_edges: list[Edge] = []
+
+        for ansible_file in all_files:
+            if max_files is not None and len(all_symbols) >= max_files:
+                break  # pragma: no cover
+
+            symbols, edges = _extract_symbols_from_file(ansible_file, parser, run)
+            all_symbols.extend(symbols)
+            all_edges.extend(edges)
+
+        run.duration_ms = int((_time.time() - start_time) * 1000)
+
+        return AnalysisResult(
+            symbols=all_symbols,
+            edges=all_edges,
+            run=run,
+        )
+
+
+_analyzer = AnsibleAnalyzer()
+
+
+def is_yaml_tree_sitter_available() -> bool:
+    """Check if tree-sitter and yaml grammar are available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("yaml_ansible")
 def analyze_ansible(root: Path) -> AnalysisResult:
     """Analyze Ansible YAML files in a directory.
 
     Uses tree-sitter-yaml for parsing. Falls back gracefully if not available.
     """
-    if not is_yaml_tree_sitter_available():
-        warnings.warn(
-            "tree-sitter-yaml not available. Install with: pip install tree-sitter-yaml"
-        )
-        return AnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-yaml not available",
-        )
-
-    try:
-        import tree_sitter
-        import tree_sitter_yaml
-
-        language = tree_sitter.Language(tree_sitter_yaml.language())
-        parser = tree_sitter.Parser(language)
-    except Exception as e:
-        return AnalysisResult(
-            skipped=True,
-            skip_reason=f"Failed to load YAML parser: {e}",
-        )
-
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    all_files = find_ansible_files(root)
-    if not all_files:  # pragma: no cover - no Ansible files in test
-        return AnalysisResult(run=run)
-
-    all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
-
-    for ansible_file in all_files:
-        symbols, edges = _extract_symbols_from_file(ansible_file, parser, run)
-        all_symbols.extend(symbols)
-        all_edges.extend(edges)
-
-    return AnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    return _analyzer.analyze(root)

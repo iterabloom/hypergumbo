@@ -14,37 +14,52 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-1. Check if tree-sitter-fortran is available
-2. If not available, return skipped result (not an error)
-3. Parse all .f, .f90, .f95, .f03, .f08 files
-4. Extract modules, programs, functions, subroutines, types
-5. Create imports edges for use statements
-6. Create calls edges for subroutine calls
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Extract modules, programs, functions, subroutines, types with signatures
+2. Pass 2: Extract call edges and import edges using NameResolver
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Fortran-specific extraction
+logic.
 
 Why This Design
 ---------------
+- TreeSitterAnalyzer eliminates boilerplate orchestration code
 - Optional dependency keeps base install lightweight
-- Uses tree-sitter-fortran package for grammar
-- Fortran-specific: modules, subroutines, types are first-class
-- Important for scientific computing, HPC, and legacy codebases
+- Uses tree-sitter-fortran package for grammar (grammar_module)
+- Two-pass allows cross-file call resolution
+- Same pattern as other tree-sitter analyzers for consistency
+
+Fortran-Specific Considerations
+-------------------------------
+- Fortran is used in scientific computing, HPC, and legacy codebases
+- Modules organize code hierarchically
+- Subroutines and functions are first-class constructs
+- USE statements import modules (like imports)
+- Derived types provide structured data
 """
 from __future__ import annotations
 
 import hashlib
-import importlib.util
-import time
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    iter_tree,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, make_symbol_id, node_text
+from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = "fortran-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -56,15 +71,6 @@ FORTRAN_EXTENSIONS = ["*.f", "*.f90", "*.f95", "*.f03", "*.f08", "*.F", "*.F90",
 def find_fortran_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Fortran files in the repository."""
     yield from find_files(repo_root, FORTRAN_EXTENSIONS)
-
-
-def is_fortran_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Fortran grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover
-    if importlib.util.find_spec("tree_sitter_fortran") is None:
-        return False  # pragma: no cover
-    return True
 
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
@@ -207,6 +213,7 @@ def _extract_fortran_symbols(
     root_node: "tree_sitter.Node",
     source: bytes,
     rel_path: str,
+    run_id: str,
     symbols: list[Symbol],
     symbol_registry: dict[str, Symbol],
 ) -> None:
@@ -218,6 +225,7 @@ def _extract_fortran_symbols(
         root_node: Root tree-sitter node to process
         source: Source file bytes
         rel_path: Relative path to file
+        run_id: The execution ID for provenance
         symbols: List to append symbols to
         symbol_registry: Registry mapping symbol names to Symbol objects
     """
@@ -252,6 +260,7 @@ def _extract_fortran_symbols(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run_id,
                 )
                 symbols.append(sym)
                 symbol_registry[name] = sym
@@ -286,6 +295,7 @@ def _extract_fortran_symbols(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run_id,
                 )
                 symbols.append(sym)
                 symbol_registry[name] = sym
@@ -318,6 +328,7 @@ def _extract_fortran_symbols(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run_id,
                     signature=signature,
                 )
                 symbols.append(sym)
@@ -351,6 +362,7 @@ def _extract_fortran_symbols(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run_id,
                     signature=signature,
                 )
                 symbols.append(sym)
@@ -381,6 +393,7 @@ def _extract_fortran_symbols(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run_id,
                 )
                 symbols.append(sym)
                 symbol_registry[name] = sym
@@ -401,7 +414,7 @@ def _extract_use_aliases(
     - identifier: the original name (e.g., "solve")
 
     Returns:
-        Dict mapping alias → "module_name.original_name" for path_hint resolution.
+        Dict mapping alias -> "module_name.original_name" for path_hint resolution.
     """
     aliases: dict[str, str] = {}
 
@@ -441,7 +454,8 @@ def _extract_fortran_edges(
     source: bytes,
     edges: list[Edge],
     local_symbols: dict[str, Symbol],
-    resolver: NameResolver,
+    resolver: "NameResolver",
+    run_id: str,
     import_aliases: dict[str, str] | None = None,
 ) -> None:
     """Extract edges from Fortran AST tree (pass 2).
@@ -454,7 +468,8 @@ def _extract_fortran_edges(
         edges: List to append edges to
         local_symbols: Local symbol registry for finding enclosing functions
         resolver: NameResolver for callee resolution
-        import_aliases: Mapping of alias → module.original for path_hint (ADR-0007)
+        run_id: The execution ID for provenance
+        import_aliases: Mapping of alias -> module.original for path_hint (ADR-0007)
     """
     if import_aliases is None:
         import_aliases = {}  # pragma: no cover - always passed by caller
@@ -491,6 +506,7 @@ def _extract_fortran_edges(
                     line=start_line,
                     confidence=confidence,
                     origin=PASS_ID,
+                    origin_run_id=run_id,
                     evidence_type="static",
                 )
                 edges.append(edge)
@@ -526,114 +542,68 @@ def _extract_fortran_edges(
                     line=start_line,
                     confidence=confidence,
                     origin=PASS_ID,
+                    origin_run_id=run_id,
                     evidence_type="static",
                 )
                 edges.append(edge)
 
 
+class FortranAnalyzer(TreeSitterAnalyzer):
+    """Fortran language analyzer using tree-sitter-fortran."""
+
+    lang = "fortran"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = FORTRAN_EXTENSIONS
+    grammar_module = "tree_sitter_fortran"
+    create_file_symbols = False
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract modules, programs, functions, subroutines, types from a Fortran file."""
+        analysis = FileAnalysis()
+
+        _extract_fortran_symbols(
+            tree.root_node, source, rel_path, run.execution_id,
+            analysis.symbols, analysis.symbol_by_name,
+        )
+
+        return analysis
+
+    def get_import_aliases(
+        self, tree: "tree_sitter.Tree", source: bytes,
+    ) -> dict[str, str]:
+        """Extract Fortran use-statement aliases."""
+        return _extract_use_aliases(tree.root_node, source)
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract call and import edges from a Fortran file."""
+        edges: list[Edge] = []
+        _extract_fortran_edges(
+            tree.root_node, source, edges,
+            local_symbols, resolver, run.execution_id,
+            import_aliases=import_aliases,
+        )
+        return edges
+
+
+_analyzer = FortranAnalyzer()
+
+
+def is_fortran_tree_sitter_available() -> bool:
+    """Check if tree-sitter with Fortran grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("fortran")
 def analyze_fortran_files(repo_root: Path) -> AnalysisResult:
-    """Analyze Fortran files in the repository.
-
-    Uses two-pass analysis:
-    - Pass 1: Extract all symbols from all files
-    - Pass 2: Extract edges using NameResolver for cross-file resolution
-
-    Args:
-        repo_root: Path to the repository root
-
-    Returns:
-        AnalysisResult with symbols and edges
-    """
-    if not is_fortran_tree_sitter_available():  # pragma: no cover
-        return AnalysisResult(  # pragma: no cover
-            skipped=True,  # pragma: no cover
-            skip_reason="tree-sitter-fortran not installed (pip install tree-sitter-fortran)",  # pragma: no cover
-        )  # pragma: no cover
-
-    import tree_sitter
-    import tree_sitter_fortran
-
-    start_time = time.time()
-    files_analyzed = 0
-    files_skipped = 0
-    warnings_list: list[str] = []
-
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-
-    # Global symbol registry for cross-file resolution: name -> Symbol
-    global_symbol_registry: dict[str, Symbol] = {}
-
-    # Create parser
-    try:
-        parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_fortran.language()))
-    except Exception as e:  # pragma: no cover
-        warnings.warn(f"Failed to initialize Fortran parser: {e}")
-        return AnalysisResult(
-            skipped=True,
-            skip_reason=f"Failed to initialize parser: {e}",
-        )
-
-    fortran_files = list(find_fortran_files(repo_root))
-
-    # Store parsed trees for pass 2: (rel_path, source, tree, import_aliases)
-    parsed_files: list[tuple[str, bytes, object, dict[str, str]]] = []
-
-    # Pass 1: Extract symbols from all files
-    for fortran_path in fortran_files:
-        try:
-            rel_path = str(fortran_path.relative_to(repo_root))
-            source = fortran_path.read_bytes()
-            tree = parser.parse(source)
-            files_analyzed += 1
-
-            # Extract symbols
-            _extract_fortran_symbols(
-                tree.root_node,
-                source,
-                rel_path,
-                symbols,
-                global_symbol_registry,
-            )
-
-            # Extract import aliases for ADR-0007
-            import_aliases = _extract_use_aliases(tree.root_node, source)
-
-            # Store for pass 2
-            parsed_files.append((rel_path, source, tree, import_aliases))
-
-        except Exception as e:  # pragma: no cover
-            files_skipped += 1  # pragma: no cover
-            warnings_list.append(f"Failed to parse {fortran_path}: {e}")  # pragma: no cover
-
-    # Create resolver from global registry
-    resolver = NameResolver(global_symbol_registry)
-
-    # Pass 2: Extract edges using resolver
-    for rel_path, source, tree, import_aliases in parsed_files:
-        # Build local symbol map for this file
-        local_symbols = {s.name: s for s in symbols if s.path == rel_path}
-
-        _extract_fortran_edges(
-            tree.root_node,  # type: ignore
-            source,
-            edges,
-            local_symbols,
-            resolver,
-            import_aliases,
-        )
-
-    duration_ms = int((time.time() - start_time) * 1000)
-
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-    run.files_analyzed = files_analyzed
-    run.files_skipped = files_skipped
-    run.duration_ms = duration_ms
-    run.warnings = warnings_list
-
-    return AnalysisResult(
-        symbols=symbols,
-        edges=edges,
-        run=run,
-    )
+    """Analyze Fortran files in the repository."""
+    return _analyzer.analyze(repo_root)

@@ -12,35 +12,43 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-1. Check if tree-sitter-graphql is available
-2. If not available, return skipped result (not an error)
-3. Parse all .graphql/.gql files
-4. Extract type definitions and relationships
-5. Create field_of edges for type-field relationships
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Extract type definitions and relationships
+2. Pass 2: Create field_of edges for type-field relationships
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the GraphQL-specific extraction
+logic.
 
 Why This Design
 ---------------
+- TreeSitterAnalyzer eliminates boilerplate orchestration code
 - Optional dependency keeps base install lightweight
-- Uses tree-sitter-graphql package for grammar
+- Uses tree-sitter-graphql package for grammar (grammar_module)
 - GraphQL-specific: types, fields, queries, mutations are first-class
 - Useful for API schema analysis and documentation generation
 """
 from __future__ import annotations
 
 import hashlib
-import importlib.util
-import time
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, make_symbol_id, node_text
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    iter_tree,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
 
 PASS_ID = "graphql-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -49,15 +57,6 @@ PASS_VERSION = "hypergumbo-0.1.0"
 def find_graphql_files(repo_root: Path) -> Iterator[Path]:
     """Yield all GraphQL files in the repository."""
     yield from find_files(repo_root, ["*.graphql", "*.gql"])
-
-
-def is_graphql_tree_sitter_available() -> bool:
-    """Check if tree-sitter with GraphQL grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover
-    if importlib.util.find_spec("tree_sitter_graphql") is None:
-        return False  # pragma: no cover
-    return True
 
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:  # pragma: no cover
@@ -119,6 +118,7 @@ def _process_graphql_tree(
     tree: "tree_sitter.Tree",
     source: bytes,
     rel_path: str,
+    run_id: str,
     symbols: list[Symbol],
     edges: list[Edge],
     type_registry: dict[str, str],
@@ -129,6 +129,7 @@ def _process_graphql_tree(
         tree: Tree-sitter tree to process
         source: Source file bytes
         rel_path: Relative path to file
+        run_id: The execution ID for provenance
         symbols: List to append symbols to
         edges: List to append edges to
         type_registry: Registry mapping type names to symbol IDs
@@ -169,6 +170,7 @@ def _process_graphql_tree(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run_id,
                 )
                 symbols.append(sym)
                 type_registry[type_name.lower()] = symbol_id
@@ -197,6 +199,7 @@ def _process_graphql_tree(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run_id,
                 )
                 symbols.append(sym)
 
@@ -229,6 +232,7 @@ def _process_graphql_tree(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run_id,
                 )
                 symbols.append(sym)
 
@@ -267,84 +271,54 @@ def _process_graphql_tree(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run_id,
                     signature=signature,
                 )
                 symbols.append(sym)
 
 
-@register_analyzer("graphql")
-def analyze_graphql_files(repo_root: Path) -> AnalysisResult:
-    """Analyze GraphQL files in the repository.
+class GraphqlAnalyzer(TreeSitterAnalyzer):
+    """GraphQL language analyzer using tree-sitter-graphql."""
 
-    Args:
-        repo_root: Path to the repository root
+    lang = "graphql"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.graphql", "*.gql"]
+    grammar_module = "tree_sitter_graphql"
+    create_file_symbols = False
 
-    Returns:
-        AnalysisResult with symbols and edges
-    """
-    if not is_graphql_tree_sitter_available():  # pragma: no cover
-        return AnalysisResult(  # pragma: no cover
-            skipped=True,  # pragma: no cover
-            skip_reason="tree-sitter-graphql not installed (pip install tree-sitter-graphql)",  # pragma: no cover
-        )  # pragma: no cover
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract types, directives, fragments, operations from a GraphQL file."""
+        analysis = FileAnalysis()
 
-    import tree_sitter
-    import tree_sitter_graphql
-
-    start_time = time.time()
-    files_analyzed = 0
-    files_skipped = 0
-    warnings_list: list[str] = []
-
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-
-    # Type registry for cross-file resolution: name -> symbol_id
-    type_registry: dict[str, str] = {}
-
-    # Create parser
-    try:
-        parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_graphql.language()))
-    except Exception as e:  # pragma: no cover
-        warnings.warn(f"Failed to initialize GraphQL parser: {e}")
-        return AnalysisResult(
-            skipped=True,
-            skip_reason=f"Failed to initialize parser: {e}",
+        # GraphQL uses a single-pass extraction (symbols and edges together)
+        # since GraphQL schemas don't have call-style edges
+        type_registry: dict[str, str] = {}
+        edges: list[Edge] = []
+        _process_graphql_tree(
+            tree, source, rel_path, run.execution_id,
+            analysis.symbols, edges, type_registry,
         )
 
-    graphql_files = list(find_graphql_files(repo_root))
+        # Register symbols for cross-file lookup
+        for sym in analysis.symbols:
+            analysis.symbol_by_name[sym.name] = sym
 
-    for graphql_path in graphql_files:
-        try:
-            rel_path = str(graphql_path.relative_to(repo_root))
-            source = graphql_path.read_bytes()
-            tree = parser.parse(source)
-            files_analyzed += 1
+        return analysis
 
-            # Process this file
-            _process_graphql_tree(
-                tree,
-                source,
-                rel_path,
-                symbols,
-                edges,
-                type_registry,
-            )
 
-        except Exception as e:  # pragma: no cover
-            files_skipped += 1  # pragma: no cover
-            warnings_list.append(f"Failed to parse {graphql_path}: {e}")  # pragma: no cover
+_analyzer = GraphqlAnalyzer()
 
-    duration_ms = int((time.time() - start_time) * 1000)
 
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-    run.files_analyzed = files_analyzed
-    run.files_skipped = files_skipped
-    run.duration_ms = duration_ms
-    run.warnings = warnings_list
+def is_graphql_tree_sitter_available() -> bool:
+    """Check if tree-sitter with GraphQL grammar is available."""
+    return _analyzer._check_grammar_available()
 
-    return AnalysisResult(
-        symbols=symbols,
-        edges=edges,
-        run=run,
-    )
+
+@register_analyzer("graphql")
+def analyze_graphql_files(repo_root: Path) -> AnalysisResult:
+    """Analyze GraphQL files in the repository."""
+    return _analyzer.analyze(repo_root)

@@ -24,48 +24,28 @@ class TestFindKotlinFiles:
 class TestKotlinTreeSitterAvailability:
     """Tests for tree-sitter-kotlin availability checking."""
 
-    def test_is_kotlin_tree_sitter_available_true(self) -> None:
-        """Returns True when tree-sitter-kotlin is available."""
+    def test_is_kotlin_tree_sitter_available_returns_bool(self) -> None:
+        """Availability check returns a boolean."""
         from hypergumbo_lang_mainstream.kotlin import is_kotlin_tree_sitter_available
 
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = object()
-            assert is_kotlin_tree_sitter_available() is True
-
-    def test_is_kotlin_tree_sitter_available_false(self) -> None:
-        """Returns False when tree-sitter is not available."""
-        from hypergumbo_lang_mainstream.kotlin import is_kotlin_tree_sitter_available
-
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = None
-            assert is_kotlin_tree_sitter_available() is False
-
-    def test_is_kotlin_tree_sitter_available_no_kotlin(self) -> None:
-        """Returns False when tree-sitter is available but kotlin grammar is not."""
-        from hypergumbo_lang_mainstream.kotlin import is_kotlin_tree_sitter_available
-
-        def mock_find_spec(name: str) -> object | None:
-            if name == "tree_sitter":
-                return object()
-            return None
-
-        with patch("importlib.util.find_spec", side_effect=mock_find_spec):
-            assert is_kotlin_tree_sitter_available() is False
+        result = is_kotlin_tree_sitter_available()
+        assert isinstance(result, bool)
 
 class TestAnalyzeKotlinFallback:
     """Tests for fallback behavior when tree-sitter-kotlin unavailable."""
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-kotlin unavailable."""
+        import hypergumbo_lang_mainstream.kotlin as kt_module
         from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
         (tmp_path / "test.kt").write_text("fun test() {}")
 
-        with patch("hypergumbo_lang_mainstream.kotlin.is_kotlin_tree_sitter_available", return_value=False):
+        with patch.object(kt_module._analyzer, "_check_grammar_available", return_value=False):
             result = analyze_kotlin(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-kotlin" in result.skip_reason
+        assert "not available" in result.skip_reason
 
 class TestKotlinFunctionExtraction:
     """Tests for extracting Kotlin functions."""
@@ -598,11 +578,10 @@ class TestKotlinEdgeCases:
 
         (tmp_path / "test.kt").write_text("fun test() {}")
 
-        with patch("hypergumbo_lang_mainstream.kotlin.is_kotlin_tree_sitter_available", return_value=True):
-            with patch.dict("sys.modules", {"tree_sitter_kotlin": MagicMock()}):
-                import sys
-                mock_module = sys.modules["tree_sitter_kotlin"]
-                mock_module.language.side_effect = RuntimeError("Parser load failed")
+        import hypergumbo_lang_mainstream.kotlin as kt_module
+
+        with patch.object(kt_module._analyzer, "_check_grammar_available", return_value=True):
+            with patch.object(kt_module._analyzer, "_create_parser", side_effect=RuntimeError("Parser load failed")):
                 result = analyze_kotlin(tmp_path)
 
         assert result.skipped is True

@@ -4,6 +4,8 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 import sys
 
+from hypergumbo_lang_mainstream import js_ts as js_ts_module
+
 
 class TestFindJsTsFiles:
     """Tests for JS/TS file discovery."""
@@ -65,31 +67,17 @@ class TestTreeSitterAvailability:
 
     def test_is_tree_sitter_available_true(self) -> None:
         """Returns True when tree-sitter is available."""
-        from hypergumbo_lang_mainstream.js_ts import is_tree_sitter_available
-
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = object()  # Non-None = available
-            assert is_tree_sitter_available() is True
+        result = js_ts_module.is_tree_sitter_available()
+        assert result is True
 
     def test_is_tree_sitter_available_false(self) -> None:
-        """Returns False when tree-sitter is not available."""
-        from hypergumbo_lang_mainstream.js_ts import is_tree_sitter_available
+        """Returns False when grammar is not available."""
+        with patch.object(js_ts_module._jsts_analyzer, "_check_grammar_available", return_value=False):
+            assert js_ts_module.is_tree_sitter_available() is False
 
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = None
-            assert is_tree_sitter_available() is False
-
-    def test_is_tree_sitter_available_no_js_grammar(self) -> None:
-        """Returns False when tree-sitter-javascript is not available."""
-        from hypergumbo_lang_mainstream.js_ts import is_tree_sitter_available
-
-        def mock_find_spec(name: str):
-            if name == "tree_sitter":
-                return object()  # tree_sitter is available
-            return None  # tree_sitter_javascript is not
-
-        with patch("importlib.util.find_spec", side_effect=mock_find_spec):
-            assert is_tree_sitter_available() is False
+    def test_is_tree_sitter_available_via_analyzer(self) -> None:
+        """Availability check delegates to TreeSitterAnalyzer._check_grammar_available."""
+        assert js_ts_module.is_tree_sitter_available() == js_ts_module._jsts_analyzer._check_grammar_available()
 
 
 class TestAnalyzeJavascriptFallback:
@@ -101,14 +89,14 @@ class TestAnalyzeJavascriptFallback:
 
         (tmp_path / "app.js").write_text("function foo() {}")
 
-        with patch("hypergumbo_lang_mainstream.js_ts.is_tree_sitter_available", return_value=False):
+        with patch.object(js_ts_module._jsts_analyzer, "_check_grammar_available", return_value=False):
             result = analyze_javascript(tmp_path)
 
         assert result.symbols == []
         assert result.edges == []
         assert result.run is not None
         assert result.skipped is True
-        assert "tree-sitter" in result.skip_reason.lower()
+        assert "not available" in result.skip_reason
 
 
 class TestAnalyzeJavascriptWithTreeSitter:
@@ -871,7 +859,7 @@ class TestMockedTreeSitter:
         mock_parser = MagicMock()
         mock_parser.parse.return_value = mock_tree
 
-        with patch("hypergumbo_lang_mainstream.js_ts.is_tree_sitter_available", return_value=True):
+        with patch.object(js_ts_module._jsts_analyzer, "_check_grammar_available", return_value=True):
             with patch("hypergumbo_lang_mainstream.js_ts._get_parser_for_file", return_value=mock_parser):
                 result = analyze_javascript(tmp_path)
 
@@ -1332,7 +1320,7 @@ class TestMockedTreeSitter:
         mock_parser = MagicMock()
         mock_parser.parse.return_value = tree
 
-        with patch("hypergumbo_lang_mainstream.js_ts.is_tree_sitter_available", return_value=True):
+        with patch.object(js_ts_module._jsts_analyzer, "_check_grammar_available", return_value=True):
             with patch("hypergumbo_lang_mainstream.js_ts._get_parser_for_file", return_value=mock_parser):
                 result = analyze_javascript(tmp_path)
 
@@ -1686,7 +1674,7 @@ class TestParserUnavailableEdgeCases:
 
         (tmp_path / "app.js").write_text("function foo() {}")
 
-        with patch("hypergumbo_lang_mainstream.js_ts.is_tree_sitter_available", return_value=True):
+        with patch.object(js_ts_module._jsts_analyzer, "_check_grammar_available", return_value=True):
             with patch("hypergumbo_lang_mainstream.js_ts._get_parser_for_file", return_value=None):
                 result = analyze_javascript(tmp_path)
 
@@ -1702,7 +1690,7 @@ class TestParserUnavailableEdgeCases:
 function test() {}
 </script>''')
 
-        with patch("hypergumbo_lang_mainstream.js_ts.is_tree_sitter_available", return_value=True):
+        with patch.object(js_ts_module._jsts_analyzer, "_check_grammar_available", return_value=True):
             with patch("hypergumbo_lang_mainstream.js_ts._get_parser_for_lang", return_value=None):
                 result = analyze_javascript(tmp_path)
 

@@ -39,7 +39,7 @@ class TestIsPurescriptTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(purescript_module, "is_purescript_tree_sitter_available", return_value=False):
+        with patch.object(purescript_module._analyzer, "_check_grammar_available", return_value=False):
             assert purescript_module.is_purescript_tree_sitter_available() is False
 
 class TestAnalyzePurescript:
@@ -47,8 +47,8 @@ class TestAnalyzePurescript:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_purescript_file(tmp_path, "Test.purs", "module Test where")
-        with patch.object(purescript_module, "is_purescript_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="PureScript analysis skipped"):
+        with patch.object(purescript_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="purescript analysis skipped"):
                 result = purescript_module.analyze_purescript(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason

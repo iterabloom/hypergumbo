@@ -35,14 +35,20 @@ Proto-Specific Considerations
 """
 from __future__ import annotations
 
-import importlib.util
 import time
 import uuid
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -57,20 +63,6 @@ PASS_VERSION = "hypergumbo-0.1.0"
 def find_proto_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Proto files in the repository."""
     yield from find_files(repo_root, ["*.proto"])
-
-
-def is_proto_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Proto grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover - tree-sitter not installed
-    if importlib.util.find_spec("tree_sitter_language_pack") is None:
-        return False  # pragma: no cover - language pack not installed
-    try:
-        from tree_sitter_language_pack import get_language
-        get_language("proto")
-        return True
-    except Exception:  # pragma: no cover - proto grammar not available
-        return False
 
 
 def _make_edge_id() -> str:
@@ -303,6 +295,82 @@ def _extract_symbols_and_edges(
     return symbols, edges
 
 
+class ProtoAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based analyzer for Protocol Buffers files.
+
+    Extracts services, RPC methods, messages, enums, and import edges.
+    Uses language_pack_name for the proto grammar.
+    """
+
+    lang = "proto"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["**/*.proto"]
+    language_pack_name = "proto"
+
+    def analyze(self, repo_root: Path, max_files: int | None = None) -> AnalysisResult:
+        """Run Proto analysis."""
+        if not self._check_grammar_available():
+            import warnings
+            warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return AnalysisResult(
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        parser = self._create_parser()
+        run_id = f"uuid:{uuid.uuid4()}"
+        start_time = time.time()
+        files_analyzed = 0
+
+        all_symbols: list[Symbol] = []
+        all_edges: list[Edge] = []
+
+        for file_path in find_proto_files(repo_root):
+            try:
+                source = file_path.read_bytes()
+                tree = parser.parse(source)
+
+                rel_path = str(file_path.relative_to(repo_root))
+                symbols, edges = _extract_symbols_and_edges(tree, source, rel_path, run_id)
+
+                all_symbols.extend(symbols)
+                all_edges.extend(edges)
+                files_analyzed += 1
+
+            except (OSError, IOError):  # pragma: no cover - defensive
+                continue  # Skip files we can't read
+
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        run = AnalysisRun(
+            execution_id=run_id,
+            pass_id=PASS_ID,
+            version=PASS_VERSION,
+            files_analyzed=files_analyzed,
+            duration_ms=duration_ms,
+        )
+
+        return AnalysisResult(
+            symbols=all_symbols,
+            edges=all_edges,
+            run=run,
+        )
+
+
+_analyzer = ProtoAnalyzer()
+
+
+def is_proto_tree_sitter_available() -> bool:
+    """Check if tree-sitter with Proto grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("proto")
 def analyze_proto(repo_root: Path) -> AnalysisResult:
     """Analyze all Proto files in the repository.
@@ -313,47 +381,4 @@ def analyze_proto(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult with symbols and edges found.
     """
-    if not is_proto_tree_sitter_available():
-        warnings.warn("Proto analysis skipped: tree-sitter-language-pack not available")
-        return AnalysisResult(skipped=True, skip_reason="tree-sitter-language-pack not available")
-
-    from tree_sitter_language_pack import get_parser
-
-    parser = get_parser("proto")
-    run_id = f"uuid:{uuid.uuid4()}"
-    start_time = time.time()
-    files_analyzed = 0
-
-    all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
-
-    for file_path in find_proto_files(repo_root):
-        try:
-            source = file_path.read_bytes()
-            tree = parser.parse(source)
-
-            rel_path = str(file_path.relative_to(repo_root))
-            symbols, edges = _extract_symbols_and_edges(tree, source, rel_path, run_id)
-
-            all_symbols.extend(symbols)
-            all_edges.extend(edges)
-            files_analyzed += 1
-
-        except (OSError, IOError):  # pragma: no cover - defensive
-            continue  # Skip files we can't read
-
-    duration_ms = int((time.time() - start_time) * 1000)
-
-    run = AnalysisRun(
-        execution_id=run_id,
-        pass_id=PASS_ID,
-        version=PASS_VERSION,
-        files_analyzed=files_analyzed,
-        duration_ms=duration_ms,
-    )
-
-    return AnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

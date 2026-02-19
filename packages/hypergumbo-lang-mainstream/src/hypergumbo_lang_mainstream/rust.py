@@ -16,41 +16,46 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-1. Check if tree-sitter-rust is available
-2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
-   - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls, use statements, and routes
-4. Route detection:
-   - Axum: Find `.route("/path", get(handler))` patterns
-   - Actix-web: Find `#[get("/path")]` attribute macros on functions
-   - Create route symbols with stable_id = HTTP method
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Extract functions, structs, enums, traits with signatures and annotations
+2. Pass 2: Extract call edges, use edges, and Axum usage contexts
+3. Post-process: Extract decorated_by edges from attribute metadata
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Rust-specific extraction
+logic.
 
 Why This Design
 ---------------
+- TreeSitterAnalyzer eliminates boilerplate orchestration code
 - Optional dependency keeps base install lightweight
 - Uses tree-sitter-rust package for grammar
 - Two-pass allows cross-file call resolution
-- Same pattern as Elixir/Java/PHP/C analyzers for consistency
 - Route detection enables `hypergumbo routes` command for Rust
 """
 from __future__ import annotations
 
-import importlib.util
-import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
-from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
+from hypergumbo_core.ir import Edge, Span, Symbol, UsageContext
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = "rust-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -65,27 +70,9 @@ def find_rust_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.rs"])
 
 
-def is_rust_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Rust grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False
-    if importlib.util.find_spec("tree_sitter_rust") is None:
-        return False
-    return True
-
-
 def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:
     """Find child by field name."""
     return node.child_by_field_name(field_name)
-
-
-@dataclass
-class FileAnalysis:
-    """Intermediate analysis result for a single file."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
-    use_aliases: dict[str, str] = field(default_factory=dict)
 
 
 def _extract_rust_signature(
@@ -362,24 +349,16 @@ def _add_rust_arg(arg: str, args: list[str], kwargs: dict[str, str]) -> None:
 
 
 def _extract_symbols_from_file(
-    file_path: Path,
-    parser: "tree_sitter.Parser",
-    run: AnalysisRun,
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: str,
+    run_id: str,
 ) -> FileAnalysis:
     """Extract symbols from a single Rust file.
 
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
     """
-    try:
-        source = file_path.read_bytes()
-        tree = parser.parse(source)
-    except (OSError, IOError):
-        return FileAnalysis()
-
-    # Extract use statement aliases for disambiguation
-    use_aliases = _extract_use_aliases(tree, source)
-
-    analysis = FileAnalysis(use_aliases=use_aliases)
+    analysis = FileAnalysis()
 
     for node in iter_tree(tree.root_node):
         # Function declaration
@@ -420,7 +399,7 @@ def _extract_symbols_from_file(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                     signature=signature,
                     meta=meta,
                 )
@@ -453,7 +432,7 @@ def _extract_symbols_from_file(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                     meta=meta,
                 )
                 analysis.symbols.append(symbol)
@@ -484,7 +463,7 @@ def _extract_symbols_from_file(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                     meta=meta,
                 )
                 analysis.symbols.append(symbol)
@@ -515,7 +494,7 @@ def _extract_symbols_from_file(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                     meta=meta,
                 )
                 analysis.symbols.append(symbol)
@@ -752,31 +731,22 @@ def _extract_use_aliases(
 
 
 def _extract_edges_from_file(
-    file_path: Path,
-    parser: "tree_sitter.Parser",
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: str,
     local_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
-    run: AnalysisRun,
-    resolver: NameResolver | None = None,
-    use_aliases: dict[str, str] | None = None,
+    run_id: str,
+    resolver: "NameResolver",
+    use_aliases: dict[str, str],
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
 
     Args:
-        use_aliases: Optional dict mapping local names to import paths for disambiguation.
+        use_aliases: Dict mapping local names to import paths for disambiguation.
     """
-    if resolver is None:
-        resolver = NameResolver(global_symbols)
-    if use_aliases is None:
-        use_aliases = {}
-    try:
-        source = file_path.read_bytes()
-        tree = parser.parse(source)
-    except (OSError, IOError):
-        return []
-
     edges: list[Edge] = []
     file_id = make_file_id("rust", str(file_path))
 
@@ -802,7 +772,7 @@ def _extract_edges_from_file(
                     evidence_type="use_declaration",
                     confidence=0.95,
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                 ))
 
         # Detect function calls
@@ -843,7 +813,7 @@ def _extract_edges_from_file(
                                 evidence_type="function_call",
                                 confidence=0.85,
                                 origin=PASS_ID,
-                                origin_run_id=run.execution_id,
+                                origin_run_id=run_id,
                             ))
                         # Check global symbols via resolver
                         else:
@@ -859,7 +829,7 @@ def _extract_edges_from_file(
                                     evidence_type="function_call",
                                     confidence=0.80 * lookup_result.confidence,
                                     origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
+                                    origin_run_id=run_id,
                                 ))
 
     return edges
@@ -868,7 +838,7 @@ def _extract_edges_from_file(
 def _extract_attribute_edges(
     symbols: list[Symbol],
     global_symbols: dict[str, Symbol],
-    run: AnalysisRun,
+    run_id: str,
 ) -> list[Edge]:
     """Extract decorated_by edges from Rust attribute metadata.
 
@@ -879,7 +849,7 @@ def _extract_attribute_edges(
     Args:
         symbols: All symbols extracted from the codebase.
         global_symbols: Map of symbol names to Symbol objects for resolution.
-        run: The current analysis run for provenance.
+        run_id: The current analysis run execution ID for provenance.
 
     Returns:
         List of decorated_by edges.
@@ -920,7 +890,7 @@ def _extract_attribute_edges(
                     line=line,
                     confidence=0.95,
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                     evidence_type="ast_attribute",
                 )
                 edges.append(edge)
@@ -934,7 +904,7 @@ def _extract_attribute_edges(
                     line=line,
                     confidence=0.80,
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                     evidence_type="ast_attribute",
                 )
                 edges.append(edge)
@@ -942,98 +912,92 @@ def _extract_attribute_edges(
     return edges
 
 
+class RustAnalyzer(TreeSitterAnalyzer):
+    """Rust language analyzer using tree-sitter-rust."""
+
+    lang = "rust"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.rs"]
+    grammar_module = "tree_sitter_rust"
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract functions, structs, enums, traits from a Rust file."""
+        return _extract_symbols_from_file(tree, source, rel_path, run.execution_id)
+
+    def get_import_aliases(
+        self, tree: "tree_sitter.Tree", source: bytes,
+    ) -> dict[str, str]:
+        """Extract Rust use statement aliases for disambiguation."""
+        return _extract_use_aliases(tree, source)
+
+    def register_symbol(
+        self, symbol: Symbol, global_symbols: dict,
+    ) -> None:
+        """Register symbol globally, including short name for cross-file resolution."""
+        global_symbols[symbol.name] = symbol
+        # Store by short name (last segment after ::) for cross-file resolution
+        short_name = symbol.name.split("::")[-1] if "::" in symbol.name else symbol.name
+        global_symbols[short_name] = symbol
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract call and use edges from a Rust file."""
+        return _extract_edges_from_file(
+            tree, source, rel_path,
+            local_symbols, global_symbols,
+            run.execution_id, resolver, import_aliases,
+        )
+
+    def extract_usage_contexts_from_file(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+        file_path: Path,
+        symbol_by_name: dict[str, Symbol],
+    ) -> list[UsageContext]:
+        """Extract Axum route usage contexts from a Rust file."""
+        return _extract_axum_usage_contexts(
+            tree.root_node, source, file_path, symbol_by_name,
+        )
+
+    def post_process(
+        self,
+        symbols: list[Symbol],
+        edges: list[Edge],
+        usage_contexts: list[UsageContext],
+        run: "AnalysisRun",
+    ) -> tuple[list[Symbol], list[Edge], list[UsageContext]]:
+        """Extract decorated_by edges from attribute metadata."""
+        # Build global symbols map for attribute resolution
+        global_symbols: dict[str, Symbol] = {}
+        for sym in symbols:
+            global_symbols[sym.name] = sym
+            short_name = sym.name.split("::")[-1] if "::" in sym.name else sym.name
+            global_symbols[short_name] = sym
+
+        attribute_edges = _extract_attribute_edges(symbols, global_symbols, run.execution_id)
+        edges.extend(attribute_edges)
+        return symbols, edges, usage_contexts
+
+
+_analyzer = RustAnalyzer()
+
+
+def is_rust_tree_sitter_available() -> bool:
+    """Check if tree-sitter with Rust grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("rust")
 def analyze_rust(repo_root: Path) -> AnalysisResult:
-    """Analyze all Rust files in a repository.
-
-    Returns a AnalysisResult with symbols, edges, and provenance.
-    If tree-sitter-rust is not available, returns a skipped result.
-    """
-    if not is_rust_tree_sitter_available():
-        warnings.warn(
-            "tree-sitter-rust not available. Install with: pip install hypergumbo[rust]",
-            stacklevel=2,
-        )
-        return AnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-rust not available",
-        )
-
-    start_time = time.time()
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    # Import tree-sitter-rust
-    try:
-        import tree_sitter_rust
-        import tree_sitter
-
-        lang = tree_sitter.Language(tree_sitter_rust.language())
-        parser = tree_sitter.Parser(lang)
-    except Exception as e:
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return AnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=f"Failed to load Rust parser: {e}",
-        )
-
-    # Pass 1: Extract all symbols
-    file_analyses: dict[Path, FileAnalysis] = {}
-    files_skipped = 0
-
-    for rs_file in find_rust_files(repo_root):
-        analysis = _extract_symbols_from_file(rs_file, parser, run)
-        if analysis.symbols:
-            file_analyses[rs_file] = analysis
-        else:
-            files_skipped += 1
-
-    # Build global symbol registry
-    global_symbols: dict[str, Symbol] = {}
-    for analysis in file_analyses.values():
-        for symbol in analysis.symbols:
-            # Store by short name for cross-file resolution
-            short_name = symbol.name.split("::")[-1] if "::" in symbol.name else symbol.name
-            global_symbols[short_name] = symbol
-            global_symbols[symbol.name] = symbol
-
-    # Pass 2: Extract edges, routes, and usage contexts
-    resolver = NameResolver(global_symbols)
-    all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
-    all_usage_contexts: list[UsageContext] = []
-
-    for rs_file, analysis in file_analyses.items():
-        all_symbols.extend(analysis.symbols)
-
-        edges = _extract_edges_from_file(
-            rs_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
-            use_aliases=analysis.use_aliases
-        )
-        all_edges.extend(edges)
-
-        # Extract UsageContext for Axum route YAML pattern matching
-        try:
-            source = rs_file.read_bytes()
-            tree = parser.parse(source)
-            usage_contexts = _extract_axum_usage_contexts(
-                tree.root_node, source, rs_file, analysis.symbol_by_name
-            )
-            all_usage_contexts.extend(usage_contexts)
-        except (OSError, IOError):  # pragma: no cover
-            pass  # Skip files that can't be read
-
-    # Extract decorated_by edges from attribute metadata
-    attribute_edges = _extract_attribute_edges(all_symbols, global_symbols, run)
-    all_edges.extend(attribute_edges)
-
-    run.files_analyzed = len(file_analyses)
-    run.files_skipped = files_skipped
-    run.duration_ms = int((time.time() - start_time) * 1000)
-
-    return AnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        usage_contexts=all_usage_contexts,
-        run=run,
-    )
+    """Analyze Rust files in a repository."""
+    return _analyzer.analyze(repo_root)

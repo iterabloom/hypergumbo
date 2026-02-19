@@ -328,3 +328,10 @@ def test_package_json_without_version(tmp_path):
     assert len(packages) >= 1
     # Version should be None or not present in meta
     assert packages[0].meta.get("version") is None
+
+
+def test_is_json_tree_sitter_available():
+    """Check that JSON tree-sitter availability returns True."""
+    from hypergumbo_lang_mainstream.json_config import is_json_tree_sitter_available
+
+    assert is_json_tree_sitter_available() is True

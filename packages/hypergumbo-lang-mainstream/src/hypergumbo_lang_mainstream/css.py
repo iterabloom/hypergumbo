@@ -28,13 +28,12 @@ Why This Design
 """
 
 import hashlib
-import time
 from pathlib import Path
-from typing import Iterator
+from typing import ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult, iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, iter_tree
 from hypergumbo_core.analyze.registry import register_analyzer
 
 
@@ -53,17 +52,6 @@ def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
 PASS_ID = "css-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
 
-
-def is_css_tree_sitter_available() -> bool:
-    """Check if tree-sitter-css is available."""
-    try:
-        import tree_sitter
-        import tree_sitter_css
-
-        tree_sitter.Language(tree_sitter_css.language())
-        return True
-    except (ImportError, OSError, Exception):  # pragma: no cover
-        return False  # pragma: no cover
 
 
 def find_css_files(root: Path) -> Iterator[Path]:
@@ -385,6 +373,108 @@ def _process_css_tree(
         # iter_tree automatically handles recursion for all node types
 
 
+class CSSAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based CSS analyzer.
+
+    Uses tree-sitter-css to parse CSS files and extract imports, variables,
+    keyframes, media queries, font-face declarations, class selectors, and
+    ID selectors. Also creates import edges for @import statements.
+
+    Overrides ``analyze`` because CSS uses a single-pass approach: both
+    symbols and edges (@import) are extracted together in ``_process_css_tree``.
+    """
+
+    lang = "css"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.css"]
+    grammar_module = "tree_sitter_css"
+
+    def analyze(
+        self,
+        repo_root: Path,
+        max_files: Optional[int] = None,
+    ) -> AnalysisResult:
+        """Run CSS analysis with single-pass symbol+edge extraction."""
+        import time as _time
+        import warnings as _warnings
+
+        start_time = _time.time()
+        run = AnalysisRun.create(pass_id=self.pass_id, version=self.pass_version)
+
+        if not self._check_grammar_available():
+            _warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            run.duration_ms = int((_time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        parser = self._create_parser()
+
+        symbols: list[Symbol] = []
+        edges: list[Edge] = []
+        files_analyzed = 0
+        files_skipped = 0
+        warnings_list: list[str] = []
+
+        # Handle single file or directory
+        if repo_root.is_file():  # pragma: no cover - single file mode
+            css_files = [repo_root] if repo_root.suffix == ".css" else []  # pragma: no cover
+        else:
+            css_files = list(find_css_files(repo_root))
+
+        for css_file in css_files:
+            if max_files is not None and files_analyzed >= max_files:
+                break  # pragma: no cover
+
+            try:
+                source = css_file.read_bytes()
+                tree = parser.parse(source)
+                files_analyzed += 1
+
+                rel_path = str(
+                    css_file.relative_to(repo_root) if repo_root.is_dir() else css_file.name
+                )
+
+                # Create a file symbol for import edges
+                file_symbol_id = _make_symbol_id(rel_path, 1, rel_path, "file")
+
+                # Process the tree
+                _process_css_tree(
+                    tree.root_node, symbols, edges, rel_path, source, file_symbol_id
+                )
+
+            except (OSError, IOError):  # pragma: no cover
+                files_skipped += 1  # pragma: no cover
+                continue  # pragma: no cover
+
+        run.files_analyzed = files_analyzed
+        run.files_skipped = files_skipped
+        run.duration_ms = int((_time.time() - start_time) * 1000)
+        run.warnings = warnings_list
+
+        return AnalysisResult(
+            symbols=symbols,
+            edges=edges,
+            run=run,
+        )
+
+
+_analyzer = CSSAnalyzer()
+
+
+def is_css_tree_sitter_available() -> bool:
+    """Check if tree-sitter-css is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("css")
 def analyze_css_files(root: Path) -> AnalysisResult:
     """Analyze CSS files in a directory.
@@ -395,61 +485,4 @@ def analyze_css_files(root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult containing symbols and edges
     """
-    if not is_css_tree_sitter_available():  # pragma: no cover - css installed
-        return AnalysisResult(  # pragma: no cover
-            skipped=True,  # pragma: no cover
-            skip_reason="tree-sitter-css not installed",  # pragma: no cover
-        )  # pragma: no cover
-
-    import tree_sitter
-    import tree_sitter_css
-
-    lang = tree_sitter.Language(tree_sitter_css.language())
-    parser = tree_sitter.Parser(lang)
-
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-    files_analyzed = 0
-    files_skipped = 0
-    warnings_list: list[str] = []
-    start_time = time.time()
-
-    # Handle single file or directory
-    if root.is_file():  # pragma: no cover - single file mode
-        css_files = [root] if root.suffix == ".css" else []  # pragma: no cover
-    else:
-        css_files = list(find_css_files(root))
-
-    for css_file in css_files:
-        try:
-            source = css_file.read_bytes()
-            tree = parser.parse(source)
-            files_analyzed += 1
-
-            rel_path = str(css_file.relative_to(root) if root.is_dir() else css_file.name)
-
-            # Create a file symbol for import edges
-            file_symbol_id = _make_symbol_id(rel_path, 1, rel_path, "file")
-
-            # Process the tree
-            _process_css_tree(
-                tree.root_node, symbols, edges, rel_path, source, file_symbol_id
-            )
-
-        except (OSError, IOError):  # pragma: no cover
-            files_skipped += 1  # pragma: no cover
-            continue  # pragma: no cover
-
-    duration_ms = int((time.time() - start_time) * 1000)
-
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-    run.files_analyzed = files_analyzed
-    run.files_skipped = files_skipped
-    run.duration_ms = duration_ms
-    run.warnings = warnings_list
-
-    return AnalysisResult(
-        symbols=symbols,
-        edges=edges,
-        run=run,
-    )
+    return _analyzer.analyze(root)

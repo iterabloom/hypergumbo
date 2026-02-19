@@ -39,7 +39,7 @@ class TestIsVueTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(vue_module, "is_vue_tree_sitter_available", return_value=False):
+        with patch.object(vue_module._analyzer, "_check_grammar_available", return_value=False):
             assert vue_module.is_vue_tree_sitter_available() is False
 
 class TestAnalyzeVue:
@@ -47,8 +47,8 @@ class TestAnalyzeVue:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_vue_file(tmp_path, "App.vue", "<template></template>")
-        with patch.object(vue_module, "is_vue_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Vue analysis skipped"):
+        with patch.object(vue_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="vue analysis skipped"):
                 result = vue_module.analyze_vue(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason

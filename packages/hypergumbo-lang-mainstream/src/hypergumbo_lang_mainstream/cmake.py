@@ -31,15 +31,12 @@ Why This Design
 from __future__ import annotations
 
 import hashlib
-import importlib.util
-import time
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, make_symbol_id, node_text
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, iter_tree, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -53,14 +50,6 @@ def find_cmake_files(repo_root: Path) -> Iterator[Path]:
     """Yield all CMake files in the repository."""
     yield from find_files(repo_root, ["CMakeLists.txt", "*.cmake"])
 
-
-def is_cmake_tree_sitter_available() -> bool:
-    """Check if tree-sitter with CMake grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover
-    if importlib.util.find_spec("tree_sitter_cmake") is None:
-        return False  # pragma: no cover
-    return True
 
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
@@ -382,6 +371,110 @@ def _process_cmake_tree(
                     break
 
 
+class CMakeAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based CMake analyzer.
+
+    Uses tree-sitter-cmake to parse CMakeLists.txt and *.cmake files.
+    Extracts projects, library/executable targets, functions, macros,
+    packages, subdirectories, and target_link_libraries edges.
+
+    Overrides ``analyze`` because CMake uses a single-pass approach: both
+    symbols and edges (target_link_libraries) are extracted together since
+    target link references need the target registry built during the same pass.
+    """
+
+    lang = "cmake"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["CMakeLists.txt", "*.cmake"]
+    grammar_module = "tree_sitter_cmake"
+
+    def analyze(
+        self,
+        repo_root: Path,
+        max_files: Optional[int] = None,
+    ) -> AnalysisResult:
+        """Run CMake analysis with single-pass symbol+edge extraction.
+
+        CMake target_link_libraries references need the target registry
+        built during symbol extraction, so both symbols and edges are
+        extracted in a single pass through ``_process_cmake_tree``.
+        """
+        import time as _time
+        import warnings as _warnings
+
+        start_time = _time.time()
+        run = AnalysisRun.create(pass_id=self.pass_id, version=self.pass_version)
+
+        if not self._check_grammar_available():
+            _warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            run.duration_ms = int((_time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        parser = self._create_parser()
+
+        files_analyzed = 0
+        files_skipped = 0
+        warnings_list: list[str] = []
+
+        symbols: list[Symbol] = []
+        edges: list[Edge] = []
+        target_registry: dict[str, str] = {}
+
+        cmake_files = list(find_cmake_files(repo_root))
+
+        for cmake_path in cmake_files:
+            if max_files is not None and files_analyzed >= max_files:
+                break  # pragma: no cover
+
+            try:
+                rel_path = str(cmake_path.relative_to(repo_root))
+                source = cmake_path.read_bytes()
+                tree = parser.parse(source)
+                files_analyzed += 1
+
+                _process_cmake_tree(
+                    tree.root_node,
+                    source,
+                    rel_path,
+                    symbols,
+                    edges,
+                    target_registry,
+                )
+
+            except Exception as e:  # pragma: no cover
+                files_skipped += 1  # pragma: no cover
+                warnings_list.append(f"Failed to parse {cmake_path}: {e}")  # pragma: no cover
+
+        run.files_analyzed = files_analyzed
+        run.files_skipped = files_skipped
+        run.duration_ms = int((_time.time() - start_time) * 1000)
+        run.warnings = warnings_list
+
+        return AnalysisResult(
+            symbols=symbols,
+            edges=edges,
+            run=run,
+        )
+
+
+_analyzer = CMakeAnalyzer()
+
+
+def is_cmake_tree_sitter_available() -> bool:
+    """Check if tree-sitter with CMake grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("cmake")
 def analyze_cmake_files(repo_root: Path) -> AnalysisResult:
     """Analyze CMake files in the repository.
@@ -392,69 +485,4 @@ def analyze_cmake_files(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult with symbols and edges
     """
-    if not is_cmake_tree_sitter_available():  # pragma: no cover
-        return AnalysisResult(  # pragma: no cover
-            skipped=True,  # pragma: no cover
-            skip_reason="tree-sitter-cmake not installed (pip install tree-sitter-cmake)",  # pragma: no cover
-        )  # pragma: no cover
-
-    import tree_sitter
-    import tree_sitter_cmake
-
-    start_time = time.time()
-    files_analyzed = 0
-    files_skipped = 0
-    warnings_list: list[str] = []
-
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-
-    # Target registry for cross-file resolution: name -> symbol_id
-    target_registry: dict[str, str] = {}
-
-    # Create parser
-    try:
-        parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_cmake.language()))
-    except Exception as e:  # pragma: no cover
-        warnings.warn(f"Failed to initialize CMake parser: {e}")
-        return AnalysisResult(
-            skipped=True,
-            skip_reason=f"Failed to initialize parser: {e}",
-        )
-
-    cmake_files = list(find_cmake_files(repo_root))
-
-    for cmake_path in cmake_files:
-        try:
-            rel_path = str(cmake_path.relative_to(repo_root))
-            source = cmake_path.read_bytes()
-            tree = parser.parse(source)
-            files_analyzed += 1
-
-            # Process this file
-            _process_cmake_tree(
-                tree.root_node,
-                source,
-                rel_path,
-                symbols,
-                edges,
-                target_registry,
-            )
-
-        except Exception as e:  # pragma: no cover
-            files_skipped += 1  # pragma: no cover
-            warnings_list.append(f"Failed to parse {cmake_path}: {e}")  # pragma: no cover
-
-    duration_ms = int((time.time() - start_time) * 1000)
-
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-    run.files_analyzed = files_analyzed
-    run.files_skipped = files_skipped
-    run.duration_ms = duration_ms
-    run.warnings = warnings_list
-
-    return AnalysisResult(
-        symbols=symbols,
-        edges=edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

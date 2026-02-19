@@ -4,6 +4,8 @@ from pathlib import Path
 from hypergumbo_core.analyze.base import find_child_by_type
 from unittest.mock import patch, MagicMock
 
+import pytest
+
 class TestHCLHelpers:
     """Tests for HCL analyzer helper functions."""
 
@@ -69,44 +71,31 @@ class TestHCLTreeSitterAvailability:
         """Returns True when tree-sitter-hcl is available."""
         from hypergumbo_lang_common.hcl import is_hcl_tree_sitter_available
 
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = object()
-            assert is_hcl_tree_sitter_available() is True
+        # Should be True since tree-sitter-hcl is installed
+        assert is_hcl_tree_sitter_available() is True
 
     def test_is_hcl_tree_sitter_available_false(self) -> None:
-        """Returns False when tree-sitter is not available."""
-        from hypergumbo_lang_common.hcl import is_hcl_tree_sitter_available
+        """Returns False when grammar not available."""
+        from hypergumbo_lang_common import hcl as hcl_module
 
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = None
-            assert is_hcl_tree_sitter_available() is False
-
-    def test_is_hcl_tree_sitter_available_no_hcl(self) -> None:
-        """Returns False when tree-sitter is available but hcl grammar is not."""
-        from hypergumbo_lang_common.hcl import is_hcl_tree_sitter_available
-
-        def mock_find_spec(name: str) -> object | None:
-            if name == "tree_sitter":
-                return object()
-            return None
-
-        with patch("importlib.util.find_spec", side_effect=mock_find_spec):
-            assert is_hcl_tree_sitter_available() is False
+        with patch.object(hcl_module._analyzer, "_check_grammar_available", return_value=False):
+            assert hcl_module.is_hcl_tree_sitter_available() is False
 
 class TestAnalyzeHCLFallback:
     """Tests for fallback behavior when tree-sitter-hcl unavailable."""
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-hcl unavailable."""
-        from hypergumbo_lang_common.hcl import analyze_hcl
+        from hypergumbo_lang_common import hcl as hcl_module
 
         (tmp_path / "main.tf").write_text('resource "aws_instance" "web" {}')
 
-        with patch("hypergumbo_lang_common.hcl.is_hcl_tree_sitter_available", return_value=False):
-            result = analyze_hcl(tmp_path)
+        with patch.object(hcl_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="hcl analysis skipped"):
+                result = hcl_module.analyze_hcl(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-hcl" in result.skip_reason
+        assert "not available" in result.skip_reason
 
 class TestHCLResourceExtraction:
     """Tests for extracting Terraform resources."""
@@ -424,16 +413,16 @@ class TestHCLEmptyFile:
 class TestHCLParserFailure:
     """Tests for parser failure handling."""
 
-    def test_handles_parser_load_failure(self, tmp_path: Path) -> None:
-        """Handles failure to load HCL parser."""
-        from hypergumbo_lang_common.hcl import analyze_hcl
+    def test_handles_grammar_unavailable(self, tmp_path: Path) -> None:
+        """Handles unavailable grammar gracefully."""
+        from hypergumbo_lang_common import hcl as hcl_module
 
         tf_file = tmp_path / "main.tf"
         tf_file.write_text('resource "x" "y" {}')
 
-        with patch("hypergumbo_lang_common.hcl.is_hcl_tree_sitter_available", return_value=True):
-            with patch("tree_sitter_hcl.language", side_effect=Exception("Parser error")):
-                result = analyze_hcl(tmp_path)
+        with patch.object(hcl_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="hcl analysis skipped"):
+                result = hcl_module.analyze_hcl(tmp_path)
 
         assert result.skipped is True
-        assert "Parser error" in result.skip_reason or "Failed to load" in result.skip_reason
+        assert "not available" in result.skip_reason

@@ -57,15 +57,17 @@ class TestAnalyzeSwiftFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-swift unavailable."""
+        from hypergumbo_lang_mainstream import swift as swift_module
         from hypergumbo_lang_mainstream.swift import analyze_swift
 
         (tmp_path / "test.swift").write_text("func test() {}")
 
-        with patch("hypergumbo_lang_mainstream.swift.is_swift_tree_sitter_available", return_value=False):
-            result = analyze_swift(tmp_path)
+        with patch.object(swift_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="swift analysis skipped"):
+                result = analyze_swift(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-swift" in result.skip_reason
+        assert "swift" in result.skip_reason
 
 class TestSwiftFunctionExtraction:
     """Tests for extracting Swift functions."""
@@ -257,21 +259,19 @@ class TestSwiftEdgeCases:
     """Tests for edge cases and error handling."""
 
     def test_parser_load_failure(self, tmp_path: Path) -> None:
-        """Returns skipped with run when parser loading fails."""
+        """Raises error when parser loading fails (base class does not catch)."""
+        from hypergumbo_lang_mainstream import swift as swift_module
         from hypergumbo_lang_mainstream.swift import analyze_swift
 
         (tmp_path / "test.swift").write_text("func test() {}")
 
-        with patch("hypergumbo_lang_mainstream.swift.is_swift_tree_sitter_available", return_value=True):
-            with patch.dict("sys.modules", {"tree_sitter_swift": MagicMock()}):
-                import sys
-                mock_module = sys.modules["tree_sitter_swift"]
-                mock_module.language.side_effect = RuntimeError("Parser load failed")
-                result = analyze_swift(tmp_path)
-
-        assert result.skipped is True
-        assert "Failed to load Swift parser" in result.skip_reason
-        assert result.run is not None
+        with patch.object(swift_module._analyzer, "_check_grammar_available", return_value=True):
+            with patch.object(
+                swift_module._analyzer, "_create_parser",
+                side_effect=RuntimeError("Parser load failed"),
+            ):
+                with pytest.raises(RuntimeError, match="Parser load failed"):
+                    analyze_swift(tmp_path)
 
     def test_file_with_no_symbols_is_skipped(self, tmp_path: Path) -> None:
         """Files with no extractable symbols are counted as skipped."""
@@ -332,59 +332,37 @@ class User {
         assert any("getName" in name for name in method_names)
 
 class TestSwiftFileReadErrors:
-    """Tests for file read error handling."""
+    """Tests for file read error handling.
 
-    def test_symbol_extraction_handles_read_error(self, tmp_path: Path) -> None:
-        """Symbol extraction handles file read errors gracefully."""
-        from hypergumbo_lang_mainstream.swift import (
-            _extract_symbols_from_file,
-            is_swift_tree_sitter_available,
-        )
-        from hypergumbo_core.ir import AnalysisRun
+    The base TreeSitterAnalyzer.analyze() method handles file read errors
+    during Pass 1 by incrementing files_skipped. Internal functions now
+    receive pre-parsed trees, so file read errors are handled at the
+    analyzer level.
+    """
 
-        if not is_swift_tree_sitter_available():
-            pytest.skip("tree-sitter-swift not available")
+    def test_analyzer_handles_read_error_in_pass1(self, tmp_path: Path) -> None:
+        """Analyzer skips files with read errors during Pass 1."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
 
-        import tree_sitter_swift
-        import tree_sitter
+        # Create a valid file plus a file that will fail to read
+        (tmp_path / "good.swift").write_text("func good() {}")
+        bad_file = tmp_path / "bad.swift"
+        bad_file.write_text("func bad() {}")
 
-        lang = tree_sitter.Language(tree_sitter_swift.language())
-        parser = tree_sitter.Parser(lang)
-        run = AnalysisRun.create(pass_id="test", version="test")
+        original_read_bytes = Path.read_bytes
 
-        swift_file = tmp_path / "test.swift"
-        swift_file.write_text("func test() {}")
+        def patched_read_bytes(self: Path) -> bytes:
+            if self.name == "bad.swift":
+                raise OSError("Read failed")
+            return original_read_bytes(self)
 
-        with patch.object(Path, "read_bytes", side_effect=OSError("Read failed")):
-            result = _extract_symbols_from_file(swift_file, parser, run)
+        with patch.object(Path, "read_bytes", patched_read_bytes):
+            result = analyze_swift(tmp_path)
 
-        assert result.symbols == []
-
-    def test_edge_extraction_handles_read_error(self, tmp_path: Path) -> None:
-        """Edge extraction handles file read errors gracefully."""
-        from hypergumbo_lang_mainstream.swift import (
-            _extract_edges_from_file,
-            is_swift_tree_sitter_available,
-        )
-        from hypergumbo_core.ir import AnalysisRun
-
-        if not is_swift_tree_sitter_available():
-            pytest.skip("tree-sitter-swift not available")
-
-        import tree_sitter_swift
-        import tree_sitter
-
-        lang = tree_sitter.Language(tree_sitter_swift.language())
-        parser = tree_sitter.Parser(lang)
-        run = AnalysisRun.create(pass_id="test", version="test")
-
-        swift_file = tmp_path / "test.swift"
-        swift_file.write_text("func test() {}")
-
-        with patch.object(Path, "read_bytes", side_effect=IOError("Read failed")):
-            result = _extract_edges_from_file(swift_file, parser, {}, {}, run)
-
-        assert result == []
+        assert result.run is not None
+        assert result.run.files_skipped >= 1
+        func_names = [s.name for s in result.symbols if s.kind == "function"]
+        assert "good" in func_names
 
 class TestSwiftHelperFunctions:
     """Tests for helper function edge cases."""

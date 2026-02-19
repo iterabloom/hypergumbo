@@ -53,17 +53,24 @@ Lua-Specific Considerations
 """
 from __future__ import annotations
 
-import importlib.util
 import time
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -78,13 +85,9 @@ def find_lua_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.lua"])
 
 
-def is_lua_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Lua grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover - tree-sitter not installed
-    if importlib.util.find_spec("tree_sitter_lua") is None:
-        return False  # pragma: no cover - tree-sitter-lua not installed
-    return True
+def _is_lua_tree_sitter_available_legacy() -> bool:  # pragma: no cover - replaced by TreeSitterAnalyzer
+    """Legacy availability check -- replaced by TreeSitterAnalyzer._check_grammar_available."""
+    pass
 
 
 @dataclass
@@ -712,113 +715,140 @@ def _find_module_symbol(symbols: list[Symbol], method_name: str) -> Symbol | Non
     return None
 
 
+class LuaAnalyzer(TreeSitterAnalyzer):
+    """Lua analyzer using tree-sitter-lua.
+
+    Overrides ``analyze()`` because Lua uses a custom two-pass structure with
+    per-file FileAnalysis, require-alias resolution, module-path mapping, and
+    type-based method call resolution.
+    """
+
+    lang = "lua"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.lua"]
+    grammar_module = "tree_sitter_lua"
+
+    def analyze(
+        self,
+        repo_root: Path,
+        max_files: Optional[int] = None,
+    ) -> AnalysisResult:
+        """Run Lua analysis with two-pass symbol/edge extraction."""
+        start_time = time.time()
+
+        # Create analysis run for provenance
+        run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
+
+        if not self._check_grammar_available():
+            skip_reason = (
+                "Lua analysis skipped: requires tree-sitter-lua "
+                "(pip install tree-sitter-lua)"
+            )
+            warnings.warn(skip_reason)
+            run.duration_ms = int((time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
+                skipped=True,
+                skip_reason=skip_reason,
+            )
+
+        import tree_sitter
+        import tree_sitter_lua
+
+        LUA_LANGUAGE = tree_sitter.Language(tree_sitter_lua.language())
+        parser = tree_sitter.Parser(LUA_LANGUAGE)
+        run_id = run.execution_id
+
+        # Pass 1: Parse all files and extract symbols
+        file_analyses: list[FileAnalysis] = []
+        all_symbols: list[Symbol] = []
+        global_symbol_registry: dict[str, Symbol] = {}
+        files_analyzed = 0
+
+        for lua_file in find_lua_files(repo_root):
+            try:
+                source = lua_file.read_bytes()
+            except OSError:  # pragma: no cover
+                continue
+
+            tree = parser.parse(source)
+            if tree.root_node is None:  # pragma: no cover - parser always returns root
+                continue
+
+            rel_path = str(lua_file.relative_to(repo_root))
+
+            # Create file symbol
+            file_symbol = Symbol(
+                id=make_file_id("lua", rel_path),
+                name="file",
+                kind="file",
+                language="lua",
+                path=rel_path,
+                span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+                origin=PASS_ID,
+                origin_run_id=run_id,
+            )
+            all_symbols.append(file_symbol)
+
+            # Extract symbols
+            file_symbols = _extract_symbols_from_file(tree, source, rel_path, run_id)
+            all_symbols.extend(file_symbols)
+
+            # Register symbols globally (for cross-file resolution)
+            for sym in file_symbols:
+                global_symbol_registry[sym.name] = sym
+
+            file_analyses.append(FileAnalysis(
+                path=rel_path,
+                source=source,
+                tree=tree,
+                symbols=file_symbols,
+            ))
+            files_analyzed += 1
+
+        # Build module path -> symbols mapping for require-alias resolution.
+        # Maps each possible module path (e.g., "foo.bar") to the symbols
+        # defined in its file (e.g., foo/bar.lua).
+        module_symbols: dict[str, list[Symbol]] = {}
+        for fa in file_analyses:
+            for mod_path in _build_module_path(fa.path):
+                module_symbols[mod_path] = fa.symbols
+
+        # Pass 2: Extract edges with cross-file resolution
+        all_edges: list[Edge] = []
+        resolver = NameResolver(global_symbol_registry)
+
+        for fa in file_analyses:
+            edges = _extract_edges_from_file(
+                fa.tree,  # type: ignore
+                fa.source,
+                fa.path,
+                fa.symbols,
+                resolver,
+                run_id,
+                module_symbols=module_symbols,
+            )
+            all_edges.extend(edges)
+
+        run.files_analyzed = files_analyzed
+
+        return AnalysisResult(
+            symbols=all_symbols,
+            edges=all_edges,
+            run=run,
+        )
+
+
+_analyzer = LuaAnalyzer()
+
+
+def is_lua_tree_sitter_available() -> bool:
+    """Check if tree-sitter with Lua grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("lua")
 def analyze_lua(repo_root: Path) -> AnalysisResult:
-    """Analyze Lua files in a repository.
-
-    Returns a AnalysisResult with symbols, edges, and provenance.
-    If tree-sitter-lua is not available, returns a skipped result.
-    """
-    start_time = time.time()
-
-    # Create analysis run for provenance
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    if not is_lua_tree_sitter_available():
-        skip_reason = (
-            "Lua analysis skipped: requires tree-sitter-lua "
-            "(pip install tree-sitter-lua)"
-        )
-        warnings.warn(skip_reason)
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return AnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=skip_reason,
-        )
-
-    import tree_sitter
-    import tree_sitter_lua
-
-    LUA_LANGUAGE = tree_sitter.Language(tree_sitter_lua.language())
-    parser = tree_sitter.Parser(LUA_LANGUAGE)
-    run_id = run.execution_id
-
-    # Pass 1: Parse all files and extract symbols
-    file_analyses: list[FileAnalysis] = []
-    all_symbols: list[Symbol] = []
-    global_symbol_registry: dict[str, Symbol] = {}
-    files_analyzed = 0
-
-    for lua_file in find_lua_files(repo_root):
-        try:
-            source = lua_file.read_bytes()
-        except OSError:  # pragma: no cover
-            continue
-
-        tree = parser.parse(source)
-        if tree.root_node is None:  # pragma: no cover - parser always returns root
-            continue
-
-        rel_path = str(lua_file.relative_to(repo_root))
-
-        # Create file symbol
-        file_symbol = Symbol(
-            id=make_file_id("lua", rel_path),
-            name="file",
-            kind="file",
-            language="lua",
-            path=rel_path,
-            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin=PASS_ID,
-            origin_run_id=run_id,
-        )
-        all_symbols.append(file_symbol)
-
-        # Extract symbols
-        file_symbols = _extract_symbols_from_file(tree, source, rel_path, run_id)
-        all_symbols.extend(file_symbols)
-
-        # Register symbols globally (for cross-file resolution)
-        for sym in file_symbols:
-            global_symbol_registry[sym.name] = sym
-
-        file_analyses.append(FileAnalysis(
-            path=rel_path,
-            source=source,
-            tree=tree,
-            symbols=file_symbols,
-        ))
-        files_analyzed += 1
-
-    # Build module path → symbols mapping for require-alias resolution.
-    # Maps each possible module path (e.g., "foo.bar") to the symbols
-    # defined in its file (e.g., foo/bar.lua).
-    module_symbols: dict[str, list[Symbol]] = {}
-    for fa in file_analyses:
-        for mod_path in _build_module_path(fa.path):
-            module_symbols[mod_path] = fa.symbols
-
-    # Pass 2: Extract edges with cross-file resolution
-    all_edges: list[Edge] = []
-    resolver = NameResolver(global_symbol_registry)
-
-    for fa in file_analyses:
-        edges = _extract_edges_from_file(
-            fa.tree,  # type: ignore
-            fa.source,
-            fa.path,
-            fa.symbols,
-            resolver,
-            run_id,
-            module_symbols=module_symbols,
-        )
-        all_edges.extend(edges)
-
-    run.files_analyzed = files_analyzed
-
-    return AnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    """Analyze Lua files in a repository."""
+    return _analyzer.analyze(repo_root)

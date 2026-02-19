@@ -39,7 +39,7 @@ class TestIsPuppetTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(puppet_module, "is_puppet_tree_sitter_available", return_value=False):
+        with patch.object(puppet_module._analyzer, "_check_grammar_available", return_value=False):
             assert puppet_module.is_puppet_tree_sitter_available() is False
 
 class TestAnalyzePuppet:
@@ -47,8 +47,8 @@ class TestAnalyzePuppet:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_puppet_file(tmp_path, "init.pp", "class base {}")
-        with patch.object(puppet_module, "is_puppet_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Puppet analysis skipped"):
+        with patch.object(puppet_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="puppet analysis skipped"):
                 result = puppet_module.analyze_puppet(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason

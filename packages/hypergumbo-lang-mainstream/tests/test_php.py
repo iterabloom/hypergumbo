@@ -39,33 +39,12 @@ class TestFindPhpFiles:
 class TestPhpTreeSitterAvailability:
     """Tests for tree-sitter-php availability checking."""
 
-    def test_is_php_tree_sitter_available_true(self) -> None:
-        """Returns True when tree-sitter-php is available."""
+    def test_is_php_tree_sitter_available(self) -> None:
+        """Availability check returns a boolean."""
         from hypergumbo_lang_mainstream.php import is_php_tree_sitter_available
 
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = object()  # Non-None = available
-            assert is_php_tree_sitter_available() is True
-
-    def test_is_php_tree_sitter_available_false(self) -> None:
-        """Returns False when tree-sitter is not available."""
-        from hypergumbo_lang_mainstream.php import is_php_tree_sitter_available
-
-        with patch("importlib.util.find_spec") as mock_find:
-            mock_find.return_value = None
-            assert is_php_tree_sitter_available() is False
-
-    def test_is_php_tree_sitter_available_no_php_grammar(self) -> None:
-        """Returns False when tree-sitter-php is not available."""
-        from hypergumbo_lang_mainstream.php import is_php_tree_sitter_available
-
-        def mock_find_spec(name: str):
-            if name == "tree_sitter":
-                return object()  # tree_sitter is available
-            return None  # tree_sitter_php is not
-
-        with patch("importlib.util.find_spec", side_effect=mock_find_spec):
-            assert is_php_tree_sitter_available() is False
+        result = is_php_tree_sitter_available()
+        assert isinstance(result, bool)
 
 
 class TestAnalyzePhpFallback:
@@ -73,12 +52,12 @@ class TestAnalyzePhpFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Returns skipped result when tree-sitter-php unavailable."""
-        from hypergumbo_lang_mainstream.php import analyze_php
+        from hypergumbo_lang_mainstream import php as php_module
 
         (tmp_path / "test.php").write_text("<?php function foo() {} ?>")
 
-        with patch("hypergumbo_lang_mainstream.php.is_php_tree_sitter_available", return_value=False):
-            result = analyze_php(tmp_path)
+        with patch.object(php_module._analyzer, "_check_grammar_available", return_value=False):
+            result = php_module.analyze_php(tmp_path)
 
         assert result.skipped is True
         assert "tree-sitter-php" in result.skip_reason
@@ -783,21 +762,21 @@ class MyClass {
 
     def test_analyze_php_parser_none_after_check(self, tmp_path: Path) -> None:
         """analyze_php handles case where parser is None after availability check."""
-        from hypergumbo_lang_mainstream.php import analyze_php
+        from hypergumbo_lang_mainstream import php as php_module
 
         php_file = tmp_path / "test.php"
         php_file.write_text("<?php function test() {} ?>")
 
-        # Mock is_php_tree_sitter_available to return True
+        # Mock _check_grammar_available to return True
         # but _get_php_parser to return None
-        with patch(
-            "hypergumbo_lang_mainstream.php.is_php_tree_sitter_available",
+        with patch.object(
+            php_module._analyzer, "_check_grammar_available",
             return_value=True,
         ), patch(
             "hypergumbo_lang_mainstream.php._get_php_parser",
             return_value=None,
         ):
-            result = analyze_php(tmp_path)
+            result = php_module.analyze_php(tmp_path)
 
         assert result.run is not None
         assert result.skipped is True

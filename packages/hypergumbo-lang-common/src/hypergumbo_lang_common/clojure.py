@@ -16,16 +16,17 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-1. Check if tree-sitter-language-pack (clojure) is available
-2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
-   - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls and resolve against global symbol registry
-4. Detect function calls and require statements
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Parse all files, extract all symbols into global registry
+2. Pass 2: Detect calls and resolve against global symbol registry
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Clojure-specific
+extraction logic.
 
 Why This Design
 ---------------
-- Optional dependency keeps base install lightweight
+- TreeSitterAnalyzer eliminates boilerplate orchestration code
 - Uses tree-sitter-language-pack for grammar (clojure)
 - Two-pass allows cross-file call resolution
 - Same pattern as other tree-sitter analyzers for consistency
@@ -42,21 +43,27 @@ Clojure-Specific Considerations
 """
 from __future__ import annotations
 
-import importlib.util
-import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
+from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = "clojure-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -67,32 +74,6 @@ def find_clojure_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.clj", "*.cljs", "*.cljc", "*.edn"])
 
 
-def is_clojure_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Clojure grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover - tree-sitter not installed
-    if importlib.util.find_spec("tree_sitter_language_pack") is None:
-        return False  # pragma: no cover - language pack not installed
-    try:
-        from tree_sitter_language_pack import get_parser
-        get_parser("clojure")
-        return True
-    except Exception:  # pragma: no cover - clojure not supported
-        return False
-
-
-@dataclass
-class FileAnalysis:
-    """Intermediate analysis result for a single file.
-
-    Stored during pass 1 and processed in pass 2 for cross-file resolution.
-    """
-
-    path: str
-    source: bytes
-    tree: object  # tree_sitter.Tree
-    symbols: list[Symbol]
-    require_aliases: dict[str, str] = field(default_factory=dict)
 
 
 def _get_sym_name(node: "tree_sitter.Node", source: bytes) -> str:
@@ -432,112 +413,75 @@ def _extract_edges_from_file(
     return edges
 
 
+class ClojureAnalyzer(TreeSitterAnalyzer):
+    """Clojure language analyzer using tree-sitter-language-pack.
+
+    Handles .clj, .cljs, .cljc, and .edn files. EDN files are discovered
+    but skipped during symbol extraction (they are data files). The analyzer
+    uses create_file_symbols=True so the base class creates file-level symbols
+    automatically.
+    """
+
+    lang = "clojure"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.clj", "*.cljs", "*.cljc", "*.edn"]
+    language_pack_name = "clojure"
+    create_file_symbols = True
+
+    def _find_source_files(self, repo_root: Path) -> Iterator[Path]:
+        """Yield Clojure source files, skipping .edn data files."""
+        for path in find_files(repo_root, self.file_patterns):
+            if path.suffix != ".edn":
+                yield path
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract symbols from a Clojure file."""
+        analysis = FileAnalysis()
+        symbols = _extract_symbols_from_file(tree, source, rel_path, run.execution_id)
+        analysis.symbols = symbols
+        for sym in symbols:
+            analysis.symbol_by_name[sym.name] = sym
+        return analysis
+
+    def get_import_aliases(
+        self, tree: "tree_sitter.Tree", source: bytes,
+    ) -> dict[str, str]:
+        """Extract require aliases for disambiguation."""
+        return _extract_require_aliases(tree, source)
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract call and import edges from a Clojure file."""
+        file_symbols = list(local_symbols.values())
+        return _extract_edges_from_file(
+            tree, source, rel_path, file_symbols,
+            resolver, run.execution_id,
+            require_aliases=import_aliases,
+        )
+
+
+_analyzer = ClojureAnalyzer()
+
+
+def is_clojure_tree_sitter_available() -> bool:
+    """Check if tree-sitter with Clojure grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("clojure")
 def analyze_clojure(repo_root: Path) -> AnalysisResult:
     """Analyze Clojure files in a repository.
 
-    Returns a AnalysisResult with symbols, edges, and provenance.
+    Returns an AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-language-pack is not available, returns a skipped result.
     """
-    start_time = time.time()
-
-    # Create analysis run for provenance
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    if not is_clojure_tree_sitter_available():  # pragma: no cover - tested via mock
-        skip_reason = (
-            "Clojure analysis skipped: requires tree-sitter-language-pack "
-            "(pip install tree-sitter-language-pack)"
-        )
-        warnings.warn(skip_reason)
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return AnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=skip_reason,
-        )
-
-    from tree_sitter_language_pack import get_parser
-
-    parser = get_parser("clojure")
-    run_id = run.execution_id
-
-    # Pass 1: Parse all files and extract symbols
-    file_analyses: list[FileAnalysis] = []
-    all_symbols: list[Symbol] = []
-    global_symbol_registry: dict[str, Symbol] = {}
-    files_analyzed = 0
-
-    for clj_file in find_clojure_files(repo_root):
-        # Skip .edn files for symbol extraction (data files only)
-        if clj_file.suffix == ".edn":
-            continue
-
-        try:
-            source = clj_file.read_bytes()
-        except OSError:  # pragma: no cover
-            continue
-
-        tree = parser.parse(source)
-        if tree.root_node is None:  # pragma: no cover - parser always returns root
-            continue
-
-        rel_path = str(clj_file.relative_to(repo_root))
-
-        # Create file symbol
-        file_symbol = Symbol(
-            id=make_file_id("clojure", rel_path),
-            name="file",
-            kind="file",
-            language="clojure",
-            path=rel_path,
-            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin=PASS_ID,
-            origin_run_id=run_id,
-        )
-        all_symbols.append(file_symbol)
-
-        # Extract symbols
-        file_symbols = _extract_symbols_from_file(tree, source, rel_path, run_id)
-        all_symbols.extend(file_symbols)
-
-        # Extract require aliases for disambiguation
-        require_aliases = _extract_require_aliases(tree, source)
-
-        # Register symbols globally (for cross-file resolution)
-        for sym in file_symbols:
-            global_symbol_registry[sym.name] = sym
-
-        file_analyses.append(FileAnalysis(
-            path=rel_path,
-            source=source,
-            tree=tree,
-            symbols=file_symbols,
-            require_aliases=require_aliases,
-        ))
-        files_analyzed += 1
-
-    # Pass 2: Extract edges with cross-file resolution
-    resolver = NameResolver(global_symbol_registry)
-    all_edges: list[Edge] = []
-
-    for fa in file_analyses:
-        edges = _extract_edges_from_file(
-            fa.tree,  # type: ignore
-            fa.source,
-            fa.path,
-            fa.symbols,
-            resolver,
-            run_id,
-            require_aliases=fa.require_aliases,
-        )
-        all_edges.extend(edges)
-
-    run.files_analyzed = files_analyzed
-    run.duration_ms = int((time.time() - start_time) * 1000)
-
-    return AnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

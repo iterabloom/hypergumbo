@@ -33,17 +33,22 @@ Why This Design
 """
 from __future__ import annotations
 
-import importlib.util
-import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis as _BaseFileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -57,14 +62,6 @@ def find_csharp_files(repo_root: Path) -> Iterator[Path]:
     """Yield all C# files in the repository."""
     yield from find_files(repo_root, ["*.cs"])
 
-
-def is_csharp_tree_sitter_available() -> bool:
-    """Check if tree-sitter with C# grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False
-    if importlib.util.find_spec("tree_sitter_c_sharp") is None:
-        return False
-    return True
 
 
 def _extract_annotations(
@@ -395,13 +392,8 @@ def _extract_method_name(node: "tree_sitter.Node", source: bytes) -> Optional[st
     return None  # pragma: no cover - defensive
 
 
-@dataclass
-class FileAnalysis:
-    """Intermediate analysis result for a single file."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
-    using_aliases: dict[str, str] = field(default_factory=dict)
+# Use the base FileAnalysis; using_aliases maps to import_aliases
+FileAnalysis = _BaseFileAnalysis
 
 
 def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -529,7 +521,7 @@ def _extract_symbols_from_file(
     # Extract using aliases for disambiguation
     using_aliases = _extract_using_aliases(tree, source)
 
-    analysis = FileAnalysis(using_aliases=using_aliases)
+    analysis = FileAnalysis(import_aliases=using_aliases)
 
     def extract_name_from_declaration(node: "tree_sitter.Node") -> Optional[str]:
         """Extract the identifier name from a declaration node."""
@@ -1147,6 +1139,123 @@ def _extract_attribute_edges(
     return edges
 
 
+class CSharpAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based C# analyzer.
+
+    Uses tree-sitter-c-sharp to parse C# files and extract classes, interfaces,
+    structs, enums, methods, constructors, properties, call edges, import edges,
+    instantiation edges, and attribute (decorated_by) edges.
+
+    Overrides ``analyze`` for two reasons:
+    1. ``_extract_symbols_from_file`` does its own file reading/parsing
+    2. ``_extract_attribute_edges`` post-processing requires all symbols+global_symbols
+    """
+
+    lang = "csharp"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.cs"]
+    grammar_module = "tree_sitter_c_sharp"
+
+    def register_symbol(
+        self,
+        symbol: Symbol,
+        global_symbols: dict,
+    ) -> None:
+        """Register symbol with both short and full names for cross-file resolution."""
+        short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
+        global_symbols[short_name] = symbol
+        global_symbols[symbol.name] = symbol
+
+    def analyze(
+        self,
+        repo_root: Path,
+        max_files: Optional[int] = None,
+    ) -> AnalysisResult:
+        """Run C# analysis with attribute edge post-processing.
+
+        The C# analyzer uses ``_extract_symbols_from_file`` which reads files
+        internally, and adds an ``_extract_attribute_edges`` post-processing step.
+        """
+        import time as _time
+        import warnings as _warnings
+
+        start_time = _time.time()
+        run = AnalysisRun.create(pass_id=self.pass_id, version=self.pass_version)
+
+        if not self._check_grammar_available():
+            _warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            run.duration_ms = int((_time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        parser = self._create_parser()
+
+        # Pass 1: Extract all symbols
+        file_analyses: dict[Path, FileAnalysis] = {}
+        files_skipped = 0
+
+        for cs_file in find_csharp_files(repo_root):
+            if max_files is not None and len(file_analyses) >= max_files:
+                break  # pragma: no cover
+
+            analysis = _extract_symbols_from_file(cs_file, parser, run)
+            if analysis.symbols:
+                file_analyses[cs_file] = analysis
+            else:
+                files_skipped += 1
+
+        # Build global symbol registry
+        global_symbols: dict[str, Symbol] = {}
+        for analysis in file_analyses.values():
+            for symbol in analysis.symbols:
+                self.register_symbol(symbol, global_symbols)
+
+        # Pass 2: Extract edges
+        resolver = NameResolver(global_symbols)
+        all_symbols: list[Symbol] = []
+        all_edges: list[Edge] = []
+
+        for cs_file, analysis in file_analyses.items():
+            all_symbols.extend(analysis.symbols)
+
+            edges = _extract_edges_from_file(
+                cs_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
+                using_aliases=analysis.import_aliases,
+            )
+            all_edges.extend(edges)
+
+        # Extract attribute edges (INV-012: annotations metadata -> decorated_by edges)
+        attribute_edges = _extract_attribute_edges(all_symbols, global_symbols, run)
+        all_edges.extend(attribute_edges)
+
+        run.files_analyzed = len(file_analyses)
+        run.files_skipped = files_skipped
+        run.duration_ms = int((_time.time() - start_time) * 1000)
+
+        return AnalysisResult(
+            symbols=all_symbols,
+            edges=all_edges,
+            run=run,
+        )
+
+
+_analyzer = CSharpAnalyzer()
+
+
+def is_csharp_tree_sitter_available() -> bool:
+    """Check if tree-sitter with C# grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("csharp")
 def analyze_csharp(repo_root: Path) -> AnalysisResult:
     """Analyze all C# files in a repository.
@@ -1154,78 +1263,4 @@ def analyze_csharp(repo_root: Path) -> AnalysisResult:
     Returns a AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-c-sharp is not available, returns a skipped result.
     """
-    if not is_csharp_tree_sitter_available():
-        warnings.warn(
-            "tree-sitter-c-sharp not available. Install with: pip install hypergumbo[csharp]",
-            stacklevel=2,
-        )
-        return AnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-c-sharp not available",
-        )
-
-    start_time = time.time()
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    # Import tree-sitter-c-sharp
-    try:
-        import tree_sitter_c_sharp
-        import tree_sitter
-
-        lang = tree_sitter.Language(tree_sitter_c_sharp.language())
-        parser = tree_sitter.Parser(lang)
-    except Exception as e:  # pragma: no cover - parser load failure hard to trigger
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return AnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=f"Failed to load C# parser: {e}",
-        )
-
-    # Pass 1: Extract all symbols
-    file_analyses: dict[Path, FileAnalysis] = {}
-    files_skipped = 0
-
-    for cs_file in find_csharp_files(repo_root):
-        analysis = _extract_symbols_from_file(cs_file, parser, run)
-        if analysis.symbols:
-            file_analyses[cs_file] = analysis
-        else:
-            files_skipped += 1
-
-    # Build global symbol registry
-    global_symbols: dict[str, Symbol] = {}
-    for analysis in file_analyses.values():
-        for symbol in analysis.symbols:
-            # Store by short name for cross-file resolution
-            short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
-            global_symbols[short_name] = symbol
-            global_symbols[symbol.name] = symbol
-
-    # Pass 2: Extract edges
-    resolver = NameResolver(global_symbols)
-    all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
-
-    for cs_file, analysis in file_analyses.items():
-        all_symbols.extend(analysis.symbols)
-
-        edges = _extract_edges_from_file(
-            cs_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
-            using_aliases=analysis.using_aliases
-        )
-        all_edges.extend(edges)
-
-    # Extract attribute edges (INV-012: annotations metadata -> decorated_by edges)
-    attribute_edges = _extract_attribute_edges(all_symbols, global_symbols, run)
-    all_edges.extend(attribute_edges)
-
-    run.files_analyzed = len(file_analyses)
-    run.files_skipped = files_skipped
-    run.duration_ms = int((time.time() - start_time) * 1000)
-
-    return AnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

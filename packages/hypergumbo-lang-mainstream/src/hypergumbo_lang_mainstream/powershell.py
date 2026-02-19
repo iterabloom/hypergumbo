@@ -36,14 +36,20 @@ PowerShell-Specific Considerations
 """
 from __future__ import annotations
 
-import importlib.util
-import time
 import uuid
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -59,20 +65,6 @@ PASS_VERSION = "hypergumbo-0.1.0"
 def find_powershell_files(repo_root: Path) -> Iterator[Path]:
     """Yield all PowerShell files in the repository."""
     yield from find_files(repo_root, ["*.ps1", "*.psm1", "*.psd1"])
-
-
-def is_powershell_tree_sitter_available() -> bool:
-    """Check if tree-sitter with PowerShell grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover - tree-sitter not installed
-    if importlib.util.find_spec("tree_sitter_language_pack") is None:
-        return False  # pragma: no cover - language pack not installed
-    try:
-        from tree_sitter_language_pack import get_language
-        get_language("powershell")
-        return True
-    except Exception:  # pragma: no cover - powershell grammar not available
-        return False
 
 
 def _make_edge_id() -> str:
@@ -325,6 +317,73 @@ def _extract_powershell_edges(
                         ))
 
 
+class PowerShellAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based PowerShell analyzer.
+
+    Uses tree-sitter-language-pack for the PowerShell grammar.
+    Two-pass analysis: Pass 1 extracts function/filter/workflow symbols,
+    Pass 2 resolves command calls and module imports into edges.
+    """
+
+    lang = "powershell"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.ps1", "*.psm1", "*.psd1"]
+    language_pack_name = "powershell"
+
+    def extract_symbols_from_file(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+        file_path: Path,
+        rel_path: str,
+        run: AnalysisRun,
+    ) -> FileAnalysis:
+        """Extract function, filter, and workflow symbols from a PowerShell file."""
+        analysis = FileAnalysis()
+        symbol_registry: dict[str, Symbol] = {}
+
+        _extract_powershell_symbols(
+            tree, source, rel_path, run.execution_id,
+            analysis.symbols, symbol_registry,
+        )
+
+        # Populate symbol_by_name for edge resolution (functions/filters/workflows)
+        analysis.symbol_by_name = {
+            s.name: s for s in analysis.symbols
+            if s.kind in ("function", "filter", "workflow")
+        }
+
+        return analysis
+
+    def extract_edges_from_file(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+        file_path: Path,
+        rel_path: str,
+        local_symbols: dict[str, Symbol],
+        global_symbols: dict,
+        run: AnalysisRun,
+        import_aliases: dict[str, str],
+        resolver: NameResolver,
+    ) -> list[Edge]:
+        """Extract import and call edges from a PowerShell file."""
+        edges: list[Edge] = []
+        _extract_powershell_edges(
+            tree, source, rel_path, edges, local_symbols, resolver,
+        )
+        return edges
+
+
+_analyzer = PowerShellAnalyzer()
+
+
+def is_powershell_tree_sitter_available() -> bool:
+    """Check if tree-sitter with PowerShell grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("powershell")
 def analyze_powershell(repo_root: Path) -> AnalysisResult:
     """Analyze all PowerShell files in the repository.
@@ -339,65 +398,4 @@ def analyze_powershell(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult with symbols and edges found.
     """
-    if not is_powershell_tree_sitter_available():
-        warnings.warn("PowerShell analysis skipped: tree-sitter-language-pack not available")
-        return AnalysisResult(skipped=True, skip_reason="tree-sitter-language-pack not available")
-
-    from tree_sitter_language_pack import get_parser
-
-    parser = get_parser("powershell")
-    run_id = f"uuid:{uuid.uuid4()}"
-    start_time = time.time()
-    files_analyzed = 0
-
-    all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
-
-    # Global symbol registry for cross-file resolution
-    global_symbol_registry: dict[str, Symbol] = {}
-
-    # Store parsed files for pass 2
-    parsed_files: list[tuple[str, bytes, object]] = []
-
-    # Pass 1: Extract symbols from all files
-    for file_path in find_powershell_files(repo_root):
-        try:
-            source = file_path.read_bytes()
-            tree = parser.parse(source)
-
-            rel_path = str(file_path.relative_to(repo_root))
-            _extract_powershell_symbols(tree, source, rel_path, run_id, all_symbols, global_symbol_registry)
-
-            # Store for pass 2
-            parsed_files.append((rel_path, source, tree))
-            files_analyzed += 1
-
-        except (OSError, IOError):  # pragma: no cover - defensive
-            continue  # Skip files we can't read
-
-    # Create resolver from global registry
-    resolver = NameResolver(global_symbol_registry)
-
-    # Pass 2: Extract edges using resolver
-    for rel_path, source, tree in parsed_files:
-        # Build local symbol map for this file (functions/filters/workflows)
-        local_symbols = {s.name: s for s in all_symbols
-                         if s.path == rel_path and s.kind in ("function", "filter", "workflow")}
-
-        _extract_powershell_edges(tree, source, rel_path, all_edges, local_symbols, resolver)  # type: ignore
-
-    duration_ms = int((time.time() - start_time) * 1000)
-
-    run = AnalysisRun(
-        execution_id=run_id,
-        pass_id=PASS_ID,
-        version=PASS_VERSION,
-        files_analyzed=files_analyzed,
-        duration_ms=duration_ms,
-    )
-
-    return AnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

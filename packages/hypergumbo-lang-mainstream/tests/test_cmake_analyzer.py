@@ -358,3 +358,17 @@ endmacro()
         macros = [s for s in result.symbols if s.kind == "macro" and s.name == "single_arg_macro"]
         assert len(macros) == 1
         assert macros[0].signature == "(ARG)"
+
+
+def test_skipped_when_grammar_unavailable(tmp_path):
+    """Returns skipped result when grammar is unavailable."""
+    from unittest.mock import patch
+    import pytest
+    import hypergumbo_lang_mainstream.cmake as module
+
+    with patch.object(module._analyzer, "_check_grammar_available", return_value=False):
+        with pytest.warns(UserWarning, match="cmake analysis skipped"):
+            result = module.analyze_cmake_files(tmp_path)
+
+    assert result.skipped is True
+    assert "not available" in result.skip_reason

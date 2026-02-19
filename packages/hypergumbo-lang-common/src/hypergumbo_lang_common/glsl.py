@@ -12,36 +12,45 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-1. Check if tree-sitter-glsl is available
-2. If not available, return skipped result (not an error)
-3. Parse all .vert, .frag, .glsl, .geom, .tesc, .tese, .comp files
-4. Extract functions, structs, uniforms, in/out variables
-5. Create calls edges for function invocations
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Extract functions, structs, uniforms, in/out variables
+2. Pass 2: Extract call edges using NameResolver
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the GLSL-specific extraction
+logic.
 
 Why This Design
 ---------------
+- TreeSitterAnalyzer eliminates boilerplate orchestration code
 - Optional dependency keeps base install lightweight
-- Uses tree-sitter-glsl package for grammar
+- Uses tree-sitter-glsl package for grammar (grammar_module)
 - GLSL-specific: shaders, uniforms, in/out are first-class
 - Useful for graphics programming analysis
 """
 from __future__ import annotations
 
 import hashlib
-import importlib.util
-import time
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_symbol_id, node_text
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = "glsl-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -53,15 +62,6 @@ GLSL_EXTENSIONS = ["*.vert", "*.frag", "*.glsl", "*.geom", "*.tesc", "*.tese", "
 def find_glsl_files(repo_root: Path) -> Iterator[Path]:
     """Yield all GLSL files in the repository."""
     yield from find_files(repo_root, GLSL_EXTENSIONS)
-
-
-def is_glsl_tree_sitter_available() -> bool:
-    """Check if tree-sitter with GLSL grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover
-    if importlib.util.find_spec("tree_sitter_glsl") is None:
-        return False  # pragma: no cover
-    return True
 
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
@@ -143,6 +143,7 @@ def _extract_glsl_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
     rel_path: str,
+    run_id: str,
     symbols: list[Symbol],
     local_symbols: dict[str, Symbol],
 ) -> None:
@@ -152,6 +153,7 @@ def _extract_glsl_symbols(
         tree: Tree-sitter tree to process
         source: Source file bytes
         rel_path: Relative path to file
+        run_id: The execution ID for provenance
         symbols: List to append symbols to
         local_symbols: Dict to register local function symbols for caller lookup
     """
@@ -186,6 +188,7 @@ def _extract_glsl_symbols(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run_id,
                     signature=_extract_glsl_signature(node, source),
                 )
                 symbols.append(sym)
@@ -216,6 +219,7 @@ def _extract_glsl_symbols(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run_id,
                 )
                 symbols.append(sym)
 
@@ -262,6 +266,7 @@ def _extract_glsl_symbols(
                             end_col=node.end_point[1],
                         ),
                         origin=PASS_ID,
+                        origin_run_id=run_id,
                     )
                     symbols.append(sym)
 
@@ -271,7 +276,7 @@ def _extract_glsl_edges(
     source: bytes,
     local_symbols: dict[str, Symbol],
     edges: list[Edge],
-    resolver: NameResolver,
+    resolver: "NameResolver",
 ) -> None:
     """Extract call edges from GLSL AST tree (pass 2).
 
@@ -311,91 +316,61 @@ def _extract_glsl_edges(
                 edges.append(edge)
 
 
-@register_analyzer("glsl")
-def analyze_glsl_files(repo_root: Path) -> AnalysisResult:
-    """Analyze GLSL files in the repository.
+class GlslAnalyzer(TreeSitterAnalyzer):
+    """GLSL language analyzer using tree-sitter-glsl."""
 
-    Uses two-pass analysis for cross-file call resolution.
+    lang = "glsl"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = GLSL_EXTENSIONS
+    grammar_module = "tree_sitter_glsl"
+    create_file_symbols = False
 
-    Args:
-        repo_root: Path to the repository root
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract functions, structs, uniforms, in/out from a GLSL file."""
+        analysis = FileAnalysis()
 
-    Returns:
-        AnalysisResult with symbols and edges
-    """
-    if not is_glsl_tree_sitter_available():  # pragma: no cover
-        return AnalysisResult(  # pragma: no cover
-            skipped=True,  # pragma: no cover
-            skip_reason="tree-sitter-glsl not installed (pip install tree-sitter-glsl)",  # pragma: no cover
-        )  # pragma: no cover
-
-    import tree_sitter
-    import tree_sitter_glsl
-
-    start_time = time.time()
-    files_analyzed = 0
-    files_skipped = 0
-    warnings_list: list[str] = []
-
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-
-    # Create parser
-    try:
-        parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_glsl.language()))
-    except Exception as e:  # pragma: no cover
-        warnings.warn(f"Failed to initialize GLSL parser: {e}")
-        return AnalysisResult(
-            skipped=True,
-            skip_reason=f"Failed to initialize parser: {e}",
+        _extract_glsl_symbols(
+            tree, source, rel_path, run.execution_id,
+            analysis.symbols, analysis.symbol_by_name,
         )
 
-    glsl_files = list(find_glsl_files(repo_root))
+        return analysis
 
-    # Collect file data for two-pass processing
-    file_data: list[tuple[Path, bytes, "tree_sitter.Tree"]] = []
-    file_local_symbols: dict[str, dict[str, Symbol]] = {}
+    def register_symbol(
+        self, symbol: Symbol, global_symbols: dict,
+    ) -> None:
+        """Register symbol globally; functions indexed by lowercase name."""
+        if symbol.kind == "function":
+            global_symbols[symbol.name.lower()] = symbol
+        else:
+            global_symbols[symbol.name] = symbol
 
-    # Pass 1: Extract all symbols from all files
-    for glsl_path in glsl_files:
-        try:
-            rel_path = str(glsl_path.relative_to(repo_root))
-            source = glsl_path.read_bytes()
-            tree = parser.parse(source)
-            files_analyzed += 1
-            file_data.append((glsl_path, source, tree))
-
-            local_symbols: dict[str, Symbol] = {}
-            _extract_glsl_symbols(tree, source, rel_path, symbols, local_symbols)
-            file_local_symbols[rel_path] = local_symbols
-
-        except Exception as e:  # pragma: no cover
-            files_skipped += 1  # pragma: no cover
-            warnings_list.append(f"Failed to parse {glsl_path}: {e}")  # pragma: no cover
-
-    # Build resolver from all function symbols
-    global_symbols: dict[str, Symbol] = {}
-    for sym in symbols:
-        if sym.kind == "function":
-            global_symbols[sym.name.lower()] = sym
-    resolver = NameResolver(global_symbols)
-
-    # Pass 2: Extract call edges using resolver
-    for glsl_path, source, tree in file_data:
-        rel_path = str(glsl_path.relative_to(repo_root))
-        local_symbols = file_local_symbols.get(rel_path, {})
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract call edges from a GLSL file."""
+        edges: list[Edge] = []
         _extract_glsl_edges(tree, source, local_symbols, edges, resolver)
+        return edges
 
-    duration_ms = int((time.time() - start_time) * 1000)
 
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-    run.files_analyzed = files_analyzed
-    run.files_skipped = files_skipped
-    run.duration_ms = duration_ms
-    run.warnings = warnings_list
+_analyzer = GlslAnalyzer()
 
-    return AnalysisResult(
-        symbols=symbols,
-        edges=edges,
-        run=run,
-    )
+
+def is_glsl_tree_sitter_available() -> bool:
+    """Check if tree-sitter with GLSL grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
+@register_analyzer("glsl")
+def analyze_glsl_files(repo_root: Path) -> AnalysisResult:
+    """Analyze GLSL files in the repository."""
+    return _analyzer.analyze(repo_root)

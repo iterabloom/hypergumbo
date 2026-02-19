@@ -21,7 +21,7 @@ from unittest.mock import patch
 import pytest
 
 from hypergumbo_lang_common import fsharp as fsharp_module
-from hypergumbo_lang_common.fsharp import analyze_fsharp
+from hypergumbo_lang_common.fsharp import analyze_fsharp, is_fsharp_tree_sitter_available
 
 
 def make_fsharp_file(tmp: Path, name: str, content: str) -> Path:
@@ -272,15 +272,15 @@ let quadruple x =
         make_fsharp_file(tmp_path, "Test.fs", "module Test")
 
         with patch.object(
-            fsharp_module,
-            "is_fsharp_tree_sitter_available",
+            fsharp_module._analyzer,
+            "_check_grammar_available",
             return_value=False,
         ):
-            with pytest.warns(UserWarning, match="F# analysis skipped"):
+            with pytest.warns(UserWarning, match="fsharp analysis skipped"):
                 result = fsharp_module.analyze_fsharp(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-language-pack" in result.skip_reason
+        assert "not available" in result.skip_reason
 
 
 class TestFsharpSignatureExtraction:
@@ -538,3 +538,20 @@ val double: int -> int
         # Non-existent file returns False (not a crash)
         nonexistent = tmp_path / "nonexistent.fs"
         assert _is_likely_forth_file(nonexistent) is False
+
+
+class TestIsFsharpTreeSitterAvailable:
+    """Tests for is_fsharp_tree_sitter_available function."""
+
+    def test_returns_true_when_available(self) -> None:
+        """Returns True when tree-sitter-language-pack is installed."""
+        assert is_fsharp_tree_sitter_available() is True
+
+    def test_returns_false_when_unavailable(self) -> None:
+        """Returns False when tree-sitter-language-pack is not installed."""
+        with patch.object(
+            fsharp_module._analyzer,
+            "_check_grammar_available",
+            return_value=False,
+        ):
+            assert is_fsharp_tree_sitter_available() is False

@@ -234,3 +234,17 @@ ARG APP_VERSION=1.0.0
     args = [s for s in result.symbols if s.kind == "build_arg"]
     # ARG instructions should be detected
     assert len(args) >= 1
+
+
+def test_skipped_when_grammar_unavailable(tmp_path):
+    """Returns skipped result when grammar is unavailable."""
+    from unittest.mock import patch
+    import pytest
+    import hypergumbo_lang_mainstream.dockerfile as module
+
+    with patch.object(module._analyzer, "_check_grammar_available", return_value=False):
+        with pytest.warns(UserWarning, match="dockerfile analysis skipped"):
+            result = module.analyze_dockerfiles(tmp_path)
+
+    assert result.skipped is True
+    assert "not available" in result.skip_reason

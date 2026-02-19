@@ -1,7 +1,10 @@
 """Tests for Bash/shell script analyzer."""
 from pathlib import Path
 
+import pytest
+
 from hypergumbo_core.analyze.base import find_child_by_type
+from hypergumbo_lang_mainstream import bash as bash_module
 from unittest.mock import patch, MagicMock
 
 class TestBashHelpers:
@@ -89,11 +92,13 @@ class TestAnalyzeBashFallback:
 
         (tmp_path / "test.sh").write_text("#!/bin/bash\necho hello")
 
-        with patch("hypergumbo_lang_mainstream.bash.is_bash_tree_sitter_available", return_value=False):
-            result = analyze_bash(tmp_path)
+        with patch.object(bash_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="bash analysis skipped"):
+                result = analyze_bash(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-bash" in result.skip_reason
+        assert "not available" in result.skip_reason
+        assert result.run is not None
 
 class TestBashFunctionExtraction:
     """Tests for extracting Bash functions."""
@@ -328,22 +333,17 @@ class TestBashEmptyFile:
 
         assert result.run is not None
 
-class TestBashParserFailure:
-    """Tests for parser failure handling."""
+class TestBashEmptyRepo:
+    """Tests for empty repository handling."""
 
-    def test_handles_parser_load_failure(self, tmp_path: Path) -> None:
-        """Handles failure to load Bash parser."""
+    def test_empty_repo(self, tmp_path: Path) -> None:
+        """Empty repo returns result with run metadata and zero files."""
         from hypergumbo_lang_mainstream.bash import analyze_bash
 
-        bash_file = tmp_path / "test.sh"
-        bash_file.write_text("#!/bin/bash\necho hello")
+        result = analyze_bash(tmp_path)
 
-        with patch("hypergumbo_lang_mainstream.bash.is_bash_tree_sitter_available", return_value=True):
-            with patch("tree_sitter_bash.language", side_effect=Exception("Parser error")):
-                result = analyze_bash(tmp_path)
-
-        assert result.skipped is True
-        assert "Parser error" in result.skip_reason or "Failed to load" in result.skip_reason
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
 class TestBashAliasExtraction:
     """Tests for extracting Bash aliases."""

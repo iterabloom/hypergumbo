@@ -15,37 +15,45 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-1. Check if tree-sitter-swift is available
-2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
-   - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls and resolve against global symbol registry
-4. Detect function calls and import statements
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Extract functions, classes, structs, protocols, enums with signatures
+2. Pass 2: Extract call edges and import edges using NameResolver
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Swift-specific extraction
+logic.
 
 Why This Design
 ---------------
+- TreeSitterAnalyzer eliminates boilerplate orchestration code
 - Optional dependency keeps base install lightweight
 - Uses tree-sitter-swift package for grammar
 - Two-pass allows cross-file call resolution
-- Same pattern as Go/Ruby/Kotlin/Rust/Elixir/Java/PHP/C analyzers for consistency
+- Same pattern as other tree-sitter analyzers for consistency
 """
 from __future__ import annotations
 
-import importlib.util
-import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
+from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = "swift-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -54,15 +62,6 @@ PASS_VERSION = "hypergumbo-0.1.0"
 def find_swift_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Swift files in the repository."""
     yield from find_files(repo_root, ["*.swift"])
-
-
-def is_swift_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Swift grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False
-    if importlib.util.find_spec("tree_sitter_swift") is None:
-        return False
-    return True
 
 
 def _extract_import_hints(
@@ -203,27 +202,13 @@ def _extract_swift_signature(
     return signature
 
 
-@dataclass
-class FileAnalysis:
-    """Intermediate analysis result for a single file."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
-    import_hints: dict[str, str] = field(default_factory=dict)
-
-
 def _extract_symbols_from_file(
-    file_path: Path,
-    parser: "tree_sitter.Parser",
-    run: AnalysisRun,
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: str,
+    run_id: str,
 ) -> FileAnalysis:
     """Extract symbols from a single Swift file."""
-    try:
-        source = file_path.read_bytes()
-        tree = parser.parse(source)
-    except (OSError, IOError):
-        return FileAnalysis()
-
     analysis = FileAnalysis()
 
     for node in iter_tree(tree.root_node):
@@ -262,7 +247,7 @@ def _extract_symbols_from_file(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                     signature=signature,
                 )
                 analysis.symbols.append(symbol)
@@ -270,10 +255,7 @@ def _extract_symbols_from_file(
                 analysis.symbol_by_name[full_name] = symbol
 
         # Class declaration (class, struct, enum, protocol in tree-sitter-swift)
-        # The grammar represents all type declarations as class_declaration
-        # with different keyword children (class, struct, enum, protocol)
         elif node.type == "class_declaration":
-            # Determine the kind based on keyword child
             is_struct = find_child_by_type(node, "struct") is not None
             is_enum = find_child_by_type(node, "enum") is not None
             is_protocol = find_child_by_type(node, "protocol") is not None
@@ -294,7 +276,6 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
-                # Extract base classes/protocols for inheritance linker
                 base_classes = _extract_base_classes_swift(node, source)
                 meta = {"base_classes": base_classes} if base_classes else None
 
@@ -311,7 +292,7 @@ def _extract_symbols_from_file(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                     meta=meta,
                 )
                 analysis.symbols.append(symbol)
@@ -326,7 +307,6 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
-                # Protocols can inherit from other protocols
                 base_classes = _extract_base_classes_swift(node, source)
                 meta = {"base_classes": base_classes} if base_classes else None
 
@@ -343,49 +323,31 @@ def _extract_symbols_from_file(
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                     meta=meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
 
-    # Extract import hints for disambiguation
-    analysis.import_hints = _extract_import_hints(tree, source)
-
     return analysis
 
 
 def _extract_edges_from_file(
-    file_path: Path,
-    parser: "tree_sitter.Parser",
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_path: str,
     local_symbols: dict[str, Symbol],
     global_symbols: dict[str, Symbol],
-    run: AnalysisRun,
-    resolver: NameResolver | None = None,
-    import_hints: dict[str, str] | None = None,
+    run_id: str,
+    resolver: "NameResolver",
+    import_aliases: dict[str, str],
 ) -> list[Edge]:
-    """Extract call and import edges from a file.
-
-    Args:
-        import_hints: Optional dict mapping module names to import paths for disambiguation.
-    """
-    if resolver is None:  # pragma: no cover - defensive
-        resolver = NameResolver(global_symbols)
-    if import_hints is None:  # pragma: no cover - defensive default
-        import_hints = {}
-    try:
-        source = file_path.read_bytes()
-        tree = parser.parse(source)
-    except (OSError, IOError):
-        return []
-
+    """Extract call and import edges from a file."""
     edges: list[Edge] = []
     file_id = make_file_id("swift", str(file_path))
 
     for node in iter_tree(tree.root_node):
-        # Detect import statements
         if node.type == "import_declaration":
-            # Get the module being imported
             id_node = find_child_by_type(node, "identifier")
             if id_node:
                 import_path = node_text(id_node, source)
@@ -397,17 +359,14 @@ def _extract_edges_from_file(
                     evidence_type="import_statement",
                     confidence=0.95,
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                 ))
 
-        # Detect function calls
         elif node.type == "call_expression":
             current_function = _get_enclosing_function(node, source, local_symbols)
             if current_function is not None:
-                # Get the function being called
                 callee_node = find_child_by_type(node, "simple_identifier")
                 if not callee_node:
-                    # Try navigation expression for method calls
                     nav_node = find_child_by_type(node, "navigation_expression")  # pragma: no cover - grammar fallback
                     if nav_node:  # pragma: no cover - grammar fallback
                         callee_node = find_child_by_type(nav_node, "simple_identifier")
@@ -415,7 +374,6 @@ def _extract_edges_from_file(
                 if callee_node:
                     callee_name = node_text(callee_node, source)
 
-                    # Check local symbols first
                     if callee_name in local_symbols:
                         callee = local_symbols[callee_name]
                         edges.append(Edge.create(
@@ -426,12 +384,10 @@ def _extract_edges_from_file(
                             evidence_type="function_call",
                             confidence=0.85,
                             origin=PASS_ID,
-                            origin_run_id=run.execution_id,
+                            origin_run_id=run_id,
                         ))
-                    # Check global symbols via resolver
                     else:
-                        # Use import hints for disambiguation
-                        path_hint = import_hints.get(callee_name)
+                        path_hint = import_aliases.get(callee_name)
                         lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol is not None:
                             edges.append(Edge.create(
@@ -442,87 +398,66 @@ def _extract_edges_from_file(
                                 evidence_type="function_call",
                                 confidence=0.80 * lookup_result.confidence,
                                 origin=PASS_ID,
-                                origin_run_id=run.execution_id,
+                                origin_run_id=run_id,
                             ))
 
     return edges
 
 
+class SwiftAnalyzer(TreeSitterAnalyzer):
+    """Swift language analyzer using tree-sitter-swift."""
+
+    lang = "swift"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.swift"]
+    grammar_module = "tree_sitter_swift"
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract functions, classes, structs, protocols, enums from a Swift file."""
+        return _extract_symbols_from_file(tree, source, rel_path, run.execution_id)
+
+    def get_import_aliases(
+        self, tree: "tree_sitter.Tree", source: bytes,
+    ) -> dict[str, str]:
+        """Extract Swift import hints for disambiguation."""
+        return _extract_import_hints(tree, source)
+
+    def register_symbol(
+        self, symbol: Symbol, global_symbols: dict,
+    ) -> None:
+        """Register symbol globally, including short name for cross-file resolution."""
+        global_symbols[symbol.name] = symbol
+        short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
+        global_symbols[short_name] = symbol
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract call and import edges from a Swift file."""
+        return _extract_edges_from_file(
+            tree, source, rel_path,
+            local_symbols, global_symbols,
+            run.execution_id, resolver, import_aliases,
+        )
+
+
+_analyzer = SwiftAnalyzer()
+
+
+def is_swift_tree_sitter_available() -> bool:
+    """Check if tree-sitter with Swift grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("swift")
 def analyze_swift(repo_root: Path) -> AnalysisResult:
-    """Analyze all Swift files in a repository.
-
-    Returns a AnalysisResult with symbols, edges, and provenance.
-    If tree-sitter-swift is not available, returns a skipped result.
-    """
-    if not is_swift_tree_sitter_available():
-        warnings.warn(
-            "tree-sitter-swift not available. Install with: pip install hypergumbo[swift]",
-            stacklevel=2,
-        )
-        return AnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-swift not available",
-        )
-
-    start_time = time.time()
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    # Import tree-sitter-swift
-    try:
-        import tree_sitter_swift
-        import tree_sitter
-
-        lang = tree_sitter.Language(tree_sitter_swift.language())
-        parser = tree_sitter.Parser(lang)
-    except Exception as e:
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return AnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=f"Failed to load Swift parser: {e}",
-        )
-
-    # Pass 1: Extract all symbols
-    file_analyses: dict[Path, FileAnalysis] = {}
-    files_skipped = 0
-
-    for swift_file in find_swift_files(repo_root):
-        analysis = _extract_symbols_from_file(swift_file, parser, run)
-        if analysis.symbols:
-            file_analyses[swift_file] = analysis
-        else:
-            files_skipped += 1
-
-    # Build global symbol registry
-    global_symbols: dict[str, Symbol] = {}
-    for analysis in file_analyses.values():
-        for symbol in analysis.symbols:
-            # Store by short name for cross-file resolution
-            short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
-            global_symbols[short_name] = symbol
-            global_symbols[symbol.name] = symbol
-
-    # Pass 2: Extract edges
-    resolver = NameResolver(global_symbols)
-    all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
-
-    for swift_file, analysis in file_analyses.items():
-        all_symbols.extend(analysis.symbols)
-
-        edges = _extract_edges_from_file(
-            swift_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
-            import_hints=analysis.import_hints,
-        )
-        all_edges.extend(edges)
-
-    run.files_analyzed = len(file_analyses)
-    run.files_skipped = files_skipped
-    run.duration_ms = int((time.time() - start_time) * 1000)
-
-    return AnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    """Analyze Swift files in a repository."""
+    return _analyzer.analyze(repo_root)
