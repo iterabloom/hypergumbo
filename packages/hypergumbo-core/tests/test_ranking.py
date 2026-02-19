@@ -368,6 +368,120 @@ class TestApplyTestWeights:
         assert result[spec_sym.id] == 0.5
 
 
+class TestApplyNoiseWeights:
+    """Tests for apply_noise_weights function."""
+
+    def test_migration_file_downweighted(self):
+        """Symbols in db/migrate/ are de-weighted."""
+        from hypergumbo_core.ranking import apply_noise_weights
+
+        mig_sym = make_symbol(
+            "CreateUsers", path="db/migrate/20231201_create_users.rb"
+        )
+        centrality = {mig_sym.id: 1.0}
+
+        result = apply_noise_weights(centrality, [mig_sym])
+
+        assert result[mig_sym.id] == 0.1  # Default noise_weight=0.1
+
+    def test_production_file_unchanged(self):
+        """Non-noise files are not affected."""
+        from hypergumbo_core.ranking import apply_noise_weights
+
+        prod_sym = make_symbol(
+            "UsersController", path="app/controllers/users_controller.rb"
+        )
+        centrality = {prod_sym.id: 1.0}
+
+        result = apply_noise_weights(centrality, [prod_sym])
+
+        assert result[prod_sym.id] == 1.0
+
+    def test_nested_db_migrate_path(self):
+        """Deeply nested db/migrate path is de-weighted."""
+        from hypergumbo_core.ranking import apply_noise_weights
+
+        mig_sym = make_symbol(
+            "AddIndex", path="postal/db/migrate/20240101_add_index.rb"
+        )
+        centrality = {mig_sym.id: 1.0}
+
+        result = apply_noise_weights(centrality, [mig_sym])
+
+        assert result[mig_sym.id] == 0.1
+
+    def test_python_migrations_downweighted(self):
+        """Django/Alembic migration files are de-weighted."""
+        from hypergumbo_core.ranking import apply_noise_weights
+
+        mig_sym = make_symbol(
+            "Migration", path="myapp/migrations/0001_initial.py"
+        )
+        centrality = {mig_sym.id: 1.0}
+
+        result = apply_noise_weights(centrality, [mig_sym])
+
+        assert result[mig_sym.id] == 0.1
+
+    def test_mixed_migration_and_production(self):
+        """Mix of migration and production code correctly weighted."""
+        from hypergumbo_core.ranking import apply_noise_weights
+
+        mig_sym = make_symbol(
+            "CreateUsers", path="db/migrate/20231201_create_users.rb"
+        )
+        prod_sym = make_symbol(
+            "User", path="app/models/user.rb"
+        )
+        centrality = {mig_sym.id: 0.8, prod_sym.id: 0.6}
+
+        result = apply_noise_weights(centrality, [mig_sym, prod_sym])
+
+        assert abs(result[mig_sym.id] - 0.08) < 1e-10  # 0.8 * 0.1
+        assert result[prod_sym.id] == 0.6  # Unchanged
+
+    def test_rank_symbols_applies_noise_weights(self):
+        """rank_symbols de-weights migration files by default."""
+        from hypergumbo_core.ranking import rank_symbols
+
+        # Migration symbol has high connectivity
+        mig_sym = make_symbol(
+            "Migration", path="db/migrate/20231201_create_users.rb"
+        )
+        prod_sym = make_symbol(
+            "User", path="app/models/user.rb"
+        )
+        # Migration has 10 incoming edges, production has 3
+        # Raw centrality: mig=1.0 (max), prod=0.3
+        # Tier weight (both first-party 2.0x): mig=2.0, prod=0.6
+        # Noise weight (0.1x for migration): mig=0.2, prod=0.6
+        # Result: production ranks higher
+        edges = [
+            make_edge(f"src{i}", mig_sym.id)
+            for i in range(10)
+        ] + [
+            make_edge(f"caller{i}", prod_sym.id)
+            for i in range(3)
+        ]
+        src_symbols = [
+            make_symbol(f"src{i}", path=f"src/file{i}.rb")
+            for i in range(10)
+        ] + [
+            make_symbol(f"caller{i}", path=f"src/caller{i}.rb")
+            for i in range(3)
+        ]
+
+        all_symbols = [mig_sym, prod_sym] + src_symbols
+
+        ranked = rank_symbols(all_symbols, edges)
+
+        # Despite migration having 10x more edges, production should rank
+        # higher due to noise de-weighting
+        mig_rank = next(r for r in ranked if r.symbol.id == mig_sym.id)
+        prod_rank = next(r for r in ranked if r.symbol.id == prod_sym.id)
+        assert prod_rank.rank < mig_rank.rank
+
+
 class TestGroupSymbolsByFile:
     """Tests for group_symbols_by_file function."""
 

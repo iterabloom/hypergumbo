@@ -230,6 +230,64 @@ def apply_test_weights(
     return weighted
 
 
+# Path patterns for code that is structurally connected but operationally
+# irrelevant to runtime architecture (e.g., database migrations).
+_NOISE_PATH_SEGMENTS = (
+    "/db/migrate/",
+    "/migrations/",
+)
+
+
+def _is_noise_path(path: str) -> bool:
+    """Check if path represents noise code like database migrations.
+
+    Migrations are structurally connected (Migration#up dispatches to all
+    subclass#up methods) but run once and are irrelevant to understanding
+    runtime architecture. De-weighting them prevents inflation of centrality
+    rankings.
+    """
+    path_lower = path.lower()
+    # Check for segments (handles both absolute and relative paths)
+    for seg in _NOISE_PATH_SEGMENTS:
+        if seg in path_lower:
+            return True
+    # Also check path starts (for relative paths like "db/migrate/...")
+    if path_lower.startswith("db/migrate/") or path_lower.startswith("migrations/"):
+        return True
+    return False
+
+
+def apply_noise_weights(
+    centrality: Dict[str, float],
+    symbols: List[Symbol],
+    noise_weight: float = 0.1,
+) -> Dict[str, float]:
+    """Apply noise path weighting to centrality scores.
+
+    Symbols in noise paths (database migrations, etc.) get their centrality
+    reduced by noise_weight. This prevents migration classes from inflating
+    centrality rankings despite being operationally irrelevant to runtime
+    architecture.
+
+    Args:
+        centrality: Centrality scores (possibly already tier-weighted).
+        symbols: List of symbols (used to look up paths).
+        noise_weight: Multiplier for noise path nodes (default 0.1).
+
+    Returns:
+        Dictionary mapping symbol ID to noise-weighted centrality score.
+    """
+    symbol_paths = {s.id: s.path for s in symbols}
+    weighted = {}
+    for sid, score in centrality.items():
+        path = symbol_paths.get(sid, "")
+        if _is_noise_path(path):
+            weighted[sid] = score * noise_weight
+        else:
+            weighted[sid] = score
+    return weighted
+
+
 def group_symbols_by_file(symbols: List[Symbol]) -> Dict[str, List[Symbol]]:
     """Group symbols by their file path.
 
@@ -324,6 +382,9 @@ def rank_symbols(
         weighted_centrality = apply_tier_weights(raw_centrality, symbols)
     else:
         weighted_centrality = raw_centrality
+
+    # De-weight noise paths (database migrations, etc.)
+    weighted_centrality = apply_noise_weights(weighted_centrality, symbols)
 
     # Sort by weighted centrality (highest first), then by name for stability
     sorted_symbols = sorted(
