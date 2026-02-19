@@ -35,6 +35,11 @@ Lua-Specific Considerations
   Method calls (obj:method()) get lower confidence (0.40x) than direct
   calls (func(), 0.85x) because common method names like connect, send,
   close collide across unrelated receiver objects
+- Single-assignment type tracking: when a local variable is assigned from
+  a known table/class (e.g., `local sock = MyClass` or `local sock = mod.tcp()`),
+  the receiver type is tracked. Method calls on typed receivers resolve to
+  `ReceiverType.method` with higher confidence (0.80x). This eliminates
+  false positive edges from name collisions (e.g., sock:send vs pdk.response:send)
 """
 from __future__ import annotations
 
@@ -231,6 +236,122 @@ def _find_enclosing_lua_function(
     return None  # pragma: no cover - defensive
 
 
+def _extract_var_types(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Extract variable type assignments from local variable declarations.
+
+    Tracks single-assignment patterns like:
+    - ``local obj = MyClass`` → obj has type MyClass
+    - ``local sock = mod.tcp()`` → sock has type mod.tcp (dot-index receiver)
+    - ``local x = MyClass:new()`` → x has type MyClass (constructor pattern)
+
+    Only tracks the first assignment to each variable within a file scope.
+    Does not handle reassignment or conditional assignment — Lua's dynamic
+    nature makes flow-sensitive analysis infeasible without a type system.
+
+    Returns:
+        Dict mapping variable name to inferred type string. The type string
+        matches the naming convention used in symbol registration (e.g.,
+        "MyClass" for ``function MyClass:method()`` definitions).
+    """
+    var_types: dict[str, str] = {}
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "variable_declaration":
+            continue
+
+        # Find the assignment_statement child
+        assign = _find_child_by_type(node, "assignment_statement")
+        if assign is None:  # pragma: no cover - tree-sitter always wraps in assignment
+            continue
+
+        # Extract variable name from variable_list
+        var_list = _find_child_by_type(assign, "variable_list")
+        if var_list is None:  # pragma: no cover - assignment always has variable_list
+            continue
+        var_id = _find_child_by_type(var_list, "identifier")
+        if var_id is None:  # pragma: no cover - destructuring not tracked
+            continue
+        var_name = _node_text(var_id, source)
+
+        # Extract expression from expression_list
+        expr_list = _find_child_by_type(assign, "expression_list")
+        if expr_list is None:  # pragma: no cover - assignment always has expression_list
+            continue
+
+        # Get first expression (the right-hand side value)
+        expr = None
+        for child in expr_list.children:
+            if child.type not in (",",):
+                expr = child
+                break
+
+        if expr is None:  # pragma: no cover - expression_list always has children
+            continue
+
+        # Infer type from expression
+        inferred = _infer_type_from_expr(expr, source, var_types)
+        if inferred and var_name not in var_types:
+            var_types[var_name] = inferred
+
+    return var_types
+
+
+def _infer_type_from_expr(
+    expr: "tree_sitter.Node",
+    source: bytes,
+    var_types: dict[str, str],
+) -> str | None:
+    """Infer the type of a variable from its assigned expression.
+
+    Handles three core Lua assignment patterns:
+
+    1. Identifier: ``local obj = MyClass`` → type is "MyClass"
+       Also follows transitive aliases: if MyClass was previously assigned
+       from SomeTable, resolves to SomeTable.
+
+    2. Function call with dot-index receiver: ``local sock = mod.tcp()``
+       → type is "mod" (the table that owns tcp). This covers the common
+       OpenResty pattern ``local sock = ngx.socket.tcp()``.
+
+    3. Method call (constructor): ``local obj = MyClass:new()``
+       → type is "MyClass" (Lua OOP convention: :new() returns self).
+
+    Returns None for unrecognizable expressions (table literals, complex
+    expressions, multi-return calls).
+    """
+    # Case 1: simple identifier (local obj = MyClass)
+    if expr.type == "identifier":
+        name = _node_text(expr, source)
+        # Follow transitive aliases
+        return var_types.get(name, name)
+
+    # Case 2: function call
+    if expr.type == "function_call":
+        func_part = expr.children[0] if expr.children else None
+        if func_part is None:  # pragma: no cover - function_call always has children
+            return None
+
+        # Case 2a: method call (MyClass:new()) → type is MyClass
+        if func_part.type == "method_index_expression":
+            receiver_id = _find_child_by_type(func_part, "identifier")
+            if receiver_id:
+                receiver_name = _node_text(receiver_id, source)
+                return var_types.get(receiver_name, receiver_name)
+
+        # Case 2b: dot-index call (mod.tcp()) → type is mod
+        if func_part.type == "dot_index_expression":
+            # Get the receiver (first identifier or nested dot expression)
+            first_child = func_part.children[0] if func_part.children else None
+            if first_child and first_child.type == "identifier":
+                receiver_name = _node_text(first_child, source)
+                return var_types.get(receiver_name, receiver_name)
+
+    return None
+
+
 def _extract_edges_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -243,8 +364,13 @@ def _extract_edges_from_file(
 
     Detects:
     - function_call: Direct function calls
-    - Method calls (obj:method())
+    - Method calls (obj:method()) with optional type-based resolution
     - require statements
+
+    Type-based resolution: when a method call's receiver has a known type
+    (from single-assignment tracking via ``_extract_var_types``), the call
+    is resolved to ``ReceiverType.method`` with 0.80 confidence instead of
+    falling back to name-only lookup at 0.40 confidence.
     """
     edges: list[Edge] = []
     file_id = _make_file_id(file_path)
@@ -259,12 +385,17 @@ def _extract_edges_from_file(
     # unrelated receiver objects, producing false positive edges.
     CONFIDENCE_DIRECT_CALL = 0.85
     CONFIDENCE_METHOD_CALL = 0.40
+    CONFIDENCE_TYPED_METHOD_CALL = 0.80
+
+    # Extract variable type assignments for receiver-based method resolution
+    var_types = _extract_var_types(tree, source)
 
     for node in iter_tree(tree.root_node):
         if node.type == "function_call":
             # Extract function name being called
             callee_name = None
             is_method_call = False
+            receiver_name = None
 
             # Direct call: identifier(args)
             first_child = node.children[0] if node.children else None
@@ -273,11 +404,17 @@ def _extract_edges_from_file(
                     callee_name = _node_text(first_child, source)
                 elif first_child.type == "method_index_expression":
                     # Method call: obj:method(args)
-                    # Get the method name (last identifier)
+                    # Extract both receiver and method name
                     is_method_call = True
+                    identifiers = []
                     for child in first_child.children:
                         if child.type == "identifier":
-                            callee_name = _node_text(child, source)
+                            identifiers.append(_node_text(child, source))
+                    if len(identifiers) >= 2:
+                        receiver_name = identifiers[0]
+                        callee_name = identifiers[1]
+                    elif len(identifiers) == 1:  # pragma: no cover - method_index always has 2 ids
+                        callee_name = identifiers[0]
 
             # Check for require() call - special handling for imports
             if callee_name == "require":
@@ -308,37 +445,59 @@ def _extract_edges_from_file(
                 # Find the caller (enclosing function)
                 caller = _find_enclosing_lua_function(node, source, local_symbols)
                 if caller:
-                    # Resolve callee via global resolver
-                    lookup_result = resolver.lookup(callee_name)
-                    callee = lookup_result.symbol if lookup_result.found else None
-                    base = CONFIDENCE_METHOD_CALL if is_method_call else CONFIDENCE_DIRECT_CALL
-                    confidence = base * lookup_result.confidence if lookup_result.found else 0.50
-                    if callee:
-                        edge = Edge.create(
-                            src=caller.id,
-                            dst=callee.id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            origin=PASS_ID,
-                            origin_run_id=run_id,
-                            evidence_type="function_call",
-                            confidence=confidence,
-                        )
-                        edges.append(edge)
-                    else:
-                        # Unresolved call - create edge to unknown target
-                        unresolved_id = f"lua:?:0-0:{callee_name}:function"
-                        edge = Edge.create(
-                            src=caller.id,
-                            dst=unresolved_id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            origin=PASS_ID,
-                            origin_run_id=run_id,
-                            evidence_type="function_call",
-                            confidence=0.50,
-                        )
-                        edges.append(edge)
+                    # Try type-based resolution for method calls
+                    typed_resolved = False
+                    if is_method_call and receiver_name and receiver_name in var_types:
+                        receiver_type = var_types[receiver_name]
+                        qualified_name = f"{receiver_type}.{callee_name}"
+                        typed_lookup = resolver.lookup(qualified_name)
+                        if typed_lookup.found:
+                            confidence = CONFIDENCE_TYPED_METHOD_CALL * typed_lookup.confidence
+                            edge = Edge.create(
+                                src=caller.id,
+                                dst=typed_lookup.symbol.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                                evidence_type="method_call_typed",
+                                confidence=confidence,
+                            )
+                            edges.append(edge)
+                            typed_resolved = True
+
+                    if not typed_resolved:
+                        # Fallback: name-only resolution
+                        lookup_result = resolver.lookup(callee_name)
+                        callee = lookup_result.symbol if lookup_result.found else None
+                        base = CONFIDENCE_METHOD_CALL if is_method_call else CONFIDENCE_DIRECT_CALL
+                        confidence = base * lookup_result.confidence if lookup_result.found else 0.50
+                        if callee:
+                            edge = Edge.create(
+                                src=caller.id,
+                                dst=callee.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                                evidence_type="function_call",
+                                confidence=confidence,
+                            )
+                            edges.append(edge)
+                        else:
+                            # Unresolved call - create edge to unknown target
+                            unresolved_id = f"lua:?:0-0:{callee_name}:function"
+                            edge = Edge.create(
+                                src=caller.id,
+                                dst=unresolved_id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                                evidence_type="function_call",
+                                confidence=0.50,
+                            )
+                            edges.append(edge)
 
     return edges
 
