@@ -103,21 +103,46 @@ def _find_parent(
     parent_name: str,
     child_path: str,
     container_by_name: dict[str, list[Symbol]],
+    child_language: str | None = None,
 ) -> Symbol | None:
     """Find the best parent container for a given parent name.
 
     When multiple containers share a name (e.g., Django's 238 Model classes),
-    prefers the container in the same file as the child symbol.  Falls back
-    to the first candidate when no same-file match exists.
+    uses a priority cascade:
+      1. Same file (most specific, always correct)
+      2. Same language, different file (structural match)
+      3. No match (returns None — prevents cross-language false positives)
+
+    A single candidate is returned directly only if it matches the child's
+    language (or if child_language is not provided, for backward compat).
     """
     candidates = container_by_name.get(parent_name)
     if not candidates:
         return None
+
+    # Fast path: single candidate, language check if possible
     if len(candidates) == 1:
+        if child_language and candidates[0].language != child_language:
+            return None
         return candidates[0]
+
+    # Priority 1: same file
     for c in candidates:
         if c.path == child_path:
             return c
+
+    # Priority 2: same language (any file)
+    if child_language:
+        same_lang = [c for c in candidates if c.language == child_language]
+        if len(same_lang) == 1:
+            return same_lang[0]
+        if len(same_lang) > 1:
+            # Multiple same-language candidates: ambiguous, return first
+            return same_lang[0]
+        # No same-language candidate: refuse to cross language boundary
+        return None
+
+    # No language info: fall back to first (backward compat)
     return candidates[0]
 
 
@@ -174,7 +199,9 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
         if parent_name is None:
             continue
 
-        parent_sym = _find_parent(parent_name, sym.path, container_by_name)
+        parent_sym = _find_parent(
+            parent_name, sym.path, container_by_name, sym.language,
+        )
         if parent_sym is None:
             continue
 
@@ -219,7 +246,9 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
         if parent_name is None:
             continue
 
-        parent_sym = _find_parent(parent_name, sym.path, container_by_name)
+        parent_sym = _find_parent(
+            parent_name, sym.path, container_by_name, sym.language,
+        )
         if parent_sym is None:
             continue
 

@@ -454,7 +454,7 @@ def _create_event_symbol(pattern: EventPattern, root: Path) -> Symbol:
     kind = "event_publisher" if pattern.pattern_type == "publish" else "event_subscriber"
 
     return Symbol(
-        id=f"{rel_path}::{kind}::{pattern.line}",
+        id=f"{pattern.language}:{rel_path}:{pattern.line}-{pattern.line}:{pattern.event_name}:{kind}",
         name=f"{pattern.event_name}",
         kind=kind,
         path=pattern.file_path,

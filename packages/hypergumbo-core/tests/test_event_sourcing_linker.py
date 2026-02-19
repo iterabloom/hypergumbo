@@ -4,11 +4,15 @@ from pathlib import Path
 from textwrap import dedent
 
 from hypergumbo_core.linkers.event_sourcing import (
+    _create_event_symbol,
     _scan_javascript_events,
     _scan_python_events,
     _scan_java_events,
+    event_sourcing_linker,
     link_events,
+    EventPattern,
 )
+from hypergumbo_core.linkers.registry import LinkerContext
 
 
 class TestJavaScriptEventPatterns:
@@ -651,3 +655,121 @@ class TestVariableEventPatterns:
         assert len(result.edges) == 1
         # Subscriber uses variable, so lower confidence
         assert result.edges[0].confidence == 0.65
+
+
+class TestEventSymbolFormat:
+    """Tests for event symbol ID format.
+
+    Event symbol IDs must follow the standard format:
+      {language}:{path}:{start}-{end}:{name}:{kind}
+
+    Regression: DEEP bakeoff cohort #6 (forgejo) showed malformed IDs using
+    file paths as language prefixes (e.g., 'web_src/js/utils/dom.js::event_publisher::42'
+    instead of 'javascript:web_src/js/utils/dom.js:42-42:user_created:event_publisher').
+    """
+
+    def test_event_publisher_id_format(self, tmp_path: Path):
+        """Publisher symbol ID uses language prefix, not file path."""
+        pattern = EventPattern(
+            file_path=str(tmp_path / "events.js"),
+            line=42,
+            event_name="user_created",
+            pattern_type="publish",
+            framework="EventEmitter",
+            language="javascript",
+            event_type="literal",
+        )
+        sym = _create_event_symbol(pattern, tmp_path)
+
+        # ID must start with language, not file path
+        assert sym.id.startswith("javascript:"), (
+            f"Event symbol ID '{sym.id}' uses file path as prefix instead of "
+            f"language. Expected format: javascript:events.js:42-42:user_created:event_publisher"
+        )
+        # Verify the full format matches standard convention
+        assert ":event_publisher" in sym.id
+
+    def test_event_subscriber_id_format(self, tmp_path: Path):
+        """Subscriber symbol ID uses language prefix."""
+        pattern = EventPattern(
+            file_path=str(tmp_path / "handlers.py"),
+            line=10,
+            event_name="order_completed",
+            pattern_type="subscribe",
+            framework="signals",
+            language="python",
+            event_type="literal",
+        )
+        sym = _create_event_symbol(pattern, tmp_path)
+
+        assert sym.id.startswith("python:"), (
+            f"Event symbol ID '{sym.id}' should start with 'python:'"
+        )
+        assert ":event_subscriber" in sym.id
+
+    def test_link_events_produces_valid_symbol_ids(self, tmp_path: Path):
+        """End-to-end: linked event symbols have valid IDs."""
+        pub = tmp_path / "publisher.js"
+        pub.write_text("emitter.emit('order:created', data);")
+
+        sub = tmp_path / "subscriber.js"
+        sub.write_text("emitter.on('order:created', handler);")
+
+        result = link_events(tmp_path)
+
+        for sym in result.symbols:
+            # Must start with a language prefix, not a file path
+            assert ":" in sym.id
+            prefix = sym.id.split(":")[0]
+            assert prefix in ("javascript", "python", "java"), (
+                f"Symbol ID '{sym.id}' has unexpected prefix '{prefix}'. "
+                f"Expected a language identifier."
+            )
+
+
+class TestJavaEventPipeline:
+    """Tests for Java events through the full link_events pipeline."""
+
+    def test_java_events_through_pipeline(self, tmp_path: Path):
+        """Java Spring ApplicationEventPublisher goes through full pipeline."""
+        pub = tmp_path / "EventService.java"
+        pub.write_text(
+            'eventPublisher.publishEvent(new UserCreatedEvent(this));'
+        )
+
+        sub = tmp_path / "EventListener.java"
+        sub.write_text(
+            '@EventListener\npublic void handle(UserCreatedEvent event) {}'
+        )
+
+        result = link_events(tmp_path)
+
+        # Both publisher and subscriber symbols should have java: prefix
+        for sym in result.symbols:
+            assert sym.id.startswith("java:"), (
+                f"Java event symbol '{sym.id}' should start with 'java:'"
+            )
+            assert sym.language == "java"
+
+
+class TestEventSourcingLinkerRegistry:
+    """Tests for the registry-based event_sourcing_linker wrapper."""
+
+    def test_registry_wrapper(self, tmp_path: Path):
+        """event_sourcing_linker() returns LinkerResult with valid data."""
+        pub = tmp_path / "publisher.js"
+        pub.write_text("emitter.emit('test:event', data);")
+
+        sub = tmp_path / "subscriber.js"
+        sub.write_text("emitter.on('test:event', handler);")
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[],
+            edges=[],
+        )
+        result = event_sourcing_linker(ctx)
+
+        assert len(result.symbols) >= 2
+        assert len(result.edges) >= 1
+        assert result.run is not None

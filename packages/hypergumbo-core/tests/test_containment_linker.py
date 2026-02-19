@@ -8,7 +8,7 @@ ClassName#method, ClassName::method).
 from pathlib import Path
 
 from hypergumbo_core.ir import Edge, Span, Symbol
-from hypergumbo_core.linkers.containment import link_containment
+from hypergumbo_core.linkers.containment import _find_parent, link_containment
 from hypergumbo_core.linkers.registry import LinkerContext
 
 
@@ -1127,3 +1127,133 @@ class TestCanonicalNameContainment:
 
         contains = [e for e in result.edges if e.edge_type == "contains"]
         assert len(contains) == 0
+
+    def test_cross_language_same_name_no_false_edge(self) -> None:
+        """Two classes with the same name in different languages must not link.
+
+        Regression: DEEP bakeoff cohort #6 (forgejo) showed JS Source class
+        (eventsource.sharedworker.js) linked via contains edges to Go LDAP
+        Source struct methods (services/auth/source/ldap/). This was a
+        name-collision bug: _find_parent returned the first candidate when
+        no same-file match existed, ignoring language.
+        """
+        # Go Source struct and its method
+        go_source = _sym(
+            "go:auth/source.go:1-50:Source:class",
+            "Source", "class", language="go", path="auth/source.go",
+        )
+        go_method = _sym(
+            "go:auth/source.go:10-20:Source.Authenticate:method",
+            "Source.Authenticate", "method", language="go", path="auth/source.go",
+            start=10, end=20,
+        )
+        # JS Source class and its method (different file, different language)
+        js_source = _sym(
+            "js:web/eventsource.js:1-30:Source:class",
+            "Source", "class", language="javascript", path="web/eventsource.js",
+        )
+        js_method = _sym(
+            "js:web/eventsource.js:5-15:Source.connect:method",
+            "Source.connect", "method", language="javascript",
+            path="web/eventsource.js", start=5, end=15,
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[go_source, go_method, js_source, js_method],
+            edges=[],
+        )
+        result = link_containment(ctx)
+
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        # Should produce exactly 2 contains edges:
+        # go_source → go_method, js_source → js_method
+        assert len(contains) == 2
+
+        src_dst_pairs = {(e.src, e.dst) for e in contains}
+        # Go method should link to Go class, not JS class
+        assert (go_source.id, go_method.id) in src_dst_pairs
+        # JS method should link to JS class, not Go class
+        assert (js_source.id, js_method.id) in src_dst_pairs
+
+    def test_cross_language_isolated_method_no_false_edge(self) -> None:
+        """Method should not link to a different-language class when no same-language match.
+
+        If a JS method 'Source.send' exists but there's no JS 'Source' class
+        (only a Go one), the linker must NOT create a cross-language edge.
+        """
+        go_source = _sym(
+            "go:auth/source.go:1-50:Source:class",
+            "Source", "class", language="go", path="auth/source.go",
+        )
+        js_method = _sym(
+            "js:web/worker.js:5-15:Source.send:method",
+            "Source.send", "method", language="javascript",
+            path="web/worker.js", start=5, end=15,
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[go_source, js_method],
+            edges=[],
+        )
+        result = link_containment(ctx)
+
+        contains = [e for e in result.edges if e.edge_type == "contains"]
+        # No edge should be created: JS method must not link to Go class
+        assert len(contains) == 0
+
+
+class TestFindParent:
+    """Unit tests for _find_parent language filtering."""
+
+    def test_single_same_lang_different_file(self) -> None:
+        """When one candidate shares language but is in a different file."""
+        go_class = _sym(
+            "go:auth/source.go:1-50:Source:class",
+            "Source", "class", language="go", path="auth/source.go",
+        )
+        java_class = _sym(
+            "java:Source.java:1-50:Source:class",
+            "Source", "class", language="java", path="Source.java",
+        )
+        container_by_name = {"Source": [go_class, java_class]}
+        # Go method in a DIFFERENT file from go_class
+        result = _find_parent(
+            "Source", "auth/handler.go", container_by_name, "go",
+        )
+        assert result is go_class
+
+    def test_no_same_lang_among_multiple(self) -> None:
+        """When no candidate shares language, returns None."""
+        go_class = _sym(
+            "go:auth/source.go:1-50:Source:class",
+            "Source", "class", language="go", path="auth/source.go",
+        )
+        java_class = _sym(
+            "java:Source.java:1-50:Source:class",
+            "Source", "class", language="java", path="Source.java",
+        )
+        container_by_name = {"Source": [go_class, java_class]}
+        # JS method: no JS class exists
+        result = _find_parent(
+            "Source", "web/worker.js", container_by_name, "javascript",
+        )
+        assert result is None
+
+    def test_no_language_info_falls_back(self) -> None:
+        """When child_language is None, falls back to first candidate."""
+        go_class = _sym(
+            "go:auth/source.go:1-50:Source:class",
+            "Source", "class", language="go", path="auth/source.go",
+        )
+        java_class = _sym(
+            "java:Source.java:1-50:Source:class",
+            "Source", "class", language="java", path="Source.java",
+        )
+        container_by_name = {"Source": [go_class, java_class]}
+        result = _find_parent(
+            "Source", "other/file.txt", container_by_name, None,
+        )
+        # Without language info, returns first candidate (backward compat)
+        assert result is go_class
