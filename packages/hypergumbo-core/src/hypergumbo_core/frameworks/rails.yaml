@@ -142,3 +142,4 @@ linkers:
   - http
   - websocket
   - database_query
+  - view_template

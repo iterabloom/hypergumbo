@@ -698,7 +698,7 @@ Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence`, provenan
 * `calls` — function/method invocation
 * `imports` — module/symbol import
 * `defines_target` — definition relationship
-* ⬜ `renders` — template rendering (not implemented)
+* ✅ `renders` — template rendering (Rails controller → view template)
 * `script_src` — script tag src attribute
 * `implements` — class implements interface (Java, TypeScript, Go via `var _ Interface = &Struct{}`)
 * `extends` — class extends base class

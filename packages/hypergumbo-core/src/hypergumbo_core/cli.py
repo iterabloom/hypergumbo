@@ -77,6 +77,7 @@ import hypergumbo_core.linkers.pyffi as _pyffi_linker  # noqa: F401
 import hypergumbo_core.linkers.ruby_ffi as _ruby_ffi_linker  # noqa: F401
 import hypergumbo_core.linkers.type_hierarchy as _type_hierarchy_linker  # noqa: F401
 import hypergumbo_core.linkers.vue_component as _vue_component_linker  # noqa: F401
+import hypergumbo_core.linkers.view_template as _view_template_linker  # noqa: F401
 import hypergumbo_core.linkers.vue_template_method as _vue_template_method_linker  # noqa: F401
 from .entrypoints import detect_entrypoints
 from .ir import Symbol, Edge, deduplicate_edges
