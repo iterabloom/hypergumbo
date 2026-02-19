@@ -18,3 +18,27 @@
     justification:  # fa28
     description: "Comprehensive plan to eliminate ~18,800 lines of duplicated boilerplate across 105 language analyzers via a TreeSitterAnalyzer base class. Five phases: (1) base.py utility adoption, (2) base class implementation, (3) extended1 migration, (4) common+mainstream migration, (5) selective complex analyzer migration. Full plan at ~/analyzer_refactor_plan.md"  # fa28
     fields: {}  # fa28
+- op: update  # 1dad
+  at: '2026-02-19T05:53:44Z'  # 1dad
+  by: agent  # 1dad
+  actor: jgstern_agent  # 1dad
+  clock: 2  # 1dad
+  nonce: 1dad  # 1dad
+  set:  # 1dad
+    description: "Phase 1 extended1 COMPLETE (PR #1206): 36 analyzers migrated to shared AnalysisResult. 16 files got full utility migration (node_text, find_child_by_type, make_symbol_id, make_file_id). 20 files retain local _get_node_text/_make_stable_id (incompatible signatures, Phase 2/3). Net -695 lines. Next: Phase 1 for common and mainstream packages."  # 1dad
+- op: update  # 0ec8
+  at: '2026-02-19T06:56:36Z'  # 0ec8
+  by: agent  # 0ec8
+  actor: jgstern_agent  # 0ec8
+  clock: 3  # 0ec8
+  nonce: 0ec8  # 0ec8
+  set:  # 0ec8
+    description: "Phase 1 common+mainstream complete (PR #1207). Combined with Phase 1 extended1 (PR #1206), all 102 analyzers now use shared AnalysisResult. 43 files fully migrated (utilities+result class), 22 result-class-only, net -2,700 lines. Next: Phase 2 (TreeSitterAnalyzer base class)."  # 0ec8
+- op: update  # f59f
+  at: '2026-02-19T07:26:26Z'  # f59f
+  by: agent  # f59f
+  actor: jgstern_agent  # f59f
+  clock: 4  # f59f
+  nonce: f59f  # f59f
+  set:  # f59f
+    description: "Phase 2 complete (PR #1208). TreeSitterAnalyzer base class in base.py with 23 tests. Supports both grammar_module and language_pack modes, template methods for all phases. Next: Phase 3 (migrate extended1 analyzers to TreeSitterAnalyzer)."  # f59f
