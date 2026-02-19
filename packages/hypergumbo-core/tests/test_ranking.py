@@ -482,6 +482,116 @@ class TestApplyNoiseWeights:
         assert prod_rank.rank < mig_rank.rank
 
 
+class TestHubDampening:
+    """Tests for hub dampening via in-degree saturation in compute_centrality.
+
+    Infrastructure utilities (error sentinels, loggers, DB accessors) accumulate
+    massive in-degree from being called everywhere, but they are architecturally
+    unimportant.  In-degree saturation (``hub_threshold`` parameter) compresses
+    extreme in-degree *before* normalization, letting mid-range connector symbols
+    (services, controllers) rank higher.
+
+    The saturation formula for ind > threshold is::
+
+        effective_in = threshold + ln(1 + ind - threshold)
+
+    This is nearly a hard cap with a tiny log term preserving ordering among hubs.
+    """
+
+    def test_hub_dampened_below_connector(self):
+        """A hub with 500 in-edges should rank below a connector with 50 in/30 out.
+
+        Without saturation, the hub (in=500, out=0) scores 500.
+        The connector (in=50, out=30) scores 50*(1+ln(31)) ≈ 222.
+        Hub wins by 2.3x despite being architecturally trivial.
+
+        With hub_threshold=100, the hub's effective in-degree ≈ 106,
+        so connector wins.
+        """
+        hub = make_symbol("ErrNotExist")
+        connector = make_symbol("ProcessRequest")
+
+        callers = [make_symbol(f"caller_{i}") for i in range(500)]
+        callees = [make_symbol(f"dep_{i}") for i in range(30)]
+
+        edges = (
+            [make_edge(c.id, hub.id) for c in callers]
+            + [make_edge(c.id, connector.id) for c in callers[:50]]
+            + [make_edge(connector.id, d.id) for d in callees]
+        )
+
+        all_symbols = [hub, connector] + callers + callees
+
+        # Without saturation, hub wins
+        raw = compute_centrality(all_symbols, edges)
+        assert raw[hub.id] > raw[connector.id]
+
+        # With saturation, connector wins
+        saturated = compute_centrality(all_symbols, edges, hub_threshold=100)
+        assert saturated[connector.id] > saturated[hub.id], (
+            f"Connector ({saturated[connector.id]:.4f}) should rank above "
+            f"hub ({saturated[hub.id]:.4f}) after saturation"
+        )
+
+    def test_moderate_degree_not_affected(self):
+        """Symbols with in-degree below threshold are identical with or without saturation."""
+        sym = make_symbol("handler")
+        callers = [make_symbol(f"caller_{i}") for i in range(50)]
+        edges = [make_edge(c.id, sym.id) for c in callers]
+
+        all_symbols = [sym] + callers
+        raw = compute_centrality(all_symbols, edges)
+        saturated = compute_centrality(all_symbols, edges, hub_threshold=100)
+
+        # Score should be identical for moderate-degree nodes
+        assert saturated[sym.id] == raw[sym.id]
+
+    def test_saturation_preserves_relative_order_below_threshold(self):
+        """Symbols below the threshold maintain their relative order."""
+        sym_a = make_symbol("a")
+        sym_b = make_symbol("b")
+        callers = [make_symbol(f"c_{i}") for i in range(30)]
+
+        # A gets 30 in-edges, B gets 10
+        edges = (
+            [make_edge(c.id, sym_a.id) for c in callers]
+            + [make_edge(c.id, sym_b.id) for c in callers[:10]]
+        )
+
+        all_symbols = [sym_a, sym_b] + callers
+        saturated = compute_centrality(all_symbols, edges, hub_threshold=100)
+
+        # Relative order preserved: A > B
+        assert saturated[sym_a.id] > saturated[sym_b.id]
+
+    def test_rank_symbols_applies_hub_saturation(self):
+        """rank_symbols uses hub_threshold=100 by default, elevating connectors."""
+        # Hub: error sentinel with 200 callers, calls nothing
+        hub = make_symbol("Error")
+        # Connector: 40 callers + 20 callees (architecturally important)
+        connector = make_symbol("Handler")
+        callers = [make_symbol(f"c_{i}") for i in range(200)]
+        callees = [make_symbol(f"d_{i}") for i in range(20)]
+
+        edges = (
+            [make_edge(c.id, hub.id) for c in callers]
+            + [make_edge(c.id, connector.id) for c in callers[:40]]
+            + [make_edge(connector.id, d.id) for d in callees]
+        )
+
+        all_symbols = [hub, connector] + callers + callees
+
+        ranked = rank_symbols(all_symbols, edges)
+        hub_rank = next(r for r in ranked if r.symbol.id == hub.id)
+        conn_rank = next(r for r in ranked if r.symbol.id == connector.id)
+
+        # Connector should rank above hub (lower rank number = higher rank)
+        assert conn_rank.rank < hub_rank.rank, (
+            f"Connector ranked {conn_rank.rank}, hub ranked {hub_rank.rank}. "
+            f"Hub saturation should elevate connectors above pure hubs."
+        )
+
+
 class TestGroupSymbolsByFile:
     """Tests for group_symbols_by_file function."""
 

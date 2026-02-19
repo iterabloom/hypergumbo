@@ -14,7 +14,9 @@ Ranking uses multiple signals combined:
    log-scaled out-degree factor.  This rewards *connectors* — symbols
    that are both depended-on and depend-on-others (e.g., QuerySet, Model)
    — over pure *sinks* (e.g., exception classes, utility decorators) that
-   have high in-degree but near-zero out-degree.
+   have high in-degree but near-zero out-degree.  Extreme in-degree is
+   saturated via ``hub_threshold`` to prevent infrastructure utilities
+   (error sentinels, loggers) from dominating rankings.
 
 2. **Supply Chain Tier Weighting**: First-party code (tier 1) gets a 2x
    boost, internal dependencies (tier 2) get 1.5x, external dependencies
@@ -115,6 +117,7 @@ class RankedFile:
 def compute_centrality(
     symbols: List[Symbol],
     edges: List[Edge],
+    hub_threshold: int | None = None,
 ) -> Dict[str, float]:
     """Compute symbol importance using bidirectional centrality.
 
@@ -126,13 +129,29 @@ def compute_centrality(
 
     The formula is::
 
-        raw_score = in_degree * (1 + ln(1 + out_degree))
+        raw_score = effective_in_degree * (1 + ln(1 + out_degree))
+
+    When ``hub_threshold`` is set, in-degree is saturated for symbols above
+    the threshold to prevent infrastructure utilities (error sentinels,
+    loggers, DB accessors) from dominating rankings.  The saturation formula
+    is::
+
+        effective_in = threshold + ln(1 + in_degree - threshold)
+
+    This is nearly a hard cap: a symbol with 200 in-edges and threshold 100
+    gets effective_in ≈ 104.6 instead of 200.  The log term preserves
+    ordering among hubs without letting raw degree dominate.  Saturation
+    happens *before* normalization, which is critical — post-normalization
+    dampening cannot flip relative rankings.
 
     Scores are normalized to 0-1 after computation.
 
     Args:
         symbols: List of symbols to rank.
         edges: List of edges (calls, imports) between symbols.
+        hub_threshold: In-degree above which saturation applies. None
+            disables saturation.  Default None (off for backward compat).
+            ``rank_symbols`` passes 100.
 
     Returns:
         Dictionary mapping symbol ID to centrality score (0-1 normalized).
@@ -154,7 +173,15 @@ def compute_centrality(
     for sid in symbol_ids:
         ind = in_degree[sid]
         outd = out_degree[sid]
-        scores[sid] = ind * (1 + math.log(1 + outd))
+
+        # Saturate extreme in-degree to prevent infrastructure hubs from
+        # dominating.  The log term preserves ordering among hubs.
+        if hub_threshold is not None and ind > hub_threshold:
+            effective_in = hub_threshold + math.log(1 + ind - hub_threshold)
+        else:
+            effective_in = ind
+
+        scores[sid] = effective_in * (1 + math.log(1 + outd))
 
     # Normalize to 0-1 range
     max_score = max(scores.values()) if scores else 1.0
@@ -374,8 +401,11 @@ def rank_symbols(
     else:
         filtered_edges = list(edges)
 
-    # Compute centrality
-    raw_centrality = compute_centrality(symbols, filtered_edges)
+    # Compute centrality with hub saturation (threshold=100 dampens
+    # infrastructure utilities like error sentinels and loggers).
+    raw_centrality = compute_centrality(
+        symbols, filtered_edges, hub_threshold=100
+    )
 
     # Apply tier weighting if enabled
     if first_party_priority:
