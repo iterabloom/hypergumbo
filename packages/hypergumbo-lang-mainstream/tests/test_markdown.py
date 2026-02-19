@@ -7,7 +7,12 @@ import pytest
 
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_mainstream import markdown as markdown_module
-from hypergumbo_lang_mainstream.markdown import analyze_markdown, find_markdown_files, is_markdown_tree_sitter_available
+from hypergumbo_lang_mainstream.markdown import (
+    _analyzer,
+    analyze_markdown,
+    find_markdown_files,
+    is_markdown_tree_sitter_available,
+)
 
 def make_markdown_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a markdown file in the temp directory."""
@@ -53,8 +58,8 @@ class TestAnalyzeMarkdown:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_markdown_file(tmp_path, "README.md", "# Hello")
-        with patch.object(markdown_module, "is_markdown_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Markdown analysis skipped"):
+        with patch.object(_analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="markdown analysis skipped"):
                 result = markdown_module.analyze_markdown(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -193,7 +198,9 @@ some code
         result = analyze_markdown(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        # Base class always creates a run, even with no files
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_markdown_file(tmp_path, "README.md", "# Title\n")

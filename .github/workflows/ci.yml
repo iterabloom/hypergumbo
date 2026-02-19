@@ -111,32 +111,44 @@ jobs:
           # Fetch commit status (no auth needed for public repos)
           STATUS_JSON=$(curl -s "$API_BASE/commits/$BASE_SHA/status" 2>/dev/null || echo '{"state":"unknown","statuses":[]}')
 
-          # Parse the response to find Full Test Suite failures
+          # Parse the response — check only the aggregate job, which is the
+          # authoritative verdict. Individual jobs like test-core may fail due to
+          # Codeberg runner timeouts while their retries (on self-hosted) succeed.
+          # The aggregate job accounts for retries, so it's the single source of truth.
           RESULT=$(echo "$STATUS_JSON" | python3 -c '
           import json, sys, re
           try:
               d = json.load(sys.stdin)
               statuses = d.get("statuses", [])
 
-              # Find Full Test Suite job statuses
-              full_suite = [s for s in statuses if "Full Test Suite" in s.get("context", "")]
+              # Find the aggregate job status specifically — it is the authoritative
+              # verdict that accounts for retries (test-core-retry, etc.)
+              aggregate = [s for s in statuses if "Full Test Suite / aggregate" in s.get("context", "")]
 
-              if not full_suite:
-                  print("none|unknown")
+              if not aggregate:
+                  # No aggregate job found — check if any Full Test Suite statuses exist at all
+                  full_suite = [s for s in statuses if "Full Test Suite" in s.get("context", "")]
+                  if not full_suite:
+                      print("none|unknown")
+                  else:
+                      # Full suite is still running (aggregate has not reported yet)
+                      print("none|pending")
                   sys.exit(0)
 
-              # Check for failures
-              failed = [s for s in full_suite if s.get("status") == "failure"]
+              agg = aggregate[0]
+              agg_status = agg.get("status", "unknown")
 
-              if failed:
+              if agg_status == "failure":
                   # Extract run ID from target_url (e.g., /iterabloom/hypergumbo/actions/runs/1702/jobs/2)
-                  url = failed[0].get("target_url", "")
+                  url = agg.get("target_url", "")
                   match = re.search(r"/runs/(\d+)/", url)
                   run_id = match.group(1) if match else "unknown"
                   print(f"{run_id}|failure")
-              else:
-                  # All Full Test Suite jobs passed
+              elif agg_status == "success":
                   print("ok|success")
+              else:
+                  # pending or other — treat as no result yet
+                  print("none|pending")
           except Exception as e:
               print(f"error|{e}")
           ' 2>/dev/null || echo "error|parse_failed")
@@ -165,8 +177,9 @@ jobs:
               echo "Current PR title: $PR_TITLE"
               exit 1
             fi
-          elif [[ "$STATUS" == "none" ]] || [[ "$STATUS" == "unknown" ]]; then
-            echo "⚠️ No Full Test Suite runs found - allowing PR (first run scenario)"
+          elif [[ "$STATUS" == "none" ]] || [[ "$STATUS" == "unknown" ]] || [[ "$STATUS" == "pending" ]]; then
+            echo "⚠️ No Full Test Suite aggregate result found - allowing PR"
+            echo "   (first run, still running, or aggregate not yet reported)"
           else
             echo "✅ Full suite is passing - PR allowed"
           fi

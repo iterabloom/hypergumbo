@@ -11,8 +11,8 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
+from hypergumbo_core.analyze.base import make_symbol_id
 from hypergumbo_lang_mainstream.markdown import (
-    _make_symbol_id,
     analyze_markdown,
     find_markdown_files,
 )
@@ -27,17 +27,9 @@ class TestMarkdownHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
-        """Test symbol ID format."""
-        from pathlib import Path
-        symbol_id = _make_symbol_id(Path("docs/readme.md"), "Introduction", "section", 1)
-        assert symbol_id == "markdown:docs/readme.md:section:1:Introduction"
-
-    def test_make_symbol_id_truncates_long_names(self) -> None:
-        """Test symbol ID truncates long names."""
-        from pathlib import Path
-        long_name = "A" * 50
-        symbol_id = _make_symbol_id(Path("docs/readme.md"), long_name, "section", 1)
-        assert len(symbol_id.split(":")[-1]) == 30
+        """Test symbol ID format via base class make_symbol_id."""
+        symbol_id = make_symbol_id("markdown", "docs/readme.md", 1, 1, "Introduction", "section")
+        assert symbol_id == "markdown:docs/readme.md:1-1:Introduction:section"
 
 
 class TestSectionExtraction:

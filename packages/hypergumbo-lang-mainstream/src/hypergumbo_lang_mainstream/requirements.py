@@ -5,19 +5,24 @@ It's used by pip to install packages with specific version constraints.
 
 How It Works
 ------------
-1. Uses tree-sitter-requirements grammar from tree-sitter-language-pack
-2. Extracts package requirements with version constraints
-3. Extracts URL dependencies (git+, https:, etc.)
-4. Tracks -r (requirements) and -c (constraints) file references
+Uses the TreeSitterAnalyzer base class with the tree-sitter-requirements grammar
+from tree-sitter-language-pack. Single-pass for symbols; edges (depends, includes,
+constrains) are collected during symbol extraction and flushed via post_process.
+
+1. extract_symbols_from_file: walks AST to find requirements, URLs, global options
+2. post_process: flushes accumulated dependency/include/constraint edges
+3. _find_source_files: overridden for complex multi-pattern requirements discovery
 
 Symbols Extracted
 -----------------
 - **Requirements**: Package dependencies with version specs
 - **URL deps**: URL-based dependencies (git+https://, etc.)
+- **Editable**: Editable installs (-e)
 
 Edges Extracted
 ---------------
 - **includes**: References to other requirements files (-r)
+- **constrains**: References to constraints files (-c)
 - **depends**: Package dependency edges
 
 Why This Design
@@ -30,15 +35,18 @@ Why This Design
 
 from __future__ import annotations
 
-import time
-import uuid
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    iter_tree,
+    node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -47,17 +55,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "requirements.tree_sitter"
 PASS_VERSION = "0.1.0"
-
-
-def is_requirements_tree_sitter_available() -> bool:
-    """Check if tree-sitter-requirements is available."""
-    try:
-        from tree_sitter_language_pack import get_language
-
-        get_language("requirements")
-        return True
-    except Exception:  # pragma: no cover
-        return False
 
 
 def find_requirements_files(repo_root: Path) -> list[Path]:
@@ -78,82 +75,96 @@ def find_requirements_files(repo_root: Path) -> list[Path]:
     return sorted(set(files))
 
 
-def _get_node_text(node: "tree_sitter.Node") -> str:
-    """Get the text content of a node."""
-    return node.text.decode("utf-8") if node.text else ""
-
-
-def _make_symbol_id(path: Path, name: str, kind: str) -> str:
-    """Create a stable symbol ID."""
+def _make_symbol_id(path: str, name: str, kind: str) -> str:
+    """Create a stable symbol ID for requirements."""
     return f"requirements:{path}:{kind}:{name}"
 
 
-class RequirementsAnalyzer:
-    """Analyzer for requirements.txt files."""
+class RequirementsAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based requirements.txt analyzer.
 
-    def __init__(self, repo_root: Path) -> None:
-        self.repo_root = repo_root
-        self._symbols: list[Symbol] = []
-        self._edges: list[Edge] = []
-        self._execution_id = f"uuid:{uuid.uuid4()}"
-        self._files_analyzed = 0
+    Uses tree-sitter-requirements from the language-pack to extract package
+    dependencies, URL requirements, and file inclusion directives.
 
-    def analyze(self) -> AnalysisResult:
-        """Run the requirements analysis."""
-        start_time = time.time()
+    Edges (depends, includes, constrains) are collected during symbol
+    extraction (Pass 1) and flushed via ``post_process``, since dependency
+    symbols and their edges are tightly coupled.
 
-        files = find_requirements_files(self.repo_root)
-        if not files:
-            return AnalysisResult(
-                symbols=[],
-                edges=[],
-                run=None,
-            )
+    Overrides ``_find_source_files`` because requirements files use multiple
+    naming patterns (requirements.txt, requirements-dev.txt, etc.) that
+    need complex multi-pattern discovery with deduplication.
+    """
 
-        from tree_sitter_language_pack import get_parser
+    lang = "requirements"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["requirements*.txt", "*requirements.txt"]
+    language_pack_name = "requirements"
 
-        parser = get_parser("requirements")
+    def analyze(
+        self, repo_root: Path, max_files: Optional[int] = None
+    ) -> AnalysisResult:
+        """Reset pending edges and delegate to the base class."""
+        self._pending_edges: list[Edge] = []
+        return super().analyze(repo_root, max_files)
 
-        for path in files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                self._extract_symbols(tree.root_node, path)
-                self._files_analyzed += 1
-            except Exception:  # pragma: no cover  # noqa: S112  # nosec B112
-                continue
+    def _find_source_files(self, repo_root: Path) -> Iterator[Path]:
+        """Yield requirements files using multi-pattern discovery."""
+        yield from find_requirements_files(repo_root)
 
-        duration_ms = int((time.time() - start_time) * 1000)
+    def extract_symbols_from_file(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+        file_path: Path,
+        rel_path: str,
+        run: AnalysisRun,
+    ) -> FileAnalysis:
+        """Extract requirements, URL deps, and global options from a file.
 
-        run = AnalysisRun(
-            pass_id=PASS_ID,
-            execution_id=self._execution_id,
-            version=PASS_VERSION,
-            toolchain={"name": "requirements", "version": "unknown"},
-            duration_ms=duration_ms,
-            files_analyzed=self._files_analyzed,
-        )
+        Walks the AST iteratively. Dependency edges are accumulated on
+        self._pending_edges for flushing in post_process.
+        """
+        analysis = FileAnalysis()
 
-        return AnalysisResult(
-            symbols=self._symbols,
-            edges=self._edges,
-            run=run,
-        )
+        for node in iter_tree(tree.root_node):
+            if node.type == "requirement":
+                self._extract_requirement(
+                    node, source, rel_path, run, analysis,
+                )
+            elif node.type == "url":
+                self._extract_url_requirement(
+                    node, source, rel_path, run, analysis,
+                )
+            elif node.type == "global_opt":
+                self._extract_global_option(
+                    node, source, rel_path, run, analysis,
+                )
 
-    def _extract_symbols(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract symbols from a syntax tree node."""
-        if node.type == "requirement":
-            self._extract_requirement(node, path)
-        elif node.type == "url":
-            self._extract_url_requirement(node, path)
-        elif node.type == "global_opt":
-            self._extract_global_option(node, path)
+        return analysis
 
-        for child in node.children:
-            self._extract_symbols(child, path)
+    def post_process(
+        self,
+        symbols: list[Symbol],
+        edges: list[Edge],
+        usage_contexts: list,
+        run: AnalysisRun,
+    ) -> tuple[list[Symbol], list[Edge], list]:
+        """Flush accumulated dependency edges into the final edge list."""
+        edges.extend(self._pending_edges)
+        return symbols, edges, usage_contexts
 
-    def _extract_requirement(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract a package requirement."""
+    # -- Extraction helpers ---------------------------------------------------
+
+    def _extract_requirement(
+        self,
+        node: "tree_sitter.Node",
+        source: bytes,
+        rel_path: str,
+        run: AnalysisRun,
+        analysis: FileAnalysis,
+    ) -> None:
+        """Extract a package requirement symbol and depends edge."""
         package_name = ""
         version_spec = ""
         extras: list[str] = []
@@ -161,20 +172,19 @@ class RequirementsAnalyzer:
 
         for child in node.children:
             if child.type == "package":
-                package_name = _get_node_text(child)
+                package_name = node_text(child, source)
             elif child.type == "version_spec":
-                version_spec = _get_node_text(child)
+                version_spec = node_text(child, source)
             elif child.type == "extras":
                 for extra_child in child.children:
                     if extra_child.type == "package":
-                        extras.append(_get_node_text(extra_child))
+                        extras.append(node_text(extra_child, source))
             elif child.type == "marker_spec":
-                marker_spec = _get_node_text(child).strip()
+                marker_spec = node_text(child, source).strip()
 
         if not package_name:
             return  # pragma: no cover
 
-        rel_path = path.relative_to(self.repo_root)
         symbol_id = _make_symbol_id(rel_path, package_name, "requirement")
 
         span = Span(
@@ -184,7 +194,6 @@ class RequirementsAnalyzer:
             end_col=node.end_point[1],
         )
 
-        # Build signature
         sig = package_name
         if extras:
             sig += f"[{','.join(extras)}]"
@@ -200,6 +209,7 @@ class RequirementsAnalyzer:
             path=str(rel_path),
             span=span,
             origin=PASS_ID,
+            origin_run_id=run.execution_id,
             signature=sig,
             meta={
                 "version_spec": version_spec,
@@ -207,44 +217,49 @@ class RequirementsAnalyzer:
                 "marker": marker_spec,
             },
         )
-        self._symbols.append(symbol)
+        analysis.symbols.append(symbol)
 
-        # Create dependency edge
         edge = Edge.create(
             src=f"requirements:{rel_path}",
             dst=f"pypi:package:{package_name}",
             edge_type="depends",
             line=node.start_point[0] + 1,
             origin=PASS_ID,
-            origin_run_id=self._execution_id,
+            origin_run_id=run.execution_id,
             evidence_type="static",
             confidence=1.0,
             evidence_lang="requirements",
         )
-        self._edges.append(edge)
+        self._pending_edges.append(edge)
 
-    def _extract_url_requirement(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract a URL-based requirement."""
-        url_text = _get_node_text(node).strip()
+    def _extract_url_requirement(
+        self,
+        node: "tree_sitter.Node",
+        source: bytes,
+        rel_path: str,
+        run: AnalysisRun,
+        analysis: FileAnalysis,
+    ) -> None:
+        """Extract a URL-based requirement symbol and optional depends edge."""
+        url_text = node_text(node, source).strip()
 
         if not url_text:
             return  # pragma: no cover
-
-        rel_path = path.relative_to(self.repo_root)
 
         # Extract package name from egg fragment if present
         package_name = ""
         if "#egg=" in url_text:
             package_name = url_text.split("#egg=")[-1].split("&")[0]
         else:
-            # Try to extract from URL path
             parts = url_text.rstrip("/").split("/")
             if parts:
                 package_name = parts[-1].replace(".git", "")
                 if "@" in package_name:
                     package_name = package_name.split("@")[0]
 
-        symbol_id = _make_symbol_id(rel_path, package_name or url_text[:40], "url_requirement")
+        symbol_id = _make_symbol_id(
+            rel_path, package_name or url_text[:40], "url_requirement",
+        )
 
         span = Span(
             start_line=node.start_point[0] + 1,
@@ -253,7 +268,6 @@ class RequirementsAnalyzer:
             end_col=node.end_point[1],
         )
 
-        # Determine source type
         source_type = "url"
         if url_text.startswith("git+"):
             source_type = "git"
@@ -271,6 +285,7 @@ class RequirementsAnalyzer:
             path=str(rel_path),
             span=span,
             origin=PASS_ID,
+            origin_run_id=run.execution_id,
             signature=url_text[:60] + ("..." if len(url_text) > 60 else ""),
             meta={
                 "url": url_text,
@@ -278,9 +293,8 @@ class RequirementsAnalyzer:
                 "package_name": package_name,
             },
         )
-        self._symbols.append(symbol)
+        analysis.symbols.append(symbol)
 
-        # Create dependency edge
         if package_name:
             edge = Edge.create(
                 src=f"requirements:{rel_path}",
@@ -288,28 +302,33 @@ class RequirementsAnalyzer:
                 edge_type="depends",
                 line=node.start_point[0] + 1,
                 origin=PASS_ID,
-                origin_run_id=self._execution_id,
+                origin_run_id=run.execution_id,
                 evidence_type="static",
-                confidence=0.9,  # Slightly lower confidence for URL deps
+                confidence=0.9,
                 evidence_lang="requirements",
             )
-            self._edges.append(edge)
+            self._pending_edges.append(edge)
 
-    def _extract_global_option(self, node: "tree_sitter.Node", path: Path) -> None:
+    def _extract_global_option(
+        self,
+        node: "tree_sitter.Node",
+        source: bytes,
+        rel_path: str,
+        run: AnalysisRun,
+        analysis: FileAnalysis,
+    ) -> None:
         """Extract global options like -r, -c, -e."""
         option = ""
         option_path = ""
 
         for child in node.children:
             if child.type == "option":
-                option = _get_node_text(child)
+                option = node_text(child, source)
             elif child.type == "path":
-                option_path = _get_node_text(child)
+                option_path = node_text(child, source)
 
         if not option:
             return  # pragma: no cover
-
-        rel_path = path.relative_to(self.repo_root)
 
         # Handle -r (requirements) and -c (constraints)
         if option in ("-r", "--requirement", "-c", "--constraint") and option_path:
@@ -320,12 +339,12 @@ class RequirementsAnalyzer:
                 edge_type=edge_type,
                 line=node.start_point[0] + 1,
                 origin=PASS_ID,
-                origin_run_id=self._execution_id,
+                origin_run_id=run.execution_id,
                 evidence_type="static",
                 confidence=1.0,
                 evidence_lang="requirements",
             )
-            self._edges.append(edge)
+            self._pending_edges.append(edge)
 
         # Handle -e (editable)
         if option in ("-e", "--editable") and option_path:
@@ -347,10 +366,19 @@ class RequirementsAnalyzer:
                 path=str(rel_path),
                 span=span,
                 origin=PASS_ID,
+                origin_run_id=run.execution_id,
                 signature=f"-e {option_path}",
                 meta={"path": option_path, "editable": True},
             )
-            self._symbols.append(symbol)
+            analysis.symbols.append(symbol)
+
+
+_analyzer = RequirementsAnalyzer()
+
+
+def is_requirements_tree_sitter_available() -> bool:
+    """Check if tree-sitter-requirements is available."""
+    return _analyzer._check_grammar_available()
 
 
 @register_analyzer("requirements")
@@ -363,26 +391,4 @@ def analyze_requirements(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult containing extracted symbols and edges
     """
-    if not is_requirements_tree_sitter_available():
-        warnings.warn(
-            "Requirements analysis skipped: tree-sitter-requirements not available",
-            UserWarning,
-            stacklevel=2,
-        )
-        return AnalysisResult(
-            symbols=[],
-            edges=[],
-            run=AnalysisRun(
-                pass_id=PASS_ID,
-                execution_id=f"uuid:{uuid.uuid4()}",
-                version=PASS_VERSION,
-                toolchain={"name": "requirements", "version": "unknown"},
-                duration_ms=0,
-                files_analyzed=0,
-            ),
-            skipped=True,
-            skip_reason="tree-sitter-requirements not available",
-        )
-
-    analyzer = RequirementsAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

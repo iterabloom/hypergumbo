@@ -5,9 +5,13 @@ Understanding ignore patterns reveals project structure and build tooling.
 
 How It Works
 ------------
-1. Uses tree-sitter-gitignore grammar from tree-sitter-language-pack
-2. Extracts ignore patterns and categorizes them
-3. Identifies common patterns for builds, IDEs, environments
+Uses the TreeSitterAnalyzer base class with the tree-sitter-gitignore grammar
+from tree-sitter-language-pack. Single-pass analysis (no cross-file resolution
+needed — gitignore files are self-contained).
+
+1. extract_symbols_from_file: walks AST to find pattern nodes, categorizes them
+2. _find_source_files: overridden because find_files uses glob patterns but
+   the root .gitignore may not match the standard discovery path
 
 Symbols Extracted
 -----------------
@@ -27,15 +31,19 @@ Why This Design
 
 from __future__ import annotations
 
-import time
-import uuid
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar, Iterator
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import AnalysisRun, Span, Symbol
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    iter_tree,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -46,17 +54,6 @@ PASS_ID = "gitignore.tree_sitter"
 PASS_VERSION = "0.1.0"
 
 
-def is_gitignore_tree_sitter_available() -> bool:
-    """Check if tree-sitter-gitignore is available."""
-    try:
-        from tree_sitter_language_pack import get_language
-
-        get_language("gitignore")
-        return True
-    except Exception:  # pragma: no cover
-        return False
-
-
 def find_gitignore_files(repo_root: Path) -> list[Path]:
     """Find all gitignore files in the repository."""
     files = list(find_files(repo_root, [".gitignore"]))
@@ -65,17 +62,6 @@ def find_gitignore_files(repo_root: Path) -> list[Path]:
     if root_gitignore.exists() and root_gitignore not in files:  # pragma: no cover
         files.append(root_gitignore)
     return sorted(files)
-
-
-def _get_node_text(node: "tree_sitter.Node") -> str:
-    """Get the text content of a node."""
-    return node.text.decode("utf-8") if node.text else ""
-
-
-def _make_symbol_id(path: Path, name: str, kind: str, line: int) -> str:
-    """Create a stable symbol ID."""
-    # Include line number to make patterns unique within a file
-    return f"gitignore:{path}:{kind}:{line}:{name[:30]}"
 
 
 # Pattern categories based on common patterns
@@ -104,9 +90,9 @@ PATTERN_CATEGORIES = {
 
 # Reverse mapping for quick lookup
 PATTERN_TO_CATEGORY: dict[str, str] = {}
-for category, patterns in PATTERN_CATEGORIES.items():
-    for pattern in patterns:
-        PATTERN_TO_CATEGORY[pattern.lower()] = category
+for _category, _patterns in PATTERN_CATEGORIES.items():
+    for _pattern in _patterns:
+        PATTERN_TO_CATEGORY[_pattern.lower()] = _category
 
 
 def _categorize_pattern(pattern: str) -> str:
@@ -136,114 +122,107 @@ def _categorize_pattern(pattern: str) -> str:
     return ""
 
 
-class GitignoreAnalyzer:
-    """Analyzer for gitignore files."""
+class GitignoreAnalyzer(TreeSitterAnalyzer):
+    """Tree-sitter-based gitignore file analyzer.
 
-    def __init__(self, repo_root: Path) -> None:
-        self.repo_root = repo_root
-        self._symbols: list[Symbol] = []
-        self._edges: list[Edge] = []
-        self._execution_id = f"uuid:{uuid.uuid4()}"
-        self._files_analyzed = 0
+    Uses tree-sitter-gitignore from the language-pack to extract ignore patterns
+    and categorize them by type (build, dependencies, IDE, environment, etc.).
 
-    def analyze(self) -> AnalysisResult:
-        """Run the gitignore analysis."""
-        start_time = time.time()
+    Single-pass only — gitignore files are self-contained with no cross-file
+    references, so extract_edges_from_file is not overridden (base returns []).
 
-        files = find_gitignore_files(self.repo_root)
-        if not files:
-            return AnalysisResult(
-                symbols=[],
-                edges=[],
-                run=None,
-            )
+    Overrides ``_find_source_files`` because the root .gitignore requires
+    special discovery beyond standard glob patterns.
+    """
 
-        from tree_sitter_language_pack import get_parser
+    lang = "gitignore"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = [".gitignore"]
+    language_pack_name = "gitignore"
 
-        parser = get_parser("gitignore")
+    def _find_source_files(self, repo_root: Path) -> Iterator[Path]:
+        """Yield gitignore files, including root .gitignore."""
+        yield from find_gitignore_files(repo_root)
 
-        for path in files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                self._extract_symbols(tree.root_node, path)
-                self._files_analyzed += 1
-            except Exception:  # pragma: no cover  # noqa: S112  # nosec B112
+    def extract_symbols_from_file(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+        file_path: Path,
+        rel_path: str,
+        run: AnalysisRun,
+    ) -> FileAnalysis:
+        """Extract ignore patterns from a single gitignore file.
+
+        Walks the AST iteratively, extracting pattern nodes and categorizing
+        them by type (build, dependencies, IDE, etc.). Each pattern gets
+        metadata for negation, directory, rooted, wildcard, and category.
+        """
+        analysis = FileAnalysis()
+
+        for node in iter_tree(tree.root_node):
+            if node.type != "pattern":
                 continue
 
-        duration_ms = int((time.time() - start_time) * 1000)
+            pattern_text = node_text(node, source).strip()
+            if not pattern_text:
+                continue  # pragma: no cover
 
-        run = AnalysisRun(
-            pass_id=PASS_ID,
-            execution_id=self._execution_id,
-            version=PASS_VERSION,
-            toolchain={"name": "gitignore", "version": "unknown"},
-            duration_ms=duration_ms,
-            files_analyzed=self._files_analyzed,
-        )
+            line = node.start_point[0] + 1
+            symbol_id = make_symbol_id(
+                "gitignore", rel_path, line, node.end_point[0] + 1,
+                pattern_text, "pattern",
+            )
 
-        return AnalysisResult(
-            symbols=self._symbols,
-            edges=self._edges,
-            run=run,
-        )
+            span = Span(
+                start_line=line,
+                start_col=node.start_point[1],
+                end_line=node.end_point[0] + 1,
+                end_col=node.end_point[1],
+            )
 
-    def _extract_symbols(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract symbols from a syntax tree node."""
-        if node.type == "pattern":
-            self._extract_pattern(node, path)
+            # Determine pattern characteristics
+            is_negation = pattern_text.startswith("!")
+            is_directory = pattern_text.endswith("/")
+            is_rooted = pattern_text.startswith("/") or (
+                is_negation and pattern_text[1:].startswith("/")
+            )
+            has_wildcard = "*" in pattern_text or "?" in pattern_text or "[" in pattern_text
 
-        for child in node.children:
-            self._extract_symbols(child, path)
+            # Categorize the pattern
+            category = _categorize_pattern(pattern_text)
 
-    def _extract_pattern(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract an ignore pattern."""
-        pattern_text = _get_node_text(node).strip()
+            symbol = Symbol(
+                id=symbol_id,
+                stable_id=symbol_id,
+                name=pattern_text,
+                kind="pattern",
+                language="gitignore",
+                path=str(rel_path),
+                span=span,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                signature=pattern_text,
+                meta={
+                    "is_negation": is_negation,
+                    "is_directory": is_directory,
+                    "is_rooted": is_rooted,
+                    "has_wildcard": has_wildcard,
+                    "category": category,
+                },
+            )
+            analysis.symbols.append(symbol)
 
-        if not pattern_text:
-            return  # pragma: no cover
+        return analysis
 
-        rel_path = path.relative_to(self.repo_root)
-        line = node.start_point[0] + 1
-        symbol_id = _make_symbol_id(rel_path, pattern_text, "pattern", line)
 
-        span = Span(
-            start_line=line,
-            start_col=node.start_point[1],
-            end_line=node.end_point[0] + 1,
-            end_col=node.end_point[1],
-        )
+_analyzer = GitignoreAnalyzer()
 
-        # Determine pattern characteristics
-        is_negation = pattern_text.startswith("!")
-        is_directory = pattern_text.endswith("/")
-        is_rooted = pattern_text.startswith("/") or (
-            is_negation and pattern_text[1:].startswith("/")
-        )
-        has_wildcard = "*" in pattern_text or "?" in pattern_text or "[" in pattern_text
 
-        # Categorize the pattern
-        category = _categorize_pattern(pattern_text)
-
-        symbol = Symbol(
-            id=symbol_id,
-            stable_id=symbol_id,
-            name=pattern_text,
-            kind="pattern",
-            language="gitignore",
-            path=str(rel_path),
-            span=span,
-            origin=PASS_ID,
-            signature=pattern_text,
-            meta={
-                "is_negation": is_negation,
-                "is_directory": is_directory,
-                "is_rooted": is_rooted,
-                "has_wildcard": has_wildcard,
-                "category": category,
-            },
-        )
-        self._symbols.append(symbol)
+def is_gitignore_tree_sitter_available() -> bool:
+    """Check if tree-sitter-gitignore is available."""
+    return _analyzer._check_grammar_available()
 
 
 @register_analyzer("gitignore")
@@ -256,26 +235,4 @@ def analyze_gitignore(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult containing extracted symbols and edges
     """
-    if not is_gitignore_tree_sitter_available():
-        warnings.warn(
-            "Gitignore analysis skipped: tree-sitter-gitignore not available",
-            UserWarning,
-            stacklevel=2,
-        )
-        return AnalysisResult(
-            symbols=[],
-            edges=[],
-            run=AnalysisRun(
-                pass_id=PASS_ID,
-                execution_id=f"uuid:{uuid.uuid4()}",
-                version=PASS_VERSION,
-                toolchain={"name": "gitignore", "version": "unknown"},
-                duration_ms=0,
-                files_analyzed=0,
-            ),
-            skipped=True,
-            skip_reason="tree-sitter-gitignore not available",
-        )
-
-    analyzer = GitignoreAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

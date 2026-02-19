@@ -7,7 +7,12 @@ import pytest
 
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_mainstream import requirements as requirements_module
-from hypergumbo_lang_mainstream.requirements import analyze_requirements, find_requirements_files, is_requirements_tree_sitter_available
+from hypergumbo_lang_mainstream.requirements import (
+    _analyzer,
+    analyze_requirements,
+    find_requirements_files,
+    is_requirements_tree_sitter_available,
+)
 
 def make_requirements_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a requirements file in the temp directory."""
@@ -59,8 +64,8 @@ class TestAnalyzeRequirements:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_requirements_file(tmp_path, "requirements.txt", "flask>=2.0")
-        with patch.object(requirements_module, "is_requirements_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Requirements analysis skipped"):
+        with patch.object(_analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="requirements analysis skipped"):
                 result = requirements_module.analyze_requirements(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -211,7 +216,9 @@ git+https://github.com/user/repo.git@main
         result = analyze_requirements(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        # Base class always creates a run, even with no files
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_requirements_file(tmp_path, "requirements.txt", "flask>=2.0")

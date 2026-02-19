@@ -270,11 +270,12 @@ class TestTreeSitterUnavailable:
     def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Test analysis is skipped when tree-sitter unavailable."""
         import hypergumbo_lang_mainstream.perl as perl_module
+        from hypergumbo_lang_mainstream.perl import _analyzer
         from unittest.mock import patch
         import pytest
 
-        with patch.object(perl_module, "is_perl_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Perl analysis skipped"):
+        with patch.object(_analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="perl analysis skipped"):
                 result = perl_module.analyze_perl(tmp_path)
         assert result.skipped is True
-        assert "tree-sitter-language-pack" in result.skip_reason
+        assert "not available" in result.skip_reason

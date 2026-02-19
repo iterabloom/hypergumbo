@@ -9,9 +9,9 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
+from hypergumbo_core.analyze.base import make_symbol_id
 from hypergumbo_lang_mainstream.gitignore import (
     _categorize_pattern,
-    _make_symbol_id,
     analyze_gitignore,
     find_gitignore_files,
 )
@@ -26,15 +26,9 @@ class TestGitignoreHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
-        """Test symbol ID format."""
-        symbol_id = _make_symbol_id(Path(".gitignore"), "*.log", "pattern", 1)
-        assert symbol_id == "gitignore:.gitignore:pattern:1:*.log"
-
-    def test_make_symbol_id_truncates_long_names(self) -> None:
-        """Test symbol ID truncates long names."""
-        long_pattern = "very_long_pattern_" * 5
-        symbol_id = _make_symbol_id(Path(".gitignore"), long_pattern, "pattern", 1)
-        assert len(symbol_id.split(":")[-1]) == 30
+        """Test symbol ID format via base class make_symbol_id."""
+        symbol_id = make_symbol_id("gitignore", ".gitignore", 1, 1, "*.log", "pattern")
+        assert symbol_id == "gitignore:.gitignore:1-1:*.log:pattern"
 
 
 class TestPatternCategorization:

@@ -20,7 +20,15 @@ from unittest.mock import patch
 import pytest
 
 from hypergumbo_lang_mainstream import perl as perl_module
-from hypergumbo_lang_mainstream.perl import analyze_perl
+from hypergumbo_lang_mainstream.perl import _analyzer, analyze_perl, is_perl_tree_sitter_available
+
+
+class TestIsPerlTreeSitterAvailable:
+    """Tests for is_perl_tree_sitter_available function."""
+
+    def test_returns_true_when_available(self) -> None:
+        result = is_perl_tree_sitter_available()
+        assert result is True
 
 
 def make_perl_file(tmp: Path, name: str, content: str) -> Path:
@@ -268,15 +276,15 @@ sub run {
         make_perl_file(tmp_path, "Test.pl", "sub test { }")
 
         with patch.object(
-            perl_module,
-            "is_perl_tree_sitter_available",
+            _analyzer,
+            "_check_grammar_available",
             return_value=False,
         ):
-            with pytest.warns(UserWarning, match="Perl analysis skipped"):
+            with pytest.warns(UserWarning, match="perl analysis skipped"):
                 result = perl_module.analyze_perl(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-language-pack" in result.skip_reason
+        assert "not available" in result.skip_reason
 
     def test_analysis_run_provenance(self, tmp_path: Path) -> None:
         """Analysis run contains provenance information."""
