@@ -7,8 +7,13 @@ by the lua-v1 analyzer to avoid duplicate symbol extraction.
 
 How It Works
 ------------
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
 - Pass 1: Collect symbols (functions, types, variables)
 - Pass 2: Extract edges (function calls)
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Luau-specific extraction
+logic.
 
 Symbol Types
 ------------
@@ -23,19 +28,22 @@ Edge Types
 
 from __future__ import annotations
 
-import time
-import uuid as uuid_module
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, ClassVar, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = "luau.tree_sitter"
 PASS_VERSION = "0.1.0"
@@ -82,9 +90,8 @@ def _get_node_text(node: "tree_sitter.Node") -> str:
     return node.text.decode("utf-8") if node.text else ""
 
 
-def _make_stable_id(path: Path, repo_root: Path, name: str, kind: str) -> str:
+def _make_stable_id(rel_path: str, name: str, kind: str) -> str:
     """Create a stable identifier for a symbol."""
-    rel_path = str(path.relative_to(repo_root))
     return f"luau:{rel_path}:{kind}:{name}"
 
 
@@ -98,346 +105,228 @@ def find_luau_files(repo_root: Path) -> list[Path]:
     return sorted(find_files(repo_root, ["*.luau"]))
 
 
-def is_luau_tree_sitter_available() -> bool:
-    """Check if tree-sitter-luau is available."""
-    try:
-        from tree_sitter_language_pack import get_parser
-        get_parser("luau")
-        return True
-    except Exception:  # pragma: no cover
-        return False
+def _extract_params(node: "tree_sitter.Node") -> list[str]:
+    """Extract parameter names from a parameters node."""
+    params: list[str] = []
+    for child in node.children:
+        if child.type == "parameter":
+            param_name = None
+            param_type = None
+            for subchild in child.children:
+                if subchild.type == "identifier":
+                    param_name = _get_node_text(subchild)
+                elif subchild.type == ":" and param_type is None:
+                    pass
+                elif param_name is not None and subchild.type not in ("(", ")", ",", ":"):
+                    # Type annotation
+                    type_text = _get_node_text(subchild)
+                    if type_text:
+                        param_type = type_text
+            if param_name:
+                if param_type:
+                    params.append(f"{param_name}: {param_type}")
+                else:
+                    params.append(param_name)
+    return params
 
 
-class LuauAnalyzer:
-    """Analyzer for Luau files."""
+def _extract_function(
+    node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
+) -> None:
+    """Extract a function definition."""
+    name = None
+    is_local = False
+    params: list[str] = []
+    return_type = None
 
-    def __init__(self, repo_root: Path):
-        self.repo_root = repo_root
-        self.symbols: list[Symbol] = []
-        self.edges: list[Edge] = []
-        self._symbol_registry: dict[str, str] = {}  # name -> id
-        self._run_id: str = ""
-        self._current_function: Optional[str] = None
+    for child in node.children:
+        if child.type == "local":
+            is_local = True
+        elif child.type == "identifier" and name is None:
+            name = _get_node_text(child)
+        elif child.type == "dot_index_expression":
+            # Module.method style
+            name = _get_node_text(child)
+        elif child.type == "method_index_expression":
+            # Module:method style
+            name = _get_node_text(child)
+        elif child.type == "parameters":
+            params = _extract_params(child)
+        elif child.type == ":" and return_type is None:
+            # Next identifier is return type
+            pass
+        elif child.type == "identifier" and name is not None:  # pragma: no cover
+            # This could be the return type (complex to hit in tests)
+            return_type = _get_node_text(child)
 
-    def analyze(self) -> AnalysisResult:
-        """Analyze all Luau files in the repository."""
-        from tree_sitter_language_pack import get_parser
+    if name:
+        meta: dict[str, object] = {}
+        if is_local:
+            meta["local"] = True
+        if params:
+            meta["params"] = params
+        if return_type:  # pragma: no cover
+            meta["return_type"] = return_type
 
-        start_time = time.time()
-        self._run_id = f"uuid:{uuid_module.uuid4()}"
+        signature = f"{name}({', '.join(params)})"
 
-        parser = get_parser("luau")
-        luau_files = find_luau_files(self.repo_root)
-
-        if not luau_files:
-            return AnalysisResult()
-
-        # Pass 1: Collect all symbols
-        for path in luau_files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                self._extract_symbols(tree.root_node, path)
-            except Exception:  # pragma: no cover
-                pass
-
-        # Build symbol registry
-        for sym in self.symbols:
-            self._symbol_registry[sym.name] = sym.id
-            # Also register short name (without module prefix)
-            if "." in sym.name:
-                short_name = sym.name.split(".")[-1]
-                if short_name not in self._symbol_registry:
-                    self._symbol_registry[short_name] = sym.id
-            if ":" in sym.name:
-                short_name = sym.name.split(":")[-1]
-                if short_name not in self._symbol_registry:
-                    self._symbol_registry[short_name] = sym.id
-
-        # Pass 2: Extract edges
-        for path in luau_files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                self._current_function = None
-                self._extract_edges(tree.root_node, path)
-            except Exception:  # pragma: no cover
-                pass
-
-        elapsed = time.time() - start_time
-
-        run = AnalysisRun(
-            pass_id=PASS_ID,
-            execution_id=self._run_id,
-            version=PASS_VERSION,
-            toolchain={"name": "luau", "version": "unknown"},
-            duration_ms=int(elapsed * 1000),
+        sym = Symbol(
+            id=_make_stable_id(rel_path, name, "function"),
+            stable_id=_make_stable_id(rel_path, name, "function"),
+            name=name,
+            kind="function",
+            language="luau",
+            path=rel_path,
+            span=Span(
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                start_col=node.start_point[1],
+                end_col=node.end_point[1],
+            ),
+            origin=PASS_ID,
+            signature=signature,
+            meta=meta if meta else {},
         )
+        analysis.symbols.append(sym)
+        analysis.symbol_by_name[sym.name] = sym
 
-        return AnalysisResult(
-            symbols=self.symbols,
-            edges=self.edges,
-            run=run,
+
+def _extract_type(
+    node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
+) -> None:
+    """Extract a type definition."""
+    name = None
+    is_exported = False
+
+    for child in node.children:
+        if child.type == "export":
+            is_exported = True
+        elif child.type == "identifier":
+            name = _get_node_text(child)
+            break
+
+    if name:
+        meta: dict[str, object] = {}
+        if is_exported:
+            meta["exported"] = True
+
+        sym = Symbol(
+            id=_make_stable_id(rel_path, name, "type"),
+            stable_id=_make_stable_id(rel_path, name, "type"),
+            name=name,
+            kind="type",
+            language="luau",
+            path=rel_path,
+            span=Span(
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                start_col=node.start_point[1],
+                end_col=node.end_point[1],
+            ),
+            origin=PASS_ID,
+            meta=meta if meta else {},
         )
+        analysis.symbols.append(sym)
+        analysis.symbol_by_name[sym.name] = sym
 
-    def _extract_symbols(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract symbols from a syntax tree node."""
-        if node.type == "function_declaration":
-            self._extract_function(node, path)
 
-        elif node.type == "type_definition":
-            self._extract_type(node, path)
+def _extract_variable(
+    node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
+) -> None:
+    """Extract a variable declaration."""
+    # Only extract top-level module tables (e.g., local MyModule = {})
+    # Skip simple local variables
+    for child in node.children:
+        if child.type == "assignment_statement":
+            for subchild in child.children:
+                if subchild.type == "variable_list":
+                    for var in subchild.children:
+                        if var.type == "identifier":
+                            name = _get_node_text(var)
+                            # Only extract if it looks like a module (capital letter)
+                            if name and name[0].isupper():
+                                sym = Symbol(
+                                    id=_make_stable_id(rel_path, name, "variable"),
+                                    stable_id=_make_stable_id(rel_path, name, "variable"),
+                                    name=name,
+                                    kind="variable",
+                                    language="luau",
+                                    path=rel_path,
+                                    span=Span(
+                                        start_line=node.start_point[0] + 1,
+                                        end_line=node.end_point[0] + 1,
+                                        start_col=node.start_point[1],
+                                        end_col=node.end_point[1],
+                                    ),
+                                    origin=PASS_ID,
+                                    meta={"local": True},
+                                )
+                                analysis.symbols.append(sym)
+                                analysis.symbol_by_name[sym.name] = sym
 
-        elif node.type == "variable_declaration":
-            self._extract_variable(node, path)
 
-        # Recurse into children
-        for child in node.children:
-            self._extract_symbols(child, path)
+def _extract_symbols_recursive(
+    node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
+) -> None:
+    """Recursively extract symbols from a syntax tree."""
+    if node.type == "function_declaration":
+        _extract_function(node, rel_path, analysis)
+    elif node.type == "type_definition":
+        _extract_type(node, rel_path, analysis)
+    elif node.type == "variable_declaration":
+        _extract_variable(node, rel_path, analysis)
 
-    def _extract_function(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract a function definition."""
-        name = None
-        is_local = False
-        params: list[str] = []
-        return_type = None
+    # Recurse into children
+    for child in node.children:
+        _extract_symbols_recursive(child, rel_path, analysis)
 
-        for child in node.children:
-            if child.type == "local":
-                is_local = True
-            elif child.type == "identifier" and name is None:
-                name = _get_node_text(child)
-            elif child.type == "dot_index_expression":
-                # Module.method style
-                name = _get_node_text(child)
-            elif child.type == "method_index_expression":
-                # Module:method style
-                name = _get_node_text(child)
-            elif child.type == "parameters":
-                params = self._extract_params(child)
-            elif child.type == ":" and return_type is None:
-                # Next identifier is return type
-                pass
-            elif child.type == "identifier" and name is not None:  # pragma: no cover
-                # This could be the return type (complex to hit in tests)
-                return_type = _get_node_text(child)
 
-        if name:
-            rel_path = str(path.relative_to(self.repo_root))
+def _extract_function_call(
+    node: "tree_sitter.Node", rel_path: str, current_function: Optional[str],
+    symbol_registry: dict[str, str], run_id: str, edges: list[Edge],
+) -> None:
+    """Extract a function call edge."""
+    call_name = None
 
-            meta: dict[str, object] = {}
-            if is_local:
-                meta["local"] = True
-            if params:
-                meta["params"] = params
-            if return_type:  # pragma: no cover
-                meta["return_type"] = return_type
+    for child in node.children:
+        if child.type == "identifier":
+            call_name = _get_node_text(child)
+            break
+        elif child.type == "dot_index_expression":
+            # Module.method or object.method
+            call_name = _get_node_text(child)
+            break
+        elif child.type == "method_index_expression":
+            # object:method
+            call_name = _get_node_text(child)
+            break
 
-            signature = f"{name}({', '.join(params)})"
+    if call_name:
+        # Skip built-in functions
+        base_name = call_name.split(".")[0] if "." in call_name else call_name
+        base_name = base_name.split(":")[0] if ":" in base_name else base_name
+        method_name = call_name.split(".")[-1] if "." in call_name else call_name
+        method_name = method_name.split(":")[-1] if ":" in method_name else method_name
 
-            sym = Symbol(
-                id=_make_stable_id(path, self.repo_root, name, "function"),
-                stable_id=_make_stable_id(path, self.repo_root, name, "function"),
-                name=name,
-                kind="function",
-                language="luau",
-                path=rel_path,
-                span=Span(
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-                signature=signature,
-                meta=meta if meta else {},
-            )
-            self.symbols.append(sym)
+        if base_name in LUAU_BUILTINS or method_name in LUAU_BUILTINS:
+            return
 
-    def _extract_type(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract a type definition."""
-        name = None
-        is_exported = False
-
-        for child in node.children:
-            if child.type == "export":
-                is_exported = True
-            elif child.type == "identifier":
-                name = _get_node_text(child)
-                break
-
-        if name:
-            rel_path = str(path.relative_to(self.repo_root))
-
-            meta: dict[str, object] = {}
-            if is_exported:
-                meta["exported"] = True
-
-            sym = Symbol(
-                id=_make_stable_id(path, self.repo_root, name, "type"),
-                stable_id=_make_stable_id(path, self.repo_root, name, "type"),
-                name=name,
-                kind="type",
-                language="luau",
-                path=rel_path,
-                span=Span(
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-                meta=meta if meta else {},
-            )
-            self.symbols.append(sym)
-
-    def _extract_variable(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract a variable declaration."""
-        # Only extract top-level module tables (e.g., local MyModule = {})
-        # Skip simple local variables
-        for child in node.children:
-            if child.type == "assignment_statement":
-                for subchild in child.children:
-                    if subchild.type == "variable_list":
-                        for var in subchild.children:
-                            if var.type == "identifier":
-                                name = _get_node_text(var)
-                                # Only extract if it looks like a module (capital letter)
-                                if name and name[0].isupper():
-                                    rel_path = str(path.relative_to(self.repo_root))
-                                    sym = Symbol(
-                                        id=_make_stable_id(path, self.repo_root, name, "variable"),
-                                        stable_id=_make_stable_id(path, self.repo_root, name, "variable"),
-                                        name=name,
-                                        kind="variable",
-                                        language="luau",
-                                        path=rel_path,
-                                        span=Span(
-                                            start_line=node.start_point[0] + 1,
-                                            end_line=node.end_point[0] + 1,
-                                            start_col=node.start_point[1],
-                                            end_col=node.end_point[1],
-                                        ),
-                                        origin=PASS_ID,
-                                        meta={"local": True},
-                                    )
-                                    self.symbols.append(sym)
-
-    def _extract_params(self, node: "tree_sitter.Node") -> list[str]:
-        """Extract parameter names from a parameters node."""
-        params: list[str] = []
-        for child in node.children:
-            if child.type == "parameter":
-                param_name = None
-                param_type = None
-                for subchild in child.children:
-                    if subchild.type == "identifier":
-                        param_name = _get_node_text(subchild)
-                    elif subchild.type == ":" and param_type is None:
-                        pass
-                    elif param_name is not None and subchild.type not in ("(", ")", ",", ":"):
-                        # Type annotation
-                        type_text = _get_node_text(subchild)
-                        if type_text:
-                            param_type = type_text
-                if param_name:
-                    if param_type:
-                        params.append(f"{param_name}: {param_type}")
-                    else:
-                        params.append(param_name)
-        return params
-
-    def _extract_edges(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract edges from a syntax tree node."""
-        if node.type == "function_declaration":
-            # Track current function context
-            name = None
-            for child in node.children:
-                if child.type == "identifier" and name is None:
-                    name = _get_node_text(child)
-                    break
-                elif child.type == "dot_index_expression":
-                    name = _get_node_text(child)
-                    break
-                elif child.type == "method_index_expression":
-                    name = _get_node_text(child)
-                    break
-
-            if name:
-                prev_function = self._current_function
-                self._current_function = name
-
-                # Extract calls from function body
-                for child in node.children:
-                    if child.type == "block":
-                        self._extract_calls(child, path)
-
-                self._current_function = prev_function
-                return
-
-        elif node.type == "function_call":  # pragma: no cover
-            # Top-level function calls (rare in Luau, usually wrapped)
-            self._extract_function_call(node, path)
-
-        # Recurse into children
-        for child in node.children:
-            self._extract_edges(child, path)
-
-    def _extract_calls(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract function calls from a code block."""
-        if node.type == "function_call":
-            self._extract_function_call(node, path)
-
-        for child in node.children:
-            self._extract_calls(child, path)
-
-    def _extract_function_call(
-        self, node: "tree_sitter.Node", path: Path
-    ) -> None:
-        """Extract a function call edge."""
-        call_name = None
-
-        for child in node.children:
-            if child.type == "identifier":
-                call_name = _get_node_text(child)
-                break
-            elif child.type == "dot_index_expression":
-                # Module.method or object.method
-                call_name = _get_node_text(child)
-                break
-            elif child.type == "method_index_expression":
-                # object:method
-                call_name = _get_node_text(child)
-                break
-
-        if call_name:
-            # Skip built-in functions
-            base_name = call_name.split(".")[0] if "." in call_name else call_name
-            base_name = base_name.split(":")[0] if ":" in base_name else base_name
-            method_name = call_name.split(".")[-1] if "." in call_name else call_name
-            method_name = method_name.split(":")[-1] if ":" in method_name else method_name
-
-            if base_name in LUAU_BUILTINS or method_name in LUAU_BUILTINS:
-                return
-
-            self._add_call_edge(path, call_name, node.start_point[0] + 1)
-
-    def _add_call_edge(self, path: Path, call_name: str, line: int) -> None:
-        """Add a call edge."""
         # Determine source
-        if self._current_function:
-            src_name = self._current_function
+        if current_function:
+            src_id = symbol_registry.get(
+                current_function, f"luau:{rel_path}:file"
+            )
         else:  # pragma: no cover
             # Module-level call (rare in Luau)
-            src_name = str(path.relative_to(self.repo_root))
+            src_id = f"luau:{rel_path}:file"
 
         # Try to resolve the callee
-        dst_id = self._symbol_registry.get(call_name)
+        dst_id = symbol_registry.get(call_name)
         if not dst_id:
             # Try short name
             short_name = call_name.split(".")[-1] if "." in call_name else call_name
             short_name = short_name.split(":")[-1] if ":" in short_name else short_name
-            dst_id = self._symbol_registry.get(short_name)
+            dst_id = symbol_registry.get(short_name)
 
         if dst_id:
             confidence = 1.0
@@ -446,22 +335,144 @@ class LuauAnalyzer:
             confidence = 0.6
             dst = f"unresolved:{call_name}"
 
-        src_id = self._symbol_registry.get(
-            src_name, f"luau:{path.relative_to(self.repo_root)}:file"
-        )
-
         edge = Edge.create(
             src=src_id,
             dst=dst,
             edge_type="calls",
-            line=line,
+            line=node.start_point[0] + 1,
             origin=PASS_ID,
-            origin_run_id=self._run_id,
+            origin_run_id=run_id,
             evidence_type="tree_sitter",
             confidence=confidence,
             evidence_lang="luau",
         )
-        self.edges.append(edge)
+        edges.append(edge)
+
+
+def _extract_calls_recursive(
+    node: "tree_sitter.Node", rel_path: str, current_function: Optional[str],
+    symbol_registry: dict[str, str], run_id: str, edges: list[Edge],
+) -> None:
+    """Extract function calls from a code block."""
+    if node.type == "function_call":
+        _extract_function_call(
+            node, rel_path, current_function, symbol_registry, run_id, edges,
+        )
+
+    for child in node.children:
+        _extract_calls_recursive(
+            child, rel_path, current_function, symbol_registry, run_id, edges,
+        )
+
+
+def _extract_edges_recursive(
+    node: "tree_sitter.Node", rel_path: str, current_function: Optional[str],
+    symbol_registry: dict[str, str], run_id: str, edges: list[Edge],
+) -> None:
+    """Recursively extract edges from a syntax tree."""
+    if node.type == "function_declaration":
+        # Track current function context
+        name = None
+        for child in node.children:
+            if child.type == "identifier" and name is None:
+                name = _get_node_text(child)
+                break
+            elif child.type == "dot_index_expression":
+                name = _get_node_text(child)
+                break
+            elif child.type == "method_index_expression":
+                name = _get_node_text(child)
+                break
+
+        if name:
+            # Extract calls from function body
+            for child in node.children:
+                if child.type == "block":
+                    _extract_calls_recursive(
+                        child, rel_path, name, symbol_registry, run_id, edges,
+                    )
+            return
+
+    elif node.type == "function_call":  # pragma: no cover
+        # Top-level function calls (rare in Luau, usually wrapped)
+        _extract_function_call(
+            node, rel_path, current_function, symbol_registry, run_id, edges,
+        )
+
+    # Recurse into children
+    for child in node.children:
+        _extract_edges_recursive(
+            child, rel_path, current_function, symbol_registry, run_id, edges,
+        )
+
+
+# ---------------------------------------------------------------------------
+# LuauAnalyzer: TreeSitterAnalyzer subclass
+# ---------------------------------------------------------------------------
+
+
+class LuauAnalyzer(TreeSitterAnalyzer):
+    """Analyzer for Luau files using TreeSitterAnalyzer base class."""
+
+    lang = "luau"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.luau"]
+    language_pack_name = "luau"
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract symbols from a single Luau file."""
+        analysis = FileAnalysis()
+        _extract_symbols_recursive(tree.root_node, rel_path, analysis)
+        return analysis
+
+    def register_symbol(
+        self,
+        symbol: Symbol,
+        global_symbols: dict,
+    ) -> None:
+        """Register symbol with both full and short names."""
+        global_symbols[symbol.name] = symbol
+        # Also register short name (without module prefix)
+        if "." in symbol.name:
+            short_name = symbol.name.split(".")[-1]
+            if short_name not in global_symbols:
+                global_symbols[short_name] = symbol
+        if ":" in symbol.name:
+            short_name = symbol.name.split(":")[-1]
+            if short_name not in global_symbols:
+                global_symbols[short_name] = symbol
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract call edges from a single Luau file."""
+        edges: list[Edge] = []
+
+        # Build symbol registry (name -> id) from global symbols
+        symbol_registry: dict[str, str] = {}
+        for sym_name, sym in global_symbols.items():
+            symbol_registry[sym_name] = sym.id
+
+        _extract_edges_recursive(
+            tree.root_node, rel_path, None, symbol_registry, run.execution_id, edges,
+        )
+        return edges
+
+
+_analyzer = LuauAnalyzer()
+
+
+def is_luau_tree_sitter_available() -> bool:
+    """Check if tree-sitter-luau is available."""
+    return _analyzer._check_grammar_available()
 
 
 @register_analyzer("luau")
@@ -474,16 +485,4 @@ def analyze_luau(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult containing symbols and edges
     """
-    if not is_luau_tree_sitter_available():
-        warnings.warn(
-            "Luau analysis skipped: tree-sitter-luau not available",
-            UserWarning,
-            stacklevel=2,
-        )
-        return AnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-luau not available",
-        )
-
-    analyzer = LuauAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

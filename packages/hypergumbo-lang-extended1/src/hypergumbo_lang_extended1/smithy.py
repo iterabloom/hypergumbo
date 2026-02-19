@@ -6,8 +6,13 @@ AWS to define their service APIs and is available as an open specification.
 
 How It Works
 ------------
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
 - Pass 1: Collect symbols (services, operations, structures, resources, etc.)
 - Pass 2: Extract edges (operation references, type references)
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Smithy-specific extraction
+logic.
 
 Symbol Types
 ------------
@@ -26,19 +31,23 @@ Edge Types
 
 from __future__ import annotations
 
-import time
-import uuid as uuid_module
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, ClassVar, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    iter_tree,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = "smithy.tree_sitter"
 PASS_VERSION = "0.1.0"
@@ -49,9 +58,8 @@ def _get_node_text(node: "tree_sitter.Node") -> str:
     return node.text.decode("utf-8") if node.text else ""
 
 
-def _make_stable_id(path: Path, repo_root: Path, name: str, kind: str) -> str:
+def _make_stable_id(rel_path: str, name: str, kind: str) -> str:
     """Create a stable identifier for a symbol."""
-    rel_path = str(path.relative_to(repo_root))
     return f"smithy:{rel_path}:{kind}:{name}"
 
 
@@ -62,406 +70,496 @@ def find_smithy_files(repo_root: Path) -> list[Path]:
 
 def is_smithy_tree_sitter_available() -> bool:
     """Check if tree-sitter-smithy is available."""
-    try:
-        from tree_sitter_language_pack import get_parser
-        get_parser("smithy")
-        return True
-    except Exception:  # pragma: no cover
-        return False
+    return _analyzer._check_grammar_available()
 
 
-class SmithyAnalyzer:
-    """Analyzer for Smithy API definition files."""
+def _get_qualified_name(name: str, current_namespace: Optional[str]) -> str:
+    """Get the fully qualified name including namespace."""
+    if current_namespace:
+        return f"{current_namespace}#{name}"
+    return name  # pragma: no cover - Smithy files typically always have namespaces
 
-    def __init__(self, repo_root: Path):
-        self.repo_root = repo_root
-        self.symbols: list[Symbol] = []
-        self.edges: list[Edge] = []
-        self._symbol_registry: dict[str, str] = {}  # name -> id
-        self._run_id: str = ""
-        self._current_namespace: Optional[str] = None
 
-    def analyze(self) -> AnalysisResult:
-        """Analyze all Smithy files in the repository."""
-        from tree_sitter_language_pack import get_parser
+def _get_trait_name(node: "tree_sitter.Node") -> Optional[str]:
+    """Extract trait name from a trait_statement node."""
+    for child in node.children:
+        if child.type == "shape_id":
+            return _get_node_text(child)
+    return None  # pragma: no cover
 
-        start_time = time.time()
-        self._run_id = f"uuid:{uuid_module.uuid4()}"
 
-        parser = get_parser("smithy")
-        smithy_files = find_smithy_files(self.repo_root)
+def _extract_namespace(
+    node: "tree_sitter.Node", rel_path: str,
+) -> tuple[Optional[Symbol], Optional[str]]:
+    """Extract namespace declaration. Returns (symbol, namespace_name)."""
+    for child in node.children:
+        if child.type == "namespace" and child.text:
+            text = _get_node_text(child)
+            if text != "namespace":  # Skip the keyword
+                sym = Symbol(
+                    id=_make_stable_id(rel_path, text, "namespace"),
+                    stable_id=_make_stable_id(rel_path, text, "namespace"),
+                    name=text,
+                    kind="namespace",
+                    language="smithy",
+                    path=rel_path,
+                    span=Span(
+                        start_line=node.start_point[0] + 1,
+                        end_line=node.end_point[0] + 1,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                )
+                return sym, text
+    return None, None  # pragma: no cover
 
-        if not smithy_files:
-            return AnalysisResult()
 
-        # Pass 1: Collect all symbols
-        for path in smithy_files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                self._current_namespace = None
-                self._extract_symbols(tree.root_node, path)
-            except Exception:  # pragma: no cover
-                pass
+def _extract_shape(
+    node: "tree_sitter.Node", rel_path: str, kind: str,
+    current_namespace: Optional[str],
+) -> Optional[Symbol]:
+    """Extract a shape definition."""
+    name = None
+    traits: list[str] = []
 
-        # Build symbol registry
-        for sym in self.symbols:
-            self._symbol_registry[sym.name] = sym.id
-            # Also register short name (without namespace)
-            if "#" in sym.name:
-                short_name = sym.name.split("#")[-1]
-                if short_name not in self._symbol_registry:
-                    self._symbol_registry[short_name] = sym.id
+    for child in node.children:
+        if child.type == "identifier":
+            name = _get_node_text(child)
 
-        # Pass 2: Extract edges
-        for path in smithy_files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                self._current_namespace = None
-                self._extract_edges(tree.root_node, path)
-            except Exception:  # pragma: no cover
-                pass
+    # Look for traits in parent shape_statement
+    parent = node.parent
+    if parent and parent.type == "shape_body":
+        grandparent = parent.parent
+        if grandparent and grandparent.type == "shape_statement":
+            for sibling in grandparent.children:
+                if sibling.type == "trait_statement":
+                    trait_name = _get_trait_name(sibling)
+                    if trait_name:
+                        traits.append(trait_name)
 
-        elapsed = time.time() - start_time
+    if name:
+        qualified_name = _get_qualified_name(name, current_namespace)
 
-        run = AnalysisRun(
-            pass_id=PASS_ID,
-            execution_id=self._run_id,
-            version=PASS_VERSION,
-            toolchain={"name": "smithy", "version": "unknown"},
-            duration_ms=int(elapsed * 1000),
-        )
-
-        return AnalysisResult(
-            symbols=self.symbols,
-            edges=self.edges,
-            run=run,
-        )
-
-    def _get_qualified_name(self, name: str) -> str:
-        """Get the fully qualified name including namespace."""
-        if self._current_namespace:
-            return f"{self._current_namespace}#{name}"
-        return name  # pragma: no cover - Smithy files typically always have namespaces
-
-    def _extract_symbols(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract symbols from a syntax tree node."""
-        if node.type == "namespace_statement":
-            # Extract namespace
-            for child in node.children:
-                if child.type == "namespace" and child.text:
-                    text = _get_node_text(child)
-                    if text != "namespace":  # Skip the keyword
-                        self._current_namespace = text
-                        rel_path = str(path.relative_to(self.repo_root))
-                        sym = Symbol(
-                            id=_make_stable_id(path, self.repo_root, text, "namespace"),
-                            stable_id=_make_stable_id(path, self.repo_root, text, "namespace"),
-                            name=text,
-                            kind="namespace",
-                            language="smithy",
-                            path=rel_path,
-                            span=Span(
-                                start_line=node.start_point[0] + 1,
-                                end_line=node.end_point[0] + 1,
-                                start_col=node.start_point[1],
-                                end_col=node.end_point[1],
-                            ),
-                            origin=PASS_ID,
-                        )
-                        self.symbols.append(sym)
-                        break
-
-        elif node.type == "service_statement":
-            self._extract_shape(node, path, "service")
-
-        elif node.type == "operation_statement":
-            self._extract_shape(node, path, "operation")
-
-        elif node.type == "structure_statement":
-            self._extract_shape(node, path, "structure")
-
-        elif node.type == "resource_statement":
-            self._extract_shape(node, path, "resource")
-
-        elif node.type == "simple_shape_statement":
-            self._extract_simple_shape(node, path)
-
-        elif node.type == "union_statement":
-            self._extract_shape(node, path, "union")
-
-        elif node.type == "enum_statement":
-            self._extract_shape(node, path, "enum")
-
-        elif node.type == "list_statement":
-            self._extract_shape(node, path, "list")
-
-        elif node.type == "map_statement":
-            self._extract_shape(node, path, "map")
-
-        # Recurse into children
-        for child in node.children:
-            self._extract_symbols(child, path)
-
-    def _extract_shape(
-        self, node: "tree_sitter.Node", path: Path, kind: str
-    ) -> None:
-        """Extract a shape definition."""
-        name = None
-        traits: list[str] = []
-
-        for child in node.children:
-            if child.type == "identifier":
-                name = _get_node_text(child)
-
-        # Look for traits in parent shape_statement
-        parent = node.parent
-        if parent and parent.type == "shape_body":
-            grandparent = parent.parent
-            if grandparent and grandparent.type == "shape_statement":
-                for sibling in grandparent.children:
-                    if sibling.type == "trait_statement":
-                        trait_name = self._get_trait_name(sibling)
-                        if trait_name:
-                            traits.append(trait_name)
-
-        if name:
-            qualified_name = self._get_qualified_name(name)
-            rel_path = str(path.relative_to(self.repo_root))
-
-            sym = Symbol(
-                id=_make_stable_id(path, self.repo_root, qualified_name, kind),
-                stable_id=_make_stable_id(path, self.repo_root, qualified_name, kind),
-                name=qualified_name,
-                kind=kind,
-                language="smithy",
-                path=rel_path,
-                span=Span(
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-                meta={"traits": traits} if traits else {},
-            )
-            self.symbols.append(sym)
-
-    def _extract_simple_shape(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract a simple shape definition (e.g., string CityId)."""
-        shape_type = None
-        name = None
-
-        for child in node.children:
-            # Note: Tree-sitter may represent these as different node types
-            if child.type in ("string", "integer", "long", "short", "byte",
-                              "float", "double", "boolean", "bigInteger",
-                              "bigDecimal", "timestamp", "blob", "document"):
-                shape_type = _get_node_text(child)  # pragma: no cover
-            elif child.type == "identifier":
-                name = _get_node_text(child)
-
-        if name:
-            qualified_name = self._get_qualified_name(name)
-            rel_path = str(path.relative_to(self.repo_root))
-
-            sym = Symbol(
-                id=_make_stable_id(path, self.repo_root, qualified_name, "simple_type"),
-                stable_id=_make_stable_id(path, self.repo_root, qualified_name, "simple_type"),
-                name=qualified_name,
-                kind="simple_type",
-                language="smithy",
-                path=rel_path,
-                span=Span(
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-                meta={"base_type": shape_type} if shape_type else {},
-            )
-            self.symbols.append(sym)
-
-    def _get_trait_name(self, node: "tree_sitter.Node") -> Optional[str]:
-        """Extract trait name from a trait_statement node."""
-        for child in node.children:
-            if child.type == "shape_id":
-                return _get_node_text(child)
-        return None  # pragma: no cover
-
-    def _extract_edges(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract edges from a syntax tree node."""
-        if node.type == "namespace_statement":
-            # Update current namespace
-            for child in node.children:
-                if child.type == "namespace" and child.text:
-                    text = _get_node_text(child)
-                    if text != "namespace":
-                        self._current_namespace = text
-                        break
-
-        elif node.type == "service_statement":
-            # Extract service-to-operation relationships
-            service_name = None
-            for child in node.children:
-                if child.type == "identifier":
-                    service_name = self._get_qualified_name(_get_node_text(child))
-                    break
-
-            if service_name:
-                self._extract_service_operations(node, path, service_name)
-
-        elif node.type == "operation_statement":
-            # Extract input/output type references
-            op_name = None
-            for child in node.children:
-                if child.type == "identifier":
-                    op_name = self._get_qualified_name(_get_node_text(child))
-                    break
-
-            if op_name:
-                self._extract_operation_types(node, path, op_name)
-
-        elif node.type == "structure_statement":
-            # Extract member type references
-            struct_name = None
-            for child in node.children:
-                if child.type == "identifier":
-                    struct_name = self._get_qualified_name(_get_node_text(child))
-                    break
-
-            if struct_name:
-                self._extract_member_types(node, path, struct_name)
-
-        # Recurse into children
-        for child in node.children:
-            self._extract_edges(child, path)
-
-    def _extract_service_operations(
-        self, node: "tree_sitter.Node", path: Path, service_name: str
-    ) -> None:
-        """Extract operation references from a service definition."""
-        for child in node.children:
-            if child.type == "node_object":
-                self._extract_service_object_refs(child, path, service_name)
-            self._extract_service_operations(child, path, service_name)
-
-    def _extract_service_object_refs(
-        self, node: "tree_sitter.Node", path: Path, service_name: str
-    ) -> None:
-        """Extract references from a service's node_object."""
-        for child in node.children:
-            if child.type == "node_object_kvp":
-                key = None
-                for subchild in child.children:
-                    if subchild.type == "node_object_key":
-                        key = _get_node_text(subchild)
-                    elif subchild.type == "node_value" and key == "operations":
-                        self._extract_array_refs(subchild, path, service_name, "contains")
-
-    def _extract_array_refs(
-        self, node: "tree_sitter.Node", path: Path, src_name: str, edge_type: str
-    ) -> None:
-        """Extract references from an array value."""
-        for child in node.children:
-            if child.type == "node_array":
-                for subchild in child.children:
-                    if subchild.type == "node_value":
-                        for item in subchild.children:
-                            if item.type == "shape_id":
-                                ref_name = _get_node_text(item)
-                                self._add_reference_edge(path, src_name, ref_name, edge_type)
-
-    def _extract_operation_types(
-        self, node: "tree_sitter.Node", path: Path, op_name: str
-    ) -> None:
-        """Extract input/output type references from an operation."""
-        for child in node.children:
-            if child.type == "operation_body":
-                for subchild in child.children:
-                    if subchild.type == "operation_member":
-                        self._extract_operation_member(subchild, path, op_name)
-
-    def _extract_operation_member(
-        self, node: "tree_sitter.Node", path: Path, op_name: str
-    ) -> None:
-        """Extract a reference from an operation member (input/output/errors)."""
-        for child in node.children:
-            if child.type == "shape_id":
-                ref_name = _get_node_text(child)
-                self._add_reference_edge(path, op_name, ref_name, "references")
-            elif child.type == "operation_errors":
-                self._extract_error_refs(child, path, op_name)
-
-    def _extract_error_refs(
-        self, node: "tree_sitter.Node", path: Path, src_name: str
-    ) -> None:
-        """Extract error type references from an operation."""
-        for child in node.children:
-            if child.type == "operation_error":
-                ref_name = _get_node_text(child)
-                self._add_reference_edge(path, src_name, ref_name, "references")
-
-    def _extract_member_types(
-        self, node: "tree_sitter.Node", path: Path, struct_name: str
-    ) -> None:
-        """Extract member type references from a structure."""
-        for child in node.children:
-            if child.type == "shape_members":
-                for subchild in child.children:
-                    if subchild.type == "shape_member":
-                        self._extract_shape_member_type(subchild, path, struct_name)
-
-    def _extract_shape_member_type(
-        self, node: "tree_sitter.Node", path: Path, struct_name: str
-    ) -> None:
-        """Extract the type reference from a shape member."""
-        for child in node.children:
-            if child.type == "shape_id":
-                ref_name = _get_node_text(child)
-                # Filter out primitive types
-                if ref_name not in ("String", "Integer", "Long", "Short",
-                                    "Byte", "Float", "Double", "Boolean",
-                                    "BigInteger", "BigDecimal", "Timestamp",
-                                    "Blob", "Document"):
-                    self._add_reference_edge(path, struct_name, ref_name, "references")
-
-    def _add_reference_edge(
-        self, path: Path, src_name: str, ref_name: str, edge_type: str
-    ) -> None:
-        """Add a reference edge between shapes."""
-        # Try to resolve the reference
-        qualified_ref = ref_name
-        if "#" not in ref_name and self._current_namespace:
-            qualified_ref = f"{self._current_namespace}#{ref_name}"
-
-        dst_id = self._symbol_registry.get(qualified_ref)
-        if not dst_id:
-            dst_id = self._symbol_registry.get(ref_name)
-
-        if dst_id:
-            confidence = 1.0
-            dst = dst_id
-        else:
-            confidence = 0.6
-            dst = f"unresolved:{ref_name}"
-
-        src_id = self._symbol_registry.get(src_name, f"smithy:{path.relative_to(self.repo_root)}:file")
-
-        edge = Edge.create(
-            src=src_id,
-            dst=dst,
-            edge_type=edge_type,
-            line=1,  # Smithy doesn't have good line tracking in grammar
+        return Symbol(
+            id=_make_stable_id(rel_path, qualified_name, kind),
+            stable_id=_make_stable_id(rel_path, qualified_name, kind),
+            name=qualified_name,
+            kind=kind,
+            language="smithy",
+            path=rel_path,
+            span=Span(
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                start_col=node.start_point[1],
+                end_col=node.end_point[1],
+            ),
             origin=PASS_ID,
-            origin_run_id=self._run_id,
-            evidence_type="tree_sitter",
-            confidence=confidence,
-            evidence_lang="smithy",
+            meta={"traits": traits} if traits else {},
         )
-        self.edges.append(edge)
+    return None  # pragma: no cover
+
+
+def _extract_simple_shape(
+    node: "tree_sitter.Node", rel_path: str,
+    current_namespace: Optional[str],
+) -> Optional[Symbol]:
+    """Extract a simple shape definition (e.g., string CityId)."""
+    shape_type = None
+    name = None
+
+    for child in node.children:
+        if child.type in ("string", "integer", "long", "short", "byte",
+                          "float", "double", "boolean", "bigInteger",
+                          "bigDecimal", "timestamp", "blob", "document"):
+            shape_type = _get_node_text(child)  # pragma: no cover
+        elif child.type == "identifier":
+            name = _get_node_text(child)
+
+    if name:
+        qualified_name = _get_qualified_name(name, current_namespace)
+
+        return Symbol(
+            id=_make_stable_id(rel_path, qualified_name, "simple_type"),
+            stable_id=_make_stable_id(rel_path, qualified_name, "simple_type"),
+            name=qualified_name,
+            kind="simple_type",
+            language="smithy",
+            path=rel_path,
+            span=Span(
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                start_col=node.start_point[1],
+                end_col=node.end_point[1],
+            ),
+            origin=PASS_ID,
+            meta={"base_type": shape_type} if shape_type else {},
+        )
+    return None  # pragma: no cover
+
+
+# ---------------------------------------------------------------------------
+# Edge extraction helpers
+# ---------------------------------------------------------------------------
+
+
+def _extract_service_object_refs(
+    node: "tree_sitter.Node", rel_path: str, service_name: str,
+    symbol_registry: dict[str, str], current_namespace: Optional[str],
+    run_id: str,
+) -> list[Edge]:
+    """Extract references from a service's node_object."""
+    edges: list[Edge] = []
+    for child in node.children:
+        if child.type == "node_object_kvp":
+            key = None
+            for subchild in child.children:
+                if subchild.type == "node_object_key":
+                    key = _get_node_text(subchild)
+                elif subchild.type == "node_value" and key == "operations":
+                    edges.extend(_extract_array_refs(
+                        subchild, rel_path, service_name, "contains",
+                        symbol_registry, current_namespace, run_id,
+                    ))
+    return edges
+
+
+def _extract_array_refs(
+    node: "tree_sitter.Node", rel_path: str, src_name: str, edge_type: str,
+    symbol_registry: dict[str, str], current_namespace: Optional[str],
+    run_id: str,
+) -> list[Edge]:
+    """Extract references from an array value."""
+    edges: list[Edge] = []
+    for child in node.children:
+        if child.type == "node_array":
+            for subchild in child.children:
+                if subchild.type == "node_value":
+                    for item in subchild.children:
+                        if item.type == "shape_id":
+                            ref_name = _get_node_text(item)
+                            edge = _make_reference_edge(
+                                rel_path, src_name, ref_name, edge_type,
+                                symbol_registry, current_namespace, run_id,
+                            )
+                            if edge:
+                                edges.append(edge)
+    return edges
+
+
+def _extract_operation_types(
+    node: "tree_sitter.Node", rel_path: str, op_name: str,
+    symbol_registry: dict[str, str], current_namespace: Optional[str],
+    run_id: str,
+) -> list[Edge]:
+    """Extract input/output type references from an operation."""
+    edges: list[Edge] = []
+    for child in node.children:
+        if child.type == "operation_body":
+            for subchild in child.children:
+                if subchild.type == "operation_member":
+                    edges.extend(_extract_operation_member(
+                        subchild, rel_path, op_name,
+                        symbol_registry, current_namespace, run_id,
+                    ))
+    return edges
+
+
+def _extract_operation_member(
+    node: "tree_sitter.Node", rel_path: str, op_name: str,
+    symbol_registry: dict[str, str], current_namespace: Optional[str],
+    run_id: str,
+) -> list[Edge]:
+    """Extract a reference from an operation member (input/output/errors)."""
+    edges: list[Edge] = []
+    for child in node.children:
+        if child.type == "shape_id":
+            ref_name = _get_node_text(child)
+            edge = _make_reference_edge(
+                rel_path, op_name, ref_name, "references",
+                symbol_registry, current_namespace, run_id,
+            )
+            if edge:
+                edges.append(edge)
+        elif child.type == "operation_errors":
+            edges.extend(_extract_error_refs(
+                child, rel_path, op_name,
+                symbol_registry, current_namespace, run_id,
+            ))
+    return edges
+
+
+def _extract_error_refs(
+    node: "tree_sitter.Node", rel_path: str, src_name: str,
+    symbol_registry: dict[str, str], current_namespace: Optional[str],
+    run_id: str,
+) -> list[Edge]:
+    """Extract error type references from an operation."""
+    edges: list[Edge] = []
+    for child in node.children:
+        if child.type == "operation_error":
+            ref_name = _get_node_text(child)
+            edge = _make_reference_edge(
+                rel_path, src_name, ref_name, "references",
+                symbol_registry, current_namespace, run_id,
+            )
+            if edge:
+                edges.append(edge)
+    return edges
+
+
+def _extract_member_types(
+    node: "tree_sitter.Node", rel_path: str, struct_name: str,
+    symbol_registry: dict[str, str], current_namespace: Optional[str],
+    run_id: str,
+) -> list[Edge]:
+    """Extract member type references from a structure."""
+    edges: list[Edge] = []
+    for child in node.children:
+        if child.type == "shape_members":
+            for subchild in child.children:
+                if subchild.type == "shape_member":
+                    edges.extend(_extract_shape_member_type(
+                        subchild, rel_path, struct_name,
+                        symbol_registry, current_namespace, run_id,
+                    ))
+    return edges
+
+
+def _extract_shape_member_type(
+    node: "tree_sitter.Node", rel_path: str, struct_name: str,
+    symbol_registry: dict[str, str], current_namespace: Optional[str],
+    run_id: str,
+) -> list[Edge]:
+    """Extract the type reference from a shape member."""
+    edges: list[Edge] = []
+    for child in node.children:
+        if child.type == "shape_id":
+            ref_name = _get_node_text(child)
+            # Filter out primitive types
+            if ref_name not in ("String", "Integer", "Long", "Short",
+                                "Byte", "Float", "Double", "Boolean",
+                                "BigInteger", "BigDecimal", "Timestamp",
+                                "Blob", "Document"):
+                edge = _make_reference_edge(
+                    rel_path, struct_name, ref_name, "references",
+                    symbol_registry, current_namespace, run_id,
+                )
+                if edge:
+                    edges.append(edge)
+    return edges
+
+
+def _make_reference_edge(
+    rel_path: str, src_name: str, ref_name: str, edge_type: str,
+    symbol_registry: dict[str, str], current_namespace: Optional[str],
+    run_id: str,
+) -> Optional[Edge]:
+    """Add a reference edge between shapes."""
+    # Try to resolve the reference
+    qualified_ref = ref_name
+    if "#" not in ref_name and current_namespace:
+        qualified_ref = f"{current_namespace}#{ref_name}"
+
+    dst_id = symbol_registry.get(qualified_ref)
+    if not dst_id:
+        dst_id = symbol_registry.get(ref_name)
+
+    if dst_id:
+        confidence = 1.0
+        dst = dst_id
+    else:
+        confidence = 0.6
+        dst = f"unresolved:{ref_name}"
+
+    src_id = symbol_registry.get(src_name, f"smithy:{rel_path}:file")
+
+    return Edge.create(
+        src=src_id,
+        dst=dst,
+        edge_type=edge_type,
+        line=1,  # Smithy doesn't have good line tracking in grammar
+        origin=PASS_ID,
+        origin_run_id=run_id,
+        evidence_type="tree_sitter",
+        confidence=confidence,
+        evidence_lang="smithy",
+    )
+
+
+class SmithyAnalyzer(TreeSitterAnalyzer):
+    """Analyzer for Smithy API definition files using TreeSitterAnalyzer base class."""
+
+    lang = "smithy"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.smithy"]
+    language_pack_name = "smithy"
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract Smithy symbols (services, operations, structures, etc.)."""
+        analysis = FileAnalysis()
+        current_namespace: Optional[str] = None
+
+        for node in iter_tree(tree.root_node):
+            if node.type == "namespace_statement":
+                sym, ns_name = _extract_namespace(node, rel_path)
+                if sym:
+                    analysis.symbols.append(sym)
+                    current_namespace = ns_name
+                    # Store namespace for edge extraction
+                    analysis.import_aliases["__namespace__"] = ns_name or ""
+
+            elif node.type == "service_statement":
+                sym = _extract_shape(node, rel_path, "service", current_namespace)
+                if sym:
+                    analysis.symbols.append(sym)
+                    analysis.symbol_by_name[sym.name] = sym
+
+            elif node.type == "operation_statement":
+                sym = _extract_shape(node, rel_path, "operation", current_namespace)
+                if sym:
+                    analysis.symbols.append(sym)
+                    analysis.symbol_by_name[sym.name] = sym
+
+            elif node.type == "structure_statement":
+                sym = _extract_shape(node, rel_path, "structure", current_namespace)
+                if sym:
+                    analysis.symbols.append(sym)
+                    analysis.symbol_by_name[sym.name] = sym
+
+            elif node.type == "resource_statement":
+                sym = _extract_shape(node, rel_path, "resource", current_namespace)
+                if sym:
+                    analysis.symbols.append(sym)
+                    analysis.symbol_by_name[sym.name] = sym
+
+            elif node.type == "simple_shape_statement":
+                sym = _extract_simple_shape(node, rel_path, current_namespace)
+                if sym:
+                    analysis.symbols.append(sym)
+                    analysis.symbol_by_name[sym.name] = sym
+
+            elif node.type == "union_statement":
+                sym = _extract_shape(node, rel_path, "union", current_namespace)
+                if sym:
+                    analysis.symbols.append(sym)
+                    analysis.symbol_by_name[sym.name] = sym
+
+            elif node.type == "enum_statement":
+                sym = _extract_shape(node, rel_path, "enum", current_namespace)
+                if sym:
+                    analysis.symbols.append(sym)
+                    analysis.symbol_by_name[sym.name] = sym
+
+            elif node.type == "list_statement":
+                sym = _extract_shape(node, rel_path, "list", current_namespace)
+                if sym:
+                    analysis.symbols.append(sym)
+                    analysis.symbol_by_name[sym.name] = sym
+
+            elif node.type == "map_statement":
+                sym = _extract_shape(node, rel_path, "map", current_namespace)
+                if sym:
+                    analysis.symbols.append(sym)
+                    analysis.symbol_by_name[sym.name] = sym
+
+        return analysis
+
+    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+        """Register symbol with both full name and short name."""
+        global_symbols[symbol.name] = symbol
+        # Also register short name (without namespace)
+        if "#" in symbol.name:
+            short_name = symbol.name.split("#")[-1]
+            if short_name not in global_symbols:
+                global_symbols[short_name] = symbol
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract reference and containment edges from a Smithy file."""
+        edges: list[Edge] = []
+        current_namespace: Optional[str] = import_aliases.get("__namespace__")
+
+        # Build a name->id registry from global_symbols
+        symbol_registry: dict[str, str] = {}
+        for name, sym in global_symbols.items():
+            if isinstance(sym, Symbol):
+                symbol_registry[name] = sym.id
+
+        for node in iter_tree(tree.root_node):
+            if node.type == "namespace_statement":
+                # Update current namespace
+                for child in node.children:
+                    if child.type == "namespace" and child.text:
+                        text = _get_node_text(child)
+                        if text != "namespace":
+                            current_namespace = text
+                            break
+
+            elif node.type == "service_statement":
+                service_name = None
+                for child in node.children:
+                    if child.type == "identifier":
+                        service_name = _get_qualified_name(
+                            _get_node_text(child), current_namespace,
+                        )
+                        break
+
+                if service_name:
+                    # Extract service-to-operation relationships
+                    for child in node.children:
+                        if child.type == "node_object":
+                            edges.extend(_extract_service_object_refs(
+                                child, rel_path, service_name,
+                                symbol_registry, current_namespace,
+                                run.execution_id,
+                            ))
+
+            elif node.type == "operation_statement":
+                op_name = None
+                for child in node.children:
+                    if child.type == "identifier":
+                        op_name = _get_qualified_name(
+                            _get_node_text(child), current_namespace,
+                        )
+                        break
+
+                if op_name:
+                    edges.extend(_extract_operation_types(
+                        node, rel_path, op_name,
+                        symbol_registry, current_namespace,
+                        run.execution_id,
+                    ))
+
+            elif node.type == "structure_statement":
+                struct_name = None
+                for child in node.children:
+                    if child.type == "identifier":
+                        struct_name = _get_qualified_name(
+                            _get_node_text(child), current_namespace,
+                        )
+                        break
+
+                if struct_name:
+                    edges.extend(_extract_member_types(
+                        node, rel_path, struct_name,
+                        symbol_registry, current_namespace,
+                        run.execution_id,
+                    ))
+
+        return edges
+
+
+_analyzer = SmithyAnalyzer()
 
 
 @register_analyzer("smithy")
@@ -474,16 +572,4 @@ def analyze_smithy(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult containing symbols and edges
     """
-    if not is_smithy_tree_sitter_available():
-        warnings.warn(
-            "Smithy analysis skipped: tree-sitter-smithy not available",
-            UserWarning,
-            stacklevel=2,
-        )
-        return AnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-smithy not available",
-        )
-
-    analyzer = SmithyAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

@@ -176,7 +176,7 @@ class TestTreeSitterUnavailable:
 
     def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Test analysis is skipped when tree-sitter unavailable."""
-        with patch.object(smithy_module, "is_smithy_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Smithy analysis skipped"):
+        with patch.object(smithy_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="smithy analysis skipped"):
                 result = smithy_module.analyze_smithy(tmp_path)
         assert result.skipped is True

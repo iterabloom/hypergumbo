@@ -52,7 +52,7 @@ class TestIsApexTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(apex_module, "is_apex_tree_sitter_available", return_value=False):
+        with patch.object(apex_module._analyzer, "_check_grammar_available", return_value=False):
             assert apex_module.is_apex_tree_sitter_available() is False
 
 
@@ -61,8 +61,8 @@ class TestAnalyzeApex:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_apex_file(tmp_path, "Test.cls", "public class Test {}")
-        with patch.object(apex_module, "is_apex_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Apex analysis skipped"):
+        with patch.object(apex_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="apex analysis skipped"):
                 result = apex_module.analyze_apex(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -402,7 +402,8 @@ public class Test {}
         result = analyze_apex(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        # Base class always creates a run even for empty repos
+        assert result.run is not None
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_apex_file(tmp_path, "Service.cls", """

@@ -5,7 +5,7 @@ programs, paragraphs, sections, and their call relationships.
 
 How It Works
 ------------
-Uses tree-sitter-language-pack for COBOL parsing. Two-pass analysis:
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
 
 Pass 1 (Symbol Extraction):
 - Programs: PROGRAM-ID declarations
@@ -17,6 +17,10 @@ Pass 2 (Edge Extraction):
 - PERFORM edges: PERFORM paragraph-name statements
 - CALL edges: CALL "program-name" statements
 
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the COBOL-specific extraction
+logic.
+
 COBOL-Specific Considerations
 -----------------------------
 COBOL has a very different structure from modern languages:
@@ -26,42 +30,48 @@ COBOL has a very different structure from modern languages:
 - CALL invokes external programs
 - Data is declared in DATA DIVISION with level numbers
 """
+from __future__ import annotations
 
 from pathlib import Path
-from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.symbol_resolution import NameResolver
+from typing import TYPE_CHECKING, ClassVar, Iterator
 
-from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, find_child_by_type, make_symbol_id, make_file_id
+from hypergumbo_core.discovery import find_files
+from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
+
+if TYPE_CHECKING:
+    import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = "cobol"
 
 
 def is_cobol_tree_sitter_available() -> bool:
     """Check if tree-sitter-language-pack with COBOL support is available."""
-    try:
-        from tree_sitter_language_pack import get_language
-
-        get_language("cobol")
-        return True
-    except (ImportError, KeyError):  # pragma: no cover
-        return False
+    return _analyzer._check_grammar_available()
 
 
-def _get_parser():
-    """Get a parser for COBOL."""
-    from tree_sitter_language_pack import get_parser
-
-    return get_parser("cobol")
+def find_cobol_files(repo_root: Path) -> Iterator[Path]:
+    """Find all COBOL files in the repository."""
+    yield from find_files(repo_root, ["*.cob", "*.cbl", "*.cobol", "*.cpy"])
 
 
-def _extract_text(node, source_bytes: bytes) -> str:
+def _extract_text(node: "tree_sitter.Node", source_bytes: bytes) -> str:
     """Extract text from a node."""
-    return source_bytes[node.start_byte : node.end_byte].decode("utf-8", errors="ignore")
+    return source_bytes[node.start_byte:node.end_byte].decode("utf-8", errors="ignore")
 
 
-def _find_all_descendants(node, target_types: set):
+def _find_all_descendants(node: "tree_sitter.Node", target_types: set) -> list:
     """Find all descendant nodes of given types."""
     results = []
     for n in iter_tree(node):
@@ -70,27 +80,39 @@ def _find_all_descendants(node, target_types: set):
     return results
 
 
-def _extract_symbols_from_file(
-    rel_path: str, source_bytes: bytes, tree, run: AnalysisRun
-) -> list[Symbol]:
-    """Extract symbols from a parsed COBOL file."""
-    symbols = []
+# ---------------------------------------------------------------------------
+# CobolAnalyzer: TreeSitterAnalyzer subclass
+# ---------------------------------------------------------------------------
 
-    root = tree.root_node
 
-    # Find program definition
-    for program_def in _find_all_descendants(root, {"program_definition"}):
-        # Find program name in identification_division
-        id_div = find_child_by_type(program_def, "identification_division")
-        if id_div:
-            program_name_node = find_child_by_type(id_div, "program_name")
-            if program_name_node:
-                name = _extract_text(program_name_node, source_bytes).strip()
-                start_line = program_def.start_point[0] + 1
-                end_line = program_def.end_point[0] + 1
-                symbols.append(
-                    Symbol(
-                        id=make_symbol_id("cobol",rel_path, start_line, end_line, name, "program"),
+class CobolAnalyzer(TreeSitterAnalyzer):
+    """COBOL language analyzer using tree-sitter-language-pack."""
+
+    lang = "cobol"
+    pass_id = PASS_ID
+    pass_version = "0.1.0"
+    file_patterns: ClassVar[list[str]] = ["*.cob", "*.cbl", "*.cobol", "*.cpy"]
+    language_pack_name = "cobol"
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract programs, paragraphs, sections, and data items from COBOL."""
+        analysis = FileAnalysis()
+        root = tree.root_node
+
+        # Find program definition
+        for program_def in _find_all_descendants(root, {"program_definition"}):
+            id_div = find_child_by_type(program_def, "identification_division")
+            if id_div:
+                program_name_node = find_child_by_type(id_div, "program_name")
+                if program_name_node:
+                    name = _extract_text(program_name_node, source).strip()
+                    start_line = program_def.start_point[0] + 1
+                    end_line = program_def.end_point[0] + 1
+                    sym = Symbol(
+                        id=make_symbol_id("cobol", rel_path, start_line, end_line, name, "program"),
                         name=name,
                         kind="program",
                         language="cobol",
@@ -104,21 +126,19 @@ def _extract_symbols_from_file(
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                     )
-                )
+                    analysis.symbols.append(sym)
+                    analysis.symbol_by_name[name.upper()] = sym
 
-    # Find paragraphs and sections in procedure division
-    for proc_div in _find_all_descendants(root, {"procedure_division"}):
-        for node in proc_div.children:
-            if node.type == "paragraph_header":
-                # Extract paragraph name (remove trailing period)
-                name = _extract_text(node, source_bytes).rstrip(".")
-                name = name.strip()
-                if name:
-                    start_line = node.start_point[0] + 1
-                    end_line = node.end_point[0] + 1
-                    symbols.append(
-                        Symbol(
-                            id=make_symbol_id("cobol",rel_path, start_line, end_line, name, "paragraph"),
+        # Find paragraphs and sections in procedure division
+        for proc_div in _find_all_descendants(root, {"procedure_division"}):
+            for node in proc_div.children:
+                if node.type == "paragraph_header":
+                    name = _extract_text(node, source).rstrip(".").strip()
+                    if name:
+                        start_line = node.start_point[0] + 1
+                        end_line = node.end_point[0] + 1
+                        sym = Symbol(
+                            id=make_symbol_id("cobol", rel_path, start_line, end_line, name, "paragraph"),
                             name=name,
                             kind="paragraph",
                             language="cobol",
@@ -132,19 +152,17 @@ def _extract_symbols_from_file(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         )
-                    )
-            elif node.type == "section_header":
-                # Extract section name (remove trailing " SECTION." part)
-                full_text = _extract_text(node, source_bytes).strip()
-                # Format is "NAME SECTION." - extract just the name part
-                parts = full_text.split()
-                name = parts[0] if parts else ""
-                if name:
-                    start_line = node.start_point[0] + 1
-                    end_line = node.end_point[0] + 1
-                    symbols.append(
-                        Symbol(
-                            id=make_symbol_id("cobol",rel_path, start_line, end_line, name, "section"),
+                        analysis.symbols.append(sym)
+                        analysis.symbol_by_name[name.upper()] = sym
+                elif node.type == "section_header":
+                    full_text = _extract_text(node, source).strip()
+                    parts = full_text.split()
+                    name = parts[0] if parts else ""
+                    if name:
+                        start_line = node.start_point[0] + 1
+                        end_line = node.end_point[0] + 1
+                        sym = Symbol(
+                            id=make_symbol_id("cobol", rel_path, start_line, end_line, name, "section"),
                             name=name,
                             kind="section",
                             language="cobol",
@@ -158,95 +176,87 @@ def _extract_symbols_from_file(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                         )
+                        analysis.symbols.append(sym)
+                        analysis.symbol_by_name[name.upper()] = sym
+
+        # Find data items in DATA DIVISION
+        for data_desc in _find_all_descendants(root, {"data_description"}):
+            entry_name = find_child_by_type(data_desc, "entry_name")
+            if entry_name:
+                name = _extract_text(entry_name, source).strip()
+                level_node = find_child_by_type(data_desc, "level_number")
+                level = _extract_text(level_node, source).strip() if level_node else "01"
+                if name:
+                    start_line = data_desc.start_point[0] + 1
+                    end_line = data_desc.end_point[0] + 1
+                    analysis.symbols.append(
+                        Symbol(
+                            id=make_symbol_id("cobol", rel_path, start_line, end_line, name, "data"),
+                            name=name,
+                            kind="data",
+                            language="cobol",
+                            path=rel_path,
+                            span=Span(
+                                start_line=start_line,
+                                start_col=data_desc.start_point[1],
+                                end_line=end_line,
+                                end_col=data_desc.end_point[1],
+                            ),
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            meta={"level": level},
+                        )
                     )
 
-    # Find data items in DATA DIVISION
-    for data_desc in _find_all_descendants(root, {"data_description"}):
-        entry_name = find_child_by_type(data_desc, "entry_name")
-        if entry_name:
-            name = _extract_text(entry_name, source_bytes).strip()
-            level_node = find_child_by_type(data_desc, "level_number")
-            level = _extract_text(level_node, source_bytes).strip() if level_node else "01"
-            if name:
-                start_line = data_desc.start_point[0] + 1
-                end_line = data_desc.end_point[0] + 1
-                symbols.append(
-                    Symbol(
-                        id=make_symbol_id("cobol",rel_path, start_line, end_line, name, "data"),
-                        name=name,
-                        kind="data",
-                        language="cobol",
-                        path=rel_path,
-                        span=Span(
-                            start_line=start_line,
-                            start_col=data_desc.start_point[1],
-                            end_line=end_line,
-                            end_col=data_desc.end_point[1],
-                        ),
-                        origin=PASS_ID,
-                        origin_run_id=run.execution_id,
-                        meta={"level": level},
-                    )
-                )
+        return analysis
 
-    return symbols
+    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+        """Register symbols with uppercase names for case-insensitive matching."""
+        if symbol.kind in ("paragraph", "section", "program"):
+            global_symbols[symbol.name.upper()] = symbol
+        else:
+            global_symbols[symbol.name] = symbol
 
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract PERFORM and CALL edges from COBOL procedure division."""
+        edges: list[Edge] = []
+        root = tree.root_node
 
-def _extract_edges_from_file(
-    rel_path: str,
-    source_bytes: bytes,
-    tree,
-    local_symbols: dict[str, Symbol],
-    resolver: NameResolver,
-    run: AnalysisRun,
-) -> list[Edge]:
-    """Extract edges from a parsed COBOL file.
+        current_paragraph_name: str | None = None
+        for proc_div in _find_all_descendants(root, {"procedure_division"}):
+            for node in proc_div.children:
+                if node.type == "paragraph_header":
+                    current_paragraph_name = _extract_text(node, source).rstrip(".").strip()
 
-    Args:
-        rel_path: Relative path to the file
-        source_bytes: File contents
-        tree: Parsed tree-sitter tree
-        local_symbols: Dict mapping paragraph/section names to Symbols (for caller lookup)
-        resolver: NameResolver for callee lookup
-        run: Analysis run for provenance
-    """
-    edges: list[Edge] = []
+                # Find PERFORM statements
+                for perform in _find_all_descendants(node, {"perform_statement_call_proc"}):
+                    procedure_node = find_child_by_type(perform, "perform_procedure")
+                    if procedure_node:
+                        label_node = find_child_by_type(procedure_node, "label")
+                        if label_node:
+                            target_name = _extract_text(label_node, source).strip()
 
-    root = tree.root_node
+                            if current_paragraph_name:
+                                caller_sym = local_symbols.get(current_paragraph_name.upper())
+                                src_id = caller_sym.id if caller_sym else make_file_id("cobol", rel_path)
+                            else:  # pragma: no cover - file-level PERFORM is rare
+                                src_id = make_file_id("cobol", rel_path)  # pragma: no cover
 
-    # Find current paragraph for each statement
-    current_paragraph_name: str | None = None
-    for proc_div in _find_all_descendants(root, {"procedure_division"}):
-        for node in proc_div.children:
-            if node.type == "paragraph_header":
-                current_paragraph_name = _extract_text(node, source_bytes).rstrip(".").strip()
+                            result = resolver.lookup(target_name.upper())
+                            if result.symbol is not None:
+                                dst_id = result.symbol.id
+                                confidence = 0.85 * result.confidence
+                            else:  # pragma: no cover - unresolvable external paragraph
+                                dst_id = f"cobol:external:{target_name}:paragraph"  # pragma: no cover
+                                confidence = 0.70  # pragma: no cover
 
-            # Find PERFORM statements
-            for perform in _find_all_descendants(node, {"perform_statement_call_proc"}):
-                procedure_node = find_child_by_type(perform, "perform_procedure")
-                if procedure_node:
-                    label_node = find_child_by_type(procedure_node, "label")
-                    if label_node:
-                        target_name = _extract_text(label_node, source_bytes).strip()
-
-                        # Get caller symbol ID
-                        if current_paragraph_name:
-                            caller_sym = local_symbols.get(current_paragraph_name.upper())
-                            src_id = caller_sym.id if caller_sym else make_file_id("cobol",rel_path)
-                        else:  # pragma: no cover - file-level PERFORM is rare
-                            src_id = make_file_id("cobol",rel_path)  # pragma: no cover
-
-                        # Try to resolve the callee
-                        result = resolver.lookup(target_name.upper())
-                        if result.symbol is not None:
-                            dst_id = result.symbol.id
-                            confidence = 0.85 * result.confidence
-                        else:  # pragma: no cover - unresolvable external paragraph
-                            dst_id = f"cobol:external:{target_name}:paragraph"  # pragma: no cover
-                            confidence = 0.70  # pragma: no cover
-
-                        edges.append(
-                            Edge.create(
+                            edge = Edge.create(
                                 src=src_id,
                                 dst=dst_id,
                                 edge_type="calls",
@@ -256,37 +266,33 @@ def _extract_edges_from_file(
                                 evidence_type="ast_perform",
                                 confidence=confidence,
                             )
-                        )
-                        edges[-1].meta = {
-                            "file": rel_path,
-                            "call_type": "perform",
-                        }
+                            edge.meta = {
+                                "file": rel_path,
+                                "call_type": "perform",
+                            }
+                            edges.append(edge)
 
-            # Find CALL statements
-            for call in _find_all_descendants(node, {"call_statement"}):
-                string_node = find_child_by_type(call, "string")
-                if string_node:
-                    # Remove quotes from program name
-                    target_name = _extract_text(string_node, source_bytes).strip().strip('"\'')
+                # Find CALL statements
+                for call in _find_all_descendants(node, {"call_statement"}):
+                    string_node = find_child_by_type(call, "string")
+                    if string_node:
+                        target_name = _extract_text(string_node, source).strip().strip('"\'')
 
-                    # Get caller symbol ID
-                    if current_paragraph_name:
-                        caller_sym = local_symbols.get(current_paragraph_name.upper())
-                        src_id = caller_sym.id if caller_sym else make_file_id("cobol",rel_path)
-                    else:  # pragma: no cover - file-level CALL is rare
-                        src_id = make_file_id("cobol",rel_path)  # pragma: no cover
+                        if current_paragraph_name:
+                            caller_sym = local_symbols.get(current_paragraph_name.upper())
+                            src_id = caller_sym.id if caller_sym else make_file_id("cobol", rel_path)
+                        else:  # pragma: no cover - file-level CALL is rare
+                            src_id = make_file_id("cobol", rel_path)  # pragma: no cover
 
-                    # Try to resolve the callee (program name)
-                    result = resolver.lookup(target_name.upper())
-                    if result.symbol is not None:
-                        dst_id = result.symbol.id
-                        confidence = 0.85 * result.confidence
-                    else:
-                        dst_id = f"cobol:external:{target_name}:program"
-                        confidence = 0.70
+                        result = resolver.lookup(target_name.upper())
+                        if result.symbol is not None:
+                            dst_id = result.symbol.id
+                            confidence = 0.85 * result.confidence
+                        else:
+                            dst_id = f"cobol:external:{target_name}:program"
+                            confidence = 0.70
 
-                    edges.append(
-                        Edge.create(
+                        edge = Edge.create(
                             src=src_id,
                             dst=dst_id,
                             edge_type="calls",
@@ -296,99 +302,19 @@ def _extract_edges_from_file(
                             evidence_type="ast_call",
                             confidence=confidence,
                         )
-                    )
-                    edges[-1].meta = {
-                        "file": rel_path,
-                        "call_type": "call",
-                    }
+                        edge.meta = {
+                            "file": rel_path,
+                            "call_type": "call",
+                        }
+                        edges.append(edge)
 
-    return edges
+        return edges
+
+
+_analyzer = CobolAnalyzer()
 
 
 @register_analyzer("cobol")
 def analyze_cobol(repo_root: Path) -> AnalysisResult:
-    """Analyze COBOL files in the repository.
-
-    Args:
-        repo_root: Root directory of the repository
-
-    Returns:
-        AnalysisResult with symbols and edges from COBOL files
-    """
-    import warnings
-
-    if not is_cobol_tree_sitter_available():
-        warnings.warn(
-            "tree-sitter-language-pack with COBOL support not available. "
-            "Install with: pip install tree-sitter-language-pack",
-            UserWarning,
-            stacklevel=2,
-        )
-        return AnalysisResult(
-            symbols=[],
-            edges=[],
-            skipped=True,
-            skip_reason="tree-sitter-cobol not available",
-        )
-
-    parser = _get_parser()
-
-    # Create analysis run
-    run = AnalysisRun.create(pass_id=PASS_ID, version="0.1.0")
-
-    # Find COBOL files
-    cobol_patterns = ["**/*.cob", "**/*.cbl", "**/*.cobol", "**/*.cpy"]
-    cobol_files: list[Path] = []
-    for pattern in cobol_patterns:
-        cobol_files.extend(find_files(repo_root, [pattern]))
-
-    # Deduplicate
-    cobol_files = list(set(cobol_files))
-
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-
-    # Pass 1: Extract symbols
-    file_trees: dict[Path, tuple[bytes, object]] = {}
-    file_local_symbols: dict[str, dict[str, Symbol]] = {}
-
-    for file_path in cobol_files:
-        try:
-            source_bytes = file_path.read_bytes()
-            tree = parser.parse(source_bytes)
-            file_trees[file_path] = (source_bytes, tree)
-
-            rel_path = str(file_path.relative_to(repo_root))
-            file_symbols = _extract_symbols_from_file(rel_path, source_bytes, tree, run)
-            symbols.extend(file_symbols)
-
-            # Build local symbol map for this file (paragraphs, sections, programs)
-            local_symbols: dict[str, Symbol] = {}
-            for sym in file_symbols:
-                if sym.kind in ("paragraph", "section", "program"):
-                    local_symbols[sym.name.upper()] = sym
-            file_local_symbols[rel_path] = local_symbols
-
-        except (OSError, IOError):  # pragma: no cover
-            continue
-
-    # Build resolver from all callable symbols (paragraphs, sections, programs)
-    global_symbols: dict[str, Symbol] = {}
-    for sym in symbols:
-        if sym.kind in ("paragraph", "section", "program"):
-            global_symbols[sym.name.upper()] = sym
-    resolver = NameResolver(global_symbols)
-
-    # Pass 2: Extract edges
-    for file_path, (source_bytes, tree) in file_trees.items():
-        rel_path = str(file_path.relative_to(repo_root))
-        local_symbols = file_local_symbols.get(rel_path, {})
-        file_edges = _extract_edges_from_file(
-            rel_path, source_bytes, tree, local_symbols, resolver, run
-        )
-        edges.extend(file_edges)
-
-    # Update run stats
-    run.files_analyzed = len(file_trees)
-
-    return AnalysisResult(symbols=symbols, edges=edges, run=run)
+    """Analyze COBOL files in the repository."""
+    return _analyzer.analyze(repo_root)

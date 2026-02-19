@@ -156,12 +156,12 @@ class TestWolframAnalyzerWhenUnavailable:
         # Create a Wolfram file
         make_wolfram_file(tmp_path, "Example.wl", "x = 42")
 
-        with patch.object(wolfram_module, "is_wolfram_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Wolfram analysis skipped"):
+        with patch.object(wolfram_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="wolfram analysis skipped"):
                 result = wolfram_module.analyze_wolfram(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-wolfram" in result.skip_reason
+        assert "wolfram" in result.skip_reason
         assert len(result.symbols) == 0
         assert len(result.edges) == 0
 

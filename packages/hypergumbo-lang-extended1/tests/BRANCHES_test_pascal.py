@@ -221,7 +221,7 @@ class TestTreeSitterUnavailable:
 
     def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Test analysis is skipped when tree-sitter unavailable."""
-        with patch.object(pascal_module, "is_pascal_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Pascal analysis skipped"):
+        with patch.object(pascal_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="pascal analysis skipped"):
                 result = pascal_module.analyze_pascal(tmp_path)
         assert result.skipped is True

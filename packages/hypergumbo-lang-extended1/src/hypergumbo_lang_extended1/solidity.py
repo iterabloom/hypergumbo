@@ -16,37 +16,44 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-1. Check if tree-sitter-solidity is available
-2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
-   - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls and resolve against global symbol registry
-4. Detect function calls and import statements
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+- Pass 1: Parse all files, extract all symbols into global registry
+- Pass 2: Detect calls, imports, and resolve against global symbol registry
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Solidity-specific
+extraction logic.
 
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
-- Uses tree-sitter-solidity package for grammar
+- Uses tree-sitter-solidity package for grammar (direct grammar module)
 - Two-pass allows cross-file call resolution
 - Solidity-specific: contracts, modifiers, events are first-class symbols
 """
 from __future__ import annotations
 
-import importlib.util
-import time
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
 
 PASS_ID = "solidity-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -55,15 +62,6 @@ PASS_VERSION = "hypergumbo-0.1.0"
 def find_solidity_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Solidity files in the repository."""
     yield from find_files(repo_root, ["*.sol"])
-
-
-def is_solidity_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Solidity grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False
-    if importlib.util.find_spec("tree_sitter_solidity") is None:
-        return False
-    return True
 
 
 def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:
@@ -141,30 +139,52 @@ def _extract_solidity_signature(
     return sig
 
 
-@dataclass
-class FileAnalysis:
-    """Intermediate analysis result for a single file."""
+def _extract_import_aliases(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> tuple[str, dict[str, str]]:
+    """Extract import path and alias mappings from an import directive.
 
-    symbols: list[Symbol] = field(default_factory=list)
-    symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
-    current_contract: str = ""
-    import_aliases: dict[str, str] = field(default_factory=dict)  # alias → import_path
+    Solidity import patterns:
+    - import "file.sol";                      -> path, no aliases
+    - import * as Alias from "file.sol";      -> path, {Alias: path}
+    - import {X as Y} from "file.sol";        -> path, {Y: path}
+    - import {X, Y as Z} from "file.sol";     -> path, {Z: path}
+
+    Returns (import_path, {alias: import_path}).
+    """
+    import_path = ""
+    aliases: dict[str, str] = {}
+
+    # Find the import path (string node)
+    string_node = find_child_by_type(node, "string")
+    if string_node:
+        import_path = node_text(string_node, source).strip('"\'')
+
+    if not import_path:
+        return "", {}  # pragma: no cover - defensive
+
+    # Look for alias patterns
+    children = list(node.children)
+    i = 0
+    while i < len(children):
+        child = children[i]
+        if child.type == "as" and i + 1 < len(children):
+            # The next identifier is the alias
+            next_child = children[i + 1]
+            if next_child.type == "identifier":
+                alias = node_text(next_child, source)
+                aliases[alias] = import_path
+        i += 1
+
+    return import_path, aliases
 
 
-def _extract_symbols_from_file(
-    file_path: Path,
-    parser: "tree_sitter.Parser",
-    run: AnalysisRun,
-) -> FileAnalysis:
-    """Extract symbols from a single Solidity file."""
-    try:
-        source = file_path.read_bytes()
-        tree = parser.parse(source)
-    except (OSError, IOError):
-        return FileAnalysis()
-
-    analysis = FileAnalysis()
-
+def _extract_symbols_from_tree(
+    tree: "tree_sitter.Tree", source: bytes, file_path: str,
+    run_id: str, analysis: FileAnalysis,
+) -> None:
+    """Extract symbols from a single Solidity file's parse tree."""
     def add_symbol(
         name: str,
         kind: str,
@@ -178,11 +198,11 @@ def _extract_symbols_from_file(
         full_name = f"{prefix}.{name}" if prefix else name
 
         symbol = Symbol(
-            id=make_symbol_id("solidity", str(file_path), start_line, end_line, full_name, kind),
+            id=make_symbol_id("solidity", file_path, start_line, end_line, full_name, kind),
             name=full_name,
             kind=kind,
             language="solidity",
-            path=str(file_path),
+            path=file_path,
             span=Span(
                 start_line=start_line,
                 end_line=end_line,
@@ -190,7 +210,7 @@ def _extract_symbols_from_file(
                 end_col=node.end_point[1],
             ),
             origin=PASS_ID,
-            origin_run_id=run.execution_id,
+            origin_run_id=run_id,
             signature=signature,
         )
         analysis.symbols.append(symbol)
@@ -250,76 +270,20 @@ def _extract_symbols_from_file(
                 current_contract = _get_enclosing_contract(node, source) or ""
                 add_symbol(event_name, "event", node, current_contract)
 
-    return analysis
 
-
-def _extract_import_aliases(
-    node: "tree_sitter.Node",
-    source: bytes,
-) -> tuple[str, dict[str, str]]:
-    """Extract import path and alias mappings from an import directive.
-
-    Solidity import patterns:
-    - import "file.sol";                      -> path, no aliases
-    - import * as Alias from "file.sol";      -> path, {Alias: path}
-    - import {X as Y} from "file.sol";        -> path, {Y: path}
-    - import {X, Y as Z} from "file.sol";     -> path, {Z: path}
-
-    Returns (import_path, {alias: import_path}).
-    """
-    import_path = ""
-    aliases: dict[str, str] = {}
-
-    # Find the import path (string node)
-    string_node = find_child_by_type(node, "string")
-    if string_node:
-        import_path = node_text(string_node, source).strip('"\'')
-
-    if not import_path:
-        return "", {}  # pragma: no cover - defensive
-
-    # Look for alias patterns
-    # Pattern: identifier "as" identifier (named import alias)
-    # Pattern: "*" "as" identifier (namespace alias)
-    children = list(node.children)
-    i = 0
-    while i < len(children):
-        child = children[i]
-        if child.type == "as" and i + 1 < len(children):
-            # The next identifier is the alias
-            next_child = children[i + 1]
-            if next_child.type == "identifier":
-                alias = node_text(next_child, source)
-                aliases[alias] = import_path
-        i += 1
-
-    return import_path, aliases
-
-
-def _extract_edges_from_file(
-    file_path: Path,
-    parser: "tree_sitter.Parser",
-    local_symbols: dict[str, Symbol],
-    global_symbols: dict[str, Symbol],
-    run: AnalysisRun,
-    resolver: NameResolver | None = None,
+def _extract_edges_from_tree(
+    tree: "tree_sitter.Tree", source: bytes, file_path: str,
+    local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
+    run_id: str, resolver: NameResolver,
 ) -> tuple[list[Edge], dict[str, str]]:
-    """Extract edges (calls, imports) from a Solidity file.
+    """Extract edges (calls, imports) from a Solidity file's parse tree.
 
     Returns (edges, import_aliases) where import_aliases maps alias names
     to import paths for path_hint resolution.
     """
-    if resolver is None:  # pragma: no cover - defensive
-        resolver = NameResolver(global_symbols)
-    try:
-        source = file_path.read_bytes()
-        tree = parser.parse(source)
-    except (OSError, IOError):
-        return [], {}
-
     edges: list[Edge] = []
     import_aliases: dict[str, str] = {}
-    file_id = make_file_id("solidity", str(file_path))
+    file_id = make_file_id("solidity", file_path)
 
     # First pass: extract import aliases
     for node in iter_tree(tree.root_node):
@@ -333,7 +297,7 @@ def _extract_edges_from_file(
                     line=node.start_point[0] + 1,
                     confidence=0.95,
                     origin=PASS_ID,
-                    origin_run_id=run.execution_id,
+                    origin_run_id=run_id,
                 )
                 edges.append(edge)
                 import_aliases.update(aliases)
@@ -358,7 +322,7 @@ def _extract_edges_from_file(
                         line=node.start_point[0] + 1,
                         confidence=0.90,
                         origin=PASS_ID,
-                        origin_run_id=run.execution_id,
+                        origin_run_id=run_id,
                     )
                     edges.append(edge)
                 else:
@@ -374,11 +338,60 @@ def _extract_edges_from_file(
                             line=node.start_point[0] + 1,
                             confidence=0.90 * lookup_result.confidence,
                             origin=PASS_ID,
-                            origin_run_id=run.execution_id,
+                            origin_run_id=run_id,
                         )
                         edges.append(edge)
 
     return edges, import_aliases
+
+
+# ---------------------------------------------------------------------------
+# SolidityAnalyzer: TreeSitterAnalyzer subclass
+# ---------------------------------------------------------------------------
+
+
+class SolidityAnalyzer(TreeSitterAnalyzer):
+    """Analyzer for Solidity smart contract files using TreeSitterAnalyzer base class."""
+
+    lang = "solidity"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.sol"]
+    grammar_module = "tree_sitter_solidity"
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract symbols from a single Solidity file."""
+        analysis = FileAnalysis()
+        _extract_symbols_from_tree(
+            tree, source, str(file_path), run.execution_id, analysis,
+        )
+        return analysis
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract call and import edges from a single Solidity file."""
+        edges, _aliases = _extract_edges_from_tree(
+            tree, source, str(file_path),
+            local_symbols, global_symbols,
+            run.execution_id, resolver,
+        )
+        return edges
+
+
+_analyzer = SolidityAnalyzer()
+
+
+def is_solidity_tree_sitter_available() -> bool:
+    """Check if tree-sitter with Solidity grammar is available."""
+    return _analyzer._check_grammar_available()
 
 
 @register_analyzer("solidity")
@@ -391,58 +404,4 @@ def analyze_solidity(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult with symbols, edges, and analysis run info.
     """
-    if not is_solidity_tree_sitter_available():
-        return AnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-solidity not installed. Install with: pip install tree-sitter-solidity",
-        )
-
-    # Import tree-sitter here to avoid import errors when not installed
-    import tree_sitter
-    import tree_sitter_solidity
-
-    start_time = time.time()
-
-    # Suppress deprecation warnings from tree-sitter
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=DeprecationWarning)
-        language = tree_sitter.Language(tree_sitter_solidity.language())
-        parser = tree_sitter.Parser(language)
-
-    run = AnalysisRun.create(
-        pass_id=PASS_ID,
-        version=PASS_VERSION,
-    )
-
-    # Find all Solidity files
-    sol_files = list(find_solidity_files(repo_root))
-
-    # Pass 1: Extract all symbols
-    all_symbols: list[Symbol] = []
-    global_symbols: dict[str, Symbol] = {}
-    file_analyses: dict[Path, FileAnalysis] = {}
-
-    for sol_file in sol_files:
-        analysis = _extract_symbols_from_file(sol_file, parser, run)
-        file_analyses[sol_file] = analysis
-        all_symbols.extend(analysis.symbols)
-        global_symbols.update(analysis.symbol_by_name)
-
-    # Pass 2: Extract edges with cross-file resolution
-    resolver = NameResolver(global_symbols)
-    all_edges: list[Edge] = []
-    for sol_file in sol_files:
-        local_symbols = file_analyses[sol_file].symbol_by_name
-        edges, import_aliases = _extract_edges_from_file(sol_file, parser, local_symbols, global_symbols, run, resolver)
-        file_analyses[sol_file].import_aliases = import_aliases
-        all_edges.extend(edges)
-
-    # Update run with timing
-    end_time = time.time()
-    run.duration_ms = int((end_time - start_time) * 1000)
-
-    return AnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

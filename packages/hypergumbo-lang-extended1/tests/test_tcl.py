@@ -104,7 +104,7 @@ class TestIsTclTreeSitterAvailable:
     def test_returns_false_when_unavailable(self) -> None:
         """Should return False when tree-sitter-language-pack is not installed."""
         import hypergumbo_lang_extended1.tcl as tcl_module
-        with patch.object(tcl_module, "is_tcl_tree_sitter_available", return_value=False):
+        with patch.object(tcl_module._analyzer, "_check_grammar_available", return_value=False):
             assert tcl_module.is_tcl_tree_sitter_available() is False
 
 
@@ -115,12 +115,12 @@ class TestAnalyzeTcl:
         """Should skip analysis and warn when tree-sitter is unavailable."""
         import hypergumbo_lang_extended1.tcl as tcl_module
 
-        with patch.object(tcl_module, "is_tcl_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="tree-sitter-language-pack not available"):
+        with patch.object(tcl_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="tcl analysis skipped"):
                 result = tcl_module.analyze_tcl(tcl_repo)
 
         assert result.skipped is True
-        assert "tree-sitter-language-pack" in result.skip_reason
+        assert "tcl" in result.skip_reason
         assert result.symbols == []
         assert result.edges == []
 
@@ -233,7 +233,7 @@ class TestAnalyzeTcl:
         assert not result.skipped
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
 
     def test_stable_ids(self, tcl_repo: Path) -> None:
         """Should generate stable IDs for symbols."""

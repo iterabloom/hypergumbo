@@ -15,19 +15,17 @@ The tree-sitter-d parser handles .d and .di (interface) files.
 
 How It Works
 ------------
-1. Check if tree-sitter with D grammar is available
-2. If not available, return skipped result (not an error)
-3. Parse all .d and .di files
-4. Extract module declarations
-5. Extract function definitions with signatures
-6. For functions inside struct/class/interface: extract as ``method``
-   with qualified name (e.g., ``Searcher.search``) so the containment
-   linker can create ``contains`` edges from parent to method
-7. Extract struct, class, and interface definitions
-8. Track import statements as edges
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Extract module, function, struct, class, interface symbols
+2. Pass 2: Extract import edges and call edges using NameResolver
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the D-specific extraction
+logic.
 
 Why This Design
 ---------------
+- TreeSitterAnalyzer eliminates ~150 lines of boilerplate
 - Optional dependency keeps base install lightweight
 - Uses tree-sitter-language-pack for D grammar
 - D is used for systems programming as a modern C++ alternative
@@ -36,22 +34,26 @@ Why This Design
 """
 from __future__ import annotations
 
-import importlib.util
-import time
 import uuid
-import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
-from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, node_text, find_child_by_type
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    iter_tree,
+    node_text,
+    find_child_by_type,
+)
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
 
 PASS_ID = "d-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -62,40 +64,20 @@ def find_d_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.d", "*.di"])
 
 
-def is_d_tree_sitter_available() -> bool:
-    """Check if tree-sitter-d is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover - tree-sitter not installed
-    if importlib.util.find_spec("tree_sitter_language_pack") is None:
-        return False  # pragma: no cover - language pack not installed
-    try:
-        from tree_sitter_language_pack import get_language
-
-        get_language("d")
-        return True
-    except Exception:  # pragma: no cover - d grammar not available
-        return False
+# ---------------------------------------------------------------------------
+# Symbol extraction helpers
+# ---------------------------------------------------------------------------
 
 
-@dataclass
-class _FileContext:
-    """Context for processing a single file."""
-
-    source: bytes
-    rel_path: str
-    file_stable_id: str
-    run_id: str
-    symbols: list[Symbol]
-    edges: list[Edge]
-    import_aliases: dict[str, str] = field(default_factory=dict)
-
-
-def _make_symbol(ctx: _FileContext, node: "tree_sitter.Node", name: str, kind: str,
-                 signature: Optional[str] = None, meta: Optional[dict] = None) -> Symbol:
+def _make_symbol(
+    rel_path: str, run_id: str, node: "tree_sitter.Node",
+    name: str, kind: str, source: bytes,
+    signature: Optional[str] = None, meta: Optional[dict] = None,
+) -> Symbol:
     """Create a Symbol with consistent formatting."""
     start_line = node.start_point[0] + 1
     end_line = node.end_point[0] + 1
-    sym_id = f"d:{ctx.rel_path}:{start_line}-{end_line}:{name}:{kind}"
+    sym_id = f"d:{rel_path}:{start_line}-{end_line}:{name}:{kind}"
     span = Span(
         start_line=start_line,
         start_col=node.start_point[1],
@@ -108,70 +90,26 @@ def _make_symbol(ctx: _FileContext, node: "tree_sitter.Node", name: str, kind: s
         canonical_name=name,
         kind=kind,
         language="d",
-        path=ctx.rel_path,
+        path=rel_path,
         span=span,
         origin=PASS_ID,
-        origin_run_id=ctx.run_id,
-        stable_id=f"d:{ctx.rel_path}:{name}",
+        origin_run_id=run_id,
+        stable_id=f"d:{rel_path}:{name}",
         signature=signature,
         meta=meta,
     )
 
 
-def _process_module_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
+def _process_module_declaration(
+    source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+) -> Optional[Symbol]:
     """Process a module declaration."""
-    # module_fqn contains the module name
     fqn = find_child_by_type(node, "module_fqn")
     if not fqn:
-        return  # pragma: no cover - defensive
+        return None  # pragma: no cover - defensive
 
-    mod_name = node_text(fqn, ctx.source)
-    ctx.symbols.append(_make_symbol(ctx, node, mod_name, "module"))
-
-
-def _process_import_declaration(
-    ctx: _FileContext,
-    node: "tree_sitter.Node",
-    module_registry: dict[str, str] | None = None,
-) -> None:
-    """Process an import declaration.
-
-    When *module_registry* maps module names to their symbol IDs, the
-    dst of the import edge is resolved to the actual module symbol.
-    Otherwise, the dst falls back to the unresolved ``d:?:name:module``
-    format used for external / standard-library imports.
-    """
-    # Find the imported module
-    imported = find_child_by_type(node, "imported")
-    if not imported:
-        return  # pragma: no cover - defensive
-
-    fqn = find_child_by_type(imported, "module_fqn")
-    if not fqn:
-        return  # pragma: no cover - defensive
-
-    import_name = node_text(fqn, ctx.source)
-
-    # Resolve to actual module symbol if available
-    if module_registry and import_name in module_registry:
-        dst = module_registry[import_name]
-        confidence = 0.95
-    else:
-        dst = f"d:?:{import_name}:module"
-        confidence = 0.9
-
-    ctx.edges.append(
-        Edge(
-            id=f"edge:d:{uuid.uuid4().hex[:12]}",
-            src=ctx.file_stable_id,
-            dst=dst,
-            edge_type="imports",
-            line=node.start_point[0] + 1,
-            confidence=confidence,
-            origin=PASS_ID,
-            origin_run_id=ctx.run_id,
-        )
-    )
+    mod_name = node_text(fqn, source)
+    return _make_symbol(rel_path, run_id, node, mod_name, "module", source)
 
 
 _CONTAINER_NODE_TYPES = frozenset({
@@ -193,7 +131,9 @@ def _find_parent_container(
     return None
 
 
-def _process_function_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
+def _process_function_declaration(
+    source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+) -> Optional[Symbol]:
     """Process a function declaration.
 
     If the function is inside a struct, class, or interface, it is
@@ -202,82 +142,62 @@ def _process_function_declaration(ctx: _FileContext, node: "tree_sitter.Node") -
     """
     name_node = find_child_by_type(node, "identifier")
     if not name_node:
-        return  # pragma: no cover - defensive
+        return None  # pragma: no cover - defensive
 
-    func_name = node_text(name_node, ctx.source)
+    func_name = node_text(name_node, source)
 
     # Get parameters for signature
     params = find_child_by_type(node, "parameters")
-    signature = node_text(params, ctx.source) if params else "()"
+    signature = node_text(params, source) if params else "()"
 
     # Check if function is inside a container (struct/class/interface)
-    parent_name = _find_parent_container(node, ctx.source)
+    parent_name = _find_parent_container(node, source)
     if parent_name:
         qualified_name = f"{parent_name}.{func_name}"
-        ctx.symbols.append(_make_symbol(ctx, node, qualified_name, "method", signature=signature))
+        return _make_symbol(rel_path, run_id, node, qualified_name, "method", source, signature=signature)
     else:
-        ctx.symbols.append(_make_symbol(ctx, node, func_name, "function", signature=signature))
+        return _make_symbol(rel_path, run_id, node, func_name, "function", source, signature=signature)
 
 
-def _process_struct_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
+def _process_struct_declaration(
+    source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+) -> Optional[Symbol]:
     """Process a struct declaration."""
     name_node = find_child_by_type(node, "identifier")
     if not name_node:
-        return  # pragma: no cover - defensive
+        return None  # pragma: no cover - defensive
 
-    struct_name = node_text(name_node, ctx.source)
-    ctx.symbols.append(_make_symbol(ctx, node, struct_name, "struct"))
+    struct_name = node_text(name_node, source)
+    return _make_symbol(rel_path, run_id, node, struct_name, "struct", source)
 
 
-def _process_class_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
+def _process_class_declaration(
+    source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+) -> Optional[Symbol]:
     """Process a class declaration."""
     name_node = find_child_by_type(node, "identifier")
     if not name_node:
-        return  # pragma: no cover - defensive
+        return None  # pragma: no cover - defensive
 
-    class_name = node_text(name_node, ctx.source)
-    ctx.symbols.append(_make_symbol(ctx, node, class_name, "class"))
+    class_name = node_text(name_node, source)
+    return _make_symbol(rel_path, run_id, node, class_name, "class", source)
 
 
-def _process_interface_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
+def _process_interface_declaration(
+    source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+) -> Optional[Symbol]:
     """Process an interface declaration."""
     name_node = find_child_by_type(node, "identifier")
     if not name_node:
-        return  # pragma: no cover - defensive
+        return None  # pragma: no cover - defensive
 
-    iface_name = node_text(name_node, ctx.source)
-    ctx.symbols.append(_make_symbol(ctx, node, iface_name, "interface"))
+    iface_name = node_text(name_node, source)
+    return _make_symbol(rel_path, run_id, node, iface_name, "interface", source)
 
 
-def _find_enclosing_function_d(
-    node: "tree_sitter.Node",
-    source: bytes,
-    local_symbols: dict[str, Symbol],
-) -> Optional[Symbol]:
-    """Find the enclosing function Symbol by walking up parents.
-
-    For methods inside structs/classes/interfaces, the local_symbols map
-    uses qualified names (e.g., ``Searcher.search``), so we build the
-    qualified name when the enclosing function is inside a container.
-    """
-    current = node.parent
-    while current is not None:
-        if current.type == "function_declaration":
-            name_node = find_child_by_type(current, "identifier")
-            if name_node:
-                name = node_text(name_node, source)
-                # Try bare name first (top-level function)
-                sym = local_symbols.get(name)
-                if sym:
-                    return sym
-                # Try qualified name (method inside container)
-                parent_name = _find_parent_container(current, source)
-                if parent_name:
-                    sym = local_symbols.get(f"{parent_name}.{name}")
-                    if sym:
-                        return sym
-        current = current.parent
-    return None  # pragma: no cover - defensive
+# ---------------------------------------------------------------------------
+# Import alias and edge extraction helpers
+# ---------------------------------------------------------------------------
 
 
 def _extract_import_aliases(
@@ -354,15 +274,95 @@ def _extract_imported_modules(
     return modules
 
 
+def _process_import_declaration(
+    source: bytes,
+    file_stable_id: str,
+    run_id: str,
+    node: "tree_sitter.Node",
+    module_registry: dict[str, str] | None = None,
+) -> list[Edge]:
+    """Process an import declaration.
+
+    When *module_registry* maps module names to their symbol IDs, the
+    dst of the import edge is resolved to the actual module symbol.
+    Otherwise, the dst falls back to the unresolved ``d:?:name:module``
+    format used for external / standard-library imports.
+    """
+    edges: list[Edge] = []
+
+    imported = find_child_by_type(node, "imported")
+    if not imported:
+        return edges  # pragma: no cover - defensive
+
+    fqn = find_child_by_type(imported, "module_fqn")
+    if not fqn:
+        return edges  # pragma: no cover - defensive
+
+    import_name = node_text(fqn, source)
+
+    # Resolve to actual module symbol if available
+    if module_registry and import_name in module_registry:
+        dst = module_registry[import_name]
+        confidence = 0.95
+    else:
+        dst = f"d:?:{import_name}:module"
+        confidence = 0.9
+
+    edges.append(
+        Edge(
+            id=f"edge:d:{uuid.uuid4().hex[:12]}",
+            src=file_stable_id,
+            dst=dst,
+            edge_type="imports",
+            line=node.start_point[0] + 1,
+            confidence=confidence,
+            origin=PASS_ID,
+            origin_run_id=run_id,
+        )
+    )
+    return edges
+
+
+def _find_enclosing_function_d(
+    node: "tree_sitter.Node",
+    source: bytes,
+    local_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """Find the enclosing function Symbol by walking up parents.
+
+    For methods inside structs/classes/interfaces, the local_symbols map
+    uses qualified names (e.g., ``Searcher.search``), so we build the
+    qualified name when the enclosing function is inside a container.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type == "function_declaration":
+            name_node = find_child_by_type(current, "identifier")
+            if name_node:
+                name = node_text(name_node, source)
+                # Try bare name first (top-level function)
+                sym = local_symbols.get(name)
+                if sym:
+                    return sym
+                # Try qualified name (method inside container)
+                parent_name = _find_parent_container(current, source)
+                if parent_name:
+                    sym = local_symbols.get(f"{parent_name}.{name}")
+                    if sym:
+                        return sym
+        current = current.parent
+    return None  # pragma: no cover - defensive
+
+
 def _get_call_target_name_d(
     node: "tree_sitter.Node", source: bytes
 ) -> tuple[Optional[str], Optional[str]]:
     """Extract the target name and receiver from a call_expression.
 
     Handles three call patterns in D:
-    1. ``writeln("hello")`` → identifier child → (writeln, None)
-    2. ``errors.error("bad")`` → type > identifier, '.', identifier → (error, errors)
-    3. ``to!string(42)`` → type > template_instance > identifier → (to, None)
+    1. ``writeln("hello")`` -> identifier child -> (writeln, None)
+    2. ``errors.error("bad")`` -> type > identifier, '.', identifier -> (error, errors)
+    3. ``to!string(42)`` -> type > template_instance > identifier -> (to, None)
 
     Returns (target_name, receiver) where receiver is the module prefix
     for qualified calls like math.sin().
@@ -460,6 +460,142 @@ def _resolve_and_emit_call_edge(
     ))
 
 
+# ---------------------------------------------------------------------------
+# DAnalyzer: TreeSitterAnalyzer subclass
+# ---------------------------------------------------------------------------
+
+
+class DAnalyzer(TreeSitterAnalyzer):
+    """D language analyzer using tree-sitter-language-pack.
+
+    D analysis has complex cross-file resolution requirements:
+    - Module-qualified symbol registration for disambiguation
+    - Import aliases for qualified call resolution
+    - Import-scope path hints for bare call disambiguation
+    - UFCS template call detection
+
+    The base class handles grammar checking, parser creation, file discovery,
+    timing, and result assembly. This subclass overrides register_symbol to
+    use module-qualified names, and uses a custom resolver setup.
+    """
+
+    lang = "d"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.d", "*.di"]
+    language_pack_name = "d"
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract module, function, struct, class, and interface symbols."""
+        analysis = FileAnalysis()
+
+        for node in iter_tree(tree.root_node):
+            sym: Optional[Symbol] = None
+            if node.type == "module_declaration":
+                sym = _process_module_declaration(source, rel_path, run.execution_id, node)
+            elif node.type == "function_declaration":
+                sym = _process_function_declaration(source, rel_path, run.execution_id, node)
+            elif node.type == "struct_declaration":
+                sym = _process_struct_declaration(source, rel_path, run.execution_id, node)
+            elif node.type == "class_declaration":
+                sym = _process_class_declaration(source, rel_path, run.execution_id, node)
+            elif node.type == "interface_declaration":
+                sym = _process_interface_declaration(source, rel_path, run.execution_id, node)
+
+            if sym:
+                analysis.symbols.append(sym)
+                if sym.kind in ("function", "method"):
+                    analysis.symbol_by_name[sym.name] = sym
+
+        return analysis
+
+    def get_import_aliases(
+        self, tree: "tree_sitter.Tree", source: bytes,
+    ) -> dict[str, str]:
+        """Extract D import aliases (import alias = module)."""
+        return _extract_import_aliases(tree, source)
+
+    def register_symbol(
+        self, symbol: Symbol, global_symbols: dict,
+    ) -> None:
+        """Register symbols with module-qualified names for disambiguation.
+
+        This prevents name collisions: errors.error and unrelated.error
+        both exist in the registry, enabling suffix matching with path
+        hint disambiguation when the caller imports one module.
+        """
+        file_stem = Path(symbol.path).stem  # "errors.d" -> "errors"
+        qualified = f"{file_stem}.{symbol.name}"
+        global_symbols[qualified] = symbol
+        # Also register unqualified for exact-match fallback
+        # (last writer wins, but suffix matching has all)
+        global_symbols[symbol.name] = symbol
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract import and call edges from a D file."""
+        edges: list[Edge] = []
+        file_stable_id = f"d:{rel_path}:file:"
+
+        # Extract imported modules for scope-based disambiguation
+        imported_modules = _extract_imported_modules(tree, source)
+
+        # Build module registry for import edge resolution
+        module_registry: dict[str, str] = {}
+        for sym in global_symbols.values():
+            if isinstance(sym, Symbol) and sym.kind == "module":
+                module_registry[sym.name] = sym.id
+
+        for node in iter_tree(tree.root_node):
+            # Process imports
+            if node.type == "import_declaration":
+                edges.extend(_process_import_declaration(
+                    source, file_stable_id, run.execution_id, node, module_registry,
+                ))
+
+            # Process function calls
+            elif node.type == "call_expression":
+                target_name, receiver = _get_call_target_name_d(node, source)
+                if target_name:
+                    caller = _find_enclosing_function_d(node, source, local_symbols)
+                    if caller:
+                        _resolve_and_emit_call_edge(
+                            caller, target_name, receiver,
+                            import_aliases, imported_modules,
+                            resolver, edges, node, run.execution_id,
+                        )
+
+            # Process UFCS template calls: arr.map!(fn)
+            elif node.type == "property_expression":
+                ufcs_name = _get_ufcs_template_name(node, source)
+                if ufcs_name:
+                    caller = _find_enclosing_function_d(node, source, local_symbols)
+                    if caller:
+                        _resolve_and_emit_call_edge(
+                            caller, ufcs_name, None,
+                            import_aliases, imported_modules,
+                            resolver, edges, node, run.execution_id,
+                        )
+
+        return edges
+
+
+_analyzer = DAnalyzer()
+
+
+def is_d_tree_sitter_available() -> bool:
+    """Check if tree-sitter-d is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("d")
 def analyze_d(repo_root: Path) -> AnalysisResult:
     """Analyze D language files in a repository.
@@ -471,150 +607,4 @@ def analyze_d(repo_root: Path) -> AnalysisResult:
     Returns a AnalysisResult with symbols for modules, functions, structs,
     classes, and interfaces, plus edges for imports and calls.
     """
-    if not is_d_tree_sitter_available():
-        warnings.warn("D analysis skipped: tree-sitter-d unavailable")
-        return AnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-d unavailable",
-        )
-
-    from tree_sitter_language_pack import get_parser
-
-    parser = get_parser("d")
-
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-    files_analyzed = 0
-    run_id = str(uuid.uuid4())
-    start_time = time.time()
-
-    # Global symbol registry for cross-file resolution
-    global_symbol_registry: dict[str, Symbol] = {}
-
-    # Store parsed files for pass 2:
-    # (rel_path, source, tree, file_stable_id, import_aliases, imported_modules)
-    parsed_files: list[tuple[str, bytes, object, str, dict[str, str], list[str]]] = []
-
-    # Pass 1: Extract symbols from all files
-    for file_path in find_d_files(repo_root):
-        try:
-            source = file_path.read_bytes()
-        except (OSError, IOError):  # pragma: no cover
-            continue
-
-        tree = parser.parse(source)
-        files_analyzed += 1
-
-        rel_path = str(file_path.relative_to(repo_root))
-        file_stable_id = f"d:{rel_path}:file:"
-
-        # Extract import aliases and module paths for disambiguation
-        import_aliases = _extract_import_aliases(tree, source)
-        imported_modules = _extract_imported_modules(tree, source)
-
-        ctx = _FileContext(
-            source=source,
-            rel_path=rel_path,
-            file_stable_id=file_stable_id,
-            run_id=run_id,
-            symbols=symbols,
-            edges=[],  # Don't collect edges in pass 1
-            import_aliases=import_aliases,
-        )
-
-        # Extract symbols only
-        for node in iter_tree(tree.root_node):
-            if node.type == "module_declaration":
-                _process_module_declaration(ctx, node)
-            elif node.type == "function_declaration":
-                _process_function_declaration(ctx, node)
-            elif node.type == "struct_declaration":
-                _process_struct_declaration(ctx, node)
-            elif node.type == "class_declaration":
-                _process_class_declaration(ctx, node)
-            elif node.type == "interface_declaration":
-                _process_interface_declaration(ctx, node)
-
-        # Register symbols globally using module-qualified names.
-        # This prevents name collisions: errors.error and unrelated.error
-        # both exist in the registry, enabling suffix matching with path
-        # hint disambiguation when the caller imports one module.
-        file_stem = Path(rel_path).stem  # "errors.d" -> "errors"
-        for sym in symbols:
-            if sym.path == rel_path:
-                qualified = f"{file_stem}.{sym.name}"
-                global_symbol_registry[qualified] = sym
-                # Also register unqualified for exact-match fallback
-                # (last writer wins, but suffix matching has all)
-                global_symbol_registry[sym.name] = sym
-
-        # Store for pass 2
-        parsed_files.append((rel_path, source, tree, file_stable_id, import_aliases, imported_modules))
-
-    # Build module name → symbol ID mapping for import edge resolution.
-    # Module symbols have kind="module" and name like "dmd.lexer".
-    module_registry: dict[str, str] = {
-        s.name: s.id for s in symbols if s.kind == "module"
-    }
-
-    # Create resolver from global registry
-    resolver = NameResolver(global_symbol_registry)
-
-    # Pass 2: Extract edges (imports + calls)
-    for rel_path, source, tree, file_stable_id, import_aliases, imported_modules in parsed_files:
-        # Build local symbol map for this file (functions and methods)
-        local_symbols = {s.name: s for s in symbols
-                         if s.path == rel_path and s.kind in ("function", "method")}
-
-        ctx = _FileContext(
-            source=source,
-            rel_path=rel_path,
-            file_stable_id=file_stable_id,
-            run_id=run_id,
-            symbols=[],  # Not adding symbols in pass 2
-            edges=edges,
-            import_aliases=import_aliases,
-        )
-
-        for node in iter_tree(tree.root_node):  # type: ignore
-            # Process imports
-            if node.type == "import_declaration":
-                _process_import_declaration(ctx, node, module_registry)
-
-            # Process function calls
-            elif node.type == "call_expression":
-                target_name, receiver = _get_call_target_name_d(node, source)
-                if target_name:
-                    caller = _find_enclosing_function_d(node, source, local_symbols)
-                    if caller:
-                        _resolve_and_emit_call_edge(
-                            caller, target_name, receiver,
-                            import_aliases, imported_modules,
-                            resolver, edges, node, run_id,
-                        )
-
-            # Process UFCS template calls: arr.map!(fn)
-            # These appear as property_expression with template_instance child
-            elif node.type == "property_expression":
-                ufcs_name = _get_ufcs_template_name(node, source)
-                if ufcs_name:
-                    caller = _find_enclosing_function_d(node, source, local_symbols)
-                    if caller:
-                        _resolve_and_emit_call_edge(
-                            caller, ufcs_name, None,
-                            import_aliases, imported_modules,
-                            resolver, edges, node, run_id,
-                        )
-
-    duration_ms = int((time.time() - start_time) * 1000)
-    return AnalysisResult(
-        symbols=symbols,
-        edges=edges,
-        run=AnalysisRun(
-            execution_id=run_id,
-            pass_id=PASS_ID,
-            version=PASS_VERSION,
-            files_analyzed=files_analyzed,
-            duration_ms=duration_ms,
-        ),
-    )
+    return _analyzer.analyze(repo_root)

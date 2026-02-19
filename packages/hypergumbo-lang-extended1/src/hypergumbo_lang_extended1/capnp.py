@@ -13,11 +13,14 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-1. Check if tree-sitter with Cap'n Proto grammar is available
-2. If not available, return skipped result (not an error)
-3. Parse all .capnp files and extract symbols
-4. Detect import statements and create import edges
-5. Create contains edges from interfaces to their methods
+Uses TreeSitterAnalyzer base class for single-pass orchestration:
+1. Parse all .capnp files and extract symbols
+2. Detect import statements and create import edges
+3. Create contains edges from interfaces to their methods
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Cap'n Proto-specific
+extraction logic.
 
 Why This Design
 ---------------
@@ -36,20 +39,28 @@ Cap'n Proto-Specific Considerations
 """
 from __future__ import annotations
 
-import importlib.util
-import time
 import uuid
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, node_text, find_child_by_type, make_symbol_id, make_file_id
+from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_symbol_id,
+    make_file_id,
+    node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = "capnp-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -62,16 +73,7 @@ def find_capnp_files(repo_root: Path) -> Iterator[Path]:
 
 def is_capnp_tree_sitter_available() -> bool:
     """Check if tree-sitter with Cap'n Proto grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover - tree-sitter not installed
-    if importlib.util.find_spec("tree_sitter_language_pack") is None:
-        return False  # pragma: no cover - language pack not installed
-    try:
-        from tree_sitter_language_pack import get_language
-        get_language("capnp")
-        return True
-    except Exception:  # pragma: no cover - capnp grammar not available
-        return False
+    return _analyzer._check_grammar_available()
 
 
 def _make_edge_id() -> str:
@@ -259,6 +261,49 @@ def _extract_symbols_and_edges(
     return symbols, edges
 
 
+class CapnpAnalyzer(TreeSitterAnalyzer):
+    """Analyzer for Cap'n Proto files using TreeSitterAnalyzer base class."""
+
+    lang = "capnp"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.capnp"]
+    language_pack_name = "capnp"
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract Cap'n Proto symbols (structs, interfaces, methods, etc.)."""
+        analysis = FileAnalysis()
+        symbols, edges = _extract_symbols_and_edges(tree, source, rel_path, run.execution_id)
+        analysis.symbols.extend(symbols)
+        # Store edge data for Pass 2 retrieval via import_aliases
+        for i, edge in enumerate(edges):
+            analysis.import_aliases[f"__edge_{i}__"] = (
+                f"{edge.src}|{edge.dst}|{edge.edge_type}|{edge.line}"
+            )
+        # Register callable symbols by name
+        for sym in symbols:
+            if sym.kind in ("method", "interface"):
+                analysis.symbol_by_name[sym.name] = sym
+        return analysis
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Re-extract edges from Cap'n Proto file during Pass 2."""
+        _, edges = _extract_symbols_and_edges(tree, source, rel_path, run.execution_id)
+        return edges
+
+
+_analyzer = CapnpAnalyzer()
+
+
 @register_analyzer("capnp")
 def analyze_capnp(repo_root: Path) -> AnalysisResult:
     """Analyze all Cap'n Proto files in the repository.
@@ -269,47 +314,4 @@ def analyze_capnp(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult with symbols and edges found.
     """
-    if not is_capnp_tree_sitter_available():
-        warnings.warn("Cap'n Proto analysis skipped: tree-sitter-language-pack not available")
-        return AnalysisResult(skipped=True, skip_reason="tree-sitter-language-pack not available")
-
-    from tree_sitter_language_pack import get_parser
-
-    parser = get_parser("capnp")
-    run_id = f"uuid:{uuid.uuid4()}"
-    start_time = time.time()
-    files_analyzed = 0
-
-    all_symbols: list[Symbol] = []
-    all_edges: list[Edge] = []
-
-    for file_path in find_capnp_files(repo_root):
-        try:
-            source = file_path.read_bytes()
-            tree = parser.parse(source)
-
-            rel_path = str(file_path.relative_to(repo_root))
-            symbols, edges = _extract_symbols_and_edges(tree, source, rel_path, run_id)
-
-            all_symbols.extend(symbols)
-            all_edges.extend(edges)
-            files_analyzed += 1
-
-        except (OSError, IOError):  # pragma: no cover - defensive
-            continue  # Skip files we can't read
-
-    duration_ms = int((time.time() - start_time) * 1000)
-
-    run = AnalysisRun(
-        execution_id=run_id,
-        pass_id=PASS_ID,
-        version=PASS_VERSION,
-        files_analyzed=files_analyzed,
-        duration_ms=duration_ms,
-    )
-
-    return AnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    return _analyzer.analyze(repo_root)

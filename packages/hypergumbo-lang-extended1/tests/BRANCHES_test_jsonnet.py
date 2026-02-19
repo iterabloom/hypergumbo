@@ -131,7 +131,7 @@ class TestTreeSitterUnavailable:
 
     def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Test analysis is skipped when tree-sitter unavailable."""
-        with patch.object(jsonnet_module, "is_jsonnet_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Jsonnet analysis skipped"):
+        with patch.object(jsonnet_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="jsonnet analysis skipped"):
                 result = jsonnet_module.analyze_jsonnet(tmp_path)
         assert result.skipped is True

@@ -178,7 +178,7 @@ class TestTreeSitterUnavailable:
 
     def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Test analysis is skipped when tree-sitter unavailable."""
-        with patch.object(d_module, "is_d_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="D analysis skipped"):
+        with patch.object(d_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="d analysis skipped"):
                 result = d_module.analyze_d(tmp_path)
         assert result.skipped is True

@@ -198,8 +198,8 @@ class TestTreeSitterUnavailable:
 
     def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Test analysis is skipped when tree-sitter unavailable."""
-        with patch.object(ada_module, "is_ada_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Ada analysis skipped"):
+        with patch.object(ada_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="ada analysis skipped"):
                 result = ada_module.analyze_ada(tmp_path)
         assert result.skipped is True
-        assert "tree-sitter-ada" in result.skip_reason
+        assert "ada" in result.skip_reason

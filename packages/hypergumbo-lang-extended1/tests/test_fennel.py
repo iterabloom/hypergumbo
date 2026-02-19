@@ -85,7 +85,7 @@ class TestIsFennelTreeSitterAvailable:
     def test_returns_false_when_unavailable(self) -> None:
         """Should return False when tree-sitter-language-pack is not installed."""
         import hypergumbo_lang_extended1.fennel as fennel_module
-        with patch.object(fennel_module, "is_fennel_tree_sitter_available", return_value=False):
+        with patch.object(fennel_module._analyzer, "_check_grammar_available", return_value=False):
             assert fennel_module.is_fennel_tree_sitter_available() is False
 
 
@@ -96,12 +96,11 @@ class TestAnalyzeFennel:
         """Should skip analysis and warn when tree-sitter is unavailable."""
         import hypergumbo_lang_extended1.fennel as fennel_module
 
-        with patch.object(fennel_module, "is_fennel_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="tree-sitter-language-pack not available"):
+        with patch.object(fennel_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="fennel analysis skipped"):
                 result = fennel_module.analyze_fennel(fennel_repo)
 
         assert result.skipped is True
-        assert "tree-sitter-language-pack" in result.skip_reason
         assert result.symbols == []
         assert result.edges == []
 
@@ -210,7 +209,7 @@ class TestAnalyzeFennel:
         assert not result.skipped
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
 
     def test_stable_ids(self, fennel_repo: Path) -> None:
         """Should generate stable IDs for symbols."""

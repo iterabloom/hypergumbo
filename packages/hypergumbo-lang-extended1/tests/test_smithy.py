@@ -46,7 +46,7 @@ class TestIsSmithyTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(smithy_module, "is_smithy_tree_sitter_available", return_value=False):
+        with patch.object(smithy_module._analyzer, "_check_grammar_available", return_value=False):
             assert smithy_module.is_smithy_tree_sitter_available() is False
 
 
@@ -55,8 +55,8 @@ class TestAnalyzeSmithy:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_smithy_file(tmp_path, "test.smithy", "namespace test")
-        with patch.object(smithy_module, "is_smithy_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Smithy analysis skipped"):
+        with patch.object(smithy_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="smithy analysis skipped"):
                 result = smithy_module.analyze_smithy(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -253,7 +253,8 @@ service Weather {}
         result = analyze_smithy(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_smithy_file(tmp_path, "test.smithy", """

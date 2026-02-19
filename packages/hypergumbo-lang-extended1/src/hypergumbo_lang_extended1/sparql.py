@@ -5,10 +5,13 @@ commonly used in semantic web and knowledge graph applications.
 
 How It Works
 ------------
-1. Uses tree-sitter-sparql grammar from tree-sitter-language-pack to parse files
-2. Extracts PREFIX declarations (namespace bindings)
-3. Extracts query definitions (SELECT, CONSTRUCT, ASK, DESCRIBE)
-4. Tracks referenced predicates and types from known vocabularies
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Extract PREFIX declarations and query definitions
+2. Pass 2: Create vocabulary usage edges linking queries to prefixes
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the SPARQL-specific extraction
+logic.
 
 Symbols Extracted
 -----------------
@@ -29,34 +32,27 @@ Why This Design
 
 from __future__ import annotations
 
-import time
-import uuid
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    iter_tree,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 
 PASS_ID = "sparql.tree_sitter"
 PASS_VERSION = "0.1.0"
-
-
-def is_sparql_tree_sitter_available() -> bool:
-    """Check if tree-sitter-sparql is available."""
-    try:
-        from tree_sitter_language_pack import get_language
-
-        get_language("sparql")
-        return True
-    except Exception:  # pragma: no cover
-        return False
 
 
 def find_sparql_files(repo_root: Path) -> list[Path]:
@@ -67,12 +63,17 @@ def find_sparql_files(repo_root: Path) -> list[Path]:
     return sorted(files)
 
 
+def is_sparql_tree_sitter_available() -> bool:
+    """Check if tree-sitter-sparql is available."""
+    return _analyzer._check_grammar_available()
+
+
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
     return node.text.decode("utf-8") if node.text else ""
 
 
-def _make_symbol_id(path: Path, name: str, kind: str) -> str:
+def _make_symbol_id(path: str, name: str, kind: str) -> str:
     """Create a stable symbol ID."""
     return f"sparql:{path}:{kind}:{name}"
 
@@ -87,276 +88,306 @@ KNOWN_VOCABULARIES = frozenset({
 })
 
 
-class SPARQLAnalyzer:
-    """Analyzer for SPARQL files."""
+def _extract_prefix(
+    node: "tree_sitter.Node", rel_path: str,
+) -> tuple[Symbol | None, str, str]:
+    """Extract a PREFIX declaration.
 
-    def __init__(self, repo_root: Path) -> None:
-        self.repo_root = repo_root
-        self._symbols: list[Symbol] = []
-        self._edges: list[Edge] = []
-        self._execution_id = f"uuid:{uuid.uuid4()}"
-        self._files_analyzed = 0
-        self._current_prefixes: dict[str, str] = {}  # prefix -> IRI
-        self._query_counter = 0
+    Returns (symbol_or_none, prefix_name, iri).
+    """
+    prefix_name = ""
+    iri = ""
 
-    def analyze(self) -> AnalysisResult:
-        """Run the SPARQL analysis."""
-        start_time = time.time()
+    for child in node.children:
+        if child.type == "namespace":
+            for ns_child in child.children:
+                if ns_child.type == "pn_prefix":
+                    prefix_name = _get_node_text(ns_child)
+                    break
+        elif child.type == "iri_reference":
+            iri = _get_node_text(child).strip("<>")
 
-        files = find_sparql_files(self.repo_root)
-        if not files:
-            return AnalysisResult(
-                symbols=[],
-                edges=[],
-                run=None,
-            )
+    if not prefix_name:
+        return None, "", ""  # pragma: no cover
 
-        from tree_sitter_language_pack import get_parser
+    symbol_id = _make_symbol_id(rel_path, prefix_name, "prefix")
 
-        parser = get_parser("sparql")
+    span = Span(
+        start_line=node.start_point[0] + 1,
+        start_col=node.start_point[1],
+        end_line=node.end_point[0] + 1,
+        end_col=node.end_point[1],
+    )
 
-        for path in files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                self._current_prefixes = {}
-                self._query_counter = 0
-                self._extract_symbols(tree.root_node, path)
-                self._files_analyzed += 1
-            except Exception:  # pragma: no cover  # noqa: S112  # nosec B112
-                continue
+    is_standard = prefix_name.lower() in KNOWN_VOCABULARIES
 
-        duration_ms = int((time.time() - start_time) * 1000)
+    symbol = Symbol(
+        id=symbol_id,
+        stable_id=symbol_id,
+        name=prefix_name,
+        kind="prefix",
+        language="sparql",
+        path=str(rel_path),
+        span=span,
+        origin=PASS_ID,
+        signature=f"PREFIX {prefix_name}: <{iri[:50]}{'...' if len(iri) > 50 else ''}>",
+        meta={"iri": iri, "is_standard_vocabulary": is_standard},
+    )
+    return symbol, prefix_name, iri
 
-        run = AnalysisRun(
-            pass_id=PASS_ID,
-            execution_id=self._execution_id,
-            version=PASS_VERSION,
-            toolchain={"name": "sparql", "version": "unknown"},
-            duration_ms=duration_ms,
-            files_analyzed=self._files_analyzed,
-        )
 
-        return AnalysisResult(
-            symbols=self._symbols,
-            edges=self._edges,
-            run=run,
-        )
+def _extract_base(
+    node: "tree_sitter.Node", rel_path: str,
+) -> Symbol | None:
+    """Extract a BASE declaration."""
+    iri = ""
 
-    def _extract_symbols(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract symbols from a syntax tree node."""
-        if node.type == "prefix_declaration":
-            self._extract_prefix(node, path)
-        elif node.type == "base_declaration":
-            self._extract_base(node, path)
-        elif node.type in ("select_query", "construct_query", "ask_query", "describe_query"):
-            self._extract_query(node, path)
+    for child in node.children:
+        if child.type == "iri_reference":
+            iri = _get_node_text(child).strip("<>")
+            break
 
-        for child in node.children:
-            self._extract_symbols(child, path)
+    if not iri:
+        return None  # pragma: no cover
 
-    def _extract_prefix(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract a PREFIX declaration."""
-        prefix_name = ""
-        iri = ""
+    symbol_id = _make_symbol_id(rel_path, "BASE", "base")
 
-        for child in node.children:
-            if child.type == "namespace":
-                # namespace contains pn_prefix and colon
-                for ns_child in child.children:
-                    if ns_child.type == "pn_prefix":
-                        prefix_name = _get_node_text(ns_child)
-                        break
-            elif child.type == "iri_reference":
-                iri = _get_node_text(child).strip("<>")
+    span = Span(
+        start_line=node.start_point[0] + 1,
+        start_col=node.start_point[1],
+        end_line=node.end_point[0] + 1,
+        end_col=node.end_point[1],
+    )
 
-        if not prefix_name:
-            return  # pragma: no cover
+    return Symbol(
+        id=symbol_id,
+        stable_id=symbol_id,
+        name="BASE",
+        kind="base",
+        language="sparql",
+        path=str(rel_path),
+        span=span,
+        origin=PASS_ID,
+        signature=f"BASE <{iri[:50]}{'...' if len(iri) > 50 else ''}>",
+        meta={"iri": iri},
+    )
 
-        # Store for later query edge creation
-        self._current_prefixes[prefix_name] = iri
 
-        rel_path = path.relative_to(self.repo_root)
-        symbol_id = _make_symbol_id(rel_path, prefix_name, "prefix")
+def _extract_select_variables(node: "tree_sitter.Node") -> list[str]:
+    """Extract variable names from a SELECT clause."""
+    variables: list[str] = []
 
-        span = Span(
-            start_line=node.start_point[0] + 1,
-            start_col=node.start_point[1],
-            end_line=node.end_point[0] + 1,
-            end_col=node.end_point[1],
-        )
-
-        # Detect well-known vocabulary
-        is_standard = prefix_name.lower() in KNOWN_VOCABULARIES
-
-        symbol = Symbol(
-            id=symbol_id,
-            stable_id=symbol_id,
-            name=prefix_name,
-            kind="prefix",
-            language="sparql",
-            path=str(rel_path),
-            span=span,
-            origin=PASS_ID,
-            signature=f"PREFIX {prefix_name}: <{iri[:50]}{'...' if len(iri) > 50 else ''}>",
-            meta={"iri": iri, "is_standard_vocabulary": is_standard},
-        )
-        self._symbols.append(symbol)
-
-    def _extract_base(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract a BASE declaration."""
-        iri = ""
-
-        for child in node.children:
-            if child.type == "iri_reference":
-                iri = _get_node_text(child).strip("<>")
-                break
-
-        if not iri:
-            return  # pragma: no cover
-
-        rel_path = path.relative_to(self.repo_root)
-        symbol_id = _make_symbol_id(rel_path, "BASE", "base")
-
-        span = Span(
-            start_line=node.start_point[0] + 1,
-            start_col=node.start_point[1],
-            end_line=node.end_point[0] + 1,
-            end_col=node.end_point[1],
-        )
-
-        symbol = Symbol(
-            id=symbol_id,
-            stable_id=symbol_id,
-            name="BASE",
-            kind="base",
-            language="sparql",
-            path=str(rel_path),
-            span=span,
-            origin=PASS_ID,
-            signature=f"BASE <{iri[:50]}{'...' if len(iri) > 50 else ''}>",
-            meta={"iri": iri},
-        )
-        self._symbols.append(symbol)
-
-    def _extract_query(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract a query definition."""
-        query_type = node.type.replace("_query", "").upper()
-        self._query_counter += 1
-        query_name = f"query_{self._query_counter}"
-
-        # Extract variables from SELECT clause
-        variables: list[str] = []
-        if query_type == "SELECT":
-            variables = self._extract_select_variables(node)
-
-        rel_path = path.relative_to(self.repo_root)
-        symbol_id = _make_symbol_id(rel_path, query_name, "query")
-
-        span = Span(
-            start_line=node.start_point[0] + 1,
-            start_col=node.start_point[1],
-            end_line=node.end_point[0] + 1,
-            end_col=node.end_point[1],
-        )
-
-        # Build signature
-        if variables:
-            sig = f"{query_type} {', '.join(variables[:5])}"
-            if len(variables) > 5:
-                sig += f" (+{len(variables) - 5} more)"
-        else:
-            sig = query_type
-
-        # Count triple patterns
-        pattern_count = self._count_triple_patterns(node)
-
-        symbol = Symbol(
-            id=symbol_id,
-            stable_id=symbol_id,
-            name=query_name,
-            kind="query",
-            language="sparql",
-            path=str(rel_path),
-            span=span,
-            origin=PASS_ID,
-            signature=sig,
-            meta={
-                "query_type": query_type,
-                "variables": variables,
-                "pattern_count": pattern_count,
-            },
-        )
-        self._symbols.append(symbol)
-
-        # Create edges for vocabulary usage
-        used_prefixes = self._find_used_prefixes(node)
-        for prefix in used_prefixes:
-            if prefix in self._current_prefixes:
-                edge = Edge.create(
-                    src=symbol_id,
-                    dst=_make_symbol_id(rel_path, prefix, "prefix"),
-                    edge_type="uses_vocabulary",
-                    line=node.start_point[0] + 1,
-                    origin=PASS_ID,
-                    origin_run_id=self._execution_id,
-                    evidence_type="static",
-                    confidence=1.0,
-                    evidence_lang="sparql",
-                )
-                self._edges.append(edge)
-
-    def _extract_select_variables(self, node: "tree_sitter.Node") -> list[str]:
-        """Extract variable names from a SELECT clause."""
-        variables: list[str] = []
-
-        def find_vars(n: "tree_sitter.Node") -> None:
-            if n.type == "select_clause":
-                for child in n.children:
-                    if child.type == "var":
-                        var_text = _get_node_text(child)
-                        if var_text.startswith("?") or var_text.startswith("$"):
-                            variables.append(var_text)
-                    elif child.type == "*":
-                        variables.append("*")
-            else:
-                for child in n.children:
-                    find_vars(child)
-
-        find_vars(node)
-        return variables
-
-    def _count_triple_patterns(self, node: "tree_sitter.Node") -> int:
-        """Count the number of triple patterns in a query."""
-        count = 0
-
-        def count_triples(n: "tree_sitter.Node") -> None:
-            nonlocal count
-            if n.type == "triples_same_subject":
-                count += 1
+    def find_vars(n: "tree_sitter.Node") -> None:
+        if n.type == "select_clause":
             for child in n.children:
-                count_triples(child)
+                if child.type == "var":
+                    var_text = _get_node_text(child)
+                    if var_text.startswith("?") or var_text.startswith("$"):
+                        variables.append(var_text)
+                elif child.type == "*":
+                    variables.append("*")
+        else:
+            for child in n.children:
+                find_vars(child)
 
-        count_triples(node)
-        return count
+    find_vars(node)
+    return variables
 
-    def _find_used_prefixes(self, node: "tree_sitter.Node") -> set[str]:
-        """Find all prefixes used in a query."""
-        prefixes: set[str] = set()
 
-        def find_prefixes(n: "tree_sitter.Node") -> None:
-            if n.type == "prefixed_name":
-                for child in n.children:
+def _count_triple_patterns(node: "tree_sitter.Node") -> int:
+    """Count the number of triple patterns in a query."""
+    count = 0
+
+    def count_triples(n: "tree_sitter.Node") -> None:
+        nonlocal count
+        if n.type == "triples_same_subject":
+            count += 1
+        for child in n.children:
+            count_triples(child)
+
+    count_triples(node)
+    return count
+
+
+def _find_used_prefixes(node: "tree_sitter.Node") -> set[str]:
+    """Find all prefixes used in a query."""
+    prefixes: set[str] = set()
+
+    def find_prefixes(n: "tree_sitter.Node") -> None:
+        if n.type == "prefixed_name":
+            for child in n.children:
+                if child.type == "namespace":
+                    for ns_child in child.children:
+                        if ns_child.type == "pn_prefix":
+                            prefixes.add(_get_node_text(ns_child))
+                            break
+        for child in n.children:
+            find_prefixes(child)
+
+    find_prefixes(node)
+    return prefixes
+
+
+def _extract_query(
+    node: "tree_sitter.Node", rel_path: str,
+    query_counter: int,
+) -> tuple[Symbol, int]:
+    """Extract a query definition. Returns (symbol, updated_counter)."""
+    query_type = node.type.replace("_query", "").upper()
+    query_counter += 1
+    query_name = f"query_{query_counter}"
+
+    # Extract variables from SELECT clause
+    variables: list[str] = []
+    if query_type == "SELECT":
+        variables = _extract_select_variables(node)
+
+    symbol_id = _make_symbol_id(rel_path, query_name, "query")
+
+    span = Span(
+        start_line=node.start_point[0] + 1,
+        start_col=node.start_point[1],
+        end_line=node.end_point[0] + 1,
+        end_col=node.end_point[1],
+    )
+
+    # Build signature
+    if variables:
+        sig = f"{query_type} {', '.join(variables[:5])}"
+        if len(variables) > 5:
+            sig += f" (+{len(variables) - 5} more)"
+    else:
+        sig = query_type
+
+    # Count triple patterns
+    pattern_count = _count_triple_patterns(node)
+
+    symbol = Symbol(
+        id=symbol_id,
+        stable_id=symbol_id,
+        name=query_name,
+        kind="query",
+        language="sparql",
+        path=str(rel_path),
+        span=span,
+        origin=PASS_ID,
+        signature=sig,
+        meta={
+            "query_type": query_type,
+            "variables": variables,
+            "pattern_count": pattern_count,
+        },
+    )
+    return symbol, query_counter
+
+
+class SPARQLAnalyzer(TreeSitterAnalyzer):
+    """Analyzer for SPARQL files using TreeSitterAnalyzer base class."""
+
+    lang = "sparql"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.sparql", "*.rq"]
+    language_pack_name = "sparql"
+
+    def get_import_aliases(
+        self, tree: "tree_sitter.Tree", source: bytes,
+    ) -> dict[str, str]:
+        """Extract PREFIX declarations as import aliases.
+
+        The base class calls this separately from extract_symbols_from_file
+        to pass aliases to Pass 2. We extract prefix name -> IRI mappings
+        so edge extraction can match used prefixes.
+        """
+        aliases: dict[str, str] = {}
+        for node in iter_tree(tree.root_node):
+            if node.type == "prefix_declaration":
+                prefix_name = ""
+                iri = ""
+                for child in node.children:
                     if child.type == "namespace":
                         for ns_child in child.children:
                             if ns_child.type == "pn_prefix":
-                                prefixes.add(_get_node_text(ns_child))
+                                prefix_name = _get_node_text(ns_child)
                                 break
-            for child in n.children:
-                find_prefixes(child)
+                    elif child.type == "iri_reference":
+                        iri = _get_node_text(child).strip("<>")
+                if prefix_name:
+                    aliases[prefix_name] = iri
+        return aliases
 
-        find_prefixes(node)
-        return prefixes
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract prefix and query symbols from a SPARQL file."""
+        analysis = FileAnalysis()
+        query_counter = 0
+
+        for node in iter_tree(tree.root_node):
+            if node.type == "prefix_declaration":
+                sym, prefix_name, iri = _extract_prefix(node, rel_path)
+                if sym:
+                    analysis.symbols.append(sym)
+                    # Store prefix info for edge extraction in Pass 2
+                    if prefix_name:
+                        analysis.import_aliases[prefix_name] = iri
+            elif node.type == "base_declaration":
+                sym = _extract_base(node, rel_path)
+                if sym:
+                    analysis.symbols.append(sym)
+            elif node.type in ("select_query", "construct_query", "ask_query", "describe_query"):
+                sym, query_counter = _extract_query(node, rel_path, query_counter)
+                analysis.symbols.append(sym)
+                analysis.symbol_by_name[sym.name] = sym
+
+        return analysis
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract vocabulary usage edges from a SPARQL file."""
+        edges: list[Edge] = []
+
+        for node in iter_tree(tree.root_node):
+            if node.type in ("select_query", "construct_query", "ask_query", "describe_query"):
+                query_type = node.type.replace("_query", "").upper()
+                # Find the matching query symbol by scanning local_symbols
+                query_sym = None
+                for sym in local_symbols.values():
+                    if sym.kind == "query" and sym.meta.get("query_type") == query_type:
+                        if (sym.span.start_line == node.start_point[0] + 1):
+                            query_sym = sym
+                            break
+
+                if not query_sym:
+                    continue  # pragma: no cover
+
+                # Create edges for vocabulary usage
+                used_prefixes = _find_used_prefixes(node)
+                for prefix in used_prefixes:
+                    if prefix in import_aliases:
+                        edge = Edge.create(
+                            src=query_sym.id,
+                            dst=_make_symbol_id(rel_path, prefix, "prefix"),
+                            edge_type="uses_vocabulary",
+                            line=node.start_point[0] + 1,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="static",
+                            confidence=1.0,
+                            evidence_lang="sparql",
+                        )
+                        edges.append(edge)
+
+        return edges
+
+
+_analyzer = SPARQLAnalyzer()
 
 
 @register_analyzer("sparql")
@@ -369,26 +400,4 @@ def analyze_sparql(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult containing extracted symbols and edges
     """
-    if not is_sparql_tree_sitter_available():
-        warnings.warn(
-            "SPARQL analysis skipped: tree-sitter-sparql not available",
-            UserWarning,
-            stacklevel=2,
-        )
-        return AnalysisResult(
-            symbols=[],
-            edges=[],
-            run=AnalysisRun(
-                pass_id=PASS_ID,
-                execution_id=f"uuid:{uuid.uuid4()}",
-                version=PASS_VERSION,
-                toolchain={"name": "sparql", "version": "unknown"},
-                duration_ms=0,
-                files_analyzed=0,
-            ),
-            skipped=True,
-            skip_reason="tree-sitter-sparql not available",
-        )
-
-    analyzer = SPARQLAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

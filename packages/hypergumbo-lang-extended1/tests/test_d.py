@@ -270,8 +270,8 @@ class TestDAnalysisUnavailable:
         """Returns skipped result when tree-sitter unavailable."""
         (temp_repo / "test.d").write_text("module test;")
 
-        with patch.object(d_module, "is_d_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="D analysis skipped"):
+        with patch.object(d_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="d analysis skipped"):
                 result = d_module.analyze_d(temp_repo)
 
         assert result.skipped is True

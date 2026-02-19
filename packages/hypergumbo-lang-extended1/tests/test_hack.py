@@ -53,7 +53,7 @@ class TestIsHackTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(hack_module, "is_hack_tree_sitter_available", return_value=False):
+        with patch.object(hack_module._analyzer, "_check_grammar_available", return_value=False):
             assert hack_module.is_hack_tree_sitter_available() is False
 
 
@@ -62,8 +62,8 @@ class TestAnalyzeHack:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_hack_file(tmp_path, "test.hack", "<?hh\necho 'test';")
-        with patch.object(hack_module, "is_hack_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Hack analysis skipped"):
+        with patch.object(hack_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="hack analysis skipped"):
                 result = hack_module.analyze_hack(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -265,7 +265,7 @@ function add(): int { return 1; }
         result = analyze_hack(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_hack_file(tmp_path, "test.hack", """<?hh

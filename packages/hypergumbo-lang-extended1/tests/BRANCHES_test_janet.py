@@ -129,7 +129,7 @@ class TestTreeSitterUnavailable:
 
     def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Test analysis is skipped when tree-sitter unavailable."""
-        with patch.object(janet_module, "is_janet_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Janet analysis skipped"):
+        with patch.object(janet_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="janet analysis skipped"):
                 result = janet_module.analyze_janet(tmp_path)
         assert result.skipped is True

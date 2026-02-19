@@ -52,7 +52,7 @@ class TestIsBibtexTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(bibtex_module, "is_bibtex_tree_sitter_available", return_value=False):
+        with patch.object(bibtex_module._analyzer, "_check_grammar_available", return_value=False):
             assert bibtex_module.is_bibtex_tree_sitter_available() is False
 
 
@@ -61,8 +61,8 @@ class TestAnalyzeBibtex:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_bibtex_file(tmp_path, "refs.bib", "@article{test, author={A}}")
-        with patch.object(bibtex_module, "is_bibtex_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="BibTeX analysis skipped"):
+        with patch.object(bibtex_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="bibtex analysis skipped"):
                 result = bibtex_module.analyze_bibtex(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -70,7 +70,8 @@ class TestAnalyzeBibtex:
     def test_empty_repo(self, tmp_path: Path) -> None:
         result = analyze_bibtex(tmp_path)
         assert result.symbols == []
-        assert result.run is None
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
     def test_extracts_article(self, tmp_path: Path) -> None:
         make_bibtex_file(tmp_path, "refs.bib", """@article{smith2020,

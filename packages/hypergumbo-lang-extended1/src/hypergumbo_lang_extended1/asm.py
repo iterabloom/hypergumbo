@@ -6,18 +6,20 @@ embedded systems, and performance-critical routines within larger C/C++ projects
 
 How It Works
 ------------
-1. Check if tree-sitter with asm grammar is available
-2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
-   - Pass 1: Parse all files, extract labels as symbols
-   - Pass 2: Detect call instructions and resolve targets against label registry
-4. Labels in .text sections become functions; labels in .data/.bss become variables
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Parse all files, extract labels as symbols
+2. Pass 2: Detect call instructions and resolve targets against label registry
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the assembly-specific extraction
+logic.
 
 Why This Design
 ---------------
+- TreeSitterAnalyzer eliminates ~150 lines of boilerplate
 - The tree-sitter-asm grammar produces label nodes and instruction nodes
 - Labels serve as both function entry points and data labels
-- Call instructions reference labels by name — simple string matching resolves them
+- Call instructions reference labels by name -- simple string matching resolves them
 - Two-pass allows cross-file resolution (common in multi-file assembly projects)
 
 Assembly-Specific Considerations
@@ -30,16 +32,26 @@ Assembly-Specific Considerations
 from __future__ import annotations
 
 import hashlib
-import importlib.util
-import time
-import warnings
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, node_text, find_child_by_type, make_symbol_id
+from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
+
+if TYPE_CHECKING:
+    import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = "asm-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -52,17 +64,7 @@ def find_asm_files(repo_root: Path) -> Iterator[Path]:
 
 def is_asm_tree_sitter_available() -> bool:
     """Check if tree-sitter with asm grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover - tree-sitter not installed
-    if importlib.util.find_spec("tree_sitter_language_pack") is None:
-        return False  # pragma: no cover - language pack not installed
-    try:
-        from tree_sitter_language_pack import get_language
-
-        get_language("asm")
-        return True
-    except Exception:  # pragma: no cover - asm grammar not available
-        return False
+    return _analyzer._check_grammar_available()
 
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
@@ -82,52 +84,44 @@ def _determine_label_kind(current_section: str) -> str:
     return "function"
 
 
-@register_analyzer("asm")
-def analyze_asm(repo_root: Path) -> AnalysisResult:
-    """Analyze assembly language files in a repository.
+def _find_enclosing_label(
+    line: int, file_labels: list[tuple[int, Symbol]]
+) -> Optional[Symbol]:
+    """Find the most recent label before the given line.
 
-    Uses two-pass analysis:
-    - Pass 1: Extract all labels as symbols
-    - Pass 2: Detect call instructions and resolve targets
-
-    Returns an AnalysisResult with symbols for labels and edges for calls.
+    Assembly doesn't have explicit function boundaries -- a label's scope
+    extends until the next label. So the enclosing function for a call
+    instruction at line N is the last label defined before line N.
     """
-    if not is_asm_tree_sitter_available():
-        warnings.warn("Assembly analysis skipped: tree-sitter-asm unavailable")
-        return AnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-asm unavailable",
-        )
+    result = None
+    for label_line, sym in file_labels:
+        if label_line <= line:
+            result = sym
+        else:
+            break
+    return result
 
-    from tree_sitter_language_pack import get_parser
 
-    parser = get_parser("asm")
+# ---------------------------------------------------------------------------
+# AsmAnalyzer: TreeSitterAnalyzer subclass
+# ---------------------------------------------------------------------------
 
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-    files_analyzed = 0
-    run_id = hashlib.sha256(str(time.time()).encode()).hexdigest()[:16]
-    start_time = time.time()
 
-    # Global label registry for cross-file resolution
-    label_registry: dict[str, Symbol] = {}
+class AsmAnalyzer(TreeSitterAnalyzer):
+    """Assembly language analyzer using tree-sitter-language-pack."""
 
-    # Store parsed files for pass 2
-    parsed_files: list[tuple[str, bytes, object]] = []
+    lang = "asm"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.s", "*.asm", "*.S"]
+    language_pack_name = "asm"
 
-    # Pass 1: Extract labels from all files
-    for file_path in find_asm_files(repo_root):
-        try:
-            source = file_path.read_bytes()
-        except (OSError, IOError):  # pragma: no cover
-            continue
-
-        tree = parser.parse(source)
-        files_analyzed += 1
-
-        rel_path = str(file_path.relative_to(repo_root))
-
-        # Track current section for label kind inference
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract labels from an assembly file, tracking section context."""
+        analysis = FileAnalysis()
         current_section = ".text"
 
         for node in iter_tree(tree.root_node):
@@ -165,20 +159,29 @@ def analyze_asm(repo_root: Path) -> AnalysisResult:
                             end_col=node.end_point[1],
                         ),
                         origin=PASS_ID,
-                        origin_run_id=run_id,
+                        origin_run_id=run.execution_id,
                         stable_id=f"asm:{rel_path}:{label_name}",
                     )
-                    symbols.append(sym)
-                    label_registry[label_name] = sym
+                    analysis.symbols.append(sym)
+                    if kind == "function":
+                        analysis.symbol_by_name[label_name] = sym
 
-        parsed_files.append((rel_path, source, tree))
+        return analysis
 
-    # Pass 2: Extract call edges
-    for rel_path, source, tree in parsed_files:
-        # Build map of labels in this file to find enclosing function
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract call edges from assembly instructions."""
+        edges: list[Edge] = []
+
+        # Build file_labels list from global_symbols filtered to this rel_path
         file_labels: list[tuple[int, Symbol]] = sorted(
-            [(s.span.start_line, s) for s in symbols
-             if s.path == rel_path and s.kind == "function"],
+            [(s.span.start_line, s) for s in global_symbols.values()
+             if isinstance(s, Symbol) and s.path == rel_path and s.kind == "function"],
             key=lambda x: x[0],
         )
 
@@ -207,8 +210,8 @@ def analyze_asm(repo_root: Path) -> AnalysisResult:
                 continue  # pragma: no cover - defensive
 
             # Resolve call target
-            target_sym = label_registry.get(target_name)
-            if target_sym:
+            target_sym = global_symbols.get(target_name)
+            if isinstance(target_sym, Symbol):
                 dst_id = target_sym.id
                 confidence = 0.85
             else:
@@ -223,36 +226,16 @@ def analyze_asm(repo_root: Path) -> AnalysisResult:
                 line=call_line,
                 confidence=confidence,
                 origin=PASS_ID,
-                origin_run_id=run_id,
+                origin_run_id=run.execution_id,
             ))
 
-    duration_ms = int((time.time() - start_time) * 1000)
-    return AnalysisResult(
-        symbols=symbols,
-        edges=edges,
-        run=AnalysisRun(
-            execution_id=run_id,
-            pass_id=PASS_ID,
-            version=PASS_VERSION,
-            files_analyzed=files_analyzed,
-            duration_ms=duration_ms,
-        ),
-    )
+        return edges
 
 
-def _find_enclosing_label(
-    line: int, file_labels: list[tuple[int, Symbol]]
-) -> Optional[Symbol]:
-    """Find the most recent label before the given line.
+_analyzer = AsmAnalyzer()
 
-    Assembly doesn't have explicit function boundaries — a label's scope
-    extends until the next label. So the enclosing function for a call
-    instruction at line N is the last label defined before line N.
-    """
-    result = None
-    for label_line, sym in file_labels:
-        if label_line <= line:
-            result = sym
-        else:
-            break
-    return result
+
+@register_analyzer("asm")
+def analyze_asm(repo_root: Path) -> AnalysisResult:
+    """Analyze assembly language files in a repository."""
+    return _analyzer.analyze(repo_root)

@@ -1,9 +1,29 @@
 """Tests for COBOL analyzer."""
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
-from hypergumbo_lang_extended1.cobol import analyze_cobol
+from hypergumbo_lang_extended1.cobol import analyze_cobol, find_cobol_files, is_cobol_tree_sitter_available
+
+
+class TestCobolUtilities:
+    """Tests for COBOL utility functions."""
+
+    def test_availability_check(self) -> None:
+        """Availability check returns a boolean."""
+        assert isinstance(is_cobol_tree_sitter_available(), bool)
+
+    def test_find_cobol_files(self, tmp_path: Path) -> None:
+        """Finds COBOL files by extension."""
+        (tmp_path / "hello.cob").write_text("IDENTIFICATION DIVISION.")
+        (tmp_path / "util.cbl").write_text("IDENTIFICATION DIVISION.")
+        (tmp_path / "readme.md").write_text("# Docs")
+        files = list(find_cobol_files(tmp_path))
+        names = {f.name for f in files}
+        assert "hello.cob" in names
+        assert "util.cbl" in names
+        assert "readme.md" not in names
 
 
 class TestAnalyzeCOBOL:
@@ -234,23 +254,12 @@ class TestAnalyzeCOBOLFallback:
 
     def test_returns_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Should return skipped result when tree-sitter not available."""
-        # This test runs regardless of availability to test the warning path
         (tmp_path / "test.cob").write_text("IDENTIFICATION DIVISION.")
 
-        # Temporarily make it unavailable by mocking
         import hypergumbo_lang_extended1.cobol as cobol_mod
 
-        original_func = cobol_mod.is_cobol_tree_sitter_available
-
-        def mock_unavailable():
-            return False
-
-        cobol_mod.is_cobol_tree_sitter_available = mock_unavailable
-
-        try:
-            with pytest.warns(UserWarning, match="tree-sitter-language-pack"):
+        with patch.object(cobol_mod._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="cobol analysis skipped"):
                 result = analyze_cobol(tmp_path)
-            assert result.skipped
-            assert "not available" in result.skip_reason
-        finally:
-            cobol_mod.is_cobol_tree_sitter_available = original_func
+        assert result.skipped
+        assert "not available" in result.skip_reason

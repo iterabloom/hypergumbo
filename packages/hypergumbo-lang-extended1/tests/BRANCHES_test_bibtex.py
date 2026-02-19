@@ -114,7 +114,7 @@ class TestTreeSitterUnavailable:
 
     def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Test analysis is skipped when tree-sitter unavailable."""
-        with patch.object(bibtex_module, "is_bibtex_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="BibTeX analysis skipped"):
+        with patch.object(bibtex_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="bibtex analysis skipped"):
                 result = bibtex_module.analyze_bibtex(tmp_path)
         assert result.skipped is True

@@ -206,7 +206,7 @@ class TestTreeSitterUnavailable:
 
     def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Test analysis is skipped when tree-sitter unavailable."""
-        with patch.object(zig_module, "is_zig_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="tree-sitter-zig not available"):
+        with patch.object(zig_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="zig analysis skipped"):
                 result = zig_module.analyze_zig(tmp_path)
         assert result.skipped is True

@@ -121,7 +121,7 @@ class TestTreeSitterUnavailable:
 
     def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Test analysis is skipped when tree-sitter unavailable."""
-        with patch.object(llvm_module, "is_llvm_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="LLVM IR analysis skipped"):
+        with patch.object(llvm_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="llvm_ir analysis skipped"):
                 result = llvm_module.analyze_llvm_ir(tmp_path)
         assert result.skipped is True

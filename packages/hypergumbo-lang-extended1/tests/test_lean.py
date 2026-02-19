@@ -163,12 +163,12 @@ class TestLeanAnalyzerWhenUnavailable:
         # Create a Lean file
         make_lean_file(tmp_path, "Example.lean", "def foo := 42")
 
-        with patch.object(lean_module, "is_lean_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Lean analysis skipped"):
+        with patch.object(lean_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="lean analysis skipped"):
                 result = lean_module.analyze_lean(tmp_path)
 
         assert result.skipped is True
-        assert "tree-sitter-lean" in result.skip_reason
+        assert "lean" in result.skip_reason
         assert len(result.symbols) == 0
         assert len(result.edges) == 0
 

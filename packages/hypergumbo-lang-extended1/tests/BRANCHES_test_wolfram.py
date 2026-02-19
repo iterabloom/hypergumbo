@@ -171,7 +171,7 @@ class TestTreeSitterUnavailable:
 
     def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Test analysis is skipped when tree-sitter unavailable."""
-        with patch.object(wolfram_module, "is_wolfram_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Wolfram analysis skipped"):
+        with patch.object(wolfram_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="wolfram analysis skipped"):
                 result = wolfram_module.analyze_wolfram(tmp_path)
         assert result.skipped is True

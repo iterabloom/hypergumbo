@@ -6,9 +6,13 @@ management and citation analysis.
 
 How It Works
 ------------
-1. Uses tree-sitter-bibtex grammar from tree-sitter-language-pack
-2. Extracts bibliography entries with their fields
-3. Categorizes entries by type (article, book, inproceedings, etc.)
+Uses TreeSitterAnalyzer base class for single-pass orchestration:
+1. Pass 1: Extract bibliography entries with their fields
+2. Categorizes entries by type (article, book, inproceedings, etc.)
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the BibTeX-specific extraction
+logic.
 
 Symbols Extracted
 -----------------
@@ -24,34 +28,26 @@ Why This Design
 
 from __future__ import annotations
 
-import time
-import uuid
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import Span, Symbol
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    iter_tree,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
 
 
 PASS_ID = "bibtex.tree_sitter"
 PASS_VERSION = "0.1.0"
-
-
-def is_bibtex_tree_sitter_available() -> bool:
-    """Check if tree-sitter-bibtex is available."""
-    try:
-        from tree_sitter_language_pack import get_language
-
-        get_language("bibtex")
-        return True
-    except Exception:  # pragma: no cover
-        return False
 
 
 def find_bibtex_files(repo_root: Path) -> list[Path]:
@@ -60,6 +56,11 @@ def find_bibtex_files(repo_root: Path) -> list[Path]:
     files.extend(find_files(repo_root, ["*.bib"]))
     files.extend(find_files(repo_root, ["*.bibtex"]))
     return sorted(set(files))
+
+
+def is_bibtex_tree_sitter_available() -> bool:
+    """Check if tree-sitter-bibtex is available."""
+    return _analyzer._check_grammar_available()
 
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
@@ -72,128 +73,99 @@ def _make_symbol_id(path: Path, key: str, kind: str, line: int) -> str:
     return f"bibtex:{path}:{kind}:{line}:{key}"
 
 
-class BibtexAnalyzer:
-    """Analyzer for BibTeX bibliography files."""
+def _extract_entry(
+    node: "tree_sitter.Node", rel_path: str, run_id: str,
+) -> Symbol | None:
+    """Extract a bibliography entry as a Symbol."""
+    entry_type = ""
+    citation_key = ""
+    fields: dict[str, str] = {}
 
-    def __init__(self, repo_root: Path) -> None:
-        self.repo_root = repo_root
-        self._symbols: list[Symbol] = []
-        self._execution_id = f"uuid:{uuid.uuid4()}"
-        self._files_analyzed = 0
+    for child in node.children:
+        if child.type == "entry_type":
+            entry_type = _get_node_text(child).lstrip("@").lower()
+        elif child.type == "key_brace" or child.type == "key_paren":
+            citation_key = _get_node_text(child)
+        elif child.type == "field":
+            field_name = ""
+            field_value = ""
+            for field_child in child.children:
+                if field_child.type == "identifier":
+                    field_name = _get_node_text(field_child).lower()
+                elif field_child.type == "value":
+                    field_value = _get_node_text(field_child).strip("{}")
+            if field_name:
+                fields[field_name] = field_value
 
-    def analyze(self) -> AnalysisResult:
-        """Run the BibTeX analysis."""
-        start_time = time.time()
+    if not citation_key:
+        return None  # pragma: no cover
 
-        files = find_bibtex_files(self.repo_root)
-        if not files:
-            return AnalysisResult(
-                symbols=[],
-                run=None,
-            )
+    line = node.start_point[0] + 1
 
-        from tree_sitter_language_pack import get_parser
+    symbol_id = _make_symbol_id(rel_path, citation_key, "entry", line)
+    span = Span(
+        start_line=line,
+        start_col=node.start_point[1],
+        end_line=node.end_point[0] + 1,
+        end_col=node.end_point[1],
+    )
 
-        parser = get_parser("bibtex")
+    # Build a human-readable signature
+    author = fields.get("author", "Unknown")
+    year = fields.get("year", "")
+    title = fields.get("title", "")
+    # Truncate long titles
+    if len(title) > 50:
+        title = title[:47] + "..."
 
-        for path in files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                self._extract_symbols(tree.root_node, path)
-                self._files_analyzed += 1
-            except Exception:  # pragma: no cover  # noqa: S112  # nosec B112
-                continue
+    signature = f"@{entry_type}{{{citation_key}}}"
 
-        duration_ms = int((time.time() - start_time) * 1000)
+    return Symbol(
+        id=symbol_id,
+        stable_id=symbol_id,
+        name=citation_key,
+        kind="entry",
+        language="bibtex",
+        path=str(rel_path),
+        span=span,
+        origin=PASS_ID,
+        signature=signature,
+        meta={
+            "entry_type": entry_type,
+            "author": author,
+            "year": year,
+            "title": title,
+            "field_count": len(fields),
+        },
+    )
 
-        run = AnalysisRun(
-            pass_id=PASS_ID,
-            execution_id=self._execution_id,
-            version=PASS_VERSION,
-            toolchain={"name": "bibtex", "version": "unknown"},
-            duration_ms=duration_ms,
-            files_analyzed=self._files_analyzed,
-        )
 
-        return AnalysisResult(
-            symbols=self._symbols,
-            run=run,
-        )
+class BibtexAnalyzer(TreeSitterAnalyzer):
+    """Analyzer for BibTeX bibliography files using TreeSitterAnalyzer base class."""
 
-    def _extract_symbols(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract symbols from a syntax tree node."""
-        if node.type == "entry":
-            self._extract_entry(node, path)
+    lang = "bibtex"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.bib", "*.bibtex"]
+    language_pack_name = "bibtex"
 
-        for child in node.children:
-            self._extract_symbols(child, path)
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract bibliography entry symbols from a BibTeX file."""
+        analysis = FileAnalysis()
 
-    def _extract_entry(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract a bibliography entry."""
-        entry_type = ""
-        citation_key = ""
-        fields: dict[str, str] = {}
+        for node in iter_tree(tree.root_node):
+            if node.type == "entry":
+                sym = _extract_entry(node, rel_path, run.execution_id)
+                if sym:
+                    analysis.symbols.append(sym)
 
-        for child in node.children:
-            if child.type == "entry_type":
-                entry_type = _get_node_text(child).lstrip("@").lower()
-            elif child.type == "key_brace" or child.type == "key_paren":
-                citation_key = _get_node_text(child)
-            elif child.type == "field":
-                field_name = ""
-                field_value = ""
-                for field_child in child.children:
-                    if field_child.type == "identifier":
-                        field_name = _get_node_text(field_child).lower()
-                    elif field_child.type == "value":
-                        field_value = _get_node_text(field_child).strip("{}")
-                if field_name:
-                    fields[field_name] = field_value
+        return analysis
 
-        if not citation_key:
-            return  # pragma: no cover
 
-        rel_path = path.relative_to(self.repo_root)
-        line = node.start_point[0] + 1
-
-        symbol_id = _make_symbol_id(rel_path, citation_key, "entry", line)
-        span = Span(
-            start_line=line,
-            start_col=node.start_point[1],
-            end_line=node.end_point[0] + 1,
-            end_col=node.end_point[1],
-        )
-
-        # Build a human-readable signature
-        author = fields.get("author", "Unknown")
-        year = fields.get("year", "")
-        title = fields.get("title", "")
-        # Truncate long titles
-        if len(title) > 50:
-            title = title[:47] + "..."
-
-        signature = f"@{entry_type}{{{citation_key}}}"
-
-        symbol = Symbol(
-            id=symbol_id,
-            stable_id=symbol_id,
-            name=citation_key,
-            kind="entry",
-            language="bibtex",
-            path=str(rel_path),
-            span=span,
-            origin=PASS_ID,
-            signature=signature,
-            meta={
-                "entry_type": entry_type,
-                "author": author,
-                "year": year,
-                "title": title,
-                "field_count": len(fields),
-            },
-        )
-        self._symbols.append(symbol)
+_analyzer = BibtexAnalyzer()
 
 
 @register_analyzer("bibtex")
@@ -206,25 +178,4 @@ def analyze_bibtex(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult containing extracted symbols
     """
-    if not is_bibtex_tree_sitter_available():
-        warnings.warn(
-            "BibTeX analysis skipped: tree-sitter-bibtex not available",
-            UserWarning,
-            stacklevel=2,
-        )
-        return AnalysisResult(
-            symbols=[],
-            run=AnalysisRun(
-                pass_id=PASS_ID,
-                execution_id=f"uuid:{uuid.uuid4()}",
-                version=PASS_VERSION,
-                toolchain={"name": "bibtex", "version": "unknown"},
-                duration_ms=0,
-                files_analyzed=0,
-            ),
-            skipped=True,
-            skip_reason="tree-sitter-bibtex not available",
-        )
-
-    analyzer = BibtexAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

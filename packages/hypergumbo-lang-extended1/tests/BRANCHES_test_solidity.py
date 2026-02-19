@@ -225,7 +225,8 @@ class TestTreeSitterUnavailable:
 
     def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Test analysis is skipped when tree-sitter unavailable."""
-        with patch.object(solidity_module, "is_solidity_tree_sitter_available", return_value=False):
-            result = solidity_module.analyze_solidity(tmp_path)
+        with patch.object(solidity_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="solidity analysis skipped"):
+                result = solidity_module.analyze_solidity(tmp_path)
         assert result.skipped is True
-        assert "tree-sitter-solidity" in result.skip_reason
+        assert "not available" in result.skip_reason

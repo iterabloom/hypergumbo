@@ -6,8 +6,13 @@ that runs on HHVM and is a dialect of PHP.
 
 How It Works
 ------------
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
 - Pass 1: Collect symbols (classes, interfaces, traits, functions, methods)
 - Pass 2: Extract edges (function calls, method calls, static calls)
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Hack-specific extraction
+logic.
 
 Symbol Types
 ------------
@@ -25,19 +30,22 @@ Edge Types
 
 from __future__ import annotations
 
-import time
-import uuid as uuid_module
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, ClassVar, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = "hack.tree_sitter"
 PASS_VERSION = "0.1.0"
@@ -77,9 +85,8 @@ def _get_node_text(node: "tree_sitter.Node") -> str:
     return node.text.decode("utf-8") if node.text else ""
 
 
-def _make_stable_id(path: Path, repo_root: Path, name: str, kind: str) -> str:
+def _make_stable_id(rel_path: str, name: str, kind: str) -> str:
     """Create a stable identifier for a symbol."""
-    rel_path = str(path.relative_to(repo_root))
     return f"hack:{rel_path}:{kind}:{name}"
 
 
@@ -102,154 +109,156 @@ def find_hack_files(repo_root: Path) -> list[Path]:
     return sorted(set(files))
 
 
-def is_hack_tree_sitter_available() -> bool:
-    """Check if tree-sitter-hack is available."""
-    try:
-        from tree_sitter_language_pack import get_parser
-        get_parser("hack")
+def _is_builtin(name: str) -> bool:
+    """Check if a name is a built-in function."""
+    clean_name = name.split("->")[-1].split("::")[-1]
+    if clean_name in HACK_BUILTINS:
         return True
-    except Exception:  # pragma: no cover
-        return False
+    if name in HACK_BUILTINS:  # pragma: no cover
+        return True
+    if name.startswith("$this"):
+        if "->" in name:
+            return False
+        return True  # pragma: no cover - $this alone isn't a call_expression
+    return False
 
 
-class HackAnalyzer:
-    """Analyzer for Hack source files."""
+def _extract_params(node: "tree_sitter.Node") -> list[str]:
+    """Extract parameter names from a parameters node."""
+    params = []
+    for child in node.children:
+        if child.type == "parameter":
+            for subchild in child.children:
+                if subchild.type == "variable":
+                    params.append(_get_node_text(subchild))
+    return params
 
-    def __init__(self, repo_root: Path):
-        self.repo_root = repo_root
-        self.symbols: list[Symbol] = []
-        self.edges: list[Edge] = []
-        self._symbol_registry: dict[str, str] = {}  # name -> id
-        self._run_id: str = ""
-        self._current_namespace: Optional[str] = None
-        self._current_class: Optional[str] = None
 
-    def analyze(self) -> AnalysisResult:
-        """Analyze all Hack files in the repository."""
-        from tree_sitter_language_pack import get_parser
+def _get_qualified_name(name: str, current_namespace: Optional[str]) -> str:
+    """Get the fully qualified name including namespace."""
+    if current_namespace:
+        return f"{current_namespace}\\{name}"
+    return name
 
-        start_time = time.time()
-        self._run_id = f"uuid:{uuid_module.uuid4()}"
 
-        parser = get_parser("hack")
-        hack_files = find_hack_files(self.repo_root)
+def _extract_method_symbol(
+    node: "tree_sitter.Node", rel_path: str, current_class: str,
+) -> Optional[Symbol]:
+    """Extract a method declaration."""
+    name = None
+    visibility = "public"
+    is_static = False
+    params: list[str] = []
+    return_type = None
 
-        if not hack_files:
-            return AnalysisResult()
+    for child in node.children:
+        if child.type == "visibility_modifier":
+            visibility = _get_node_text(child)
+        elif child.type == "static_modifier":
+            is_static = True
+        elif child.type == "identifier":
+            name = _get_node_text(child)
+        elif child.type == "parameters":
+            params = _extract_params(child)
+        elif child.type == "type_specifier":
+            return_type = _get_node_text(child)
 
-        # Pass 1: Collect all symbols
-        for path in hack_files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                self._current_namespace = None
-                self._current_class = None
-                self._extract_symbols(tree.root_node, path)
-            except Exception:  # pragma: no cover
-                pass
+    if name and current_class:
+        qualified_name = f"{current_class}::{name}"
+        signature = f"{visibility} function {name}({', '.join(params)})"
+        if return_type:
+            signature += f": {return_type}"
 
-        # Build symbol registry
-        for sym in self.symbols:
-            self._symbol_registry[sym.name] = sym.id
-            # Also register short name for unqualified lookups
-            short_name = sym.name.split("\\")[-1]
-            if short_name not in self._symbol_registry:
-                self._symbol_registry[short_name] = sym.id
-
-        # Pass 2: Extract edges
-        for path in hack_files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                self._current_namespace = None
-                self._current_class = None
-                self._extract_edges(tree.root_node, path)
-            except Exception:  # pragma: no cover
-                pass
-
-        elapsed = time.time() - start_time
-
-        run = AnalysisRun(
-            pass_id=PASS_ID,
-            execution_id=self._run_id,
-            version=PASS_VERSION,
-            toolchain={"name": "hack", "version": "unknown"},
-            duration_ms=int(elapsed * 1000),
+        return Symbol(
+            id=_make_stable_id(rel_path, qualified_name, "method"),
+            stable_id=_make_stable_id(rel_path, qualified_name, "method"),
+            name=qualified_name,
+            kind="method",
+            language="hack",
+            path=rel_path,
+            span=Span(
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                start_col=node.start_point[1],
+                end_col=node.end_point[1],
+            ),
+            origin=PASS_ID,
+            signature=signature,
+            meta={
+                "visibility": visibility,
+                "static": is_static,
+                "param_count": len(params),
+                "class": current_class,
+            },
         )
+    return None  # pragma: no cover
 
-        return AnalysisResult(
-            symbols=self.symbols,
-            edges=self.edges,
-            run=run,
+
+def _extract_members(
+    node: "tree_sitter.Node", rel_path: str, current_class: str,
+    analysis: FileAnalysis,
+) -> None:
+    """Extract method declarations from a member_declarations node."""
+    for child in node.children:
+        if child.type == "method_declaration":
+            sym = _extract_method_symbol(child, rel_path, current_class)
+            if sym:
+                analysis.symbols.append(sym)
+                analysis.symbol_by_name[sym.name] = sym
+
+
+def _extract_class_like(
+    node: "tree_sitter.Node", rel_path: str, kind: str,
+    current_namespace: Optional[str], analysis: FileAnalysis,
+) -> None:
+    """Extract a class, interface, or trait declaration."""
+    name = None
+    for child in node.children:
+        if child.type == "identifier":
+            name = _get_node_text(child)
+            break
+
+    if name:
+        qualified_name = _get_qualified_name(name, current_namespace)
+
+        sym = Symbol(
+            id=_make_stable_id(rel_path, qualified_name, kind),
+            stable_id=_make_stable_id(rel_path, qualified_name, kind),
+            name=qualified_name,
+            kind=kind,
+            language="hack",
+            path=rel_path,
+            span=Span(
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                start_col=node.start_point[1],
+                end_col=node.end_point[1],
+            ),
+            origin=PASS_ID,
         )
+        analysis.symbols.append(sym)
+        analysis.symbol_by_name[sym.name] = sym
 
-    def _get_qualified_name(self, name: str) -> str:
-        """Get the fully qualified name including namespace."""
-        if self._current_namespace:
-            return f"{self._current_namespace}\\{name}"
-        return name
+        # Extract methods
+        for child in node.children:
+            if child.type == "member_declarations":
+                _extract_members(child, rel_path, qualified_name, analysis)
 
-    def _extract_symbols(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract symbols from a syntax tree node."""
-        if node.type == "namespace_declaration":
-            # Namespace declaration
-            for child in node.children:
-                if child.type == "qualified_identifier":
-                    self._current_namespace = _get_node_text(child)
-                    rel_path = str(path.relative_to(self.repo_root))
-                    sym = Symbol(
-                        id=_make_stable_id(path, self.repo_root, self._current_namespace, "namespace"),
-                        stable_id=_make_stable_id(path, self.repo_root, self._current_namespace, "namespace"),
-                        name=self._current_namespace,
-                        kind="namespace",
-                        language="hack",
-                        path=rel_path,
-                        span=Span(
-                            start_line=node.start_point[0] + 1,
-                            end_line=node.end_point[0] + 1,
-                            start_col=node.start_point[1],
-                            end_col=node.end_point[1],
-                        ),
-                        origin=PASS_ID,
-                    )
-                    self.symbols.append(sym)
-                    break
 
-        elif node.type == "class_declaration":
-            self._extract_class_like(node, path, "class")
-
-        elif node.type == "interface_declaration":
-            self._extract_class_like(node, path, "interface")
-
-        elif node.type == "trait_declaration":
-            self._extract_class_like(node, path, "trait")
-
-        elif node.type == "function_declaration":
-            # Standalone function
-            name = None
-            params = []
-            return_type = None
-
-            for child in node.children:
-                if child.type == "identifier":
-                    name = _get_node_text(child)
-                elif child.type == "parameters":
-                    params = self._extract_params(child)
-                elif child.type == "type_specifier":
-                    return_type = _get_node_text(child)
-
-            if name:
-                qualified_name = self._get_qualified_name(name)
-                rel_path = str(path.relative_to(self.repo_root))
-                signature = f"function {name}({', '.join(params)})"
-                if return_type:
-                    signature += f": {return_type}"
-
+def _extract_symbols_recursive(
+    node: "tree_sitter.Node", rel_path: str,
+    current_namespace: Optional[str], analysis: FileAnalysis,
+) -> None:
+    """Recursively extract symbols from a syntax tree."""
+    if node.type == "namespace_declaration":
+        for child in node.children:
+            if child.type == "qualified_identifier":
+                ns_name = _get_node_text(child)
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, qualified_name, "fn"),
-                    stable_id=_make_stable_id(path, self.repo_root, qualified_name, "fn"),
-                    name=qualified_name,
-                    kind="function",
+                    id=_make_stable_id(rel_path, ns_name, "namespace"),
+                    stable_id=_make_stable_id(rel_path, ns_name, "namespace"),
+                    name=ns_name,
+                    kind="namespace",
                     language="hack",
                     path=rel_path,
                     span=Span(
@@ -259,92 +268,50 @@ class HackAnalyzer:
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
-                    signature=signature,
-                    meta={"param_count": len(params)},
                 )
-                self.symbols.append(sym)
-
-        # Recurse into children
-        for child in node.children:
-            self._extract_symbols(child, path)
-
-    def _extract_class_like(
-        self, node: "tree_sitter.Node", path: Path, kind: str
-    ) -> None:
-        """Extract a class, interface, or trait declaration."""
-        name = None
-        for child in node.children:
-            if child.type == "identifier":
-                name = _get_node_text(child)
+                analysis.symbols.append(sym)
+                analysis.symbol_by_name[sym.name] = sym
+                # Update namespace for children - store in import_aliases as context
+                analysis.import_aliases["__namespace__"] = ns_name
                 break
 
-        if name:
-            qualified_name = self._get_qualified_name(name)
-            rel_path = str(path.relative_to(self.repo_root))
+    elif node.type == "class_declaration":
+        ns = analysis.import_aliases.get("__namespace__")
+        _extract_class_like(node, rel_path, "class", ns, analysis)
 
-            sym = Symbol(
-                id=_make_stable_id(path, self.repo_root, qualified_name, kind),
-                stable_id=_make_stable_id(path, self.repo_root, qualified_name, kind),
-                name=qualified_name,
-                kind=kind,
-                language="hack",
-                path=rel_path,
-                span=Span(
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
-                ),
-                origin=PASS_ID,
-            )
-            self.symbols.append(sym)
+    elif node.type == "interface_declaration":
+        ns = analysis.import_aliases.get("__namespace__")
+        _extract_class_like(node, rel_path, "interface", ns, analysis)
 
-            # Extract methods
-            old_class = self._current_class
-            self._current_class = qualified_name
-            for child in node.children:
-                if child.type == "member_declarations":
-                    self._extract_members(child, path)
-            self._current_class = old_class
+    elif node.type == "trait_declaration":
+        ns = analysis.import_aliases.get("__namespace__")
+        _extract_class_like(node, rel_path, "trait", ns, analysis)
 
-    def _extract_members(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract method declarations from a member_declarations node."""
-        for child in node.children:
-            if child.type == "method_declaration":
-                self._extract_method(child, path)
-
-    def _extract_method(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract a method declaration."""
+    elif node.type == "function_declaration":
         name = None
-        visibility = "public"
-        is_static = False
-        params = []
+        params: list[str] = []
         return_type = None
 
         for child in node.children:
-            if child.type == "visibility_modifier":
-                visibility = _get_node_text(child)
-            elif child.type == "static_modifier":
-                is_static = True
-            elif child.type == "identifier":
+            if child.type == "identifier":
                 name = _get_node_text(child)
             elif child.type == "parameters":
-                params = self._extract_params(child)
+                params = _extract_params(child)
             elif child.type == "type_specifier":
                 return_type = _get_node_text(child)
 
-        if name and self._current_class:
-            qualified_name = f"{self._current_class}::{name}"
-            rel_path = str(path.relative_to(self.repo_root))
-            signature = f"{visibility} function {name}({', '.join(params)})"
+        if name:
+            ns = analysis.import_aliases.get("__namespace__")
+            qualified_name = _get_qualified_name(name, ns)
+            signature = f"function {name}({', '.join(params)})"
             if return_type:
                 signature += f": {return_type}"
 
             sym = Symbol(
-                id=_make_stable_id(path, self.repo_root, qualified_name, "method"),
-                stable_id=_make_stable_id(path, self.repo_root, qualified_name, "method"),
+                id=_make_stable_id(rel_path, qualified_name, "fn"),
+                stable_id=_make_stable_id(rel_path, qualified_name, "fn"),
                 name=qualified_name,
-                kind="method",
+                kind="function",
                 language="hack",
                 path=rel_path,
                 span=Span(
@@ -355,165 +322,201 @@ class HackAnalyzer:
                 ),
                 origin=PASS_ID,
                 signature=signature,
-                meta={
-                    "visibility": visibility,
-                    "static": is_static,
-                    "param_count": len(params),
-                    "class": self._current_class,
-                },
+                meta={"param_count": len(params)},
             )
-            self.symbols.append(sym)
+            analysis.symbols.append(sym)
+            analysis.symbol_by_name[sym.name] = sym
 
-    def _extract_params(self, node: "tree_sitter.Node") -> list[str]:
-        """Extract parameter names from a parameters node."""
-        params = []
-        for child in node.children:
-            if child.type == "parameter":
-                for subchild in child.children:
-                    if subchild.type == "variable":
-                        params.append(_get_node_text(subchild))
-        return params
+    for child in node.children:
+        _extract_symbols_recursive(child, rel_path, current_namespace, analysis)
 
-    def _extract_edges(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract edges from a syntax tree node."""
-        if node.type == "namespace_declaration":
-            # Update current namespace for edge extraction
-            for child in node.children:
-                if child.type == "qualified_identifier":
-                    self._current_namespace = _get_node_text(child)
-                    break
 
-        elif node.type in ("class_declaration", "interface_declaration", "trait_declaration"):
-            # Track current class for method resolution
-            for child in node.children:
+def _find_enclosing_method(node: "tree_sitter.Node") -> Optional[str]:
+    """Find the name of the enclosing method."""
+    current = node.parent
+    while current:
+        if current.type == "method_declaration":
+            for child in current.children:
                 if child.type == "identifier":
-                    name = _get_node_text(child)
-                    old_class = self._current_class
-                    self._current_class = self._get_qualified_name(name)
-                    for subchild in node.children:
-                        self._extract_edges(subchild, path)
-                    self._current_class = old_class
-                    return
+                    return _get_node_text(child)
+        current = current.parent
+    return None  # pragma: no cover
 
-        elif node.type == "call_expression":
-            # Function/method call
-            call_name = None
-            line = node.start_point[0] + 1
 
-            for child in node.children:
-                if child.type == "qualified_identifier":
-                    # Regular function call: helper(42)
-                    call_name = _get_node_text(child)
-                    break
-                elif child.type == "selection_expression":
-                    # Method call: $this->validate($x) or $obj->method()
-                    call_name = _get_node_text(child)
-                    break
-                elif child.type == "scoped_identifier":
-                    # Static call: User::find(1)
-                    call_name = _get_node_text(child)
-                    break
+def _resolve_call(
+    call_name: str, symbol_registry: dict[str, str],
+    current_class: Optional[str], current_namespace: Optional[str],
+) -> Optional[str]:
+    """Resolve a call name to a symbol ID."""
+    if call_name in symbol_registry:
+        return symbol_registry[call_name]
 
-            if call_name and not self._is_builtin(call_name):
-                # Try to resolve to a known symbol
-                callee_id = self._resolve_call(call_name)
+    if call_name.startswith("$this->"):
+        method_name = call_name.split("->")[-1]
+        if current_class:
+            qualified = f"{current_class}::{method_name}"
+            if qualified in symbol_registry:
+                return symbol_registry[qualified]
 
-                if callee_id:
-                    confidence = 1.0
-                    dst = callee_id
-                else:
-                    confidence = 0.6
-                    dst = f"unresolved:{call_name}"
+    if "::" in call_name:  # pragma: no cover
+        if current_namespace:
+            qualified = f"{current_namespace}\\{call_name}"
+            if qualified in symbol_registry:
+                return symbol_registry[qualified]
+        if call_name in symbol_registry:
+            return symbol_registry[call_name]
 
-                # Determine caller
-                caller_id = f"hack:{path.relative_to(self.repo_root)}:file"
-                if self._current_class:
-                    # Try to find enclosing method
-                    method_name = self._find_enclosing_method(node)
-                    if method_name:
-                        caller_id = self._symbol_registry.get(
-                            f"{self._current_class}::{method_name}",
-                            caller_id
-                        )
+    if current_namespace and "\\" not in call_name:  # pragma: no cover
+        qualified = f"{current_namespace}\\{call_name}"
+        if qualified in symbol_registry:
+            return symbol_registry[qualified]
 
-                edge = Edge.create(
-                    src=caller_id,
-                    dst=dst,
-                    edge_type="calls",
-                    line=line,
-                    origin=PASS_ID,
-                    origin_run_id=self._run_id,
-                    evidence_type="tree_sitter",
-                    confidence=confidence,
-                    evidence_lang="hack",
-                )
-                self.edges.append(edge)
+    return None
 
-        # Recurse into children
+
+def _extract_edges_recursive(
+    node: "tree_sitter.Node", rel_path: str,
+    current_namespace: Optional[str], current_class: Optional[str],
+    symbol_registry: dict[str, str], run_id: str, edges: list[Edge],
+) -> None:
+    """Recursively extract edges from a syntax tree."""
+    if node.type == "namespace_declaration":
         for child in node.children:
-            self._extract_edges(child, path)
+            if child.type == "qualified_identifier":
+                current_namespace = _get_node_text(child)
+                break
 
-    def _find_enclosing_method(self, node: "tree_sitter.Node") -> Optional[str]:
-        """Find the name of the enclosing method."""
-        current = node.parent
-        while current:
-            if current.type == "method_declaration":
-                for child in current.children:
-                    if child.type == "identifier":
-                        return _get_node_text(child)
-            current = current.parent
-        return None  # pragma: no cover
+    elif node.type in ("class_declaration", "interface_declaration", "trait_declaration"):
+        for child in node.children:
+            if child.type == "identifier":
+                name = _get_node_text(child)
+                old_class = current_class
+                current_class = _get_qualified_name(name, current_namespace)
+                for subchild in node.children:
+                    _extract_edges_recursive(
+                        subchild, rel_path, current_namespace, current_class,
+                        symbol_registry, run_id, edges,
+                    )
+                current_class = old_class
+                return
 
-    def _resolve_call(self, call_name: str) -> Optional[str]:
-        """Resolve a call name to a symbol ID."""
-        # Try direct lookup
-        if call_name in self._symbol_registry:
-            return self._symbol_registry[call_name]
+    elif node.type == "call_expression":
+        call_name = None
+        line = node.start_point[0] + 1
 
-        # Handle $this->method() calls
-        if call_name.startswith("$this->"):
-            method_name = call_name.split("->")[-1]
-            if self._current_class:
-                qualified = f"{self._current_class}::{method_name}"
-                if qualified in self._symbol_registry:
-                    return self._symbol_registry[qualified]
+        for child in node.children:
+            if child.type == "qualified_identifier":
+                call_name = _get_node_text(child)
+                break
+            elif child.type == "selection_expression":
+                call_name = _get_node_text(child)
+                break
+            elif child.type == "scoped_identifier":
+                call_name = _get_node_text(child)
+                break
 
-        # Handle static calls Class::method()
-        # Note: Usually resolved via short name registration above
-        if "::" in call_name:  # pragma: no cover
-            # Try with namespace
-            if self._current_namespace:
-                qualified = f"{self._current_namespace}\\{call_name}"
-                if qualified in self._symbol_registry:
-                    return self._symbol_registry[qualified]
-            # Try direct
-            if call_name in self._symbol_registry:
-                return self._symbol_registry[call_name]
+        if call_name and not _is_builtin(call_name):
+            callee_id = _resolve_call(call_name, symbol_registry, current_class, current_namespace)
 
-        # Try with namespace prefix for unqualified calls
-        # Note: Usually resolved via short name registration above
-        if self._current_namespace and "\\" not in call_name:  # pragma: no cover
-            qualified = f"{self._current_namespace}\\{call_name}"
-            if qualified in self._symbol_registry:
-                return self._symbol_registry[qualified]
+            if callee_id:
+                confidence = 1.0
+                dst = callee_id
+            else:
+                confidence = 0.6
+                dst = f"unresolved:{call_name}"
 
-        return None
+            caller_id = f"hack:{rel_path}:file"
+            if current_class:
+                method_name = _find_enclosing_method(node)
+                if method_name:
+                    caller_id = symbol_registry.get(
+                        f"{current_class}::{method_name}",
+                        caller_id
+                    )
 
-    def _is_builtin(self, name: str) -> bool:
-        """Check if a name is a built-in function."""
-        # Clean the name for comparison (extract base name from method/static calls)
-        clean_name = name.split("->")[-1].split("::")[-1]
-        if clean_name in HACK_BUILTINS:
-            return True
-        # Defensive: check full name if clean_name didn't match
-        if name in HACK_BUILTINS:  # pragma: no cover
-            return True
-        # Check for $this which is always builtin (but method calls on $this are not)
-        if name.startswith("$this"):
-            if "->" in name:
-                return False
-            return True  # pragma: no cover - $this alone isn't a call_expression
-        return False
+            edge = Edge.create(
+                src=caller_id,
+                dst=dst,
+                edge_type="calls",
+                line=line,
+                origin=PASS_ID,
+                origin_run_id=run_id,
+                evidence_type="tree_sitter",
+                confidence=confidence,
+                evidence_lang="hack",
+            )
+            edges.append(edge)
+
+    for child in node.children:
+        _extract_edges_recursive(
+            child, rel_path, current_namespace, current_class,
+            symbol_registry, run_id, edges,
+        )
+
+
+# ---------------------------------------------------------------------------
+# HackAnalyzer: TreeSitterAnalyzer subclass
+# ---------------------------------------------------------------------------
+
+
+class HackAnalyzer(TreeSitterAnalyzer):
+    """Analyzer for Hack source files using TreeSitterAnalyzer base class."""
+
+    lang = "hack"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.hack", "*.hh"]
+    language_pack_name = "hack"
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract symbols from a single Hack file."""
+        analysis = FileAnalysis()
+        _extract_symbols_recursive(tree.root_node, rel_path, None, analysis)
+        return analysis
+
+    def register_symbol(
+        self, symbol: Symbol, global_symbols: dict,
+    ) -> None:
+        """Register symbol by name and short name for cross-file resolution."""
+        global_symbols[symbol.name] = symbol
+        short_name = symbol.name.split("\\")[-1]
+        if short_name not in global_symbols:
+            global_symbols[short_name] = symbol
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract call edges from a single Hack file."""
+        edges: list[Edge] = []
+
+        # Build symbol registry (name -> id) from global symbols
+        symbol_registry: dict[str, str] = {}
+        for sym_name, sym in global_symbols.items():
+            symbol_registry[sym_name] = sym.id
+
+        # Get namespace from import_aliases context
+        current_namespace = import_aliases.get("__namespace__")
+
+        _extract_edges_recursive(
+            tree.root_node, rel_path, current_namespace, None,
+            symbol_registry, run.execution_id, edges,
+        )
+        return edges
+
+
+_analyzer = HackAnalyzer()
+
+
+def is_hack_tree_sitter_available() -> bool:
+    """Check if tree-sitter-hack is available."""
+    return _analyzer._check_grammar_available()
 
 
 @register_analyzer("hack")
@@ -526,16 +529,4 @@ def analyze_hack(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult containing symbols and edges
     """
-    if not is_hack_tree_sitter_available():
-        warnings.warn(
-            "Hack analysis skipped: tree-sitter-hack not available",
-            UserWarning,
-            stacklevel=2,
-        )
-        return AnalysisResult(
-            skipped=True,
-            skip_reason="tree-sitter-hack not available",
-        )
-
-    analyzer = HackAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

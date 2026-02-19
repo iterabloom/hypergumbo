@@ -46,7 +46,7 @@ class TestIsHaxeTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(haxe_module, "is_haxe_tree_sitter_available", return_value=False):
+        with patch.object(haxe_module._analyzer, "_check_grammar_available", return_value=False):
             assert haxe_module.is_haxe_tree_sitter_available() is False
 
 
@@ -55,8 +55,8 @@ class TestAnalyzeHaxe:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_haxe_file(tmp_path, "Test.hx", "class Test {}")
-        with patch.object(haxe_module, "is_haxe_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Haxe analysis skipped"):
+        with patch.object(haxe_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="haxe analysis skipped"):
                 result = haxe_module.analyze_haxe(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -234,7 +234,7 @@ class TestAnalyzeHaxe:
         result = analyze_haxe(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_haxe_file(tmp_path, "Test.hx", """class Test {

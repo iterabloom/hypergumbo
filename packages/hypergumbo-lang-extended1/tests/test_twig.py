@@ -52,7 +52,7 @@ class TestIsTwigTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(twig_module, "is_twig_tree_sitter_available", return_value=False):
+        with patch.object(twig_module._analyzer, "_check_grammar_available", return_value=False):
             assert twig_module.is_twig_tree_sitter_available() is False
 
 
@@ -61,8 +61,8 @@ class TestAnalyzeTwig:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_twig_file(tmp_path, "template.twig", "Hello")
-        with patch.object(twig_module, "is_twig_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Twig analysis skipped"):
+        with patch.object(twig_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="twig analysis skipped"):
                 result = twig_module.analyze_twig(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -70,7 +70,8 @@ class TestAnalyzeTwig:
     def test_empty_repo(self, tmp_path: Path) -> None:
         result = analyze_twig(tmp_path)
         assert result.symbols == []
-        assert result.run is None
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
     def test_extracts_extends(self, tmp_path: Path) -> None:
         make_twig_file(tmp_path, "page.twig", '{% extends "base.html.twig" %}')

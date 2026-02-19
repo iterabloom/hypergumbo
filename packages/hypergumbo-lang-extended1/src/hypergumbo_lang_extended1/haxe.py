@@ -8,8 +8,8 @@ can compile to many target platforms including JavaScript, C++, C#, Java,
 Python, Lua, PHP, Flash, and HashLink bytecode.
 
 Implementation approach:
+- Uses TreeSitterAnalyzer base class for two-pass orchestration
 - Uses tree-sitter-language-pack for Haxe grammar
-- Two-pass analysis: First pass collects all symbols, second pass extracts edges
 - Handles classes, interfaces, functions, and method calls
 
 Key constructs extracted:
@@ -20,31 +20,27 @@ Key constructs extracted:
 - obj.method(args) - method calls
 """
 
-import time
-import warnings
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Iterator, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = "haxe.tree_sitter"
 PASS_VERSION = "hypergumbo-0.1.0"
-
-
-def is_haxe_tree_sitter_available() -> bool:
-    """Check if tree-sitter-language-pack with Haxe support is available."""
-    try:
-        from tree_sitter_language_pack import get_parser
-        get_parser("haxe")
-        return True
-    except (ImportError, Exception):  # pragma: no cover
-        return False  # pragma: no cover
 
 
 def find_haxe_files(root: Path) -> Iterator[Path]:
@@ -97,13 +93,11 @@ def _get_function_params(node: "tree_sitter.Node") -> list[str]:
 
 def _get_return_type(node: "tree_sitter.Node") -> Optional[str]:
     """Get the return type from a function_declaration node."""
-    # Find the type node after the closing parenthesis
     found_paren = False
     for child in node.children:
         if child.type == ")":
             found_paren = True
         elif found_paren and child.type == "type":
-            # Get the identifier from the type
             for type_child in child.children:
                 if type_child.type == "identifier":
                     return _get_node_text(type_child)
@@ -133,103 +127,98 @@ def _get_call_name(node: "tree_sitter.Node") -> Optional[str]:
         if child.type == "identifier":
             return _get_node_text(child)
         elif child.type == "member_expression":
-            # Get the last identifier (the method name)
             for member_child in reversed(child.children):
                 if member_child.type == "identifier":
                     return _get_node_text(member_child)
     return None  # pragma: no cover
 
 
-class HaxeAnalyzer:
-    """Analyzer for Haxe source files."""
+# Haxe built-in functions that should not generate call edges
+_BUILTINS = frozenset({
+    "trace", "haxe", "Type",
+    "Math", "abs", "floor", "ceil", "round", "sqrt",
+    "sin", "cos", "tan", "min", "max", "pow", "log",
+    "String", "charAt", "charCodeAt", "indexOf",
+    "lastIndexOf", "split", "substr", "substring",
+    "toLowerCase", "toUpperCase", "toString",
+    "Array", "push", "pop", "shift", "unshift",
+    "concat", "join", "slice", "splice", "sort",
+    "reverse", "filter", "map", "length",
+    "Std", "int", "parseFloat", "parseInt", "is",
+    "string", "random",
+    "Lambda", "array", "exists", "find",
+})
 
-    def __init__(self, repo_root: Path):
-        self.repo_root = repo_root
-        self.symbols: list[Symbol] = []
-        self.edges: list[Edge] = []
-        self._symbol_registry: dict[str, str] = {}  # name -> id
-        self._run_id: str = ""
 
-    def analyze(self) -> AnalysisResult:
-        """Analyze all Haxe files in the repository."""
-        if not is_haxe_tree_sitter_available():
-            warnings.warn(
-                "Haxe analysis skipped: tree-sitter-language-pack not available",
-                UserWarning,
-                stacklevel=2,
-            )
-            return AnalysisResult(
-                skipped=True,
-                skip_reason="tree-sitter-language-pack not available",
-            )
+def _find_enclosing_context(
+    node: "tree_sitter.Node", path: Path, repo_root: Path,
+) -> tuple[Optional[str], Optional[str]]:
+    """Find the enclosing function and class for a node.
 
-        import uuid as uuid_module
-        from tree_sitter_language_pack import get_parser
+    Returns:
+        Tuple of (function_id, class_name). function_id is the stable ID
+        of the enclosing function, class_name is the name of the enclosing
+        class (if any).
+    """
+    current = node.parent
+    func_name = None
+    class_name = None
 
-        start_time = time.time()
-        self._run_id = f"uuid:{uuid_module.uuid4()}"
+    while current is not None:
+        if current.type == "function_declaration":
+            if func_name is None:
+                func_name = _get_function_name(current)
+        elif current.type in ("class_declaration", "interface_declaration"):
+            if class_name is None:
+                class_name = _get_identifier(current)
+        current = current.parent
 
-        parser = get_parser("haxe")
-        haxe_files = list(find_haxe_files(self.repo_root))
+    if func_name:
+        qualified_name = f"{class_name}.{func_name}" if class_name else func_name
+        func_id = _make_stable_id(path, repo_root, qualified_name, "fn")
+        return func_id, class_name
+    return None, class_name  # pragma: no cover
 
-        if not haxe_files:
-            return AnalysisResult()
 
-        # Pass 1: Collect all symbols
-        for path in haxe_files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                self._extract_symbols(tree.root_node, path, None)
-            except Exception:  # pragma: no cover
-                pass
+class HaxeAnalyzer(TreeSitterAnalyzer):
+    """Analyzer for Haxe source files using TreeSitterAnalyzer base class."""
 
-        # Build symbol registry
-        for sym in self.symbols:
-            self._symbol_registry[sym.name] = sym.id
+    lang = "haxe"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.hx"]
+    language_pack_name = "haxe"
 
-        # Pass 2: Extract edges
-        for path in haxe_files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                self._extract_edges(tree.root_node, path)
-            except Exception:  # pragma: no cover
-                pass
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract class, interface, and function symbols from a Haxe file."""
+        analysis = FileAnalysis()
+        rel_parts = Path(rel_path).parts
+        repo_root = file_path
+        for _ in rel_parts:
+            repo_root = repo_root.parent
 
-        elapsed = time.time() - start_time
-
-        run = AnalysisRun(
-            execution_id=self._run_id,
-            run_signature="",
-            pass_id=PASS_ID,
-            version=PASS_VERSION,
-            toolchain={"name": "haxe", "version": "unknown"},
-            duration_ms=int(elapsed * 1000),
+        self._extract_symbols_recursive(
+            tree.root_node, file_path, repo_root, rel_path, run, analysis, None
         )
+        return analysis
 
-        return AnalysisResult(
-            symbols=self.symbols,
-            edges=self.edges,
-            run=run,
-        )
-
-    def _extract_symbols(
-        self, node: "tree_sitter.Node", path: Path, current_class: Optional[str]
+    def _extract_symbols_recursive(
+        self, node: "tree_sitter.Node", path: Path, repo_root: Path,
+        rel_path: str, run: "AnalysisRun", analysis: FileAnalysis,
+        current_class: Optional[str],
     ) -> None:
-        """Extract symbols from a syntax tree node."""
+        """Extract symbols from a syntax tree node recursively."""
         if node.type == "class_declaration":
-            # Class definition
             name = _get_identifier(node)
             if name:
-                rel_path = str(path.relative_to(self.repo_root))
-
-                # Check for abstract modifier
                 is_abstract = any(c.type == "abstract" for c in node.children)
 
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, name, "class"),
-                    stable_id=_make_stable_id(path, self.repo_root, name, "class"),
+                    id=_make_stable_id(path, repo_root, name, "class"),
+                    stable_id=_make_stable_id(path, repo_root, name, "class"),
                     name=name,
                     kind="class",
                     language="haxe",
@@ -241,24 +230,23 @@ class HaxeAnalyzer:
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run.execution_id,
                     meta={"is_abstract": is_abstract},
                 )
-                self.symbols.append(sym)
+                analysis.symbols.append(sym)
 
-                # Process children with current class context
                 for child in node.children:
-                    self._extract_symbols(child, path, name)
+                    self._extract_symbols_recursive(
+                        child, path, repo_root, rel_path, run, analysis, name
+                    )
                 return
 
         elif node.type == "interface_declaration":
-            # Interface definition
             name = _get_identifier(node)
             if name:
-                rel_path = str(path.relative_to(self.repo_root))
-
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, name, "interface"),
-                    stable_id=_make_stable_id(path, self.repo_root, name, "interface"),
+                    id=_make_stable_id(path, repo_root, name, "interface"),
+                    stable_id=_make_stable_id(path, repo_root, name, "interface"),
                     name=name,
                     kind="interface",
                     language="haxe",
@@ -270,34 +258,32 @@ class HaxeAnalyzer:
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run.execution_id,
                 )
-                self.symbols.append(sym)
+                analysis.symbols.append(sym)
 
-                # Process children with interface context
                 for child in node.children:
-                    self._extract_symbols(child, path, name)
+                    self._extract_symbols_recursive(
+                        child, path, repo_root, rel_path, run, analysis, name
+                    )
                 return
 
         elif node.type == "function_declaration":
-            # Function definition
             name = _get_function_name(node)
             if name:
                 params = _get_function_params(node)
                 return_type = _get_return_type(node)
-                is_public = _is_public(node)
-                is_static = _is_static(node)
-                rel_path = str(path.relative_to(self.repo_root))
+                is_pub = _is_public(node)
+                is_stat = _is_static(node)
 
-                # Build qualified name if inside a class
                 qualified_name = f"{current_class}.{name}" if current_class else name
 
-                # Build signature
                 type_str = return_type if return_type else "Void"
                 signature = f"function {name}({', '.join(params)}): {type_str}"
 
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, qualified_name, "fn"),
-                    stable_id=_make_stable_id(path, self.repo_root, qualified_name, "fn"),
+                    id=_make_stable_id(path, repo_root, qualified_name, "fn"),
+                    stable_id=_make_stable_id(path, repo_root, qualified_name, "fn"),
                     name=qualified_name,
                     kind="function",
                     language="haxe",
@@ -309,114 +295,99 @@ class HaxeAnalyzer:
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run.execution_id,
                     signature=signature,
                     meta={
                         "param_count": len(params),
-                        "is_public": is_public,
-                        "is_static": is_static,
+                        "is_public": is_pub,
+                        "is_static": is_stat,
                         "class": current_class,
                     },
                 )
-                self.symbols.append(sym)
+                analysis.symbols.append(sym)
+                analysis.symbol_by_name[qualified_name] = sym
             return  # Don't recurse into function bodies for symbol extraction
 
         # Recursively process children
         for child in node.children:
-            self._extract_symbols(child, path, current_class)
+            self._extract_symbols_recursive(
+                child, path, repo_root, rel_path, run, analysis, current_class
+            )
 
-    def _extract_edges(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract edges from a syntax tree node."""
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract call edges from a Haxe file."""
+        edges: list[Edge] = []
+        rel_parts = Path(rel_path).parts
+        repo_root = file_path
+        for _ in rel_parts:
+            repo_root = repo_root.parent
+
+        self._extract_edges_recursive(
+            tree.root_node, file_path, repo_root, global_symbols, run, edges,
+        )
+        return edges
+
+    def _extract_edges_recursive(
+        self, node: "tree_sitter.Node", path: Path, repo_root: Path,
+        global_symbols: dict, run: "AnalysisRun", edges: list[Edge],
+    ) -> None:
+        """Extract edges from a syntax tree node recursively."""
         if node.type == "call_expression":
-            # Skip constructor calls (new ClassName())
             has_new = any(c.type == "new" for c in node.children)
             if not has_new:
                 call_name = _get_call_name(node)
-                if call_name:
-                    # Skip built-in functions
-                    builtins = {
-                        # Standard library
-                        "trace", "haxe", "Type",
-                        # Math
-                        "Math", "abs", "floor", "ceil", "round", "sqrt",
-                        "sin", "cos", "tan", "min", "max", "pow", "log",
-                        # String
-                        "String", "charAt", "charCodeAt", "indexOf",
-                        "lastIndexOf", "split", "substr", "substring",
-                        "toLowerCase", "toUpperCase", "toString",
-                        # Array
-                        "Array", "push", "pop", "shift", "unshift",
-                        "concat", "join", "slice", "splice", "sort",
-                        "reverse", "filter", "map", "length",
-                        # Std
-                        "Std", "int", "parseFloat", "parseInt", "is",
-                        "string", "random",
-                        # Lambda
-                        "Lambda", "array", "exists", "find",
-                    }
+                if call_name and call_name not in _BUILTINS:
+                    caller_id, enclosing_class = _find_enclosing_context(
+                        node, path, repo_root,
+                    )
+                    if caller_id:
+                        callee_id = None
+                        if enclosing_class:
+                            qualified_name = f"{enclosing_class}.{call_name}"
+                            callee_sym = global_symbols.get(qualified_name)
+                            callee_id = callee_sym.id if callee_sym else None
 
-                    if call_name not in builtins:
-                        caller_id, enclosing_class = self._find_enclosing_context(node, path)
-                        if caller_id:
-                            # Try qualified name first (ClassName.methodName)
-                            callee_id = None
-                            if enclosing_class:
-                                qualified_name = f"{enclosing_class}.{call_name}"
-                                callee_id = self._symbol_registry.get(qualified_name)
+                        if callee_id is None:
+                            callee_sym = global_symbols.get(call_name)
+                            callee_id = callee_sym.id if callee_sym else None
 
-                            # Fall back to unqualified name
-                            if callee_id is None:
-                                callee_id = self._symbol_registry.get(call_name)
+                        confidence = 1.0 if callee_id else 0.6
+                        if callee_id is None:
+                            callee_id = f"haxe:unresolved:{call_name}"
 
-                            confidence = 1.0 if callee_id else 0.6
-                            if callee_id is None:
-                                callee_id = f"haxe:unresolved:{call_name}"
-
-                            line = node.start_point[0] + 1
-                            edge = Edge.create(
-                                src=caller_id,
-                                dst=callee_id,
-                                edge_type="calls",
-                                line=line,
-                                origin=PASS_ID,
-                                origin_run_id=self._run_id,
-                                evidence_type="ast_call_direct",
-                                confidence=confidence,
-                                evidence_lang="haxe",
-                            )
-                            self.edges.append(edge)
+                        line = node.start_point[0] + 1
+                        edge = Edge.create(
+                            src=caller_id,
+                            dst=callee_id,
+                            edge_type="calls",
+                            line=line,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="ast_call_direct",
+                            confidence=confidence,
+                            evidence_lang="haxe",
+                        )
+                        edges.append(edge)
 
         # Recursively process children
         for child in node.children:
-            self._extract_edges(child, path)
+            self._extract_edges_recursive(
+                child, path, repo_root, global_symbols, run, edges,
+            )
 
-    def _find_enclosing_context(
-        self, node: "tree_sitter.Node", path: Path
-    ) -> tuple[Optional[str], Optional[str]]:
-        """Find the enclosing function and class for a node.
 
-        Returns:
-            Tuple of (function_id, class_name). function_id is the stable ID
-            of the enclosing function, class_name is the name of the enclosing
-            class (if any).
-        """
-        current = node.parent
-        func_name = None
-        class_name = None
+_analyzer = HaxeAnalyzer()
 
-        while current is not None:
-            if current.type == "function_declaration":
-                if func_name is None:
-                    func_name = _get_function_name(current)
-            elif current.type in ("class_declaration", "interface_declaration"):
-                if class_name is None:
-                    class_name = _get_identifier(current)
-            current = current.parent
 
-        if func_name:
-            qualified_name = f"{class_name}.{func_name}" if class_name else func_name
-            func_id = _make_stable_id(path, self.repo_root, qualified_name, "fn")
-            return func_id, class_name
-        return None, class_name  # pragma: no cover
+def is_haxe_tree_sitter_available() -> bool:
+    """Check if tree-sitter-language-pack with Haxe support is available."""
+    return _analyzer._check_grammar_available()
 
 
 @register_analyzer("haxe")
@@ -429,5 +400,4 @@ def analyze_haxe(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult containing symbols, edges, and analysis metadata
     """
-    analyzer = HaxeAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

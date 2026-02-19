@@ -115,23 +115,11 @@ class TestIsOdinTreeSitterAvailable:
         # This test runs in CI where the dependency is installed
         assert is_odin_tree_sitter_available() is True
 
-    def test_returns_false_when_tree_sitter_missing(self) -> None:
-        """Should return False when tree-sitter is not installed."""
-        with patch("importlib.util.find_spec", return_value=None):
-            assert is_odin_tree_sitter_available() is False
-
-    def test_returns_false_when_odin_missing(self) -> None:
-        """Should return False when tree-sitter-odin is not installed."""
-        import importlib.util
-        original_find_spec = importlib.util.find_spec
-
-        def mock_find_spec(name: str) -> object:
-            if name == "tree_sitter_odin":
-                return None
-            return original_find_spec(name)
-
-        with patch("importlib.util.find_spec", side_effect=mock_find_spec):
-            assert is_odin_tree_sitter_available() is False
+    def test_returns_false_when_unavailable(self) -> None:
+        """Should return False when grammar is not available."""
+        import hypergumbo_lang_extended1.odin as odin_module
+        with patch.object(odin_module._analyzer, "_check_grammar_available", return_value=False):
+            assert odin_module.is_odin_tree_sitter_available() is False
 
 
 class TestAnalyzeOdin:
@@ -141,12 +129,12 @@ class TestAnalyzeOdin:
         """Should skip analysis and warn when tree-sitter-odin is unavailable."""
         import hypergumbo_lang_extended1.odin as odin_module
 
-        with patch.object(odin_module, "is_odin_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="tree-sitter-odin not available"):
+        with patch.object(odin_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="odin analysis skipped"):
                 result = odin_module.analyze_odin(odin_repo)
 
         assert result.skipped is True
-        assert "tree-sitter-odin" in result.skip_reason
+        assert "not available" in result.skip_reason
         assert result.symbols == []
         assert result.edges == []
 
@@ -253,7 +241,7 @@ class TestAnalyzeOdin:
         assert not result.skipped
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
 
     def test_stable_ids(self, odin_repo: Path) -> None:
         """Should generate stable IDs for symbols."""

@@ -170,6 +170,7 @@ class TestTreeSitterUnavailable:
 
     def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Test analysis is skipped when tree-sitter unavailable."""
-        with patch.object(verilog_module, "is_verilog_tree_sitter_available", return_value=False):
-            result = verilog_module.analyze_verilog_files(tmp_path)
+        with patch.object(verilog_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="verilog analysis skipped"):
+                result = verilog_module.analyze_verilog_files(tmp_path)
         assert result.skipped is True

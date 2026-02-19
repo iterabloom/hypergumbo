@@ -127,7 +127,7 @@ class TestTreeSitterUnavailable:
 
     def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Test analysis is skipped when tree-sitter unavailable."""
-        with patch.object(agda_module, "is_agda_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Agda analysis skipped"):
+        with patch.object(agda_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="agda analysis skipped"):
                 result = agda_module.analyze_agda(tmp_path)
         assert result.skipped is True

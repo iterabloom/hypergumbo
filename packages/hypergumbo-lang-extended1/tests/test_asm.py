@@ -229,8 +229,8 @@ class TestAsmAnalysisUnavailable:
         """Returns skipped result when tree-sitter unavailable."""
         (temp_repo / "test.s").write_text("_start:\n    ret\n")
 
-        with patch.object(asm_module, "is_asm_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Assembly analysis skipped"):
+        with patch.object(asm_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="asm analysis skipped"):
                 result = asm_module.analyze_asm(temp_repo)
 
         assert result.skipped is True

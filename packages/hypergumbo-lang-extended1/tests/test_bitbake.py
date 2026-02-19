@@ -64,7 +64,7 @@ class TestIsBitBakeTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(bitbake_module, "is_bitbake_tree_sitter_available", return_value=False):
+        with patch.object(bitbake_module._analyzer, "_check_grammar_available", return_value=False):
             assert bitbake_module.is_bitbake_tree_sitter_available() is False
 
 
@@ -73,8 +73,8 @@ class TestAnalyzeBitBake:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_bitbake_file(tmp_path, "test.bb", "SUMMARY = \"Test\"")
-        with patch.object(bitbake_module, "is_bitbake_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="BitBake analysis skipped"):
+        with patch.object(bitbake_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="bitbake analysis skipped"):
                 result = bitbake_module.analyze_bitbake(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -223,7 +223,7 @@ SUMMARY = "Test"
         result = analyze_bitbake(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_bitbake_file(tmp_path, "test.bb", """

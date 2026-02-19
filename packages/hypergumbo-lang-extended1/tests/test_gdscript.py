@@ -267,8 +267,8 @@ class TestGDScriptAnalysisUnavailable:
         """Returns skipped result when tree-sitter unavailable."""
         (temp_repo / "player.gd").write_text("extends Node2D")
 
-        with patch.object(gdscript_module, "is_gdscript_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="GDScript analysis skipped"):
+        with patch.object(gdscript_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="gdscript analysis skipped"):
                 result = gdscript_module.analyze_gdscript(temp_repo)
 
         assert result.skipped is True

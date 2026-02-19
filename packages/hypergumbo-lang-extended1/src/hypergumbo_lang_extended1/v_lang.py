@@ -7,8 +7,8 @@ V is a statically typed compiled programming language designed to be simple,
 fast, and safe. It aims to be a pragmatic alternative to C with modern features.
 
 Implementation approach:
+- Uses TreeSitterAnalyzer base class for two-pass orchestration
 - Uses tree-sitter-language-pack for V grammar
-- Two-pass analysis: First pass collects all symbols, second pass extracts edges
 - Handles V-specific constructs like pub visibility, modules, structs, enums
 
 Key constructs extracted:
@@ -20,31 +20,27 @@ Key constructs extracted:
 - call_expression: func(args)
 """
 
-import time
-import warnings
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Iterator, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = "v.tree_sitter"
 PASS_VERSION = "hypergumbo-0.1.0"
-
-
-def is_v_tree_sitter_available() -> bool:
-    """Check if tree-sitter-language-pack with V support is available."""
-    try:
-        from tree_sitter_language_pack import get_parser
-        get_parser("v")
-        return True
-    except (ImportError, Exception):  # pragma: no cover
-        return False  # pragma: no cover
 
 
 def find_v_files(root: Path) -> Iterator[Path]:
@@ -105,7 +101,6 @@ def _extract_function_params(node: "tree_sitter.Node") -> list[str]:
 
 def _extract_return_type(node: "tree_sitter.Node") -> Optional[str]:
     """Extract return type from a function declaration."""
-    # Return type comes after parameter_list
     saw_params = False
     for child in node.children:
         if child.type == "parameter_list":
@@ -141,82 +136,50 @@ def _count_enum_variants(node: "tree_sitter.Node") -> int:
     return 0  # pragma: no cover
 
 
-class VAnalyzer:
-    """Analyzer for V source files."""
+def _find_enclosing_function(
+    node: "tree_sitter.Node", path: Path, repo_root: Path,
+) -> Optional[str]:
+    """Find the enclosing function for a node."""
+    current = node.parent
+    while current is not None:
+        if current.type == "function_declaration":
+            name = _get_identifier(current)
+            if name:
+                return _make_stable_id(path, repo_root, name, "fn")
+        current = current.parent
+    return None  # pragma: no cover
 
-    def __init__(self, repo_root: Path):
-        self.repo_root = repo_root
-        self.symbols: list[Symbol] = []
-        self.edges: list[Edge] = []
-        self._symbol_registry: dict[str, str] = {}  # name -> id
-        self._run_id: str = ""
 
-    def analyze(self) -> AnalysisResult:
-        """Analyze all V files in the repository."""
-        if not is_v_tree_sitter_available():
-            warnings.warn(
-                "V analysis skipped: tree-sitter-language-pack not available",
-                UserWarning,
-                stacklevel=2,
-            )
-            return AnalysisResult(
-                skipped=True,
-                skip_reason="tree-sitter-language-pack not available",
-            )
+class VAnalyzer(TreeSitterAnalyzer):
+    """Analyzer for V source files using TreeSitterAnalyzer base class."""
 
-        import uuid as uuid_module
-        from tree_sitter_language_pack import get_parser
+    lang = "v"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.v"]
+    language_pack_name = "v"
 
-        start_time = time.time()
-        self._run_id = f"uuid:{uuid_module.uuid4()}"
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract function, struct, enum, and interface symbols from a V file."""
+        analysis = FileAnalysis()
+        rel_parts = Path(rel_path).parts
+        repo_root = file_path
+        for _ in rel_parts:
+            repo_root = repo_root.parent
 
-        parser = get_parser("v")
-        v_files = list(find_v_files(self.repo_root))
-
-        if not v_files:
-            return AnalysisResult()
-
-        # Pass 1: Collect all symbols
-        for path in v_files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                self._extract_symbols(tree.root_node, path)
-            except Exception:  # pragma: no cover
-                pass
-
-        # Build symbol registry
-        for sym in self.symbols:
-            self._symbol_registry[sym.name] = sym.id
-
-        # Pass 2: Extract edges
-        for path in v_files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                self._extract_edges(tree.root_node, path)
-            except Exception:  # pragma: no cover
-                pass
-
-        elapsed = time.time() - start_time
-
-        run = AnalysisRun(
-            execution_id=self._run_id,
-            run_signature="",
-            pass_id=PASS_ID,
-            version=PASS_VERSION,
-            toolchain={"name": "v", "version": "unknown"},
-            duration_ms=int(elapsed * 1000),
+        self._extract_symbols_recursive(
+            tree.root_node, file_path, repo_root, rel_path, run, analysis
         )
+        return analysis
 
-        return AnalysisResult(
-            symbols=self.symbols,
-            edges=self.edges,
-            run=run,
-        )
-
-    def _extract_symbols(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract symbols from a syntax tree node."""
+    def _extract_symbols_recursive(
+        self, node: "tree_sitter.Node", path: Path, repo_root: Path,
+        rel_path: str, run: "AnalysisRun", analysis: FileAnalysis,
+    ) -> None:
+        """Extract symbols from a syntax tree node recursively."""
         if node.type == "function_declaration":
             name = _get_identifier(node)
             if name:
@@ -228,10 +191,9 @@ class VAnalyzer:
                 if return_type:
                     signature += f" {return_type}"
 
-                rel_path = str(path.relative_to(self.repo_root))
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, name, "fn"),
-                    stable_id=_make_stable_id(path, self.repo_root, name, "fn"),
+                    id=_make_stable_id(path, repo_root, name, "fn"),
+                    stable_id=_make_stable_id(path, repo_root, name, "fn"),
                     name=name,
                     kind="function",
                     language="v",
@@ -243,20 +205,21 @@ class VAnalyzer:
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run.execution_id,
                     signature=signature,
                     meta={"is_public": is_pub},
                 )
-                self.symbols.append(sym)
+                analysis.symbols.append(sym)
+                analysis.symbol_by_name[name] = sym
 
         elif node.type == "struct_declaration":
             name = _get_type_identifier(node)
             if name:
                 field_count = _count_struct_fields(node)
                 is_pub = _is_public(node)
-                rel_path = str(path.relative_to(self.repo_root))
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, name, "struct"),
-                    stable_id=_make_stable_id(path, self.repo_root, name, "struct"),
+                    id=_make_stable_id(path, repo_root, name, "struct"),
+                    stable_id=_make_stable_id(path, repo_root, name, "struct"),
                     name=name,
                     kind="class",
                     language="v",
@@ -268,19 +231,19 @@ class VAnalyzer:
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run.execution_id,
                     meta={"is_public": is_pub, "field_count": field_count},
                 )
-                self.symbols.append(sym)
+                analysis.symbols.append(sym)
 
         elif node.type == "enum_declaration":
             name = _get_type_identifier(node)
             if name:
                 variant_count = _count_enum_variants(node)
                 is_pub = _is_public(node)
-                rel_path = str(path.relative_to(self.repo_root))
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, name, "enum"),
-                    stable_id=_make_stable_id(path, self.repo_root, name, "enum"),
+                    id=_make_stable_id(path, repo_root, name, "enum"),
+                    stable_id=_make_stable_id(path, repo_root, name, "enum"),
                     name=name,
                     kind="enum",
                     language="v",
@@ -292,18 +255,18 @@ class VAnalyzer:
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run.execution_id,
                     meta={"is_public": is_pub, "variant_count": variant_count},
                 )
-                self.symbols.append(sym)
+                analysis.symbols.append(sym)
 
         elif node.type == "interface_declaration":
             name = _get_type_identifier(node)
             if name:
                 is_pub = _is_public(node)
-                rel_path = str(path.relative_to(self.repo_root))
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, name, "interface"),
-                    stable_id=_make_stable_id(path, self.repo_root, name, "interface"),
+                    id=_make_stable_id(path, repo_root, name, "interface"),
+                    stable_id=_make_stable_id(path, repo_root, name, "interface"),
                     name=name,
                     kind="interface",
                     language="v",
@@ -315,22 +278,47 @@ class VAnalyzer:
                         end_col=node.end_point[1],
                     ),
                     origin=PASS_ID,
+                    origin_run_id=run.execution_id,
                     meta={"is_public": is_pub},
                 )
-                self.symbols.append(sym)
+                analysis.symbols.append(sym)
 
         # Recursively process children
         for child in node.children:
-            self._extract_symbols(child, path)
+            self._extract_symbols_recursive(
+                child, path, repo_root, rel_path, run, analysis
+            )
 
-    def _extract_edges(self, node: "tree_sitter.Node", path: Path) -> None:
-        """Extract edges from a syntax tree node."""
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract import and call edges from a V file."""
+        edges: list[Edge] = []
+        rel_parts = Path(rel_path).parts
+        repo_root = file_path
+        for _ in rel_parts:
+            repo_root = repo_root.parent
+
+        self._extract_edges_recursive(
+            tree.root_node, file_path, repo_root, rel_path,
+            global_symbols, run, edges,
+        )
+        return edges
+
+    def _extract_edges_recursive(
+        self, node: "tree_sitter.Node", path: Path, repo_root: Path,
+        rel_path: str, global_symbols: dict,
+        run: "AnalysisRun", edges: list[Edge],
+    ) -> None:
+        """Extract edges from a syntax tree node recursively."""
         if node.type == "import_declaration":
-            # Extract import path
             for child in node.children:
                 if child.type == "import_path":
                     import_path = _get_node_text(child)
-                    rel_path = str(path.relative_to(self.repo_root))
                     line = node.start_point[0] + 1
                     edge = Edge.create(
                         src=f"file:{rel_path}",
@@ -338,21 +326,21 @@ class VAnalyzer:
                         edge_type="imports",
                         line=line,
                         origin=PASS_ID,
-                        origin_run_id=self._run_id,
+                        origin_run_id=run.execution_id,
                         evidence_type="ast_import",
                         confidence=1.0,
                         evidence_lang="v",
                     )
-                    self.edges.append(edge)
+                    edges.append(edge)
 
         elif node.type == "call_expression":
-            caller_id = self._find_enclosing_function(node, path)
+            caller_id = _find_enclosing_function(node, path, repo_root)
             if caller_id:
-                # Get the callee
                 callee_name = _get_identifier(node)
 
                 if callee_name:
-                    callee_id = self._symbol_registry.get(callee_name)
+                    callee_sym = global_symbols.get(callee_name)
+                    callee_id = callee_sym.id if callee_sym else None
                     confidence = 1.0 if callee_id else 0.6
                     if callee_id is None:
                         callee_id = f"v:unresolved:{callee_name}"
@@ -364,29 +352,26 @@ class VAnalyzer:
                         edge_type="calls",
                         line=line,
                         origin=PASS_ID,
-                        origin_run_id=self._run_id,
+                        origin_run_id=run.execution_id,
                         evidence_type="ast_call_direct",
                         confidence=confidence,
                         evidence_lang="v",
                     )
-                    self.edges.append(edge)
+                    edges.append(edge)
 
         # Recursively process children
         for child in node.children:
-            self._extract_edges(child, path)
+            self._extract_edges_recursive(
+                child, path, repo_root, rel_path, global_symbols, run, edges,
+            )
 
-    def _find_enclosing_function(
-        self, node: "tree_sitter.Node", path: Path
-    ) -> Optional[str]:
-        """Find the enclosing function for a node."""
-        current = node.parent
-        while current is not None:
-            if current.type == "function_declaration":
-                name = _get_identifier(current)
-                if name:
-                    return _make_stable_id(path, self.repo_root, name, "fn")
-            current = current.parent
-        return None  # pragma: no cover
+
+_analyzer = VAnalyzer()
+
+
+def is_v_tree_sitter_available() -> bool:
+    """Check if tree-sitter-language-pack with V support is available."""
+    return _analyzer._check_grammar_available()
 
 
 @register_analyzer("v")
@@ -399,5 +384,4 @@ def analyze_v(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult containing symbols, edges, and analysis metadata
     """
-    analyzer = VAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

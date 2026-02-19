@@ -11,15 +11,17 @@ used for technical computing, data science, and mathematical modeling.
 
 How It Works
 ------------
-1. Check if tree-sitter-wolfram is available (built from source)
-2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
-   - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect function calls and imports
-4. Track package structure and dependencies
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Parse all files, extract all symbols into global registry
+2. Pass 2: Detect function calls and imports
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Wolfram-specific extraction
+logic.
 
 Why This Design
 ---------------
+- TreeSitterAnalyzer eliminates ~150 lines of boilerplate
 - Built from source since not on PyPI
 - Uses tree-sitter-wolfram grammar (bostick/tree-sitter-wolfram)
 - Two-pass allows cross-file resolution
@@ -35,21 +37,27 @@ Wolfram Language Considerations
 """
 from __future__ import annotations
 
-import importlib.util
-import time
-import warnings
-from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import classify_dot_m_file, find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
+from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    find_child_by_type,
+    iter_tree,
+    make_file_id,
+    make_symbol_id,
+    node_text,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = "wolfram-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -70,34 +78,9 @@ def find_wolfram_files(repo_root: Path) -> Iterator[Path]:
             yield path
 
 
-def is_wolfram_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Wolfram grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover - tree-sitter not installed
-    if importlib.util.find_spec("tree_sitter_wolfram") is None:
-        return False  # pragma: no cover - tree-sitter-wolfram not installed
-    return True
-
-
-
-@dataclass
-class FileAnalysis:
-    """Intermediate analysis result for a single file.
-
-    Stored during pass 1 and processed in pass 2 for cross-file resolution.
-    """
-
-    path: str
-    source: bytes
-    tree: object  # tree_sitter.Tree
-    symbols: list[Symbol]
-
-
-
 def _make_module_id(module_name: str) -> str:
     """Generate ID for a Wolfram module (used as import edge target)."""
     return f"wolfram:{module_name}:0-0:module:module"
-
 
 
 def _extract_wolfram_signature(
@@ -179,7 +162,7 @@ def _extract_symbols_from_file(
             start_col=node.start_point[1],
             end_col=node.end_point[1],
         )
-        sym_id = make_symbol_id("wolfram",file_path, start_line, end_line, name, kind)
+        sym_id = make_symbol_id("wolfram", file_path, start_line, end_line, name, kind)
         sym = Symbol(
             id=sym_id,
             name=name,
@@ -254,7 +237,7 @@ def _extract_edges_from_file(
     source: bytes,
     file_path: str,
     file_symbols: list[Symbol],
-    resolver: NameResolver,
+    resolver: "NameResolver",
     run_id: str,
 ) -> list[Edge]:
     """Extract import and call edges from a parsed Wolfram file.
@@ -266,7 +249,7 @@ def _extract_edges_from_file(
     Uses iterative traversal to avoid RecursionError on deeply nested code.
     """
     edges: list[Edge] = []
-    file_id = make_file_id("wolfram",file_path)
+    file_id = make_file_id("wolfram", file_path)
     seen_calls: set[str] = set()
 
     for node in iter_tree(tree.root_node):
@@ -326,105 +309,51 @@ def _extract_edges_from_file(
     return edges
 
 
+class WolframAnalyzer(TreeSitterAnalyzer):
+    """Wolfram Language analyzer using tree-sitter-wolfram."""
+
+    lang = "wolfram"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.wl", "*.wls", "*.nb"]
+    grammar_module = "tree_sitter_wolfram"
+    create_file_symbols = True
+
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract function and variable symbols from a Wolfram file."""
+        analysis = FileAnalysis()
+        symbols = _extract_symbols_from_file(tree, source, rel_path, run.execution_id)
+        analysis.symbols = symbols
+        for sym in symbols:
+            analysis.symbol_by_name[sym.name] = sym
+        return analysis
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract import and call edges from a Wolfram file."""
+        # Use the resolver that was built from global_symbols
+        return _extract_edges_from_file(
+            tree, source, rel_path, [], resolver, run.execution_id,
+        )
+
+
+_analyzer = WolframAnalyzer()
+
+
+def is_wolfram_tree_sitter_available() -> bool:
+    """Check if tree-sitter with Wolfram grammar is available."""
+    return _analyzer._check_grammar_available()
+
+
 @register_analyzer("wolfram")
 def analyze_wolfram(repo_root: Path) -> AnalysisResult:
-    """Analyze Wolfram files in a repository.
-
-    Returns a AnalysisResult with symbols, edges, and provenance.
-    If tree-sitter-wolfram is not available, returns a skipped result.
-    """
-    start_time = time.time()
-
-    # Create analysis run for provenance
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-
-    if not is_wolfram_tree_sitter_available():  # pragma: no cover - tree-sitter-wolfram not installed
-        skip_reason = (
-            "Wolfram analysis skipped: requires tree-sitter-wolfram "
-            "(build from source: https://github.com/bostick/tree-sitter-wolfram)"
-        )
-        warnings.warn(skip_reason)
-        run.duration_ms = int((time.time() - start_time) * 1000)
-        return AnalysisResult(
-            run=run,
-            skipped=True,
-            skip_reason=skip_reason,
-        )
-
-    import tree_sitter
-    import tree_sitter_wolfram
-
-    WOLFRAM_LANGUAGE = tree_sitter.Language(tree_sitter_wolfram.language())
-    parser = tree_sitter.Parser(WOLFRAM_LANGUAGE)
-    run_id = run.execution_id
-
-    # Pass 1: Parse all files and extract symbols
-    file_analyses: list[FileAnalysis] = []
-    all_symbols: list[Symbol] = []
-    global_symbol_registry: dict[str, Symbol] = {}
-    files_analyzed = 0
-
-    for wolfram_file in find_wolfram_files(repo_root):
-        try:
-            source = wolfram_file.read_bytes()
-        except OSError:  # pragma: no cover
-            continue
-
-        tree = parser.parse(source)
-        if tree.root_node is None:  # pragma: no cover - parser always returns root
-            continue
-
-        rel_path = str(wolfram_file.relative_to(repo_root))
-
-        # Create file symbol
-        file_symbol = Symbol(
-            id=make_file_id("wolfram",rel_path),
-            name="file",
-            kind="file",
-            language="wolfram",
-            path=rel_path,
-            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-            origin=PASS_ID,
-            origin_run_id=run_id,
-        )
-        all_symbols.append(file_symbol)
-
-        # Extract symbols
-        file_symbols = _extract_symbols_from_file(tree, source, rel_path, run_id)
-        all_symbols.extend(file_symbols)
-
-        # Register symbols globally (for cross-file resolution)
-        for sym in file_symbols:
-            global_symbol_registry[sym.name] = sym
-
-        file_analyses.append(FileAnalysis(
-            path=rel_path,
-            source=source,
-            tree=tree,
-            symbols=file_symbols,
-        ))
-        files_analyzed += 1
-
-    # Pass 2: Extract edges with cross-file resolution
-    all_edges: list[Edge] = []
-    resolver = NameResolver(global_symbol_registry)
-
-    for fa in file_analyses:
-        edges = _extract_edges_from_file(
-            fa.tree,  # type: ignore
-            fa.source,
-            fa.path,
-            fa.symbols,
-            resolver,
-            run_id,
-        )
-        all_edges.extend(edges)
-
-    run.files_analyzed = files_analyzed
-    run.duration_ms = int((time.time() - start_time) * 1000)
-
-    return AnalysisResult(
-        symbols=all_symbols,
-        edges=all_edges,
-        run=run,
-    )
+    """Analyze Wolfram files in a repository."""
+    return _analyzer.analyze(repo_root)

@@ -6,10 +6,11 @@ Linux development. It processes recipe files (.bb, .bbappend) and class files
 
 How It Works
 ------------
-1. Uses tree-sitter-bitbake grammar from tree-sitter-language-pack to parse files
-2. Extracts variable assignments (SUMMARY, LICENSE, SRC_URI, etc.)
-3. Extracts inherit directives (class dependencies)
-4. Extracts task functions (do_configure, do_compile, do_install, etc.)
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Extract variable assignments, inherit directives, task functions,
+   addtask statements. Edges for inherits and depends are collected during
+   symbol extraction and emitted in Pass 2.
+2. Pass 2: No additional edges needed (all edges come from Pass 1 data).
 
 Symbols Extracted
 -----------------
@@ -33,34 +34,26 @@ Why This Design
 from __future__ import annotations
 
 import re
-import time
-import uuid
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 
 PASS_ID = "bitbake.tree_sitter"
 PASS_VERSION = "0.1.0"
-
-
-def is_bitbake_tree_sitter_available() -> bool:
-    """Check if tree-sitter-bitbake is available."""
-    try:
-        from tree_sitter_language_pack import get_language
-
-        get_language("bitbake")
-        return True
-    except Exception:  # pragma: no cover
-        return False
 
 
 def find_bitbake_files(repo_root: Path) -> list[Path]:
@@ -95,75 +88,79 @@ IMPORTANT_VARIABLES = frozenset({
 })
 
 
-class BitBakeAnalyzer:
-    """Analyzer for BitBake files."""
+class BitBakeAnalyzer(TreeSitterAnalyzer):
+    """Analyzer for BitBake files using TreeSitterAnalyzer base class.
 
-    def __init__(self, repo_root: Path) -> None:
-        self.repo_root = repo_root
-        self._symbols: list[Symbol] = []
-        self._edges: list[Edge] = []
-        self._execution_id = f"uuid:{uuid.uuid4()}"
-        self._files_analyzed = 0
+    BitBake is unusual: edges (inherits, depends) are derived during symbol
+    extraction (Pass 1), not from cross-file call resolution (Pass 2).
+    We store pending edges in the FileAnalysis.import_aliases dict (repurposed
+    as a lightweight mechanism) and emit them in extract_edges_from_file.
+    """
 
-    def analyze(self) -> AnalysisResult:
-        """Run the BitBake analysis."""
-        start_time = time.time()
+    lang = "bitbake"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["**/*.bb", "**/*.bbappend", "**/*.bbclass", "**/*.inc"]
+    language_pack_name = "bitbake"
 
-        files = find_bitbake_files(self.repo_root)
-        if not files:
-            return AnalysisResult(
-                symbols=[],
-                edges=[],
-                run=None,
-            )
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract variable, inherit, task, and addtask symbols from a BitBake file."""
+        analysis = FileAnalysis()
+        rel_parts = Path(rel_path).parts
+        repo_root = file_path
+        for _ in rel_parts:
+            repo_root = repo_root.parent
 
-        from tree_sitter_language_pack import get_parser
+        # We store pending edges as a list in _pending_edges attribute on analysis
+        # Since FileAnalysis doesn't have an edges field, we collect them
+        # and store edge data serialized in import_aliases for retrieval in Pass 2
+        pending_edges: list[Edge] = []
 
-        parser = get_parser("bitbake")
-
-        for path in files:
-            try:
-                content = path.read_bytes()
-                tree = parser.parse(content)
-                self._extract_symbols(tree.root_node, path)
-                self._files_analyzed += 1
-            except Exception:  # pragma: no cover  # noqa: S112  # nosec B112
-                continue
-
-        duration_ms = int((time.time() - start_time) * 1000)
-
-        run = AnalysisRun(
-            pass_id=PASS_ID,
-            execution_id=self._execution_id,
-            version=PASS_VERSION,
-            toolchain={"name": "bitbake", "version": "unknown"},
-            duration_ms=duration_ms,
-            files_analyzed=self._files_analyzed,
+        self._extract_symbols_recursive(
+            tree.root_node, file_path, repo_root, rel_path, run,
+            analysis, pending_edges,
         )
 
-        return AnalysisResult(
-            symbols=self._symbols,
-            edges=self._edges,
-            run=run,
-        )
+        # Store pending edges count in import_aliases as a signal
+        # We'll use a module-level dict keyed by rel_path to pass edges between passes
+        _pending_edge_store[rel_path] = pending_edges
 
-    def _extract_symbols(self, node: "tree_sitter.Node", path: Path) -> None:
+        return analysis
+
+    def _extract_symbols_recursive(
+        self, node: "tree_sitter.Node", path: Path, repo_root: Path,
+        rel_path: str, run: "AnalysisRun",
+        analysis: FileAnalysis, pending_edges: list[Edge],
+    ) -> None:
         """Extract symbols from a syntax tree node."""
         if node.type == "variable_assignment":
-            self._extract_variable(node, path)
+            self._extract_variable(
+                node, path, repo_root, rel_path, run, analysis, pending_edges,
+            )
         elif node.type == "inherit_directive":
-            self._extract_inherit(node, path)
+            self._extract_inherit(
+                node, path, repo_root, rel_path, run, analysis, pending_edges,
+            )
         elif node.type == "function_definition":
-            self._extract_function(node, path)
+            self._extract_function(node, path, repo_root, rel_path, run, analysis)
         elif node.type == "anonymous_python_function":
-            self._extract_python_function(node, path)
+            self._extract_python_function(node, path, repo_root, rel_path, run, analysis)
         elif node.type == "addtask_statement":
-            self._extract_addtask(node, path)
+            self._extract_addtask(node, path, repo_root, rel_path, run, analysis)
 
         for child in node.children:
-            self._extract_symbols(child, path)
+            self._extract_symbols_recursive(
+                child, path, repo_root, rel_path, run, analysis, pending_edges,
+            )
 
-    def _extract_variable(self, node: "tree_sitter.Node", path: Path) -> None:
+    def _extract_variable(
+        self, node: "tree_sitter.Node", path: Path, repo_root: Path,
+        rel_path: str, run: "AnalysisRun",
+        analysis: FileAnalysis, pending_edges: list[Edge],
+    ) -> None:
         """Extract a variable assignment."""
         var_name = None
         var_value = ""
@@ -182,8 +179,8 @@ class BitBakeAnalyzer:
         if base_name not in IMPORTANT_VARIABLES and var_name not in IMPORTANT_VARIABLES:
             return
 
-        rel_path = path.relative_to(self.repo_root)
-        symbol_id = _make_symbol_id(rel_path, var_name, "variable")
+        rel_p = Path(rel_path)
+        symbol_id = _make_symbol_id(rel_p, var_name, "variable")
 
         span = Span(
             start_line=node.start_point[0] + 1,
@@ -198,22 +195,26 @@ class BitBakeAnalyzer:
             name=var_name,
             kind="variable",
             language="bitbake",
-            path=str(rel_path),
+            path=str(rel_p),
             span=span,
             origin=PASS_ID,
+            origin_run_id=run.execution_id,
             signature=f"{var_name} = {var_value[:50]}..." if len(var_value) > 50 else f"{var_name} = {var_value}",
             meta={"value": var_value[:200]} if var_value else {},
         )
-        self._symbols.append(symbol)
+        analysis.symbols.append(symbol)
 
         # Extract dependency edges from DEPENDS/RDEPENDS
         if var_name in ("DEPENDS", "RDEPENDS"):
-            self._extract_dependency_edges(var_value, rel_path, node.start_point[0] + 1)
+            self._extract_dependency_edges(
+                var_value, rel_p, node.start_point[0] + 1, run, pending_edges,
+            )
 
-    def _extract_dependency_edges(self, value: str, rel_path: Path, line: int) -> None:
+    def _extract_dependency_edges(
+        self, value: str, rel_path: Path, line: int,
+        run: "AnalysisRun", pending_edges: list[Edge],
+    ) -> None:
         """Extract dependency edges from DEPENDS/RDEPENDS value."""
-        # Parse package names from value (space-separated, may include ${PN} etc.)
-        # Remove variable references and get clean package names
         clean_value = re.sub(r"\$\{[^}]+\}", "", value)
         packages = clean_value.split()
 
@@ -228,14 +229,18 @@ class BitBakeAnalyzer:
                 edge_type="depends",
                 line=line,
                 origin=PASS_ID,
-                origin_run_id=self._execution_id,
+                origin_run_id=run.execution_id,
                 evidence_type="static",
                 confidence=0.8,
                 evidence_lang="bitbake",
             )
-            self._edges.append(edge)
+            pending_edges.append(edge)
 
-    def _extract_inherit(self, node: "tree_sitter.Node", path: Path) -> None:
+    def _extract_inherit(
+        self, node: "tree_sitter.Node", path: Path, repo_root: Path,
+        rel_path: str, run: "AnalysisRun",
+        analysis: FileAnalysis, pending_edges: list[Edge],
+    ) -> None:
         """Extract an inherit directive."""
         classes: list[str] = []
 
@@ -246,10 +251,10 @@ class BitBakeAnalyzer:
         if not classes:
             return  # pragma: no cover
 
-        rel_path = path.relative_to(self.repo_root)
+        rel_p = Path(rel_path)
 
         for cls in classes:
-            symbol_id = _make_symbol_id(rel_path, cls, "inherit")
+            symbol_id = _make_symbol_id(rel_p, cls, "inherit")
 
             span = Span(
                 start_line=node.start_point[0] + 1,
@@ -264,29 +269,33 @@ class BitBakeAnalyzer:
                 name=cls,
                 kind="inherit",
                 language="bitbake",
-                path=str(rel_path),
+                path=str(rel_p),
                 span=span,
                 origin=PASS_ID,
+                origin_run_id=run.execution_id,
                 signature=f"inherit {cls}",
                 meta={"class": cls},
             )
-            self._symbols.append(symbol)
+            analysis.symbols.append(symbol)
 
             # Add inherit edge
             edge = Edge.create(
-                src=f"bitbake:{rel_path}",
+                src=f"bitbake:{rel_p}",
                 dst=f"bitbake:class:{cls}",
                 edge_type="inherits",
                 line=node.start_point[0] + 1,
                 origin=PASS_ID,
-                origin_run_id=self._execution_id,
+                origin_run_id=run.execution_id,
                 evidence_type="static",
                 confidence=1.0,
                 evidence_lang="bitbake",
             )
-            self._edges.append(edge)
+            pending_edges.append(edge)
 
-    def _extract_function(self, node: "tree_sitter.Node", path: Path) -> None:
+    def _extract_function(
+        self, node: "tree_sitter.Node", path: Path, repo_root: Path,
+        rel_path: str, run: "AnalysisRun", analysis: FileAnalysis,
+    ) -> None:
         """Extract a shell function definition (task)."""
         func_name = None
 
@@ -298,8 +307,8 @@ class BitBakeAnalyzer:
         if not func_name:
             return  # pragma: no cover
 
-        rel_path = path.relative_to(self.repo_root)
-        symbol_id = _make_symbol_id(rel_path, func_name, "task")
+        rel_p = Path(rel_path)
+        symbol_id = _make_symbol_id(rel_p, func_name, "task")
 
         span = Span(
             start_line=node.start_point[0] + 1,
@@ -308,7 +317,6 @@ class BitBakeAnalyzer:
             end_col=node.end_point[1],
         )
 
-        # Determine task type based on name
         task_type = "custom"
         if func_name.startswith("do_"):
             task_type = "standard"
@@ -319,15 +327,19 @@ class BitBakeAnalyzer:
             name=func_name,
             kind="task",
             language="bitbake",
-            path=str(rel_path),
+            path=str(rel_p),
             span=span,
             origin=PASS_ID,
+            origin_run_id=run.execution_id,
             signature=f"{func_name}()",
             meta={"task_type": task_type},
         )
-        self._symbols.append(symbol)
+        analysis.symbols.append(symbol)
 
-    def _extract_python_function(self, node: "tree_sitter.Node", path: Path) -> None:
+    def _extract_python_function(
+        self, node: "tree_sitter.Node", path: Path, repo_root: Path,
+        rel_path: str, run: "AnalysisRun", analysis: FileAnalysis,
+    ) -> None:
         """Extract a Python function definition."""
         func_name = None
 
@@ -339,8 +351,8 @@ class BitBakeAnalyzer:
         if not func_name:
             return  # pragma: no cover
 
-        rel_path = path.relative_to(self.repo_root)
-        symbol_id = _make_symbol_id(rel_path, func_name, "python_task")
+        rel_p = Path(rel_path)
+        symbol_id = _make_symbol_id(rel_p, func_name, "python_task")
 
         span = Span(
             start_line=node.start_point[0] + 1,
@@ -355,15 +367,19 @@ class BitBakeAnalyzer:
             name=func_name,
             kind="python_task",
             language="bitbake",
-            path=str(rel_path),
+            path=str(rel_p),
             span=span,
             origin=PASS_ID,
+            origin_run_id=run.execution_id,
             signature=f"python {func_name}()",
             meta={"language": "python"},
         )
-        self._symbols.append(symbol)
+        analysis.symbols.append(symbol)
 
-    def _extract_addtask(self, node: "tree_sitter.Node", path: Path) -> None:
+    def _extract_addtask(
+        self, node: "tree_sitter.Node", path: Path, repo_root: Path,
+        rel_path: str, run: "AnalysisRun", analysis: FileAnalysis,
+    ) -> None:
         """Extract an addtask directive."""
         task_name = None
 
@@ -375,8 +391,8 @@ class BitBakeAnalyzer:
         if not task_name:
             return  # pragma: no cover
 
-        rel_path = path.relative_to(self.repo_root)
-        symbol_id = _make_symbol_id(rel_path, task_name, "addtask")
+        rel_p = Path(rel_path)
+        symbol_id = _make_symbol_id(rel_p, task_name, "addtask")
 
         span = Span(
             start_line=node.start_point[0] + 1,
@@ -391,13 +407,35 @@ class BitBakeAnalyzer:
             name=task_name,
             kind="addtask",
             language="bitbake",
-            path=str(rel_path),
+            path=str(rel_p),
             span=span,
             origin=PASS_ID,
+            origin_run_id=run.execution_id,
             signature=f"addtask {task_name}",
             meta={},
         )
-        self._symbols.append(symbol)
+        analysis.symbols.append(symbol)
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Return edges collected during Pass 1 symbol extraction."""
+        return _pending_edge_store.pop(rel_path, [])
+
+
+# Module-level store for edges collected during Pass 1
+_pending_edge_store: dict[str, list[Edge]] = {}
+
+_analyzer = BitBakeAnalyzer()
+
+
+def is_bitbake_tree_sitter_available() -> bool:
+    """Check if tree-sitter-bitbake is available."""
+    return _analyzer._check_grammar_available()
 
 
 @register_analyzer("bitbake")
@@ -410,26 +448,4 @@ def analyze_bitbake(repo_root: Path) -> AnalysisResult:
     Returns:
         AnalysisResult containing extracted symbols and edges
     """
-    if not is_bitbake_tree_sitter_available():
-        warnings.warn(
-            "BitBake analysis skipped: tree-sitter-bitbake not available",
-            UserWarning,
-            stacklevel=2,
-        )
-        return AnalysisResult(
-            symbols=[],
-            edges=[],
-            run=AnalysisRun(
-                pass_id=PASS_ID,
-                execution_id=f"uuid:{uuid.uuid4()}",
-                version=PASS_VERSION,
-                toolchain={"name": "bitbake", "version": "unknown"},
-                duration_ms=0,
-                files_analyzed=0,
-            ),
-            skipped=True,
-            skip_reason="tree-sitter-bitbake not available",
-        )
-
-    analyzer = BitBakeAnalyzer(repo_root)
-    return analyzer.analyze()
+    return _analyzer.analyze(repo_root)

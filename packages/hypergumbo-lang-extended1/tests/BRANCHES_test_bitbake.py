@@ -138,7 +138,7 @@ class TestTreeSitterUnavailable:
 
     def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Test analysis is skipped when tree-sitter unavailable."""
-        with patch.object(bitbake_module, "is_bitbake_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="BitBake analysis skipped"):
+        with patch.object(bitbake_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="bitbake analysis skipped"):
                 result = bitbake_module.analyze_bitbake(tmp_path)
         assert result.skipped is True

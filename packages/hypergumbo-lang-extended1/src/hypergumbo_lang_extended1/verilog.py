@@ -12,15 +12,17 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-1. Check if tree-sitter-verilog is available
-2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
-   - Pass 1: Parse all files, extract all module/interface definitions
-   - Pass 2: Resolve module instantiations and create edges
-4. Create instantiates edges for module usage
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1: Parse all files, extract all module/interface definitions
+2. Pass 2: Resolve module instantiations and create edges
+
+The base class handles grammar checking, parser creation, file discovery,
+and result assembly. This module provides only the Verilog-specific extraction
+logic.
 
 Why This Design
 ---------------
+- TreeSitterAnalyzer eliminates ~150 lines of boilerplate
 - Optional dependency keeps base install lightweight
 - Uses tree-sitter-verilog package for grammar
 - Two-pass allows cross-file module resolution
@@ -29,19 +31,26 @@ Why This Design
 from __future__ import annotations
 
 import hashlib
-import importlib.util
-import time
-import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, node_text, find_child_by_type, make_symbol_id
+from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    FileAnalysis,
+    TreeSitterAnalyzer,
+    iter_tree,
+    node_text,
+    find_child_by_type,
+    make_symbol_id,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
     import tree_sitter
+    from hypergumbo_core.ir import AnalysisRun
+    from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = "verilog-v1"
 PASS_VERSION = "hypergumbo-0.1.0"
@@ -50,15 +59,6 @@ PASS_VERSION = "hypergumbo-0.1.0"
 def find_verilog_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Verilog/SystemVerilog files in the repository."""
     yield from find_files(repo_root, ["*.v", "*.sv", "*.vh", "*.svh"])
-
-
-def is_verilog_tree_sitter_available() -> bool:
-    """Check if tree-sitter with Verilog grammar is available."""
-    if importlib.util.find_spec("tree_sitter") is None:
-        return False  # pragma: no cover
-    if importlib.util.find_spec("tree_sitter_verilog") is None:
-        return False  # pragma: no cover
-    return True
 
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
@@ -139,187 +139,143 @@ def _find_containing_module(
     return None  # pragma: no cover - defensive
 
 
-def _process_verilog_tree(
-    root: "tree_sitter.Node",
-    source: bytes,
-    rel_path: str,
-    symbols: list[Symbol],
-    edges: list[Edge],
-    module_registry: dict[str, str],
-) -> None:
-    """Process Verilog AST tree to extract symbols and edges.
+class VerilogAnalyzer(TreeSitterAnalyzer):
+    """Verilog/SystemVerilog language analyzer using tree-sitter-verilog."""
 
-    Args:
-        root: Root tree-sitter node to process
-        source: Source file bytes
-        rel_path: Relative path to file
-        symbols: List to append symbols to
-        edges: List to append edges to
-        module_registry: Registry mapping module names to symbol IDs
-    """
-    # Track module nodes by byte position for parent walking
-    # (node.parent returns new Python object, so id() doesn't work)
-    module_by_pos: dict[tuple[int, int], str] = {}
+    lang = "verilog"
+    pass_id = PASS_ID
+    pass_version = PASS_VERSION
+    file_patterns: ClassVar[list[str]] = ["*.v", "*.sv", "*.vh", "*.svh"]
+    grammar_module = "tree_sitter_verilog"
 
-    for node in iter_tree(root):
-        if node.type == "module_declaration":
-            module_name = _extract_module_name(node, source)
-            if module_name:
-                start_line = node.start_point[0] + 1
-                end_line = node.end_point[0] + 1
-                symbol_id = make_symbol_id("verilog",rel_path, start_line, end_line, module_name, "module")
+    def extract_symbols_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str, run: "AnalysisRun",
+    ) -> FileAnalysis:
+        """Extract module, interface, and instantiation symbols from a Verilog file."""
+        analysis = FileAnalysis()
 
-                sym = Symbol(
-                    id=symbol_id,
-                    stable_id=None,
-                    shape_id=None,
-                    canonical_name=module_name,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                    kind="module",
-                    name=module_name,
-                    path=rel_path,
-                    language="verilog",
-                    span=Span(
-                        start_line=start_line,
-                        end_line=end_line,
-                        start_col=node.start_point[1],
-                        end_col=node.end_point[1],
-                    ),
-                    origin=PASS_ID,
-                )
-                symbols.append(sym)
-                module_registry[module_name.lower()] = symbol_id
-                module_by_pos[(node.start_byte, node.end_byte)] = symbol_id
+        for node in iter_tree(tree.root_node):
+            if node.type == "module_declaration":
+                module_name = _extract_module_name(node, source)
+                if module_name:
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+                    symbol_id = make_symbol_id("verilog", rel_path, start_line, end_line, module_name, "module")
 
-        elif node.type == "interface_declaration":
-            interface_name = _extract_interface_name(node, source)
-            if interface_name:
-                start_line = node.start_point[0] + 1
-                end_line = node.end_point[0] + 1
-                symbol_id = make_symbol_id("verilog",rel_path, start_line, end_line, interface_name, "interface")
+                    sym = Symbol(
+                        id=symbol_id,
+                        stable_id=None,
+                        shape_id=None,
+                        canonical_name=module_name,
+                        fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                        kind="module",
+                        name=module_name,
+                        path=rel_path,
+                        language="verilog",
+                        span=Span(
+                            start_line=start_line,
+                            end_line=end_line,
+                            start_col=node.start_point[1],
+                            end_col=node.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                    )
+                    analysis.symbols.append(sym)
+                    analysis.symbol_by_name[module_name] = sym
 
-                sym = Symbol(
-                    id=symbol_id,
-                    stable_id=None,
-                    shape_id=None,
-                    canonical_name=interface_name,
-                    fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
-                    kind="interface",
-                    name=interface_name,
-                    path=rel_path,
-                    language="verilog",
-                    span=Span(
-                        start_line=start_line,
-                        end_line=end_line,
-                        start_col=node.start_point[1],
-                        end_col=node.end_point[1],
-                    ),
-                    origin=PASS_ID,
-                )
-                symbols.append(sym)
-                module_registry[interface_name.lower()] = symbol_id
+            elif node.type == "interface_declaration":
+                interface_name = _extract_interface_name(node, source)
+                if interface_name:
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+                    symbol_id = make_symbol_id("verilog", rel_path, start_line, end_line, interface_name, "interface")
 
-        elif node.type == "module_instantiation":
-            # Find containing module by walking up parents
-            current_module_id = _find_containing_module(node, module_by_pos)
-            inst_info = _extract_instantiation_info(node, source)
-            if inst_info and current_module_id:
-                module_type, _instance_name = inst_info
-                start_line = node.start_point[0] + 1
+                    sym = Symbol(
+                        id=symbol_id,
+                        stable_id=None,
+                        shape_id=None,
+                        canonical_name=interface_name,
+                        fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],
+                        kind="interface",
+                        name=interface_name,
+                        path=rel_path,
+                        language="verilog",
+                        span=Span(
+                            start_line=start_line,
+                            end_line=end_line,
+                            start_col=node.start_point[1],
+                            end_col=node.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                    )
+                    analysis.symbols.append(sym)
+                    analysis.symbol_by_name[interface_name] = sym
 
-                # Create instantiates edge if module is known
-                if module_type.lower() in module_registry:
-                    dst_id = module_registry[module_type.lower()]
-                else:
-                    # External module reference
-                    dst_id = f"verilog:external:{module_type}:module"
+        return analysis
 
-                edge = Edge(
-                    id=_make_edge_id(current_module_id, dst_id, "instantiates"),
-                    src=current_module_id,
-                    dst=dst_id,
-                    edge_type="instantiates",
-                    line=start_line,
-                    confidence=0.90 if module_type.lower() in module_registry else 0.70,
-                    origin=PASS_ID,
-                    evidence_type="verilog_instantiation",
-                )
-                edges.append(edge)
+    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+        """Register symbols by lowercase name for case-insensitive Verilog lookup."""
+        global_symbols[symbol.name.lower()] = symbol
+
+    def extract_edges_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, rel_path: str,
+        local_symbols: dict[str, Symbol], global_symbols: dict,
+        run: "AnalysisRun", import_aliases: dict[str, str],
+        resolver: "NameResolver",
+    ) -> list[Edge]:
+        """Extract module instantiation edges from a Verilog file."""
+        edges: list[Edge] = []
+
+        # Build module_by_pos for parent walking
+        module_by_pos: dict[tuple[int, int], str] = {}
+        for node in iter_tree(tree.root_node):
+            if node.type == "module_declaration":
+                module_name = _extract_module_name(node, source)
+                if module_name:
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+                    symbol_id = make_symbol_id("verilog", rel_path, start_line, end_line, module_name, "module")
+                    module_by_pos[(node.start_byte, node.end_byte)] = symbol_id
+
+        for node in iter_tree(tree.root_node):
+            if node.type == "module_instantiation":
+                current_module_id = _find_containing_module(node, module_by_pos)
+                inst_info = _extract_instantiation_info(node, source)
+                if inst_info and current_module_id:
+                    module_type, _instance_name = inst_info
+                    start_line = node.start_point[0] + 1
+
+                    if module_type.lower() in global_symbols:
+                        dst_id = global_symbols[module_type.lower()].id
+                    else:
+                        dst_id = f"verilog:external:{module_type}:module"
+
+                    edge = Edge(
+                        id=_make_edge_id(current_module_id, dst_id, "instantiates"),
+                        src=current_module_id,
+                        dst=dst_id,
+                        edge_type="instantiates",
+                        line=start_line,
+                        confidence=0.90 if module_type.lower() in global_symbols else 0.70,
+                        origin=PASS_ID,
+                        evidence_type="verilog_instantiation",
+                    )
+                    edges.append(edge)
+
+        return edges
+
+
+_analyzer = VerilogAnalyzer()
+
+
+def is_verilog_tree_sitter_available() -> bool:
+    """Check if tree-sitter with Verilog grammar is available."""
+    return _analyzer._check_grammar_available()
 
 
 @register_analyzer("verilog")
 def analyze_verilog_files(repo_root: Path) -> AnalysisResult:
-    """Analyze Verilog/SystemVerilog files in the repository.
-
-    Args:
-        repo_root: Path to the repository root
-
-    Returns:
-        AnalysisResult with symbols and edges
-    """
-    if not is_verilog_tree_sitter_available():  # pragma: no cover
-        return AnalysisResult(  # pragma: no cover
-            skipped=True,  # pragma: no cover
-            skip_reason="tree-sitter-verilog not installed (pip install tree-sitter-verilog)",  # pragma: no cover
-        )  # pragma: no cover
-
-    import tree_sitter
-    import tree_sitter_verilog
-
-    start_time = time.time()
-    files_analyzed = 0
-    files_skipped = 0
-    warnings_list: list[str] = []
-
-    symbols: list[Symbol] = []
-    edges: list[Edge] = []
-
-    # Module registry for cross-file resolution: name -> symbol_id
-    module_registry: dict[str, str] = {}
-
-    # Create parser
-    try:
-        parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_verilog.language()))
-    except Exception as e:  # pragma: no cover
-        warnings.warn(f"Failed to initialize Verilog parser: {e}")
-        return AnalysisResult(
-            skipped=True,
-            skip_reason=f"Failed to initialize parser: {e}",
-        )
-
-    verilog_files = list(find_verilog_files(repo_root))
-
-    for verilog_path in verilog_files:
-        try:
-            rel_path = str(verilog_path.relative_to(repo_root))
-            source = verilog_path.read_bytes()
-            tree = parser.parse(source)
-            files_analyzed += 1
-
-            # Process this file
-            _process_verilog_tree(
-                tree.root_node,
-                source,
-                rel_path,
-                symbols,
-                edges,
-                module_registry,
-            )
-
-        except Exception as e:  # pragma: no cover
-            files_skipped += 1  # pragma: no cover
-            warnings_list.append(f"Failed to parse {verilog_path}: {e}")  # pragma: no cover
-
-    duration_ms = int((time.time() - start_time) * 1000)
-
-    run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
-    run.files_analyzed = files_analyzed
-    run.files_skipped = files_skipped
-    run.duration_ms = duration_ms
-    run.warnings = warnings_list
-
-    return AnalysisResult(
-        symbols=symbols,
-        edges=edges,
-        run=run,
-    )
+    """Analyze Verilog/SystemVerilog files in the repository."""
+    return _analyzer.analyze(repo_root)

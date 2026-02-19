@@ -46,7 +46,7 @@ class TestIsJsonnetTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(jsonnet_module, "is_jsonnet_tree_sitter_available", return_value=False):
+        with patch.object(jsonnet_module._analyzer, "_check_grammar_available", return_value=False):
             assert jsonnet_module.is_jsonnet_tree_sitter_available() is False
 
 
@@ -55,8 +55,8 @@ class TestAnalyzeJsonnet:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_jsonnet_file(tmp_path, "test.jsonnet", "{}")
-        with patch.object(jsonnet_module, "is_jsonnet_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Jsonnet analysis skipped"):
+        with patch.object(jsonnet_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="jsonnet analysis skipped"):
                 result = jsonnet_module.analyze_jsonnet(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -214,7 +214,7 @@ local add(a, b) = a + b;
         result = analyze_jsonnet(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_jsonnet_file(tmp_path, "test.jsonnet", """

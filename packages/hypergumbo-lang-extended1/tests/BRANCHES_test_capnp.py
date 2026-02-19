@@ -114,7 +114,7 @@ class TestTreeSitterUnavailable:
 
     def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Test analysis is skipped when tree-sitter unavailable."""
-        with patch.object(capnp_module, "is_capnp_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Cap'n Proto analysis skipped"):
+        with patch.object(capnp_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="capnp analysis skipped"):
                 result = capnp_module.analyze_capnp(tmp_path)
         assert result.skipped is True

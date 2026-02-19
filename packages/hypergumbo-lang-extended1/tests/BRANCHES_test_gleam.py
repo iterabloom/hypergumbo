@@ -148,7 +148,7 @@ class TestTreeSitterUnavailable:
 
     def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Test analysis is skipped when tree-sitter unavailable."""
-        with patch.object(gleam_module, "is_gleam_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Gleam analysis skipped"):
+        with patch.object(gleam_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="gleam analysis skipped"):
                 result = gleam_module.analyze_gleam(tmp_path)
         assert result.skipped is True

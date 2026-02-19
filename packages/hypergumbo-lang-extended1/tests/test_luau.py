@@ -60,7 +60,7 @@ class TestIsLuauTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(luau_module, "is_luau_tree_sitter_available", return_value=False):
+        with patch.object(luau_module._analyzer, "_check_grammar_available", return_value=False):
             assert luau_module.is_luau_tree_sitter_available() is False
 
 
@@ -69,8 +69,8 @@ class TestAnalyzeLuau:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_luau_file(tmp_path, "test.luau", "local x = 1")
-        with patch.object(luau_module, "is_luau_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Luau analysis skipped"):
+        with patch.object(luau_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="luau analysis skipped"):
                 result = luau_module.analyze_luau(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -300,7 +300,7 @@ end
         result = analyze_luau(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_luau_file(tmp_path, "test.luau", """

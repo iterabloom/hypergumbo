@@ -46,7 +46,7 @@ class TestIsKdlTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(kdl_module, "is_kdl_tree_sitter_available", return_value=False):
+        with patch.object(kdl_module._analyzer, "_check_grammar_available", return_value=False):
             assert kdl_module.is_kdl_tree_sitter_available() is False
 
 
@@ -55,8 +55,8 @@ class TestAnalyzeKdl:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_kdl_file(tmp_path, "config.kdl", "node")
-        with patch.object(kdl_module, "is_kdl_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="KDL analysis skipped"):
+        with patch.object(kdl_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="kdl analysis skipped"):
                 result = kdl_module.analyze_kdl(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -64,7 +64,8 @@ class TestAnalyzeKdl:
     def test_empty_repo(self, tmp_path: Path) -> None:
         result = analyze_kdl(tmp_path)
         assert result.symbols == []
-        assert result.run is None
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
     def test_extracts_simple_node(self, tmp_path: Path) -> None:
         make_kdl_file(tmp_path, "config.kdl", 'name "my-project"')

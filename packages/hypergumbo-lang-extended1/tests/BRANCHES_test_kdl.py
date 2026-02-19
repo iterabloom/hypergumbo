@@ -86,7 +86,7 @@ class TestTreeSitterUnavailable:
 
     def test_skipped_when_unavailable(self, tmp_path: Path) -> None:
         """Test analysis is skipped when tree-sitter unavailable."""
-        with patch.object(kdl_module, "is_kdl_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="KDL analysis skipped"):
+        with patch.object(kdl_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="kdl analysis skipped"):
                 result = kdl_module.analyze_kdl(tmp_path)
         assert result.skipped is True

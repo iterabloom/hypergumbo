@@ -52,7 +52,7 @@ class TestIsSPARQLTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(sparql_module, "is_sparql_tree_sitter_available", return_value=False):
+        with patch.object(sparql_module._analyzer, "_check_grammar_available", return_value=False):
             assert sparql_module.is_sparql_tree_sitter_available() is False
 
 
@@ -61,8 +61,8 @@ class TestAnalyzeSPARQL:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_sparql_file(tmp_path, "test.sparql", "SELECT * WHERE { ?s ?p ?o }")
-        with patch.object(sparql_module, "is_sparql_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="SPARQL analysis skipped"):
+        with patch.object(sparql_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="sparql analysis skipped"):
                 result = sparql_module.analyze_sparql(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -238,7 +238,8 @@ SELECT * WHERE { ?s ?p ?o }
         result = analyze_sparql(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_sparql_file(tmp_path, "test.sparql", """

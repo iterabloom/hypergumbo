@@ -46,7 +46,7 @@ class TestIsPonyTreeSitterAvailable:
         assert result is True
 
     def test_returns_false_when_unavailable(self) -> None:
-        with patch.object(pony_module, "is_pony_tree_sitter_available", return_value=False):
+        with patch.object(pony_module._analyzer, "_check_grammar_available", return_value=False):
             assert pony_module.is_pony_tree_sitter_available() is False
 
 
@@ -55,8 +55,8 @@ class TestAnalyzePony:
 
     def test_skips_when_unavailable(self, tmp_path: Path) -> None:
         make_pony_file(tmp_path, "test.pony", "actor Main")
-        with patch.object(pony_module, "is_pony_tree_sitter_available", return_value=False):
-            with pytest.warns(UserWarning, match="Pony analysis skipped"):
+        with patch.object(pony_module._analyzer, "_check_grammar_available", return_value=False):
+            with pytest.warns(UserWarning, match="pony analysis skipped"):
                 result = pony_module.analyze_pony(tmp_path)
         assert result.skipped is True
         assert "not available" in result.skip_reason
@@ -282,7 +282,8 @@ actor Main
         result = analyze_pony(tmp_path)
         assert result.symbols == []
         assert result.edges == []
-        assert result.run is None
+        assert result.run is not None
+        assert result.run.files_analyzed == 0
 
     def test_stable_ids(self, tmp_path: Path) -> None:
         make_pony_file(tmp_path, "test.pony", """
