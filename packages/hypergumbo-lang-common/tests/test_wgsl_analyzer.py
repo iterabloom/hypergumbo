@@ -8,20 +8,18 @@ Tests verify that the analyzer correctly extracts:
 - Binding attributes (@group/@binding)
 """
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common.wgsl import (
     PASS_ID,
     PASS_VERSION,
-    WGSLAnalysisResult,
     analyze_wgsl_files,
     find_wgsl_files,
 )
-
 
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "wgsl-v1"
     assert PASS_VERSION == "hypergumbo-0.1.0"
-
 
 def test_analyze_vertex_shader(tmp_path):
     """Test detection of @vertex entry point."""
@@ -44,7 +42,6 @@ fn vs_main(@location(0) position: vec4<f32>) -> @builtin(position) vec4<f32> {
     assert vs_main.meta is not None
     assert vs_main.meta.get("entry_point") == "vertex"
 
-
 def test_analyze_fragment_shader(tmp_path):
     """Test detection of @fragment entry point."""
     wgsl_file = tmp_path / "shader.wgsl"
@@ -62,7 +59,6 @@ fn fs_main() -> @location(0) vec4<f32> {
     assert fs_main.stable_id == "fragment"
     assert fs_main.meta.get("entry_point") == "fragment"
 
-
 def test_analyze_compute_shader(tmp_path):
     """Test detection of @compute entry point."""
     wgsl_file = tmp_path / "compute.wgsl"
@@ -79,7 +75,6 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     assert cs_main is not None
     assert cs_main.stable_id == "compute"
     assert cs_main.meta.get("entry_point") == "compute"
-
 
 def test_analyze_struct(tmp_path):
     """Test detection of struct definitions."""
@@ -101,7 +96,6 @@ fn main() -> @builtin(position) vec4<f32> {
     assert len(structs) >= 1
     uniforms_struct = next((s for s in structs if s.name == "Uniforms"), None)
     assert uniforms_struct is not None
-
 
 def test_analyze_uniform_binding(tmp_path):
     """Test detection of uniform bindings with @group/@binding."""
@@ -129,7 +123,6 @@ fn main() -> @builtin(position) vec4<f32> {
     assert uniform.meta.get("group") == 0
     assert uniform.meta.get("binding") == 0
 
-
 def test_analyze_storage_buffer(tmp_path):
     """Test detection of storage buffers."""
     wgsl_file = tmp_path / "compute.wgsl"
@@ -155,7 +148,6 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     assert data_buffer.meta.get("group") == 0
     assert data_buffer.meta.get("binding") == 1
 
-
 def test_analyze_function_calls(tmp_path):
     """Test detection of function calls."""
     wgsl_file = tmp_path / "shader.wgsl"
@@ -175,7 +167,6 @@ fn main() -> @location(0) vec4<f32> {
     calls = [e for e in result.edges if e.edge_type == "calls"]
     assert len(calls) >= 1
 
-
 def test_find_wgsl_files(tmp_path):
     """Test that WGSL files are discovered correctly."""
     (tmp_path / "shader.wgsl").write_text("@vertex fn main() {}")
@@ -188,7 +179,6 @@ def test_find_wgsl_files(tmp_path):
     # Should find only .wgsl files
     assert len(files) == 3
 
-
 def test_analyze_empty_directory(tmp_path):
     """Test analysis of directory with no WGSL files."""
     result = analyze_wgsl_files(tmp_path)
@@ -196,7 +186,6 @@ def test_analyze_empty_directory(tmp_path):
     assert not result.skipped
     assert len(result.symbols) == 0
     assert len(result.edges) == 0
-
 
 def test_analysis_run_metadata(tmp_path):
     """Test that AnalysisRun metadata is correctly set."""
@@ -211,7 +200,6 @@ def test_analysis_run_metadata(tmp_path):
     assert result.run.files_analyzed >= 1
     assert result.run.duration_ms >= 0
 
-
 def test_syntax_error_handling(tmp_path):
     """Test that syntax errors don't crash the analyzer."""
     wgsl_file = tmp_path / "broken.wgsl"
@@ -221,8 +209,7 @@ def test_syntax_error_handling(tmp_path):
     result = analyze_wgsl_files(tmp_path)
 
     # Result should still be valid
-    assert isinstance(result, WGSLAnalysisResult)
-
+    assert isinstance(result, AnalysisResult)
 
 def test_span_information(tmp_path):
     """Test that span information is correct."""
@@ -239,7 +226,6 @@ fn main() -> @builtin(position) vec4<f32> {
     main_fn = functions[0]
     assert main_fn.span is not None
     assert main_fn.span.start_line >= 1
-
 
 def test_non_entry_point_function(tmp_path):
     """Test that non-entry-point functions are detected without stable_id."""
@@ -266,7 +252,6 @@ fn main() -> @builtin(position) vec4<f32> {
     main_fn = next((f for f in functions if f.name == "main"), None)
     assert main_fn is not None
     assert main_fn.stable_id == "vertex"  # Has @vertex attribute
-
 
 class TestWGSLSignatureExtraction:
     """Tests for WGSL function signature extraction."""

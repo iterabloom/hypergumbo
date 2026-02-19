@@ -12,32 +12,25 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_mainstream.objc import (
-    _make_symbol_id,
-    _make_file_id,
-    analyze_objc,
-    find_objc_files,
-)
-
+from hypergumbo_core.analyze.base import make_file_id, make_symbol_id
+from hypergumbo_lang_mainstream.objc import analyze_objc, find_objc_files
 
 def make_objc_file(tmp_path: Path, name: str, content: str) -> None:
     """Create an Objective-C file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestObjCHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("MyClass.m", 1, 10, "MyClass", "class")
+        symbol_id = make_symbol_id("objc", "MyClass.m", 1, 10, "MyClass", "class")
         assert symbol_id == "objc:MyClass.m:1-10:MyClass:class"
 
     def test_make_file_id_format(self) -> None:
         """Test file ID format."""
-        file_id = _make_file_id("MyClass.m")
+        file_id = make_file_id("objc", "MyClass.m")
         assert file_id == "objc:MyClass.m:1-1:file:file"
-
 
 class TestClassExtraction:
     """Branch coverage for class extraction."""
@@ -81,7 +74,6 @@ class TestClassExtraction:
         base_classes = (employee.meta or {}).get("base_classes", [])
         assert "Person" in base_classes
 
-
 class TestProtocolExtraction:
     """Branch coverage for protocol extraction."""
 
@@ -97,7 +89,6 @@ class TestProtocolExtraction:
 
         assert len(protocols) >= 1
         assert any(p.name == "Drawable" for p in protocols)
-
 
 class TestMethodExtraction:
     """Branch coverage for method extraction."""
@@ -129,7 +120,6 @@ class TestMethodExtraction:
         assert len(methods) >= 1
         assert any("add" in m.name for m in methods)
 
-
 class TestPropertyExtraction:
     """Branch coverage for property extraction."""
 
@@ -145,7 +135,6 @@ class TestPropertyExtraction:
         properties = [s for s in result.symbols if s.kind == "property"]
 
         assert len(properties) >= 2
-
 
 class TestImportEdges:
     """Branch coverage for import edge extraction."""
@@ -163,7 +152,6 @@ class TestImportEdges:
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
 
         assert len(import_edges) >= 1
-
 
 class TestCallEdges:
     """Branch coverage for call edge extraction."""
@@ -185,7 +173,6 @@ class TestCallEdges:
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
 
         assert len(call_edges) >= 1
-
 
 class TestFindObjCFiles:
     """Branch coverage for file discovery."""
@@ -214,7 +201,6 @@ class TestFindObjCFiles:
         assert len(files) >= 1
         assert any(f.suffix == ".h" for f in files)
 
-
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
 
@@ -232,7 +218,6 @@ class TestEmptyAndMinimalFiles:
         result = analyze_objc(tmp_path)
         assert not result.skipped
 
-
 class TestAnalysisRun:
     """Branch coverage for analysis run metadata."""
 
@@ -244,7 +229,6 @@ class TestAnalysisRun:
 """)
         result = analyze_objc(tmp_path)
         assert result.run is not None
-
 
 class TestTreeSitterUnavailable:
     """Branch coverage for tree-sitter unavailability."""
@@ -261,7 +245,6 @@ class TestTreeSitterUnavailable:
         assert result.skipped is True
         assert "tree-sitter-objc" in result.skip_reason
 
-
 class TestClassMethods:
     """Branch coverage for class method extraction."""
 
@@ -276,7 +259,6 @@ class TestClassMethods:
         methods = [s for s in result.symbols if s.kind == "method"]
         # Should extract class method
         assert len(methods) >= 1
-
 
 class TestProtocolConformance:
     """Branch coverage for protocol conformance."""

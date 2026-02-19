@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_mainstream import ini as ini_module
 from hypergumbo_lang_mainstream.ini import (
-    IniAnalysisResult,
     analyze_ini,
     find_ini_files,
     is_ini_tree_sitter_available,
@@ -16,14 +16,12 @@ from hypergumbo_lang_mainstream.ini import (
     _mask_value,
 )
 
-
 def make_ini_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create an INI file in the temp directory."""
     file_path = tmp_path / name
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindIniFiles:
     """Tests for find_ini_files function."""
@@ -47,7 +45,6 @@ class TestFindIniFiles:
     def test_empty_directory(self, tmp_path: Path) -> None:
         files = find_ini_files(tmp_path)
         assert files == []
-
 
 class TestHelperFunctions:
     """Tests for helper functions."""
@@ -91,7 +88,6 @@ class TestHelperFunctions:
         assert _mask_value("") == "***"
         assert _mask_value("a") == "***"
 
-
 class TestIsIniTreeSitterAvailable:
     """Tests for is_ini_tree_sitter_available function."""
 
@@ -102,7 +98,6 @@ class TestIsIniTreeSitterAvailable:
     def test_returns_false_when_unavailable(self) -> None:
         with patch.object(ini_module, "is_ini_tree_sitter_available", return_value=False):
             assert ini_module.is_ini_tree_sitter_available() is False
-
 
 class TestAnalyzeIni:
     """Tests for analyze_ini function."""

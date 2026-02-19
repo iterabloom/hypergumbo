@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -47,24 +48,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "markdown.tree_sitter"
 PASS_VERSION = "0.1.0"
-
-
-class MarkdownAnalysisResult:
-    """Result of markdown documentation analysis."""
-
-    def __init__(
-        self,
-        symbols: list[Symbol],
-        edges: list[Edge],
-        run: AnalysisRun | None = None,
-        skipped: bool = False,
-        skip_reason: str = "",
-    ) -> None:
-        self.symbols = symbols
-        self.edges = edges
-        self.run = run
-        self.skipped = skipped
-        self.skip_reason = skip_reason
 
 
 def is_markdown_tree_sitter_available() -> bool:
@@ -122,13 +105,13 @@ class MarkdownAnalyzer:
         self._files_analyzed = 0
         self._current_path: Path | None = None
 
-    def analyze(self) -> MarkdownAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Run the markdown analysis."""
         start_time = time.time()
 
         files = find_markdown_files(self.repo_root)
         if not files:
-            return MarkdownAnalysisResult(
+            return AnalysisResult(
                 symbols=[],
                 edges=[],
                 run=None,
@@ -159,7 +142,7 @@ class MarkdownAnalyzer:
             files_analyzed=self._files_analyzed,
         )
 
-        return MarkdownAnalysisResult(
+        return AnalysisResult(
             symbols=self._symbols,
             edges=self._edges,
             run=run,
@@ -341,14 +324,14 @@ class MarkdownAnalyzer:
 
 
 @register_analyzer("markdown")
-def analyze_markdown(repo_root: Path) -> MarkdownAnalysisResult:
+def analyze_markdown(repo_root: Path) -> AnalysisResult:
     """Analyze markdown documentation files in a repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        MarkdownAnalysisResult containing extracted symbols and edges
+        AnalysisResult containing extracted symbols and edges
     """
     if not is_markdown_tree_sitter_available():
         warnings.warn(
@@ -356,7 +339,7 @@ def analyze_markdown(repo_root: Path) -> MarkdownAnalysisResult:
             UserWarning,
             stacklevel=2,
         )
-        return MarkdownAnalysisResult(
+        return AnalysisResult(
             symbols=[],
             edges=[],
             run=AnalysisRun(

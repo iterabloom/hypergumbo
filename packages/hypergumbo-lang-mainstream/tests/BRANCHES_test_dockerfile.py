@@ -12,25 +12,19 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_mainstream.dockerfile import (
-    _make_symbol_id,
-    _make_edge_id,
-    analyze_dockerfiles,
-    find_dockerfiles,
-)
-
+from hypergumbo_core.analyze.base import make_symbol_id
+from hypergumbo_lang_mainstream.dockerfile import _make_edge_id, analyze_dockerfiles, find_dockerfiles
 
 def make_dockerfile(tmp_path: Path, name: str, content: str) -> None:
     """Create a Dockerfile with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestDockerfileHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("Dockerfile", 1, 1, "builder", "stage")
+        symbol_id = make_symbol_id("dockerfile", "Dockerfile", 1, 1, "builder", "stage")
         assert symbol_id == "dockerfile:Dockerfile:1-1:builder:stage"
 
     def test_make_edge_id_format(self) -> None:
@@ -39,7 +33,6 @@ class TestDockerfileHelperFunctions:
         edge_id2 = _make_edge_id("src1", "dst1", "depends_on")
         assert edge_id1 == edge_id2
         assert edge_id1.startswith("edge:sha256:")
-
 
 class TestStageExtraction:
     """Branch coverage for stage extraction."""
@@ -79,7 +72,6 @@ CMD ["python", "app.py"]
         assert stages[0].meta is not None
         assert "python" in stages[0].meta.get("base_image", "")
 
-
 class TestMultiStageBuilds:
     """Branch coverage for multi-stage build edges."""
 
@@ -113,7 +105,6 @@ RUN npm run build
         base_edges = [e for e in result.edges if e.edge_type == "base_image"]
         assert len(base_edges) >= 1
 
-
 class TestExposedPortExtraction:
     """Branch coverage for EXPOSE extraction."""
 
@@ -138,7 +129,6 @@ EXPOSE 8080
         result = analyze_dockerfiles(tmp_path)
         ports = [s for s in result.symbols if s.kind == "exposed_port"]
         assert len(ports) >= 2
-
 
 class TestEnvVarExtraction:
     """Branch coverage for ENV extraction."""
@@ -165,7 +155,6 @@ ENV APP_HOME /app
         env_vars = [s for s in result.symbols if s.kind == "env_var"]
         assert len(env_vars) >= 2
 
-
 class TestBuildArgExtraction:
     """Branch coverage for ARG extraction."""
 
@@ -191,7 +180,6 @@ LABEL version="${VERSION}"
         result = analyze_dockerfiles(tmp_path)
         args = [s for s in result.symbols if s.kind == "build_arg"]
         assert len(args) >= 1
-
 
 class TestFindDockerfiles:
     """Branch coverage for file discovery."""
@@ -221,7 +209,6 @@ class TestFindDockerfiles:
         files = list(find_dockerfiles(tmp_path))
         assert len(files) >= 1
 
-
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
 
@@ -239,7 +226,6 @@ CMD ["sh"]
         result = analyze_dockerfiles(tmp_path)
         assert not result.skipped
 
-
 class TestAnalysisRun:
     """Branch coverage for analysis run metadata."""
 
@@ -252,7 +238,6 @@ RUN echo "hello"
         result = analyze_dockerfiles(tmp_path)
         assert result.run is not None
         assert result.run.files_analyzed >= 1
-
 
 class TestComplexDockerfile:
     """Branch coverage for complex Dockerfile scenarios."""

@@ -14,25 +14,19 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_mainstream.cmake import (
-    _make_symbol_id,
-    _make_edge_id,
-    analyze_cmake_files,
-    find_cmake_files,
-)
-
+from hypergumbo_core.analyze.base import make_symbol_id
+from hypergumbo_lang_mainstream.cmake import _make_edge_id, analyze_cmake_files, find_cmake_files
 
 def make_cmake_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a CMake file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestCMakeHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("CMakeLists.txt", 1, 5, "mylib", "library")
+        symbol_id = make_symbol_id("cmake", "CMakeLists.txt", 1, 5, "mylib", "library")
         assert symbol_id == "cmake:CMakeLists.txt:1-5:mylib:library"
 
     def test_make_edge_id_format(self) -> None:
@@ -41,7 +35,6 @@ class TestCMakeHelperFunctions:
         edge_id2 = _make_edge_id("src1", "dst1", "links")
         assert edge_id1 == edge_id2
         assert edge_id1.startswith("edge:sha256:")
-
 
 class TestProjectExtraction:
     """Branch coverage for project extraction."""
@@ -58,7 +51,6 @@ project(MyProject)
         projects = [s for s in result.symbols if s.kind == "project"]
         assert len(projects) >= 1
         assert any(p.name == "MyProject" for p in projects)
-
 
 class TestLibraryExtraction:
     """Branch coverage for library target extraction."""
@@ -88,7 +80,6 @@ add_library(myshared SHARED src/shared.cpp)
         libraries = [s for s in result.symbols if s.kind == "library"]
         assert len(libraries) >= 1
 
-
 class TestExecutableExtraction:
     """Branch coverage for executable target extraction."""
 
@@ -104,7 +95,6 @@ add_executable(myapp src/main.cpp)
         executables = [s for s in result.symbols if s.kind == "executable"]
         assert len(executables) >= 1
         assert any(e.name == "myapp" for e in executables)
-
 
 class TestFunctionMacroExtraction:
     """Branch coverage for function/macro extraction."""
@@ -154,7 +144,6 @@ endmacro()
         assert len(macros) >= 1
         assert any(m.name == "my_macro" for m in macros)
 
-
 class TestSubdirectoryExtraction:
     """Branch coverage for subdirectory extraction."""
 
@@ -174,7 +163,6 @@ add_subdirectory(tests)
         assert "src" in names
         assert "tests" in names
 
-
 class TestPackageExtraction:
     """Branch coverage for find_package extraction."""
 
@@ -193,7 +181,6 @@ find_package(OpenCV)
         names = [p.name for p in packages]
         assert "Boost" in names
         assert "OpenCV" in names
-
 
 class TestLinkEdges:
     """Branch coverage for target_link_libraries edge extraction."""
@@ -240,7 +227,6 @@ target_link_libraries(myapp PUBLIC mylib PRIVATE pthread)
         # Should have edges to mylib and pthread, not to PUBLIC/PRIVATE
         assert len(link_edges) >= 2
 
-
 class TestFindCMakeFiles:
     """Branch coverage for file discovery."""
 
@@ -269,7 +255,6 @@ class TestFindCMakeFiles:
         files = list(find_cmake_files(tmp_path))
         assert len(files) >= 1
 
-
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
 
@@ -286,7 +271,6 @@ project(Minimal)
 """)
         result = analyze_cmake_files(tmp_path)
         assert not result.skipped
-
 
 class TestAnalysisRun:
     """Branch coverage for analysis run metadata."""

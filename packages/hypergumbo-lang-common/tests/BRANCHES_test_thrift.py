@@ -14,32 +14,25 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_common.thrift import (
-    _make_symbol_id,
-    _make_file_id,
-    analyze_thrift,
-    find_thrift_files,
-)
-
+from hypergumbo_core.analyze.base import make_file_id, make_symbol_id
+from hypergumbo_lang_common.thrift import analyze_thrift, find_thrift_files
 
 def make_thrift_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a Thrift file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestThriftHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("services/user.thrift", 1, 10, "UserService", "service")
+        symbol_id = make_symbol_id("thrift", "services/user.thrift", 1, 10, "UserService", "service")
         assert symbol_id == "thrift:services/user.thrift:1-10:UserService:service"
 
     def test_make_file_id_format(self) -> None:
         """Test file ID format."""
-        file_id = _make_file_id("common/types.thrift")
+        file_id = make_file_id("thrift", "common/types.thrift")
         assert file_id == "thrift:common/types.thrift:1-1:file:file"
-
 
 class TestServiceExtraction:
     """Branch coverage for service definition extraction."""
@@ -72,7 +65,6 @@ service UserService {
         assert len(services) >= 1
         # Canonical name should include namespace
         assert any("UserService" in s.canonical_name for s in services)
-
 
 class TestFunctionExtraction:
     """Branch coverage for function (RPC method) extraction."""
@@ -112,7 +104,6 @@ service DataService {
         contains_edges = [e for e in result.edges if e.edge_type == "contains"]
         assert len(contains_edges) >= 1
 
-
 class TestStructExtraction:
     """Branch coverage for struct extraction."""
 
@@ -147,7 +138,6 @@ struct Person {
         structs = [s for s in result.symbols if s.kind == "struct"]
         assert len(structs) >= 2
 
-
 class TestEnumExtraction:
     """Branch coverage for enum extraction."""
 
@@ -165,7 +155,6 @@ enum Status {
         assert len(enums) >= 1
         assert any(e.name == "Status" for e in enums)
 
-
 class TestTypedefExtraction:
     """Branch coverage for typedef extraction."""
 
@@ -182,7 +171,6 @@ typedef list<string> StringList
         assert "UserId" in names
         assert "StringList" in names
 
-
 class TestConstExtraction:
     """Branch coverage for const extraction."""
 
@@ -198,7 +186,6 @@ const string DEFAULT_HOST = "localhost"
         names = [c.name for c in consts]
         assert "MAX_RETRIES" in names
         assert "DEFAULT_HOST" in names
-
 
 class TestIncludeEdges:
     """Branch coverage for include statement extraction."""
@@ -230,7 +217,6 @@ service DataService {
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) >= 2
 
-
 class TestFindThriftFiles:
     """Branch coverage for file discovery."""
 
@@ -251,7 +237,6 @@ class TestFindThriftFiles:
         files = list(find_thrift_files(tmp_path))
         assert len(files) == 1
 
-
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
 
@@ -270,7 +255,6 @@ service MinimalService {
         result = analyze_thrift(tmp_path)
         assert not result.skipped
 
-
 class TestAnalysisRun:
     """Branch coverage for analysis run metadata."""
 
@@ -284,7 +268,6 @@ service ApiService {
         result = analyze_thrift(tmp_path)
         assert result.run is not None
         assert result.run.files_analyzed >= 1
-
 
 class TestNamespaceExtraction:
     """Branch coverage for namespace extraction."""

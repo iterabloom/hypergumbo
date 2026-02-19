@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -74,28 +74,6 @@ def is_php_tree_sitter_available() -> bool:
     if importlib.util.find_spec("tree_sitter_php") is None:
         return False
     return True
-
-
-@dataclass
-class PhpAnalysisResult:
-    """Result of analyzing PHP files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    usage_contexts: list[UsageContext] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"php:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
 
 
 def _extract_use_aliases(
@@ -131,10 +109,10 @@ def _extract_use_aliases(
                         has_as = True
                     elif sub.type == "name" and has_as:
                         # This is the alias after 'as'
-                        alias_name = _node_text(sub, source)
+                        alias_name = node_text(sub, source)
 
                 if path_node:
-                    full_path = _node_text(path_node, source)
+                    full_path = node_text(path_node, source)
                     if alias_name:
                         aliases[alias_name] = full_path
                     else:
@@ -150,7 +128,7 @@ def _find_name_in_children(node: "tree_sitter.Node", source: bytes) -> Optional[
     """Find identifier name in node's children."""
     for child in node.children:
         if child.type == "name":
-            return _node_text(child, source)
+            return node_text(child, source)
     return None
 
 
@@ -176,17 +154,17 @@ def _extract_base_classes_php(node: "tree_sitter.Node", source: bytes) -> list[s
         if child.type == "base_clause":
             for sub in child.children:
                 if sub.type == "name":
-                    base_classes.append(_node_text(sub, source))
+                    base_classes.append(node_text(sub, source))
                 elif sub.type == "qualified_name":
                     # Fully qualified: extends \Namespace\Class
-                    base_classes.append(_node_text(sub, source))
+                    base_classes.append(node_text(sub, source))
         # implements clause: class Foo implements IBar, IBaz
         elif child.type == "class_interface_clause":
             for sub in child.children:
                 if sub.type == "name":
-                    base_classes.append(_node_text(sub, source))
+                    base_classes.append(node_text(sub, source))
                 elif sub.type == "qualified_name":
-                    base_classes.append(_node_text(sub, source))
+                    base_classes.append(node_text(sub, source))
 
     return base_classes
 
@@ -266,9 +244,9 @@ def _extract_php_signature(
                     for pc in subchild.children:
                         if pc.type in ("primitive_type", "named_type", "nullable_type",
                                         "optional_type", "union_type"):
-                            param_type = _node_text(pc, source)
+                            param_type = node_text(pc, source)
                         elif pc.type == "variable_name":
-                            param_name = _node_text(pc, source)
+                            param_name = node_text(pc, source)
                     if param_name:
                         if param_type:
                             params.append(f"{param_type} {param_name}")
@@ -277,7 +255,7 @@ def _extract_php_signature(
         # Return type comes after formal_parameters
         elif found_params and child.type in ("primitive_type", "named_type", "nullable_type",
                                               "optional_type", "union_type"):
-            return_type = _node_text(child, source)
+            return_type = node_text(child, source)
 
     params_str = ", ".join(params)
     signature = f"({params_str})"
@@ -324,19 +302,19 @@ def _extract_controller_action(
                                     # Controller::class - first name child is the class
                                     for cc in elem.children:
                                         if cc.type == "name":
-                                            controller = _node_text(cc, source)
+                                            controller = node_text(cc, source)
                                             break
                                 elif elem.type == "encapsed_string":
                                     # "action" with double-quoted encapsed_string
                                     for str_child in elem.children:  # pragma: no cover
                                         if str_child.type == "string_content":
-                                            action = _node_text(str_child, source)
+                                            action = node_text(str_child, source)
                                             break
                                 elif elem.type == "string":
                                     # 'action' with single-quoted string
                                     for str_child in elem.children:
                                         if str_child.type == "string_content":
-                                            action = _node_text(str_child, source)
+                                            action = node_text(str_child, source)
                                             break
                     if controller and action:
                         return f"{controller}@{action}"
@@ -345,7 +323,7 @@ def _extract_controller_action(
                 elif arg_child.type in ("string", "encapsed_string"):
                     for str_child in arg_child.children:
                         if str_child.type == "string_content":
-                            text = _node_text(str_child, source)
+                            text = node_text(str_child, source)
                             if "@" in text:
                                 return text
             break
@@ -387,11 +365,11 @@ def _extract_laravel_routes(
             continue
 
         # Check if this is Route::method()
-        scope_text = _node_text(scope_node, source)
+        scope_text = node_text(scope_node, source)
         if scope_text != "Route":
             continue
 
-        method_name = _node_text(name_node, source).lower()
+        method_name = node_text(name_node, source).lower()
 
         # HTTP method routes
         if method_name in LARAVEL_HTTP_METHODS:
@@ -416,10 +394,10 @@ def _extract_laravel_routes(
                         if arg_child.type == "string":
                             for str_child in arg_child.children:
                                 if str_child.type == "string_content":
-                                    route_path = _node_text(str_child, source)
+                                    route_path = node_text(str_child, source)
                                     break
                             if route_path is None:  # pragma: no cover
-                                raw = _node_text(arg_child, source)
+                                raw = node_text(arg_child, source)
                                 route_path = raw.strip("'\"")
                             break
                     break
@@ -476,7 +454,7 @@ def _extract_laravel_routes(
                                 # Controller::class - first name child is the controller
                                 for cc in arg_child.children:
                                     if cc.type == "name":
-                                        controller = _node_text(cc, source)
+                                        controller = node_text(cc, source)
                                         break
                         break
                     arg_index += 1
@@ -493,7 +471,7 @@ def _extract_laravel_routes(
                 ]
                 for http_meth, route_pth, action in restful_routes:
                     route_name = f"{http_meth} {route_pth}"
-                    route_id = _make_symbol_id(
+                    route_id = make_symbol_id("php",
                         path=str(file_path),
                         start_line=span.start_line,
                         end_line=span.end_line,
@@ -519,7 +497,7 @@ def _extract_laravel_routes(
         else:
             # Single HTTP method route
             route_name = f"{http_method} {normalized_path}"
-            route_id = _make_symbol_id(
+            route_id = make_symbol_id("php",
                 path=str(file_path),
                 start_line=span.start_line,
                 end_line=span.end_line,
@@ -594,7 +572,7 @@ def _extract_symbols(
                 )
                 signature = _extract_php_signature(node, source)
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function"),
+                    id=make_symbol_id("php", str(file_path), span.start_line, span.end_line, name, "function"),
                     name=name,
                     kind="function",
                     language="php",
@@ -622,7 +600,7 @@ def _extract_symbols(
                 meta = {"base_classes": base_classes} if base_classes else None
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "class"),
+                    id=make_symbol_id("php", str(file_path), span.start_line, span.end_line, name, "class"),
                     name=name,
                     kind="class",
                     language="php",
@@ -648,7 +626,7 @@ def _extract_symbols(
                 full_name = f"{enclosing_class}.{name}" if enclosing_class else name
                 signature = _extract_php_signature(node, source)
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "method"),
+                    id=make_symbol_id("php", str(file_path), span.start_line, span.end_line, full_name, "method"),
                     name=full_name,
                     kind="method",
                     language="php",
@@ -698,7 +676,7 @@ def _extract_edges(
         if node.type == "function_call_expression":
             func_node = node.child_by_field_name("function")
             if func_node and func_node.type == "name":
-                callee_name = _node_text(func_node, source)
+                callee_name = node_text(func_node, source)
                 current_function = _get_enclosing_function_php(node, source, file_path, global_symbols)
                 if current_function:
                     # Use use_aliases for disambiguation
@@ -725,10 +703,10 @@ def _extract_edges(
                 name_node = node.child_by_field_name("name")
                 obj_node = node.child_by_field_name("object")
                 if name_node:
-                    method_name = _node_text(name_node, source)
+                    method_name = node_text(name_node, source)
 
                     # Check if it's $this->method()
-                    is_this_call = obj_node and obj_node.type == "variable_name" and _node_text(obj_node, source) == "$this"
+                    is_this_call = obj_node and obj_node.type == "variable_name" and node_text(obj_node, source) == "$this"
 
                     current_class_name = _get_enclosing_class(node, source)
                     if is_this_call and current_class_name:
@@ -772,8 +750,8 @@ def _extract_edges(
                 scope_node = node.child_by_field_name("scope")
                 name_node = node.child_by_field_name("name")
                 if scope_node and name_node:
-                    class_name = _node_text(scope_node, source)
-                    method_name = _node_text(name_node, source)
+                    class_name = node_text(scope_node, source)
+                    method_name = node_text(name_node, source)
 
                     # Handle self:: and static::
                     current_class_name = _get_enclosing_class(node, source)
@@ -805,7 +783,7 @@ def _extract_edges(
                 # Get the class name
                 for child in node.children:
                     if child.type == "name":
-                        class_name = _node_text(child, source)
+                        class_name = node_text(child, source)
                         # Use use_aliases for disambiguation
                         path_hint = use_aliases.get(class_name)
                         lookup_result = class_resolver.lookup(class_name, path_hint=path_hint)
@@ -871,14 +849,14 @@ def _analyze_php_file(
 
 
 @register_analyzer("php")
-def analyze_php(repo_root: Path) -> PhpAnalysisResult:
+def analyze_php(repo_root: Path) -> AnalysisResult:
     """Analyze all PHP files in a repository.
 
     Uses a two-pass approach:
     1. Parse all files and extract symbols into global registry
     2. Detect calls and resolve against global symbol registry
 
-    Returns a PhpAnalysisResult with symbols, edges, and provenance.
+    Returns a AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-php is not available, returns empty result (silently skipped).
     """
     start_time = time.time()
@@ -891,7 +869,7 @@ def analyze_php(repo_root: Path) -> PhpAnalysisResult:
         skip_reason = "PHP analysis skipped: requires tree-sitter-php (pip install tree-sitter-php)"
         warnings.warn(skip_reason, stacklevel=2)
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return PhpAnalysisResult(
+        return AnalysisResult(
             run=run,
             skipped=True,
             skip_reason=skip_reason,
@@ -902,7 +880,7 @@ def analyze_php(repo_root: Path) -> PhpAnalysisResult:
         skip_reason = "PHP analysis skipped: requires tree-sitter-php (pip install tree-sitter-php)"
         warnings.warn(skip_reason, stacklevel=2)
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return PhpAnalysisResult(
+        return AnalysisResult(
             run=run,
             skipped=True,
             skip_reason=skip_reason,
@@ -969,7 +947,7 @@ def analyze_php(repo_root: Path) -> PhpAnalysisResult:
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return PhpAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         usage_contexts=all_usage_contexts,

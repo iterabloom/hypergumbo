@@ -41,7 +41,7 @@ def test_cmd_run_with_js_analyzer_available(tmp_path: Path) -> None:
     """Test run with mocked JS analyzer returning successful results."""
     from unittest.mock import patch
     from hypergumbo_core.ir import Symbol, Span, AnalysisRun
-    from hypergumbo_lang_mainstream.js_ts import JsAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create a JS file to trigger analysis
     (tmp_path / "app.js").write_text("function foo() {}")
@@ -56,7 +56,7 @@ def test_cmd_run_with_js_analyzer_available(tmp_path: Path) -> None:
         path=str(tmp_path / "app.js"),
         span=Span(start_line=1, end_line=1, start_col=0, end_col=17),
     )
-    mock_result = JsAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[mock_symbol],
         edges=[],
         run=mock_run,
@@ -84,12 +84,11 @@ def test_cmd_run_with_js_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with JS analyzer skipped (tree-sitter not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_mainstream.js_ts import JsAnalysisResult
-    from hypergumbo_lang_mainstream.php import PhpAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag for JS
     mock_js_run = AnalysisRun.create(pass_id="javascript-ts-v1", version="test")
-    mock_js_result = JsAnalysisResult(
+    mock_js_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_js_run,
@@ -99,7 +98,7 @@ def test_cmd_run_with_js_analyzer_skipped(tmp_path: Path) -> None:
 
     # Create mock result for PHP (not skipped, just empty)
     mock_php_run = AnalysisRun.create(pass_id="php-v1", version="test")
-    mock_php_result = PhpAnalysisResult(
+    mock_php_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_php_run,
@@ -129,11 +128,11 @@ def test_cmd_run_with_php_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with PHP analyzer skipped (tree-sitter-php not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_mainstream.php import PhpAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="php-v1", version="test")
-    mock_result = PhpAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -162,11 +161,11 @@ def test_cmd_run_with_c_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with C analyzer skipped (tree-sitter-c not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_mainstream.c import CAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="c-v1", version="test")
-    mock_result = CAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -195,11 +194,11 @@ def test_cmd_run_with_java_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with Java analyzer skipped (tree-sitter-java not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_mainstream.java import JavaAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="java-v1", version="test")
-    mock_result = JavaAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -228,11 +227,11 @@ def test_cmd_run_with_elixir_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with Elixir analyzer skipped (tree-sitter-elixir not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_common.elixir import ElixirAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="elixir-v1", version="test")
-    mock_result = ElixirAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -261,11 +260,11 @@ def test_cmd_run_with_rust_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with Rust analyzer skipped (tree-sitter-rust not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_mainstream.rust import RustAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="rust-v1", version="test")
-    mock_result = RustAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -294,11 +293,11 @@ def test_cmd_run_with_go_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with Go analyzer skipped (tree-sitter-go not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_mainstream.go import GoAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="go-v1", version="test")
-    mock_result = GoAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -327,11 +326,11 @@ def test_cmd_run_with_ruby_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with Ruby analyzer skipped (tree-sitter-ruby not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_mainstream.ruby import RubyAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="ruby-v1", version="test")
-    mock_result = RubyAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -360,11 +359,11 @@ def test_cmd_run_with_kotlin_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with Kotlin analyzer skipped (tree-sitter-kotlin not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_mainstream.kotlin import KotlinAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="kotlin-v1", version="test")
-    mock_result = KotlinAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -393,11 +392,11 @@ def test_cmd_run_with_swift_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with Swift analyzer skipped (tree-sitter-swift not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_mainstream.swift import SwiftAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="swift-v1", version="test")
-    mock_result = SwiftAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -426,11 +425,11 @@ def test_cmd_run_with_scala_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with Scala analyzer skipped (tree-sitter-scala not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_mainstream.scala import ScalaAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="scala-v1", version="test")
-    mock_result = ScalaAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -459,11 +458,11 @@ def test_cmd_run_with_lua_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with Lua analyzer skipped (tree-sitter-lua not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_mainstream.lua import LuaAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="lua-v1", version="test")
-    mock_result = LuaAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -492,11 +491,11 @@ def test_cmd_run_with_haskell_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with Haskell analyzer skipped (tree-sitter-haskell not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_common.haskell import HaskellAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="haskell-v1", version="test")
-    mock_result = HaskellAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,
@@ -525,11 +524,11 @@ def test_cmd_run_with_ocaml_analyzer_skipped(tmp_path: Path) -> None:
     """Test run with OCaml analyzer skipped (tree-sitter-ocaml not available)."""
     from unittest.mock import patch
     from hypergumbo_core.ir import AnalysisRun
-    from hypergumbo_lang_common.ocaml import OCamlAnalysisResult
+    from hypergumbo_core.analyze.base import AnalysisResult
 
     # Create mock result with skipped flag
     mock_run = AnalysisRun.create(pass_id="ocaml-v1", version="test")
-    mock_result = OCamlAnalysisResult(
+    mock_result = AnalysisResult(
         symbols=[],
         edges=[],
         run=mock_run,

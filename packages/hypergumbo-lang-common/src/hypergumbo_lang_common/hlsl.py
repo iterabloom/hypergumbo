@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, node_text
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -53,17 +53,6 @@ def find_hlsl_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.hlsl", "*.hlsli", "*.fx"])
 
 
-@dataclass
-class HLSLAnalysisResult:
-    """Result of analyzing HLSL files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
 def is_hlsl_tree_sitter_available() -> bool:
     """Check if tree-sitter-hlsl is available."""
     if importlib.util.find_spec("tree_sitter") is None:
@@ -77,21 +66,6 @@ def is_hlsl_tree_sitter_available() -> bool:
         return True
     except Exception:  # pragma: no cover - hlsl grammar not available
         return False
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text from a tree-sitter node."""
-    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(
-    node: "tree_sitter.Node", child_type: str
-) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == child_type:
-            return child
-    return None  # pragma: no cover - defensive
 
 
 @dataclass
@@ -115,11 +89,11 @@ def _find_enclosing_function_hlsl(
     current = node.parent
     while current is not None:
         if current.type == "function_definition":
-            func_decl = _find_child_by_type(current, "function_declarator")
+            func_decl = find_child_by_type(current, "function_declarator")
             if func_decl:
-                name_node = _find_child_by_type(func_decl, "identifier")
+                name_node = find_child_by_type(func_decl, "identifier")
                 if name_node:
-                    func_name = _node_text(name_node, source)
+                    func_name = node_text(name_node, source)
                     sym = local_symbols.get(func_name)
                     if sym:
                         return sym
@@ -130,16 +104,16 @@ def _find_enclosing_function_hlsl(
 def _get_call_target_name_hlsl(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract the target name from a call_expression node."""
     # Direct function call: func(args)
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if name_node:
-        return _node_text(name_node, source)
+        return node_text(name_node, source)
     # Method call on field: obj.method(args) - get the method name
     # pragma: no cover - tree-sitter-hlsl parses method calls differently
-    field_expr = _find_child_by_type(node, "field_expression")  # pragma: no cover
+    field_expr = find_child_by_type(node, "field_expression")  # pragma: no cover
     if field_expr:  # pragma: no cover
         for child in field_expr.children:  # pragma: no cover
             if child.type == "field_identifier":  # pragma: no cover
-                return _node_text(child, source)  # pragma: no cover
+                return node_text(child, source)  # pragma: no cover
     return None  # pragma: no cover - defensive for unknown call patterns
 
 
@@ -180,24 +154,24 @@ def _make_symbol(ctx: _FileContext, node: "tree_sitter.Node", name: str, kind: s
 
 def _extract_function_signature(node: "tree_sitter.Node", source: bytes) -> str:
     """Extract function signature from a function_declarator node."""
-    param_list = _find_child_by_type(node, "parameter_list")
+    param_list = find_child_by_type(node, "parameter_list")
     if param_list:
-        return _node_text(param_list, source)
+        return node_text(param_list, source)
     return "()"  # pragma: no cover - HLSL functions always have parameter_list
 
 
 def _process_function(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process a function definition."""
     # Get function name from function_declarator > identifier
-    func_decl = _find_child_by_type(node, "function_declarator")
+    func_decl = find_child_by_type(node, "function_declarator")
     if not func_decl:
         return  # pragma: no cover
 
-    name_node = _find_child_by_type(func_decl, "identifier")
+    name_node = find_child_by_type(func_decl, "identifier")
     if not name_node:
         return  # pragma: no cover
 
-    func_name = _node_text(name_node, ctx.source)
+    func_name = node_text(name_node, ctx.source)
     signature = _extract_function_signature(func_decl, ctx.source)
 
     sym = _make_symbol(ctx, node, func_name, "function", signature=signature)
@@ -207,11 +181,11 @@ def _process_function(ctx: _FileContext, node: "tree_sitter.Node") -> None:
 
 def _process_struct(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process a struct definition."""
-    name_node = _find_child_by_type(node, "type_identifier")
+    name_node = find_child_by_type(node, "type_identifier")
     if not name_node:
         return  # pragma: no cover
 
-    struct_name = _node_text(name_node, ctx.source)
+    struct_name = node_text(name_node, ctx.source)
     ctx.symbols.append(_make_symbol(ctx, node, struct_name, "struct"))
 
 
@@ -224,13 +198,13 @@ def _process_declaration(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     - Sampler declarations: SamplerState linearSampler;
 
     The tree-sitter-hlsl parser exposes the identifier directly as a child node,
-    so we find it with _find_child_by_type(node, "identifier").
+    so we find it with find_child_by_type(node, "identifier").
     """
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
         return  # pragma: no cover - defensive
 
-    var_name = _node_text(name_node, ctx.source)
+    var_name = node_text(name_node, ctx.source)
     ctx.symbols.append(_make_symbol(ctx, node, var_name, "variable"))
 
 
@@ -284,15 +258,15 @@ def _extract_hlsl_edges(
 
 
 @register_analyzer("hlsl")
-def analyze_hlsl(repo_root: Path) -> HLSLAnalysisResult:
+def analyze_hlsl(repo_root: Path) -> AnalysisResult:
     """Analyze HLSL files in a repository.
 
-    Returns a HLSLAnalysisResult with symbols for functions, structs, and variables.
+    Returns a AnalysisResult with symbols for functions, structs, and variables.
     Uses two-pass analysis for cross-file call resolution.
     """
     if not is_hlsl_tree_sitter_available():
         warnings.warn("HLSL analysis skipped: tree-sitter-hlsl unavailable")
-        return HLSLAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-hlsl unavailable",
         )
@@ -370,7 +344,7 @@ def analyze_hlsl(repo_root: Path) -> HLSLAnalysisResult:
         _extract_hlsl_edges(ctx, tree, resolver)
 
     duration_ms = int((time.time() - start_time) * 1000)
-    return HLSLAnalysisResult(
+    return AnalysisResult(
         symbols=symbols,
         edges=edges,
         run=AnalysisRun(

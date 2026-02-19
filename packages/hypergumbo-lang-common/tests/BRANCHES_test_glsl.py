@@ -12,25 +12,19 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_common.glsl import (
-    _make_edge_id,
-    _make_symbol_id,
-    analyze_glsl_files,
-    find_glsl_files,
-)
-
+from hypergumbo_core.analyze.base import make_symbol_id
+from hypergumbo_lang_common.glsl import _make_edge_id, analyze_glsl_files, find_glsl_files
 
 def make_glsl_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a GLSL file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestGLSLHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("shaders/vert.glsl", 1, 10, "main", "function")
+        symbol_id = make_symbol_id("glsl", "shaders/vert.glsl", 1, 10, "main", "function")
         assert symbol_id == "glsl:shaders/vert.glsl:1-10:main:function"
 
     def test_make_edge_id_deterministic(self) -> None:
@@ -39,7 +33,6 @@ class TestGLSLHelperFunctions:
         edge_id_2 = _make_edge_id("src1", "dst1", "calls")
         assert edge_id_1 == edge_id_2
         assert edge_id_1.startswith("edge:sha256:")
-
 
 class TestFunctionExtraction:
     """Branch coverage for function definition extraction."""
@@ -74,7 +67,6 @@ vec3 normalize_safe(vec3 v) { return length(v) > 0.0 ? normalize(v) : vec3(0.0);
         assert "cube" in names
         assert "normalize_safe" in names
 
-
 class TestStructExtraction:
     """Branch coverage for struct definition extraction."""
 
@@ -92,7 +84,6 @@ struct Light {
         structs = [s for s in result.symbols if s.kind == "struct"]
         assert len(structs) >= 1
         assert any(s.name == "Light" for s in structs)
-
 
 class TestUniformExtraction:
     """Branch coverage for uniform variable extraction."""
@@ -112,7 +103,6 @@ void main() { }
         assert "modelMatrix" in names
         assert "viewMatrix" in names
         assert "projectionMatrix" in names
-
 
 class TestInputOutputExtraction:
     """Branch coverage for in/out variable extraction."""
@@ -142,7 +132,6 @@ void main() { fragColor = vec4(1.0); }
         outputs = [s for s in result.symbols if s.kind == "output"]
         assert len(outputs) >= 1
         assert any(o.name == "fragColor" for o in outputs)
-
 
 class TestFunctionCallEdges:
     """Branch coverage for function call edge extraction."""
@@ -174,7 +163,6 @@ void main() {
         # Should have edge to builtin
         builtin_calls = [e for e in call_edges if "builtin" in e.dst]
         assert len(builtin_calls) >= 1
-
 
 class TestFindGLSLFiles:
     """Branch coverage for file discovery."""
@@ -212,7 +200,6 @@ class TestFindGLSLFiles:
         files = list(find_glsl_files(tmp_path))
         assert len(files) == 1
 
-
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
 
@@ -230,7 +217,6 @@ void main() { }
         result = analyze_glsl_files(tmp_path)
         assert not result.skipped
         assert len(result.symbols) == 0
-
 
 class TestFunctionSignatures:
     """Branch coverage for function signature extraction."""

@@ -1,23 +1,22 @@
 """Tests for HCL/Terraform analyzer."""
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
+from hypergumbo_core.analyze.base import find_child_by_type
+from unittest.mock import patch, MagicMock
 
 class TestHCLHelpers:
     """Tests for HCL analyzer helper functions."""
 
     def test_find_child_by_type_returns_none(self) -> None:
         """Returns None when no matching child type is found."""
-        from hypergumbo_lang_common.hcl import _find_child_by_type
 
         mock_node = MagicMock()
         mock_child = MagicMock()
         mock_child.type = "different_type"
         mock_node.children = [mock_child]
 
-        result = _find_child_by_type(mock_node, "identifier")
+        result = find_child_by_type(mock_node, "identifier")
         assert result is None
-
 
 class TestFindHCLFiles:
     """Tests for HCL file discovery."""
@@ -63,7 +62,6 @@ class TestFindHCLFiles:
         assert len(files) == 1
         assert files[0].name == "main.tf"
 
-
 class TestHCLTreeSitterAvailability:
     """Tests for tree-sitter-hcl availability checking."""
 
@@ -95,7 +93,6 @@ class TestHCLTreeSitterAvailability:
         with patch("importlib.util.find_spec", side_effect=mock_find_spec):
             assert is_hcl_tree_sitter_available() is False
 
-
 class TestAnalyzeHCLFallback:
     """Tests for fallback behavior when tree-sitter-hcl unavailable."""
 
@@ -110,7 +107,6 @@ class TestAnalyzeHCLFallback:
 
         assert result.skipped is True
         assert "tree-sitter-hcl" in result.skip_reason
-
 
 class TestHCLResourceExtraction:
     """Tests for extracting Terraform resources."""
@@ -133,12 +129,10 @@ resource "aws_s3_bucket" "data" {
 
         result = analyze_hcl(tmp_path)
 
-
         resources = [s for s in result.symbols if s.kind == "resource"]
         resource_names = [s.name for s in resources]
         assert "aws_instance.web" in resource_names
         assert "aws_s3_bucket.data" in resource_names
-
 
 class TestHCLDataSourceExtraction:
     """Tests for extracting Terraform data sources."""
@@ -160,12 +154,10 @@ data "aws_vpc" "default" {
 
         result = analyze_hcl(tmp_path)
 
-
         data_sources = [s for s in result.symbols if s.kind == "data"]
         names = [s.name for s in data_sources]
         assert "data.aws_ami.ubuntu" in names
         assert "data.aws_vpc.default" in names
-
 
 class TestHCLVariableExtraction:
     """Tests for extracting Terraform variables."""
@@ -189,12 +181,10 @@ variable "instance_count" {
 
         result = analyze_hcl(tmp_path)
 
-
         variables = [s for s in result.symbols if s.kind == "variable"]
         names = [s.name for s in variables]
         assert "var.region" in names
         assert "var.instance_count" in names
-
 
 class TestHCLOutputExtraction:
     """Tests for extracting Terraform outputs."""
@@ -216,12 +206,10 @@ output "bucket_arn" {
 
         result = analyze_hcl(tmp_path)
 
-
         outputs = [s for s in result.symbols if s.kind == "output"]
         names = [s.name for s in outputs]
         assert "output.instance_ip" in names
         assert "output.bucket_arn" in names
-
 
 class TestHCLModuleExtraction:
     """Tests for extracting Terraform modules."""
@@ -245,12 +233,10 @@ module "eks" {
 
         result = analyze_hcl(tmp_path)
 
-
         modules = [s for s in result.symbols if s.kind == "module"]
         names = [s.name for s in modules]
         assert "module.vpc" in names
         assert "module.eks" in names
-
 
 class TestHCLProviderExtraction:
     """Tests for extracting Terraform providers."""
@@ -272,12 +258,10 @@ provider "google" {
 
         result = analyze_hcl(tmp_path)
 
-
         providers = [s for s in result.symbols if s.kind == "provider"]
         names = [s.name for s in providers]
         assert "provider.aws" in names
         assert "provider.google" in names
-
 
 class TestHCLLocalsExtraction:
     """Tests for extracting Terraform locals."""
@@ -296,12 +280,10 @@ locals {
 
         result = analyze_hcl(tmp_path)
 
-
         locals_block = [s for s in result.symbols if s.kind == "local"]
         names = [s.name for s in locals_block]
         assert "local.env" in names
         assert "local.project" in names
-
 
 class TestHCLDependencyEdges:
     """Tests for extracting dependency edges (references)."""
@@ -322,7 +304,6 @@ resource "aws_instance" "web" {
 ''')
 
         result = analyze_hcl(tmp_path)
-
 
         depends_edges = [e for e in result.edges if e.edge_type == "depends_on"]
         # Should have edge from aws_instance.web to var.instance_type
@@ -345,11 +326,9 @@ resource "aws_subnet" "public" {
 
         result = analyze_hcl(tmp_path)
 
-
         depends_edges = [e for e in result.edges if e.edge_type == "depends_on"]
         # Should have edge from aws_subnet.public to aws_vpc.main
         assert len(depends_edges) >= 1
-
 
 class TestHCLModuleSourceEdges:
     """Tests for extracting module source edges."""
@@ -367,11 +346,9 @@ module "vpc" {
 
         result = analyze_hcl(tmp_path)
 
-
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         # Should have edge for local module source
         assert len(import_edges) >= 1
-
 
 class TestHCLSymbolProperties:
     """Tests for symbol property correctness."""
@@ -388,13 +365,11 @@ class TestHCLSymbolProperties:
 
         result = analyze_hcl(tmp_path)
 
-
         resource = next((s for s in result.symbols if "aws_instance.web" in s.name), None)
         assert resource is not None
         assert resource.span.start_line == 1
         assert resource.language == "hcl"
         assert resource.origin == "hcl-v1"
-
 
 class TestHCLEdgeProperties:
     """Tests for edge property correctness."""
@@ -415,11 +390,9 @@ resource "null_resource" "y" {
 
         result = analyze_hcl(tmp_path)
 
-
         for edge in result.edges:
             assert edge.confidence > 0
             assert edge.confidence <= 1.0
-
 
 class TestHCLEmptyFile:
     """Tests for handling empty or minimal files."""
@@ -432,7 +405,6 @@ class TestHCLEmptyFile:
         tf_file.write_text("")
 
         result = analyze_hcl(tmp_path)
-
 
         assert result.run is not None
 
@@ -447,9 +419,7 @@ class TestHCLEmptyFile:
 
         result = analyze_hcl(tmp_path)
 
-
         assert result.run is not None
-
 
 class TestHCLParserFailure:
     """Tests for parser failure handling."""

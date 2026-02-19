@@ -5,14 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import svelte as svelte_module
-from hypergumbo_lang_common.svelte import (
-    SvelteAnalysisResult,
-    analyze_svelte,
-    find_svelte_files,
-    is_svelte_tree_sitter_available,
-)
-
+from hypergumbo_lang_common.svelte import analyze_svelte, find_svelte_files, is_svelte_tree_sitter_available
 
 def make_svelte_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a Svelte file in the temp directory."""
@@ -20,7 +15,6 @@ def make_svelte_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindSvelteFiles:
     """Tests for find_svelte_files function."""
@@ -37,7 +31,6 @@ class TestFindSvelteFiles:
         files = find_svelte_files(tmp_path)
         assert files == []
 
-
 class TestIsSvelteTreeSitterAvailable:
     """Tests for is_svelte_tree_sitter_available function."""
 
@@ -48,7 +41,6 @@ class TestIsSvelteTreeSitterAvailable:
     def test_returns_false_when_unavailable(self) -> None:
         with patch.object(svelte_module, "is_svelte_tree_sitter_available", return_value=False):
             assert svelte_module.is_svelte_tree_sitter_available() is False
-
 
 class TestAnalyzeSvelte:
     """Tests for analyze_svelte function."""

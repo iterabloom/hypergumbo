@@ -11,25 +11,19 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_common.r_lang import (
-    _make_symbol_id,
-    _make_edge_id,
-    analyze_r_files,
-    find_r_files,
-)
-
+from hypergumbo_core.analyze.base import make_symbol_id
+from hypergumbo_lang_common.r_lang import _make_edge_id, analyze_r_files, find_r_files
 
 def make_r_file(tmp_path: Path, name: str, content: str) -> None:
     """Create an R file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestRHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("utils.R", 1, 10, "myFunc", "function")
+        symbol_id = make_symbol_id("r", "utils.R", 1, 10, "myFunc", "function")
         assert symbol_id == "r:utils.R:1-10:myFunc:function"
 
     def test_make_edge_id_deterministic(self) -> None:
@@ -38,7 +32,6 @@ class TestRHelperFunctions:
         edge_id_2 = _make_edge_id("src1", "dst1", "calls")
         assert edge_id_1 == edge_id_2
         assert edge_id_1.startswith("edge:sha256:")
-
 
 class TestFunctionExtraction:
     """Branch coverage for function definition extraction."""
@@ -92,7 +85,6 @@ cube <- function(x) { x * x * x }
         assert "square" in names
         assert "cube" in names
 
-
 class TestLibraryImports:
     """Branch coverage for library/require imports."""
 
@@ -117,7 +109,6 @@ require(tidyr)
         imports = [s for s in result.symbols if s.kind == "import"]
         assert any(i.name == "tidyr" for i in imports)
 
-
 class TestSourceImports:
     """Branch coverage for source() imports."""
 
@@ -132,7 +123,6 @@ source("helpers.R")
         names = [s.name for s in sources]
         assert "utils.R" in names
         assert "helpers.R" in names
-
 
 class TestFunctionCallEdges:
     """Branch coverage for function call edge extraction."""
@@ -163,7 +153,6 @@ main <- function(x) {
         builtin_calls = [e for e in call_edges if "builtin" in e.dst]
         assert len(builtin_calls) >= 1
 
-
 class TestNamespaceQualifiedCalls:
     """Branch coverage for namespace-qualified calls."""
 
@@ -178,7 +167,6 @@ process <- function(df) {
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         qualified_calls = [e for e in call_edges if "dplyr" in e.dst]
         assert len(qualified_calls) >= 1
-
 
 class TestFindRFiles:
     """Branch coverage for file discovery."""
@@ -209,7 +197,6 @@ class TestFindRFiles:
         assert len(files) == 1
         assert files[0].name == "utils.R"
 
-
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
 
@@ -226,7 +213,6 @@ f <- function() {}
         result = analyze_r_files(tmp_path)
         assert not result.skipped
 
-
 class TestAnalysisRun:
     """Branch coverage for analysis run metadata."""
 
@@ -238,7 +224,6 @@ myFunc <- function(x) { x * 2 }
         result = analyze_r_files(tmp_path)
         assert result.run is not None
         assert result.run.files_analyzed >= 1
-
 
 class TestCrossFileResolution:
     """Branch coverage for cross-file symbol resolution."""
@@ -262,7 +247,6 @@ main <- function() {
         names = [f.name for f in funcs]
         assert "helper" in names
         assert "main" in names
-
 
 class TestFunctionSignatures:
     """Branch coverage for function signature extraction."""

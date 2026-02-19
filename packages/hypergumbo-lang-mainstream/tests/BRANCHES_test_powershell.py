@@ -11,32 +11,25 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_mainstream.powershell import (
-    _make_symbol_id,
-    _make_file_id,
-    analyze_powershell,
-    find_powershell_files,
-)
-
+from hypergumbo_core.analyze.base import make_file_id, make_symbol_id
+from hypergumbo_lang_mainstream.powershell import analyze_powershell, find_powershell_files
 
 def make_ps_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a PowerShell file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestPowerShellHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("script.ps1", 1, 10, "Get-User", "function")
+        symbol_id = make_symbol_id("powershell", "script.ps1", 1, 10, "Get-User", "function")
         assert symbol_id == "powershell:script.ps1:1-10:Get-User:function"
 
     def test_make_file_id_format(self) -> None:
         """Test file ID format."""
-        file_id = _make_file_id("script.ps1")
+        file_id = make_file_id("powershell", "script.ps1")
         assert file_id == "powershell:script.ps1:1-1:file:file"
-
 
 class TestFunctionExtraction:
     """Branch coverage for function extraction."""
@@ -95,7 +88,6 @@ function Remove-Data {
 
         assert len(functions) >= 3
 
-
 class TestFilterExtraction:
     """Branch coverage for filter extraction."""
 
@@ -111,7 +103,6 @@ filter ConvertTo-Upper {
 
         assert len(filters) >= 1
         assert any(f.name == "ConvertTo-Upper" for f in filters)
-
 
 class TestImportEdges:
     """Branch coverage for import edge extraction."""
@@ -144,7 +135,6 @@ function Get-Readline {
 
         assert len(import_edges) >= 1
 
-
 class TestCallEdges:
     """Branch coverage for call edge extraction."""
 
@@ -164,7 +154,6 @@ function Get-Main {
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
 
         assert len(call_edges) >= 1
-
 
 class TestFindPowerShellFiles:
     """Branch coverage for file discovery."""
@@ -193,7 +182,6 @@ class TestFindPowerShellFiles:
         assert len(files) >= 1
         assert any(f.suffix == ".psd1" for f in files)
 
-
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
 
@@ -209,7 +197,6 @@ Write-Host "Hello"
 """)
         result = analyze_powershell(tmp_path)
         assert not result.skipped
-
 
 class TestAnalysisRun:
     """Branch coverage for analysis run metadata."""

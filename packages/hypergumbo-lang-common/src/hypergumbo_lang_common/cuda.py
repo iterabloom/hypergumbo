@@ -33,14 +33,13 @@ import hashlib
 import importlib.util
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -64,50 +63,21 @@ def is_cuda_tree_sitter_available() -> bool:
     return True
 
 
-@dataclass
-class CudaAnalysisResult:
-    """Result of analyzing CUDA files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"cuda:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
     """Generate deterministic edge ID."""
     content = f"{edge_type}:{src}:{dst}"
     return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
 
 
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None  # pragma: no cover
-
-
 def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract function name from a function_definition or function_declarator."""
     # Look for function_declarator
-    declarator = _find_child_by_type(node, "function_declarator")
+    declarator = find_child_by_type(node, "function_declarator")
     if declarator:
         # The first identifier child of function_declarator is the name
         for child in declarator.children:
             if child.type == "identifier":
-                return _node_text(child, source)
+                return node_text(child, source)
     return None  # pragma: no cover
 
 
@@ -121,21 +91,21 @@ def _extract_cuda_signature(node: "tree_sitter.Node", source: bytes) -> Optional
     return_type: Optional[str] = None
 
     # Find function_declarator for parameters
-    declarator = _find_child_by_type(node, "function_declarator")
+    declarator = find_child_by_type(node, "function_declarator")
     if declarator:
         # Find parameter_list within declarator
         for child in declarator.children:
             if child.type == "parameter_list":
                 for param_child in child.children:
                     if param_child.type == "parameter_declaration":
-                        param_text = _node_text(param_child, source).strip()
+                        param_text = node_text(param_child, source).strip()
                         if param_text:
                             params.append(param_text)
 
     # Find return type (primitive_type, type_identifier, etc.)
     for child in node.children:
         if child.type in ("primitive_type", "type_identifier", "sized_type_specifier"):
-            return_type = _node_text(child, source).strip()
+            return_type = node_text(child, source).strip()
             break
 
     sig = "(" + ", ".join(params) + ")"
@@ -224,7 +194,7 @@ def _extract_cuda_symbols(
 
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, func_name, kind)
+                symbol_id = make_symbol_id("cuda", rel_path, start_line, end_line, func_name, kind)
 
                 # Extract signature
                 signature = _extract_cuda_signature(node, source)
@@ -277,10 +247,10 @@ def _extract_cuda_edges(
             is_kernel_launch = any(child.type == "kernel_call_syntax" for child in node.children)
 
             # Get the function name being called
-            func_node = _find_child_by_type(node, "identifier")
+            func_node = find_child_by_type(node, "identifier")
             if not func_node:  # pragma: no cover - method call edge case
                 # Try field_expression for method calls
-                field_expr = _find_child_by_type(node, "field_expression")  # pragma: no cover
+                field_expr = find_child_by_type(node, "field_expression")  # pragma: no cover
                 if field_expr:  # pragma: no cover
                     # Get the method name
                     for child in field_expr.children:  # pragma: no cover
@@ -290,7 +260,7 @@ def _extract_cuda_edges(
 
             caller = _get_enclosing_cuda_function(node, source, local_symbols)
             if func_node and caller:
-                called_name = _node_text(func_node, source)
+                called_name = node_text(func_node, source)
                 edge_type = "kernel_launch" if is_kernel_launch else "calls"
                 start_line = node.start_point[0] + 1
 
@@ -318,7 +288,7 @@ def _extract_cuda_edges(
 
 
 @register_analyzer("cuda")
-def analyze_cuda_files(repo_root: Path) -> CudaAnalysisResult:
+def analyze_cuda_files(repo_root: Path) -> AnalysisResult:
     """Analyze CUDA files in the repository.
 
     Uses two-pass analysis:
@@ -329,10 +299,10 @@ def analyze_cuda_files(repo_root: Path) -> CudaAnalysisResult:
         repo_root: Path to the repository root
 
     Returns:
-        CudaAnalysisResult with symbols and edges
+        AnalysisResult with symbols and edges
     """
     if not is_cuda_tree_sitter_available():  # pragma: no cover
-        return CudaAnalysisResult(  # pragma: no cover
+        return AnalysisResult(  # pragma: no cover
             skipped=True,  # pragma: no cover
             skip_reason="tree-sitter-cuda not installed (pip install tree-sitter-cuda)",  # pragma: no cover
         )  # pragma: no cover
@@ -356,7 +326,7 @@ def analyze_cuda_files(repo_root: Path) -> CudaAnalysisResult:
         parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_cuda.language()))
     except Exception as e:  # pragma: no cover
         warnings.warn(f"Failed to initialize CUDA parser: {e}")
-        return CudaAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason=f"Failed to initialize parser: {e}",
         )
@@ -414,7 +384,7 @@ def analyze_cuda_files(repo_root: Path) -> CudaAnalysisResult:
     run.duration_ms = duration_ms
     run.warnings = warnings_list
 
-    return CudaAnalysisResult(
+    return AnalysisResult(
         symbols=symbols,
         edges=edges,
         run=run,

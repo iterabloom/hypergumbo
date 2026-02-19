@@ -9,20 +9,18 @@ Tests verify that the analyzer correctly extracts:
 - Use statements (imports)
 """
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common.fortran import (
     PASS_ID,
     PASS_VERSION,
-    FortranAnalysisResult,
     analyze_fortran_files,
     find_fortran_files,
 )
-
 
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "fortran-v1"
     assert PASS_VERSION == "hypergumbo-0.1.0"
-
 
 def test_analyze_module(tmp_path):
     """Test detection of module definitions."""
@@ -43,7 +41,6 @@ end module matrix_ops
     assert modules[0].name == "matrix_ops"
     assert modules[0].language == "fortran"
 
-
 def test_analyze_program(tmp_path):
     """Test detection of program definitions."""
     fortran_file = tmp_path / "main.f90"
@@ -58,7 +55,6 @@ end program hello_world
     programs = [s for s in result.symbols if s.kind == "program"]
     assert len(programs) >= 1
     assert programs[0].name == "hello_world"
-
 
 def test_analyze_function(tmp_path):
     """Test detection of function definitions."""
@@ -76,7 +72,6 @@ end function add_numbers
     assert len(functions) >= 1
     assert functions[0].name == "add_numbers"
 
-
 def test_analyze_subroutine(tmp_path):
     """Test detection of subroutine definitions."""
     fortran_file = tmp_path / "subs.f90"
@@ -92,7 +87,6 @@ end subroutine calculate_sum
     subroutines = [s for s in result.symbols if s.kind == "subroutine"]
     assert len(subroutines) >= 1
     assert subroutines[0].name == "calculate_sum"
-
 
 def test_analyze_type(tmp_path):
     """Test detection of derived type definitions."""
@@ -111,7 +105,6 @@ end module my_types
     assert len(types) >= 1
     assert types[0].name == "particle"
 
-
 def test_analyze_use_statement(tmp_path):
     """Test detection of use (import) statements."""
     fortran_file = tmp_path / "main.f90"
@@ -126,7 +119,6 @@ end program main
 
     imports = [e for e in result.edges if e.edge_type == "imports"]
     assert len(imports) >= 2
-
 
 def test_analyze_subroutine_call(tmp_path):
     """Test detection of subroutine calls."""
@@ -143,7 +135,6 @@ end program main
     calls = [e for e in result.edges if e.edge_type == "calls"]
     assert len(calls) >= 1
 
-
 def test_find_fortran_files(tmp_path):
     """Test that Fortran files are discovered correctly."""
     (tmp_path / "main.f90").write_text("program main\nend program")
@@ -158,7 +149,6 @@ def test_find_fortran_files(tmp_path):
     # Should find .f, .f90, .f95, .f03 files
     assert len(files) >= 5
 
-
 def test_analyze_empty_directory(tmp_path):
     """Test analysis of directory with no Fortran files."""
     result = analyze_fortran_files(tmp_path)
@@ -166,7 +156,6 @@ def test_analyze_empty_directory(tmp_path):
     assert not result.skipped
     assert len(result.symbols) == 0
     assert len(result.edges) == 0
-
 
 def test_analysis_run_metadata(tmp_path):
     """Test that AnalysisRun metadata is correctly set."""
@@ -181,7 +170,6 @@ def test_analysis_run_metadata(tmp_path):
     assert result.run.files_analyzed >= 1
     assert result.run.duration_ms >= 0
 
-
 def test_syntax_error_handling(tmp_path):
     """Test that syntax errors don't crash the analyzer."""
     fortran_file = tmp_path / "broken.f90"
@@ -191,8 +179,7 @@ def test_syntax_error_handling(tmp_path):
     result = analyze_fortran_files(tmp_path)
 
     # Result should still be valid
-    assert isinstance(result, FortranAnalysisResult)
-
+    assert isinstance(result, AnalysisResult)
 
 def test_span_information(tmp_path):
     """Test that span information is correct."""
@@ -210,7 +197,6 @@ end program test
     assert programs[0].span.start_line >= 1
     assert programs[0].span.end_line >= programs[0].span.start_line
 
-
 def test_tree_sitter_not_available():
     """Test graceful degradation when tree-sitter is not available."""
     from hypergumbo_lang_common.fortran import is_fortran_tree_sitter_available
@@ -218,7 +204,6 @@ def test_tree_sitter_not_available():
     # The function should return a boolean
     result = is_fortran_tree_sitter_available()
     assert isinstance(result, bool)
-
 
 def test_multiple_fortran_files(tmp_path):
     """Test analysis across multiple Fortran files."""
@@ -240,7 +225,6 @@ end program main
     programs = [s for s in result.symbols if s.kind == "program"]
     assert len(modules) >= 1
     assert len(programs) >= 1
-
 
 def test_complete_fortran_structure(tmp_path):
     """Test a complete Fortran code structure."""
@@ -291,7 +275,6 @@ end program main
     assert "function" in kinds
     assert "subroutine" in kinds
     assert "program" in kinds
-
 
 class TestFortranImportAliases:
     """Tests for Fortran import alias tracking (ADR-0007)."""
@@ -361,7 +344,6 @@ end program main
         # The aliases should help with path hints
         calls = [e for e in result.edges if e.edge_type == "calls"]
         assert len(calls) >= 2
-
 
 class TestFortranSignatureExtraction:
     """Tests for Fortran function/subroutine signature extraction."""

@@ -31,11 +31,10 @@ import hashlib
 import importlib.util
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_symbol_id, node_text
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -75,39 +74,10 @@ def is_r_tree_sitter_available() -> bool:
     return False  # pragma: no cover
 
 
-@dataclass
-class RAnalysisResult:
-    """Result of analyzing R files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"r:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
     """Generate deterministic edge ID."""
     content = f"{edge_type}:{src}:{dst}"
     return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None  # pragma: no cover - defensive fallback
 
 
 def _extract_r_signature(func_def: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -117,7 +87,7 @@ def _extract_r_signature(func_def: "tree_sitter.Node", source: bytes) -> Optiona
     R is dynamically typed so no type annotations.
     Handles default values (shown as = ...).
     """
-    params_node = _find_child_by_type(func_def, "parameters")
+    params_node = find_child_by_type(func_def, "parameters")
     if params_node is None:  # pragma: no cover - function() always has params node
         return "()"
 
@@ -125,9 +95,9 @@ def _extract_r_signature(func_def: "tree_sitter.Node", source: bytes) -> Optiona
     for child in params_node.children:
         if child.type == "parameter":
             # Parameter may have name and default value
-            name_node = _find_child_by_type(child, "identifier")
+            name_node = find_child_by_type(child, "identifier")
             if name_node:
-                param_name = _node_text(name_node, source)
+                param_name = node_text(name_node, source)
                 # Check for default value (has more than just identifier)
                 has_default = len([c for c in child.children if c.type not in ("identifier", "=", ",")]) > 0
                 if has_default:
@@ -136,7 +106,7 @@ def _extract_r_signature(func_def: "tree_sitter.Node", source: bytes) -> Optiona
                     params.append(param_name)
         elif child.type == "identifier":  # pragma: no cover - wrapped in parameter node
             # Simple parameter (no default)
-            params.append(_node_text(child, source))  # pragma: no cover
+            params.append(node_text(child, source))  # pragma: no cover
         elif child.type == "dots":  # pragma: no cover - R's ... varargs
             params.append("...")
 
@@ -200,10 +170,10 @@ def _extract_r_symbols(
                     right_node = child
 
             if is_assignment and left_node and right_node:
-                func_name = _node_text(left_node, source)
+                func_name = node_text(left_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, func_name, "function")
+                symbol_id = make_symbol_id("r", rel_path, start_line, end_line, func_name, "function")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -236,7 +206,7 @@ def _extract_r_symbols(
                     break
 
             if func_name_node:
-                func_name = _node_text(func_name_node, source)
+                func_name = node_text(func_name_node, source)
                 start_line = node.start_point[0] + 1
 
                 # Check for library/require imports
@@ -246,12 +216,12 @@ def _extract_r_symbols(
                         if child.type == "arguments":
                             for arg in child.children:
                                 if arg.type == "argument":
-                                    pkg_name = _node_text(arg, source).strip("\"'")
+                                    pkg_name = node_text(arg, source).strip("\"'")
                                     # Remove "package = " prefix if present
                                     if "=" in pkg_name:  # pragma: no cover - named arg syntax
                                         pkg_name = pkg_name.split("=")[-1].strip().strip("\"'")  # pragma: no cover
                                     if pkg_name and pkg_name not in ("(", ")"):
-                                        import_id = _make_symbol_id(rel_path, start_line, start_line, pkg_name, "import")
+                                        import_id = make_symbol_id("r", rel_path, start_line, start_line, pkg_name, "import")
                                         imp_sym = Symbol(
                                             id=import_id,
                                             stable_id=None,
@@ -280,8 +250,8 @@ def _extract_r_symbols(
                                 if arg.type == "argument":
                                     for sub in arg.children:
                                         if sub.type == "string":
-                                            file_path = _node_text(sub, source).strip("\"'")
-                                            source_id = _make_symbol_id(rel_path, start_line, start_line, file_path, "source")
+                                            file_path = node_text(sub, source).strip("\"'")
+                                            source_id = make_symbol_id("r", rel_path, start_line, start_line, file_path, "source")
                                             src_sym = Symbol(
                                                 id=source_id,
                                                 stable_id=None,
@@ -316,23 +286,23 @@ def _extract_loaded_packages(
     packages: set[str] = set()
     for node in iter_tree(root_node):
         if node.type == "call":
-            func_name_node = _find_child_by_type(node, "identifier")
+            func_name_node = find_child_by_type(node, "identifier")
             if func_name_node:
-                func_name = _node_text(func_name_node, source)
+                func_name = node_text(func_name_node, source)
                 if func_name in ("library", "require"):
                     # Extract package name from arguments
-                    args_node = _find_child_by_type(node, "arguments")
+                    args_node = find_child_by_type(node, "arguments")
                     if args_node:
                         for arg in args_node.children:
                             if arg.type == "argument":
                                 # Package name could be identifier or string
-                                pkg_id = _find_child_by_type(arg, "identifier")
+                                pkg_id = find_child_by_type(arg, "identifier")
                                 if pkg_id:
-                                    packages.add(_node_text(pkg_id, source))
+                                    packages.add(node_text(pkg_id, source))
                                     break
-                                pkg_str = _find_child_by_type(arg, "string")
+                                pkg_str = find_child_by_type(arg, "string")
                                 if pkg_str:
-                                    packages.add(_node_text(pkg_str, source).strip("\"'"))
+                                    packages.add(node_text(pkg_str, source).strip("\"'"))
                                     break
     return packages
 
@@ -368,19 +338,19 @@ def _extract_r_edges(
             start_line = node.start_point[0] + 1
 
             # Check for namespace-qualified call: pkg::func()
-            ns_operator = _find_child_by_type(node, "namespace_operator")
+            ns_operator = find_child_by_type(node, "namespace_operator")
             if ns_operator:
                 # Extract package and function names from namespace_operator
                 identifiers = [c for c in ns_operator.children if c.type == "identifier"]
                 if len(identifiers) >= 2:
-                    pkg_name = _node_text(identifiers[0], source)
-                    func_name = _node_text(identifiers[1], source)
+                    pkg_name = node_text(identifiers[0], source)
+                    func_name = node_text(identifiers[1], source)
                     path_hint = pkg_name  # Use package name as path_hint for disambiguation
             else:
                 # Unqualified call: func()
-                func_name_node = _find_child_by_type(node, "identifier")
+                func_name_node = find_child_by_type(node, "identifier")
                 if func_name_node:
-                    func_name = _node_text(func_name_node, source)
+                    func_name = node_text(func_name_node, source)
 
             if not func_name:
                 continue
@@ -421,7 +391,7 @@ def _extract_r_edges(
 
 
 @register_analyzer("r")
-def analyze_r_files(repo_root: Path) -> RAnalysisResult:
+def analyze_r_files(repo_root: Path) -> AnalysisResult:
     """Analyze R files in the repository.
 
     Uses two-pass analysis:
@@ -432,10 +402,10 @@ def analyze_r_files(repo_root: Path) -> RAnalysisResult:
         repo_root: Path to the repository root
 
     Returns:
-        RAnalysisResult with symbols and edges
+        AnalysisResult with symbols and edges
     """
     if not is_r_tree_sitter_available():  # pragma: no cover
-        return RAnalysisResult(  # pragma: no cover
+        return AnalysisResult(  # pragma: no cover
             skipped=True,  # pragma: no cover
             skip_reason="tree-sitter-r not installed (pip install tree-sitter-language-pack)",  # pragma: no cover
         )  # pragma: no cover
@@ -466,7 +436,7 @@ def analyze_r_files(repo_root: Path) -> RAnalysisResult:
             parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_r.language()))  # pragma: no cover
     except Exception as e:  # pragma: no cover
         warnings.warn(f"Failed to initialize R parser: {e}")
-        return RAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason=f"Failed to initialize parser: {e}",
         )
@@ -528,7 +498,7 @@ def analyze_r_files(repo_root: Path) -> RAnalysisResult:
     run.duration_ms = duration_ms
     run.warnings = warnings_list
 
-    return RAnalysisResult(
+    return AnalysisResult(
         symbols=symbols,
         edges=edges,
         run=run,

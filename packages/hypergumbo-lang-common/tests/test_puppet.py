@@ -5,14 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import puppet as puppet_module
-from hypergumbo_lang_common.puppet import (
-    PuppetAnalysisResult,
-    analyze_puppet,
-    find_puppet_files,
-    is_puppet_tree_sitter_available,
-)
-
+from hypergumbo_lang_common.puppet import analyze_puppet, find_puppet_files, is_puppet_tree_sitter_available
 
 def make_puppet_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a Puppet file in the temp directory."""
@@ -20,7 +15,6 @@ def make_puppet_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindPuppetFiles:
     """Tests for find_puppet_files function."""
@@ -37,7 +31,6 @@ class TestFindPuppetFiles:
         files = find_puppet_files(tmp_path)
         assert files == []
 
-
 class TestIsPuppetTreeSitterAvailable:
     """Tests for is_puppet_tree_sitter_available function."""
 
@@ -48,7 +41,6 @@ class TestIsPuppetTreeSitterAvailable:
     def test_returns_false_when_unavailable(self) -> None:
         with patch.object(puppet_module, "is_puppet_tree_sitter_available", return_value=False):
             assert puppet_module.is_puppet_tree_sitter_available() is False
-
 
 class TestAnalyzePuppet:
     """Tests for analyze_puppet function."""

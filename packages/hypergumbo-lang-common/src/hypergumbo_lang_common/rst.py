@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -48,24 +49,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "rst.tree_sitter"
 PASS_VERSION = "0.1.0"
-
-
-class RSTAnalysisResult:
-    """Result of RST analysis."""
-
-    def __init__(
-        self,
-        symbols: list[Symbol],
-        edges: list[Edge],
-        run: AnalysisRun | None = None,
-        skipped: bool = False,
-        skip_reason: str = "",
-    ) -> None:
-        self.symbols = symbols
-        self.edges = edges
-        self.run = run
-        self.skipped = skipped
-        self.skip_reason = skip_reason
 
 
 def is_rst_tree_sitter_available() -> bool:
@@ -128,13 +111,13 @@ class RSTAnalyzer:
         self._section_counter = 0
         self._directive_counter = 0
 
-    def analyze(self) -> RSTAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Run the RST analysis."""
         start_time = time.time()
 
         files = find_rst_files(self.repo_root)
         if not files:
-            return RSTAnalysisResult(
+            return AnalysisResult(
                 symbols=[],
                 edges=[],
                 run=None,
@@ -166,7 +149,7 @@ class RSTAnalyzer:
             files_analyzed=self._files_analyzed,
         )
 
-        return RSTAnalysisResult(
+        return AnalysisResult(
             symbols=self._symbols,
             edges=self._edges,
             run=run,
@@ -416,14 +399,14 @@ class RSTAnalyzer:
 
 
 @register_analyzer("rst")
-def analyze_rst(repo_root: Path) -> RSTAnalysisResult:
+def analyze_rst(repo_root: Path) -> AnalysisResult:
     """Analyze RST files in a repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        RSTAnalysisResult containing extracted symbols and edges
+        AnalysisResult containing extracted symbols and edges
     """
     if not is_rst_tree_sitter_available():
         warnings.warn(
@@ -431,7 +414,7 @@ def analyze_rst(repo_root: Path) -> RSTAnalysisResult:
             UserWarning,
             stacklevel=2,
         )
-        return RSTAnalysisResult(
+        return AnalysisResult(
             symbols=[],
             edges=[],
             run=AnalysisRun(

@@ -5,14 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import vue as vue_module
-from hypergumbo_lang_common.vue import (
-    VueAnalysisResult,
-    analyze_vue,
-    find_vue_files,
-    is_vue_tree_sitter_available,
-)
-
+from hypergumbo_lang_common.vue import analyze_vue, find_vue_files, is_vue_tree_sitter_available
 
 def make_vue_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a Vue file in the temp directory."""
@@ -20,7 +15,6 @@ def make_vue_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindVueFiles:
     """Tests for find_vue_files function."""
@@ -37,7 +31,6 @@ class TestFindVueFiles:
         files = find_vue_files(tmp_path)
         assert files == []
 
-
 class TestIsVueTreeSitterAvailable:
     """Tests for is_vue_tree_sitter_available function."""
 
@@ -48,7 +41,6 @@ class TestIsVueTreeSitterAvailable:
     def test_returns_false_when_unavailable(self) -> None:
         with patch.object(vue_module, "is_vue_tree_sitter_available", return_value=False):
             assert vue_module.is_vue_tree_sitter_available() is False
-
 
 class TestAnalyzeVue:
     """Tests for analyze_vue function."""

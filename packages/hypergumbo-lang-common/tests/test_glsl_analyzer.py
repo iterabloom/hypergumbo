@@ -7,20 +7,18 @@ Tests verify that the analyzer correctly extracts:
 - Function calls
 """
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common.glsl import (
     PASS_ID,
     PASS_VERSION,
-    GLSLAnalysisResult,
     analyze_glsl_files,
     find_glsl_files,
 )
-
 
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "glsl-v1"
     assert PASS_VERSION == "hypergumbo-0.1.0"
-
 
 def test_analyze_function(tmp_path):
     """Test detection of shader functions."""
@@ -39,7 +37,6 @@ void main() {
     assert len(functions) >= 1
     assert functions[0].name == "main"
     assert functions[0].language == "glsl"
-
 
 def test_analyze_struct(tmp_path):
     """Test detection of struct definitions."""
@@ -62,7 +59,6 @@ void main() {
     assert len(structs) >= 1
     assert structs[0].name == "Material"
 
-
 def test_analyze_uniform(tmp_path):
     """Test detection of uniform declarations."""
     glsl_file = tmp_path / "shader.vert"
@@ -83,7 +79,6 @@ void main() {
     names = [u.name for u in uniforms]
     assert "u_projection" in names
     assert "u_lightPos" in names
-
 
 def test_analyze_in_out(tmp_path):
     """Test detection of in/out variable declarations."""
@@ -107,7 +102,6 @@ void main() {
     assert len(inputs) >= 2
     assert len(outputs) >= 1
 
-
 def test_analyze_function_calls(tmp_path):
     """Test detection of function calls."""
     glsl_file = tmp_path / "shader.frag"
@@ -128,7 +122,6 @@ void main() {
     calls = [e for e in result.edges if e.edge_type == "calls"]
     assert len(calls) >= 1
 
-
 def test_find_glsl_files(tmp_path):
     """Test that GLSL files are discovered correctly."""
     (tmp_path / "shader.vert").write_text("void main() {}")
@@ -142,7 +135,6 @@ def test_find_glsl_files(tmp_path):
     # Should find .vert, .frag, .glsl files
     assert len(files) >= 4
 
-
 def test_analyze_empty_directory(tmp_path):
     """Test analysis of directory with no GLSL files."""
     result = analyze_glsl_files(tmp_path)
@@ -150,7 +142,6 @@ def test_analyze_empty_directory(tmp_path):
     assert not result.skipped
     assert len(result.symbols) == 0
     assert len(result.edges) == 0
-
 
 def test_analysis_run_metadata(tmp_path):
     """Test that AnalysisRun metadata is correctly set."""
@@ -165,7 +156,6 @@ def test_analysis_run_metadata(tmp_path):
     assert result.run.files_analyzed >= 1
     assert result.run.duration_ms >= 0
 
-
 def test_syntax_error_handling(tmp_path):
     """Test that syntax errors don't crash the analyzer."""
     glsl_file = tmp_path / "broken.vert"
@@ -175,8 +165,7 @@ def test_syntax_error_handling(tmp_path):
     result = analyze_glsl_files(tmp_path)
 
     # Result should still be valid
-    assert isinstance(result, GLSLAnalysisResult)
-
+    assert isinstance(result, AnalysisResult)
 
 def test_span_information(tmp_path):
     """Test that span information is correct."""
@@ -194,7 +183,6 @@ def test_span_information(tmp_path):
     assert functions[0].span.start_line >= 1
     assert functions[0].span.end_line >= functions[0].span.start_line
 
-
 def test_tree_sitter_not_available():
     """Test graceful degradation when tree-sitter is not available."""
     from hypergumbo_lang_common.glsl import is_glsl_tree_sitter_available
@@ -202,7 +190,6 @@ def test_tree_sitter_not_available():
     # The function should return a boolean
     result = is_glsl_tree_sitter_available()
     assert isinstance(result, bool)
-
 
 def test_multiple_glsl_files(tmp_path):
     """Test analysis across multiple GLSL files."""
@@ -226,7 +213,6 @@ void main() {
 
     functions = [s for s in result.symbols if s.kind == "function"]
     assert len(functions) >= 2
-
 
 def test_complete_shader(tmp_path):
     """Test a complete shader structure."""
@@ -271,7 +257,6 @@ void main() {
     assert "output" in kinds
     assert "function" in kinds
 
-
 def test_custom_functions(tmp_path):
     """Test detection of custom shader functions."""
     glsl_file = tmp_path / "shader.frag"
@@ -300,7 +285,6 @@ void main() {
     assert "calculateAttenuation" in names
     assert "calculateLighting" in names
     assert "main" in names
-
 
 class TestGLSLSignatureExtraction:
     """Tests for GLSL function signature extraction."""

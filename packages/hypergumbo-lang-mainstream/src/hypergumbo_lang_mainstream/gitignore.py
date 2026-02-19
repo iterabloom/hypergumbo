@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -43,24 +44,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "gitignore.tree_sitter"
 PASS_VERSION = "0.1.0"
-
-
-class GitignoreAnalysisResult:
-    """Result of gitignore analysis."""
-
-    def __init__(
-        self,
-        symbols: list[Symbol],
-        edges: list[Edge],
-        run: AnalysisRun | None = None,
-        skipped: bool = False,
-        skip_reason: str = "",
-    ) -> None:
-        self.symbols = symbols
-        self.edges = edges
-        self.run = run
-        self.skipped = skipped
-        self.skip_reason = skip_reason
 
 
 def is_gitignore_tree_sitter_available() -> bool:
@@ -163,13 +146,13 @@ class GitignoreAnalyzer:
         self._execution_id = f"uuid:{uuid.uuid4()}"
         self._files_analyzed = 0
 
-    def analyze(self) -> GitignoreAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Run the gitignore analysis."""
         start_time = time.time()
 
         files = find_gitignore_files(self.repo_root)
         if not files:
-            return GitignoreAnalysisResult(
+            return AnalysisResult(
                 symbols=[],
                 edges=[],
                 run=None,
@@ -199,7 +182,7 @@ class GitignoreAnalyzer:
             files_analyzed=self._files_analyzed,
         )
 
-        return GitignoreAnalysisResult(
+        return AnalysisResult(
             symbols=self._symbols,
             edges=self._edges,
             run=run,
@@ -264,14 +247,14 @@ class GitignoreAnalyzer:
 
 
 @register_analyzer("gitignore")
-def analyze_gitignore(repo_root: Path) -> GitignoreAnalysisResult:
+def analyze_gitignore(repo_root: Path) -> AnalysisResult:
     """Analyze gitignore files in a repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        GitignoreAnalysisResult containing extracted symbols and edges
+        AnalysisResult containing extracted symbols and edges
     """
     if not is_gitignore_tree_sitter_available():
         warnings.warn(
@@ -279,7 +262,7 @@ def analyze_gitignore(repo_root: Path) -> GitignoreAnalysisResult:
             UserWarning,
             stacklevel=2,
         )
-        return GitignoreAnalysisResult(
+        return AnalysisResult(
             symbols=[],
             edges=[],
             run=AnalysisRun(

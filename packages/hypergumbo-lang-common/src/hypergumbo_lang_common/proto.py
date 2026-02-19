@@ -39,11 +39,10 @@ import importlib.util
 import time
 import uuid
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -74,43 +73,9 @@ def is_proto_tree_sitter_available() -> bool:
         return False
 
 
-@dataclass
-class ProtoAnalysisResult:
-    """Result of analyzing Proto files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"proto:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a Proto file node (used as import edge source)."""
-    return f"proto:{path}:1-1:file:file"
-
-
 def _make_edge_id() -> str:
     """Generate a unique edge ID."""
     return f"edge:proto:{uuid.uuid4().hex[:12]}"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None  # pragma: no cover - defensive
 
 
 def _extract_rpc_signature(rpc_node: "tree_sitter.Node", source: bytes) -> str:
@@ -147,7 +112,7 @@ def _extract_rpc_signature(rpc_node: "tree_sitter.Node", source: bytes) -> str:
             elif in_response or (request_type is not None and response_type is None):
                 response_stream = True
         elif child.type == "message_or_enum_type":
-            type_text = _node_text(child, source).strip()
+            type_text = node_text(child, source).strip()
             if in_request:
                 request_type = type_text
             elif in_response or (request_type is not None and response_type is None):
@@ -164,9 +129,9 @@ def _extract_package_name(root: "tree_sitter.Node", source: bytes) -> Optional[s
     """Extract package name from the proto file."""
     for child in root.children:
         if child.type == "package":
-            full_ident = _find_child_by_type(child, "full_ident")
+            full_ident = find_child_by_type(child, "full_ident")
             if full_ident:
-                return _node_text(full_ident, source).strip()
+                return node_text(full_ident, source).strip()
     return None
 
 
@@ -202,7 +167,7 @@ def _make_proto_symbol(
         start_col=start_col,
         end_col=end_col,
     )
-    sym_id = _make_symbol_id(file_path, start_line, end_line, name, kind)
+    sym_id = make_symbol_id("proto", file_path, start_line, end_line, name, kind)
     return Symbol(
         id=sym_id,
         name=name,
@@ -225,9 +190,9 @@ def _get_parent_message_name(node: "tree_sitter.Node", source: bytes) -> Optiona
             # The message_body's parent should be the message
             msg = current.parent
             if msg and msg.type == "message":
-                name_node = _find_child_by_type(msg, "message_name")
+                name_node = find_child_by_type(msg, "message_name")
                 if name_node:
-                    return _node_text(name_node, source).strip()
+                    return node_text(name_node, source).strip()
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -251,9 +216,9 @@ def _extract_symbols_and_edges(
     for node in iter_tree(root):
         if node.type == "service":
             # Extract service name
-            service_name_node = _find_child_by_type(node, "service_name")
+            service_name_node = find_child_by_type(node, "service_name")
             if service_name_node:
-                service_name = _node_text(service_name_node, source).strip()
+                service_name = node_text(service_name_node, source).strip()
                 service_sym = _make_proto_symbol(
                     file_path, run_id, package_name, node, source,
                     service_name, "service"
@@ -263,9 +228,9 @@ def _extract_symbols_and_edges(
 
         elif node.type == "rpc":
             # Extract RPC - need to find parent service
-            rpc_name_node = _find_child_by_type(node, "rpc_name")
+            rpc_name_node = find_child_by_type(node, "rpc_name")
             if rpc_name_node:
-                rpc_name = _node_text(rpc_name_node, source).strip()
+                rpc_name = node_text(rpc_name_node, source).strip()
                 rpc_sig = _extract_rpc_signature(node, source)
 
                 # Find parent service name
@@ -273,9 +238,9 @@ def _extract_symbols_and_edges(
                 current = node.parent
                 while current:
                     if current.type == "service":
-                        svc_name_node = _find_child_by_type(current, "service_name")
+                        svc_name_node = find_child_by_type(current, "service_name")
                         if svc_name_node:
-                            service_name = _node_text(svc_name_node, source).strip()
+                            service_name = node_text(svc_name_node, source).strip()
                         break
                     current = current.parent  # pragma: no cover - defensive
 
@@ -299,9 +264,9 @@ def _extract_symbols_and_edges(
 
         elif node.type == "message":
             # Extract message name
-            message_name_node = _find_child_by_type(node, "message_name")
+            message_name_node = find_child_by_type(node, "message_name")
             if message_name_node:
-                message_name = _node_text(message_name_node, source).strip()
+                message_name = node_text(message_name_node, source).strip()
                 parent_name = _get_parent_message_name(node, source)
                 message_sym = _make_proto_symbol(
                     file_path, run_id, package_name, node, source,
@@ -311,9 +276,9 @@ def _extract_symbols_and_edges(
 
         elif node.type == "enum":
             # Extract enum name
-            enum_name_node = _find_child_by_type(node, "enum_name")
+            enum_name_node = find_child_by_type(node, "enum_name")
             if enum_name_node:
-                enum_name = _node_text(enum_name_node, source).strip()
+                enum_name = node_text(enum_name_node, source).strip()
                 parent_name = _get_parent_message_name(node, source)
                 enum_sym = _make_proto_symbol(
                     file_path, run_id, package_name, node, source,
@@ -323,13 +288,13 @@ def _extract_symbols_and_edges(
 
         elif node.type == "import":
             # Extract import path
-            import_string = _find_child_by_type(node, "string")
+            import_string = find_child_by_type(node, "string")
             if import_string:
-                import_path = _node_text(import_string, source).strip().strip('"')
+                import_path = node_text(import_string, source).strip().strip('"')
                 # Create import edge from this file to the imported file
                 edges.append(Edge(
                     id=_make_edge_id(),
-                    src=_make_file_id(file_path),
+                    src=make_file_id("proto", file_path),
                     dst=f"proto:{import_path}:1-1:file:file",
                     edge_type="imports",
                     line=node.start_point[0] + 1,
@@ -339,18 +304,18 @@ def _extract_symbols_and_edges(
 
 
 @register_analyzer("proto")
-def analyze_proto(repo_root: Path) -> ProtoAnalysisResult:
+def analyze_proto(repo_root: Path) -> AnalysisResult:
     """Analyze all Proto files in the repository.
 
     Args:
         repo_root: Path to the repository root.
 
     Returns:
-        ProtoAnalysisResult with symbols and edges found.
+        AnalysisResult with symbols and edges found.
     """
     if not is_proto_tree_sitter_available():
         warnings.warn("Proto analysis skipped: tree-sitter-language-pack not available")
-        return ProtoAnalysisResult(skipped=True, skip_reason="tree-sitter-language-pack not available")
+        return AnalysisResult(skipped=True, skip_reason="tree-sitter-language-pack not available")
 
     from tree_sitter_language_pack import get_parser
 
@@ -387,7 +352,7 @@ def analyze_proto(repo_root: Path) -> ProtoAnalysisResult:
         duration_ms=duration_ms,
     )
 
-    return ProtoAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

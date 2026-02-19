@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -49,24 +50,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "puppet.tree_sitter"
 PASS_VERSION = "0.1.0"
-
-
-class PuppetAnalysisResult:
-    """Result of Puppet manifest analysis."""
-
-    def __init__(
-        self,
-        symbols: list[Symbol],
-        edges: list[Edge],
-        run: AnalysisRun | None = None,
-        skipped: bool = False,
-        skip_reason: str = "",
-    ) -> None:
-        self.symbols = symbols
-        self.edges = edges
-        self.run = run
-        self.skipped = skipped
-        self.skip_reason = skip_reason
 
 
 def is_puppet_tree_sitter_available() -> bool:
@@ -108,13 +91,13 @@ class PuppetAnalyzer:
         self._files_analyzed = 0
         self._class_registry: dict[str, str] = {}  # class name -> symbol id
 
-    def analyze(self) -> PuppetAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Run the Puppet analysis."""
         start_time = time.time()
 
         files = find_puppet_files(self.repo_root)
         if not files:
-            return PuppetAnalysisResult(
+            return AnalysisResult(
                 symbols=[],
                 edges=[],
                 run=None,
@@ -144,7 +127,7 @@ class PuppetAnalyzer:
             files_analyzed=self._files_analyzed,
         )
 
-        return PuppetAnalysisResult(
+        return AnalysisResult(
             symbols=self._symbols,
             edges=self._edges,
             run=run,
@@ -462,14 +445,14 @@ class PuppetAnalyzer:
 
 
 @register_analyzer("puppet")
-def analyze_puppet(repo_root: Path) -> PuppetAnalysisResult:
+def analyze_puppet(repo_root: Path) -> AnalysisResult:
     """Analyze Puppet manifest files in a repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        PuppetAnalysisResult containing extracted symbols and edges
+        AnalysisResult containing extracted symbols and edges
     """
     if not is_puppet_tree_sitter_available():
         warnings.warn(
@@ -477,7 +460,7 @@ def analyze_puppet(repo_root: Path) -> PuppetAnalysisResult:
             UserWarning,
             stacklevel=2,
         )
-        return PuppetAnalysisResult(
+        return AnalysisResult(
             symbols=[],
             edges=[],
             run=AnalysisRun(

@@ -66,6 +66,7 @@ from typing import TYPE_CHECKING, Iterator
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -1020,16 +1021,6 @@ def _compute_lines_of_code(node: ast.AST) -> int:
     start = node.lineno
     end = getattr(node, "end_lineno", node.lineno)
     return end - start + 1
-
-
-@dataclass
-class AnalysisResult:
-    """Result of analyzing Python files."""
-
-    symbols: list[Symbol]
-    edges: list[Edge]
-    usage_contexts: list[UsageContext] = field(default_factory=list)
-    run: AnalysisRun | None = None
 
 
 @dataclass

@@ -12,32 +12,25 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_common.commonlisp import (
-    _make_file_id,
-    _make_symbol_id,
-    analyze_commonlisp,
-    find_commonlisp_files,
-)
-
+from hypergumbo_core.analyze.base import make_file_id, make_symbol_id
+from hypergumbo_lang_common.commonlisp import analyze_commonlisp, find_commonlisp_files
 
 def make_lisp_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a Common Lisp file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestCommonLispHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("src/utils.lisp", 10, 15, "my-func", "function")
+        symbol_id = make_symbol_id("commonlisp", "src/utils.lisp", 10, 15, "my-func", "function")
         assert symbol_id == "commonlisp:src/utils.lisp:10-15:my-func:function"
 
     def test_make_file_id_format(self) -> None:
         """Test file ID format."""
-        file_id = _make_file_id("lib/core.lisp")
+        file_id = make_file_id("commonlisp", "lib/core.lisp")
         assert file_id == "commonlisp:lib/core.lisp:1-1:file:file"
-
 
 class TestDefunExtraction:
     """Branch coverage for defun extraction."""
@@ -69,7 +62,6 @@ class TestDefunExtraction:
         assert "sub" in names
         assert "mul" in names
 
-
 class TestDefmacroExtraction:
     """Branch coverage for defmacro extraction."""
 
@@ -83,7 +75,6 @@ class TestDefmacroExtraction:
         macros = [s for s in result.symbols if s.kind == "macro"]
         assert len(macros) == 1
         assert macros[0].name == "when-positive"
-
 
 class TestDefmethodExtraction:
     """Branch coverage for defmethod extraction."""
@@ -99,7 +90,6 @@ class TestDefmethodExtraction:
         assert len(methods) == 1
         assert methods[0].name == "process"
 
-
 class TestDefgenericExtraction:
     """Branch coverage for defgeneric extraction."""
 
@@ -113,7 +103,6 @@ class TestDefgenericExtraction:
         generics = [s for s in result.symbols if s.kind == "generic"]
         assert len(generics) == 1
         assert generics[0].name == "compute"
-
 
 class TestDefvarExtraction:
     """Branch coverage for defvar/defparameter/defconstant extraction."""
@@ -148,7 +137,6 @@ class TestDefvarExtraction:
         assert len(constants) == 1
         assert constants[0].name == "+pi+"
 
-
 class TestDefclassExtraction:
     """Branch coverage for defclass extraction."""
 
@@ -164,7 +152,6 @@ class TestDefclassExtraction:
         assert len(classes) == 1
         assert classes[0].name == "person"
 
-
 class TestDefpackageExtraction:
     """Branch coverage for defpackage extraction."""
 
@@ -179,7 +166,6 @@ class TestDefpackageExtraction:
         packages = [s for s in result.symbols if s.kind == "package"]
         assert len(packages) == 1
         assert packages[0].name == ":myapp"
-
 
 class TestCallEdges:
     """Branch coverage for call edge extraction."""
@@ -209,7 +195,6 @@ class TestCallEdges:
         step1_calls = [e for e in call_edges if "step1" in e.dst]
         assert len(step1_calls) >= 2
 
-
 class TestUsePackageEdges:
     """Branch coverage for use-package edge extraction."""
 
@@ -221,7 +206,6 @@ class TestUsePackageEdges:
         result = analyze_commonlisp(tmp_path)
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) >= 1
-
 
 class TestFindCommonLispFiles:
     """Branch coverage for file discovery."""
@@ -268,7 +252,6 @@ class TestFindCommonLispFiles:
         assert len(files) == 1
         assert files[0].name == "core.lisp"
 
-
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
 
@@ -296,7 +279,6 @@ class TestEmptyAndMinimalFiles:
         code_symbols = [s for s in result.symbols if s.kind != "file"]
         assert len(code_symbols) == 0
 
-
 class TestCrossFileResolution:
     """Branch coverage for cross-file symbol resolution."""
 
@@ -320,7 +302,6 @@ class TestCrossFileResolution:
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         resolved = [e for e in call_edges if "unresolved" not in e.dst]
         assert len(resolved) >= 1
-
 
 class TestDefstructExtraction:
     """Branch coverage for defstruct extraction."""

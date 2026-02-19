@@ -11,32 +11,25 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_common.erlang import (
-    _make_file_id,
-    _make_symbol_id,
-    analyze_erlang,
-    find_erlang_files,
-)
-
+from hypergumbo_core.analyze.base import make_file_id, make_symbol_id
+from hypergumbo_lang_common.erlang import analyze_erlang, find_erlang_files
 
 def make_erl_file(tmp_path: Path, name: str, content: str) -> None:
     """Create an Erlang file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestErlangHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("src/app.erl", 10, 15, "start/0", "function")
+        symbol_id = make_symbol_id("erlang", "src/app.erl", 10, 15, "start/0", "function")
         assert symbol_id == "erlang:src/app.erl:10-15:start/0:function"
 
     def test_make_file_id_format(self) -> None:
         """Test file ID format."""
-        file_id = _make_file_id("lib/utils.erl")
+        file_id = make_file_id("erlang", "lib/utils.erl")
         assert file_id == "erlang:lib/utils.erl:1-1:file:file"
-
 
 class TestEnclosingFunctionDetection:
     """Branch coverage for _get_enclosing_function_erlang."""
@@ -86,7 +79,6 @@ process(List) ->
         edge_pairs = [(e.src, e.dst) for e in call_edges]
         assert (process_sym.id, transform_sym.id) in edge_pairs
 
-
 class TestRemoteCallResolution:
     """Branch coverage for remote call (module:function) resolution."""
 
@@ -127,7 +119,6 @@ top_fn(X) ->
         base_calls = [e for e in call_edges if "base_fn" in e.dst]
         assert len(base_calls) >= 1
 
-
 class TestSameNamedFunctions:
     """Branch coverage for same-named functions in different modules."""
 
@@ -157,7 +148,6 @@ process(X) ->
         # Check they're in different paths
         paths = [f.path for f in process_funcs]
         assert len(set(paths)) == 2
-
 
 class TestFunctionClausesEdgeCases:
     """Branch coverage for multiple function clause handling."""
@@ -201,7 +191,6 @@ safe_div(A, B) ->
         safe_div = next((s for s in result.symbols if "safe_div" in s.name), None)
         assert safe_div is not None
 
-
 class TestTypeDefinitions:
     """Branch coverage for type definitions."""
 
@@ -223,7 +212,6 @@ class TestTypeDefinitions:
         assert "name" in names
         assert "user" in names
 
-
 class TestMacroDefinitions:
     """Branch coverage for macro extraction."""
 
@@ -242,7 +230,6 @@ class TestMacroDefinitions:
         names = [m.name for m in macros]
         assert "DEBUG" in names
         assert "DOUBLE" in names
-
 
 class TestFindErlangFiles:
     """Branch coverage for file discovery."""
@@ -265,7 +252,6 @@ class TestFindErlangFiles:
         files = list(find_erlang_files(tmp_path))
         assert len(files) == 1
         assert files[0].name == "main.erl"
-
 
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
@@ -293,7 +279,6 @@ class TestEmptyAndMinimalFiles:
         names = [m.name for m in macros]
         assert "MAX" in names
         assert "MIN" in names
-
 
 class TestSignatureEdgeCases:
     """Branch coverage for signature extraction."""
@@ -327,7 +312,6 @@ get_name(#user{name = Name}) ->
         funcs = [s for s in result.symbols if "get_name" in s.name]
         assert len(funcs) == 1
         assert funcs[0].signature is not None
-
 
 class TestBehaviourEdgeCases:
     """Branch coverage for behaviour handling."""

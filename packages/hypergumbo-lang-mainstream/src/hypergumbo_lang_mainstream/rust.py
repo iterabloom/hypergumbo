@@ -46,7 +46,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -72,41 +72,6 @@ def is_rust_tree_sitter_available() -> bool:
     if importlib.util.find_spec("tree_sitter_rust") is None:
         return False
     return True
-
-
-@dataclass
-class RustAnalysisResult:
-    """Result of analyzing Rust files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    usage_contexts: list[UsageContext] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"rust:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a Rust file node (used as import edge source)."""
-    return f"rust:{path}:1-1:file:file"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None
 
 
 def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:
@@ -151,15 +116,15 @@ def _extract_rust_signature(
             type_node = _find_child_by_field(child, "type")
 
             if pattern_node and type_node:
-                param_name = _node_text(pattern_node, source)
-                param_type = _node_text(type_node, source)
+                param_name = node_text(pattern_node, source)
+                param_type = node_text(type_node, source)
                 param_strs.append(f"{param_name}: {param_type}")
             elif pattern_node:  # pragma: no cover
                 # No type annotation (rare in Rust)
-                param_strs.append(_node_text(pattern_node, source))
+                param_strs.append(node_text(pattern_node, source))
         elif child.type == "self_parameter":
             # Handle &self, &mut self, self, etc.
-            self_text = _node_text(child, source)
+            self_text = node_text(child, source)
             param_strs.append(self_text)
 
     sig = "(" + ", ".join(param_strs) + ")"
@@ -167,7 +132,7 @@ def _extract_rust_signature(
     # Extract return type if present
     return_type_node = _find_child_by_field(node, "return_type")
     if return_type_node:
-        ret_type = _node_text(return_type_node, source)
+        ret_type = node_text(return_type_node, source)
         # Remove the leading "-> " if tree-sitter includes it
         if ret_type.startswith("-> "):  # pragma: no cover
             ret_type = ret_type[3:]
@@ -194,7 +159,7 @@ def _extract_base_type_name(type_node: "tree_sitter.Node", source: bytes) -> str
     """
     if type_node.type == "type_identifier":
         # Simple type like User
-        return _node_text(type_node, source)
+        return node_text(type_node, source)
 
     if type_node.type == "generic_type":
         # Generic type like Writer<'a, M, W>
@@ -203,7 +168,7 @@ def _extract_base_type_name(type_node: "tree_sitter.Node", source: bytes) -> str
         if base_type:
             return _extract_base_type_name(base_type, source)
         # Fallback: return full text
-        return _node_text(type_node, source)  # pragma: no cover
+        return node_text(type_node, source)  # pragma: no cover
 
     if type_node.type == "reference_type":
         # Reference type like &'a M
@@ -212,14 +177,14 @@ def _extract_base_type_name(type_node: "tree_sitter.Node", source: bytes) -> str
         if inner_type:
             return _extract_base_type_name(inner_type, source)
         # Fallback: return full text
-        return _node_text(type_node, source)  # pragma: no cover
+        return node_text(type_node, source)  # pragma: no cover
 
     if type_node.type == "scoped_type_identifier":
         # Qualified type like std::vec::Vec - keep full path
-        return _node_text(type_node, source)
+        return node_text(type_node, source)
 
     # Other type nodes - return as-is
-    return _node_text(type_node, source)
+    return node_text(type_node, source)
 
 
 def _get_impl_target(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -279,7 +244,7 @@ def _extract_rust_annotations(
         sibling = parent.children[i]
         if sibling.type == "attribute_item":
             # Parse the attribute: #[name(args)] or #[path::to::name(args)]
-            attr_text = _node_text(sibling, source)
+            attr_text = node_text(sibling, source)
             ann = _parse_rust_attribute(attr_text)
             if ann:
                 annotations.append(ann)
@@ -421,7 +386,7 @@ def _extract_symbols_from_file(
         if node.type == "function_item":
             name_node = _find_child_by_field(node, "name")
             if name_node:
-                func_name = _node_text(name_node, source)
+                func_name = node_text(name_node, source)
                 impl_target = _get_impl_target(node, source)
                 if impl_target:
                     full_name = f"{impl_target}::{func_name}"
@@ -443,7 +408,7 @@ def _extract_symbols_from_file(
                     meta = {"annotations": annotations}
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, full_name, kind),
+                    id=make_symbol_id("rust", str(file_path), start_line, end_line, full_name, kind),
                     name=full_name,
                     kind=kind,
                     language="rust",
@@ -467,7 +432,7 @@ def _extract_symbols_from_file(
         elif node.type == "struct_item":
             name_node = _find_child_by_field(node, "name")
             if name_node:
-                struct_name = _node_text(name_node, source)
+                struct_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
@@ -476,7 +441,7 @@ def _extract_symbols_from_file(
                 meta = {"annotations": annotations} if annotations else None
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, struct_name, "struct"),
+                    id=make_symbol_id("rust", str(file_path), start_line, end_line, struct_name, "struct"),
                     name=struct_name,
                     kind="struct",
                     language="rust",
@@ -498,7 +463,7 @@ def _extract_symbols_from_file(
         elif node.type == "enum_item":
             name_node = _find_child_by_field(node, "name")
             if name_node:
-                enum_name = _node_text(name_node, source)
+                enum_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
@@ -507,7 +472,7 @@ def _extract_symbols_from_file(
                 meta = {"annotations": annotations} if annotations else None
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, enum_name, "enum"),
+                    id=make_symbol_id("rust", str(file_path), start_line, end_line, enum_name, "enum"),
                     name=enum_name,
                     kind="enum",
                     language="rust",
@@ -529,7 +494,7 @@ def _extract_symbols_from_file(
         elif node.type == "trait_item":
             name_node = _find_child_by_field(node, "name")
             if name_node:
-                trait_name = _node_text(name_node, source)
+                trait_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
@@ -538,7 +503,7 @@ def _extract_symbols_from_file(
                 meta = {"annotations": annotations} if annotations else None
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, trait_name, "trait"),
+                    id=make_symbol_id("rust", str(file_path), start_line, end_line, trait_name, "trait"),
                     name=trait_name,
                     kind="trait",
                     language="rust",
@@ -590,16 +555,16 @@ def _extract_axum_usage_contexts(
                 if func_node and func_node.type == "field_expression":
                     field_node = _find_child_by_field(func_node, "field")
 
-                    if field_node and _node_text(field_node, source) == "route":
+                    if field_node and node_text(field_node, source) == "route":
                         # Found .route() call - extract arguments
-                        args_node = _find_child_by_type(child, "arguments")
+                        args_node = find_child_by_type(child, "arguments")
                         if not args_node:  # pragma: no cover
                             continue
 
                         route_path = None
                         for arg in args_node.children:
                             if arg.type == "string_literal" and route_path is None:
-                                route_path = _node_text(arg, source).strip('"')
+                                route_path = node_text(arg, source).strip('"')
                                 break
 
                         if not route_path:  # pragma: no cover
@@ -640,13 +605,13 @@ def _extract_handler_usage_contexts(
 
         # Check if this is an HTTP method call like get(handler)
         if func_node.type == "identifier":
-            method_name = _node_text(func_node, source)
+            method_name = node_text(func_node, source)
             if method_name in AXUM_HTTP_METHODS:
-                args_node = _find_child_by_type(current_call, "arguments")
+                args_node = find_child_by_type(current_call, "arguments")
                 if args_node:
                     for arg in args_node.children:
                         if arg.type == "identifier":
-                            handler_name = _node_text(arg, source)
+                            handler_name = node_text(arg, source)
                             break
 
         # Check for chained methods like get(h1).post(h2)
@@ -655,13 +620,13 @@ def _extract_handler_usage_contexts(
             value_node = _find_child_by_field(func_node, "value")
 
             if field_node:
-                method_name = _node_text(field_node, source)
+                method_name = node_text(field_node, source)
                 if method_name in AXUM_HTTP_METHODS:
-                    args_node = _find_child_by_type(current_call, "arguments")
+                    args_node = find_child_by_type(current_call, "arguments")
                     if args_node:
                         for arg in args_node.children:
                             if arg.type == "identifier":
-                                handler_name = _node_text(arg, source)
+                                handler_name = node_text(arg, source)
                                 break
 
             # Continue traversing the chain
@@ -720,7 +685,7 @@ def _get_enclosing_function(
         if current.type == "function_item":
             name_node = _find_child_by_field(current, "name")
             if name_node:
-                func_name = _node_text(name_node, source)
+                func_name = node_text(name_node, source)
                 if func_name in local_symbols:
                     return local_symbols[func_name]
         current = current.parent
@@ -747,28 +712,28 @@ def _extract_use_aliases(
             continue
 
         # Handle 'use foo::bar as baz;' - use_as_clause
-        as_clause = _find_child_by_type(node, "use_as_clause")
+        as_clause = find_child_by_type(node, "use_as_clause")
         if as_clause:
             # Find the scoped_identifier (foo::bar) and alias (baz)
-            path_node = _find_child_by_type(as_clause, "scoped_identifier")
+            path_node = find_child_by_type(as_clause, "scoped_identifier")
             if not path_node:
-                path_node = _find_child_by_type(as_clause, "identifier")
-            alias_node = _find_child_by_type(as_clause, "identifier")
+                path_node = find_child_by_type(as_clause, "identifier")
+            alias_node = find_child_by_type(as_clause, "identifier")
             # The alias is typically the last identifier child
             for child in as_clause.children:
                 if child.type == "identifier":
                     alias_node = child
             if path_node and alias_node:
-                full_path = _node_text(path_node, source)
-                alias = _node_text(alias_node, source)
+                full_path = node_text(path_node, source)
+                alias = node_text(alias_node, source)
                 if alias and full_path:
                     aliases[alias] = full_path
             continue
 
         # Handle regular 'use foo::bar;' - scoped_identifier
-        path_node = _find_child_by_type(node, "scoped_identifier")
+        path_node = find_child_by_type(node, "scoped_identifier")
         if path_node:
-            full_path = _node_text(path_node, source)
+            full_path = node_text(path_node, source)
             if full_path and "::" in full_path:
                 # Last segment is the imported name
                 name = full_path.rsplit("::", 1)[-1]
@@ -777,9 +742,9 @@ def _extract_use_aliases(
             continue
 
         # Handle simple 'use foo;'
-        id_node = _find_child_by_type(node, "identifier")
+        id_node = find_child_by_type(node, "identifier")
         if id_node:
-            name = _node_text(id_node, source)
+            name = node_text(id_node, source)
             if name:
                 aliases[name] = name
 
@@ -813,22 +778,22 @@ def _extract_edges_from_file(
         return []
 
     edges: list[Edge] = []
-    file_id = _make_file_id(str(file_path))
+    file_id = make_file_id("rust", str(file_path))
 
     for node in iter_tree(tree.root_node):
         # Detect use statements
         if node.type == "use_declaration":
             # Extract the path being imported
-            path_node = _find_child_by_type(node, "scoped_identifier")
+            path_node = find_child_by_type(node, "scoped_identifier")
             if not path_node:
-                path_node = _find_child_by_type(node, "identifier")
+                path_node = find_child_by_type(node, "identifier")
             if not path_node:
-                path_node = _find_child_by_type(node, "use_wildcard")
+                path_node = find_child_by_type(node, "use_wildcard")
             if not path_node:
-                path_node = _find_child_by_type(node, "use_list")
+                path_node = find_child_by_type(node, "use_list")
 
             if path_node:
-                import_path = _node_text(path_node, source)
+                import_path = node_text(path_node, source)
                 edges.append(Edge.create(
                     src=file_id,
                     dst=f"rust:{import_path}:0-0:module:module",
@@ -848,21 +813,21 @@ def _extract_edges_from_file(
                 if func_node:
                     # Get the function name being called
                     if func_node.type == "identifier":
-                        callee_name = _node_text(func_node, source)
+                        callee_name = node_text(func_node, source)
                     elif func_node.type == "field_expression":
                         # method call like foo.bar()
                         field_node = _find_child_by_field(func_node, "field")
                         if field_node:
-                            callee_name = _node_text(field_node, source)
+                            callee_name = node_text(field_node, source)
                         else:
                             callee_name = None
                     elif func_node.type == "scoped_identifier":
                         # qualified call like Foo::bar()
                         name_node = _find_child_by_field(func_node, "name")
                         if name_node:
-                            callee_name = _node_text(name_node, source)
+                            callee_name = node_text(name_node, source)
                         else:
-                            callee_name = _node_text(func_node, source)
+                            callee_name = node_text(func_node, source)
                     else:
                         callee_name = None
 
@@ -978,10 +943,10 @@ def _extract_attribute_edges(
 
 
 @register_analyzer("rust")
-def analyze_rust(repo_root: Path) -> RustAnalysisResult:
+def analyze_rust(repo_root: Path) -> AnalysisResult:
     """Analyze all Rust files in a repository.
 
-    Returns a RustAnalysisResult with symbols, edges, and provenance.
+    Returns a AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-rust is not available, returns a skipped result.
     """
     if not is_rust_tree_sitter_available():
@@ -989,7 +954,7 @@ def analyze_rust(repo_root: Path) -> RustAnalysisResult:
             "tree-sitter-rust not available. Install with: pip install hypergumbo[rust]",
             stacklevel=2,
         )
-        return RustAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-rust not available",
         )
@@ -1006,7 +971,7 @@ def analyze_rust(repo_root: Path) -> RustAnalysisResult:
         parser = tree_sitter.Parser(lang)
     except Exception as e:
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return RustAnalysisResult(
+        return AnalysisResult(
             run=run,
             skipped=True,
             skip_reason=f"Failed to load Rust parser: {e}",
@@ -1066,7 +1031,7 @@ def analyze_rust(repo_root: Path) -> RustAnalysisResult:
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return RustAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         usage_contexts=all_usage_contexts,

@@ -5,14 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import meson as meson_module
-from hypergumbo_lang_common.meson import (
-    MesonAnalysisResult,
-    analyze_meson,
-    find_meson_files,
-    is_meson_tree_sitter_available,
-)
-
+from hypergumbo_lang_common.meson import analyze_meson, find_meson_files, is_meson_tree_sitter_available
 
 def make_meson_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a Meson file in the temp directory."""
@@ -20,7 +15,6 @@ def make_meson_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindMesonFiles:
     """Tests for find_meson_files function."""
@@ -47,7 +41,6 @@ class TestFindMesonFiles:
         files = list(find_meson_files(tmp_path))
         assert files == []
 
-
 class TestIsMesonTreeSitterAvailable:
     """Tests for is_meson_tree_sitter_available function."""
 
@@ -58,7 +51,6 @@ class TestIsMesonTreeSitterAvailable:
     def test_returns_false_when_unavailable(self) -> None:
         with patch.object(meson_module, "is_meson_tree_sitter_available", return_value=False):
             assert meson_module.is_meson_tree_sitter_available() is False
-
 
 class TestAnalyzeMeson:
     """Tests for analyze_meson function."""

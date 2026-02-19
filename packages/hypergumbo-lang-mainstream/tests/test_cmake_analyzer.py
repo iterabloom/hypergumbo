@@ -10,20 +10,18 @@ Tests verify that the analyzer correctly extracts:
 - Subdirectory includes
 """
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_mainstream.cmake import (
     PASS_ID,
     PASS_VERSION,
-    CMakeAnalysisResult,
     analyze_cmake_files,
     find_cmake_files,
 )
-
 
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "cmake-v1"
     assert PASS_VERSION == "hypergumbo-0.1.0"
-
 
 def test_analyze_project(tmp_path):
     """Test detection of project definition."""
@@ -40,7 +38,6 @@ project(MyProject VERSION 1.0)
     assert projects[0].name == "MyProject"
     assert projects[0].language == "cmake"
 
-
 def test_analyze_library(tmp_path):
     """Test detection of library target."""
     cmake_file = tmp_path / "CMakeLists.txt"
@@ -55,7 +52,6 @@ add_library(myshared SHARED shared.cpp)
     names = [l.name for l in libraries]
     assert "mylib" in names
     assert "myshared" in names
-
 
 def test_analyze_executable(tmp_path):
     """Test detection of executable target."""
@@ -72,7 +68,6 @@ add_executable(mytool tool.cpp)
     assert "myapp" in names
     assert "mytool" in names
 
-
 def test_analyze_function(tmp_path):
     """Test detection of CMake function definition."""
     cmake_file = tmp_path / "CMakeLists.txt"
@@ -87,7 +82,6 @@ endfunction()
     assert len(functions) >= 1
     assert functions[0].name == "my_helper"
 
-
 def test_analyze_macro(tmp_path):
     """Test detection of CMake macro definition."""
     cmake_file = tmp_path / "CMakeLists.txt"
@@ -101,7 +95,6 @@ endmacro()
     macros = [s for s in result.symbols if s.kind == "macro"]
     assert len(macros) >= 1
     assert macros[0].name == "my_macro"
-
 
 def test_analyze_target_link_libraries(tmp_path):
     """Test detection of target_link_libraries edges."""
@@ -125,7 +118,6 @@ target_link_libraries(myapp PRIVATE mylib)
     # Edge should connect myapp to mylib
     assert link_edges[0].confidence == 0.90
 
-
 def test_analyze_external_library_link(tmp_path):
     """Test detection of links to external libraries."""
     cmake_file = tmp_path / "CMakeLists.txt"
@@ -143,7 +135,6 @@ target_link_libraries(myapp PRIVATE OpenSSL::SSL pthread)
         assert edge.confidence == 0.70
         assert "external" in edge.dst
 
-
 def test_analyze_find_package(tmp_path):
     """Test detection of find_package."""
     cmake_file = tmp_path / "CMakeLists.txt"
@@ -158,7 +149,6 @@ find_package(Boost COMPONENTS system)
     names = [p.name for p in packages]
     assert "OpenSSL" in names
     assert "Boost" in names
-
 
 def test_analyze_add_subdirectory(tmp_path):
     """Test detection of add_subdirectory."""
@@ -175,7 +165,6 @@ add_subdirectory(tests)
     assert "src" in names
     assert "tests" in names
 
-
 def test_find_cmake_files(tmp_path):
     """Test that CMake files are discovered correctly."""
     (tmp_path / "CMakeLists.txt").write_text("project(Test)")
@@ -188,7 +177,6 @@ def test_find_cmake_files(tmp_path):
     # Should find CMakeLists.txt and .cmake files
     assert len(files) >= 3
 
-
 def test_analyze_empty_directory(tmp_path):
     """Test analysis of directory with no CMake files."""
     result = analyze_cmake_files(tmp_path)
@@ -196,7 +184,6 @@ def test_analyze_empty_directory(tmp_path):
     assert not result.skipped
     assert len(result.symbols) == 0
     assert len(result.edges) == 0
-
 
 def test_analysis_run_metadata(tmp_path):
     """Test that AnalysisRun metadata is correctly set."""
@@ -211,7 +198,6 @@ def test_analysis_run_metadata(tmp_path):
     assert result.run.files_analyzed >= 1
     assert result.run.duration_ms >= 0
 
-
 def test_syntax_error_handling(tmp_path):
     """Test that syntax errors don't crash the analyzer."""
     cmake_file = tmp_path / "CMakeLists.txt"
@@ -221,8 +207,7 @@ def test_syntax_error_handling(tmp_path):
     result = analyze_cmake_files(tmp_path)
 
     # Result should still be valid
-    assert isinstance(result, CMakeAnalysisResult)
-
+    assert isinstance(result, AnalysisResult)
 
 def test_span_information(tmp_path):
     """Test that span information is correct."""
@@ -239,7 +224,6 @@ add_library(mylib lib.cpp)
     assert projects[0].span.start_line >= 1
     assert projects[0].span.end_line >= projects[0].span.start_line
 
-
 def test_tree_sitter_not_available():
     """Test graceful degradation when tree-sitter is not available."""
     from hypergumbo_lang_mainstream.cmake import is_cmake_tree_sitter_available
@@ -247,7 +231,6 @@ def test_tree_sitter_not_available():
     # The function should return a boolean
     result = is_cmake_tree_sitter_available()
     assert isinstance(result, bool)
-
 
 def test_multiple_cmake_files(tmp_path):
     """Test analysis across multiple CMake files."""
@@ -270,7 +253,6 @@ add_library(mylib lib.cpp)
     assert len(projects) >= 1
     assert len(libraries) >= 1
     assert len(executables) >= 1
-
 
 def test_complete_cmake_example(tmp_path):
     """Test a complete CMake project structure."""
@@ -321,7 +303,6 @@ add_subdirectory(examples)
     # Check for link edges
     link_edges = [e for e in result.edges if e.edge_type == "links"]
     assert len(link_edges) >= 3  # network->core, app->network, app->core, plus external
-
 
 class TestCMakeSignatureExtraction:
     """Tests for CMake function/macro signature extraction."""

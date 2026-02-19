@@ -6,20 +6,18 @@ Tests verify that the analyzer correctly extracts:
 - composer.json: PHP dependencies
 """
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_mainstream.json_config import (
     PASS_ID,
     PASS_VERSION,
-    JSONAnalysisResult,
     analyze_json_files,
     find_json_files,
 )
-
 
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "json-v1"
     assert PASS_VERSION == "hypergumbo-0.1.0"
-
 
 def test_analyze_package_json(tmp_path):
     """Test parsing package.json with dependencies."""
@@ -64,7 +62,6 @@ def test_analyze_package_json(tmp_path):
     jest_dep = next((d for d in dev_deps if d.name == "jest"), None)
     assert jest_dep is not None
 
-
 def test_analyze_package_json_scripts(tmp_path):
     """Test parsing package.json scripts."""
     pkg_file = tmp_path / "package.json"
@@ -86,7 +83,6 @@ def test_analyze_package_json_scripts(tmp_path):
     assert start_script is not None
     assert start_script.meta.get("command") == "node index.js"
     assert start_script.canonical_name == "npm run start"
-
 
 def test_analyze_package_json_bin_entries(tmp_path):
     """Test parsing package.json bin entries (CLI executables).
@@ -117,7 +113,6 @@ def test_analyze_package_json_bin_entries(tmp_path):
     assert my_cli.meta.get("path") == "./bin/cli.js"
     assert my_cli.canonical_name == "my-cli"  # CLI command name
 
-
 def test_analyze_package_json_bin_string_form(tmp_path):
     """Test parsing package.json bin as a string (single binary).
 
@@ -139,7 +134,6 @@ def test_analyze_package_json_bin_string_form(tmp_path):
     assert my_tool.meta is not None
     assert my_tool.meta.get("path") == "./bin/main.js"
 
-
 def test_analyze_package_json_dependency_edges(tmp_path):
     """Test that dependency edges are created."""
     pkg_file = tmp_path / "package.json"
@@ -154,7 +148,6 @@ def test_analyze_package_json_dependency_edges(tmp_path):
 
     edges = [e for e in result.edges if e.edge_type == "depends_on"]
     assert len(edges) >= 1
-
 
 def test_analyze_tsconfig(tmp_path):
     """Test parsing tsconfig.json."""
@@ -183,7 +176,6 @@ def test_analyze_tsconfig(tmp_path):
     core_ref = next((r for r in refs if r.name == "./packages/core"), None)
     assert core_ref is not None
 
-
 def test_analyze_tsconfig_reference_edges(tmp_path):
     """Test that reference edges are created."""
     tsconfig = tmp_path / "tsconfig.json"
@@ -198,7 +190,6 @@ def test_analyze_tsconfig_reference_edges(tmp_path):
     edges = [e for e in result.edges if e.edge_type == "references"]
     assert len(edges) >= 1
 
-
 def test_analyze_tsconfig_variants(tmp_path):
     """Test detection of tsconfig variants."""
     (tmp_path / "tsconfig.base.json").write_text('{"compilerOptions": {}}')
@@ -209,7 +200,6 @@ def test_analyze_tsconfig_variants(tmp_path):
 
     configs = [s for s in result.symbols if s.kind == "tsconfig"]
     assert len(configs) >= 3
-
 
 def test_analyze_composer_json(tmp_path):
     """Test parsing composer.json."""
@@ -243,7 +233,6 @@ def test_analyze_composer_json(tmp_path):
     dev_deps = [s for s in result.symbols if s.kind == "devDependency"]
     assert len(dev_deps) >= 1
 
-
 def test_find_json_files(tmp_path):
     """Test that JSON files are discovered correctly."""
     (tmp_path / "package.json").write_text("{}")
@@ -255,7 +244,6 @@ def test_find_json_files(tmp_path):
     files = list(find_json_files(tmp_path))
     assert len(files) == 3
 
-
 def test_analyze_empty_directory(tmp_path):
     """Test analysis of directory with no JSON files."""
     result = analyze_json_files(tmp_path)
@@ -263,7 +251,6 @@ def test_analyze_empty_directory(tmp_path):
     assert not result.skipped
     assert len(result.symbols) == 0
     assert len(result.edges) == 0
-
 
 def test_analysis_run_metadata(tmp_path):
     """Test that AnalysisRun metadata is correctly set."""
@@ -278,7 +265,6 @@ def test_analysis_run_metadata(tmp_path):
     assert result.run.files_analyzed >= 1
     assert result.run.duration_ms >= 0
 
-
 def test_generic_json_not_extracted(tmp_path):
     """Test that generic JSON files don't produce symbols."""
     json_file = tmp_path / "config.json"
@@ -290,7 +276,6 @@ def test_generic_json_not_extracted(tmp_path):
     assert result.run is not None
     assert result.run.files_analyzed >= 1
     assert len(result.symbols) == 0
-
 
 def test_span_information(tmp_path):
     """Test that span information is correct."""
@@ -304,7 +289,6 @@ def test_span_information(tmp_path):
     assert packages[0].span is not None
     assert packages[0].span.start_line >= 1
 
-
 def test_syntax_error_handling(tmp_path):
     """Test that syntax errors don't crash the analyzer."""
     json_file = tmp_path / "broken.json"
@@ -314,8 +298,7 @@ def test_syntax_error_handling(tmp_path):
     result = analyze_json_files(tmp_path)
 
     # Result should still be valid
-    assert isinstance(result, JSONAnalysisResult)
-
+    assert isinstance(result, AnalysisResult)
 
 def test_package_json_without_name(tmp_path):
     """Test package.json without name field."""
@@ -331,7 +314,6 @@ def test_package_json_without_name(tmp_path):
     # Should still extract dependencies even without package name
     deps = [s for s in result.symbols if s.kind == "dependency"]
     assert len(deps) >= 1
-
 
 def test_package_json_without_version(tmp_path):
     """Test package.json without version field."""

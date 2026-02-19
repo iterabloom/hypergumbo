@@ -1,8 +1,9 @@
 """Tests for Kotlin analyzer."""
 import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
+from hypergumbo_core.analyze.base import find_child_by_type
+from unittest.mock import patch, MagicMock
 
 class TestFindKotlinFiles:
     """Tests for Kotlin file discovery."""
@@ -19,7 +20,6 @@ class TestFindKotlinFiles:
 
         assert len(files) == 2
         assert all(f.suffix == ".kt" for f in files)
-
 
 class TestKotlinTreeSitterAvailability:
     """Tests for tree-sitter-kotlin availability checking."""
@@ -52,7 +52,6 @@ class TestKotlinTreeSitterAvailability:
         with patch("importlib.util.find_spec", side_effect=mock_find_spec):
             assert is_kotlin_tree_sitter_available() is False
 
-
 class TestAnalyzeKotlinFallback:
     """Tests for fallback behavior when tree-sitter-kotlin unavailable."""
 
@@ -67,7 +66,6 @@ class TestAnalyzeKotlinFallback:
 
         assert result.skipped is True
         assert "tree-sitter-kotlin" in result.skip_reason
-
 
 class TestKotlinFunctionExtraction:
     """Tests for extracting Kotlin functions."""
@@ -89,14 +87,12 @@ fun helper(x: Int): Int {
 
         result = analyze_kotlin(tmp_path)
 
-
         assert result.run is not None
         assert result.run.files_analyzed == 1
         funcs = [s for s in result.symbols if s.kind == "function"]
         func_names = [s.name for s in funcs]
         assert "main" in func_names
         assert "helper" in func_names
-
 
 class TestKotlinClassExtraction:
     """Tests for extracting Kotlin classes."""
@@ -118,12 +114,10 @@ data class Point(val x: Int, val y: Int)
 
         result = analyze_kotlin(tmp_path)
 
-
         classes = [s for s in result.symbols if s.kind == "class"]
         class_names = [s.name for s in classes]
         assert "User" in class_names
         assert "Point" in class_names
-
 
 class TestKotlinObjectExtraction:
     """Tests for extracting Kotlin objects."""
@@ -147,12 +141,10 @@ object Config {
 
         result = analyze_kotlin(tmp_path)
 
-
         objects = [s for s in result.symbols if s.kind == "object"]
         object_names = [s.name for s in objects]
         assert "Database" in object_names
         assert "Config" in object_names
-
 
 class TestKotlinInterfaceExtraction:
     """Tests for extracting Kotlin interfaces."""
@@ -174,12 +166,10 @@ interface Clickable {
 
         result = analyze_kotlin(tmp_path)
 
-
         interfaces = [s for s in result.symbols if s.kind == "interface"]
         interface_names = [s.name for s in interfaces]
         assert "Drawable" in interface_names
         assert "Clickable" in interface_names
-
 
 class TestKotlinInheritanceEdges:
     """Tests for extracting Kotlin inheritance edges (META-001)."""
@@ -554,7 +544,6 @@ class UserController : AbstractController() {
             f"but points to: {edge.dst}"
         )
 
-
 class TestKotlinFunctionCalls:
     """Tests for detecting function calls in Kotlin."""
 
@@ -575,10 +564,8 @@ fun helper() {
 
         result = analyze_kotlin(tmp_path)
 
-
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
-
 
 class TestKotlinImports:
     """Tests for detecting Kotlin import statements."""
@@ -599,10 +586,8 @@ fun main() {
 
         result = analyze_kotlin(tmp_path)
 
-
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) >= 1
-
 
 class TestKotlinEdgeCases:
     """Tests for edge cases and error handling."""
@@ -632,7 +617,6 @@ class TestKotlinEdgeCases:
 
         result = analyze_kotlin(tmp_path)
 
-
         assert result.run is not None
 
     def test_cross_file_function_call(self, tmp_path: Path) -> None:
@@ -653,9 +637,7 @@ fun run() {
 
         result = analyze_kotlin(tmp_path)
 
-
         assert result.run.files_analyzed >= 2
-
 
 class TestKotlinMethodExtraction:
     """Tests for extracting methods from classes."""
@@ -679,11 +661,9 @@ class User(val name: String) {
 
         result = analyze_kotlin(tmp_path)
 
-
         methods = [s for s in result.symbols if s.kind == "method"]
         method_names = [s.name for s in methods]
         assert any("getName" in name for name in method_names)
-
 
 class TestKotlinFileReadErrors:
     """Tests for file read error handling."""
@@ -740,7 +720,6 @@ class TestKotlinFileReadErrors:
 
         assert result == []
 
-
 class TestKotlinNavigationCalls:
     """Tests for navigation suffix call patterns."""
 
@@ -763,20 +742,15 @@ fun caller() {
 
         result = analyze_kotlin(tmp_path)
 
-
         # Should detect call, even if it goes through navigation
         assert result.run is not None
-
 
 class TestKotlinHelperFunctions:
     """Tests for helper function edge cases."""
 
     def test_find_child_by_type_returns_none(self, tmp_path: Path) -> None:
         """_find_child_by_type returns None when no matching child."""
-        from hypergumbo_lang_mainstream.kotlin import (
-            _find_child_by_type,
-            is_kotlin_tree_sitter_available,
-        )
+        from hypergumbo_lang_mainstream.kotlin import is_kotlin_tree_sitter_available
 
         if not is_kotlin_tree_sitter_available():
             pytest.skip("tree-sitter-kotlin not available")
@@ -790,9 +764,8 @@ class TestKotlinHelperFunctions:
         source = b"// comment\n"
         tree = parser.parse(source)
 
-        result = _find_child_by_type(tree.root_node, "nonexistent_type")
+        result = find_child_by_type(tree.root_node, "nonexistent_type")
         assert result is None
-
 
 class TestKotlinObjectMethodCalls:
     """Tests for Object.method() call resolution."""
@@ -843,7 +816,6 @@ fun main() {
         assert call_edge is not None
         assert call_edge.evidence_type == "ast_call_static"
         assert call_edge.confidence == 0.95
-
 
 class TestKotlinVariableTypeInference:
     """Tests for type inference from constructor assignments."""
@@ -960,7 +932,6 @@ fun process(db: Database, data: String) {
         assert commit_edge is not None, "Expected call edge for db.commit() via param type inference"
         assert save_edge.evidence_type == "ast_call_type_inferred"
         assert commit_edge.evidence_type == "ast_call_type_inferred"
-
 
 class TestKotlinReturnTypeInference:
     """Tests for return type tracking from function return type annotations."""
@@ -1123,7 +1094,6 @@ fun main() {
         )
         assert call_edge.evidence_type == "ast_call_type_inferred"
 
-
 class TestKotlinReturnTypeExtraction:
     """Unit tests for _extract_kotlin_return_type_name helper."""
 
@@ -1162,7 +1132,6 @@ class TestKotlinReturnTypeExtraction:
         from hypergumbo_lang_mainstream.kotlin import _extract_kotlin_return_type_name
 
         assert _extract_kotlin_return_type_name("(): String?") is None
-
 
 class TestKotlinThisMethodCalls:
     """Tests for this.method() call resolution."""
@@ -1326,7 +1295,6 @@ class Controller(private val repo: Repository<String>) {
         )
         assert call_edge is not None
 
-
 class TestKotlinImportExtraction:
     """Tests for import extraction and tracking."""
 
@@ -1424,7 +1392,6 @@ class Helper {
         # Verify edges were created (imports dict is being passed through)
         call_edges = [e for e in edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1, "Expected at least one call edge to be created"
-
 
 class TestKotlinLambdaCallAttribution:
     """Tests for call edge attribution inside lambda expressions.

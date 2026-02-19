@@ -34,11 +34,10 @@ import hashlib
 import importlib.util
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_symbol_id, node_text
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -65,40 +64,6 @@ def is_sql_tree_sitter_available() -> bool:
     return True
 
 
-@dataclass
-class SQLAnalysisResult:
-    """Result of analyzing SQL files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"sql:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:  # pragma: no cover
-    """Generate ID for a SQL file node (used as edge source)."""
-    return f"sql:{path}:1-1:file:file"  # pragma: no cover
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None  # pragma: no cover
-
-
 def _find_children_by_type(node: "tree_sitter.Node", type_name: str) -> list["tree_sitter.Node"]:  # pragma: no cover
     """Find all children of given type."""
     return [child for child in node.children if child.type == type_name]  # pragma: no cover
@@ -112,29 +77,29 @@ def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
 
 def _extract_table_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract table name from a CREATE TABLE node."""
-    obj_ref = _find_child_by_type(node, "object_reference")
+    obj_ref = find_child_by_type(node, "object_reference")
     if obj_ref:
-        return _node_text(obj_ref, source)
+        return node_text(obj_ref, source)
     # Try identifier as fallback
-    ident = _find_child_by_type(node, "identifier")  # pragma: no cover
+    ident = find_child_by_type(node, "identifier")  # pragma: no cover
     if ident:  # pragma: no cover
-        return _node_text(ident, source)  # pragma: no cover
+        return node_text(ident, source)  # pragma: no cover
     return None  # pragma: no cover
 
 
 def _extract_view_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract view name from a CREATE VIEW node."""
-    obj_ref = _find_child_by_type(node, "object_reference")
+    obj_ref = find_child_by_type(node, "object_reference")
     if obj_ref:
-        return _node_text(obj_ref, source)
+        return node_text(obj_ref, source)
     return None  # pragma: no cover
 
 
 def _extract_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract function name from a CREATE FUNCTION node."""
-    obj_ref = _find_child_by_type(node, "object_reference")
+    obj_ref = find_child_by_type(node, "object_reference")
     if obj_ref:
-        return _node_text(obj_ref, source)
+        return node_text(obj_ref, source)
     return None  # pragma: no cover
 
 
@@ -148,12 +113,12 @@ def _extract_sql_signature(node: "tree_sitter.Node", source: bytes) -> Optional[
     return_type: Optional[str] = None
 
     # Find function_arguments (parameter list)
-    func_args = _find_child_by_type(node, "function_arguments")
+    func_args = find_child_by_type(node, "function_arguments")
     if func_args:
         for child in func_args.children:
             if child.type == "function_argument":
                 # Extract parameter text (name TYPE)
-                param_text = _node_text(child, source).strip()
+                param_text = node_text(child, source).strip()
                 params.append(param_text)
 
     # Find return type (after RETURNS keyword)
@@ -167,11 +132,11 @@ def _extract_sql_signature(node: "tree_sitter.Node", source: bytes) -> Optional[
                               "float", "double", "bigint", "smallint", "real",
                               "numeric", "char", "timestamp", "date", "time",
                               "identifier", "type_identifier"):
-                return_type = _node_text(child, source)
+                return_type = node_text(child, source)
                 break
             # Also check for complex types
             if child.type not in ("function_body", "function_language"):
-                return_type = _node_text(child, source)
+                return_type = node_text(child, source)
                 break
 
     params_str = ", ".join(params) if params else ""
@@ -187,30 +152,30 @@ def _extract_trigger_name(node: "tree_sitter.Node", source: bytes) -> Optional[s
     # First object_reference is typically the trigger name
     for child in node.children:
         if child.type == "object_reference":
-            return _node_text(child, source)
+            return node_text(child, source)
     return None  # pragma: no cover
 
 
 def _extract_index_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract index name from a CREATE INDEX node."""
-    ident = _find_child_by_type(node, "identifier")
+    ident = find_child_by_type(node, "identifier")
     if ident:
-        return _node_text(ident, source)
+        return node_text(ident, source)
     # Try object_reference as fallback
-    obj_ref = _find_child_by_type(node, "object_reference")  # pragma: no cover
+    obj_ref = find_child_by_type(node, "object_reference")  # pragma: no cover
     if obj_ref:  # pragma: no cover
-        return _node_text(obj_ref, source)  # pragma: no cover
+        return node_text(obj_ref, source)  # pragma: no cover
     return None  # pragma: no cover
 
 
 def _extract_procedure_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract procedure name from a CREATE PROCEDURE node (dialect-specific)."""
-    obj_ref = _find_child_by_type(node, "object_reference")  # pragma: no cover
+    obj_ref = find_child_by_type(node, "object_reference")  # pragma: no cover
     if obj_ref:  # pragma: no cover
-        return _node_text(obj_ref, source)  # pragma: no cover
-    ident = _find_child_by_type(node, "identifier")  # pragma: no cover
+        return node_text(obj_ref, source)  # pragma: no cover
+    ident = find_child_by_type(node, "identifier")  # pragma: no cover
     if ident:  # pragma: no cover
-        return _node_text(ident, source)  # pragma: no cover
+        return node_text(ident, source)  # pragma: no cover
     return None  # pragma: no cover
 
 
@@ -227,7 +192,7 @@ def _find_references_in_columns(node: "tree_sitter.Node", source: bytes) -> list
                     has_references = True
                 elif has_references and child.type == "object_reference":
                     # This is the referenced table
-                    ref_text = _node_text(child, source)
+                    ref_text = node_text(child, source)
                     if ref_text and ref_text not in references:
                         references.append(ref_text)
                     has_references = False  # Found our reference
@@ -235,9 +200,9 @@ def _find_references_in_columns(node: "tree_sitter.Node", source: bytes) -> list
         # Also check for foreign_key constraint (alternative syntax)
         if n.type == "object_reference" and n.parent:  # pragma: no cover
             # Check if parent context suggests this is a foreign key reference
-            parent_text = _node_text(n.parent, source).upper()  # pragma: no cover
+            parent_text = node_text(n.parent, source).upper()  # pragma: no cover
             if "REFERENCES" in parent_text:  # pragma: no cover
-                ref_name = _node_text(n, source)  # pragma: no cover
+                ref_name = node_text(n, source)  # pragma: no cover
                 if ref_name and ref_name not in references:  # pragma: no cover
                     references.append(ref_name)  # pragma: no cover
 
@@ -266,7 +231,7 @@ def _extract_sql_symbols(
             if name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "table")
+                symbol_id = make_symbol_id("sql", rel_path, start_line, end_line, name, "table")
                 sym = Symbol(
                     id=symbol_id,
                     stable_id=None,
@@ -293,7 +258,7 @@ def _extract_sql_symbols(
             if name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "view")
+                symbol_id = make_symbol_id("sql", rel_path, start_line, end_line, name, "view")
                 sym = Symbol(
                     id=symbol_id,
                     stable_id=None,
@@ -320,7 +285,7 @@ def _extract_sql_symbols(
             if name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "function")
+                symbol_id = make_symbol_id("sql", rel_path, start_line, end_line, name, "function")
                 sym = Symbol(
                     id=symbol_id,
                     stable_id=None,
@@ -350,7 +315,7 @@ def _extract_sql_symbols(
             if name:  # pragma: no cover
                 start_line = node.start_point[0] + 1  # pragma: no cover
                 end_line = node.end_point[0] + 1  # pragma: no cover
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "procedure")  # pragma: no cover
+                symbol_id = make_symbol_id("sql", rel_path, start_line, end_line, name, "procedure")  # pragma: no cover
                 sym = Symbol(  # pragma: no cover
                     id=symbol_id,  # pragma: no cover
                     stable_id=None,  # pragma: no cover
@@ -377,7 +342,7 @@ def _extract_sql_symbols(
             if name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "trigger")
+                symbol_id = make_symbol_id("sql", rel_path, start_line, end_line, name, "trigger")
                 sym = Symbol(
                     id=symbol_id,
                     stable_id=None,
@@ -404,7 +369,7 @@ def _extract_sql_symbols(
             if name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "index")
+                symbol_id = make_symbol_id("sql", rel_path, start_line, end_line, name, "index")
                 sym = Symbol(
                     id=symbol_id,
                     stable_id=None,
@@ -461,7 +426,7 @@ def _extract_sql_edges(
                 if table_sym:
                     start_line = node.start_point[0] + 1
                     # Look for REFERENCES in column definitions
-                    col_defs = _find_child_by_type(node, "column_definitions")
+                    col_defs = find_child_by_type(node, "column_definitions")
                     if col_defs:
                         refs = _find_references_in_columns(col_defs, source)
                         for ref_table in refs:
@@ -484,7 +449,7 @@ def _extract_sql_edges(
 
 
 @register_analyzer("sql")
-def analyze_sql_files(repo_root: Path) -> SQLAnalysisResult:
+def analyze_sql_files(repo_root: Path) -> AnalysisResult:
     """Analyze SQL files in the repository.
 
     Uses two-pass analysis:
@@ -495,10 +460,10 @@ def analyze_sql_files(repo_root: Path) -> SQLAnalysisResult:
         repo_root: Path to the repository root
 
     Returns:
-        SQLAnalysisResult with symbols and edges
+        AnalysisResult with symbols and edges
     """
     if not is_sql_tree_sitter_available():  # pragma: no cover
-        return SQLAnalysisResult(  # pragma: no cover
+        return AnalysisResult(  # pragma: no cover
             skipped=True,  # pragma: no cover
             skip_reason="tree-sitter-sql not installed (pip install tree-sitter-sql)",  # pragma: no cover
         )  # pragma: no cover
@@ -522,7 +487,7 @@ def analyze_sql_files(repo_root: Path) -> SQLAnalysisResult:
         parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_sql.language()))
     except Exception as e:  # pragma: no cover
         warnings.warn(f"Failed to initialize SQL parser: {e}")
-        return SQLAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason=f"Failed to initialize parser: {e}",
         )
@@ -578,7 +543,7 @@ def analyze_sql_files(repo_root: Path) -> SQLAnalysisResult:
     run.duration_ms = duration_ms
     run.warnings = warnings_list
 
-    return SQLAnalysisResult(
+    return AnalysisResult(
         symbols=symbols,
         edges=edges,
         run=run,

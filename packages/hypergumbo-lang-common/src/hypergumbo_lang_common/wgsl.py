@@ -33,14 +33,13 @@ import hashlib
 import importlib.util
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -76,38 +75,17 @@ def is_wgsl_tree_sitter_available() -> bool:
     return False  # pragma: no cover
 
 
-@dataclass
-class WGSLAnalysisResult:
-    """Result of analyzing WGSL files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"wgsl:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
     """Generate deterministic edge ID."""
     content = f"{edge_type}:{src}:{dst}"
     return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
 
 
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
 def _get_identifier(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract identifier from a node's children."""
     for child in node.children:
         if child.type == "identifier" or child.type == "ident":
-            return _node_text(child, source)
+            return node_text(child, source)
     return None  # pragma: no cover
 
 
@@ -121,7 +99,7 @@ def _detect_entry_point(node: "tree_sitter.Node", source: bytes) -> Optional[str
     # Look for attribute children of the function
     for child in node.children:
         if child.type == "attribute":
-            attr_text = _node_text(child, source).strip()
+            attr_text = node_text(child, source).strip()
             if "@vertex" in attr_text:
                 return "vertex"
             if "@fragment" in attr_text:
@@ -129,14 +107,6 @@ def _detect_entry_point(node: "tree_sitter.Node", source: bytes) -> Optional[str
             if "@compute" in attr_text:
                 return "compute"
     return None
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None  # pragma: no cover - defensive
 
 
 def _extract_wgsl_signature(func_decl: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -147,13 +117,13 @@ def _extract_wgsl_signature(func_decl: "tree_sitter.Node", source: bytes) -> Opt
     """
     # Find parameter list
     params: list[str] = []
-    param_list = _find_child_by_type(func_decl, "parameter_list")
+    param_list = find_child_by_type(func_decl, "parameter_list")
 
     if param_list:
         for child in param_list.children:
             if child.type == "parameter":
                 # Extract param text (name: type)
-                param_text = _node_text(child, source).strip()
+                param_text = node_text(child, source).strip()
                 # Remove attributes like @builtin(vertex_index)
                 if "@" not in param_text:
                     params.append(param_text)
@@ -165,11 +135,11 @@ def _extract_wgsl_signature(func_decl: "tree_sitter.Node", source: bytes) -> Opt
 
     # Find return type from function_return_type_declaration
     return_type: Optional[str] = None
-    return_decl = _find_child_by_type(func_decl, "function_return_type_declaration")
+    return_decl = find_child_by_type(func_decl, "function_return_type_declaration")
     if return_decl:
-        type_decl = _find_child_by_type(return_decl, "type_declaration")
+        type_decl = find_child_by_type(return_decl, "type_declaration")
         if type_decl:
-            return_type = _node_text(type_decl, source)
+            return_type = node_text(type_decl, source)
 
     params_str = ", ".join(params) if params else ""
     signature = f"({params_str})"
@@ -193,7 +163,7 @@ def _detect_binding(node: "tree_sitter.Node", source: bytes) -> Optional[dict]:
     # Check children for @group and @binding attributes
     for child in node.children:
         if child.type == "attribute":
-            attr_text = _node_text(child, source).strip()
+            attr_text = node_text(child, source).strip()
             if "@group" in attr_text:
                 # Extract number from @group(N)
                 match = re.search(r"@group\s*\(\s*(\d+)\s*\)", attr_text)
@@ -245,13 +215,13 @@ def _extract_wgsl_symbols(
             # WGSL function structure: fn identifier ...
             for child in node.children:
                 if child.type in ("identifier", "ident"):
-                    func_name = _node_text(child, source)
+                    func_name = node_text(child, source)
                     break
 
             if func_name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, func_name, "function")
+                symbol_id = make_symbol_id("wgsl", rel_path, start_line, end_line, func_name, "function")
 
                 # Check for entry point attributes
                 entry_type = _detect_entry_point(node, source)
@@ -288,7 +258,7 @@ def _extract_wgsl_symbols(
             if struct_name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, struct_name, "struct")
+                symbol_id = make_symbol_id("wgsl", rel_path, start_line, end_line, struct_name, "struct")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -331,7 +301,7 @@ def _extract_wgsl_symbols(
                 # Determine kind based on variable storage
                 # Note: storage buffers may have access mode like var<storage, read_write>
                 # so we check for patterns without the closing >
-                text = _node_text(node, source).strip()
+                text = node_text(node, source).strip()
                 kind = "variable"
                 if "var<uniform" in text:
                     kind = "uniform"
@@ -344,7 +314,7 @@ def _extract_wgsl_symbols(
 
                 # Only create symbols for shader-specific declarations
                 if kind in ("uniform", "storage") or binding_info:
-                    symbol_id = _make_symbol_id(rel_path, start_line, end_line, var_name, kind)
+                    symbol_id = make_symbol_id("wgsl", rel_path, start_line, end_line, var_name, kind)
 
                     meta_dict: Optional[dict] = None
                     if binding_info:
@@ -425,7 +395,7 @@ def _extract_wgsl_edges(
 
 
 @register_analyzer("wgsl")
-def analyze_wgsl_files(repo_root: Path) -> WGSLAnalysisResult:
+def analyze_wgsl_files(repo_root: Path) -> AnalysisResult:
     """Analyze WGSL files in the repository.
 
     Uses two-pass analysis for cross-file call resolution.
@@ -434,10 +404,10 @@ def analyze_wgsl_files(repo_root: Path) -> WGSLAnalysisResult:
         repo_root: Path to the repository root
 
     Returns:
-        WGSLAnalysisResult with symbols and edges
+        AnalysisResult with symbols and edges
     """
     if not is_wgsl_tree_sitter_available():  # pragma: no cover
-        return WGSLAnalysisResult(  # pragma: no cover
+        return AnalysisResult(  # pragma: no cover
             skipped=True,  # pragma: no cover
             skip_reason="tree-sitter-wgsl not installed (pip install tree-sitter-wgsl or tree-sitter-language-pack)",  # pragma: no cover
         )  # pragma: no cover
@@ -463,7 +433,7 @@ def analyze_wgsl_files(repo_root: Path) -> WGSLAnalysisResult:
             parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_wgsl.language()))  # pragma: no cover
     except Exception as e:  # pragma: no cover
         warnings.warn(f"Failed to initialize WGSL parser: {e}")
-        return WGSLAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason=f"Failed to initialize parser: {e}",
         )
@@ -512,7 +482,7 @@ def analyze_wgsl_files(repo_root: Path) -> WGSLAnalysisResult:
     run.duration_ms = duration_ms
     run.warnings = warnings_list
 
-    return WGSLAnalysisResult(
+    return AnalysisResult(
         symbols=symbols,
         edges=edges,
         run=run,

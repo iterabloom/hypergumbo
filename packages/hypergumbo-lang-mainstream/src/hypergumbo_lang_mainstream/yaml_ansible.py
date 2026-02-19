@@ -22,11 +22,11 @@ import importlib.util
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import is_excluded
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -79,14 +79,6 @@ def find_ansible_files(root: Path) -> list[Path]:
     return ansible_files
 
 
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first direct child with given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None
-
-
 def _find_all_children_by_type(
     node: "tree_sitter.Node", type_name: str
 ) -> list["tree_sitter.Node"]:
@@ -101,45 +93,19 @@ def _find_all_children_by_type(
     return result
 
 
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Get text content of a node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
 def _get_scalar_value(node: "tree_sitter.Node", source: bytes) -> str | None:
     """Extract scalar value from various YAML scalar types."""
     if node.type in ("plain_scalar", "single_quote_scalar", "double_quote_scalar"):
         for child in node.children:
             if child.type in ("string_scalar", "boolean_scalar", "integer_scalar", "float_scalar"):
-                return _node_text(child, source)
-        return _node_text(node, source)  # pragma: no cover - fallback
+                return node_text(child, source)
+        return node_text(node, source)  # pragma: no cover - fallback
     elif node.type == "flow_node":
         for child in node.children:
             val = _get_scalar_value(child, source)
             if val:
                 return val
     return None  # pragma: no cover - defensive fallback
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"ansible:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for an Ansible file node."""
-    return f"ansible:{path}:1-1:file:file"
-
-
-@dataclass
-class AnsibleAnalysisResult:
-    """Result of analyzing Ansible files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
 
 
 @dataclass
@@ -186,14 +152,14 @@ def _extract_vars_from_pair(
     for child in pair_node.children:
         if child.type == "block_node":
             # Look for nested block_mapping
-            nested_mapping = _find_child_by_type(child, "block_mapping")
+            nested_mapping = find_child_by_type(child, "block_mapping")
             if nested_mapping:
                 for nested_pair in nested_mapping.children:
                     if nested_pair.type == "block_mapping_pair":
                         var_key, var_value = _extract_mapping_key_value(nested_pair, source)
                         if var_key:
                             line = nested_pair.start_point[0] + 1
-                            symbol_id = _make_symbol_id(rel_path, line, line, var_key, "variable")
+                            symbol_id = make_symbol_id("ansible", rel_path, line, line, var_key, "variable")
                             symbols.append(Symbol(
                                 id=symbol_id,
                                 name=var_key,
@@ -215,7 +181,7 @@ def _extract_symbols_from_file(
     symbols: list[Symbol] = []
     edges: list[Edge] = []
     rel_path = str(file_path)
-    file_id = _make_file_id(rel_path)
+    file_id = make_file_id("ansible", rel_path)
 
     try:
         source = file_path.read_bytes()
@@ -258,7 +224,7 @@ def _extract_symbols_from_file(
             if key == "name" and context == "play":
                 current_play_name = value
                 if value:
-                    symbol_id = _make_symbol_id(rel_path, line, end_line, value, "playbook")
+                    symbol_id = make_symbol_id("ansible", rel_path, line, end_line, value, "playbook")
                     symbols.append(Symbol(
                         id=symbol_id,
                         name=value,
@@ -274,7 +240,7 @@ def _extract_symbols_from_file(
             elif key == "name" and (in_tasks or in_handlers):
                 kind = "handler" if in_handlers else "task"
                 if value:
-                    symbol_id = _make_symbol_id(rel_path, line, end_line, value, kind)
+                    symbol_id = make_symbol_id("ansible", rel_path, line, end_line, value, kind)
                     symbols.append(Symbol(
                         id=symbol_id,
                         name=value,
@@ -305,9 +271,9 @@ def _extract_symbols_from_file(
 
     for seq_item in seq_items:
         # Get mapping pairs from this item
-        mapping = _find_child_by_type(seq_item, "block_node")
+        mapping = find_child_by_type(seq_item, "block_node")
         if mapping:
-            nested_mapping = _find_child_by_type(mapping, "block_mapping")
+            nested_mapping = find_child_by_type(mapping, "block_mapping")
             if nested_mapping:
                 pairs = [c for c in nested_mapping.children if c.type == "block_mapping_pair"]
 
@@ -323,7 +289,7 @@ def _extract_symbols_from_file(
 
 
 @register_analyzer("yaml_ansible")
-def analyze_ansible(root: Path) -> AnsibleAnalysisResult:
+def analyze_ansible(root: Path) -> AnalysisResult:
     """Analyze Ansible YAML files in a directory.
 
     Uses tree-sitter-yaml for parsing. Falls back gracefully if not available.
@@ -332,7 +298,7 @@ def analyze_ansible(root: Path) -> AnsibleAnalysisResult:
         warnings.warn(
             "tree-sitter-yaml not available. Install with: pip install tree-sitter-yaml"
         )
-        return AnsibleAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-yaml not available",
         )
@@ -344,7 +310,7 @@ def analyze_ansible(root: Path) -> AnsibleAnalysisResult:
         language = tree_sitter.Language(tree_sitter_yaml.language())
         parser = tree_sitter.Parser(language)
     except Exception as e:
-        return AnsibleAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason=f"Failed to load YAML parser: {e}",
         )
@@ -353,7 +319,7 @@ def analyze_ansible(root: Path) -> AnsibleAnalysisResult:
 
     all_files = find_ansible_files(root)
     if not all_files:  # pragma: no cover - no Ansible files in test
-        return AnsibleAnalysisResult(run=run)
+        return AnalysisResult(run=run)
 
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
@@ -363,7 +329,7 @@ def analyze_ansible(root: Path) -> AnsibleAnalysisResult:
         all_symbols.extend(symbols)
         all_edges.extend(edges)
 
-    return AnsibleAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

@@ -11,32 +11,25 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_mainstream.lua import (
-    _make_symbol_id,
-    _make_file_id,
-    analyze_lua,
-    find_lua_files,
-)
-
+from hypergumbo_core.analyze.base import make_file_id, make_symbol_id
+from hypergumbo_lang_mainstream.lua import analyze_lua, find_lua_files
 
 def make_lua_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a Lua file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestLuaHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("src/main.lua", 1, 10, "init", "function")
+        symbol_id = make_symbol_id("lua", "src/main.lua", 1, 10, "init", "function")
         assert symbol_id == "lua:src/main.lua:1-10:init:function"
 
     def test_make_file_id_format(self) -> None:
         """Test file ID format."""
-        file_id = _make_file_id("src/main.lua")
+        file_id = make_file_id("lua", "src/main.lua")
         assert file_id == "lua:src/main.lua:1-1:file:file"
-
 
 class TestFunctionExtraction:
     """Branch coverage for function extraction."""
@@ -88,7 +81,6 @@ end
 
         assert len(functions) >= 3
 
-
 class TestMethodExtraction:
     """Branch coverage for method-style function extraction."""
 
@@ -112,7 +104,6 @@ end
 
         assert len(methods) >= 2
         assert any("MyClass" in m.name for m in methods)
-
 
 class TestSignatureExtraction:
     """Branch coverage for signature extraction."""
@@ -147,7 +138,6 @@ end
         assert get_version is not None
         assert get_version.signature == "()"
 
-
 class TestImportEdges:
     """Branch coverage for require statement edges."""
 
@@ -181,7 +171,6 @@ end
 
         assert len(import_edges) >= 3
 
-
 class TestCallEdges:
     """Branch coverage for call edge extraction."""
 
@@ -202,7 +191,6 @@ end
 
         assert len(call_edges) >= 1
 
-
 class TestFindLuaFiles:
     """Branch coverage for file discovery."""
 
@@ -213,7 +201,6 @@ class TestFindLuaFiles:
         files = list(find_lua_files(tmp_path))
         assert len(files) >= 1
         assert any(f.suffix == ".lua" for f in files)
-
 
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
@@ -231,7 +218,6 @@ print("hello")
         result = analyze_lua(tmp_path)
         assert not result.skipped
 
-
 class TestAnalysisRun:
     """Branch coverage for analysis run metadata."""
 
@@ -245,7 +231,6 @@ end
         result = analyze_lua(tmp_path)
         assert result.run is not None
         assert result.run.files_analyzed >= 1
-
 
 class TestComplexLua:
     """Branch coverage for complex Lua files."""

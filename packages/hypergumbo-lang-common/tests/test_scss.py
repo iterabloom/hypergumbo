@@ -5,14 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import scss as scss_module
-from hypergumbo_lang_common.scss import (
-    ScssAnalysisResult,
-    analyze_scss,
-    find_scss_files,
-    is_scss_tree_sitter_available,
-)
-
+from hypergumbo_lang_common.scss import analyze_scss, find_scss_files, is_scss_tree_sitter_available
 
 def make_scss_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create an SCSS file in the temp directory."""
@@ -20,7 +15,6 @@ def make_scss_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindScssFiles:
     """Tests for find_scss_files function."""
@@ -43,7 +37,6 @@ class TestFindScssFiles:
         files = find_scss_files(tmp_path)
         assert files == []
 
-
 class TestIsScssTreeSitterAvailable:
     """Tests for is_scss_tree_sitter_available function."""
 
@@ -54,7 +47,6 @@ class TestIsScssTreeSitterAvailable:
     def test_returns_false_when_unavailable(self) -> None:
         with patch.object(scss_module, "is_scss_tree_sitter_available", return_value=False):
             assert scss_module.is_scss_tree_sitter_available() is False
-
 
 class TestAnalyzeScss:
     """Tests for analyze_scss function."""

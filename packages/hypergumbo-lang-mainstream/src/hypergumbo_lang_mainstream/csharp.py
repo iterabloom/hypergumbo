@@ -43,7 +43,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -65,40 +65,6 @@ def is_csharp_tree_sitter_available() -> bool:
     if importlib.util.find_spec("tree_sitter_c_sharp") is None:
         return False
     return True
-
-
-@dataclass
-class CSharpAnalysisResult:
-    """Result of analyzing C# files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"csharp:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a C# file node (used as import edge source)."""
-    return f"csharp:{path}:1-1:file:file"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None
 
 
 def _extract_annotations(
@@ -125,12 +91,12 @@ def _extract_annotations(
                     # Get the attribute name (may be qualified like System.Serializable)
                     for attr_child in attr.children:
                         if attr_child.type == "identifier":
-                            attr_info["name"] = _node_text(attr_child, source)
+                            attr_info["name"] = node_text(attr_child, source)
                         elif attr_child.type == "qualified_name":
-                            attr_info["name"] = _node_text(attr_child, source)
+                            attr_info["name"] = node_text(attr_child, source)
 
                     # Extract arguments from attribute_argument_list
-                    arg_list = _find_child_by_type(attr, "attribute_argument_list")
+                    arg_list = find_child_by_type(attr, "attribute_argument_list")
                     if arg_list:
                         args: list[str] = []
                         kwargs: dict[str, str] = {}
@@ -138,16 +104,16 @@ def _extract_annotations(
                         for arg in arg_list.children:
                             if arg.type == "attribute_argument":
                                 # Check if it's a named argument via assignment_expression
-                                assign_expr = _find_child_by_type(
+                                assign_expr = find_child_by_type(
                                     arg, "assignment_expression"
                                 )
                                 if assign_expr:
                                     # Named argument: name = value
-                                    name_node = _find_child_by_type(
+                                    name_node = find_child_by_type(
                                         assign_expr, "identifier"
                                     )
                                     arg_name = (
-                                        _node_text(name_node, source)
+                                        node_text(name_node, source)
                                         if name_node
                                         else ""
                                     )
@@ -155,7 +121,7 @@ def _extract_annotations(
                                     # Value is the string_literal after =
                                     for assign_child in assign_expr.children:
                                         if assign_child.type == "string_literal":
-                                            value = _node_text(assign_child, source)
+                                            value = node_text(assign_child, source)
                                             if value.startswith('"') and value.endswith(
                                                 '"'
                                             ):
@@ -167,7 +133,7 @@ def _extract_annotations(
                                     # Positional argument
                                     for arg_child in arg.children:
                                         if arg_child.type == "string_literal":
-                                            value = _node_text(arg_child, source)
+                                            value = node_text(arg_child, source)
                                             # Strip quotes from string literals
                                             if value.startswith('"') and value.endswith(
                                                 '"'
@@ -177,7 +143,7 @@ def _extract_annotations(
                                             break
                                         else:
                                             # Non-string literal (e.g., number, bool)
-                                            value = _node_text(arg_child, source)
+                                            value = node_text(arg_child, source)
                                             args.append(value)
                                             break
 
@@ -197,7 +163,7 @@ def _find_children_by_type(node: "tree_sitter.Node", type_name: str) -> list["tr
 
 def _extract_type_text(node: "tree_sitter.Node", source: bytes) -> str:
     """Extract type text from a type node."""
-    return _node_text(node, source)
+    return node_text(node, source)
 
 
 def _extract_param_types(
@@ -220,7 +186,7 @@ def _extract_param_types(
                        "nullable_type", "qualified_name", "ref_type", "pointer_type")
 
     # Find parameter_list node
-    params_node = _find_child_by_type(node, "parameter_list")
+    params_node = find_child_by_type(node, "parameter_list")
     if params_node is None:
         return param_types  # pragma: no cover - no params in method
 
@@ -245,10 +211,10 @@ def _extract_param_types(
                 elif subchild.type == "identifier":
                     if param_type is None:
                         # First identifier is the type
-                        param_type = _node_text(subchild, source)
+                        param_type = node_text(subchild, source)
                     else:
                         # Second identifier is the name
-                        param_name = _node_text(subchild, source)
+                        param_name = node_text(subchild, source)
             if param_type and param_name:
                 param_types[param_name] = param_type
 
@@ -298,7 +264,7 @@ def _extract_csharp_signature(
             return_type = _extract_type_text(child, source)
         # Track identifiers before parameter_list for custom return type detection
         elif child.type == "identifier" and params_node is None:
-            pre_params_identifiers.append(_node_text(child, source))
+            pre_params_identifiers.append(node_text(child, source))
 
     # If no type_node return type was found but there are 2+ identifiers
     # before the parameter_list, the first identifier is the return type
@@ -321,9 +287,9 @@ def _extract_csharp_signature(
                 # For custom types, identifier IS the type if param_type not set
                 elif subchild.type == "identifier":
                     if param_type is None:
-                        param_type = _node_text(subchild, source)
+                        param_type = node_text(subchild, source)
                     else:
-                        param_name = _node_text(subchild, source)
+                        param_name = node_text(subchild, source)
             if param_type and param_name:
                 params.append(f"{param_type} {param_name}")
 
@@ -388,16 +354,16 @@ def _track_csharp_return_type(
         return  # pragma: no cover - AST nodes always have parents
     # Direct child of variable_declarator
     if parent.type == "variable_declarator":
-        name_node = _find_child_by_type(parent, "identifier")
+        name_node = find_child_by_type(parent, "identifier")
         if name_node:
-            var_types[_node_text(name_node, source)] = ret_name
+            var_types[node_text(name_node, source)] = ret_name
     # Inside equals_value_clause -> variable_declarator
     elif parent.type == "equals_value_clause":  # pragma: no cover - alt AST pattern
         grandparent = parent.parent
         if grandparent and grandparent.type == "variable_declarator":
-            name_node = _find_child_by_type(grandparent, "identifier")
+            name_node = find_child_by_type(grandparent, "identifier")
             if name_node:
-                var_types[_node_text(name_node, source)] = ret_name
+                var_types[node_text(name_node, source)] = ret_name
 
 
 def _extract_method_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -410,22 +376,22 @@ def _extract_method_name(node: "tree_sitter.Node", source: bytes) -> Optional[st
     identifiers = _find_children_by_type(node, "identifier")
     # If return type is a predefined_type (int, void, etc.), first identifier is method name
     # If return type is an identifier (custom type), second identifier is method name
-    has_predefined_type = _find_child_by_type(node, "predefined_type") is not None
-    has_generic_name = _find_child_by_type(node, "generic_name") is not None
+    has_predefined_type = find_child_by_type(node, "predefined_type") is not None
+    has_generic_name = find_child_by_type(node, "generic_name") is not None
 
     if has_predefined_type or has_generic_name:
         # Return type is predefined (int, void, etc.) or generic (Task<T>)
         # First identifier is method name
         if identifiers:
-            return _node_text(identifiers[0], source)
+            return node_text(identifiers[0], source)
     else:
         # Return type is a custom type (an identifier)
         # Second identifier is method name
         if len(identifiers) >= 2:
-            return _node_text(identifiers[1], source)
+            return node_text(identifiers[1], source)
         elif identifiers:  # pragma: no cover - defensive fallback
             # Fallback: only one identifier means no custom return type detected
-            return _node_text(identifiers[0], source)
+            return node_text(identifiers[0], source)
     return None  # pragma: no cover - defensive
 
 
@@ -451,9 +417,9 @@ def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[st
     current = node.parent
     while current is not None:
         if current.type in ("class_declaration", "interface_declaration", "struct_declaration"):
-            name_node = _find_child_by_type(current, "identifier")
+            name_node = find_child_by_type(current, "identifier")
             if name_node:
-                return _node_text(name_node, source)
+                return node_text(name_node, source)
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -484,19 +450,19 @@ def _extract_using_aliases(
         if has_equals:
             # Handle 'using Alias = Namespace.Type;' (aliased using)
             # First identifier is the alias, qualified_name is the path
-            alias_node = _find_child_by_type(node, "identifier")
-            path_node = _find_child_by_type(node, "qualified_name")
+            alias_node = find_child_by_type(node, "identifier")
+            path_node = find_child_by_type(node, "qualified_name")
             if alias_node and path_node:
-                alias = _node_text(alias_node, source)
-                full_path = _node_text(path_node, source)
+                alias = node_text(alias_node, source)
+                full_path = node_text(path_node, source)
                 if alias and full_path:
                     aliases[alias] = full_path
             continue
 
         # Handle regular 'using Namespace.Type;'
-        name_node = _find_child_by_type(node, "qualified_name")
+        name_node = find_child_by_type(node, "qualified_name")
         if name_node:
-            full_path = _node_text(name_node, source)
+            full_path = node_text(name_node, source)
             if full_path and "." in full_path:
                 # Last segment is the imported name
                 name = full_path.rsplit(".", 1)[-1]
@@ -505,9 +471,9 @@ def _extract_using_aliases(
             continue
 
         # Handle simple 'using Namespace;'
-        id_node = _find_child_by_type(node, "identifier")
+        id_node = find_child_by_type(node, "identifier")
         if id_node:
-            name = _node_text(id_node, source)
+            name = node_text(id_node, source)
             if name:
                 aliases[name] = name
 
@@ -534,7 +500,7 @@ def _extract_base_list(node: "tree_sitter.Node", source: bytes) -> list[str]:
         if child.type == "base_list":
             for base_child in child.children:
                 if base_child.type in ("identifier", "generic_name", "qualified_name"):
-                    base_name = _node_text(base_child, source)
+                    base_name = node_text(base_child, source)
                     # Strip generic parameters: List<int> -> List
                     if "<" in base_name:
                         base_name = base_name.split("<")[0]
@@ -567,9 +533,9 @@ def _extract_symbols_from_file(
 
     def extract_name_from_declaration(node: "tree_sitter.Node") -> Optional[str]:
         """Extract the identifier name from a declaration node."""
-        name_node = _find_child_by_type(node, "identifier")
+        name_node = find_child_by_type(node, "identifier")
         if name_node:
-            return _node_text(name_node, source)
+            return node_text(name_node, source)
         return None  # pragma: no cover - defensive
 
     for node in iter_tree(tree.root_node):
@@ -594,7 +560,7 @@ def _extract_symbols_from_file(
                         meta["base_classes"] = base_classes
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, name, "class"),
+                    id=make_symbol_id("csharp", str(file_path), start_line, end_line, name, "class"),
                     name=name,
                     kind="class",
                     language="csharp",
@@ -620,7 +586,7 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, name, "interface"),
+                    id=make_symbol_id("csharp", str(file_path), start_line, end_line, name, "interface"),
                     name=name,
                     kind="interface",
                     language="csharp",
@@ -645,7 +611,7 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, name, "struct"),
+                    id=make_symbol_id("csharp", str(file_path), start_line, end_line, name, "struct"),
                     name=name,
                     kind="struct",
                     language="csharp",
@@ -670,7 +636,7 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, name, "enum"),
+                    id=make_symbol_id("csharp", str(file_path), start_line, end_line, name, "enum"),
                     name=name,
                     kind="enum",
                     language="csharp",
@@ -712,7 +678,7 @@ def _extract_symbols_from_file(
                 signature = _extract_csharp_signature(node, source, is_constructor=False)
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "method"),
+                    id=make_symbol_id("csharp", str(file_path), start_line, end_line, full_name, "method"),
                     name=full_name,
                     kind="method",
                     language="csharp",
@@ -746,7 +712,7 @@ def _extract_symbols_from_file(
                 signature = _extract_csharp_signature(node, source, is_constructor=True)
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "constructor"),
+                    id=make_symbol_id("csharp", str(file_path), start_line, end_line, full_name, "constructor"),
                     name=full_name,
                     kind="constructor",
                     language="csharp",
@@ -776,7 +742,7 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "property"),
+                    id=make_symbol_id("csharp", str(file_path), start_line, end_line, full_name, "property"),
                     name=full_name,
                     kind="property",
                     language="csharp",
@@ -819,9 +785,9 @@ def _get_enclosing_method(
             if method_name and method_name in local_symbols:
                 return local_symbols[method_name]
         elif current.type == "constructor_declaration":  # pragma: no cover
-            name_node = _find_child_by_type(current, "identifier")
+            name_node = find_child_by_type(current, "identifier")
             if name_node:
-                ctor_name = _node_text(name_node, source)
+                ctor_name = node_text(name_node, source)
                 if ctor_name in local_symbols:
                     return local_symbols[ctor_name]
         current = current.parent
@@ -859,7 +825,7 @@ def _extract_edges_from_file(
         return []
 
     edges: list[Edge] = []
-    file_id = _make_file_id(str(file_path))
+    file_id = make_file_id("csharp", str(file_path))
     # Track variable types for type inference: var_name -> class_name
     var_types: dict[str, str] = {}
 
@@ -872,21 +838,21 @@ def _extract_edges_from_file(
                 # Get the last identifier (the method name)
                 identifiers = _find_children_by_type(child, "identifier")
                 if identifiers:
-                    return _node_text(identifiers[-1], source)
+                    return node_text(identifiers[-1], source)
             elif child.type == "identifier":
                 # Direct function call
-                return _node_text(child, source)
+                return node_text(child, source)
         return None  # pragma: no cover - defensive
 
     for node in iter_tree(tree.root_node):
         # Using directive
         if node.type == "using_directive":
             # Get the namespace being imported
-            name_node = _find_child_by_type(node, "identifier")
+            name_node = find_child_by_type(node, "identifier")
             if not name_node:
-                name_node = _find_child_by_type(node, "qualified_name")
+                name_node = find_child_by_type(node, "qualified_name")
             if name_node:
-                import_path = _node_text(name_node, source)
+                import_path = node_text(name_node, source)
                 edges.append(Edge.create(
                     src=file_id,
                     dst=f"csharp:{import_path}:0-0:namespace:namespace",
@@ -907,28 +873,28 @@ def _extract_edges_from_file(
 
         # Field declarations - track field types: private readonly IService _svc;
         elif node.type == "field_declaration":
-            var_decl = _find_child_by_type(node, "variable_declaration")
+            var_decl = find_child_by_type(node, "variable_declaration")
             if var_decl:
                 # Type can be identifier (simple) or generic_name (generic)
                 type_name = None
-                type_id = _find_child_by_type(var_decl, "identifier")
+                type_id = find_child_by_type(var_decl, "identifier")
                 if type_id:
-                    type_name = _node_text(type_id, source)
+                    type_name = node_text(type_id, source)
                 else:
-                    gen_name = _find_child_by_type(var_decl, "generic_name")
+                    gen_name = find_child_by_type(var_decl, "generic_name")
                     if gen_name:
-                        gen_id = _find_child_by_type(gen_name, "identifier")
+                        gen_id = find_child_by_type(gen_name, "identifier")
                         if gen_id:
-                            type_name = _node_text(gen_id, source)
-                var_declarator = _find_child_by_type(
+                            type_name = node_text(gen_id, source)
+                var_declarator = find_child_by_type(
                     var_decl, "variable_declarator"
                 )
                 if type_name and var_declarator:
-                    name_node = _find_child_by_type(
+                    name_node = find_child_by_type(
                         var_declarator, "identifier"
                     )
                     if name_node:
-                        field_name = _node_text(name_node, source)
+                        field_name = node_text(name_node, source)
                         var_types[field_name] = type_name
 
         # Invocation expression (method call)
@@ -936,29 +902,29 @@ def _extract_edges_from_file(
             current_function = _get_enclosing_method(node, source, local_symbols)
             if current_function is not None:
                 # Check for member_access_expression (receiver.method() pattern)
-                member_access = _find_child_by_type(node, "member_access_expression")
+                member_access = find_child_by_type(node, "member_access_expression")
                 if member_access:
                     # Extract receiver and method name
                     identifiers = _find_children_by_type(member_access, "identifier")
                     receiver_name = None
                     method_name = None
                     if len(identifiers) >= 2:
-                        receiver_name = _node_text(identifiers[0], source)
-                        method_name = _node_text(identifiers[-1], source)
+                        receiver_name = node_text(identifiers[0], source)
+                        method_name = node_text(identifiers[-1], source)
                     elif len(identifiers) == 1:
                         # Nested: this._field.Method() — inner is
                         # member_access_expression(this, _field)
-                        method_name = _node_text(identifiers[0], source)
-                        inner = _find_child_by_type(
+                        method_name = node_text(identifiers[0], source)
+                        inner = find_child_by_type(
                             member_access, "member_access_expression"
                         )
                         if inner:
                             inner_ids = _find_children_by_type(
                                 inner, "identifier"
                             )
-                            this_node = _find_child_by_type(inner, "this")
+                            this_node = find_child_by_type(inner, "this")
                             if this_node and inner_ids:
-                                receiver_name = _node_text(
+                                receiver_name = node_text(
                                     inner_ids[-1], source
                                 )
                     if receiver_name and method_name:
@@ -1047,8 +1013,8 @@ def _extract_edges_from_file(
         # Object creation expression (new ClassName())
         elif node.type == "object_creation_expression":
             current_function = _get_enclosing_method(node, source, local_symbols)
-            type_node = _find_child_by_type(node, "identifier")
-            type_name = _node_text(type_node, source) if type_node else None
+            type_node = find_child_by_type(node, "identifier")
+            type_name = node_text(type_node, source) if type_node else None
 
             if current_function is not None and type_name:
                 # Check if it's a known class
@@ -1086,18 +1052,18 @@ def _extract_edges_from_file(
                 parent = node.parent
                 # Check for variable_declarator (var x = new Class())
                 if parent.type == "variable_declarator":
-                    var_name_node = _find_child_by_type(parent, "identifier")
+                    var_name_node = find_child_by_type(parent, "identifier")
                     if var_name_node:
-                        var_name = _node_text(var_name_node, source)
+                        var_name = node_text(var_name_node, source)
                         var_types[var_name] = type_name
                 # Check for equals_value_clause in a variable_declaration
                 # (alternative AST pattern - defensive code)
                 elif parent.type == "equals_value_clause":  # pragma: no cover - alt AST pattern
                     grandparent = parent.parent
                     if grandparent and grandparent.type == "variable_declarator":
-                        var_name_node = _find_child_by_type(grandparent, "identifier")
+                        var_name_node = find_child_by_type(grandparent, "identifier")
                         if var_name_node:
-                            var_name = _node_text(var_name_node, source)
+                            var_name = node_text(var_name_node, source)
                             var_types[var_name] = type_name
 
     return edges
@@ -1182,10 +1148,10 @@ def _extract_attribute_edges(
 
 
 @register_analyzer("csharp")
-def analyze_csharp(repo_root: Path) -> CSharpAnalysisResult:
+def analyze_csharp(repo_root: Path) -> AnalysisResult:
     """Analyze all C# files in a repository.
 
-    Returns a CSharpAnalysisResult with symbols, edges, and provenance.
+    Returns a AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-c-sharp is not available, returns a skipped result.
     """
     if not is_csharp_tree_sitter_available():
@@ -1193,7 +1159,7 @@ def analyze_csharp(repo_root: Path) -> CSharpAnalysisResult:
             "tree-sitter-c-sharp not available. Install with: pip install hypergumbo[csharp]",
             stacklevel=2,
         )
-        return CSharpAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-c-sharp not available",
         )
@@ -1210,7 +1176,7 @@ def analyze_csharp(repo_root: Path) -> CSharpAnalysisResult:
         parser = tree_sitter.Parser(lang)
     except Exception as e:  # pragma: no cover - parser load failure hard to trigger
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return CSharpAnalysisResult(
+        return AnalysisResult(
             run=run,
             skipped=True,
             skip_reason=f"Failed to load C# parser: {e}",
@@ -1258,7 +1224,7 @@ def analyze_csharp(repo_root: Path) -> CSharpAnalysisResult:
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return CSharpAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

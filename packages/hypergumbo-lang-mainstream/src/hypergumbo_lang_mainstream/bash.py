@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Optional
 from hypergumbo_core.discovery import find_files, is_excluded
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -88,40 +88,6 @@ def find_bash_files(root: Path) -> list[Path]:
     return bash_files
 
 
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first direct child with given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Get text content of a node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"bash:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a Bash file node (used as source edge source)."""
-    return f"bash:{path}:1-1:file:file"
-
-
-@dataclass
-class BashAnalysisResult:
-    """Result of analyzing Bash files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
 @dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file."""
@@ -132,9 +98,9 @@ class FileAnalysis:
 
 def _extract_function_name(node: "tree_sitter.Node", source: bytes) -> str | None:
     """Extract function name from function_definition node."""
-    word_node = _find_child_by_type(node, "word")
+    word_node = find_child_by_type(node, "word")
     if word_node:
-        return _node_text(word_node, source)
+        return node_text(word_node, source)
     return None  # pragma: no cover
 
 
@@ -149,14 +115,14 @@ def _extract_alias_info(node: "tree_sitter.Node", source: bytes) -> str | None:
 
     for child in children:
         if child.type == "word":
-            text = _node_text(child, source)
+            text = node_text(child, source)
             if "=" in text:
                 return text.split("=")[0]
             return text  # pragma: no cover - unusual alias format
         elif child.type == "concatenation":
-            first = _find_child_by_type(child, "word")
+            first = find_child_by_type(child, "word")
             if first:
-                text = _node_text(first, source)
+                text = node_text(first, source)
                 # Remove trailing = if present (alias ll='value' parses as 'll=')
                 if text.endswith("="):
                     return text[:-1]
@@ -187,7 +153,7 @@ def _extract_symbols_from_file(
             if func_name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, func_name, "function")
+                symbol_id = make_symbol_id("bash", rel_path, start_line, end_line, func_name, "function")
 
                 # Bash functions don't have formal parameters - they use $1, $2, etc.
                 # Signature is always "()" since there's no parameter declaration syntax
@@ -211,15 +177,15 @@ def _extract_symbols_from_file(
                 analysis.symbol_by_name[func_name] = symbol
 
         elif node.type == "declaration_command":
-            export_node = _find_child_by_type(node, "export")
+            export_node = find_child_by_type(node, "export")
             if export_node:
-                var_node = _find_child_by_type(node, "variable_assignment")
+                var_node = find_child_by_type(node, "variable_assignment")
                 if var_node:
-                    name_node = _find_child_by_type(var_node, "variable_name")
+                    name_node = find_child_by_type(var_node, "variable_name")
                     if name_node:
-                        var_name = _node_text(name_node, source)
+                        var_name = node_text(name_node, source)
                         start_line = node.start_point[0] + 1
-                        symbol_id = _make_symbol_id(rel_path, start_line, start_line, var_name, "export")
+                        symbol_id = make_symbol_id("bash", rel_path, start_line, start_line, var_name, "export")
 
                         symbol = Symbol(
                             id=symbol_id,
@@ -239,17 +205,17 @@ def _extract_symbols_from_file(
                         analysis.symbols.append(symbol)
 
         elif node.type == "command":
-            cmd_name_node = _find_child_by_type(node, "command_name")
+            cmd_name_node = find_child_by_type(node, "command_name")
             if cmd_name_node:
-                word_node = _find_child_by_type(cmd_name_node, "word")
+                word_node = find_child_by_type(cmd_name_node, "word")
                 if word_node:
-                    cmd_name = _node_text(word_node, source)
+                    cmd_name = node_text(word_node, source)
 
                     if cmd_name == "alias":
                         alias_name = _extract_alias_info(node, source)
                         if alias_name:
                             start_line = node.start_point[0] + 1
-                            symbol_id = _make_symbol_id(rel_path, start_line, start_line, alias_name, "alias")
+                            symbol_id = make_symbol_id("bash", rel_path, start_line, start_line, alias_name, "alias")
 
                             symbol = Symbol(
                                 id=symbol_id,
@@ -284,7 +250,7 @@ def _extract_edges_from_file(
         resolver = NameResolver(global_symbols)
     edges: list[Edge] = []
     rel_path = str(file_path)
-    file_id = _make_file_id(rel_path)
+    file_id = make_file_id("bash", rel_path)
 
     try:
         source = file_path.read_bytes()
@@ -306,11 +272,11 @@ def _extract_edges_from_file(
 
     for node in iter_tree(tree.root_node):
         if node.type == "command":
-            cmd_name_node = _find_child_by_type(node, "command_name")
+            cmd_name_node = find_child_by_type(node, "command_name")
             if cmd_name_node:
-                word_node = _find_child_by_type(cmd_name_node, "word")
+                word_node = find_child_by_type(cmd_name_node, "word")
                 if word_node:
-                    cmd_name = _node_text(word_node, source)
+                    cmd_name = node_text(word_node, source)
                     line = node.start_point[0] + 1
 
                     # Handle source/. commands
@@ -319,7 +285,7 @@ def _extract_edges_from_file(
                             c for c in node.children if c.type == "word" and c != word_node
                         ]
                         if words:
-                            sourced_path = _node_text(words[0], source)
+                            sourced_path = node_text(words[0], source)
                             edges.append(Edge.create(
                                 src=file_id,
                                 dst=sourced_path,
@@ -366,7 +332,7 @@ def _extract_edges_from_file(
 
 
 @register_analyzer("bash")
-def analyze_bash(root: Path) -> BashAnalysisResult:
+def analyze_bash(root: Path) -> AnalysisResult:
     """Analyze Bash/shell scripts in a directory.
 
     Uses tree-sitter-bash for parsing. Falls back gracefully if not available.
@@ -375,7 +341,7 @@ def analyze_bash(root: Path) -> BashAnalysisResult:
         warnings.warn(
             "tree-sitter-bash not available. Install with: pip install hypergumbo[bash]"
         )
-        return BashAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-bash not available",
         )
@@ -387,7 +353,7 @@ def analyze_bash(root: Path) -> BashAnalysisResult:
         language = tree_sitter.Language(tree_sitter_bash.language())
         parser = tree_sitter.Parser(language)
     except Exception as e:
-        return BashAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason=f"Failed to load Bash parser: {e}",
         )
@@ -396,7 +362,7 @@ def analyze_bash(root: Path) -> BashAnalysisResult:
 
     all_files = find_bash_files(root)
     if not all_files:
-        return BashAnalysisResult(run=run)
+        return AnalysisResult(run=run)
 
     # Pass 1: Extract symbols from all files
     all_symbols: list[Symbol] = []
@@ -430,7 +396,7 @@ def analyze_bash(root: Path) -> BashAnalysisResult:
             )
             all_edges.extend(edges)
 
-    return BashAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

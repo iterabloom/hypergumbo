@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -65,40 +65,6 @@ def is_swift_tree_sitter_available() -> bool:
     return True
 
 
-@dataclass
-class SwiftAnalysisResult:
-    """Result of analyzing Swift files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"swift:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a Swift file node (used as import edge source)."""
-    return f"swift:{path}:1-1:file:file"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None
-
-
 def _extract_import_hints(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -118,9 +84,9 @@ def _extract_import_hints(
             continue
 
         # Get the module being imported
-        id_node = _find_child_by_type(node, "identifier")
+        id_node = find_child_by_type(node, "identifier")
         if id_node:
-            module_name = _node_text(id_node, source)
+            module_name = node_text(id_node, source)
             if module_name:
                 hints[module_name] = module_name
 
@@ -147,11 +113,11 @@ def _extract_base_classes_swift(node: "tree_sitter.Node", source: bytes) -> list
     for child in node.children:
         if child.type == "inheritance_specifier":
             # Get the type from user_type -> type_identifier
-            user_type = _find_child_by_type(child, "user_type")
+            user_type = find_child_by_type(child, "user_type")
             if user_type:
-                type_id = _find_child_by_type(user_type, "type_identifier")
+                type_id = find_child_by_type(user_type, "type_identifier")
                 if type_id:
-                    base_classes.append(_node_text(type_id, source))
+                    base_classes.append(node_text(type_id, source))
 
     return base_classes
 
@@ -161,9 +127,9 @@ def _get_enclosing_type(node: "tree_sitter.Node", source: bytes) -> Optional[str
     current = node.parent
     while current is not None:
         if current.type in ("class_declaration", "protocol_declaration"):
-            name_node = _find_child_by_type(current, "type_identifier")
+            name_node = find_child_by_type(current, "type_identifier")
             if name_node:
-                return _node_text(name_node, source)
+                return node_text(name_node, source)
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -179,9 +145,9 @@ def _get_enclosing_function(
         if current.type == "function_declaration":
             name_node = _find_child_by_field(current, "name")
             if not name_node:  # pragma: no cover - defensive fallback
-                name_node = _find_child_by_type(current, "simple_identifier")
+                name_node = find_child_by_type(current, "simple_identifier")
             if name_node:
-                func_name = _node_text(name_node, source)
+                func_name = node_text(name_node, source)
                 if func_name in local_symbols:
                     return local_symbols[func_name]
         current = current.parent
@@ -215,10 +181,10 @@ def _extract_swift_signature(
             param_type = None
             for subchild in child.children:
                 if subchild.type == "simple_identifier" and param_name is None:
-                    param_name = _node_text(subchild, source)
+                    param_name = node_text(subchild, source)
                 elif subchild.type in ("user_type", "array_type", "dictionary_type",
                                         "optional_type", "tuple_type", "function_type"):
-                    param_type = _node_text(subchild, source)
+                    param_type = node_text(subchild, source)
             if param_name and param_type:
                 params.append(f"{param_name}: {param_type}")
         elif child.type == ")":
@@ -226,7 +192,7 @@ def _extract_swift_signature(
         # Return type comes after ) and before function_body
         elif found_closing_paren and child.type in ("user_type", "array_type", "dictionary_type",
                                                       "optional_type", "tuple_type", "function_type"):
-            return_type = _node_text(child, source)
+            return_type = node_text(child, source)
 
     params_str = ", ".join(params)
     signature = f"({params_str})"
@@ -265,10 +231,10 @@ def _extract_symbols_from_file(
         if node.type == "function_declaration":
             name_node = _find_child_by_field(node, "name")
             if not name_node:  # pragma: no cover - grammar fallback
-                name_node = _find_child_by_type(node, "simple_identifier")
+                name_node = find_child_by_type(node, "simple_identifier")
 
             if name_node:
-                func_name = _node_text(name_node, source)
+                func_name = node_text(name_node, source)
                 enclosing_type = _get_enclosing_type(node, source)
                 if enclosing_type:
                     full_name = f"{enclosing_type}.{func_name}"
@@ -284,7 +250,7 @@ def _extract_symbols_from_file(
                 signature = _extract_swift_signature(node, source)
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, full_name, kind),
+                    id=make_symbol_id("swift", str(file_path), start_line, end_line, full_name, kind),
                     name=full_name,
                     kind=kind,
                     language="swift",
@@ -308,9 +274,9 @@ def _extract_symbols_from_file(
         # with different keyword children (class, struct, enum, protocol)
         elif node.type == "class_declaration":
             # Determine the kind based on keyword child
-            is_struct = _find_child_by_type(node, "struct") is not None
-            is_enum = _find_child_by_type(node, "enum") is not None
-            is_protocol = _find_child_by_type(node, "protocol") is not None
+            is_struct = find_child_by_type(node, "struct") is not None
+            is_enum = find_child_by_type(node, "enum") is not None
+            is_protocol = find_child_by_type(node, "protocol") is not None
 
             if is_struct:
                 kind = "struct"
@@ -321,10 +287,10 @@ def _extract_symbols_from_file(
             else:
                 kind = "class"
 
-            name_node = _find_child_by_type(node, "type_identifier")
+            name_node = find_child_by_type(node, "type_identifier")
 
             if name_node:
-                type_name = _node_text(name_node, source)
+                type_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
@@ -333,7 +299,7 @@ def _extract_symbols_from_file(
                 meta = {"base_classes": base_classes} if base_classes else None
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, type_name, kind),
+                    id=make_symbol_id("swift", str(file_path), start_line, end_line, type_name, kind),
                     name=type_name,
                     kind=kind,
                     language="swift",
@@ -353,10 +319,10 @@ def _extract_symbols_from_file(
 
         # Standalone protocol declaration (for older grammar versions)
         elif node.type == "protocol_declaration":
-            name_node = _find_child_by_type(node, "type_identifier")
+            name_node = find_child_by_type(node, "type_identifier")
 
             if name_node:
-                type_name = _node_text(name_node, source)
+                type_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
@@ -365,7 +331,7 @@ def _extract_symbols_from_file(
                 meta = {"base_classes": base_classes} if base_classes else None
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, type_name, "protocol"),
+                    id=make_symbol_id("swift", str(file_path), start_line, end_line, type_name, "protocol"),
                     name=type_name,
                     kind="protocol",
                     language="swift",
@@ -414,15 +380,15 @@ def _extract_edges_from_file(
         return []
 
     edges: list[Edge] = []
-    file_id = _make_file_id(str(file_path))
+    file_id = make_file_id("swift", str(file_path))
 
     for node in iter_tree(tree.root_node):
         # Detect import statements
         if node.type == "import_declaration":
             # Get the module being imported
-            id_node = _find_child_by_type(node, "identifier")
+            id_node = find_child_by_type(node, "identifier")
             if id_node:
-                import_path = _node_text(id_node, source)
+                import_path = node_text(id_node, source)
                 edges.append(Edge.create(
                     src=file_id,
                     dst=f"swift:{import_path}:0-0:module:module",
@@ -439,15 +405,15 @@ def _extract_edges_from_file(
             current_function = _get_enclosing_function(node, source, local_symbols)
             if current_function is not None:
                 # Get the function being called
-                callee_node = _find_child_by_type(node, "simple_identifier")
+                callee_node = find_child_by_type(node, "simple_identifier")
                 if not callee_node:
                     # Try navigation expression for method calls
-                    nav_node = _find_child_by_type(node, "navigation_expression")  # pragma: no cover - grammar fallback
+                    nav_node = find_child_by_type(node, "navigation_expression")  # pragma: no cover - grammar fallback
                     if nav_node:  # pragma: no cover - grammar fallback
-                        callee_node = _find_child_by_type(nav_node, "simple_identifier")
+                        callee_node = find_child_by_type(nav_node, "simple_identifier")
 
                 if callee_node:
-                    callee_name = _node_text(callee_node, source)
+                    callee_name = node_text(callee_node, source)
 
                     # Check local symbols first
                     if callee_name in local_symbols:
@@ -483,10 +449,10 @@ def _extract_edges_from_file(
 
 
 @register_analyzer("swift")
-def analyze_swift(repo_root: Path) -> SwiftAnalysisResult:
+def analyze_swift(repo_root: Path) -> AnalysisResult:
     """Analyze all Swift files in a repository.
 
-    Returns a SwiftAnalysisResult with symbols, edges, and provenance.
+    Returns a AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-swift is not available, returns a skipped result.
     """
     if not is_swift_tree_sitter_available():
@@ -494,7 +460,7 @@ def analyze_swift(repo_root: Path) -> SwiftAnalysisResult:
             "tree-sitter-swift not available. Install with: pip install hypergumbo[swift]",
             stacklevel=2,
         )
-        return SwiftAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-swift not available",
         )
@@ -511,7 +477,7 @@ def analyze_swift(repo_root: Path) -> SwiftAnalysisResult:
         parser = tree_sitter.Parser(lang)
     except Exception as e:
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return SwiftAnalysisResult(
+        return AnalysisResult(
             run=run,
             skipped=True,
             skip_reason=f"Failed to load Swift parser: {e}",
@@ -555,7 +521,7 @@ def analyze_swift(repo_root: Path) -> SwiftAnalysisResult:
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return SwiftAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

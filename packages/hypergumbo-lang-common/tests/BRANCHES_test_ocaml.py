@@ -10,33 +10,25 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_common.ocaml import (
-    _make_file_id,
-    _make_symbol_id,
-    _node_text,
-    analyze_ocaml,
-    find_ocaml_files,
-)
-
+from hypergumbo_core.analyze.base import make_file_id, make_symbol_id, node_text
+from hypergumbo_lang_common.ocaml import analyze_ocaml, find_ocaml_files
 
 def make_ocaml_file(tmp_path: Path, name: str, content: str) -> None:
     """Create an OCaml file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestOCamlHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("src/main.ml", 1, 10, "add", "function")
+        symbol_id = make_symbol_id("ocaml", "src/main.ml", 1, 10, "add", "function")
         assert symbol_id == "ocaml:src/main.ml:1-10:add:function"
 
     def test_make_file_id_format(self) -> None:
         """Test file ID format."""
-        file_id = _make_file_id("lib/utils.ml")
+        file_id = make_file_id("ocaml", "lib/utils.ml")
         assert file_id == "ocaml:lib/utils.ml:1-1:file:file"
-
 
 class TestOCamlUnresolvedCalls:
     """Branch coverage for unresolved call handling."""
@@ -67,7 +59,6 @@ let main () =
         # Standard print functions should be excluded from call edges
         print_calls = [e for e in call_edges if "print_" in e.dst]
         assert len(print_calls) == 0
-
 
 class TestOCamlMultipleFunctions:
     """Branch coverage for files with multiple functions."""
@@ -101,7 +92,6 @@ let quadruple x = double (double x)
         double_calls = [e for e in call_edges if "double" in e.dst]
         assert len(double_calls) >= 2
 
-
 class TestOCamlTypeDefinitions:
     """Branch coverage for type extraction."""
 
@@ -130,7 +120,6 @@ type ('a, 'b) result = Ok of 'a | Error of 'b
         names = [t.name for t in types]
         assert "option" in names
         assert "result" in names
-
 
 class TestOCamlModuleDefinitions:
     """Branch coverage for module extraction."""
@@ -164,7 +153,6 @@ let main () = L.length [1; 2; 3]
         assert "L" in names
         assert "S" in names
 
-
 class TestOCamlOpenStatements:
     """Branch coverage for open statement handling."""
 
@@ -195,7 +183,6 @@ let main () = 1
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert any("Unix.LargeFile" in e.dst for e in import_edges)
 
-
 class TestOCamlSignatureEdgeCases:
     """Branch coverage for signature extraction edge cases."""
 
@@ -224,7 +211,6 @@ let rec factorial n =
         assert len(funcs) == 1
         assert funcs[0].signature == "(n)"
 
-
 class TestOCamlCrossFileResolution:
     """Branch coverage for cross-file resolution."""
 
@@ -248,7 +234,6 @@ let top_func x = middle_func (middle_func x)
 
         top_to_middle = [e for e in call_edges if "middle_func" in e.dst]
         assert len(top_to_middle) >= 2
-
 
 class TestOCamlEmptyAndMinimal:
     """Branch coverage for empty/minimal files."""
@@ -276,7 +261,6 @@ type status = Active | Inactive
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) == 0
 
-
 class TestOCamlFindFiles:
     """Branch coverage for file discovery."""
 
@@ -302,7 +286,6 @@ class TestOCamlFindFiles:
         files = list(find_ocaml_files(tmp_path))
         assert len(files) == 1
         assert files[0].name == "core.ml"
-
 
 class TestOCamlQualifiedCalls:
     """Branch coverage for qualified call resolution."""

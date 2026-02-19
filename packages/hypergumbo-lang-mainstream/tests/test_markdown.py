@@ -5,14 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_mainstream import markdown as markdown_module
-from hypergumbo_lang_mainstream.markdown import (
-    MarkdownAnalysisResult,
-    analyze_markdown,
-    find_markdown_files,
-    is_markdown_tree_sitter_available,
-)
-
+from hypergumbo_lang_mainstream.markdown import analyze_markdown, find_markdown_files, is_markdown_tree_sitter_available
 
 def make_markdown_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a markdown file in the temp directory."""
@@ -20,7 +15,6 @@ def make_markdown_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindMarkdownFiles:
     """Tests for find_markdown_files function."""
@@ -43,7 +37,6 @@ class TestFindMarkdownFiles:
         files = find_markdown_files(tmp_path)
         assert files == []
 
-
 class TestIsMarkdownTreeSitterAvailable:
     """Tests for is_markdown_tree_sitter_available function."""
 
@@ -54,7 +47,6 @@ class TestIsMarkdownTreeSitterAvailable:
     def test_returns_false_when_unavailable(self) -> None:
         with patch.object(markdown_module, "is_markdown_tree_sitter_available", return_value=False):
             assert markdown_module.is_markdown_tree_sitter_available() is False
-
 
 class TestAnalyzeMarkdown:
     """Tests for analyze_markdown function."""

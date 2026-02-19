@@ -34,13 +34,12 @@ import hashlib
 import importlib.util
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -64,38 +63,17 @@ def is_cmake_tree_sitter_available() -> bool:
     return True
 
 
-@dataclass
-class CMakeAnalysisResult:
-    """Result of analyzing CMake files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"cmake:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
     """Generate deterministic edge ID."""
     content = f"{edge_type}:{src}:{dst}"
     return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
 
 
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
 def _get_command_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract the command name from a normal_command node."""
     for child in node.children:
         if child.type == "identifier":
-            return _node_text(child, source).lower()
+            return node_text(child, source).lower()
     return None  # pragma: no cover
 
 
@@ -106,7 +84,7 @@ def _get_arguments(node: "tree_sitter.Node", source: bytes) -> list[str]:
         if child.type == "argument_list":
             for arg in child.children:
                 if arg.type == "argument":
-                    args.append(_node_text(arg, source))
+                    args.append(node_text(arg, source))
     return args
 
 
@@ -116,7 +94,7 @@ def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]
         if child.type == "argument_list":
             for arg in child.children:
                 if arg.type == "argument":
-                    return _node_text(arg, source)
+                    return node_text(arg, source)
     return None  # pragma: no cover
 
 
@@ -137,7 +115,7 @@ def _extract_cmake_signature(node: "tree_sitter.Node", source: bytes) -> Optiona
                         # First argument is the function name, skip it
                         found_name = True
                     else:
-                        params.append(_node_text(arg, source))
+                        params.append(node_text(arg, source))
 
     return f"({', '.join(params)})"
 
@@ -170,7 +148,7 @@ def _process_cmake_tree(
                 project_name = args[0]
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, project_name, "project")
+                symbol_id = make_symbol_id("cmake", rel_path, start_line, end_line, project_name, "project")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -198,7 +176,7 @@ def _process_cmake_tree(
                 lib_name = args[0]
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, lib_name, "library")
+                symbol_id = make_symbol_id("cmake", rel_path, start_line, end_line, lib_name, "library")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -226,7 +204,7 @@ def _process_cmake_tree(
                 exe_name = args[0]
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, exe_name, "executable")
+                symbol_id = make_symbol_id("cmake", rel_path, start_line, end_line, exe_name, "executable")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -288,7 +266,7 @@ def _process_cmake_tree(
                 subdir = args[0]
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, subdir, "subdirectory")
+                symbol_id = make_symbol_id("cmake", rel_path, start_line, end_line, subdir, "subdirectory")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -315,7 +293,7 @@ def _process_cmake_tree(
                 pkg_name = args[0]
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, pkg_name, "package")
+                symbol_id = make_symbol_id("cmake", rel_path, start_line, end_line, pkg_name, "package")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -345,7 +323,7 @@ def _process_cmake_tree(
                     if func_name:
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
-                        symbol_id = _make_symbol_id(rel_path, start_line, end_line, func_name, "function")
+                        symbol_id = make_symbol_id("cmake", rel_path, start_line, end_line, func_name, "function")
 
                         sym = Symbol(
                             id=symbol_id,
@@ -378,7 +356,7 @@ def _process_cmake_tree(
                     if macro_name:
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
-                        symbol_id = _make_symbol_id(rel_path, start_line, end_line, macro_name, "macro")
+                        symbol_id = make_symbol_id("cmake", rel_path, start_line, end_line, macro_name, "macro")
 
                         sym = Symbol(
                             id=symbol_id,
@@ -405,17 +383,17 @@ def _process_cmake_tree(
 
 
 @register_analyzer("cmake")
-def analyze_cmake_files(repo_root: Path) -> CMakeAnalysisResult:
+def analyze_cmake_files(repo_root: Path) -> AnalysisResult:
     """Analyze CMake files in the repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        CMakeAnalysisResult with symbols and edges
+        AnalysisResult with symbols and edges
     """
     if not is_cmake_tree_sitter_available():  # pragma: no cover
-        return CMakeAnalysisResult(  # pragma: no cover
+        return AnalysisResult(  # pragma: no cover
             skipped=True,  # pragma: no cover
             skip_reason="tree-sitter-cmake not installed (pip install tree-sitter-cmake)",  # pragma: no cover
         )  # pragma: no cover
@@ -439,7 +417,7 @@ def analyze_cmake_files(repo_root: Path) -> CMakeAnalysisResult:
         parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_cmake.language()))
     except Exception as e:  # pragma: no cover
         warnings.warn(f"Failed to initialize CMake parser: {e}")
-        return CMakeAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason=f"Failed to initialize parser: {e}",
         )
@@ -475,7 +453,7 @@ def analyze_cmake_files(repo_root: Path) -> CMakeAnalysisResult:
     run.duration_ms = duration_ms
     run.warnings = warnings_list
 
-    return CMakeAnalysisResult(
+    return AnalysisResult(
         symbols=symbols,
         edges=edges,
         run=run,

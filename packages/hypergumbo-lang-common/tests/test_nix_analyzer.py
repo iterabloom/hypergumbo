@@ -7,20 +7,18 @@ Tests verify that the analyzer correctly extracts:
 - Import statements
 """
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common.nix import (
     PASS_ID,
     PASS_VERSION,
-    NixAnalysisResult,
     analyze_nix_files,
     find_nix_files,
 )
-
 
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "nix-v1"
     assert PASS_VERSION == "hypergumbo-0.1.0"
-
 
 def test_analyze_function(tmp_path):
     """Test detection of named function binding."""
@@ -41,7 +39,6 @@ def test_analyze_function(tmp_path):
     assert "add" in names
     assert functions[0].language == "nix"
 
-
 def test_analyze_let_binding(tmp_path):
     """Test detection of let bindings."""
     nix_file = tmp_path / "default.nix"
@@ -60,7 +57,6 @@ in
     assert "message" in names
     assert "count" in names
 
-
 def test_analyze_derivation(tmp_path):
     """Test detection of derivation calls."""
     nix_file = tmp_path / "default.nix"
@@ -78,7 +74,6 @@ def test_analyze_derivation(tmp_path):
     derivations = [s for s in result.symbols if s.kind == "derivation"]
     assert len(derivations) >= 1
     assert derivations[0].name == "my-package"
-
 
 def test_analyze_flake_input(tmp_path):
     """Test detection of flake inputs."""
@@ -100,7 +95,6 @@ def test_analyze_flake_input(tmp_path):
     assert "nixpkgs" in names
     assert "flake-utils" in names
 
-
 def test_analyze_import(tmp_path):
     """Test detection of import expressions."""
     nix_file = tmp_path / "default.nix"
@@ -117,7 +111,6 @@ pkgs
     imports = [e for e in result.edges if e.edge_type == "imports"]
     assert len(imports) >= 1
 
-
 def test_find_nix_files(tmp_path):
     """Test that Nix files are discovered correctly."""
     (tmp_path / "default.nix").write_text("{ }")
@@ -131,7 +124,6 @@ def test_find_nix_files(tmp_path):
     # Should find .nix files
     assert len(files) >= 4
 
-
 def test_analyze_empty_directory(tmp_path):
     """Test analysis of directory with no Nix files."""
     result = analyze_nix_files(tmp_path)
@@ -139,7 +131,6 @@ def test_analyze_empty_directory(tmp_path):
     assert not result.skipped
     assert len(result.symbols) == 0
     assert len(result.edges) == 0
-
 
 def test_analysis_run_metadata(tmp_path):
     """Test that AnalysisRun metadata is correctly set."""
@@ -154,7 +145,6 @@ def test_analysis_run_metadata(tmp_path):
     assert result.run.files_analyzed >= 1
     assert result.run.duration_ms >= 0
 
-
 def test_syntax_error_handling(tmp_path):
     """Test that syntax errors don't crash the analyzer."""
     nix_file = tmp_path / "broken.nix"
@@ -164,8 +154,7 @@ def test_syntax_error_handling(tmp_path):
     result = analyze_nix_files(tmp_path)
 
     # Result should still be valid
-    assert isinstance(result, NixAnalysisResult)
-
+    assert isinstance(result, AnalysisResult)
 
 def test_span_information(tmp_path):
     """Test that span information is correct."""
@@ -184,7 +173,6 @@ myValue
     assert bindings[0].span.start_line >= 1
     assert bindings[0].span.end_line >= bindings[0].span.start_line
 
-
 def test_tree_sitter_not_available():
     """Test graceful degradation when tree-sitter is not available."""
     from hypergumbo_lang_common.nix import is_nix_tree_sitter_available
@@ -192,7 +180,6 @@ def test_tree_sitter_not_available():
     # The function should return a boolean
     result = is_nix_tree_sitter_available()
     assert isinstance(result, bool)
-
 
 def test_multiple_nix_files(tmp_path):
     """Test analysis across multiple Nix files."""
@@ -213,7 +200,6 @@ pkgs.mkShell {
 
     # Should have symbols from both files
     assert len(result.symbols) >= 1
-
 
 def test_complete_flake(tmp_path):
     """Test a complete flake.nix structure."""
@@ -244,7 +230,6 @@ def test_complete_flake(tmp_path):
     kinds = {s.kind for s in result.symbols}
     assert "input" in kinds or "binding" in kinds or "function" in kinds
 
-
 def test_overlay(tmp_path):
     """Test detection of Nix overlays."""
     nix_file = tmp_path / "overlay.nix"
@@ -260,7 +245,6 @@ final: prev: {
     # Overlay is a function
     functions = [s for s in result.symbols if s.kind == "function"]
     assert len(functions) >= 1
-
 
 def test_module(tmp_path):
     """Test detection of NixOS module patterns."""
@@ -282,7 +266,6 @@ def test_module(tmp_path):
     # Module is a function
     functions = [s for s in result.symbols if s.kind == "function"]
     assert len(functions) >= 1
-
 
 class TestNixSignatureExtraction:
     """Tests for Nix function signature extraction."""
@@ -368,7 +351,6 @@ final: prev: {
         assert "config" in funcs[0].signature
         assert "lib" in funcs[0].signature
         assert "pkgs" in funcs[0].signature
-
 
 class TestNixCallResolution:
     """Tests for Nix call resolution."""

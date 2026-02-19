@@ -12,26 +12,24 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
+from hypergumbo_core.analyze.base import make_symbol_id
 from hypergumbo_lang_common.cuda import (
     _determine_function_kind,
     _make_edge_id,
-    _make_symbol_id,
     analyze_cuda_files,
     find_cuda_files,
 )
 
-
 def make_cuda_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a CUDA file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestCudaHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("src/kernel.cu", 10, 25, "myKernel", "kernel")
+        symbol_id = make_symbol_id("cuda", "src/kernel.cu", 10, 25, "myKernel", "kernel")
         assert symbol_id == "cuda:src/kernel.cu:10-25:myKernel:kernel"
 
     def test_make_edge_id_deterministic(self) -> None:
@@ -40,7 +38,6 @@ class TestCudaHelperFunctions:
         edge_id_2 = _make_edge_id("src1", "dst1", "kernel_launch")
         assert edge_id_1 == edge_id_2
         assert edge_id_1.startswith("edge:sha256:")
-
 
 class TestDetermineFunctionKind:
     """Branch coverage for function kind determination."""
@@ -64,7 +61,6 @@ class TestDetermineFunctionKind:
         """Test no attributes is identified as regular function."""
         kind = _determine_function_kind(is_global=False, is_device=False, is_host=False)
         assert kind == "function"
-
 
 class TestKernelExtraction:
     """Branch coverage for kernel function extraction."""
@@ -105,7 +101,6 @@ __global__ void kernel2(int *data) {
         assert "kernel1" in names
         assert "kernel2" in names
 
-
 class TestDeviceFunctionExtraction:
     """Branch coverage for device function extraction."""
 
@@ -133,7 +128,6 @@ __host__ __device__ int shared_func(int x) {
         assert len(hd_funcs) == 1
         assert hd_funcs[0].name == "shared_func"
 
-
 class TestRegularFunctionExtraction:
     """Branch coverage for regular function extraction."""
 
@@ -150,7 +144,6 @@ void initData(float *data, int n) {
         funcs = [s for s in result.symbols if s.kind == "function"]
         assert len(funcs) == 1
         assert funcs[0].name == "initData"
-
 
 class TestKernelLaunchEdges:
     """Branch coverage for kernel launch edge extraction."""
@@ -176,7 +169,6 @@ void launcher() {
         kernel_launches = [e for e in launch_edges if "myKernel" in e.dst]
         assert len(kernel_launches) >= 1
 
-
 class TestCallEdges:
     """Branch coverage for regular call edge extraction."""
 
@@ -195,7 +187,6 @@ __global__ void kernel(float *data) {
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         helper_calls = [e for e in call_edges if "helper" in e.dst]
         assert len(helper_calls) >= 1
-
 
 class TestFindCudaFiles:
     """Branch coverage for file discovery."""
@@ -226,7 +217,6 @@ class TestFindCudaFiles:
         assert len(files) == 1
         assert files[0].name == "vector.cu"
 
-
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
 
@@ -250,7 +240,6 @@ class TestEmptyAndMinimalFiles:
         result = analyze_cuda_files(tmp_path)
         assert not result.skipped
         assert len(result.symbols) == 0
-
 
 class TestCrossFileResolution:
     """Branch coverage for cross-file symbol resolution."""
@@ -276,7 +265,6 @@ void launchKernel() {
         # Should find both kernels and launch edges
         kernels = [s for s in result.symbols if s.kind == "kernel"]
         assert len(kernels) >= 1
-
 
 class TestFunctionSignatures:
     """Branch coverage for function signature extraction."""

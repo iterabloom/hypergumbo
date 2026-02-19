@@ -21,12 +21,12 @@ Key constructs extracted:
 
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -34,17 +34,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "racket.tree_sitter"
 PASS_VERSION = "hypergumbo-0.1.0"
-
-
-@dataclass
-class RacketAnalysisResult:
-    """Result of analyzing Racket files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: Optional[AnalysisRun] = None
-    skipped: bool = False
-    skip_reason: str = ""
 
 
 def is_racket_tree_sitter_available() -> bool:
@@ -183,7 +172,7 @@ class RacketAnalyzer:
         self._symbol_registry: dict[str, str] = {}  # name -> id
         self._run_id: str = ""
 
-    def analyze(self) -> RacketAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Analyze all Racket files in the repository."""
         if not is_racket_tree_sitter_available():
             warnings.warn(
@@ -191,7 +180,7 @@ class RacketAnalyzer:
                 UserWarning,
                 stacklevel=2,
             )
-            return RacketAnalysisResult(
+            return AnalysisResult(
                 skipped=True,
                 skip_reason="tree-sitter-language-pack not available",
             )
@@ -206,7 +195,7 @@ class RacketAnalyzer:
         racket_files = list(find_racket_files(self.repo_root))
 
         if not racket_files:
-            return RacketAnalysisResult()
+            return AnalysisResult()
 
         # Pass 1: Collect all symbols
         for path in racket_files:
@@ -241,7 +230,7 @@ class RacketAnalyzer:
             duration_ms=int(elapsed * 1000),
         )
 
-        return RacketAnalysisResult(
+        return AnalysisResult(
             symbols=self.symbols,
             edges=self.edges,
             run=run,
@@ -413,14 +402,14 @@ class RacketAnalyzer:
 
 
 @register_analyzer("racket")
-def analyze_racket(repo_root: Path) -> RacketAnalysisResult:
+def analyze_racket(repo_root: Path) -> AnalysisResult:
     """Analyze Racket source files in a repository.
 
     Args:
         repo_root: Root directory of the repository to analyze
 
     Returns:
-        RacketAnalysisResult containing symbols, edges, and analysis metadata
+        AnalysisResult containing symbols, edges, and analysis metadata
     """
     analyzer = RacketAnalyzer(repo_root)
     return analyzer.analyze()

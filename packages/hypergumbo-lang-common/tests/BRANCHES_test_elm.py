@@ -12,32 +12,25 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_common.elm import (
-    _make_file_id,
-    _make_symbol_id,
-    analyze_elm,
-    find_elm_files,
-)
-
+from hypergumbo_core.analyze.base import make_file_id, make_symbol_id
+from hypergumbo_lang_common.elm import analyze_elm, find_elm_files
 
 def make_elm_file(tmp_path: Path, name: str, content: str) -> None:
     """Create an Elm file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestElmHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("src/Main.elm", 5, 10, "update", "function")
+        symbol_id = make_symbol_id("elm", "src/Main.elm", 5, 10, "update", "function")
         assert symbol_id == "elm:src/Main.elm:5-10:update:function"
 
     def test_make_file_id_format(self) -> None:
         """Test file ID format."""
-        file_id = _make_file_id("lib/Utils.elm")
+        file_id = make_file_id("elm", "lib/Utils.elm")
         assert file_id == "elm:lib/Utils.elm:1-1:file:file"
-
 
 class TestModuleDeclaration:
     """Branch coverage for module declaration extraction."""
@@ -72,7 +65,6 @@ compute y = y * 2
         names = [f.name for f in funcs]
         assert "helper" in names
         assert "compute" in names
-
 
 class TestFunctionExtraction:
     """Branch coverage for function extraction."""
@@ -116,7 +108,6 @@ answer = 42
         names = [f.name for f in funcs]
         assert "greeting" in names
         assert "answer" in names
-
 
 class TestTypeDefinitions:
     """Branch coverage for type alias and custom type extraction."""
@@ -166,7 +157,6 @@ type Maybe a
         assert "Color" in names
         assert "Maybe" in names
 
-
 class TestImportEdges:
     """Branch coverage for import edge extraction."""
 
@@ -190,7 +180,6 @@ view model = div [] [ text "Hello" ]
         assert any("Html.Attributes" in d for d in dests)
         assert any("Html.Events" in d for d in dests)
 
-
 class TestImportAliases:
     """Branch coverage for import alias extraction."""
 
@@ -210,7 +199,6 @@ view = H.div [] []
         # Should have import edges
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) >= 2
-
 
 class TestFunctionCalls:
     """Branch coverage for function call edge extraction."""
@@ -251,7 +239,6 @@ step3 x = step2 x + 1
         assert len(step1_calls) >= 1
         assert len(step2_calls) >= 1
 
-
 class TestFindElmFiles:
     """Branch coverage for file discovery."""
 
@@ -264,7 +251,6 @@ class TestFindElmFiles:
         files = list(find_elm_files(tmp_path))
         assert len(files) == 1
         assert files[0].name == "Main.elm"
-
 
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
@@ -284,7 +270,6 @@ class TestEmptyAndMinimalFiles:
         result = analyze_elm(tmp_path)
         # Should handle gracefully
         assert not result.skipped
-
 
 class TestCrossFileResolution:
     """Branch coverage for cross-file call resolution."""

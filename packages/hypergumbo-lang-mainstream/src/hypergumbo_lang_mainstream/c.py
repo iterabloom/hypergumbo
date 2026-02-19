@@ -37,14 +37,14 @@ from __future__ import annotations
 import importlib.util
 import time
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -93,32 +93,11 @@ def is_c_tree_sitter_available() -> bool:
     return True
 
 
-@dataclass
-class CAnalysisResult:
-    """Result of analyzing C files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"c:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
 def _find_identifier_in_children(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Find identifier name in node's children."""
     for child in node.children:
         if child.type in ("identifier", "type_identifier"):
-            return _node_text(child, source)
+            return node_text(child, source)
     return None
 
 
@@ -180,7 +159,7 @@ def _extract_c_signature(
     for child in param_list.children:
         if child.type == "parameter_declaration":
             # Get full text of parameter and clean it
-            param_text = _node_text(child, source).strip()
+            param_text = node_text(child, source).strip()
             param_strs.append(param_text)
 
     # Build signature with parameters
@@ -193,7 +172,7 @@ def _extract_c_signature(
             break
         if child.type in ("primitive_type", "type_identifier", "sized_type_specifier",
                           "storage_class_specifier", "type_qualifier"):
-            return_type_parts.append(_node_text(child, source))
+            return_type_parts.append(node_text(child, source))
 
     if return_type_parts:
         return_type = " ".join(return_type_parts)
@@ -256,7 +235,7 @@ def _extract_symbols(
                 )
                 signature = _extract_c_signature(node, source)
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function"),
+                    id=make_symbol_id("c", str(file_path), span.start_line, span.end_line, name, "function"),
                     name=name,
                     kind="function",
                     language="c",
@@ -283,7 +262,7 @@ def _extract_symbols(
                         )
                         signature = _extract_c_signature(node, source)
                         symbol = Symbol(
-                            id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function"),
+                            id=make_symbol_id("c", str(file_path), span.start_line, span.end_line, name, "function"),
                             name=name,
                             kind="function",
                             language="c",
@@ -306,7 +285,7 @@ def _extract_symbols(
                     end_col=node.end_point[1],
                 )
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "struct"),
+                    id=make_symbol_id("c", str(file_path), span.start_line, span.end_line, name, "struct"),
                     name=name,
                     kind="struct",
                     language="c",
@@ -328,7 +307,7 @@ def _extract_symbols(
                     end_col=node.end_point[1],
                 )
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "enum"),
+                    id=make_symbol_id("c", str(file_path), span.start_line, span.end_line, name, "enum"),
                     name=name,
                     kind="enum",
                     language="c",
@@ -345,7 +324,7 @@ def _extract_symbols(
             name = None
             for child in node.children:
                 if child.type == "type_identifier":
-                    name = _node_text(child, source)
+                    name = node_text(child, source)
             if name:
                 span = Span(
                     start_line=node.start_point[0] + 1,
@@ -354,7 +333,7 @@ def _extract_symbols(
                     end_col=node.end_point[1],
                 )
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "typedef"),
+                    id=make_symbol_id("c", str(file_path), span.start_line, span.end_line, name, "typedef"),
                     name=name,
                     kind="typedef",
                     language="c",
@@ -413,7 +392,7 @@ def _extract_edges(
                 # Get the function being called
                 func_node = node.child_by_field_name("function")
                 if func_node and func_node.type == "identifier":
-                    callee_name = _node_text(func_node, source)
+                    callee_name = node_text(func_node, source)
                     lookup_result = resolver.lookup(callee_name)
                     if lookup_result.found and lookup_result.symbol is not None:
                         edge = Edge.create(
@@ -463,14 +442,14 @@ def _analyze_c_file(
 
 
 @register_analyzer("c", capture_symbols_as="c")
-def analyze_c(repo_root: Path) -> CAnalysisResult:
+def analyze_c(repo_root: Path) -> AnalysisResult:
     """Analyze all C files in a repository.
 
     Uses a two-pass approach:
     1. Parse all files and extract symbols into global registry
     2. Detect calls and resolve against global symbol registry
 
-    Returns a CAnalysisResult with symbols, edges, and provenance.
+    Returns a AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-c is not available, returns empty result (silently skipped).
     """
     start_time = time.time()
@@ -483,7 +462,7 @@ def analyze_c(repo_root: Path) -> CAnalysisResult:
         skip_reason = "C analysis skipped: requires tree-sitter-c (pip install tree-sitter-c)"
         warnings.warn(skip_reason, stacklevel=2)
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return CAnalysisResult(
+        return AnalysisResult(
             run=run,
             skipped=True,
             skip_reason=skip_reason,
@@ -494,7 +473,7 @@ def analyze_c(repo_root: Path) -> CAnalysisResult:
         skip_reason = "C analysis skipped: requires tree-sitter-c (pip install tree-sitter-c)"
         warnings.warn(skip_reason, stacklevel=2)
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return CAnalysisResult(
+        return AnalysisResult(
             run=run,
             skipped=True,
             skip_reason=skip_reason,
@@ -555,7 +534,7 @@ def analyze_c(repo_root: Path) -> CAnalysisResult:
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return CAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

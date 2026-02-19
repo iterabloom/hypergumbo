@@ -47,14 +47,14 @@ from __future__ import annotations
 import importlib.util
 import time
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -85,17 +85,6 @@ def is_commonlisp_tree_sitter_available() -> bool:
 
 
 @dataclass
-class CommonLispAnalysisResult:
-    """Result of analyzing Common Lisp files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-@dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file.
 
@@ -108,32 +97,9 @@ class FileAnalysis:
     symbols: list[Symbol]
 
 
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"commonlisp:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a Common Lisp file node (used as import edge source)."""
-    return f"commonlisp:{path}:1-1:file:file"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None  # pragma: no cover - defensive fallback
-
-
 def _get_sym_lit_text(node: "tree_sitter.Node", source: bytes) -> str:
     """Extract text from a sym_lit node."""
-    return _node_text(node, source).lower()  # Common Lisp is case-insensitive
+    return node_text(node, source).lower()  # Common Lisp is case-insensitive
 
 
 def _get_name_from_node(node: "tree_sitter.Node", source: bytes) -> str | None:
@@ -142,7 +108,7 @@ def _get_name_from_node(node: "tree_sitter.Node", source: bytes) -> str | None:
         return _get_sym_lit_text(node, source)
     elif node.type == "kwd_lit":
         # Keyword like :myapp.core - keep the colon
-        return _node_text(node, source).lower()
+        return node_text(node, source).lower()
     return None  # pragma: no cover - defensive fallback for unexpected node types
 
 
@@ -160,11 +126,11 @@ def _extract_defun_info(
     Returns (name, kind, signature) or None if extraction fails.
     """
     # Find defun_header child which contains the definition form and name
-    header = _find_child_by_type(node, "defun_header")
+    header = find_child_by_type(node, "defun_header")
     if not header:
         return None  # pragma: no cover - malformed defun
 
-    header_text = _node_text(header, source).strip()
+    header_text = node_text(header, source).strip()
     # Header looks like: "defun name (params)" or "defmethod name ((x type) y)"
     parts = header_text.split()
     if len(parts) < 2:
@@ -245,7 +211,7 @@ def _is_def_list(inner: list["tree_sitter.Node"], source: bytes) -> tuple[str, s
             # Try to extract signature from param list
             signature = None
             if len(inner) > 2 and inner[2].type == "list_lit":
-                sig_text = _node_text(inner[2], source)
+                sig_text = node_text(inner[2], source)
                 signature = sig_text
             return (kind, name, signature)
 
@@ -286,7 +252,7 @@ def _extract_symbols_from_file(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                sym_id = _make_symbol_id(file_path, start_line, end_line, name, kind)
+                sym_id = make_symbol_id("commonlisp", file_path, start_line, end_line, name, kind)
                 symbols.append(Symbol(
                     id=sym_id,
                     name=name,
@@ -316,7 +282,7 @@ def _extract_symbols_from_file(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                sym_id = _make_symbol_id(file_path, start_line, end_line, name, kind)
+                sym_id = make_symbol_id("commonlisp", file_path, start_line, end_line, name, kind)
                 symbols.append(Symbol(
                     id=sym_id,
                     name=name,
@@ -380,7 +346,7 @@ def _extract_edges_from_file(
     - use-package statements
     """
     edges: list[Edge] = []
-    file_id = _make_file_id(file_path)
+    file_id = make_file_id("commonlisp", file_path)
 
     # Build local symbol map for this file (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}
@@ -449,10 +415,10 @@ def _extract_edges_from_file(
 
 
 @register_analyzer("commonlisp")
-def analyze_commonlisp(repo_root: Path) -> CommonLispAnalysisResult:
+def analyze_commonlisp(repo_root: Path) -> AnalysisResult:
     """Analyze Common Lisp files in a repository.
 
-    Returns a CommonLispAnalysisResult with symbols, edges, and provenance.
+    Returns a AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-commonlisp is not available, returns a skipped result.
     """
     start_time = time.time()
@@ -467,7 +433,7 @@ def analyze_commonlisp(repo_root: Path) -> CommonLispAnalysisResult:
         )
         warnings.warn(skip_reason)
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return CommonLispAnalysisResult(
+        return AnalysisResult(
             run=run,
             skipped=True,
             skip_reason=skip_reason,
@@ -500,7 +466,7 @@ def analyze_commonlisp(repo_root: Path) -> CommonLispAnalysisResult:
 
         # Create file symbol
         file_symbol = Symbol(
-            id=_make_file_id(rel_path),
+            id=make_file_id("commonlisp", rel_path),
             name="file",
             kind="file",
             language="commonlisp",
@@ -545,7 +511,7 @@ def analyze_commonlisp(repo_root: Path) -> CommonLispAnalysisResult:
     run.files_analyzed = files_analyzed
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return CommonLispAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

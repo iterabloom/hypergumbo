@@ -1,7 +1,8 @@
 """Tests for Groovy analyzer."""
 from pathlib import Path
-from unittest.mock import patch
 
+from hypergumbo_core.analyze.base import find_child_by_type
+from unittest.mock import patch
 
 class TestGroovyHelpers:
     """Tests for Groovy analyzer helper functions."""
@@ -9,7 +10,6 @@ class TestGroovyHelpers:
     def test_find_child_by_type_returns_none(self) -> None:
         """Returns None when no matching child type is found."""
         from unittest.mock import MagicMock
-        from hypergumbo_lang_mainstream.groovy import _find_child_by_type
 
         # Create a mock node with no children matching the type
         mock_node = MagicMock()
@@ -17,9 +17,8 @@ class TestGroovyHelpers:
         mock_child.type = "different_type"
         mock_node.children = [mock_child]
 
-        result = _find_child_by_type(mock_node, "identifier")
+        result = find_child_by_type(mock_node, "identifier")
         assert result is None
-
 
 class TestFindGroovyFiles:
     """Tests for Groovy file discovery."""
@@ -37,7 +36,6 @@ class TestFindGroovyFiles:
         assert len(files) == 2
         assert any(f.suffix == ".groovy" for f in files)
         assert any(f.name == "build.gradle" for f in files)
-
 
 class TestGroovyTreeSitterAvailability:
     """Tests for tree-sitter-groovy availability checking."""
@@ -70,7 +68,6 @@ class TestGroovyTreeSitterAvailability:
         with patch("importlib.util.find_spec", side_effect=mock_find_spec):
             assert is_groovy_tree_sitter_available() is False
 
-
 class TestAnalyzeGroovyFallback:
     """Tests for fallback behavior when tree-sitter-groovy unavailable."""
 
@@ -85,7 +82,6 @@ class TestAnalyzeGroovyFallback:
 
         assert result.skipped is True
         assert "tree-sitter-groovy" in result.skip_reason
-
 
 class TestGroovyClassExtraction:
     """Tests for extracting Groovy classes."""
@@ -111,14 +107,12 @@ class Config {
 
         result = analyze_groovy(tmp_path)
 
-
         assert result.run is not None
         assert result.run.files_analyzed == 1
         classes = [s for s in result.symbols if s.kind == "class"]
         class_names = [s.name for s in classes]
         assert "User" in class_names
         assert "Config" in class_names
-
 
 class TestGroovyMethodExtraction:
     """Tests for extracting Groovy methods."""
@@ -142,12 +136,10 @@ class Utils {
 
         result = analyze_groovy(tmp_path)
 
-
         methods = [s for s in result.symbols if s.kind == "method"]
         method_names = [s.name for s in methods]
         assert "Utils.doSomething" in method_names
         assert "Utils.calculate" in method_names
-
 
 class TestGroovyFunctionExtraction:
     """Tests for extracting Groovy top-level functions."""
@@ -169,12 +161,10 @@ def calculate(a, b) {
 
         result = analyze_groovy(tmp_path)
 
-
         functions = [s for s in result.symbols if s.kind == "function"]
         func_names = [s.name for s in functions]
         assert "greet" in func_names
         assert "calculate" in func_names
-
 
 class TestGroovyImportEdges:
     """Tests for extracting import statements."""
@@ -197,14 +187,12 @@ class Main {
 
         result = analyze_groovy(tmp_path)
 
-
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) == 2
 
         imported = [e.dst for e in import_edges]
         assert any("groovy.json.JsonSlurper" in dst for dst in imported)
         assert any("java.util.List" in dst for dst in imported)
-
 
 class TestGroovyCallEdges:
     """Tests for extracting function call edges."""
@@ -233,7 +221,6 @@ class Main {
 """)
 
         result = analyze_groovy(tmp_path)
-
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # Should find run() calling helper()
@@ -268,7 +255,6 @@ class Main {
 
         result = analyze_groovy(tmp_path)
 
-
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # Should find run() calling doWork() (cross-file via global symbols)
         assert len(call_edges) >= 1
@@ -276,7 +262,6 @@ class Main {
         # Check for cross-file call edge with lower confidence (0.80)
         cross_file_edges = [e for e in call_edges if e.confidence == 0.80]
         assert len(cross_file_edges) >= 1
-
 
 class TestGradleBuildFile:
     """Tests for analyzing Gradle build files."""
@@ -307,10 +292,8 @@ def customTask() {
 
         result = analyze_groovy(tmp_path)
 
-
         assert result.run is not None
         assert result.run.files_analyzed == 1
-
 
 class TestGroovyInterfaceExtraction:
     """Tests for extracting Groovy interfaces."""
@@ -333,12 +316,10 @@ interface Calculator {
 
         result = analyze_groovy(tmp_path)
 
-
         interfaces = [s for s in result.symbols if s.kind == "interface"]
         interface_names = [s.name for s in interfaces]
         assert "Greeter" in interface_names
         assert "Calculator" in interface_names
-
 
 class TestGroovyTraitExtraction:
     """Tests for extracting Groovy traits.
@@ -363,14 +344,12 @@ trait Flyable {
 
         result = analyze_groovy(tmp_path)
 
-
         # tree-sitter-groovy v0.1.2 parses 'trait X' as a function call
         # not a trait declaration. This test documents this limitation.
         # When the grammar is updated, this test should be updated.
         traits = [s for s in result.symbols if s.kind == "trait"]
         # Currently 0 traits due to grammar limitation
         assert len(traits) == 0
-
 
 class TestGroovyEnumExtraction:
     """Tests for extracting Groovy enums."""
@@ -392,12 +371,10 @@ enum Status {
 
         result = analyze_groovy(tmp_path)
 
-
         enums = [s for s in result.symbols if s.kind == "enum"]
         enum_names = [s.name for s in enums]
         assert "Color" in enum_names
         assert "Status" in enum_names
-
 
 class TestGroovySymbolProperties:
     """Tests for symbol property correctness."""
@@ -415,7 +392,6 @@ class TestGroovySymbolProperties:
 """)
 
         result = analyze_groovy(tmp_path)
-
 
         test_class = next((s for s in result.symbols if s.name == "Test"), None)
         assert test_class is not None
@@ -436,10 +412,8 @@ class Example {
 
         result = analyze_groovy(tmp_path)
 
-
         methods = [s for s in result.symbols if s.kind == "method"]
         assert any(s.name == "Example.run" for s in methods)
-
 
 class TestGroovyEdgeProperties:
     """Tests for edge property correctness."""
@@ -457,12 +431,10 @@ class Test {}
 
         result = analyze_groovy(tmp_path)
 
-
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         for edge in import_edges:
             assert edge.confidence > 0
             assert edge.confidence <= 1.0
-
 
 class TestGroovyEmptyFile:
     """Tests for handling empty or minimal files."""
@@ -475,7 +447,6 @@ class TestGroovyEmptyFile:
         groovy_file.write_text("")
 
         result = analyze_groovy(tmp_path)
-
 
         # Should not crash, may have 0 or minimal symbols
         assert result.run is not None
@@ -493,9 +464,7 @@ class TestGroovyEmptyFile:
 
         result = analyze_groovy(tmp_path)
 
-
         assert result.run is not None
-
 
 class TestGroovyParserFailure:
     """Tests for parser failure handling."""
@@ -527,10 +496,8 @@ class TestGroovyParserFailure:
 
         result = analyze_groovy(tmp_path)
 
-
         # Should still process the valid file
         assert result.run is not None
-
 
 class TestGroovySignatureExtraction:
     """Tests for Groovy method signature extraction.
@@ -592,7 +559,6 @@ class Counter {
         assert len(methods) == 1
         # Empty params
         assert methods[0].signature == "()"
-
 
 class TestGroovyImportAliases:
     """Tests for import alias extraction and qualified call resolution."""
@@ -692,7 +658,6 @@ class Main {
         run_calls = [e for e in call_edges if "run" in e.src]
         assert len(run_calls) >= 1
         assert any("helper" in e.dst for e in run_calls)
-
 
 class TestGroovyInheritanceEdges:
     """Tests for Groovy base_classes metadata extraction.

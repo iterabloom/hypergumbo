@@ -34,14 +34,13 @@ import hashlib
 import importlib.util
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -68,38 +67,17 @@ def is_fortran_tree_sitter_available() -> bool:
     return True
 
 
-@dataclass
-class FortranAnalysisResult:
-    """Result of analyzing Fortran files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"fortran:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
     """Generate deterministic edge ID."""
     content = f"{edge_type}:{src}:{dst}"
     return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
 
 
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
 def _get_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract name from a definition node."""
     for child in node.children:
         if child.type == "name":
-            return _node_text(child, source).lower()
+            return node_text(child, source).lower()
     return None  # pragma: no cover
 
 
@@ -109,7 +87,7 @@ def _get_type_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
         if child.type == "derived_type_statement":
             for grandchild in child.children:
                 if grandchild.type == "type_name":
-                    return _node_text(grandchild, source).lower()
+                    return node_text(grandchild, source).lower()
     return None  # pragma: no cover
 
 
@@ -119,7 +97,7 @@ def _get_statement_name(node: "tree_sitter.Node", source: bytes, stmt_type: str)
         if child.type == stmt_type:
             for grandchild in child.children:
                 if grandchild.type == "name":
-                    return _node_text(grandchild, source).lower()
+                    return node_text(grandchild, source).lower()
     return None
 
 
@@ -156,11 +134,11 @@ def _extract_fortran_signature(
                 if grandchild.type == "parameters":
                     for param_child in grandchild.children:
                         if param_child.type == "identifier":
-                            param_names.append(_node_text(param_child, source).lower())
+                            param_names.append(node_text(param_child, source).lower())
                 elif grandchild.type == "function_result":
                     for result_child in grandchild.children:
                         if result_child.type == "identifier":
-                            result_var = _node_text(result_child, source).lower()
+                            result_var = node_text(result_child, source).lower()
 
     # Second pass: collect type declarations
     for child in node.children:
@@ -176,7 +154,7 @@ def _extract_fortran_signature(
                             var_type = type_child.type
                             break
                 elif decl_child.type == "identifier":
-                    var_names.append(_node_text(decl_child, source).lower())
+                    var_names.append(node_text(decl_child, source).lower())
 
             if var_type and var_names:
                 for vn in var_names:
@@ -255,7 +233,7 @@ def _extract_fortran_symbols(
             if name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "module")
+                symbol_id = make_symbol_id("fortran", rel_path, start_line, end_line, name, "module")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -289,7 +267,7 @@ def _extract_fortran_symbols(
             if name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "program")
+                symbol_id = make_symbol_id("fortran", rel_path, start_line, end_line, name, "program")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -318,7 +296,7 @@ def _extract_fortran_symbols(
             if name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "function")
+                symbol_id = make_symbol_id("fortran", rel_path, start_line, end_line, name, "function")
 
                 # Extract signature
                 signature = _extract_fortran_signature(node, source, is_function=True)
@@ -351,7 +329,7 @@ def _extract_fortran_symbols(
             if name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "subroutine")
+                symbol_id = make_symbol_id("fortran", rel_path, start_line, end_line, name, "subroutine")
 
                 # Extract signature
                 signature = _extract_fortran_signature(node, source, is_function=False)
@@ -384,7 +362,7 @@ def _extract_fortran_symbols(
             if name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "type")
+                symbol_id = make_symbol_id("fortran", rel_path, start_line, end_line, name, "type")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -433,7 +411,7 @@ def _extract_use_aliases(
             module_name = None
             for child in node.children:
                 if child.type == "module_name":
-                    module_name = _node_text(child, source).lower()
+                    module_name = node_text(child, source).lower()
                     break
 
             if not module_name:
@@ -448,9 +426,9 @@ def _extract_use_aliases(
                             original_name = None
                             for alias_child in item.children:
                                 if alias_child.type == "local_name":
-                                    local_name = _node_text(alias_child, source).lower()
+                                    local_name = node_text(alias_child, source).lower()
                                 elif alias_child.type == "identifier":
-                                    original_name = _node_text(alias_child, source).lower()
+                                    original_name = node_text(alias_child, source).lower()
                             if local_name and original_name:
                                 # Map alias to qualified path: module.original
                                 aliases[local_name] = f"{module_name}.{original_name}"
@@ -489,7 +467,7 @@ def _extract_fortran_edges(
             mod_name = None
             for child in node.children:
                 if child.type == "module_name":
-                    mod_name = _node_text(child, source).lower()
+                    mod_name = node_text(child, source).lower()
                     break
 
             current_symbol = _get_enclosing_fortran_symbol(node, source, local_id_registry)
@@ -522,7 +500,7 @@ def _extract_fortran_edges(
             call_name = None
             for child in node.children:
                 if child.type == "identifier":
-                    call_name = _node_text(child, source).lower()
+                    call_name = node_text(child, source).lower()
                     break
 
             current_symbol = _get_enclosing_fortran_symbol(node, source, local_id_registry)
@@ -554,7 +532,7 @@ def _extract_fortran_edges(
 
 
 @register_analyzer("fortran")
-def analyze_fortran_files(repo_root: Path) -> FortranAnalysisResult:
+def analyze_fortran_files(repo_root: Path) -> AnalysisResult:
     """Analyze Fortran files in the repository.
 
     Uses two-pass analysis:
@@ -565,10 +543,10 @@ def analyze_fortran_files(repo_root: Path) -> FortranAnalysisResult:
         repo_root: Path to the repository root
 
     Returns:
-        FortranAnalysisResult with symbols and edges
+        AnalysisResult with symbols and edges
     """
     if not is_fortran_tree_sitter_available():  # pragma: no cover
-        return FortranAnalysisResult(  # pragma: no cover
+        return AnalysisResult(  # pragma: no cover
             skipped=True,  # pragma: no cover
             skip_reason="tree-sitter-fortran not installed (pip install tree-sitter-fortran)",  # pragma: no cover
         )  # pragma: no cover
@@ -592,7 +570,7 @@ def analyze_fortran_files(repo_root: Path) -> FortranAnalysisResult:
         parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_fortran.language()))
     except Exception as e:  # pragma: no cover
         warnings.warn(f"Failed to initialize Fortran parser: {e}")
-        return FortranAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason=f"Failed to initialize parser: {e}",
         )
@@ -654,7 +632,7 @@ def analyze_fortran_files(repo_root: Path) -> FortranAnalysisResult:
     run.duration_ms = duration_ms
     run.warnings = warnings_list
 
-    return FortranAnalysisResult(
+    return AnalysisResult(
         symbols=symbols,
         edges=edges,
         run=run,

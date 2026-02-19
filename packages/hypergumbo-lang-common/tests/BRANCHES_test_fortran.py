@@ -12,25 +12,19 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_common.fortran import (
-    _make_edge_id,
-    _make_symbol_id,
-    analyze_fortran_files,
-    find_fortran_files,
-)
-
+from hypergumbo_core.analyze.base import make_symbol_id
+from hypergumbo_lang_common.fortran import _make_edge_id, analyze_fortran_files, find_fortran_files
 
 def make_fortran_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a Fortran file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestFortranHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("src/math.f90", 5, 20, "calculate", "function")
+        symbol_id = make_symbol_id("fortran", "src/math.f90", 5, 20, "calculate", "function")
         assert symbol_id == "fortran:src/math.f90:5-20:calculate:function"
 
     def test_make_edge_id_deterministic(self) -> None:
@@ -39,7 +33,6 @@ class TestFortranHelperFunctions:
         edge_id_2 = _make_edge_id("src1", "dst1", "calls")
         assert edge_id_1 == edge_id_2
         assert edge_id_1.startswith("edge:sha256:")
-
 
 class TestModuleExtraction:
     """Branch coverage for module definition extraction."""
@@ -81,7 +74,6 @@ end module lib_b
         assert "lib_a" in names
         assert "lib_b" in names
 
-
 class TestProgramExtraction:
     """Branch coverage for program definition extraction."""
 
@@ -99,7 +91,6 @@ end program hello_world
         programs = [s for s in result.symbols if s.kind == "program"]
         assert len(programs) == 1
         assert programs[0].name == "hello_world"
-
 
 class TestSubroutineExtraction:
     """Branch coverage for subroutine definition extraction."""
@@ -123,7 +114,6 @@ end subroutine swap
         assert subs[0].signature is not None
         assert "a" in subs[0].signature
         assert "b" in subs[0].signature
-
 
 class TestFunctionExtraction:
     """Branch coverage for function definition extraction."""
@@ -163,7 +153,6 @@ end function
         assert "square" in names
         assert "cube" in names
 
-
 class TestDerivedTypeExtraction:
     """Branch coverage for derived type extraction."""
 
@@ -181,7 +170,6 @@ end module
         types = [s for s in result.symbols if s.kind == "type"]
         assert len(types) == 1
         assert types[0].name == "point"
-
 
 class TestUseStatements:
     """Branch coverage for use statement edge extraction."""
@@ -210,7 +198,6 @@ end program
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) >= 1
 
-
 class TestCallEdges:
     """Branch coverage for call edge extraction."""
 
@@ -230,7 +217,6 @@ end program
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         helper_calls = [e for e in call_edges if "helper" in e.dst]
         assert len(helper_calls) >= 1
-
 
 class TestFindFortranFiles:
     """Branch coverage for file discovery."""
@@ -261,7 +247,6 @@ class TestFindFortranFiles:
         assert len(files) == 1
         assert files[0].name == "math.f90"
 
-
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
 
@@ -279,7 +264,6 @@ end program
         result = analyze_fortran_files(tmp_path)
         assert not result.skipped
         assert len(result.symbols) == 0
-
 
 class TestCrossFileResolution:
     """Branch coverage for cross-file symbol resolution."""

@@ -1,8 +1,9 @@
 """Tests for Scala analyzer."""
 import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
+from hypergumbo_core.analyze.base import find_child_by_type
+from unittest.mock import patch, MagicMock
 
 class TestFindScalaFiles:
     """Tests for Scala file discovery."""
@@ -19,7 +20,6 @@ class TestFindScalaFiles:
 
         assert len(files) == 2
         assert all(f.suffix == ".scala" for f in files)
-
 
 class TestScalaTreeSitterAvailability:
     """Tests for tree-sitter-scala availability checking."""
@@ -52,7 +52,6 @@ class TestScalaTreeSitterAvailability:
         with patch("importlib.util.find_spec", side_effect=mock_find_spec):
             assert is_scala_tree_sitter_available() is False
 
-
 class TestAnalyzeScalaFallback:
     """Tests for fallback behavior when tree-sitter-scala unavailable."""
 
@@ -67,7 +66,6 @@ class TestAnalyzeScalaFallback:
 
         assert result.skipped is True
         assert "tree-sitter-scala" in result.skip_reason
-
 
 class TestScalaFunctionExtraction:
     """Tests for extracting Scala functions/methods."""
@@ -89,14 +87,12 @@ def helper(x: Int): Int = {
 
         result = analyze_scala(tmp_path)
 
-
         assert result.run is not None
         assert result.run.files_analyzed == 1
         funcs = [s for s in result.symbols if s.kind == "function"]
         func_names = [s.name for s in funcs]
         assert "main" in func_names
         assert "helper" in func_names
-
 
 class TestScalaClassExtraction:
     """Tests for extracting Scala classes."""
@@ -118,12 +114,10 @@ class Point(x: Int, y: Int)
 
         result = analyze_scala(tmp_path)
 
-
         classes = [s for s in result.symbols if s.kind == "class"]
         class_names = [s.name for s in classes]
         assert "User" in class_names
         assert "Point" in class_names
-
 
 class TestScalaObjectExtraction:
     """Tests for extracting Scala objects."""
@@ -147,12 +141,10 @@ object Config {
 
         result = analyze_scala(tmp_path)
 
-
         objects = [s for s in result.symbols if s.kind == "object"]
         object_names = [s.name for s in objects]
         assert "Database" in object_names
         assert "Config" in object_names
-
 
 class TestScalaTraitExtraction:
     """Tests for extracting Scala traits."""
@@ -174,12 +166,10 @@ trait Clickable {
 
         result = analyze_scala(tmp_path)
 
-
         traits = [s for s in result.symbols if s.kind == "trait"]
         trait_names = [s.name for s in traits]
         assert "Drawable" in trait_names
         assert "Clickable" in trait_names
-
 
 class TestScalaFunctionCalls:
     """Tests for detecting function calls in Scala."""
@@ -200,7 +190,6 @@ def helper(): Unit = {
 """)
 
         result = analyze_scala(tmp_path)
-
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
@@ -253,7 +242,6 @@ class Controller(val svc: Service) {
             f"Expected call edge from doWork to Service.process. "
             f"Edges: {[e for e in result.edges if e.edge_type == 'calls']}"
         )
-
 
 class TestScalaLambdaCallAttribution:
     """Tests for call edge attribution inside lambda expressions.
@@ -361,7 +349,6 @@ object Test {
         )
         assert call_edge is not None, "Call to transform() inside map lambda should be attributed to processData"
 
-
 class TestScalaImports:
     """Tests for detecting Scala import statements."""
 
@@ -383,10 +370,8 @@ object Main {
 
         result = analyze_scala(tmp_path)
 
-
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) >= 1
-
 
 class TestScalaEdgeCases:
     """Tests for edge cases and error handling."""
@@ -416,7 +401,6 @@ class TestScalaEdgeCases:
 
         result = analyze_scala(tmp_path)
 
-
         assert result.run is not None
 
     def test_cross_file_function_call(self, tmp_path: Path) -> None:
@@ -437,9 +421,7 @@ def run(): Unit = {
 
         result = analyze_scala(tmp_path)
 
-
         assert result.run.files_analyzed >= 2
-
 
 class TestScalaMethodExtraction:
     """Tests for extracting methods from classes."""
@@ -463,11 +445,9 @@ class User(val name: String) {
 
         result = analyze_scala(tmp_path)
 
-
         methods = [s for s in result.symbols if s.kind == "method"]
         method_names = [s.name for s in methods]
         assert any("getName" in name for name in method_names)
-
 
 class TestScalaFileReadErrors:
     """Tests for file read error handling."""
@@ -523,7 +503,6 @@ class TestScalaFileReadErrors:
             result = _extract_edges_from_file(scala_file, parser, {}, {}, run)
 
         assert result == []
-
 
 class TestImportHintsExtraction:
     """Tests for import hints extraction for disambiguation."""
@@ -636,16 +615,12 @@ object Main {
         assert "MutableMap" in hints
         assert hints["MutableMap"] == "scala.collection.mutable.HashMap"
 
-
 class TestScalaHelperFunctions:
     """Tests for helper function edge cases."""
 
     def test_find_child_by_type_returns_none(self, tmp_path: Path) -> None:
         """_find_child_by_type returns None when no matching child."""
-        from hypergumbo_lang_mainstream.scala import (
-            _find_child_by_type,
-            is_scala_tree_sitter_available,
-        )
+        from hypergumbo_lang_mainstream.scala import is_scala_tree_sitter_available
 
         if not is_scala_tree_sitter_available():
             pytest.skip("tree-sitter-scala not available")
@@ -659,9 +634,8 @@ class TestScalaHelperFunctions:
         source = b"// comment\n"
         tree = parser.parse(source)
 
-        result = _find_child_by_type(tree.root_node, "nonexistent_type")
+        result = find_child_by_type(tree.root_node, "nonexistent_type")
         assert result is None
-
 
 class TestScalaInheritanceEdges:
     """Tests for Scala base_classes metadata extraction.
@@ -825,7 +799,6 @@ class User extends BaseModel {
         assert len(extends_edges) == 1
         assert "User" in extends_edges[0].src
         assert "BaseModel" in extends_edges[0].dst
-
 
 class TestScalaSignatureExtraction:
     """Tests for Scala function signature extraction."""

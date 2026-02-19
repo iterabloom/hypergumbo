@@ -5,14 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import purescript as purescript_module
-from hypergumbo_lang_common.purescript import (
-    PureScriptAnalysisResult,
-    analyze_purescript,
-    find_purescript_files,
-    is_purescript_tree_sitter_available,
-)
-
+from hypergumbo_lang_common.purescript import analyze_purescript, find_purescript_files, is_purescript_tree_sitter_available
 
 def make_purescript_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a PureScript file in the temp directory."""
@@ -20,7 +15,6 @@ def make_purescript_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindPurescriptFiles:
     """Tests for find_purescript_files function."""
@@ -37,7 +31,6 @@ class TestFindPurescriptFiles:
         files = list(find_purescript_files(tmp_path))
         assert files == []
 
-
 class TestIsPurescriptTreeSitterAvailable:
     """Tests for is_purescript_tree_sitter_available function."""
 
@@ -48,7 +41,6 @@ class TestIsPurescriptTreeSitterAvailable:
     def test_returns_false_when_unavailable(self) -> None:
         with patch.object(purescript_module, "is_purescript_tree_sitter_available", return_value=False):
             assert purescript_module.is_purescript_tree_sitter_available() is False
-
 
 class TestAnalyzePurescript:
     """Tests for analyze_purescript function."""

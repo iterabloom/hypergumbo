@@ -10,33 +10,25 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_common.fsharp import (
-    _is_likely_forth_file,
-    _make_file_id,
-    _make_symbol_id,
-    analyze_fsharp,
-    find_fsharp_files,
-)
-
+from hypergumbo_core.analyze.base import make_file_id, make_symbol_id
+from hypergumbo_lang_common.fsharp import _is_likely_forth_file, analyze_fsharp, find_fsharp_files
 
 def make_fsharp_file(tmp_path: Path, name: str, content: str) -> None:
     """Create an F# file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestFsharpHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("src/Main.fs", 1, 10, "greet", "function")
+        symbol_id = make_symbol_id("fsharp", "src/Main.fs", 1, 10, "greet", "function")
         assert symbol_id == "fsharp:src/Main.fs:1-10:greet:function"
 
     def test_make_file_id_format(self) -> None:
         """Test file ID format."""
-        file_id = _make_file_id("lib/Utils.fs")
+        file_id = make_file_id("fsharp", "lib/Utils.fs")
         assert file_id == "fsharp:lib/Utils.fs:1-1:file:file"
-
 
 class TestFsharpUnresolvedCalls:
     """Branch coverage for unresolved call handling."""
@@ -67,7 +59,6 @@ let main args =
         # Should handle gracefully - printfn is external
         funcs = [s for s in result.symbols if s.kind == "function"]
         assert any(f.name == "main" for f in funcs)
-
 
 class TestFsharpMultipleModules:
     """Branch coverage for files with multiple modules."""
@@ -104,7 +95,6 @@ let quadruple x = double (double x)
         # quadruple should call double (twice)
         double_calls = [e for e in call_edges if "double" in e.dst]
         assert len(double_calls) >= 2
-
 
 class TestFsharpTypeDefinitions:
     """Branch coverage for type extraction."""
@@ -151,7 +141,6 @@ type Priority =
         assert "Status" in names
         assert "Priority" in names
 
-
 class TestFsharpOpenStatements:
     """Branch coverage for open statement handling."""
 
@@ -172,7 +161,6 @@ let main args = 0
         assert any("System.Collections.Generic" in d for d in dests)
         assert any("System.Runtime.CompilerServices" in d for d in dests)
         assert any("Microsoft.FSharp.Collections" in d for d in dests)
-
 
 class TestFsharpFunctionDefinitions:
     """Branch coverage for function definition patterns."""
@@ -204,7 +192,6 @@ let getDefault () = 0
         names = [f.name for f in funcs]
         assert "create" in names
         assert "getDefault" in names
-
 
 class TestForthFileDetection:
     """Branch coverage for Forth file detection edge cases."""
@@ -256,7 +243,6 @@ let create x = { Value = x }
         # Should analyze as F#, not detect as Forth
         assert not result.skipped
 
-
 class TestFsharpCrossFileResolution:
     """Branch coverage for cross-file resolution."""
 
@@ -286,7 +272,6 @@ let topFunc x = Middle.middleFunc (Middle.middleFunc x)
         assert "Middle" in names
         assert "Top" in names
 
-
 class TestFsharpEmptyAndMinimal:
     """Branch coverage for empty/minimal files."""
 
@@ -312,7 +297,6 @@ module Empty
         result = analyze_fsharp(tmp_path)
         # Should handle gracefully
         assert not result.skipped
-
 
 class TestFsharpFindFiles:
     """Branch coverage for file discovery."""

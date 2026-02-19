@@ -31,11 +31,10 @@ import hashlib
 import importlib.util
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_symbol_id, node_text
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -65,38 +64,17 @@ def is_glsl_tree_sitter_available() -> bool:
     return True
 
 
-@dataclass
-class GLSLAnalysisResult:
-    """Result of analyzing GLSL files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"glsl:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
     """Generate deterministic edge ID."""
     content = f"{edge_type}:{src}:{dst}"
     return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
 
 
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
 def _get_identifier(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract identifier from a node's children."""
     for child in node.children:
         if child.type == "identifier":
-            return _node_text(child, source)
+            return node_text(child, source)
     return None  # pragma: no cover
 
 
@@ -104,16 +82,8 @@ def _get_type_identifier(node: "tree_sitter.Node", source: bytes) -> Optional[st
     """Get type identifier from struct_specifier."""
     for child in node.children:
         if child.type == "type_identifier":
-            return _node_text(child, source)
+            return node_text(child, source)
     return None  # pragma: no cover
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None  # pragma: no cover - defensive
 
 
 def _extract_glsl_signature(func_def: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -123,24 +93,24 @@ def _extract_glsl_signature(func_def: "tree_sitter.Node", source: bytes) -> Opti
     GLSL is C-like with typed parameters.
     """
     # Find function declarator (contains name and params)
-    func_decl = _find_child_by_type(func_def, "function_declarator")
+    func_decl = find_child_by_type(func_def, "function_declarator")
     if func_decl is None:  # pragma: no cover - always has declarator
         return None
 
     # Find parameter list
     params: list[str] = []
-    param_list = _find_child_by_type(func_decl, "parameter_list")
+    param_list = find_child_by_type(func_decl, "parameter_list")
     if param_list:
         for child in param_list.children:
             if child.type == "parameter_declaration":
-                param_text = _node_text(child, source).strip()
+                param_text = node_text(child, source).strip()
                 params.append(param_text)
 
     # Get return type (primitive_type or type_identifier before function_declarator)
     return_type: Optional[str] = None
     for child in func_def.children:
         if child.type in ("primitive_type", "type_identifier"):
-            return_type = _node_text(child, source)
+            return_type = node_text(child, source)
             break
 
     params_str = ", ".join(params) if params else ""
@@ -197,7 +167,7 @@ def _extract_glsl_symbols(
             if func_name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, func_name, "function")
+                symbol_id = make_symbol_id("glsl", rel_path, start_line, end_line, func_name, "function")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -227,7 +197,7 @@ def _extract_glsl_symbols(
             if struct_name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, struct_name, "struct")
+                symbol_id = make_symbol_id("glsl", rel_path, start_line, end_line, struct_name, "struct")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -251,7 +221,7 @@ def _extract_glsl_symbols(
 
         # Variable declarations (uniform, in, out)
         elif node.type == "declaration":
-            text = _node_text(node, source).strip()
+            text = node_text(node, source).strip()
             var_name = _get_identifier(node, source)
 
             if var_name:
@@ -273,7 +243,7 @@ def _extract_glsl_symbols(
 
                 # Only create symbols for shader-specific declarations
                 if kind in ("uniform", "input", "output", "varying", "attribute"):
-                    symbol_id = _make_symbol_id(rel_path, start_line, end_line, var_name, kind)
+                    symbol_id = make_symbol_id("glsl", rel_path, start_line, end_line, var_name, kind)
 
                     sym = Symbol(
                         id=symbol_id,
@@ -342,7 +312,7 @@ def _extract_glsl_edges(
 
 
 @register_analyzer("glsl")
-def analyze_glsl_files(repo_root: Path) -> GLSLAnalysisResult:
+def analyze_glsl_files(repo_root: Path) -> AnalysisResult:
     """Analyze GLSL files in the repository.
 
     Uses two-pass analysis for cross-file call resolution.
@@ -351,10 +321,10 @@ def analyze_glsl_files(repo_root: Path) -> GLSLAnalysisResult:
         repo_root: Path to the repository root
 
     Returns:
-        GLSLAnalysisResult with symbols and edges
+        AnalysisResult with symbols and edges
     """
     if not is_glsl_tree_sitter_available():  # pragma: no cover
-        return GLSLAnalysisResult(  # pragma: no cover
+        return AnalysisResult(  # pragma: no cover
             skipped=True,  # pragma: no cover
             skip_reason="tree-sitter-glsl not installed (pip install tree-sitter-glsl)",  # pragma: no cover
         )  # pragma: no cover
@@ -375,7 +345,7 @@ def analyze_glsl_files(repo_root: Path) -> GLSLAnalysisResult:
         parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_glsl.language()))
     except Exception as e:  # pragma: no cover
         warnings.warn(f"Failed to initialize GLSL parser: {e}")
-        return GLSLAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason=f"Failed to initialize parser: {e}",
         )
@@ -424,7 +394,7 @@ def analyze_glsl_files(repo_root: Path) -> GLSLAnalysisResult:
     run.duration_ms = duration_ms
     run.warnings = warnings_list
 
-    return GLSLAnalysisResult(
+    return AnalysisResult(
         symbols=symbols,
         edges=edges,
         run=run,

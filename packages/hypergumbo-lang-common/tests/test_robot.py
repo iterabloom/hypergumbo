@@ -5,14 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import robot as robot_module
-from hypergumbo_lang_common.robot import (
-    RobotAnalysisResult,
-    analyze_robot,
-    find_robot_files,
-    is_robot_tree_sitter_available,
-)
-
+from hypergumbo_lang_common.robot import analyze_robot, find_robot_files, is_robot_tree_sitter_available
 
 def make_robot_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a Robot Framework file in the temp directory."""
@@ -20,7 +15,6 @@ def make_robot_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindRobotFiles:
     """Tests for find_robot_files function."""
@@ -37,7 +31,6 @@ class TestFindRobotFiles:
         files = find_robot_files(tmp_path)
         assert files == []
 
-
 class TestIsRobotTreeSitterAvailable:
     """Tests for is_robot_tree_sitter_available function."""
 
@@ -48,7 +41,6 @@ class TestIsRobotTreeSitterAvailable:
     def test_returns_false_when_unavailable(self) -> None:
         with patch.object(robot_module, "is_robot_tree_sitter_available", return_value=False):
             assert robot_module.is_robot_tree_sitter_available() is False
-
 
 class TestAnalyzeRobot:
     """Tests for analyze_robot function."""

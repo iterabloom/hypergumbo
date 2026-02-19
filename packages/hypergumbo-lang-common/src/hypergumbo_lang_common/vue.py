@@ -46,6 +46,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -54,24 +55,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "vue.tree_sitter"
 PASS_VERSION = "0.1.0"
-
-
-class VueAnalysisResult:
-    """Result of Vue component analysis."""
-
-    def __init__(
-        self,
-        symbols: list[Symbol],
-        edges: list[Edge],
-        run: AnalysisRun | None = None,
-        skipped: bool = False,
-        skip_reason: str = "",
-    ) -> None:
-        self.symbols = symbols
-        self.edges = edges
-        self.run = run
-        self.skipped = skipped
-        self.skip_reason = skip_reason
 
 
 def is_vue_tree_sitter_available() -> bool:
@@ -177,13 +160,13 @@ class VueAnalyzer:
         self._files_analyzed = 0
         self._current_imports: dict[str, str] = {}  # component name -> import path
 
-    def analyze(self) -> VueAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Run the Vue analysis."""
         start_time = time.time()
 
         files = find_vue_files(self.repo_root)
         if not files:
-            return VueAnalysisResult(
+            return AnalysisResult(
                 symbols=[],
                 edges=[],
                 run=None,
@@ -214,7 +197,7 @@ class VueAnalyzer:
             files_analyzed=self._files_analyzed,
         )
 
-        return VueAnalysisResult(
+        return AnalysisResult(
             symbols=self._symbols,
             edges=self._edges,
             run=run,
@@ -724,14 +707,14 @@ class VueAnalyzer:
 
 
 @register_analyzer("vue")
-def analyze_vue(repo_root: Path) -> VueAnalysisResult:
+def analyze_vue(repo_root: Path) -> AnalysisResult:
     """Analyze Vue component files in a repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        VueAnalysisResult containing extracted symbols and edges
+        AnalysisResult containing extracted symbols and edges
     """
     if not is_vue_tree_sitter_available():
         warnings.warn(
@@ -739,7 +722,7 @@ def analyze_vue(repo_root: Path) -> VueAnalysisResult:
             UserWarning,
             stacklevel=2,
         )
-        return VueAnalysisResult(
+        return AnalysisResult(
             symbols=[],
             edges=[],
             run=AnalysisRun(

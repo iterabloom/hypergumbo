@@ -12,31 +12,24 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_mainstream.bash import (
-    _make_symbol_id,
-    _make_file_id,
-    _is_bash_shebang,
-    analyze_bash,
-    find_bash_files,
-)
-
+from hypergumbo_core.analyze.base import make_file_id, make_symbol_id
+from hypergumbo_lang_mainstream.bash import _is_bash_shebang, analyze_bash, find_bash_files
 
 def make_bash_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a Bash file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestBashHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("scripts/build.sh", 1, 5, "setup", "function")
+        symbol_id = make_symbol_id("bash", "scripts/build.sh", 1, 5, "setup", "function")
         assert symbol_id == "bash:scripts/build.sh:1-5:setup:function"
 
     def test_make_file_id_format(self) -> None:
         """Test file ID format."""
-        file_id = _make_file_id("scripts/common.sh")
+        file_id = make_file_id("bash", "scripts/common.sh")
         assert file_id == "bash:scripts/common.sh:1-1:file:file"
 
     def test_is_bash_shebang_bash(self) -> None:
@@ -56,7 +49,6 @@ class TestBashHelperFunctions:
         assert not _is_bash_shebang("#!/usr/bin/python")
         assert not _is_bash_shebang("#!/usr/bin/env python")
         assert not _is_bash_shebang("# not a shebang")
-
 
 class TestFunctionExtraction:
     """Branch coverage for function extraction."""
@@ -99,7 +91,6 @@ greet() {
         assert len(functions) >= 1
         assert functions[0].signature == "()"
 
-
 class TestExportExtraction:
     """Branch coverage for export extraction."""
 
@@ -123,7 +114,6 @@ export EDITOR="vim"
         exports = [s for s in result.symbols if s.kind == "export"]
         assert len(exports) >= 2
 
-
 class TestAliasExtraction:
     """Branch coverage for alias extraction."""
 
@@ -145,7 +135,6 @@ alias grep="grep --color=auto"
         result = analyze_bash(tmp_path)
         aliases = [s for s in result.symbols if s.kind == "alias"]
         assert len(aliases) >= 1
-
 
 class TestSourceEdges:
     """Branch coverage for source edge extraction."""
@@ -176,7 +165,6 @@ main() {
         source_edges = [e for e in result.edges if e.edge_type == "sources"]
         assert len(source_edges) >= 1
 
-
 class TestCallEdges:
     """Branch coverage for call edge extraction."""
 
@@ -194,7 +182,6 @@ main() {
         result = analyze_bash(tmp_path)
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
-
 
 class TestFindBashFiles:
     """Branch coverage for file discovery."""
@@ -224,7 +211,6 @@ class TestFindBashFiles:
         files = find_bash_files(tmp_path)
         assert len(files) >= 1
 
-
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
 
@@ -240,7 +226,6 @@ echo "hello"
 """)
         result = analyze_bash(tmp_path)
         assert not result.skipped
-
 
 class TestAnalysisRun:
     """Branch coverage for analysis run metadata."""

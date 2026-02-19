@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Optional
 from hypergumbo_core.discovery import classify_dot_m_file, find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -64,35 +64,12 @@ def find_objc_files(root: Path) -> list[Path]:
     return result
 
 
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first direct child with given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Get text content of a node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"objc:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for an Objective-C file node (used as import edge source)."""
-    return f"objc:{path}:1-1:file:file"
-
-
 def _extract_type_name(node: "tree_sitter.Node", source: bytes) -> str:
     """Extract type name from a type_name node, handling pointers."""
     parts: list[str] = []
     for child in node.children:
         if child.type in ("primitive_type", "type_identifier"):
-            parts.append(_node_text(child, source))
+            parts.append(node_text(child, source))
         elif child.type == "abstract_pointer_declarator":
             parts.append("*")
     return "".join(parts)
@@ -121,7 +98,7 @@ def _extract_objc_signature(
     for child in node.children:
         if child.type == "method_type":
             # This is the return type
-            type_name_node = _find_child_by_type(child, "type_name")
+            type_name_node = find_child_by_type(child, "type_name")
             if type_name_node:
                 return_type = _extract_type_name(type_name_node, source)
         elif child.type == "method_parameter":
@@ -130,11 +107,11 @@ def _extract_objc_signature(
             param_name = None
             for subchild in child.children:
                 if subchild.type == "method_type":
-                    type_name_node = _find_child_by_type(subchild, "type_name")
+                    type_name_node = find_child_by_type(subchild, "type_name")
                     if type_name_node:
                         param_type = _extract_type_name(type_name_node, source)
                 elif subchild.type == "identifier":
-                    param_name = _node_text(subchild, source)
+                    param_name = node_text(subchild, source)
             if param_type and param_name:
                 params.append(f"{param_type} {param_name}")
 
@@ -145,17 +122,6 @@ def _extract_objc_signature(
         signature += f": {return_type}"
 
     return signature
-
-
-@dataclass
-class ObjCAnalysisResult:
-    """Result of analyzing Objective-C files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
 
 
 @dataclass
@@ -173,7 +139,7 @@ def _extract_class_name(node: "tree_sitter.Node", source: bytes) -> str | None:
     # Find the identifier that follows @interface or @implementation
     for child in node.children:
         if child.type == "identifier":
-            return _node_text(child, source)
+            return node_text(child, source)
     return None  # pragma: no cover
 
 
@@ -200,16 +166,16 @@ def _extract_base_classes_objc(node: "tree_sitter.Node", source: bytes) -> list[
                 seen_class_name = True
             elif seen_colon:
                 # Identifier after `:` is the superclass
-                base_classes.append(_node_text(child, source))
+                base_classes.append(node_text(child, source))
         elif child.type == ":":
             seen_colon = True
         elif child.type == "parameterized_arguments":
             # Protocol conformance: <ProtocolA, ProtocolB>
             for param_child in child.children:
                 if param_child.type == "type_name":
-                    type_id = _find_child_by_type(param_child, "type_identifier")
+                    type_id = find_child_by_type(param_child, "type_identifier")
                     if type_id:
-                        base_classes.append(_node_text(type_id, source))
+                        base_classes.append(node_text(type_id, source))
 
     return base_classes
 
@@ -218,7 +184,7 @@ def _extract_protocol_name(node: "tree_sitter.Node", source: bytes) -> str | Non
     """Extract protocol name from protocol_declaration node."""
     for child in node.children:
         if child.type == "identifier":
-            return _node_text(child, source)
+            return node_text(child, source)
     return None  # pragma: no cover
 
 
@@ -231,14 +197,14 @@ def _extract_method_name(node: "tree_sitter.Node", source: bytes) -> str | None:
     parts: list[str] = []
     for child in node.children:
         if child.type == "identifier":
-            parts.append(_node_text(child, source))
+            parts.append(node_text(child, source))
         elif child.type == "keyword_selector":  # pragma: no cover - complex selectors
             # Complex selector like doSomething:withParam:
             for kw_child in child.children:
                 if kw_child.type == "keyword_argument_selector":
                     for kwa_child in kw_child.children:
                         if kwa_child.type == "identifier":
-                            parts.append(_node_text(kwa_child, source) + ":")
+                            parts.append(node_text(kwa_child, source) + ":")
                             break
 
     if parts:
@@ -249,7 +215,7 @@ def _extract_method_name(node: "tree_sitter.Node", source: bytes) -> str | None:
 def _extract_property_name(node: "tree_sitter.Node", source: bytes) -> str | None:
     """Extract property name from property_declaration node."""
     # Property declaration has a struct_declaration child with the var name
-    struct_decl = _find_child_by_type(node, "struct_declaration")
+    struct_decl = find_child_by_type(node, "struct_declaration")
     if struct_decl:
         for child in struct_decl.children:
             if child.type == "struct_declarator":
@@ -258,9 +224,9 @@ def _extract_property_name(node: "tree_sitter.Node", source: bytes) -> str | Non
                     if decl_child.type == "pointer_declarator":
                         for ptr_child in decl_child.children:
                             if ptr_child.type == "identifier":
-                                return _node_text(ptr_child, source)
+                                return node_text(ptr_child, source)
                     elif decl_child.type == "identifier":
-                        return _node_text(decl_child, source)
+                        return node_text(decl_child, source)
     return None  # pragma: no cover
 
 
@@ -311,7 +277,7 @@ def _extract_symbols_from_file(
             if class_name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, class_name, "class")
+                symbol_id = make_symbol_id("objc", rel_path, start_line, end_line, class_name, "class")
 
                 # Extract base classes/protocols for inheritance linker
                 base_classes = _extract_base_classes_objc(node, source)
@@ -341,7 +307,7 @@ def _extract_symbols_from_file(
             if protocol_name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(
+                symbol_id = make_symbol_id("objc",
                     rel_path, start_line, end_line, protocol_name, "protocol"
                 )
 
@@ -371,7 +337,7 @@ def _extract_symbols_from_file(
                 full_name = f"{current_class}.{method_name}" if current_class else method_name
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, full_name, "method")
+                symbol_id = make_symbol_id("objc", rel_path, start_line, end_line, full_name, "method")
 
                 # Extract signature
                 signature = _extract_objc_signature(node, source)
@@ -401,7 +367,7 @@ def _extract_symbols_from_file(
                 current_class = _get_enclosing_class_objc(node, source)
                 full_name = f"{current_class}.{prop_name}" if current_class else prop_name
                 start_line = node.start_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, start_line, full_name, "property")
+                symbol_id = make_symbol_id("objc", rel_path, start_line, start_line, full_name, "property")
 
                 symbol = Symbol(
                     id=symbol_id,
@@ -428,14 +394,14 @@ def _extract_import_path(node: "tree_sitter.Node", source: bytes) -> str | None:
     # Check for system_lib_string (<...>)
     for child in node.children:
         if child.type == "system_lib_string":
-            text = _node_text(child, source)
+            text = node_text(child, source)
             # Remove angle brackets
             return text.strip("<>")
         elif child.type == "string_literal":
             # Local import "..."
             for str_child in child.children:
                 if str_child.type == "string_content":
-                    return _node_text(str_child, source)
+                    return node_text(str_child, source)
     return None  # pragma: no cover
 
 
@@ -459,7 +425,7 @@ def _extract_message_selector(node: "tree_sitter.Node", source: bytes) -> str | 
                 seen_receiver = True
             else:
                 # Simple message like [obj doSomething]
-                parts.append(_node_text(child, source))
+                parts.append(node_text(child, source))
         elif child.type == "message_expression":
             # Nested message like [[obj alloc] init] - receiver is another message
             seen_receiver = True
@@ -468,7 +434,7 @@ def _extract_message_selector(node: "tree_sitter.Node", source: bytes) -> str | 
                 if kw_child.type == "keyword_argument":
                     for kwa_child in kw_child.children:
                         if kwa_child.type == "identifier":
-                            parts.append(_node_text(kwa_child, source) + ":")
+                            parts.append(node_text(kwa_child, source) + ":")
                             break
 
     if parts:
@@ -505,7 +471,7 @@ def _extract_edges_from_file(
     """
     edges: list[Edge] = []
     rel_path = str(file_path)
-    file_id = _make_file_id(rel_path)
+    file_id = make_file_id("objc", rel_path)
 
     try:
         source = file_path.read_bytes()
@@ -573,7 +539,7 @@ def _extract_edges_from_file(
 
 
 @register_analyzer("objc")
-def analyze_objc(root: Path) -> ObjCAnalysisResult:
+def analyze_objc(root: Path) -> AnalysisResult:
     """Analyze Objective-C files in a directory.
 
     Uses tree-sitter-objc for parsing. Falls back gracefully if not available.
@@ -582,7 +548,7 @@ def analyze_objc(root: Path) -> ObjCAnalysisResult:
         warnings.warn(
             "tree-sitter-objc not available. Install with: pip install tree-sitter-objc"
         )
-        return ObjCAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-objc not available",
         )
@@ -594,7 +560,7 @@ def analyze_objc(root: Path) -> ObjCAnalysisResult:
         language = tree_sitter.Language(tree_sitter_objc.language())
         parser = tree_sitter.Parser(language)
     except Exception as e:
-        return ObjCAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason=f"Failed to load Objective-C parser: {e}",
         )
@@ -603,7 +569,7 @@ def analyze_objc(root: Path) -> ObjCAnalysisResult:
 
     all_files = find_objc_files(root)
     if not all_files:  # pragma: no cover - no ObjC files in test
-        return ObjCAnalysisResult(run=run)
+        return AnalysisResult(run=run)
 
     # Pass 1: Extract symbols from all files
     all_symbols: list[Symbol] = []
@@ -629,7 +595,7 @@ def analyze_objc(root: Path) -> ObjCAnalysisResult:
         )
         all_edges.extend(edges)
 
-    return ObjCAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

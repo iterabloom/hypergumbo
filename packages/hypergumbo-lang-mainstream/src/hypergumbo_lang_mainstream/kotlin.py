@@ -40,7 +40,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -64,40 +64,6 @@ def is_kotlin_tree_sitter_available() -> bool:
     return True
 
 
-@dataclass
-class KotlinAnalysisResult:
-    """Result of analyzing Kotlin files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"kotlin:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a Kotlin file node (used as import edge source)."""
-    return f"kotlin:{path}:1-1:file:file"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None
-
-
 def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:
     """Find child by field name."""
     return node.child_by_field_name(field_name)
@@ -110,11 +76,11 @@ def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[st
         if current.type in ("class_declaration", "object_declaration"):
             name_node = _find_child_by_field(current, "name")
             if not name_node:  # pragma: no cover - defensive fallback
-                name_node = _find_child_by_type(current, "identifier")
+                name_node = find_child_by_type(current, "identifier")
                 if not name_node:
-                    name_node = _find_child_by_type(current, "type_identifier")
+                    name_node = find_child_by_type(current, "type_identifier")
             if name_node:
-                return _node_text(name_node, source)
+                return node_text(name_node, source)
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -130,9 +96,9 @@ def _get_enclosing_function(
         if current.type == "function_declaration":
             name_node = _find_child_by_field(current, "name")
             if not name_node:  # pragma: no cover - defensive fallback
-                name_node = _find_child_by_type(current, "identifier")
+                name_node = find_child_by_type(current, "identifier")
             if name_node:
-                func_name = _node_text(name_node, source)
+                func_name = node_text(name_node, source)
                 if func_name in local_symbols:
                     return local_symbols[func_name]
         current = current.parent
@@ -169,14 +135,14 @@ def _extract_kotlin_signature(
                     param_type = None
                     for pc in subchild.children:
                         if pc.type == "identifier" and param_name is None:
-                            param_name = _node_text(pc, source)
+                            param_name = node_text(pc, source)
                         elif pc.type in ("user_type", "nullable_type", "function_type"):
-                            param_type = _node_text(pc, source)
+                            param_type = node_text(pc, source)
                     if param_name and param_type:
                         params.append(f"{param_name}: {param_type}")
         # Return type comes after function_value_parameters and before function_body
         elif found_params and child.type in ("user_type", "nullable_type", "function_type"):
-            return_type = _node_text(child, source)
+            return_type = node_text(child, source)
 
     params_str = ", ".join(params)
     signature = f"({params_str})"
@@ -239,9 +205,9 @@ def _extract_param_types(
                     param_type = None
                     for pc in subchild.children:
                         if pc.type == "identifier" and param_name is None:
-                            param_name = _node_text(pc, source)
+                            param_name = node_text(pc, source)
                         elif pc.type in ("user_type", "nullable_type", "function_type"):
-                            type_text = _node_text(pc, source)
+                            type_text = node_text(pc, source)
                             # Extract base type name (strip nullable ?, generics <>, etc.)
                             if type_text:
                                 # Remove nullable suffix
@@ -289,11 +255,11 @@ def _extract_imports(
             continue
 
         # Find the qualified_identifier
-        id_node = _find_child_by_type(node, "qualified_identifier")
+        id_node = find_child_by_type(node, "qualified_identifier")
         if not id_node:
-            id_node = _find_child_by_type(node, "identifier")
+            id_node = find_child_by_type(node, "identifier")
         if id_node:
-            full_name = _node_text(id_node, source)
+            full_name = node_text(id_node, source)
             # Extract simple name (last part of qualified name)
             simple_name = full_name.split(".")[-1]
             imports[simple_name] = full_name
@@ -361,10 +327,10 @@ def _extract_user_type_name(user_type_node: "tree_sitter.Node", source: bytes) -
     """
     for child in user_type_node.children:
         if child.type in ("simple_identifier", "identifier", "type_identifier"):
-            return _node_text(child, source)
+            return node_text(child, source)
     # Defensive fallback for unexpected AST shapes
     if True:  # pragma: no cover
-        text = _node_text(user_type_node, source)
+        text = node_text(user_type_node, source)
         if "<" in text:
             text = text.split("<")[0]
         return text if text else None
@@ -391,10 +357,10 @@ def _extract_symbols_from_file(
         if node.type == "function_declaration":
             name_node = _find_child_by_field(node, "name")
             if not name_node:  # pragma: no cover - grammar fallback
-                name_node = _find_child_by_type(node, "identifier")
+                name_node = find_child_by_type(node, "identifier")
 
             if name_node:
-                func_name = _node_text(name_node, source)
+                func_name = node_text(name_node, source)
                 enclosing_class = _get_enclosing_class(node, source)
                 if enclosing_class:
                     full_name = f"{enclosing_class}.{func_name}"
@@ -410,7 +376,7 @@ def _extract_symbols_from_file(
                 signature = _extract_kotlin_signature(node, source)
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, full_name, kind),
+                    id=make_symbol_id("kotlin", str(file_path), start_line, end_line, full_name, kind),
                     name=full_name,
                     kind=kind,
                     language="kotlin",
@@ -432,14 +398,14 @@ def _extract_symbols_from_file(
         # Class declaration (also handles interfaces in Kotlin AST)
         elif node.type == "class_declaration":
             # Check if it's an interface
-            is_interface = _find_child_by_type(node, "interface") is not None
+            is_interface = find_child_by_type(node, "interface") is not None
 
             name_node = _find_child_by_field(node, "name")
             if not name_node:  # pragma: no cover - grammar fallback
-                name_node = _find_child_by_type(node, "identifier")
+                name_node = find_child_by_type(node, "identifier")
 
             if name_node:
-                type_name = _node_text(name_node, source)
+                type_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
@@ -452,7 +418,7 @@ def _extract_symbols_from_file(
                     meta = {"base_classes": base_classes}
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, type_name, kind),
+                    id=make_symbol_id("kotlin", str(file_path), start_line, end_line, type_name, kind),
                     name=type_name,
                     kind=kind,
                     language="kotlin",
@@ -474,15 +440,15 @@ def _extract_symbols_from_file(
         elif node.type == "object_declaration":
             name_node = _find_child_by_field(node, "name")
             if not name_node:  # pragma: no cover - grammar fallback
-                name_node = _find_child_by_type(node, "type_identifier")
+                name_node = find_child_by_type(node, "type_identifier")
 
             if name_node:
-                object_name = _node_text(name_node, source)
+                object_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, object_name, "object"),
+                    id=make_symbol_id("kotlin", str(file_path), start_line, end_line, object_name, "object"),
                     name=object_name,
                     kind="object",
                     language="kotlin",
@@ -527,7 +493,7 @@ def _extract_edges_from_file(
         return []
 
     edges: list[Edge] = []
-    file_id = _make_file_id(str(file_path))
+    file_id = make_file_id("kotlin", str(file_path))
 
     # Track variable types from constructor calls: val x = ClassName()
     var_types: dict[str, str] = {}
@@ -542,11 +508,11 @@ def _extract_edges_from_file(
         # Detect import statements
         if node.type == "import":
             # Get the qualified identifier being imported
-            id_node = _find_child_by_type(node, "qualified_identifier")
+            id_node = find_child_by_type(node, "qualified_identifier")
             if not id_node:
-                id_node = _find_child_by_type(node, "identifier")
+                id_node = find_child_by_type(node, "identifier")
             if id_node:
-                import_path = _node_text(id_node, source)
+                import_path = node_text(id_node, source)
                 edges.append(Edge.create(
                     src=file_id,
                     dst=f"kotlin:{import_path}:0-0:package:package",
@@ -560,11 +526,11 @@ def _extract_edges_from_file(
 
         # Track constructor parameter types: class Ctrl(private val svc: Service)
         elif node.type == "class_parameter":
-            param_name_node = _find_child_by_type(node, "identifier")
-            type_node = _find_child_by_type(node, "user_type")
+            param_name_node = find_child_by_type(node, "identifier")
+            type_node = find_child_by_type(node, "user_type")
             if param_name_node and type_node:
-                param_name = _node_text(param_name_node, source)
-                type_name = _node_text(type_node, source)
+                param_name = node_text(param_name_node, source)
+                type_name = node_text(type_node, source)
                 if type_name:
                     # Strip generics
                     if "<" in type_name:
@@ -575,15 +541,15 @@ def _extract_edges_from_file(
         # Track variable types from property declarations: val x = ClassName()
         elif node.type == "property_declaration":
             # Find variable_declaration and call_expression children
-            var_decl = _find_child_by_type(node, "variable_declaration")
-            call_expr = _find_child_by_type(node, "call_expression")
+            var_decl = find_child_by_type(node, "variable_declaration")
+            call_expr = find_child_by_type(node, "call_expression")
             if var_decl and call_expr:
-                var_name_node = _find_child_by_type(var_decl, "identifier")
+                var_name_node = find_child_by_type(var_decl, "identifier")
                 # Check if call is a simple constructor (identifier, not navigation)
-                callee_node = _find_child_by_type(call_expr, "identifier")
+                callee_node = find_child_by_type(call_expr, "identifier")
                 if var_name_node and callee_node:
-                    var_name = _node_text(var_name_node, source)
-                    type_name = _node_text(callee_node, source)
+                    var_name = node_text(var_name_node, source)
+                    type_name = node_text(callee_node, source)
                     # Only track if type_name looks like a class (capitalized)
                     if type_name and type_name[0].isupper():
                         var_types[var_name] = type_name
@@ -602,7 +568,7 @@ def _extract_edges_from_file(
                 continue
 
             # Check for navigation_expression (Object.method() or instance.method())
-            nav_node = _find_child_by_type(node, "navigation_expression")
+            nav_node = find_child_by_type(node, "navigation_expression")
             if nav_node:
                 # Navigation expression structure varies:
                 # - Object.method(): identifier . identifier
@@ -625,7 +591,7 @@ def _extract_edges_from_file(
                             method_node = child
 
                 if receiver_node and method_node:
-                    method_name = _node_text(method_node, source)
+                    method_name = node_text(method_node, source)
                     edge_added = False
 
                     # Case 1: this.method() - call on current instance
@@ -650,14 +616,14 @@ def _extract_edges_from_file(
 
                     # Case 1b: this.property.method() - call on injected dep
                     elif receiver_node.type == "navigation_expression":
-                        this_node = _find_child_by_type(
+                        this_node = find_child_by_type(
                             receiver_node, "this_expression"
                         )
-                        prop_node = _find_child_by_type(
+                        prop_node = find_child_by_type(
                             receiver_node, "identifier"
                         )
                         if this_node and prop_node:
-                            prop_name = _node_text(prop_node, source)
+                            prop_name = node_text(prop_node, source)
                             if prop_name in var_types:
                                 type_name = var_types[prop_name]
                                 candidate = f"{type_name}.{method_name}"
@@ -686,7 +652,7 @@ def _extract_edges_from_file(
 
                     # For non-this cases, get receiver name from identifier node
                     else:
-                        receiver_name = _node_text(receiver_node, source)
+                        receiver_name = node_text(receiver_node, source)
 
                         resolved_nav_sym = None
 
@@ -739,16 +705,16 @@ def _extract_edges_from_file(
                             if ret_name and ret_name in class_symbols:
                                 prop_decl = node.parent
                                 if prop_decl and prop_decl.type == "property_declaration":
-                                    var_decl = _find_child_by_type(
+                                    var_decl = find_child_by_type(
                                         prop_decl, "variable_declaration"
                                     )
                                     if var_decl:
-                                        var_name_node = _find_child_by_type(
+                                        var_name_node = find_child_by_type(
                                             var_decl, "identifier"
                                         )
                                         if var_name_node:
                                             var_types[
-                                                _node_text(var_name_node, source)
+                                                node_text(var_name_node, source)
                                             ] = ret_name
 
                         # Case 4: Fallback - try qualified name directly
@@ -770,9 +736,9 @@ def _extract_edges_from_file(
                                 ))
             else:
                 # Simple function call: helper()
-                callee_node = _find_child_by_type(node, "identifier")
+                callee_node = find_child_by_type(node, "identifier")
                 if callee_node:
-                    callee_name = _node_text(callee_node, source)
+                    callee_name = node_text(callee_node, source)
                     resolved_simple_sym = None
 
                     # Check local symbols first
@@ -821,16 +787,16 @@ def _extract_edges_from_file(
                                 prop_decl
                                 and prop_decl.type == "property_declaration"
                             ):
-                                var_decl = _find_child_by_type(
+                                var_decl = find_child_by_type(
                                     prop_decl, "variable_declaration"
                                 )
                                 if var_decl:
-                                    var_name_node = _find_child_by_type(
+                                    var_name_node = find_child_by_type(
                                         var_decl, "identifier"
                                     )
                                     if var_name_node:
                                         var_types[
-                                            _node_text(var_name_node, source)
+                                            node_text(var_name_node, source)
                                         ] = ret_name
 
     return edges
@@ -980,10 +946,10 @@ def _extract_inheritance_edges(
 
 
 @register_analyzer("kotlin")
-def analyze_kotlin(repo_root: Path) -> KotlinAnalysisResult:
+def analyze_kotlin(repo_root: Path) -> AnalysisResult:
     """Analyze all Kotlin files in a repository.
 
-    Returns a KotlinAnalysisResult with symbols, edges, and provenance.
+    Returns a AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-kotlin is not available, returns a skipped result.
     """
     if not is_kotlin_tree_sitter_available():
@@ -991,7 +957,7 @@ def analyze_kotlin(repo_root: Path) -> KotlinAnalysisResult:
             "tree-sitter-kotlin not available. Install with: pip install hypergumbo[kotlin]",
             stacklevel=2,
         )
-        return KotlinAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-kotlin not available",
         )
@@ -1008,7 +974,7 @@ def analyze_kotlin(repo_root: Path) -> KotlinAnalysisResult:
         parser = tree_sitter.Parser(lang)
     except Exception as e:
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return KotlinAnalysisResult(
+        return AnalysisResult(
             run=run,
             skipped=True,
             skip_reason=f"Failed to load Kotlin parser: {e}",
@@ -1075,7 +1041,7 @@ def analyze_kotlin(repo_root: Path) -> KotlinAnalysisResult:
     )
     all_edges.extend(inheritance_edges)
 
-    return KotlinAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

@@ -48,7 +48,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -81,17 +81,6 @@ def is_erlang_tree_sitter_available() -> bool:
 
 
 @dataclass
-class ErlangAnalysisResult:
-    """Result of analyzing Erlang files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-@dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file.
 
@@ -104,29 +93,6 @@ class FileAnalysis:
     symbols: list[Symbol]
     module_name: str  # Erlang module name from -module attribute
     import_aliases: dict[str, str] = field(default_factory=dict)  # func -> module
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"erlang:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for an Erlang file node (used as import edge source)."""
-    return f"erlang:{path}:1-1:file:file"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None  # pragma: no cover - defensive fallback
 
 
 def _extract_import_aliases(
@@ -150,19 +116,19 @@ def _extract_import_aliases(
     for node in iter_tree(root_node):
         if node.type == "import_attribute":
             # First atom child is the module name
-            module_atom = _find_child_by_type(node, "atom")
+            module_atom = find_child_by_type(node, "atom")
             if not module_atom:
                 continue  # pragma: no cover - defensive
 
-            module_name = _node_text(module_atom, source)
+            module_name = node_text(module_atom, source)
 
             # Find all fa (function/arity) nodes
             for child in node.children:
                 if child.type == "fa":
                     # fa has atom (function name) child
-                    func_atom = _find_child_by_type(child, "atom")
+                    func_atom = find_child_by_type(child, "atom")
                     if func_atom:
-                        func_name = _node_text(func_atom, source)
+                        func_name = node_text(func_atom, source)
                         aliases[func_name] = module_name
 
     return aliases
@@ -176,7 +142,7 @@ def _extract_erlang_signature(
     Returns signature in format: (Param1, Param2, {tuple, param})
     Erlang uses pattern matching, so params can be complex patterns.
     """
-    args = _find_child_by_type(clause, "expr_args")
+    args = find_child_by_type(clause, "expr_args")
     if args is None:  # pragma: no cover - defensive for malformed AST
         return "()"
 
@@ -185,7 +151,7 @@ def _extract_erlang_signature(
         if child.type in ("(", ")", ","):
             continue
         # Extract the parameter text directly
-        param_text = _node_text(child, source).strip()
+        param_text = node_text(child, source).strip()
         if param_text:
             params.append(param_text)
 
@@ -217,9 +183,9 @@ def _extract_symbols_from_file(
     for node in tree.root_node.children:
         # Module definition
         if node.type == "module_attribute":
-            atom = _find_child_by_type(node, "atom")
+            atom = find_child_by_type(node, "atom")
             if atom:
-                module_name = _node_text(atom, source)
+                module_name = node_text(atom, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 span = Span(
@@ -228,7 +194,7 @@ def _extract_symbols_from_file(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                sym_id = _make_symbol_id(file_path, start_line, end_line, module_name, "module")
+                sym_id = make_symbol_id("erlang", file_path, start_line, end_line, module_name, "module")
                 symbols.append(Symbol(
                     id=sym_id,
                     name=module_name,
@@ -243,13 +209,13 @@ def _extract_symbols_from_file(
         # Function definition
         elif node.type == "fun_decl":
             # Get function name from first function_clause
-            clause = _find_child_by_type(node, "function_clause")
+            clause = find_child_by_type(node, "function_clause")
             if clause:
-                atom = _find_child_by_type(clause, "atom")
+                atom = find_child_by_type(clause, "atom")
                 if atom:
-                    func_name = _node_text(atom, source)
+                    func_name = node_text(atom, source)
                     # Count arguments for arity
-                    args = _find_child_by_type(clause, "expr_args")
+                    args = find_child_by_type(clause, "expr_args")
                     arity = 0
                     if args:
                         # Count children that are not punctuation
@@ -267,7 +233,7 @@ def _extract_symbols_from_file(
                     )
                     # Include arity in name (Erlang convention)
                     full_name = f"{func_name}/{arity}"
-                    sym_id = _make_symbol_id(file_path, start_line, end_line, full_name, "function")
+                    sym_id = make_symbol_id("erlang", file_path, start_line, end_line, full_name, "function")
                     symbols.append(Symbol(
                         id=sym_id,
                         name=full_name,
@@ -284,9 +250,9 @@ def _extract_symbols_from_file(
         # Record definition
         elif node.type == "record_decl":
             # Record name is an atom after 'record'
-            atom = _find_child_by_type(node, "atom")
+            atom = find_child_by_type(node, "atom")
             if atom:
-                record_name = _node_text(atom, source)
+                record_name = node_text(atom, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 span = Span(
@@ -295,7 +261,7 @@ def _extract_symbols_from_file(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                sym_id = _make_symbol_id(file_path, start_line, end_line, record_name, "record")
+                sym_id = make_symbol_id("erlang", file_path, start_line, end_line, record_name, "record")
                 symbols.append(Symbol(
                     id=sym_id,
                     name=record_name,
@@ -310,11 +276,11 @@ def _extract_symbols_from_file(
         # Macro definition
         elif node.type == "pp_define":
             # Macro name from macro_lhs
-            macro_lhs = _find_child_by_type(node, "macro_lhs")
+            macro_lhs = find_child_by_type(node, "macro_lhs")
             if macro_lhs:
-                var = _find_child_by_type(macro_lhs, "var")
+                var = find_child_by_type(macro_lhs, "var")
                 if var:
-                    macro_name = _node_text(var, source)
+                    macro_name = node_text(var, source)
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
                     span = Span(
@@ -323,7 +289,7 @@ def _extract_symbols_from_file(
                         start_col=node.start_point[1],
                         end_col=node.end_point[1],
                     )
-                    sym_id = _make_symbol_id(file_path, start_line, end_line, macro_name, "macro")
+                    sym_id = make_symbol_id("erlang", file_path, start_line, end_line, macro_name, "macro")
                     symbols.append(Symbol(
                         id=sym_id,
                         name=macro_name,
@@ -338,12 +304,12 @@ def _extract_symbols_from_file(
         # Type alias
         elif node.type == "type_alias":
             # Type name is inside type_name node: type_name -> atom
-            type_name_node = _find_child_by_type(node, "type_name")
+            type_name_node = find_child_by_type(node, "type_name")
             atom = None
             if type_name_node:
-                atom = _find_child_by_type(type_name_node, "atom")
+                atom = find_child_by_type(type_name_node, "atom")
             if atom:
-                type_name = _node_text(atom, source)
+                type_name = node_text(atom, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 span = Span(
@@ -352,7 +318,7 @@ def _extract_symbols_from_file(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                sym_id = _make_symbol_id(file_path, start_line, end_line, type_name, "type")
+                sym_id = make_symbol_id("erlang", file_path, start_line, end_line, type_name, "type")
                 symbols.append(Symbol(
                     id=sym_id,
                     name=type_name,
@@ -376,11 +342,11 @@ def _get_enclosing_function_erlang(
     current = node.parent
     while current is not None:
         if current.type == "fun_decl":
-            clause = _find_child_by_type(current, "function_clause")
+            clause = find_child_by_type(current, "function_clause")
             if clause:
-                atom = _find_child_by_type(clause, "atom")
+                atom = find_child_by_type(clause, "atom")
                 if atom:
-                    func_name = _node_text(atom, source)
+                    func_name = node_text(atom, source)
                     sym = local_symbols.get(func_name)
                     if sym:
                         return sym
@@ -406,7 +372,7 @@ def _extract_edges_from_file(
     - Import statements (-import)
     """
     edges: list[Edge] = []
-    file_id = _make_file_id(file_path)
+    file_id = make_file_id("erlang", file_path)
 
     # Build local symbol map (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}
@@ -420,9 +386,9 @@ def _extract_edges_from_file(
     for node in iter_tree(tree.root_node):
         if node.type == "behaviour_attribute":
             # -behaviour(gen_server)
-            atom = _find_child_by_type(node, "atom")
+            atom = find_child_by_type(node, "atom")
             if atom:
-                behaviour_name = _node_text(atom, source)
+                behaviour_name = node_text(atom, source)
                 # Create import edge to behaviour module
                 module_id = f"erlang:{behaviour_name}:0-0:module:module"
                 edge = Edge.create(
@@ -442,7 +408,7 @@ def _extract_edges_from_file(
             # First atom is module name
             atoms = [c for c in node.children if c.type == "atom"]
             if atoms:
-                module_name = _node_text(atoms[0], source)
+                module_name = node_text(atoms[0], source)
                 module_id = f"erlang:{module_name}:0-0:module:module"
                 edge = Edge.create(
                     src=file_id,
@@ -460,20 +426,20 @@ def _extract_edges_from_file(
             # Function call
             caller = _get_enclosing_function_erlang(node, source, local_symbols)
             if caller:
-                remote = _find_child_by_type(node, "remote")
+                remote = find_child_by_type(node, "remote")
                 if remote:
                     # Remote call: module:function(args)
-                    remote_module = _find_child_by_type(remote, "remote_module")
+                    remote_module = find_child_by_type(remote, "remote_module")
                     if remote_module:
-                        mod_atom = _find_child_by_type(remote_module, "atom")
+                        mod_atom = find_child_by_type(remote_module, "atom")
                         func_atom = None
                         # Find the function name (second atom in remote)
                         for child in remote.children:
                             if child.type == "atom":
                                 func_atom = child
                         if mod_atom and func_atom:
-                            mod_name = _node_text(mod_atom, source)
-                            func_name = _node_text(func_atom, source)
+                            mod_name = node_text(mod_atom, source)
+                            func_name = node_text(func_atom, source)
                             # Try to find in registry
                             full_name = f"{mod_name}:{func_name}"
                             lookup_result = resolver.lookup(full_name)
@@ -493,9 +459,9 @@ def _extract_edges_from_file(
                                 edges.append(edge)
                 else:
                     # Local call: function(args)
-                    atom = _find_child_by_type(node, "atom")
+                    atom = find_child_by_type(node, "atom")
                     if atom:
-                        func_name = _node_text(atom, source)
+                        func_name = node_text(atom, source)
                         # ADR-0007: Use import module as path_hint if available
                         path_hint = None
                         if import_aliases and func_name in import_aliases:
@@ -520,10 +486,10 @@ def _extract_edges_from_file(
 
 
 @register_analyzer("erlang")
-def analyze_erlang(repo_root: Path) -> ErlangAnalysisResult:
+def analyze_erlang(repo_root: Path) -> AnalysisResult:
     """Analyze Erlang files in a repository.
 
-    Returns an ErlangAnalysisResult with symbols, edges, and provenance.
+    Returns an AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-language-pack is not available, returns a skipped result.
     """
     start_time = time.time()
@@ -538,7 +504,7 @@ def analyze_erlang(repo_root: Path) -> ErlangAnalysisResult:
         )
         warnings.warn(skip_reason)
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return ErlangAnalysisResult(
+        return AnalysisResult(
             run=run,
             skipped=True,
             skip_reason=skip_reason,
@@ -570,7 +536,7 @@ def analyze_erlang(repo_root: Path) -> ErlangAnalysisResult:
 
         # Create file symbol
         file_symbol = Symbol(
-            id=_make_file_id(rel_path),
+            id=make_file_id("erlang", rel_path),
             name="file",
             kind="file",
             language="erlang",
@@ -635,7 +601,7 @@ def analyze_erlang(repo_root: Path) -> ErlangAnalysisResult:
     run.files_analyzed = files_analyzed
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return ErlangAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

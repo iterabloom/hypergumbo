@@ -13,25 +13,20 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_common.latex import (
-    _make_symbol_id,
-    analyze_latex,
-)
-
+from hypergumbo_core.analyze.base import make_symbol_id
+from hypergumbo_lang_common.latex import analyze_latex
 
 def make_latex_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a LaTeX file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestLatexHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("doc/main.tex", 10, 15, "Introduction", "section")
+        symbol_id = make_symbol_id("latex", "doc/main.tex", 10, 15, "Introduction", "section")
         assert symbol_id == "latex:doc/main.tex:10-15:Introduction:section"
-
 
 class TestSectionExtraction:
     """Branch coverage for section extraction."""
@@ -70,7 +65,6 @@ Hello world.
         assert "SubFirst" in names
         assert "Second" in names
 
-
 class TestLabelExtraction:
     """Branch coverage for label definition extraction."""
 
@@ -106,7 +100,6 @@ Content here.
         assert "sec:method" in names
         assert "sec:results" in names
 
-
 class TestCommandExtraction:
     """Branch coverage for custom command extraction."""
 
@@ -123,7 +116,6 @@ class TestCommandExtraction:
         assert any("mymath" in n for n in names)
         assert any("todo" in n for n in names)
 
-
 class TestEnvironmentExtraction:
     """Branch coverage for custom environment extraction."""
 
@@ -136,7 +128,6 @@ class TestEnvironmentExtraction:
         envs = [s for s in result.symbols if s.kind == "environment"]
         assert len(envs) >= 1
         assert any(e.name == "mybox" for e in envs)
-
 
 class TestReferenceEdges:
     """Branch coverage for reference edge extraction."""
@@ -154,7 +145,6 @@ See Section~\ref{sec:intro}.
         ref_edges = [e for e in result.edges if e.edge_type == "references"]
         assert len(ref_edges) >= 1
 
-
 class TestCitationEdges:
     """Branch coverage for citation edge extraction."""
 
@@ -170,7 +160,6 @@ As shown in \cite{smith2020}.
         cite_edges = [e for e in result.edges if e.edge_type == "references" and e.meta and e.meta.get("ref_type") == "citation"]
         assert len(cite_edges) >= 1
 
-
 class TestIncludeEdges:
     """Branch coverage for include edge extraction."""
 
@@ -185,7 +174,6 @@ class TestIncludeEdges:
         result = analyze_latex(tmp_path)
         include_edges = [e for e in result.edges if e.edge_type == "includes"]
         assert len(include_edges) >= 1
-
 
 class TestPackageEdges:
     """Branch coverage for package import edge extraction."""
@@ -205,7 +193,6 @@ Content.
         pkg_names = [e.dst for e in import_edges]
         assert "amsmath" in pkg_names
         assert "graphicx" in pkg_names
-
 
 class TestFileDiscovery:
     """Branch coverage for file discovery."""
@@ -233,7 +220,6 @@ class TestFileDiscovery:
         result = analyze_latex(tmp_path)
         assert result.run is not None
         assert result.run.files_analyzed >= 1
-
 
 class TestEdgeCases:
     """Branch coverage for edge cases and malformed input."""
@@ -275,7 +261,6 @@ Regular section follows:
         assert "Chapter One" in names
         assert "Paragraph One" in names
         assert "Subparagraph One" in names
-
 
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""

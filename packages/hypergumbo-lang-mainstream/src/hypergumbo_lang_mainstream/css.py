@@ -29,13 +29,12 @@ Why This Design
 
 import hashlib
 import time
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, iter_tree
 from hypergumbo_core.analyze.registry import register_analyzer
 
 
@@ -65,17 +64,6 @@ def is_css_tree_sitter_available() -> bool:
         return True
     except (ImportError, OSError, Exception):  # pragma: no cover
         return False  # pragma: no cover
-
-
-@dataclass
-class CSSAnalysisResult:
-    """Result of CSS analysis."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    skipped: bool = False
-    skip_reason: str | None = None
-    run: AnalysisRun | None = None
 
 
 def find_css_files(root: Path) -> Iterator[Path]:
@@ -398,17 +386,17 @@ def _process_css_tree(
 
 
 @register_analyzer("css")
-def analyze_css_files(root: Path) -> CSSAnalysisResult:
+def analyze_css_files(root: Path) -> AnalysisResult:
     """Analyze CSS files in a directory.
 
     Args:
         root: Directory to analyze (can be a file path for single file)
 
     Returns:
-        CSSAnalysisResult containing symbols and edges
+        AnalysisResult containing symbols and edges
     """
     if not is_css_tree_sitter_available():  # pragma: no cover - css installed
-        return CSSAnalysisResult(  # pragma: no cover
+        return AnalysisResult(  # pragma: no cover
             skipped=True,  # pragma: no cover
             skip_reason="tree-sitter-css not installed",  # pragma: no cover
         )  # pragma: no cover
@@ -460,7 +448,7 @@ def analyze_css_files(root: Path) -> CSSAnalysisResult:
     run.duration_ms = duration_ms
     run.warnings = warnings_list
 
-    return CSSAnalysisResult(
+    return AnalysisResult(
         symbols=symbols,
         edges=edges,
         run=run,

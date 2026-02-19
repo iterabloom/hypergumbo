@@ -288,6 +288,6 @@ class TestAnalyzeLaTeXFallback:
             with pytest.warns(UserWarning, match="tree-sitter-language-pack"):
                 result = analyze_latex(tmp_path)
             assert result.skipped
-            assert "not available" in result.skipped_reason
+            assert "not available" in result.skip_reason
         finally:
             latex_mod.is_latex_tree_sitter_available = original_func

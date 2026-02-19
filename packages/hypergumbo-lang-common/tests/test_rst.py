@@ -5,14 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import rst as rst_module
-from hypergumbo_lang_common.rst import (
-    RSTAnalysisResult,
-    analyze_rst,
-    find_rst_files,
-    is_rst_tree_sitter_available,
-)
-
+from hypergumbo_lang_common.rst import analyze_rst, find_rst_files, is_rst_tree_sitter_available
 
 def make_rst_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create an RST file in the temp directory."""
@@ -20,7 +15,6 @@ def make_rst_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindRSTFiles:
     """Tests for find_rst_files function."""
@@ -37,7 +31,6 @@ class TestFindRSTFiles:
         files = find_rst_files(tmp_path)
         assert files == []
 
-
 class TestIsRSTTreeSitterAvailable:
     """Tests for is_rst_tree_sitter_available function."""
 
@@ -48,7 +41,6 @@ class TestIsRSTTreeSitterAvailable:
     def test_returns_false_when_unavailable(self) -> None:
         with patch.object(rst_module, "is_rst_tree_sitter_available", return_value=False):
             assert rst_module.is_rst_tree_sitter_available() is False
-
 
 class TestAnalyzeRST:
     """Tests for analyze_rst function."""

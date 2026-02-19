@@ -46,7 +46,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -71,17 +71,6 @@ def is_ocaml_tree_sitter_available() -> bool:
 
 
 @dataclass
-class OCamlAnalysisResult:
-    """Result of analyzing OCaml files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-@dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file.
 
@@ -95,58 +84,35 @@ class FileAnalysis:
     module_aliases: dict[str, str] = field(default_factory=dict)
 
 
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"ocaml:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for an OCaml file node (used as import edge source)."""
-    return f"ocaml:{path}:1-1:file:file"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None  # pragma: no cover - child not found
-
-
 def _get_let_binding_name(node: "tree_sitter.Node", source: bytes) -> str:
     """Extract function name from let_binding node."""
-    value_name = _find_child_by_type(node, "value_name")
+    value_name = find_child_by_type(node, "value_name")
     if value_name:
-        return _node_text(value_name, source)
+        return node_text(value_name, source)
     return ""  # pragma: no cover - fallback for unparseable
 
 
 def _get_type_name(node: "tree_sitter.Node", source: bytes) -> str:
     """Extract type name from type_binding node."""
-    type_constructor = _find_child_by_type(node, "type_constructor")
+    type_constructor = find_child_by_type(node, "type_constructor")
     if type_constructor:
-        return _node_text(type_constructor, source)
+        return node_text(type_constructor, source)
     return ""  # pragma: no cover
 
 
 def _get_module_name(node: "tree_sitter.Node", source: bytes) -> str:
     """Extract module name from module_binding node."""
-    module_name = _find_child_by_type(node, "module_name")
+    module_name = find_child_by_type(node, "module_name")
     if module_name:
-        return _node_text(module_name, source)
+        return node_text(module_name, source)
     return ""  # pragma: no cover
 
 
 def _get_open_module_path(node: "tree_sitter.Node", source: bytes) -> str:
     """Extract module path from open_module node."""
-    module_path = _find_child_by_type(node, "module_path")
+    module_path = find_child_by_type(node, "module_path")
     if module_path:
-        return _node_text(module_path, source)
+        return node_text(module_path, source)
     return ""  # pragma: no cover
 
 
@@ -175,15 +141,15 @@ def _extract_ocaml_signature(
         # Collect parameter nodes
         if child.type == "parameter":
             # Extract the value_pattern from inside the parameter
-            param_text = _node_text(child, source).strip()
+            param_text = node_text(child, source).strip()
             if param_text:
                 params.append(param_text)
         elif child.type == "parenthesized_pattern":  # pragma: no cover - rare pattern
             # Pattern like (x, y) or (x : int)
-            params.append(_node_text(child, source))  # pragma: no cover
+            params.append(node_text(child, source))  # pragma: no cover
         elif child.type == "typed_pattern":  # pragma: no cover - rare pattern
             # Pattern like (x : int)
-            params.append(_node_text(child, source))  # pragma: no cover
+            params.append(node_text(child, source))  # pragma: no cover
         elif child.type == "unit_pattern":  # pragma: no cover - rare pattern
             # Pattern like ()
             params.append("()")  # pragma: no cover
@@ -231,7 +197,7 @@ def _extract_symbols_from_file(
             start_col=node.start_point[1],
             end_col=node.end_point[1],
         )
-        sym_id = _make_symbol_id(file_path, start_line, end_line, name, kind)
+        sym_id = make_symbol_id("ocaml", file_path, start_line, end_line, name, kind)
         symbols.append(Symbol(
             id=sym_id,
             name=name,
@@ -247,7 +213,7 @@ def _extract_symbols_from_file(
     for node in iter_tree(tree.root_node):
         if node.type == "value_definition":
             # Let binding - function definition
-            let_binding = _find_child_by_type(node, "let_binding")
+            let_binding = find_child_by_type(node, "let_binding")
             if let_binding:
                 name = _get_let_binding_name(let_binding, source)
                 if name:
@@ -257,7 +223,7 @@ def _extract_symbols_from_file(
 
         elif node.type == "type_definition":
             # Type definition
-            type_binding = _find_child_by_type(node, "type_binding")
+            type_binding = find_child_by_type(node, "type_binding")
             if type_binding:
                 name = _get_type_name(type_binding, source)
                 if name:
@@ -265,7 +231,7 @@ def _extract_symbols_from_file(
 
         elif node.type == "module_definition":
             # Module definition
-            module_binding = _find_child_by_type(node, "module_binding")
+            module_binding = find_child_by_type(node, "module_binding")
             if module_binding:
                 name = _get_module_name(module_binding, source)
                 if name:
@@ -283,7 +249,7 @@ def _find_enclosing_ocaml_function(
     current = node.parent
     while current:
         if current.type == "value_definition":
-            let_binding = _find_child_by_type(current, "let_binding")
+            let_binding = find_child_by_type(current, "let_binding")
             if let_binding:
                 name = _get_let_binding_name(let_binding, source)
                 if name in local_symbols:
@@ -310,21 +276,21 @@ def _extract_module_aliases(
             continue
 
         # Find module_binding: module L = List
-        binding = _find_child_by_type(node, "module_binding")
+        binding = find_child_by_type(node, "module_binding")
         if not binding:  # pragma: no cover - defensive for malformed AST
             continue
 
         # Get alias name (first module_name in binding)
-        alias_node = _find_child_by_type(binding, "module_name")
+        alias_node = find_child_by_type(binding, "module_name")
         if not alias_node:  # pragma: no cover - defensive for malformed AST
             continue
 
-        alias_name = _node_text(alias_node, source)
+        alias_name = node_text(alias_node, source)
 
         # Get original module path (after =)
-        module_path = _find_child_by_type(binding, "module_path")
+        module_path = find_child_by_type(binding, "module_path")
         if module_path:
-            original = _node_text(module_path, source)
+            original = node_text(module_path, source)
             aliases[alias_name] = original
 
     return aliases
@@ -351,7 +317,7 @@ def _extract_edges_from_file(
     if module_aliases is None:  # pragma: no cover - defensive default
         module_aliases = {}
     edges: list[Edge] = []
-    file_id = _make_file_id(file_path)
+    file_id = make_file_id("ocaml", file_path)
 
     # Build local symbol map for this file (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}
@@ -383,16 +349,16 @@ def _extract_edges_from_file(
                 path_hint: Optional[str] = None
 
                 if first_child.type == "value_path":
-                    value_name = _find_child_by_type(first_child, "value_name")
+                    value_name = find_child_by_type(first_child, "value_name")
                     if value_name:
-                        callee_name = _node_text(value_name, source)
+                        callee_name = node_text(value_name, source)
 
                     # Check for module prefix (L.map -> module_path 'L')
-                    module_path = _find_child_by_type(first_child, "module_path")
+                    module_path = find_child_by_type(first_child, "module_path")
                     if module_path:
-                        module_name_node = _find_child_by_type(module_path, "module_name")
+                        module_name_node = find_child_by_type(module_path, "module_name")
                         if module_name_node:
-                            module_alias = _node_text(module_name_node, source)
+                            module_alias = node_text(module_name_node, source)
                             path_hint = module_aliases.get(module_alias)
 
                 if callee_name and callee_name not in ("print_int", "print_string", "print_endline", "print_newline"):
@@ -434,10 +400,10 @@ def _extract_edges_from_file(
 
 
 @register_analyzer("ocaml")
-def analyze_ocaml(repo_root: Path) -> OCamlAnalysisResult:
+def analyze_ocaml(repo_root: Path) -> AnalysisResult:
     """Analyze OCaml files in a repository.
 
-    Returns an OCamlAnalysisResult with symbols, edges, and provenance.
+    Returns an AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-ocaml is not available, returns a skipped result.
     """
     start_time = time.time()
@@ -452,7 +418,7 @@ def analyze_ocaml(repo_root: Path) -> OCamlAnalysisResult:
         )
         warnings.warn(skip_reason)
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return OCamlAnalysisResult(
+        return AnalysisResult(
             run=run,
             skipped=True,
             skip_reason=skip_reason,
@@ -485,7 +451,7 @@ def analyze_ocaml(repo_root: Path) -> OCamlAnalysisResult:
 
         # Create file symbol
         file_symbol = Symbol(
-            id=_make_file_id(rel_path),
+            id=make_file_id("ocaml", rel_path),
             name="file",
             kind="file",
             language="ocaml",
@@ -534,7 +500,7 @@ def analyze_ocaml(repo_root: Path) -> OCamlAnalysisResult:
 
     run.files_analyzed = files_analyzed
 
-    return OCamlAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

@@ -32,13 +32,12 @@ import hashlib
 import importlib.util
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -62,31 +61,10 @@ def is_make_tree_sitter_available() -> bool:
     return True
 
 
-@dataclass
-class MakeAnalysisResult:
-    """Result of analyzing Makefile files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"make:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
     """Generate deterministic edge ID."""
     content = f"{edge_type}:{src}:{dst}"
     return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
 
 
 def _get_target_names(node: "tree_sitter.Node", source: bytes) -> list[str]:
@@ -94,7 +72,7 @@ def _get_target_names(node: "tree_sitter.Node", source: bytes) -> list[str]:
     targets = []
     for child in node.children:
         if child.type == "word":
-            targets.append(_node_text(child, source))
+            targets.append(node_text(child, source))
     return targets
 
 
@@ -103,10 +81,10 @@ def _get_prerequisites(node: "tree_sitter.Node", source: bytes) -> list[str]:
     prereqs = []
     for child in node.children:
         if child.type == "word":
-            prereqs.append(_node_text(child, source))
+            prereqs.append(node_text(child, source))
         elif child.type == "variable_reference":
             # Include variable reference as a dependency marker
-            prereqs.append(_node_text(child, source))
+            prereqs.append(node_text(child, source))
     return prereqs
 
 
@@ -114,7 +92,7 @@ def _get_variable_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]
     """Extract variable name from a variable_assignment node."""
     for child in node.children:
         if child.type == "word":
-            return _node_text(child, source)
+            return node_text(child, source)
     return None  # pragma: no cover
 
 
@@ -122,7 +100,7 @@ def _get_define_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract function/macro name from a define_directive node."""
     for child in node.children:
         if child.type == "word":
-            return _node_text(child, source)
+            return node_text(child, source)
     return None  # pragma: no cover
 
 
@@ -133,7 +111,7 @@ def _get_include_files(node: "tree_sitter.Node", source: bytes) -> list[str]:
         if child.type == "list":
             for subchild in child.children:
                 if subchild.type == "word":
-                    files.append(_node_text(subchild, source))
+                    files.append(node_text(subchild, source))
     return files
 
 
@@ -171,7 +149,7 @@ def _process_make_tree(
 
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, var_name, "variable")
+                symbol_id = make_symbol_id("make", rel_path, start_line, end_line, var_name, "variable")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -219,7 +197,7 @@ def _process_make_tree(
                     if target_name.startswith("."):
                         kind = "special_target"
 
-                    symbol_id = _make_symbol_id(rel_path, start_line, end_line, target_name, kind)
+                    symbol_id = make_symbol_id("make", rel_path, start_line, end_line, target_name, kind)
 
                     sym = Symbol(
                         id=symbol_id,
@@ -275,7 +253,7 @@ def _process_make_tree(
             if define_name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, define_name, "function")
+                symbol_id = make_symbol_id("make", rel_path, start_line, end_line, define_name, "function")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -304,7 +282,7 @@ def _process_make_tree(
             end_line = node.end_point[0] + 1
 
             for include_file in include_files:
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, include_file, "include")
+                symbol_id = make_symbol_id("make", rel_path, start_line, end_line, include_file, "include")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -328,17 +306,17 @@ def _process_make_tree(
 
 
 @register_analyzer("make")
-def analyze_make_files(repo_root: Path) -> MakeAnalysisResult:
+def analyze_make_files(repo_root: Path) -> AnalysisResult:
     """Analyze Makefile files in the repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        MakeAnalysisResult with symbols and edges
+        AnalysisResult with symbols and edges
     """
     if not is_make_tree_sitter_available():  # pragma: no cover
-        return MakeAnalysisResult(  # pragma: no cover
+        return AnalysisResult(  # pragma: no cover
             skipped=True,  # pragma: no cover
             skip_reason="tree-sitter-make not installed (pip install tree-sitter-make)",  # pragma: no cover
         )  # pragma: no cover
@@ -362,7 +340,7 @@ def analyze_make_files(repo_root: Path) -> MakeAnalysisResult:
         parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_make.language()))
     except Exception as e:  # pragma: no cover
         warnings.warn(f"Failed to initialize Make parser: {e}")
-        return MakeAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason=f"Failed to initialize parser: {e}",
         )
@@ -398,7 +376,7 @@ def analyze_make_files(repo_root: Path) -> MakeAnalysisResult:
     run.duration_ms = duration_ms
     run.warnings = warnings_list
 
-    return MakeAnalysisResult(
+    return AnalysisResult(
         symbols=symbols,
         edges=edges,
         run=run,

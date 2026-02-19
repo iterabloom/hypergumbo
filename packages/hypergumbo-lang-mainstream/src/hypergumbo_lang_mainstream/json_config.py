@@ -32,12 +32,12 @@ import hashlib
 import importlib.util
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -77,17 +77,6 @@ def is_json_tree_sitter_available() -> bool:
     if importlib.util.find_spec("tree_sitter_json") is not None:  # pragma: no cover
         return True  # pragma: no cover
     return False  # pragma: no cover
-
-
-@dataclass
-class JSONAnalysisResult:
-    """Result of analyzing JSON files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
@@ -606,17 +595,17 @@ def _detect_json_type(path: Path) -> str:
 
 
 @register_analyzer("json")
-def analyze_json_files(repo_root: Path) -> JSONAnalysisResult:
+def analyze_json_files(repo_root: Path) -> AnalysisResult:
     """Analyze JSON files in the repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        JSONAnalysisResult with symbols and edges
+        AnalysisResult with symbols and edges
     """
     if not is_json_tree_sitter_available():  # pragma: no cover
-        return JSONAnalysisResult(  # pragma: no cover
+        return AnalysisResult(  # pragma: no cover
             skipped=True,  # pragma: no cover
             skip_reason="tree-sitter-json not installed (pip install tree-sitter-json or tree-sitter-language-pack)",  # pragma: no cover
         )  # pragma: no cover
@@ -644,7 +633,7 @@ def analyze_json_files(repo_root: Path) -> JSONAnalysisResult:
             parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_json.language()))  # pragma: no cover
     except Exception as e:  # pragma: no cover
         warnings.warn(f"Failed to initialize JSON parser: {e}")
-        return JSONAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason=f"Failed to initialize parser: {e}",
         )
@@ -683,7 +672,7 @@ def analyze_json_files(repo_root: Path) -> JSONAnalysisResult:
     run.duration_ms = duration_ms
     run.warnings = warnings_list
 
-    return JSONAnalysisResult(
+    return AnalysisResult(
         symbols=symbols,
         edges=edges,
         run=run,

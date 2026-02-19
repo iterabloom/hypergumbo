@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 # Phoenix HTTP method macros for route detection
@@ -89,41 +89,6 @@ def is_elixir_tree_sitter_available() -> bool:
     return True
 
 
-@dataclass
-class ElixirAnalysisResult:
-    """Result of analyzing Elixir files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    usage_contexts: list[UsageContext] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"elixir:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for an Elixir file node (used as import edge source)."""
-    return f"elixir:{path}:1-1:file:file"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None
-
-
 def _extract_alias_hints(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -143,14 +108,14 @@ def _extract_alias_hints(
         if node.type != "call":
             continue
 
-        target = _find_child_by_type(node, "identifier")
+        target = find_child_by_type(node, "identifier")
         if not target:  # pragma: no cover - call nodes always have identifier
             continue
 
-        target_name = _node_text(target, source)
+        target_name = node_text(target, source)
 
         if target_name == "alias":
-            args = _find_child_by_type(node, "arguments")
+            args = find_child_by_type(node, "arguments")
             if not args:  # pragma: no cover - alias always has arguments
                 continue
 
@@ -162,18 +127,18 @@ def _extract_alias_hints(
                     break
 
             if module_node:
-                full_path = _node_text(module_node, source)
+                full_path = node_text(module_node, source)
                 # Check for 'as:' option in keywords
-                kw_node = _find_child_by_type(args, "keywords")
+                kw_node = find_child_by_type(args, "keywords")
                 if kw_node:
                     # Look for as: Alias pattern
                     for pair in kw_node.children:
                         if pair.type == "pair":
-                            key_node = _find_child_by_type(pair, "keyword")
-                            if key_node and _node_text(key_node, source).strip().rstrip(":") == "as":
-                                value_node = _find_child_by_type(pair, "alias")
+                            key_node = find_child_by_type(pair, "keyword")
+                            if key_node and node_text(key_node, source).strip().rstrip(":") == "as":
+                                value_node = find_child_by_type(pair, "alias")
                                 if value_node:
-                                    alias_name = _node_text(value_node, source)
+                                    alias_name = node_text(value_node, source)
                                     hints[alias_name] = full_path
                                     break
                     else:
@@ -186,11 +151,11 @@ def _extract_alias_hints(
                     hints[short_name] = full_path
 
         elif target_name == "import":
-            args = _find_child_by_type(node, "arguments")
+            args = find_child_by_type(node, "arguments")
             if args:
                 for child in args.children:
                     if child.type == "alias":
-                        full_path = _node_text(child, source)
+                        full_path = node_text(child, source)
                         # For imports, use the full module name as hint
                         short_name = full_path.rsplit(".", 1)[-1]
                         hints[short_name] = full_path
@@ -205,8 +170,8 @@ def _get_enclosing_modules(node: "tree_sitter.Node", source: bytes) -> list[str]
     current = node.parent
     while current is not None:
         if current.type == "call":
-            target = _find_child_by_type(current, "identifier")
-            if target and _node_text(target, source) == "defmodule":
+            target = find_child_by_type(current, "identifier")
+            if target and node_text(target, source) == "defmodule":
                 mod_name = _get_module_name_from_call(current, source)
                 if mod_name:
                     modules.append(mod_name)
@@ -223,9 +188,9 @@ def _get_enclosing_function(
     current = node.parent
     while current is not None:
         if current.type == "call":
-            target = _find_child_by_type(current, "identifier")
+            target = find_child_by_type(current, "identifier")
             if target:
-                target_name = _node_text(target, source)
+                target_name = node_text(target, source)
                 if target_name in ("def", "defp", "defmacro", "defmacrop"):
                     func_name = _get_function_name(current, source)
                     if func_name and func_name in local_symbols:
@@ -236,39 +201,39 @@ def _get_enclosing_function(
 
 def _get_module_name_from_call(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract module name from defmodule call node."""
-    args = _find_child_by_type(node, "arguments")
+    args = find_child_by_type(node, "arguments")
     if args:
         for child in args.children:
             if child.type == "alias":
-                return _node_text(child, source)
+                return node_text(child, source)
     return None
 
 
 def _get_module_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract module name from defmodule call."""
     # defmodule has structure: (call target: (identifier "defmodule") arguments: (arguments (alias)))
-    args = _find_child_by_type(node, "arguments")
+    args = find_child_by_type(node, "arguments")
     if args:
         for child in args.children:
             if child.type == "alias":
-                return _node_text(child, source)
+                return node_text(child, source)
     return None
 
 
 def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract function name from def/defp/defmacro call."""
     # def has structure: (call target: (identifier "def") arguments: (arguments (call target: (identifier "func_name") ...)))
-    args = _find_child_by_type(node, "arguments")
+    args = find_child_by_type(node, "arguments")
     if args:
         for child in args.children:
             if child.type == "call":
                 # The function name is the target of this call
-                target = _find_child_by_type(child, "identifier")
+                target = find_child_by_type(child, "identifier")
                 if target:
-                    return _node_text(target, source)
+                    return node_text(target, source)
             elif child.type == "identifier":
                 # Simple case: def foo, do: :ok
-                return _node_text(child, source)
+                return node_text(child, source)
     return None
 
 
@@ -280,14 +245,14 @@ def _extract_elixir_signature(
     Returns signature in format: (param1, param2, keyword: default)
     Elixir is dynamically typed, so no type annotations are included.
     """
-    args = _find_child_by_type(node, "arguments")
+    args = find_child_by_type(node, "arguments")
     if args is None:  # pragma: no cover - defensive
         return "()"
 
     for child in args.children:
         if child.type == "call":
             # def foo(a, b) - parameters are in the arguments of the inner call
-            inner_args = _find_child_by_type(child, "arguments")
+            inner_args = find_child_by_type(child, "arguments")
             if inner_args is None:  # pragma: no cover - rare
                 return "()"
 
@@ -295,13 +260,13 @@ def _extract_elixir_signature(
             for param in inner_args.children:
                 if param.type == "identifier":
                     # Simple positional parameter
-                    params.append(_node_text(param, source))
+                    params.append(node_text(param, source))
                 elif param.type == "binary_operator":  # pragma: no cover - default vals
                     # Default value: param \\ default
                     left = None
                     for pc in param.children:
                         if pc.type == "identifier":
-                            left = _node_text(pc, source)
+                            left = node_text(pc, source)
                             break
                     if left:
                         params.append(f"{left} \\\\ ...")
@@ -315,7 +280,7 @@ def _extract_elixir_signature(
                                     key_node = pc
                                     break
                             if key_node:
-                                key_text = _node_text(key_node, source).rstrip(":")
+                                key_text = node_text(key_node, source).rstrip(":")
                                 params.append(f"{key_text}: ...")
 
             return f"({', '.join(params)})"
@@ -360,11 +325,11 @@ def _extract_phoenix_routes(
             continue
 
         # Get the function name (get, post, resources, etc.)
-        target_node = _find_child_by_type(n, "identifier")
+        target_node = find_child_by_type(n, "identifier")
         if not target_node:
             continue
 
-        method_name = _node_text(target_node, source).lower()
+        method_name = node_text(target_node, source).lower()
 
         # Check if it's a Phoenix route macro
         if (
@@ -374,7 +339,7 @@ def _extract_phoenix_routes(
             continue
 
         # Find arguments
-        args_node = _find_child_by_type(n, "arguments")
+        args_node = find_child_by_type(n, "arguments")
         if not args_node:  # pragma: no cover
             continue
 
@@ -394,21 +359,21 @@ def _extract_phoenix_routes(
                     # Extract string content
                     for sc in child.children:
                         if sc.type == "quoted_content":
-                            route_path = _node_text(sc, source)
+                            route_path = node_text(sc, source)
                             break
                     if not route_path:  # pragma: no cover
-                        route_path = _node_text(child, source).strip('"\'')
+                        route_path = node_text(child, source).strip('"\'')
             elif arg_index == 1:
                 # Second arg is the controller/module (alias, identifier, or
                 # dotted alias like UserLive.Show)
                 if child.type in ("alias", "dot"):
-                    controller = _node_text(child, source)
+                    controller = node_text(child, source)
                 elif child.type == "identifier":  # pragma: no cover
-                    controller = _node_text(child, source)
+                    controller = node_text(child, source)
             elif arg_index == 2:
                 # Third arg is the action (atom)
                 if child.type == "atom":
-                    action = _node_text(child, source).lstrip(":")
+                    action = node_text(child, source).lstrip(":")
 
             arg_index += 1
 
@@ -469,7 +434,7 @@ def _extract_phoenix_routes(
             ]
             for http_meth, route_pth, act in restful_routes:
                 route_name = f"{http_meth} {route_pth}"
-                route_id = _make_symbol_id(
+                route_id = make_symbol_id("elixir",
                     path=str(file_path),
                     start_line=span.start_line,
                     end_line=span.end_line,
@@ -496,7 +461,7 @@ def _extract_phoenix_routes(
         else:
             # Single route (HTTP method or LiveView)
             route_name = f"{http_method} {normalized_path}"
-            route_id = _make_symbol_id(
+            route_id = make_symbol_id("elixir",
                 path=str(file_path),
                 start_line=span.start_line,
                 end_line=span.end_line,
@@ -551,19 +516,19 @@ def _extract_behaviour_callbacks(
         if node.type != "call":
             continue
 
-        target = _find_child_by_type(node, "identifier")
-        if target is None or _node_text(target, source) != "use":
+        target = find_child_by_type(node, "identifier")
+        if target is None or node_text(target, source) != "use":
             continue
 
         # Extract the used module name from arguments
-        args = _find_child_by_type(node, "arguments")
+        args = find_child_by_type(node, "arguments")
         if args is None:  # pragma: no cover — use always has arguments
             continue
 
         used_module = None
         for child in args.children:
             if child.type == "alias":
-                used_module = _node_text(child, source)
+                used_module = node_text(child, source)
                 break
 
         if used_module is None:  # pragma: no cover — use always takes alias arg
@@ -654,9 +619,9 @@ def _extract_symbols_from_file(
     for node in iter_tree(tree.root_node):
         # Check for defmodule
         if node.type == "call":
-            target = _find_child_by_type(node, "identifier")
+            target = find_child_by_type(node, "identifier")
             if target:
-                target_name = _node_text(target, source)
+                target_name = node_text(target, source)
 
                 if target_name == "defmodule":
                     module_name = _get_module_name(node, source)
@@ -672,7 +637,7 @@ def _extract_symbols_from_file(
                         end_line = node.end_point[0] + 1
 
                         symbol = Symbol(
-                            id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "module"),
+                            id=make_symbol_id("elixir", str(file_path), start_line, end_line, full_name, "module"),
                             name=full_name,
                             kind="module",
                             language="elixir",
@@ -703,7 +668,7 @@ def _extract_symbols_from_file(
                         modifiers = ["private"] if target_name == "defp" else []
 
                         symbol = Symbol(
-                            id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "function"),
+                            id=make_symbol_id("elixir", str(file_path), start_line, end_line, full_name, "function"),
                             name=full_name,
                             kind="function",
                             language="elixir",
@@ -738,7 +703,7 @@ def _extract_symbols_from_file(
                         modifiers = ["private"] if target_name == "defmacrop" else []
 
                         symbol = Symbol(
-                            id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "macro"),
+                            id=make_symbol_id("elixir", str(file_path), start_line, end_line, full_name, "macro"),
                             name=full_name,
                             kind="macro",
                             language="elixir",
@@ -790,21 +755,21 @@ def _extract_edges_from_file(
         return []
 
     edges: list[Edge] = []
-    file_id = _make_file_id(str(file_path))
+    file_id = make_file_id("elixir", str(file_path))
 
     for node in iter_tree(tree.root_node):
         if node.type == "call":
-            target = _find_child_by_type(node, "identifier")
+            target = find_child_by_type(node, "identifier")
             if target:
-                target_name = _node_text(target, source)
+                target_name = node_text(target, source)
 
                 # Detect use/import/alias directives
                 if target_name == "use":
-                    args = _find_child_by_type(node, "arguments")
+                    args = find_child_by_type(node, "arguments")
                     if args:
                         for child in args.children:
                             if child.type == "alias":
-                                module_name = _node_text(child, source)
+                                module_name = node_text(child, source)
                                 edges.append(Edge.create(
                                     src=file_id,
                                     dst=f"elixir:{module_name}:0-0:module:module",
@@ -817,11 +782,11 @@ def _extract_edges_from_file(
                                 ))
 
                 elif target_name == "import":
-                    args = _find_child_by_type(node, "arguments")
+                    args = find_child_by_type(node, "arguments")
                     if args:
                         for child in args.children:
                             if child.type == "alias":
-                                module_name = _node_text(child, source)
+                                module_name = node_text(child, source)
                                 edges.append(Edge.create(
                                     src=file_id,
                                     dst=f"elixir:{module_name}:0-0:module:module",
@@ -898,7 +863,7 @@ def _extract_edges_from_file(
             # Module-qualified calls: Helper.greet(), App.Services.UserService.find()
             # AST: call -> dot -> (alias, ".", identifier)
             else:
-                dot_node = _find_child_by_type(node, "dot")
+                dot_node = find_child_by_type(node, "dot")
                 if dot_node:
                     _handle_dot_call(
                         node, dot_node, source, local_symbols,
@@ -926,13 +891,13 @@ def _handle_dot_call(
     the global symbol registry.
     """
     # Extract module alias and function name from dot node
-    alias_node = _find_child_by_type(dot_node, "alias")
-    func_id_node = _find_child_by_type(dot_node, "identifier")
+    alias_node = find_child_by_type(dot_node, "alias")
+    func_id_node = find_child_by_type(dot_node, "identifier")
     if alias_node is None or func_id_node is None:
         return
 
-    module_name = _node_text(alias_node, source)
-    func_name = _node_text(func_id_node, source)
+    module_name = node_text(alias_node, source)
+    func_name = node_text(func_id_node, source)
 
     # Find the enclosing function (caller)
     current_function = _get_enclosing_function(call_node, source, local_symbols)
@@ -1007,10 +972,10 @@ def _handle_dot_call(
 
 
 @register_analyzer("elixir")
-def analyze_elixir(repo_root: Path) -> ElixirAnalysisResult:
+def analyze_elixir(repo_root: Path) -> AnalysisResult:
     """Analyze all Elixir files in a repository.
 
-    Returns an ElixirAnalysisResult with symbols, edges, and provenance.
+    Returns an AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-elixir is not available, returns a skipped result.
     """
     if not is_elixir_tree_sitter_available():
@@ -1018,7 +983,7 @@ def analyze_elixir(repo_root: Path) -> ElixirAnalysisResult:
             "tree-sitter-elixir not available. Install with: pip install hypergumbo[elixir]",
             stacklevel=2,
         )
-        return ElixirAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-elixir not available",
         )
@@ -1032,7 +997,7 @@ def analyze_elixir(repo_root: Path) -> ElixirAnalysisResult:
         parser = get_parser("elixir")
     except Exception as e:
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return ElixirAnalysisResult(
+        return AnalysisResult(
             run=run,
             skipped=True,
             skip_reason=f"Failed to load Elixir parser: {e}",
@@ -1118,7 +1083,7 @@ def analyze_elixir(repo_root: Path) -> ElixirAnalysisResult:
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return ElixirAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         usage_contexts=all_usage_contexts,

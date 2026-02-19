@@ -12,32 +12,25 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_mainstream.groovy import (
-    _make_symbol_id,
-    _make_file_id,
-    analyze_groovy,
-    find_groovy_files,
-)
-
+from hypergumbo_core.analyze.base import make_file_id, make_symbol_id
+from hypergumbo_lang_mainstream.groovy import analyze_groovy, find_groovy_files
 
 def make_groovy_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a Groovy file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestGroovyHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("src/Main.groovy", 1, 10, "Main", "class")
+        symbol_id = make_symbol_id("groovy", "src/Main.groovy", 1, 10, "Main", "class")
         assert symbol_id == "groovy:src/Main.groovy:1-10:Main:class"
 
     def test_make_file_id_format(self) -> None:
         """Test file ID format."""
-        file_id = _make_file_id("src/Main.groovy")
+        file_id = make_file_id("groovy", "src/Main.groovy")
         assert file_id == "groovy:src/Main.groovy:1-1:file:file"
-
 
 class TestClassExtraction:
     """Branch coverage for class extraction."""
@@ -128,7 +121,6 @@ class ListWrapper extends ArrayList<String> {
         base_classes = (wrapper.meta or {}).get("base_classes", [])
         assert "ArrayList" in base_classes
 
-
 class TestInterfaceExtraction:
     """Branch coverage for interface extraction."""
 
@@ -144,7 +136,6 @@ interface Printable {
 
         assert len(interfaces) >= 1
         assert any(i.name == "Printable" for i in interfaces)
-
 
 class TestEnumExtraction:
     """Branch coverage for enum extraction."""
@@ -163,7 +154,6 @@ enum Status {
 
         assert len(enums) >= 1
         assert any(e.name == "Status" for e in enums)
-
 
 class TestMethodExtraction:
     """Branch coverage for method extraction."""
@@ -219,7 +209,6 @@ class Logger {
         # void return should not appear in signature
         assert "void" not in (log_method.signature or "")
 
-
 class TestFunctionExtraction:
     """Branch coverage for top-level function extraction."""
 
@@ -240,7 +229,6 @@ def calculate(int x, int y) {
         assert len(functions) >= 2
         assert any(f.name == "greet" for f in functions)
         assert any(f.name == "calculate" for f in functions)
-
 
 class TestImportEdges:
     """Branch coverage for import edge extraction."""
@@ -275,7 +263,6 @@ class DataService {
 
         assert len(import_edges) >= 3
 
-
 class TestCallEdges:
     """Branch coverage for call edge extraction."""
 
@@ -296,7 +283,6 @@ class Helper {
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
 
         assert len(call_edges) >= 1
-
 
 class TestFindGroovyFiles:
     """Branch coverage for file discovery."""
@@ -321,7 +307,6 @@ plugins {
         assert len(files) >= 1
         assert any(f.suffix == ".gradle" for f in files)
 
-
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
 
@@ -338,7 +323,6 @@ class Min {}
         result = analyze_groovy(tmp_path)
         assert not result.skipped
 
-
 class TestAnalysisRun:
     """Branch coverage for analysis run metadata."""
 
@@ -352,7 +336,6 @@ class App {
         result = analyze_groovy(tmp_path)
         assert result.run is not None
         assert result.run.files_analyzed >= 1
-
 
 class TestComplexGroovy:
     """Branch coverage for complex Groovy files."""

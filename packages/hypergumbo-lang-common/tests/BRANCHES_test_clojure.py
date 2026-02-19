@@ -11,33 +11,25 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_common.clojure import (
-    _is_def_form,
-    _make_file_id,
-    _make_symbol_id,
-    analyze_clojure,
-    find_clojure_files,
-)
-
+from hypergumbo_core.analyze.base import make_file_id, make_symbol_id
+from hypergumbo_lang_common.clojure import _is_def_form, analyze_clojure, find_clojure_files
 
 def make_clj_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a Clojure file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestClojureHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("src/core.clj", 5, 10, "add", "function")
+        symbol_id = make_symbol_id("clojure", "src/core.clj", 5, 10, "add", "function")
         assert symbol_id == "clojure:src/core.clj:5-10:add:function"
 
     def test_make_file_id_format(self) -> None:
         """Test file ID format."""
-        file_id = _make_file_id("lib/utils.clj")
+        file_id = make_file_id("clojure", "lib/utils.clj")
         assert file_id == "clojure:lib/utils.clj:1-1:file:file"
-
 
 class TestIsDefForm:
     """Branch coverage for _is_def_form."""
@@ -66,7 +58,6 @@ class TestIsDefForm:
         """Test let is not a def form."""
         result = _is_def_form("let")
         assert result is None
-
 
 class TestDefVariations:
     """Branch coverage for various def form extractions."""
@@ -99,7 +90,6 @@ class TestDefVariations:
         types = [s for s in result.symbols if s.kind == "type"]
         assert any(t.name == "Point" for t in types)
 
-
 class TestPrivateFunctions:
     """Branch coverage for private function detection."""
 
@@ -127,7 +117,6 @@ class TestPrivateFunctions:
         assert public is not None
         # Public functions should NOT have visibility meta
         assert public.meta is None
-
 
 class TestEnclosingFunctionResolution:
     """Branch coverage for enclosing function detection."""
@@ -173,7 +162,6 @@ class TestEnclosingFunctionResolution:
         assert len(step1_calls) >= 2  # from step2 and step3
         assert len(step2_calls) >= 1  # from step3
 
-
 class TestRequireAliasExtraction:
     """Branch coverage for require alias extraction."""
 
@@ -211,7 +199,6 @@ class TestRequireAliasExtraction:
         assert any("clojure.set" in d for d in dests)
         assert any("clojure.java.io" in d for d in dests)
 
-
 class TestMultipleNamespaces:
     """Branch coverage for multi-file namespace handling."""
 
@@ -242,7 +229,6 @@ class TestMultipleNamespaces:
         assert "myapp.base" in names
         assert "myapp.middle" in names
         assert "myapp.top" in names
-
 
 class TestFindClojureFiles:
     """Branch coverage for file discovery."""
@@ -288,7 +274,6 @@ class TestFindClojureFiles:
         paths = [s.path for s in result.symbols if s.kind == "variable"]
         assert all("core.clj" in p for p in paths)
 
-
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
 
@@ -310,7 +295,6 @@ class TestEmptyAndMinimalFiles:
         result = analyze_clojure(tmp_path)
         # Should handle gracefully
         assert not result.skipped
-
 
 class TestSignatureEdgeCases:
     """Branch coverage for signature extraction edge cases."""

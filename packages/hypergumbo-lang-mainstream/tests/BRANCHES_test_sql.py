@@ -11,31 +11,24 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_mainstream.sql import (
-    _make_symbol_id,
-    _make_file_id,
-    _make_edge_id,
-    analyze_sql_files,
-    find_sql_files,
-)
-
+from hypergumbo_core.analyze.base import make_file_id, make_symbol_id
+from hypergumbo_lang_mainstream.sql import _make_edge_id, analyze_sql_files, find_sql_files
 
 def make_sql_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a SQL file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestSQLHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("schema.sql", 1, 10, "users", "table")
+        symbol_id = make_symbol_id("sql", "schema.sql", 1, 10, "users", "table")
         assert symbol_id == "sql:schema.sql:1-10:users:table"
 
     def test_make_file_id_format(self) -> None:
         """Test file ID format."""
-        file_id = _make_file_id("schema.sql")
+        file_id = make_file_id("sql", "schema.sql")
         assert file_id == "sql:schema.sql:1-1:file:file"
 
     def test_make_edge_id_deterministic(self) -> None:
@@ -44,7 +37,6 @@ class TestSQLHelperFunctions:
         edge_id2 = _make_edge_id("src1", "dst1", "references")
         assert edge_id1 == edge_id2
         assert edge_id1.startswith("edge:sha256:")
-
 
 class TestTableExtraction:
     """Branch coverage for table extraction."""
@@ -76,7 +68,6 @@ CREATE TABLE comments (id INT PRIMARY KEY);
 
         assert len(tables) >= 3
 
-
 class TestViewExtraction:
     """Branch coverage for view extraction."""
 
@@ -91,7 +82,6 @@ SELECT * FROM users WHERE active = 1;
 
         assert len(views) >= 1
         assert any(v.name == "active_users" for v in views)
-
 
 class TestFunctionExtraction:
     """Branch coverage for function extraction."""
@@ -131,7 +121,6 @@ $$ LANGUAGE plpgsql;
         assert add_func is not None
         assert add_func.signature is not None
 
-
 class TestTriggerExtraction:
     """Branch coverage for trigger extraction."""
 
@@ -150,7 +139,6 @@ EXECUTE FUNCTION update_modified_time();
         assert len(triggers) >= 1
         assert any(t.name == "update_timestamp" for t in triggers)
 
-
 class TestIndexExtraction:
     """Branch coverage for index extraction."""
 
@@ -164,7 +152,6 @@ CREATE INDEX idx_user_email ON users(email);
 
         assert len(indexes) >= 1
         assert any(i.name == "idx_user_email" for i in indexes)
-
 
 class TestForeignKeyEdges:
     """Branch coverage for foreign key reference edges."""
@@ -186,7 +173,6 @@ CREATE TABLE posts (
 
         assert len(ref_edges) >= 1
 
-
 class TestFindSQLFiles:
     """Branch coverage for file discovery."""
 
@@ -197,7 +183,6 @@ class TestFindSQLFiles:
         files = list(find_sql_files(tmp_path))
         assert len(files) >= 1
         assert any(f.suffix == ".sql" for f in files)
-
 
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
@@ -215,7 +200,6 @@ CREATE TABLE t (id INT);
         result = analyze_sql_files(tmp_path)
         assert not result.skipped
 
-
 class TestAnalysisRun:
     """Branch coverage for analysis run metadata."""
 
@@ -227,7 +211,6 @@ CREATE TABLE users (id INT PRIMARY KEY);
         result = analyze_sql_files(tmp_path)
         assert result.run is not None
         assert result.run.files_analyzed >= 1
-
 
 class TestFunctionSignatureBranches:
     """Branch coverage for function signature extraction."""
@@ -265,7 +248,6 @@ $$ LANGUAGE SQL;
         # The important thing is no crash
         assert not result.skipped
 
-
 class TestDuplicateForeignKeyRefs:
     """Branch coverage for duplicate foreign key handling."""
 
@@ -287,7 +269,6 @@ CREATE TABLE orders (
 
         # Should have references edges (may dedupe to 1 or have 2)
         assert len(ref_edges) >= 1
-
 
 class TestEdgeExtractionBranches:
     """Branch coverage for edge extraction code paths."""
@@ -314,7 +295,6 @@ CREATE TABLE orders (
         ref_edges = [e for e in result.edges if e.edge_type == "references"]
         # Should have 0 edges since target doesn't exist
         assert len(ref_edges) == 0
-
 
 class TestComprehensiveSchema:
     """Branch coverage for comprehensive SQL schema."""

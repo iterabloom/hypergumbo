@@ -23,9 +23,9 @@ import importlib.util
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -57,14 +57,6 @@ def find_hcl_files(root: Path) -> list[Path]:
     return list(find_files(root, ["*.tf", "*.hcl"]))
 
 
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first direct child with given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None
-
-
 def _find_all_children_by_type(
     node: "tree_sitter.Node", type_name: str
 ) -> list["tree_sitter.Node"]:
@@ -72,38 +64,12 @@ def _find_all_children_by_type(
     return [child for child in node.children if child.type == type_name]
 
 
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Get text content of a node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
 def _extract_string_value(node: "tree_sitter.Node", source: bytes) -> str | None:
     """Extract string value from string_lit node."""
-    template_lit = _find_child_by_type(node, "template_literal")
+    template_lit = find_child_by_type(node, "template_literal")
     if template_lit:
-        return _node_text(template_lit, source)
+        return node_text(template_lit, source)
     return None  # pragma: no cover
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"hcl:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for an HCL file node (used as import edge source)."""
-    return f"hcl:{path}:1-1:file:file"
-
-
-@dataclass
-class HCLAnalysisResult:
-    """Result of analyzing HCL files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
 
 
 @dataclass
@@ -128,7 +94,7 @@ def _extract_block_info(
 
     for child in children:
         if child.type == "identifier" and block_type is None:
-            block_type = _node_text(child, source)
+            block_type = node_text(child, source)
         elif child.type == "string_lit":
             val = _extract_string_value(child, source)
             if val:
@@ -142,13 +108,13 @@ def _extract_block_info(
 def _extract_local_names(node: "tree_sitter.Node", source: bytes) -> list[str]:
     """Extract local value names from a locals block body."""
     names: list[str] = []
-    body = _find_child_by_type(node, "body")
+    body = find_child_by_type(node, "body")
     if body:
         for child in body.children:
             if child.type == "attribute":
-                ident = _find_child_by_type(child, "identifier")
+                ident = find_child_by_type(child, "identifier")
                 if ident:
-                    names.append(_node_text(ident, source))
+                    names.append(node_text(ident, source))
     return names
 
 
@@ -180,7 +146,7 @@ def _extract_symbols_from_file(
             if block_type == "resource" and len(labels) >= 2:
                 # resource "type" "name" -> type.name
                 name = f"{labels[0]}.{labels[1]}"
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "resource")
+                symbol_id = make_symbol_id("hcl", rel_path, start_line, end_line, name, "resource")
                 symbol = Symbol(
                     id=symbol_id,
                     name=name,
@@ -197,7 +163,7 @@ def _extract_symbols_from_file(
             elif block_type == "data" and len(labels) >= 2:
                 # data "type" "name" -> data.type.name
                 name = f"data.{labels[0]}.{labels[1]}"
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "data")
+                symbol_id = make_symbol_id("hcl", rel_path, start_line, end_line, name, "data")
                 symbol = Symbol(
                     id=symbol_id,
                     name=name,
@@ -214,7 +180,7 @@ def _extract_symbols_from_file(
             elif block_type == "variable" and len(labels) >= 1:
                 # variable "name" -> var.name
                 name = f"var.{labels[0]}"
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "variable")
+                symbol_id = make_symbol_id("hcl", rel_path, start_line, end_line, name, "variable")
                 symbol = Symbol(
                     id=symbol_id,
                     name=name,
@@ -231,7 +197,7 @@ def _extract_symbols_from_file(
             elif block_type == "output" and len(labels) >= 1:
                 # output "name" -> output.name
                 name = f"output.{labels[0]}"
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "output")
+                symbol_id = make_symbol_id("hcl", rel_path, start_line, end_line, name, "output")
                 symbol = Symbol(
                     id=symbol_id,
                     name=name,
@@ -248,7 +214,7 @@ def _extract_symbols_from_file(
             elif block_type == "module" and len(labels) >= 1:
                 # module "name" -> module.name
                 name = f"module.{labels[0]}"
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "module")
+                symbol_id = make_symbol_id("hcl", rel_path, start_line, end_line, name, "module")
                 symbol = Symbol(
                     id=symbol_id,
                     name=name,
@@ -265,7 +231,7 @@ def _extract_symbols_from_file(
             elif block_type == "provider" and len(labels) >= 1:
                 # provider "name" -> provider.name
                 name = f"provider.{labels[0]}"
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "provider")
+                symbol_id = make_symbol_id("hcl", rel_path, start_line, end_line, name, "provider")
                 symbol = Symbol(
                     id=symbol_id,
                     name=name,
@@ -284,7 +250,7 @@ def _extract_symbols_from_file(
                 local_names = _extract_local_names(node, source)
                 for local_name in local_names:
                     name = f"local.{local_name}"
-                    symbol_id = _make_symbol_id(rel_path, start_line, end_line, name, "local")
+                    symbol_id = make_symbol_id("hcl", rel_path, start_line, end_line, name, "local")
                     symbol = Symbol(
                         id=symbol_id,
                         name=name,
@@ -311,16 +277,16 @@ def _extract_reference_chain(node: "tree_sitter.Node", source: bytes) -> str | N
         return None  # pragma: no cover - type guard
 
     parts: list[str] = []
-    ident = _find_child_by_type(node, "identifier")
+    ident = find_child_by_type(node, "identifier")
     if ident:
-        parts.append(_node_text(ident, source))
+        parts.append(node_text(ident, source))
 
     # Walk siblings for get_attr chains
     for sibling in node.parent.children if node.parent else []:
         if sibling.type == "get_attr":
-            get_ident = _find_child_by_type(sibling, "identifier")
+            get_ident = find_child_by_type(sibling, "identifier")
             if get_ident:
-                parts.append(_node_text(get_ident, source))
+                parts.append(node_text(get_ident, source))
 
     if len(parts) >= 2:
         # Return first two parts as the referenced symbol
@@ -348,18 +314,18 @@ def _find_references_in_expression(
 
 def _extract_module_source(node: "tree_sitter.Node", source: bytes) -> str | None:
     """Extract source path from a module block."""
-    body = _find_child_by_type(node, "body")
+    body = find_child_by_type(node, "body")
     if not body:
         return None  # pragma: no cover
 
     for attr in _find_all_children_by_type(body, "attribute"):
-        ident = _find_child_by_type(attr, "identifier")
-        if ident and _node_text(ident, source) == "source":
-            expr = _find_child_by_type(attr, "expression")
+        ident = find_child_by_type(attr, "identifier")
+        if ident and node_text(ident, source) == "source":
+            expr = find_child_by_type(attr, "expression")
             if expr:
-                lit_val = _find_child_by_type(expr, "literal_value")
+                lit_val = find_child_by_type(expr, "literal_value")
                 if lit_val:
-                    str_lit = _find_child_by_type(lit_val, "string_lit")
+                    str_lit = find_child_by_type(lit_val, "string_lit")
                     if str_lit:
                         return _extract_string_value(str_lit, source)
     return None  # pragma: no cover - no source attribute
@@ -405,7 +371,7 @@ def _extract_edges_from_file(
         resolver = NameResolver(global_symbols)
     edges: list[Edge] = []
     rel_path = str(file_path)
-    file_id = _make_file_id(rel_path)
+    file_id = make_file_id("hcl", rel_path)
 
     try:
         source = file_path.read_bytes()
@@ -470,7 +436,7 @@ def _extract_edges_from_file(
 
 
 @register_analyzer("hcl")
-def analyze_hcl(root: Path) -> HCLAnalysisResult:
+def analyze_hcl(root: Path) -> AnalysisResult:
     """Analyze HCL/Terraform files in a directory.
 
     Uses tree-sitter-hcl for parsing. Falls back gracefully if not available.
@@ -479,7 +445,7 @@ def analyze_hcl(root: Path) -> HCLAnalysisResult:
         warnings.warn(
             "tree-sitter-hcl not available. Install with: pip install tree-sitter-hcl"
         )
-        return HCLAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-hcl not available",
         )
@@ -491,7 +457,7 @@ def analyze_hcl(root: Path) -> HCLAnalysisResult:
         language = tree_sitter.Language(tree_sitter_hcl.language())
         parser = tree_sitter.Parser(language)
     except Exception as e:
-        return HCLAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason=f"Failed to load HCL parser: {e}",
         )
@@ -500,7 +466,7 @@ def analyze_hcl(root: Path) -> HCLAnalysisResult:
 
     all_files = find_hcl_files(root)
     if not all_files:  # pragma: no cover - no HCL files in test
-        return HCLAnalysisResult(run=run)
+        return AnalysisResult(run=run)
 
     # Pass 1: Extract symbols from all files
     all_symbols: list[Symbol] = []
@@ -526,7 +492,7 @@ def analyze_hcl(root: Path) -> HCLAnalysisResult:
         )
         all_edges.extend(edges)
 
-    return HCLAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

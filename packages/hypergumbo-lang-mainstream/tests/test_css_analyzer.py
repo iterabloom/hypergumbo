@@ -8,20 +8,18 @@ Tests verify that the analyzer correctly extracts:
 - @font-face declarations
 """
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_mainstream.css import (
     PASS_ID,
     PASS_VERSION,
-    CSSAnalysisResult,
     analyze_css_files,
     find_css_files,
 )
-
 
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "css-v1"
     assert PASS_VERSION == "hypergumbo-0.1.0"
-
 
 def test_analyze_import(tmp_path):
     """Test detection of @import statements."""
@@ -39,7 +37,6 @@ def test_analyze_import(tmp_path):
     assert "base.css" in names
     assert "theme.css" in names
 
-
 def test_analyze_import_edges(tmp_path):
     """Test that import edges are created."""
     css_file = tmp_path / "main.css"
@@ -51,7 +48,6 @@ def test_analyze_import_edges(tmp_path):
     import_edges = [e for e in result.edges if e.edge_type == "imports"]
     assert len(import_edges) >= 1
     assert import_edges[0].dst == "variables.css"
-
 
 def test_analyze_css_variable(tmp_path):
     """Test detection of CSS custom properties."""
@@ -71,7 +67,6 @@ def test_analyze_css_variable(tmp_path):
     assert "--primary-color" in names
     assert "--font-size-base" in names
     assert "--spacing-unit" in names
-
 
 def test_analyze_keyframes(tmp_path):
     """Test detection of @keyframes animations."""
@@ -95,7 +90,6 @@ def test_analyze_keyframes(tmp_path):
     assert "fadeIn" in names
     assert "slideUp" in names
 
-
 def test_analyze_media_query(tmp_path):
     """Test detection of @media queries."""
     css_file = tmp_path / "responsive.css"
@@ -113,7 +107,6 @@ def test_analyze_media_query(tmp_path):
     media = [s for s in result.symbols if s.kind == "media"]
     assert len(media) >= 2
 
-
 def test_analyze_font_face(tmp_path):
     """Test detection of @font-face declarations."""
     css_file = tmp_path / "fonts.css"
@@ -129,7 +122,6 @@ def test_analyze_font_face(tmp_path):
     assert len(fonts) >= 1
     assert fonts[0].name == "CustomFont"
 
-
 def test_find_css_files(tmp_path):
     """Test that CSS files are discovered correctly."""
     (tmp_path / "styles.css").write_text("body {}")
@@ -141,7 +133,6 @@ def test_find_css_files(tmp_path):
     files = list(find_css_files(tmp_path))
     assert len(files) >= 3
 
-
 def test_analyze_empty_directory(tmp_path):
     """Test analysis of directory with no CSS files."""
     result = analyze_css_files(tmp_path)
@@ -149,7 +140,6 @@ def test_analyze_empty_directory(tmp_path):
     assert not result.skipped
     assert len(result.symbols) == 0
     assert len(result.edges) == 0
-
 
 def test_analysis_run_metadata(tmp_path):
     """Test that AnalysisRun metadata is correctly set."""
@@ -164,7 +154,6 @@ def test_analysis_run_metadata(tmp_path):
     assert result.run.files_analyzed >= 1
     assert result.run.duration_ms >= 0
 
-
 def test_syntax_error_handling(tmp_path):
     """Test that syntax errors don't crash the analyzer."""
     css_file = tmp_path / "broken.css"
@@ -174,8 +163,7 @@ def test_syntax_error_handling(tmp_path):
     result = analyze_css_files(tmp_path)
 
     # Result should still be valid
-    assert isinstance(result, CSSAnalysisResult)
-
+    assert isinstance(result, AnalysisResult)
 
 def test_span_information(tmp_path):
     """Test that span information is correct."""
@@ -193,7 +181,6 @@ def test_span_information(tmp_path):
     assert keyframes[0].span.start_line >= 1
     assert keyframes[0].span.end_line >= keyframes[0].span.start_line
 
-
 def test_tree_sitter_not_available():
     """Test graceful degradation when tree-sitter is not available."""
     from hypergumbo_lang_mainstream.css import is_css_tree_sitter_available
@@ -201,7 +188,6 @@ def test_tree_sitter_not_available():
     # The function should return a boolean
     result = is_css_tree_sitter_available()
     assert isinstance(result, bool)
-
 
 def test_nested_media_variables(tmp_path):
     """Test that variables inside @media are detected."""
@@ -219,7 +205,6 @@ def test_nested_media_variables(tmp_path):
     # Should find --bg-color inside the media query
     assert len(variables) >= 1
     assert any(v.name == "--bg-color" for v in variables)
-
 
 def test_analyze_class_selector(tmp_path):
     """Test detection of class selectors (.class)."""
@@ -248,7 +233,6 @@ def test_analyze_class_selector(tmp_path):
     # Combined selectors like .card.featured may appear as single unit or split
     assert any(".card" in n for n in names)
 
-
 def test_analyze_id_selector(tmp_path):
     """Test detection of ID selectors (#id)."""
     css_file = tmp_path / "ids.css"
@@ -273,7 +257,6 @@ def test_analyze_id_selector(tmp_path):
     assert "#header" in names
     assert "#main-content" in names
     assert "#footer" in names
-
 
 def test_analyze_mixed_selectors(tmp_path):
     """Test detection of mixed class and ID selectors."""

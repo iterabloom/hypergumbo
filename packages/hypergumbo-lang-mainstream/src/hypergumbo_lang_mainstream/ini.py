@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -42,23 +43,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "ini.tree_sitter"
 PASS_VERSION = "0.1.0"
-
-
-class IniAnalysisResult:
-    """Result of INI file analysis."""
-
-    def __init__(
-        self,
-        symbols: list[Symbol],
-        run: AnalysisRun | None = None,
-        skipped: bool = False,
-        skip_reason: str = "",
-    ) -> None:
-        self.symbols = symbols
-        self.edges: list = []  # INI files don't have edges
-        self.run = run
-        self.skipped = skipped
-        self.skip_reason = skip_reason
 
 
 def is_ini_tree_sitter_available() -> bool:
@@ -150,13 +134,13 @@ class IniAnalyzer:
         self._files_analyzed = 0
         self._current_section: str = ""
 
-    def analyze(self) -> IniAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Run the INI analysis."""
         start_time = time.time()
 
         files = find_ini_files(self.repo_root)
         if not files:
-            return IniAnalysisResult(
+            return AnalysisResult(
                 symbols=[],
                 run=None,
             )
@@ -186,7 +170,7 @@ class IniAnalyzer:
             files_analyzed=self._files_analyzed,
         )
 
-        return IniAnalysisResult(
+        return AnalysisResult(
             symbols=self._symbols,
             run=run,
         )
@@ -303,14 +287,14 @@ class IniAnalyzer:
 
 
 @register_analyzer("ini")
-def analyze_ini(repo_root: Path) -> IniAnalysisResult:
+def analyze_ini(repo_root: Path) -> AnalysisResult:
     """Analyze INI configuration files in a repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        IniAnalysisResult containing extracted symbols
+        AnalysisResult containing extracted symbols
     """
     if not is_ini_tree_sitter_available():
         warnings.warn(
@@ -318,7 +302,7 @@ def analyze_ini(repo_root: Path) -> IniAnalysisResult:
             UserWarning,
             stacklevel=2,
         )
-        return IniAnalysisResult(
+        return AnalysisResult(
             symbols=[],
             run=AnalysisRun(
                 pass_id=PASS_ID,

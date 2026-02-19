@@ -56,14 +56,14 @@ from __future__ import annotations
 import importlib.util
 import time
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -88,17 +88,6 @@ def is_lua_tree_sitter_available() -> bool:
 
 
 @dataclass
-class LuaAnalysisResult:
-    """Result of analyzing Lua files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-@dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file.
 
@@ -111,29 +100,6 @@ class FileAnalysis:
     symbols: list[Symbol]
 
 
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"lua:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a Lua file node (used as import edge source)."""
-    return f"lua:{path}:1-1:file:file"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None
-
-
 def _extract_lua_signature(
     node: "tree_sitter.Node", source: bytes
 ) -> Optional[str]:
@@ -142,14 +108,14 @@ def _extract_lua_signature(
     Returns signature in format: (param1, param2, ...)
     Lua is dynamically typed, so no type annotations.
     """
-    params_node = _find_child_by_type(node, "parameters")
+    params_node = find_child_by_type(node, "parameters")
     if params_node is None:  # pragma: no cover - defensive
         return "()"
 
     params: list[str] = []
     for child in params_node.children:
         if child.type == "identifier":
-            params.append(_node_text(child, source))
+            params.append(node_text(child, source))
         elif child.type == "spread":  # pragma: no cover - rare varargs
             params.append("...")
 
@@ -170,12 +136,12 @@ def _get_function_name(
         - ``function Table.func()`` → ("Table.func", "function")
     """
     # Look for direct identifier (global/local function)
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if name_node:
-        return _node_text(name_node, source), "function"
+        return node_text(name_node, source), "function"
 
     # Look for method_index_expression (Table:method)
-    method_expr = _find_child_by_type(node, "method_index_expression")
+    method_expr = find_child_by_type(node, "method_index_expression")
     if method_expr:
         # Extract Table and method name
         table_id = None
@@ -183,23 +149,23 @@ def _get_function_name(
         for child in method_expr.children:
             if child.type == "identifier":
                 if table_id is None:
-                    table_id = _node_text(child, source)
+                    table_id = node_text(child, source)
                 else:
-                    method_id = _node_text(child, source)
+                    method_id = node_text(child, source)
         if table_id and method_id:
             return f"{table_id}.{method_id}", "method"
 
     # Look for dot_index_expression (Table.func)
-    dot_expr = _find_child_by_type(node, "dot_index_expression")
+    dot_expr = find_child_by_type(node, "dot_index_expression")
     if dot_expr:
         table_id = None
         func_id = None
         for child in dot_expr.children:
             if child.type == "identifier":
                 if table_id is None:
-                    table_id = _node_text(child, source)
+                    table_id = node_text(child, source)
                 else:
-                    func_id = _node_text(child, source)
+                    func_id = node_text(child, source)
         if table_id and func_id:
             return f"{table_id}.{func_id}", "function"
 
@@ -232,7 +198,7 @@ def _extract_symbols_from_file(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                sym_id = _make_symbol_id(file_path, start_line, end_line, name, kind)
+                sym_id = make_symbol_id("lua", file_path, start_line, end_line, name, kind)
                 symbols.append(Symbol(
                     id=sym_id,
                     name=name,
@@ -291,21 +257,21 @@ def _extract_var_types(
             continue
 
         # Find the assignment_statement child
-        assign = _find_child_by_type(node, "assignment_statement")
+        assign = find_child_by_type(node, "assignment_statement")
         if assign is None:  # pragma: no cover - tree-sitter always wraps in assignment
             continue
 
         # Extract variable name from variable_list
-        var_list = _find_child_by_type(assign, "variable_list")
+        var_list = find_child_by_type(assign, "variable_list")
         if var_list is None:  # pragma: no cover - assignment always has variable_list
             continue
-        var_id = _find_child_by_type(var_list, "identifier")
+        var_id = find_child_by_type(var_list, "identifier")
         if var_id is None:  # pragma: no cover - destructuring not tracked
             continue
-        var_name = _node_text(var_id, source)
+        var_name = node_text(var_id, source)
 
         # Extract expression from expression_list
-        expr_list = _find_child_by_type(assign, "expression_list")
+        expr_list = find_child_by_type(assign, "expression_list")
         if expr_list is None:  # pragma: no cover - assignment always has expression_list
             continue
 
@@ -347,34 +313,34 @@ def _extract_require_aliases(
         if node.type != "variable_declaration":
             continue
 
-        assign = _find_child_by_type(node, "assignment_statement")
+        assign = find_child_by_type(node, "assignment_statement")
         if assign is None:  # pragma: no cover
             continue
 
-        var_list = _find_child_by_type(assign, "variable_list")
+        var_list = find_child_by_type(assign, "variable_list")
         if var_list is None:  # pragma: no cover
             continue
-        var_id = _find_child_by_type(var_list, "identifier")
+        var_id = find_child_by_type(var_list, "identifier")
         if var_id is None:  # pragma: no cover
             continue
-        var_name = _node_text(var_id, source)
+        var_name = node_text(var_id, source)
 
-        expr_list = _find_child_by_type(assign, "expression_list")
+        expr_list = find_child_by_type(assign, "expression_list")
         if expr_list is None:  # pragma: no cover
             continue
 
         # Look for require("...") call in expression list
         for child in expr_list.children:
             if child.type == "function_call":
-                func_id = _find_child_by_type(child, "identifier")
-                if func_id and _node_text(func_id, source) == "require":
-                    args = _find_child_by_type(child, "arguments")
+                func_id = find_child_by_type(child, "identifier")
+                if func_id and node_text(func_id, source) == "require":
+                    args = find_child_by_type(child, "arguments")
                     if args:
                         for arg in args.children:
                             if arg.type == "string":
-                                content = _find_child_by_type(arg, "string_content")
+                                content = find_child_by_type(arg, "string_content")
                                 if content and var_name not in aliases:
-                                    aliases[var_name] = _node_text(content, source)
+                                    aliases[var_name] = node_text(content, source)
                 break  # Only check first expression
 
     return aliases
@@ -429,7 +395,7 @@ def _infer_type_from_expr(
     """
     # Case 1: simple identifier (local obj = MyClass)
     if expr.type == "identifier":
-        name = _node_text(expr, source)
+        name = node_text(expr, source)
         # Follow transitive aliases
         return var_types.get(name, name)
 
@@ -441,9 +407,9 @@ def _infer_type_from_expr(
 
         # Case 2a: method call (MyClass:new()) → type is MyClass
         if func_part.type == "method_index_expression":
-            receiver_id = _find_child_by_type(func_part, "identifier")
+            receiver_id = find_child_by_type(func_part, "identifier")
             if receiver_id:
-                receiver_name = _node_text(receiver_id, source)
+                receiver_name = node_text(receiver_id, source)
                 return var_types.get(receiver_name, receiver_name)
 
         # Case 2b: dot-index call (mod.tcp()) → type is mod
@@ -451,7 +417,7 @@ def _infer_type_from_expr(
             # Get the receiver (first identifier or nested dot expression)
             first_child = func_part.children[0] if func_part.children else None
             if first_child and first_child.type == "identifier":
-                receiver_name = _node_text(first_child, source)
+                receiver_name = node_text(first_child, source)
                 return var_types.get(receiver_name, receiver_name)
 
     return None
@@ -490,7 +456,7 @@ def _extract_edges_from_file(
             from the file→module path mapping.
     """
     edges: list[Edge] = []
-    file_id = _make_file_id(file_path)
+    file_id = make_file_id("lua", file_path)
 
     # Build local symbol map for this file (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}
@@ -525,7 +491,7 @@ def _extract_edges_from_file(
             first_child = node.children[0] if node.children else None
             if first_child:
                 if first_child.type == "identifier":
-                    callee_name = _node_text(first_child, source)
+                    callee_name = node_text(first_child, source)
                 elif first_child.type == "method_index_expression":
                     # Method call: obj:method(args)
                     # Extract both receiver and method name
@@ -533,7 +499,7 @@ def _extract_edges_from_file(
                     identifiers = []
                     for child in first_child.children:
                         if child.type == "identifier":
-                            identifiers.append(_node_text(child, source))
+                            identifiers.append(node_text(child, source))
                     if len(identifiers) >= 2:
                         receiver_name = identifiers[0]
                         callee_name = identifiers[1]
@@ -545,7 +511,7 @@ def _extract_edges_from_file(
                     identifiers = []
                     for child in first_child.children:
                         if child.type == "identifier":
-                            identifiers.append(_node_text(child, source))
+                            identifiers.append(node_text(child, source))
                     if len(identifiers) >= 2:
                         receiver_name = identifiers[0]
                         callee_name = identifiers[1]
@@ -555,14 +521,14 @@ def _extract_edges_from_file(
             # Check for require() call - special handling for imports
             if callee_name == "require":
                 # Find the argument (module name)
-                args_node = _find_child_by_type(node, "arguments")
+                args_node = find_child_by_type(node, "arguments")
                 if args_node:
                     for child in args_node.children:
                         if child.type == "string":
                             # Extract string content
-                            content_node = _find_child_by_type(child, "string_content")
+                            content_node = find_child_by_type(child, "string_content")
                             if content_node:
-                                module_name = _node_text(content_node, source)
+                                module_name = node_text(content_node, source)
                                 # Create import edge
                                 module_id = f"lua:{module_name}:0-0:module:module"
                                 edge = Edge.create(
@@ -747,10 +713,10 @@ def _find_module_symbol(symbols: list[Symbol], method_name: str) -> Symbol | Non
 
 
 @register_analyzer("lua")
-def analyze_lua(repo_root: Path) -> LuaAnalysisResult:
+def analyze_lua(repo_root: Path) -> AnalysisResult:
     """Analyze Lua files in a repository.
 
-    Returns a LuaAnalysisResult with symbols, edges, and provenance.
+    Returns a AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-lua is not available, returns a skipped result.
     """
     start_time = time.time()
@@ -765,7 +731,7 @@ def analyze_lua(repo_root: Path) -> LuaAnalysisResult:
         )
         warnings.warn(skip_reason)
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return LuaAnalysisResult(
+        return AnalysisResult(
             run=run,
             skipped=True,
             skip_reason=skip_reason,
@@ -798,7 +764,7 @@ def analyze_lua(repo_root: Path) -> LuaAnalysisResult:
 
         # Create file symbol
         file_symbol = Symbol(
-            id=_make_file_id(rel_path),
+            id=make_file_id("lua", rel_path),
             name="file",
             kind="file",
             language="lua",
@@ -851,7 +817,7 @@ def analyze_lua(repo_root: Path) -> LuaAnalysisResult:
 
     run.files_analyzed = files_analyzed
 
-    return LuaAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

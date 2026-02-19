@@ -5,14 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_mainstream import properties as properties_module
-from hypergumbo_lang_mainstream.properties import (
-    PropertiesAnalysisResult,
-    analyze_properties,
-    find_properties_files,
-    is_properties_tree_sitter_available,
-)
-
+from hypergumbo_lang_mainstream.properties import analyze_properties, find_properties_files, is_properties_tree_sitter_available
 
 def make_properties_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a properties file in the temp directory."""
@@ -20,7 +15,6 @@ def make_properties_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindPropertiesFiles:
     """Tests for find_properties_files function."""
@@ -37,7 +31,6 @@ class TestFindPropertiesFiles:
         files = find_properties_files(tmp_path)
         assert files == []
 
-
 class TestIsPropertiesTreeSitterAvailable:
     """Tests for is_properties_tree_sitter_available function."""
 
@@ -48,7 +41,6 @@ class TestIsPropertiesTreeSitterAvailable:
     def test_returns_false_when_unavailable(self) -> None:
         with patch.object(properties_module, "is_properties_tree_sitter_available", return_value=False):
             assert properties_module.is_properties_tree_sitter_available() is False
-
 
 class TestAnalyzeProperties:
     """Tests for analyze_properties function."""

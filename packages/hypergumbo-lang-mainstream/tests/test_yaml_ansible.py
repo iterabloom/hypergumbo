@@ -1,23 +1,22 @@
 """Tests for YAML/Ansible analyzer."""
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
+from hypergumbo_core.analyze.base import find_child_by_type
+from unittest.mock import patch, MagicMock
 
 class TestYAMLHelpers:
     """Tests for YAML analyzer helper functions."""
 
     def test_find_child_by_type_returns_none(self) -> None:
         """Returns None when no matching child type is found."""
-        from hypergumbo_lang_mainstream.yaml_ansible import _find_child_by_type
 
         mock_node = MagicMock()
         mock_child = MagicMock()
         mock_child.type = "different_type"
         mock_node.children = [mock_child]
 
-        result = _find_child_by_type(mock_node, "block_mapping")
+        result = find_child_by_type(mock_node, "block_mapping")
         assert result is None
-
 
 class TestFindAnsibleFiles:
     """Tests for Ansible file discovery."""
@@ -49,7 +48,6 @@ class TestFindAnsibleFiles:
         assert len(files) == 1
         assert "main.yml" in files[0].name
 
-
 class TestYAMLTreeSitterAvailability:
     """Tests for tree-sitter-yaml availability checking."""
 
@@ -69,7 +67,6 @@ class TestYAMLTreeSitterAvailability:
             mock_find.return_value = None
             assert is_yaml_tree_sitter_available() is False
 
-
 class TestAnalyzeYAMLFallback:
     """Tests for fallback behavior when tree-sitter-yaml unavailable."""
 
@@ -84,7 +81,6 @@ class TestAnalyzeYAMLFallback:
 
         assert result.skipped is True
         assert "tree-sitter-yaml" in result.skip_reason
-
 
 class TestAnsiblePlaybookExtraction:
     """Tests for extracting Ansible playbooks."""
@@ -107,10 +103,8 @@ class TestAnsiblePlaybookExtraction:
 
         result = analyze_ansible(tmp_path)
 
-
         playbooks = [s for s in result.symbols if s.kind == "playbook"]
         assert len(playbooks) >= 1
-
 
 class TestAnsibleTaskExtraction:
     """Tests for extracting Ansible tasks."""
@@ -135,11 +129,9 @@ class TestAnsibleTaskExtraction:
 
         result = analyze_ansible(tmp_path)
 
-
         tasks = [s for s in result.symbols if s.kind == "task"]
         task_names = [s.name for s in tasks]
         assert "Install packages" in task_names or len(tasks) >= 1
-
 
 class TestAnsibleHandlerExtraction:
     """Tests for extracting Ansible handlers."""
@@ -167,10 +159,8 @@ class TestAnsibleHandlerExtraction:
 
         result = analyze_ansible(tmp_path)
 
-
         handlers = [s for s in result.symbols if s.kind == "handler"]
         assert len(handlers) >= 1
-
 
 class TestAnsibleIncludeEdges:
     """Tests for extracting include/import edges."""
@@ -189,10 +179,8 @@ class TestAnsibleIncludeEdges:
 
         result = analyze_ansible(tmp_path)
 
-
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) >= 2
-
 
 class TestAnsibleVariableExtraction:
     """Tests for extracting Ansible variables."""
@@ -213,11 +201,9 @@ class TestAnsibleVariableExtraction:
 
         result = analyze_ansible(tmp_path)
 
-
         variables = [s for s in result.symbols if s.kind == "variable"]
         var_names = [s.name for s in variables]
         assert "http_port" in var_names or len(variables) >= 1
-
 
 class TestAnsibleSymbolProperties:
     """Tests for symbol property correctness."""
@@ -237,11 +223,9 @@ class TestAnsibleSymbolProperties:
 
         result = analyze_ansible(tmp_path)
 
-
         for symbol in result.symbols:
             assert symbol.language == "ansible"
             assert symbol.origin == "ansible-v1"
-
 
 class TestAnsibleEdgeProperties:
     """Tests for edge property correctness."""
@@ -259,11 +243,9 @@ class TestAnsibleEdgeProperties:
 
         result = analyze_ansible(tmp_path)
 
-
         for edge in result.edges:
             assert edge.confidence > 0
             assert edge.confidence <= 1.0
-
 
 class TestAnsibleEmptyFile:
     """Tests for handling empty or minimal files."""
@@ -276,7 +258,6 @@ class TestAnsibleEmptyFile:
         playbook.write_text("")
 
         result = analyze_ansible(tmp_path)
-
 
         assert result.run is not None
 
@@ -291,9 +272,7 @@ class TestAnsibleEmptyFile:
 
         result = analyze_ansible(tmp_path)
 
-
         assert result.run is not None
-
 
 class TestAnsibleParserFailure:
     """Tests for parser failure handling."""

@@ -1,8 +1,9 @@
 """Tests for Swift analyzer."""
 import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
+from hypergumbo_core.analyze.base import find_child_by_type
+from unittest.mock import patch, MagicMock
 
 class TestFindSwiftFiles:
     """Tests for Swift file discovery."""
@@ -19,7 +20,6 @@ class TestFindSwiftFiles:
 
         assert len(files) == 2
         assert all(f.suffix == ".swift" for f in files)
-
 
 class TestSwiftTreeSitterAvailability:
     """Tests for tree-sitter-swift availability checking."""
@@ -52,7 +52,6 @@ class TestSwiftTreeSitterAvailability:
         with patch("importlib.util.find_spec", side_effect=mock_find_spec):
             assert is_swift_tree_sitter_available() is False
 
-
 class TestAnalyzeSwiftFallback:
     """Tests for fallback behavior when tree-sitter-swift unavailable."""
 
@@ -67,7 +66,6 @@ class TestAnalyzeSwiftFallback:
 
         assert result.skipped is True
         assert "tree-sitter-swift" in result.skip_reason
-
 
 class TestSwiftFunctionExtraction:
     """Tests for extracting Swift functions."""
@@ -89,14 +87,12 @@ func helper(x: Int) -> Int {
 
         result = analyze_swift(tmp_path)
 
-
         assert result.run is not None
         assert result.run.files_analyzed == 1
         funcs = [s for s in result.symbols if s.kind == "function"]
         func_names = [s.name for s in funcs]
         assert "main" in func_names
         assert "helper" in func_names
-
 
 class TestSwiftClassExtraction:
     """Tests for extracting Swift classes."""
@@ -127,12 +123,10 @@ class Point {
 
         result = analyze_swift(tmp_path)
 
-
         classes = [s for s in result.symbols if s.kind == "class"]
         class_names = [s.name for s in classes]
         assert "User" in class_names
         assert "Point" in class_names
-
 
 class TestSwiftStructExtraction:
     """Tests for extracting Swift structs."""
@@ -156,12 +150,10 @@ struct Config {
 
         result = analyze_swift(tmp_path)
 
-
         structs = [s for s in result.symbols if s.kind == "struct"]
         struct_names = [s.name for s in structs]
         assert "Vector" in struct_names
         assert "Config" in struct_names
-
 
 class TestSwiftProtocolExtraction:
     """Tests for extracting Swift protocols."""
@@ -183,12 +175,10 @@ protocol Clickable {
 
         result = analyze_swift(tmp_path)
 
-
         protocols = [s for s in result.symbols if s.kind == "protocol"]
         protocol_names = [s.name for s in protocols]
         assert "Drawable" in protocol_names
         assert "Clickable" in protocol_names
-
 
 class TestSwiftEnumExtraction:
     """Tests for extracting Swift enums."""
@@ -213,12 +203,10 @@ enum Direction: String {
 
         result = analyze_swift(tmp_path)
 
-
         enums = [s for s in result.symbols if s.kind == "enum"]
         enum_names = [s.name for s in enums]
         assert "Color" in enum_names
         assert "Direction" in enum_names
-
 
 class TestSwiftFunctionCalls:
     """Tests for detecting function calls in Swift."""
@@ -240,10 +228,8 @@ func helper() {
 
         result = analyze_swift(tmp_path)
 
-
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
-
 
 class TestSwiftImports:
     """Tests for detecting Swift import statements."""
@@ -264,10 +250,8 @@ func main() {
 
         result = analyze_swift(tmp_path)
 
-
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) >= 1
-
 
 class TestSwiftEdgeCases:
     """Tests for edge cases and error handling."""
@@ -297,7 +281,6 @@ class TestSwiftEdgeCases:
 
         result = analyze_swift(tmp_path)
 
-
         assert result.run is not None
 
     def test_cross_file_function_call(self, tmp_path: Path) -> None:
@@ -318,9 +301,7 @@ func run() {
 
         result = analyze_swift(tmp_path)
 
-
         assert result.run.files_analyzed >= 2
-
 
 class TestSwiftMethodExtraction:
     """Tests for extracting methods from classes."""
@@ -346,11 +327,9 @@ class User {
 
         result = analyze_swift(tmp_path)
 
-
         methods = [s for s in result.symbols if s.kind == "method"]
         method_names = [s.name for s in methods]
         assert any("getName" in name for name in method_names)
-
 
 class TestSwiftFileReadErrors:
     """Tests for file read error handling."""
@@ -407,16 +386,12 @@ class TestSwiftFileReadErrors:
 
         assert result == []
 
-
 class TestSwiftHelperFunctions:
     """Tests for helper function edge cases."""
 
     def test_find_child_by_type_returns_none(self, tmp_path: Path) -> None:
         """_find_child_by_type returns None when no matching child."""
-        from hypergumbo_lang_mainstream.swift import (
-            _find_child_by_type,
-            is_swift_tree_sitter_available,
-        )
+        from hypergumbo_lang_mainstream.swift import is_swift_tree_sitter_available
 
         if not is_swift_tree_sitter_available():
             pytest.skip("tree-sitter-swift not available")
@@ -430,9 +405,8 @@ class TestSwiftHelperFunctions:
         source = b"// comment\n"
         tree = parser.parse(source)
 
-        result = _find_child_by_type(tree.root_node, "nonexistent_type")
+        result = find_child_by_type(tree.root_node, "nonexistent_type")
         assert result is None
-
 
 class TestSwiftSignatureExtraction:
     """Tests for Swift function signature extraction."""
@@ -484,7 +458,6 @@ class Counter {
         methods = [s for s in result.symbols if s.kind == "method" and "getCount" in s.name]
         assert len(methods) == 1
         assert methods[0].signature == "() -> Int"
-
 
 class TestSwiftClosureCallAttribution:
     """Tests for call edge attribution inside Swift closures.
@@ -591,7 +564,6 @@ func caller() {
             None,
         )
         assert call_edge is not None, "Call inside completion handler should be attributed to caller"
-
 
 class TestSwiftInheritanceExtraction:
     """Tests for Swift inheritance/conformance extraction.

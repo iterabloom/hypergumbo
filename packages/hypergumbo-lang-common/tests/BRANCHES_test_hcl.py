@@ -11,24 +11,19 @@ by the main test suite. Focuses on:
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from hypergumbo_core.analyze.base import find_child_by_type, make_file_id, make_symbol_id, node_text
 from hypergumbo_lang_common.hcl import (
     _extract_block_info,
     _extract_local_names,
     _extract_reference_chain,
     _find_all_children_by_type,
-    _find_child_by_type,
     _find_enclosing_block_symbol,
-    _make_file_id,
-    _make_symbol_id,
-    _node_text,
     analyze_hcl,
 )
-
 
 def make_hcl_file(tmp_path: Path, name: str, content: str) -> None:
     """Create an HCL file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestHCLHelperFunctions:
     """Branch coverage for helper functions."""
@@ -65,19 +60,18 @@ class TestHCLHelperFunctions:
         # Invalid UTF-8 sequence
         source = b"\xff\xfe\x00\x01"
 
-        result = _node_text(mock_node, source)
+        result = node_text(mock_node, source)
         assert isinstance(result, str)  # Should return replacement chars
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("main.tf", 1, 10, "aws_instance.web", "resource")
+        symbol_id = make_symbol_id("hcl", "main.tf", 1, 10, "aws_instance.web", "resource")
         assert symbol_id == "hcl:main.tf:1-10:aws_instance.web:resource"
 
     def test_make_file_id_format(self) -> None:
         """Test file ID format."""
-        file_id = _make_file_id("modules/vpc/main.tf")
+        file_id = make_file_id("hcl", "modules/vpc/main.tf")
         assert file_id == "hcl:modules/vpc/main.tf:1-1:file:file"
-
 
 class TestExtractBlockInfo:
     """Branch coverage for block info extraction."""
@@ -106,18 +100,18 @@ class TestExtractBlockInfo:
 
         # Patch _node_text and _extract_string_value
         import hypergumbo_lang_common.hcl as hcl_module
-        original_node_text = hcl_module._node_text
+        original_node_text = hcl_module.node_text
         original_extract_string = hcl_module._extract_string_value
 
         try:
-            hcl_module._node_text = mock_node_text
+            hcl_module.node_text = mock_node_text
             hcl_module._extract_string_value = lambda n, s: "aws_instance" if n == string1 else "should_not_see"
 
             block_type, labels = _extract_block_info(mock_node, source)
             assert block_type == "resource"
             assert labels == ["aws_instance"]  # Only one label, stopped at block_start
         finally:
-            hcl_module._node_text = original_node_text
+            hcl_module.node_text = original_node_text
             hcl_module._extract_string_value = original_extract_string
 
     def test_extract_block_info_skips_non_string_children(self) -> None:
@@ -134,20 +128,19 @@ class TestExtractBlockInfo:
         source = b'resource "x" {}'
 
         import hypergumbo_lang_common.hcl as hcl_module
-        original_node_text = hcl_module._node_text
+        original_node_text = hcl_module.node_text
         original_extract_string = hcl_module._extract_string_value
 
         try:
-            hcl_module._node_text = lambda n, s: "resource" if n.type == "identifier" else ""
+            hcl_module.node_text = lambda n, s: "resource" if n.type == "identifier" else ""
             hcl_module._extract_string_value = lambda n, s: "x" if n == string1 else None
 
             block_type, labels = _extract_block_info(mock_node, source)
             assert block_type == "resource"
             assert labels == ["x"]
         finally:
-            hcl_module._node_text = original_node_text
+            hcl_module.node_text = original_node_text
             hcl_module._extract_string_value = original_extract_string
-
 
 class TestExtractLocalNames:
     """Branch coverage for local names extraction."""
@@ -158,14 +151,14 @@ class TestExtractLocalNames:
         mock_node.children = []  # No body
 
         import hypergumbo_lang_common.hcl as hcl_module
-        original_find_child = hcl_module._find_child_by_type
+        original_find_child = hcl_module.find_child_by_type
 
         try:
-            hcl_module._find_child_by_type = lambda n, t: None
+            hcl_module.find_child_by_type = lambda n, t: None
             names = _extract_local_names(mock_node, b"")
             assert names == []
         finally:
-            hcl_module._find_child_by_type = original_find_child
+            hcl_module.find_child_by_type = original_find_child
 
     def test_extract_local_names_attr_without_identifier(self) -> None:
         """Test extraction when attribute has no identifier."""
@@ -185,13 +178,13 @@ class TestExtractLocalNames:
                 return body
             return None  # No identifier in attribute
 
-        original_find_child = hcl_module._find_child_by_type
+        original_find_child = hcl_module.find_child_by_type
         try:
-            hcl_module._find_child_by_type = mock_find_child
+            hcl_module.find_child_by_type = mock_find_child
             names = _extract_local_names(mock_node, b"")
             assert names == []
         finally:
-            hcl_module._find_child_by_type = original_find_child
+            hcl_module.find_child_by_type = original_find_child
 
     def test_extract_local_names_body_with_non_attribute_children(self) -> None:
         """Test extraction skips non-attribute children in body."""
@@ -219,17 +212,16 @@ class TestExtractLocalNames:
                 return ident
             return None
 
-        original_find_child = hcl_module._find_child_by_type
-        original_node_text = hcl_module._node_text
+        original_find_child = hcl_module.find_child_by_type
+        original_node_text = hcl_module.node_text
         try:
-            hcl_module._find_child_by_type = mock_find_child
-            hcl_module._node_text = lambda n, s: "env"
+            hcl_module.find_child_by_type = mock_find_child
+            hcl_module.node_text = lambda n, s: "env"
             names = _extract_local_names(mock_node, b"env")
             assert names == ["env"]
         finally:
-            hcl_module._find_child_by_type = original_find_child
-            hcl_module._node_text = original_node_text
-
+            hcl_module.find_child_by_type = original_find_child
+            hcl_module.node_text = original_node_text
 
 class TestExtractReferenceChain:
     """Branch coverage for reference chain extraction."""
@@ -248,17 +240,17 @@ class TestExtractReferenceChain:
         mock_node.children = [ident]
 
         import hypergumbo_lang_common.hcl as hcl_module
-        original_find_child = hcl_module._find_child_by_type
-        original_node_text = hcl_module._node_text
+        original_find_child = hcl_module.find_child_by_type
+        original_node_text = hcl_module.node_text
 
         try:
-            hcl_module._find_child_by_type = lambda n, t: ident if t == "identifier" else None
-            hcl_module._node_text = lambda n, s: "var"
+            hcl_module.find_child_by_type = lambda n, t: ident if t == "identifier" else None
+            hcl_module.node_text = lambda n, s: "var"
             result = _extract_reference_chain(mock_node, b"var")
             assert result is None  # Only one part, needs at least two
         finally:
-            hcl_module._find_child_by_type = original_find_child
-            hcl_module._node_text = original_node_text
+            hcl_module.find_child_by_type = original_find_child
+            hcl_module.node_text = original_node_text
 
     def test_reference_chain_no_identifier(self) -> None:
         """Test reference chain when no identifier found."""
@@ -269,14 +261,14 @@ class TestExtractReferenceChain:
         mock_node.children = []  # No identifier
 
         import hypergumbo_lang_common.hcl as hcl_module
-        original_find_child = hcl_module._find_child_by_type
+        original_find_child = hcl_module.find_child_by_type
 
         try:
-            hcl_module._find_child_by_type = lambda n, t: None
+            hcl_module.find_child_by_type = lambda n, t: None
             result = _extract_reference_chain(mock_node, b"")
             assert result is None
         finally:
-            hcl_module._find_child_by_type = original_find_child
+            hcl_module.find_child_by_type = original_find_child
 
     def test_reference_chain_no_parent(self) -> None:
         """Test reference chain when node has no parent."""
@@ -289,18 +281,17 @@ class TestExtractReferenceChain:
         mock_node.children = [ident]
 
         import hypergumbo_lang_common.hcl as hcl_module
-        original_find_child = hcl_module._find_child_by_type
-        original_node_text = hcl_module._node_text
+        original_find_child = hcl_module.find_child_by_type
+        original_node_text = hcl_module.node_text
 
         try:
-            hcl_module._find_child_by_type = lambda n, t: ident if t == "identifier" else None
-            hcl_module._node_text = lambda n, s: "var"
+            hcl_module.find_child_by_type = lambda n, t: ident if t == "identifier" else None
+            hcl_module.node_text = lambda n, s: "var"
             result = _extract_reference_chain(mock_node, b"var")
             assert result is None  # Only one part
         finally:
-            hcl_module._find_child_by_type = original_find_child
-            hcl_module._node_text = original_node_text
-
+            hcl_module.find_child_by_type = original_find_child
+            hcl_module.node_text = original_node_text
 
 class TestFindEnclosingBlockSymbol:
     """Branch coverage for enclosing block symbol resolution."""
@@ -359,7 +350,6 @@ module "vpc" {
         depends_edges = [e for e in result.edges if e.edge_type == "depends_on"]
         assert len(depends_edges) >= 1
 
-
 class TestModuleSourceEdges:
     """Branch coverage for module source edge extraction."""
 
@@ -399,7 +389,6 @@ module "vpc" {
         assert len(import_edges) == 1
         assert import_edges[0].dst == "./modules/vpc"
 
-
 class TestUnknownBlockTypes:
     """Branch coverage for unknown block type handling."""
 
@@ -435,7 +424,6 @@ terraform {
         backend_blocks = [s for s in result.symbols if "backend" in s.name or "s3" in s.name]
         assert len(backend_blocks) == 0
 
-
 class TestResourceWithSingleLabel:
     """Branch coverage for resource blocks with insufficient labels."""
 
@@ -455,7 +443,6 @@ resource "aws_instance" {
         resources = [s for s in result.symbols if s.kind == "resource"]
         assert len(resources) == 0
 
-
 class TestDataWithSingleLabel:
     """Branch coverage for data blocks with insufficient labels."""
 
@@ -469,7 +456,6 @@ data "aws_ami" {
         result = analyze_hcl(tmp_path)
         data_sources = [s for s in result.symbols if s.kind == "data"]
         assert len(data_sources) == 0
-
 
 class TestCrossFileReferences:
     """Branch coverage for cross-file symbol references."""
@@ -507,7 +493,6 @@ locals {
         names = [s.name for s in locals_syms]
         assert "local.env" in names
         assert "local.region" in names
-
 
 class TestMultipleProvidersAndModules:
     """Branch coverage for multiple same-type blocks."""

@@ -12,25 +12,19 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_common.wgsl import (
-    _make_symbol_id,
-    _make_edge_id,
-    analyze_wgsl_files,
-    find_wgsl_files,
-)
-
+from hypergumbo_core.analyze.base import make_symbol_id
+from hypergumbo_lang_common.wgsl import _make_edge_id, analyze_wgsl_files, find_wgsl_files
 
 def make_wgsl_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a WGSL shader file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestWgslHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("shaders/main.wgsl", 1, 5, "vertexMain", "function")
+        symbol_id = make_symbol_id("wgsl", "shaders/main.wgsl", 1, 5, "vertexMain", "function")
         assert symbol_id == "wgsl:shaders/main.wgsl:1-5:vertexMain:function"
 
     def test_make_edge_id_format(self) -> None:
@@ -39,7 +33,6 @@ class TestWgslHelperFunctions:
         edge_id2 = _make_edge_id("src1", "dst1", "calls")
         assert edge_id1 == edge_id2
         assert edge_id1.startswith("edge:sha256:")
-
 
 class TestFunctionExtraction:
     """Branch coverage for function extraction."""
@@ -70,7 +63,6 @@ fn multiply(x: f32, y: f32) -> f32 {
         assert len(functions) >= 1
         assert functions[0].signature is not None
         assert "f32" in functions[0].signature
-
 
 class TestEntryPointExtraction:
     """Branch coverage for shader entry point extraction."""
@@ -117,7 +109,6 @@ fn computeMain(@builtin(global_invocation_id) id: vec3<u32>) {
         assert functions[0].meta is not None
         assert functions[0].meta.get("entry_point") == "compute"
 
-
 class TestStructExtraction:
     """Branch coverage for struct extraction."""
 
@@ -148,7 +139,6 @@ struct VertexOutput {
         result = analyze_wgsl_files(tmp_path)
         structs = [s for s in result.symbols if s.kind == "struct"]
         assert len(structs) >= 2
-
 
 class TestUniformExtraction:
     """Branch coverage for uniform buffer extraction."""
@@ -181,7 +171,6 @@ var<uniform> mvp: mat4x4<f32>;
         assert uniforms[0].meta.get("group") == 1
         assert uniforms[0].meta.get("binding") == 2
 
-
 class TestStorageExtraction:
     """Branch coverage for storage buffer extraction."""
 
@@ -197,7 +186,6 @@ var<storage, read_write> outputData: array<f32>;
         result = analyze_wgsl_files(tmp_path)
         storage = [s for s in result.symbols if s.kind == "storage"]
         assert len(storage) >= 2
-
 
 class TestCallEdges:
     """Branch coverage for function call edge extraction."""
@@ -236,7 +224,6 @@ fn main() -> f32 {
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 2
 
-
 class TestFindWgslFiles:
     """Branch coverage for file discovery."""
 
@@ -257,7 +244,6 @@ class TestFindWgslFiles:
         files = list(find_wgsl_files(tmp_path))
         assert len(files) == 1
 
-
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
 
@@ -276,7 +262,6 @@ fn main() -> f32 {
         result = analyze_wgsl_files(tmp_path)
         assert not result.skipped
 
-
 class TestAnalysisRun:
     """Branch coverage for analysis run metadata."""
 
@@ -291,7 +276,6 @@ fn main() -> @builtin(position) vec4<f32> {
         result = analyze_wgsl_files(tmp_path)
         assert result.run is not None
         assert result.run.files_analyzed >= 1
-
 
 class TestComplexShader:
     """Branch coverage for complex shader files."""

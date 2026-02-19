@@ -12,32 +12,25 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_mainstream.perl import (
-    _make_symbol_id,
-    _make_file_id,
-    analyze_perl,
-    find_perl_files,
-)
-
+from hypergumbo_core.analyze.base import make_file_id, make_symbol_id
+from hypergumbo_lang_mainstream.perl import analyze_perl, find_perl_files
 
 def make_perl_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a Perl file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestPerlHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("lib/MyModule.pm", 1, 10, "process", "function")
+        symbol_id = make_symbol_id("perl", "lib/MyModule.pm", 1, 10, "process", "function")
         assert symbol_id == "perl:lib/MyModule.pm:1-10:process:function"
 
     def test_make_file_id_format(self) -> None:
         """Test file ID format."""
-        file_id = _make_file_id("lib/MyModule.pm")
+        file_id = make_file_id("perl", "lib/MyModule.pm")
         assert file_id == "perl:lib/MyModule.pm:1-1:file:file"
-
 
 class TestPackageExtraction:
     """Branch coverage for package/module extraction."""
@@ -57,7 +50,6 @@ use warnings;
         modules = [s for s in result.symbols if s.kind == "module"]
         assert len(modules) >= 1
         assert any(m.name == "MyModule" for m in modules)
-
 
 class TestSubroutineExtraction:
     """Branch coverage for subroutine extraction."""
@@ -113,7 +105,6 @@ sub process {
         # Should be qualified with package name
         assert any("MyModule" in f.name for f in functions)
 
-
 class TestImportEdges:
     """Branch coverage for import edge extraction."""
 
@@ -163,7 +154,6 @@ sub main {
 
         assert len(import_edges) >= 1
 
-
 class TestCallEdges:
     """Branch coverage for call edge extraction."""
 
@@ -183,7 +173,6 @@ sub main {
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
 
         assert len(call_edges) >= 1
-
 
 class TestFindPerlFiles:
     """Branch coverage for file discovery."""
@@ -212,7 +201,6 @@ class TestFindPerlFiles:
         assert len(files) >= 1
         assert any(f.suffix == ".t" for f in files)
 
-
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
 
@@ -228,7 +216,6 @@ print "hello\\n";
 """)
         result = analyze_perl(tmp_path)
         assert not result.skipped
-
 
 class TestMethodCallEdges:
     """Branch coverage for method call edge extraction."""
@@ -263,7 +250,6 @@ sub main {
         # The important thing is no crash
         assert not result.skipped
 
-
 class TestAnalysisRun:
     """Branch coverage for analysis run metadata."""
 
@@ -277,7 +263,6 @@ sub main {
         result = analyze_perl(tmp_path)
         assert result.run is not None
         assert result.run.files_analyzed >= 1
-
 
 class TestTreeSitterUnavailable:
     """Branch coverage for tree-sitter unavailability."""

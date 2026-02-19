@@ -12,24 +12,19 @@ by the main test suite. Focuses on:
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from hypergumbo_core.analyze.base import find_child_by_type, make_file_id, make_symbol_id, node_text
 from hypergumbo_lang_common.julia import (
     _extract_function_name,
     _extract_import_aliases,
     _extract_julia_signature,
-    _find_child_by_type,
     _get_enclosing_function_julia,
     _get_enclosing_module,
-    _make_file_id,
-    _make_symbol_id,
-    _node_text,
     analyze_julia,
 )
-
 
 def make_julia_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a Julia file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestJuliaHelperFunctions:
     """Branch coverage for helper functions."""
@@ -42,19 +37,18 @@ class TestJuliaHelperFunctions:
         # Invalid UTF-8 sequence
         source = b"\xff\xfe\x00\x01"
 
-        result = _node_text(mock_node, source)
+        result = node_text(mock_node, source)
         assert isinstance(result, str)
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("test.jl", 1, 10, "my_func", "function")
+        symbol_id = make_symbol_id("julia", "test.jl", 1, 10, "my_func", "function")
         assert symbol_id == "julia:test.jl:1-10:my_func:function"
 
     def test_make_file_id_format(self) -> None:
         """Test file ID format."""
-        file_id = _make_file_id("src/Main.jl")
+        file_id = make_file_id("julia", "src/Main.jl")
         assert file_id == "julia:src/Main.jl:1-1:file:file"
-
 
 class TestGetEnclosingModule:
     """Branch coverage for enclosing module resolution."""
@@ -85,7 +79,6 @@ end
         # Function should be found with module prefix in ID
         assert any(s.name == "inner_func" for s in funcs)
 
-
 class TestExtractFunctionName:
     """Branch coverage for function name extraction."""
 
@@ -110,15 +103,14 @@ end
         mock_node.children = []  # No signature
 
         import hypergumbo_lang_common.julia as julia_module
-        original_find_child = julia_module._find_child_by_type
+        original_find_child = julia_module.find_child_by_type
 
         try:
-            julia_module._find_child_by_type = lambda n, t: None
+            julia_module.find_child_by_type = lambda n, t: None
             result = _extract_function_name(mock_node, b"")
             assert result is None
         finally:
-            julia_module._find_child_by_type = original_find_child
-
+            julia_module.find_child_by_type = original_find_child
 
 class TestExtractJuliaSignature:
     """Branch coverage for signature extraction."""
@@ -162,7 +154,6 @@ end
         assert len(funcs) == 1
         assert funcs[0].signature == "()"
 
-
 class TestStructSubtypeSyntax:
     """Branch coverage for struct subtype extraction."""
 
@@ -192,7 +183,6 @@ end
         result = analyze_julia(tmp_path)
         structs = [s for s in result.symbols if s.kind == "struct"]
         assert any(s.name == "Dog" for s in structs)
-
 
 class TestGetEnclosingFunctionJulia:
     """Branch coverage for enclosing function resolution."""
@@ -239,7 +229,6 @@ end
         # Inner function should also be extracted
         assert any(s.name == "inner" for s in funcs)
 
-
 class TestImportAliases:
     """Branch coverage for import alias handling."""
 
@@ -283,7 +272,6 @@ import Dates as D
         assert aliases["SA"] == "SparseArrays"
         assert aliases["D"] == "Dates"
 
-
 class TestQualifiedCalls:
     """Branch coverage for qualified call resolution."""
 
@@ -316,7 +304,6 @@ end
         funcs = [s for s in result.symbols if s.kind == "function"]
         assert any(s.name == "compute" for s in funcs)
 
-
 class TestImportOnlyFiles:
     """Branch coverage for files without symbols but with imports."""
 
@@ -345,7 +332,6 @@ using YAML
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) >= 2
 
-
 class TestScopedIdentifiers:
     """Branch coverage for scoped identifier handling in imports."""
 
@@ -365,7 +351,6 @@ end
         assert len(import_edges) >= 2
         import_dsts = [e.dst for e in import_edges]
         assert any("Base.Iterators" in dst for dst in import_dsts)
-
 
 class TestEmptyAnalysisResult:
     """Branch coverage for empty analysis scenarios."""
@@ -389,7 +374,6 @@ function incomplete(
         # Should not crash
         result = analyze_julia(tmp_path)
         assert result.run is not None
-
 
 class TestMacroDefinitions:
     """Branch coverage for macro definition extraction."""
@@ -421,7 +405,6 @@ end
         # Parser should handle gracefully
         assert result.run is not None
 
-
 class TestConstDeclarations:
     """Branch coverage for const declaration extraction."""
 
@@ -445,7 +428,6 @@ const DEFAULTS = [1, 2, 3]
         result = analyze_julia(tmp_path)
         consts = [s for s in result.symbols if s.kind == "const"]
         assert any(s.name == "DEFAULTS" for s in consts)
-
 
 class TestAbstractTypeDeclarations:
     """Branch coverage for abstract type extraction."""

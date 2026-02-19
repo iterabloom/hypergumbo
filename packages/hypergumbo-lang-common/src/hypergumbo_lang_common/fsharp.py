@@ -46,7 +46,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -135,17 +135,6 @@ def is_fsharp_tree_sitter_available() -> bool:
 
 
 @dataclass
-class FsharpAnalysisResult:
-    """Result of analyzing F# files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-@dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file.
 
@@ -160,35 +149,12 @@ class FileAnalysis:
     module_aliases: dict[str, str] = field(default_factory=dict)  # alias -> module path
 
 
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"fsharp:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for an F# file node (used as import edge source)."""
-    return f"fsharp:{path}:1-1:file:file"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None  # pragma: no cover - defensive fallback
-
-
 def _extract_long_identifier(node: "tree_sitter.Node", source: bytes) -> str:
     """Extract full identifier from long_identifier node."""
     parts = []
     for child in node.children:
         if child.type == "identifier":
-            parts.append(_node_text(child, source))
+            parts.append(node_text(child, source))
     return ".".join(parts)
 
 
@@ -226,26 +192,26 @@ def _extract_fsharp_signature(
                             param_type = None
                             for pattern_child in arg_child.children:
                                 if pattern_child.type == "identifier_pattern":
-                                    id_node = _find_child_by_type(pattern_child, "long_identifier_or_op")
+                                    id_node = find_child_by_type(pattern_child, "long_identifier_or_op")
                                     if id_node:
-                                        name_node = _find_child_by_type(id_node, "identifier")
+                                        name_node = find_child_by_type(id_node, "identifier")
                                         if name_node:
-                                            param_name = _node_text(name_node, source)
+                                            param_name = node_text(name_node, source)
                                     else:  # pragma: no cover - defensive fallback
                                         # May be a direct identifier
-                                        param_name = _node_text(pattern_child, source)
+                                        param_name = node_text(pattern_child, source)
                                 elif pattern_child.type == "simple_type":
-                                    param_type = _node_text(pattern_child, source)
+                                    param_type = node_text(pattern_child, source)
                             if param_name and param_type:
                                 params.append(f"{param_name}: {param_type}")
                         elif arg_child.type == "const":
                             # Check for unit ()
-                            unit_node = _find_child_by_type(arg_child, "unit")
+                            unit_node = find_child_by_type(arg_child, "unit")
                             if unit_node:
                                 pass  # unit means no params, just skip
         elif found_func_decl and child.type == "simple_type":
             # Return type annotation after function_declaration_left
-            return_type = _node_text(child, source)
+            return_type = node_text(child, source)
 
     params_str = ", ".join(params)
     signature = f"({params_str})"
@@ -278,7 +244,7 @@ def _extract_symbols_from_file(
     for node in iter_tree(tree.root_node):
         # Module declaration
         if node.type == "named_module":
-            long_id = _find_child_by_type(node, "long_identifier")
+            long_id = find_child_by_type(node, "long_identifier")
             if long_id:
                 module_name = _extract_long_identifier(long_id, source)
                 start_line = node.start_point[0] + 1
@@ -289,7 +255,7 @@ def _extract_symbols_from_file(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                sym_id = _make_symbol_id(file_path, start_line, end_line, module_name, "module")
+                sym_id = make_symbol_id("fsharp", file_path, start_line, end_line, module_name, "module")
                 symbols.append(Symbol(
                     id=sym_id,
                     name=module_name,
@@ -304,11 +270,11 @@ def _extract_symbols_from_file(
         # Function/value definition
         elif node.type == "function_or_value_defn":
             # Check for function_declaration_left (functions with params)
-            func_left = _find_child_by_type(node, "function_declaration_left")
+            func_left = find_child_by_type(node, "function_declaration_left")
             if func_left:
-                name_node = _find_child_by_type(func_left, "identifier")
+                name_node = find_child_by_type(func_left, "identifier")
                 if name_node:
-                    func_name = _node_text(name_node, source)
+                    func_name = node_text(name_node, source)
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
                     span = Span(
@@ -317,7 +283,7 @@ def _extract_symbols_from_file(
                         start_col=node.start_point[1],
                         end_col=node.end_point[1],
                     )
-                    sym_id = _make_symbol_id(file_path, start_line, end_line, func_name, "function")
+                    sym_id = make_symbol_id("fsharp", file_path, start_line, end_line, func_name, "function")
 
                     # Extract signature
                     signature = _extract_fsharp_signature(node, source)
@@ -335,15 +301,15 @@ def _extract_symbols_from_file(
                     ))
             else:
                 # Check for value_declaration_left (values without params)
-                val_left = _find_child_by_type(node, "value_declaration_left")
+                val_left = find_child_by_type(node, "value_declaration_left")
                 if val_left:
-                    id_pattern = _find_child_by_type(val_left, "identifier_pattern")
+                    id_pattern = find_child_by_type(val_left, "identifier_pattern")
                     if id_pattern:
-                        long_id = _find_child_by_type(id_pattern, "long_identifier_or_op")
+                        long_id = find_child_by_type(id_pattern, "long_identifier_or_op")
                         if long_id:
-                            name_node = _find_child_by_type(long_id, "identifier")
+                            name_node = find_child_by_type(long_id, "identifier")
                             if name_node:
-                                val_name = _node_text(name_node, source)
+                                val_name = node_text(name_node, source)
                                 start_line = node.start_point[0] + 1
                                 end_line = node.end_point[0] + 1
                                 span = Span(
@@ -352,7 +318,7 @@ def _extract_symbols_from_file(
                                     start_col=node.start_point[1],
                                     end_col=node.end_point[1],
                                 )
-                                sym_id = _make_symbol_id(file_path, start_line, end_line, val_name, "value")
+                                sym_id = make_symbol_id("fsharp", file_path, start_line, end_line, val_name, "value")
                                 symbols.append(Symbol(
                                     id=sym_id,
                                     name=val_name,
@@ -367,13 +333,13 @@ def _extract_symbols_from_file(
         # Type definition
         elif node.type == "type_definition":
             # Record type
-            record = _find_child_by_type(node, "record_type_defn")
+            record = find_child_by_type(node, "record_type_defn")
             if record:
-                type_name_node = _find_child_by_type(record, "type_name")
+                type_name_node = find_child_by_type(record, "type_name")
                 if type_name_node:
-                    name_node = _find_child_by_type(type_name_node, "identifier")
+                    name_node = find_child_by_type(type_name_node, "identifier")
                     if name_node:
-                        type_name = _node_text(name_node, source)
+                        type_name = node_text(name_node, source)
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
                         span = Span(
@@ -382,7 +348,7 @@ def _extract_symbols_from_file(
                             start_col=node.start_point[1],
                             end_col=node.end_point[1],
                         )
-                        sym_id = _make_symbol_id(file_path, start_line, end_line, type_name, "record")
+                        sym_id = make_symbol_id("fsharp", file_path, start_line, end_line, type_name, "record")
                         symbols.append(Symbol(
                             id=sym_id,
                             name=type_name,
@@ -395,13 +361,13 @@ def _extract_symbols_from_file(
                         ))
 
             # Discriminated union type
-            union = _find_child_by_type(node, "union_type_defn")
+            union = find_child_by_type(node, "union_type_defn")
             if union:
-                type_name_node = _find_child_by_type(union, "type_name")
+                type_name_node = find_child_by_type(union, "type_name")
                 if type_name_node:
-                    name_node = _find_child_by_type(type_name_node, "identifier")
+                    name_node = find_child_by_type(type_name_node, "identifier")
                     if name_node:
-                        type_name = _node_text(name_node, source)
+                        type_name = node_text(name_node, source)
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
                         span = Span(
@@ -410,7 +376,7 @@ def _extract_symbols_from_file(
                             start_col=node.start_point[1],
                             end_col=node.end_point[1],
                         )
-                        sym_id = _make_symbol_id(file_path, start_line, end_line, type_name, "union")
+                        sym_id = make_symbol_id("fsharp", file_path, start_line, end_line, type_name, "union")
                         symbols.append(Symbol(
                             id=sym_id,
                             name=type_name,
@@ -434,11 +400,11 @@ def _get_enclosing_function_fsharp(
     current = node.parent
     while current is not None:
         if current.type == "function_or_value_defn":
-            func_left = _find_child_by_type(current, "function_declaration_left")
+            func_left = find_child_by_type(current, "function_declaration_left")
             if func_left:
-                name_node = _find_child_by_type(func_left, "identifier")
+                name_node = find_child_by_type(func_left, "identifier")
                 if name_node:
-                    func_name = _node_text(name_node, source)
+                    func_name = node_text(name_node, source)
                     sym = local_symbols.get(func_name)
                     if sym:
                         return sym
@@ -468,7 +434,7 @@ def _extract_module_aliases(
             # module_abbrev: module <identifier> = <long_identifier>
             for child in node.children:
                 if child.type == "identifier" and alias_name is None:
-                    alias_name = _node_text(child, source)
+                    alias_name = node_text(child, source)
                 elif child.type == "long_identifier":
                     module_name = _extract_long_identifier(child, source)
 
@@ -476,16 +442,16 @@ def _extract_module_aliases(
             # module_defn: module <identifier> = <long_identifier_or_op>
             for child in node.children:
                 if child.type == "identifier" and alias_name is None:
-                    alias_name = _node_text(child, source)
+                    alias_name = node_text(child, source)
                 elif child.type == "long_identifier_or_op":
                     # Get the full module path
-                    long_id = _find_child_by_type(child, "long_identifier")
+                    long_id = find_child_by_type(child, "long_identifier")
                     if long_id:
                         module_name = _extract_long_identifier(long_id, source)
                     else:
-                        id_node = _find_child_by_type(child, "identifier")
+                        id_node = find_child_by_type(child, "identifier")
                         if id_node:
-                            module_name = _node_text(id_node, source)
+                            module_name = node_text(id_node, source)
 
         if alias_name and module_name:
             aliases[alias_name] = module_name
@@ -509,7 +475,7 @@ def _extract_edges_from_file(
     - Open statements (import_decl)
     """
     edges: list[Edge] = []
-    file_id = _make_file_id(file_path)
+    file_id = make_file_id("fsharp", file_path)
     if module_aliases is None:  # pragma: no cover - defensive
         module_aliases = {}
 
@@ -519,7 +485,7 @@ def _extract_edges_from_file(
     for node in iter_tree(tree.root_node):
         if node.type == "import_decl":
             # open Module.Submodule
-            long_id = _find_child_by_type(node, "long_identifier")
+            long_id = find_child_by_type(node, "long_identifier")
             if long_id:
                 module_name = _extract_long_identifier(long_id, source)
                 module_id = f"fsharp:{module_name}:0-0:module:module"
@@ -546,11 +512,11 @@ def _extract_edges_from_file(
                     path_hint: Optional[str] = None
 
                     # Check for qualified call (long_identifier with dots)
-                    long_id = _find_child_by_type(first_child, "long_identifier")
+                    long_id = find_child_by_type(first_child, "long_identifier")
                     if long_id:
                         # Get all identifiers in the long_identifier
                         identifiers = [
-                            _node_text(c, source)
+                            node_text(c, source)
                             for c in long_id.children
                             if c.type == "identifier"
                         ]
@@ -563,9 +529,9 @@ def _extract_edges_from_file(
                             callee_name = identifiers[0]
                     else:
                         # Simple identifier
-                        name_node = _find_child_by_type(first_child, "identifier")
+                        name_node = find_child_by_type(first_child, "identifier")
                         if name_node:
-                            callee_name = _node_text(name_node, source)
+                            callee_name = node_text(name_node, source)
 
                     if callee_name:
                         lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
@@ -588,10 +554,10 @@ def _extract_edges_from_file(
 
 
 @register_analyzer("fsharp")
-def analyze_fsharp(repo_root: Path) -> FsharpAnalysisResult:
+def analyze_fsharp(repo_root: Path) -> AnalysisResult:
     """Analyze F# files in a repository.
 
-    Returns a FsharpAnalysisResult with symbols, edges, and provenance.
+    Returns a AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-language-pack is not available, returns a skipped result.
     """
     start_time = time.time()
@@ -606,7 +572,7 @@ def analyze_fsharp(repo_root: Path) -> FsharpAnalysisResult:
         )
         warnings.warn(skip_reason)
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return FsharpAnalysisResult(
+        return AnalysisResult(
             run=run,
             skipped=True,
             skip_reason=skip_reason,
@@ -637,7 +603,7 @@ def analyze_fsharp(repo_root: Path) -> FsharpAnalysisResult:
 
         # Create file symbol
         file_symbol = Symbol(
-            id=_make_file_id(rel_path),
+            id=make_file_id("fsharp", rel_path),
             name="file",
             kind="file",
             language="fsharp",
@@ -688,7 +654,7 @@ def analyze_fsharp(repo_root: Path) -> FsharpAnalysisResult:
     run.files_analyzed = files_analyzed
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return FsharpAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

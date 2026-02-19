@@ -11,32 +11,25 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_common.haskell import (
-    _make_file_id,
-    _make_symbol_id,
-    analyze_haskell,
-    find_haskell_files,
-)
-
+from hypergumbo_core.analyze.base import make_file_id, make_symbol_id
+from hypergumbo_lang_common.haskell import analyze_haskell, find_haskell_files
 
 def make_hs_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a Haskell file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestHaskellHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("src/Main.hs", 5, 10, "main", "function")
+        symbol_id = make_symbol_id("haskell", "src/Main.hs", 5, 10, "main", "function")
         assert symbol_id == "haskell:src/Main.hs:5-10:main:function"
 
     def test_make_file_id_format(self) -> None:
         """Test file ID format."""
-        file_id = _make_file_id("lib/Utils.hs")
+        file_id = make_file_id("haskell", "lib/Utils.hs")
         assert file_id == "haskell:lib/Utils.hs:1-1:file:file"
-
 
 class TestUnresolvedCallEdges:
     """Branch coverage for unresolved call edge creation."""
@@ -76,7 +69,6 @@ caller x = helper x + unknownFn x
         for e in unresolved:
             assert e.confidence == 0.50
 
-
 class TestMultipleDataTypes:
     """Branch coverage for multiple data type extraction."""
 
@@ -112,7 +104,6 @@ data Tree a = Leaf | Node a (Tree a) (Tree a)
         assert "Either" in names
         assert "Tree" in names
 
-
 class TestInstanceDeclarations:
     """Branch coverage for instance declaration extraction."""
 
@@ -133,7 +124,6 @@ instance Showable MyType where
         instances = [s for s in result.symbols if s.kind == "instance"]
         # Should detect the instance
         assert len(instances) >= 1
-
 
 class TestTypeClassDefinitions:
     """Branch coverage for type class extraction."""
@@ -160,7 +150,6 @@ class Serializable a where
         assert "Printable" in names
         assert "Comparable" in names
         # Note: Byte might cause parse issues but that's okay
-
 
 class TestMultipleFunctions:
     """Branch coverage for multiple function detection."""
@@ -212,7 +201,6 @@ step3 x = step2 (step1 x)
         assert len(step1_calls) >= 2
         assert len(step2_calls) >= 1
 
-
 class TestImportEdges:
     """Branch coverage for import edge extraction."""
 
@@ -234,7 +222,6 @@ main = print "hello"
         assert any("Data.List" in d for d in dests)
         assert any("Data.Maybe" in d for d in dests)
         assert any("Data.Map" in d for d in dests)
-
 
 class TestFindHaskellFiles:
     """Branch coverage for file discovery."""
@@ -258,7 +245,6 @@ class TestFindHaskellFiles:
         files = list(find_haskell_files(tmp_path))
         assert len(files) == 1
         assert files[0].suffix == ".hs"
-
 
 class TestSignatureEdgeCases:
     """Branch coverage for signature extraction edge cases."""
@@ -290,7 +276,6 @@ combineAll x y z = (x, y, z)
         assert len(funcs) == 1
         # Should still extract signature
         assert funcs[0].signature is not None
-
 
 class TestCrossFileResolution:
     """Branch coverage for cross-file call resolution."""
@@ -327,7 +312,6 @@ topFn x = middleFn (middleFn x)
         assert "baseFn" in names
         assert "middleFn" in names
         assert "topFn" in names
-
 
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""

@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -49,24 +50,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "robot.tree_sitter"
 PASS_VERSION = "0.1.0"
-
-
-class RobotAnalysisResult:
-    """Result of Robot Framework analysis."""
-
-    def __init__(
-        self,
-        symbols: list[Symbol],
-        edges: list[Edge],
-        run: AnalysisRun | None = None,
-        skipped: bool = False,
-        skip_reason: str = "",
-    ) -> None:
-        self.symbols = symbols
-        self.edges = edges
-        self.run = run
-        self.skipped = skipped
-        self.skip_reason = skip_reason
 
 
 def is_robot_tree_sitter_available() -> bool:
@@ -183,13 +166,13 @@ class RobotAnalyzer:
         self._execution_id = f"uuid:{uuid.uuid4()}"
         self._files_analyzed = 0
 
-    def analyze(self) -> RobotAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Run the Robot Framework analysis."""
         start_time = time.time()
 
         files = find_robot_files(self.repo_root)
         if not files:
-            return RobotAnalysisResult(
+            return AnalysisResult(
                 symbols=[],
                 edges=[],
                 run=None,
@@ -230,7 +213,7 @@ class RobotAnalyzer:
             files_analyzed=self._files_analyzed,
         )
 
-        return RobotAnalysisResult(
+        return AnalysisResult(
             symbols=self._symbols,
             edges=self._edges,
             run=run,
@@ -592,14 +575,14 @@ class RobotAnalyzer:
 
 
 @register_analyzer("robot")
-def analyze_robot(repo_root: Path) -> RobotAnalysisResult:
+def analyze_robot(repo_root: Path) -> AnalysisResult:
     """Analyze Robot Framework files in a repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        RobotAnalysisResult containing extracted symbols and edges
+        AnalysisResult containing extracted symbols and edges
     """
     if not is_robot_tree_sitter_available():
         warnings.warn(
@@ -607,7 +590,7 @@ def analyze_robot(repo_root: Path) -> RobotAnalysisResult:
             UserWarning,
             stacklevel=2,
         )
-        return RobotAnalysisResult(
+        return AnalysisResult(
             symbols=[],
             edges=[],
             run=AnalysisRun(

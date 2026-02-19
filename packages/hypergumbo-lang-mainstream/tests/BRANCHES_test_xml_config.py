@@ -10,25 +10,19 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_mainstream.xml_config import (
-    _make_symbol_id,
-    _make_edge_id,
-    analyze_xml_files,
-    find_xml_files,
-)
-
+from hypergumbo_core.analyze.base import make_symbol_id
+from hypergumbo_lang_mainstream.xml_config import _make_edge_id, analyze_xml_files, find_xml_files
 
 def make_xml_file(tmp_path: Path, name: str, content: str) -> None:
     """Create an XML file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestXMLHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("pom.xml", 1, 10, "myapp", "module")
+        symbol_id = make_symbol_id("xml", "pom.xml", 1, 10, "myapp", "module")
         assert symbol_id == "xml:pom.xml:1-10:myapp:module"
 
     def test_make_edge_id_deterministic(self) -> None:
@@ -37,7 +31,6 @@ class TestXMLHelperFunctions:
         edge_id2 = _make_edge_id("src1", "dst1", "depends_on")
         assert edge_id1 == edge_id2
         assert edge_id1.startswith("edge:sha256:")
-
 
 class TestMavenPomExtraction:
     """Branch coverage for Maven pom.xml extraction."""
@@ -114,7 +107,6 @@ class TestMavenPomExtraction:
         dep_edges = [e for e in result.edges if e.edge_type == "depends_on"]
 
         assert len(dep_edges) >= 1
-
 
 class TestAndroidManifestExtraction:
     """Branch coverage for Android AndroidManifest.xml extraction."""
@@ -205,7 +197,6 @@ class TestAndroidManifestExtraction:
 
         assert len(providers) >= 1
 
-
 class TestXMLTypeDetection:
     """Branch coverage for XML type detection."""
 
@@ -222,7 +213,6 @@ class TestXMLTypeDetection:
 
         assert len(modules) >= 1
 
-
 class TestFindXMLFiles:
     """Branch coverage for file discovery."""
 
@@ -233,7 +223,6 @@ class TestFindXMLFiles:
         files = list(find_xml_files(tmp_path))
         assert len(files) >= 1
         assert any(f.suffix == ".xml" for f in files)
-
 
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
@@ -252,7 +241,6 @@ class TestEmptyAndMinimalFiles:
 """)
         result = analyze_xml_files(tmp_path)
         assert not result.skipped
-
 
 class TestAnalysisRun:
     """Branch coverage for analysis run metadata."""

@@ -23,12 +23,12 @@ Key constructs extracted:
 
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -36,17 +36,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "meson.tree_sitter"
 PASS_VERSION = "hypergumbo-0.1.0"
-
-
-@dataclass
-class MesonAnalysisResult:
-    """Result of analyzing Meson files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: Optional[AnalysisRun] = None
-    skipped: bool = False
-    skip_reason: str = ""
 
 
 def is_meson_tree_sitter_available() -> bool:
@@ -186,7 +175,7 @@ class MesonAnalyzer:
         self._target_registry: dict[str, str] = {}  # var_name -> symbol_id
         self._run_id: str = ""
 
-    def analyze(self) -> MesonAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Analyze all Meson files in the repository."""
         if not is_meson_tree_sitter_available():
             warnings.warn(
@@ -194,7 +183,7 @@ class MesonAnalyzer:
                 UserWarning,
                 stacklevel=2,
             )
-            return MesonAnalysisResult(
+            return AnalysisResult(
                 skipped=True,
                 skip_reason="tree-sitter-language-pack not available",
             )
@@ -209,7 +198,7 @@ class MesonAnalyzer:
         meson_files = list(find_meson_files(self.repo_root))
 
         if not meson_files:
-            return MesonAnalysisResult()
+            return AnalysisResult()
 
         # Pass 1: Collect all symbols
         for path in meson_files:
@@ -240,7 +229,7 @@ class MesonAnalyzer:
             duration_ms=int(elapsed * 1000),
         )
 
-        return MesonAnalysisResult(
+        return AnalysisResult(
             symbols=self.symbols,
             edges=self.edges,
             run=run,
@@ -394,14 +383,14 @@ class MesonAnalyzer:
 
 
 @register_analyzer("meson")
-def analyze_meson(repo_root: Path) -> MesonAnalysisResult:
+def analyze_meson(repo_root: Path) -> AnalysisResult:
     """Analyze Meson build files in a repository.
 
     Args:
         repo_root: Root directory of the repository to analyze
 
     Returns:
-        MesonAnalysisResult containing symbols, edges, and analysis metadata
+        AnalysisResult containing symbols, edges, and analysis metadata
     """
     analyzer = MesonAnalyzer(repo_root)
     return analyzer.analyze()

@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -46,24 +47,6 @@ if TYPE_CHECKING:
 
 PASS_ID = "requirements.tree_sitter"
 PASS_VERSION = "0.1.0"
-
-
-class RequirementsAnalysisResult:
-    """Result of requirements.txt analysis."""
-
-    def __init__(
-        self,
-        symbols: list[Symbol],
-        edges: list[Edge],
-        run: AnalysisRun | None = None,
-        skipped: bool = False,
-        skip_reason: str = "",
-    ) -> None:
-        self.symbols = symbols
-        self.edges = edges
-        self.run = run
-        self.skipped = skipped
-        self.skip_reason = skip_reason
 
 
 def is_requirements_tree_sitter_available() -> bool:
@@ -115,13 +98,13 @@ class RequirementsAnalyzer:
         self._execution_id = f"uuid:{uuid.uuid4()}"
         self._files_analyzed = 0
 
-    def analyze(self) -> RequirementsAnalysisResult:
+    def analyze(self) -> AnalysisResult:
         """Run the requirements analysis."""
         start_time = time.time()
 
         files = find_requirements_files(self.repo_root)
         if not files:
-            return RequirementsAnalysisResult(
+            return AnalysisResult(
                 symbols=[],
                 edges=[],
                 run=None,
@@ -151,7 +134,7 @@ class RequirementsAnalyzer:
             files_analyzed=self._files_analyzed,
         )
 
-        return RequirementsAnalysisResult(
+        return AnalysisResult(
             symbols=self._symbols,
             edges=self._edges,
             run=run,
@@ -371,14 +354,14 @@ class RequirementsAnalyzer:
 
 
 @register_analyzer("requirements")
-def analyze_requirements(repo_root: Path) -> RequirementsAnalysisResult:
+def analyze_requirements(repo_root: Path) -> AnalysisResult:
     """Analyze requirements.txt files in a repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        RequirementsAnalysisResult containing extracted symbols and edges
+        AnalysisResult containing extracted symbols and edges
     """
     if not is_requirements_tree_sitter_available():
         warnings.warn(
@@ -386,7 +369,7 @@ def analyze_requirements(repo_root: Path) -> RequirementsAnalysisResult:
             UserWarning,
             stacklevel=2,
         )
-        return RequirementsAnalysisResult(
+        return AnalysisResult(
             symbols=[],
             edges=[],
             run=AnalysisRun(

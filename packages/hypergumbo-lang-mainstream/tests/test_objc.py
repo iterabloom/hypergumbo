@@ -1,23 +1,22 @@
 """Tests for Objective-C analyzer."""
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
+from hypergumbo_core.analyze.base import find_child_by_type
+from unittest.mock import patch, MagicMock
 
 class TestObjCHelpers:
     """Tests for Objective-C analyzer helper functions."""
 
     def test_find_child_by_type_returns_none(self) -> None:
         """Returns None when no matching child type is found."""
-        from hypergumbo_lang_mainstream.objc import _find_child_by_type
 
         mock_node = MagicMock()
         mock_child = MagicMock()
         mock_child.type = "different_type"
         mock_node.children = [mock_child]
 
-        result = _find_child_by_type(mock_node, "identifier")
+        result = find_child_by_type(mock_node, "identifier")
         assert result is None
-
 
 class TestFindObjCFiles:
     """Tests for Objective-C file discovery."""
@@ -76,7 +75,6 @@ class TestFindObjCFiles:
         assert len(m_files) == 1
         assert m_files[0].name == "AppDelegate.m"
 
-
 class TestObjCTreeSitterAvailability:
     """Tests for tree-sitter-objc availability checking."""
 
@@ -108,7 +106,6 @@ class TestObjCTreeSitterAvailability:
         with patch("importlib.util.find_spec", side_effect=mock_find_spec):
             assert is_objc_tree_sitter_available() is False
 
-
 class TestAnalyzeObjCFallback:
     """Tests for fallback behavior when tree-sitter-objc unavailable."""
 
@@ -123,7 +120,6 @@ class TestAnalyzeObjCFallback:
 
         assert result.skipped is True
         assert "tree-sitter-objc" in result.skip_reason
-
 
 class TestObjCClassExtraction:
     """Tests for extracting Objective-C classes."""
@@ -140,7 +136,6 @@ class TestObjCClassExtraction:
 """)
 
         result = analyze_objc(tmp_path)
-
 
         classes = [s for s in result.symbols if s.kind == "class"]
         class_names = [s.name for s in classes]
@@ -161,11 +156,9 @@ class TestObjCClassExtraction:
 
         result = analyze_objc(tmp_path)
 
-
         classes = [s for s in result.symbols if s.kind == "class"]
         class_names = [s.name for s in classes]
         assert "MyClass" in class_names
-
 
 class TestObjCProtocolExtraction:
     """Tests for extracting Objective-C protocols."""
@@ -185,11 +178,9 @@ class TestObjCProtocolExtraction:
 
         result = analyze_objc(tmp_path)
 
-
         protocols = [s for s in result.symbols if s.kind == "protocol"]
         protocol_names = [s.name for s in protocols]
         assert "MyProtocol" in protocol_names
-
 
 class TestObjCMethodExtraction:
     """Tests for extracting Objective-C methods."""
@@ -208,7 +199,6 @@ class TestObjCMethodExtraction:
 
         result = analyze_objc(tmp_path)
 
-
         methods = [s for s in result.symbols if s.kind == "method"]
         method_names = [s.name for s in methods]
         assert "MyClass.instanceMethod" in method_names or "instanceMethod" in method_names
@@ -226,11 +216,9 @@ class TestObjCMethodExtraction:
 
         result = analyze_objc(tmp_path)
 
-
         methods = [s for s in result.symbols if s.kind == "method"]
         method_names = [s.name for s in methods]
         assert any("sharedInstance" in name for name in method_names)
-
 
 class TestObjCPropertyExtraction:
     """Tests for extracting Objective-C properties."""
@@ -249,11 +237,9 @@ class TestObjCPropertyExtraction:
 
         result = analyze_objc(tmp_path)
 
-
         properties = [s for s in result.symbols if s.kind == "property"]
         prop_names = [s.name for s in properties]
         assert any("name" in name for name in prop_names)
-
 
 class TestObjCImportEdges:
     """Tests for extracting import statements."""
@@ -272,7 +258,6 @@ class TestObjCImportEdges:
 """)
 
         result = analyze_objc(tmp_path)
-
 
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         imported = [e.dst for e in import_edges]
@@ -294,12 +279,10 @@ class TestObjCImportEdges:
 
         result = analyze_objc(tmp_path)
 
-
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         imported = [e.dst for e in import_edges]
         assert any("MyHeader" in dst for dst in imported)
         assert any("Helper" in dst for dst in imported)
-
 
 class TestObjCCallEdges:
     """Tests for extracting method call edges."""
@@ -324,7 +307,6 @@ class TestObjCCallEdges:
 """)
 
         result = analyze_objc(tmp_path)
-
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
@@ -360,10 +342,8 @@ class TestObjCCallEdges:
 
         result = analyze_objc(tmp_path)
 
-
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
-
 
 class TestObjCSymbolProperties:
     """Tests for symbol property correctness."""
@@ -379,13 +359,11 @@ class TestObjCSymbolProperties:
 
         result = analyze_objc(tmp_path)
 
-
         test_class = next((s for s in result.symbols if s.name == "TestClass"), None)
         assert test_class is not None
         assert test_class.span.start_line == 1
         assert test_class.language == "objective-c"
         assert test_class.origin == "objc-v1"
-
 
 class TestObjCEdgeProperties:
     """Tests for edge property correctness."""
@@ -401,12 +379,10 @@ class TestObjCEdgeProperties:
 
         result = analyze_objc(tmp_path)
 
-
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         for edge in import_edges:
             assert edge.confidence > 0
             assert edge.confidence <= 1.0
-
 
 class TestObjCEmptyFile:
     """Tests for handling empty or minimal files."""
@@ -419,7 +395,6 @@ class TestObjCEmptyFile:
         objc_file.write_text("")
 
         result = analyze_objc(tmp_path)
-
 
         assert result.run is not None
 
@@ -434,9 +409,7 @@ class TestObjCEmptyFile:
 
         result = analyze_objc(tmp_path)
 
-
         assert result.run is not None
-
 
 class TestObjCParserFailure:
     """Tests for parser failure handling."""
@@ -455,7 +428,6 @@ class TestObjCParserFailure:
         assert result.skipped is True
         assert "Parser error" in result.skip_reason or "Failed to load" in result.skip_reason
 
-
 class TestObjCCategoryExtraction:
     """Tests for extracting Objective-C categories."""
 
@@ -472,11 +444,9 @@ class TestObjCCategoryExtraction:
 
         result = analyze_objc(tmp_path)
 
-
         # Categories should be extracted as classes with special naming
         classes = [s for s in result.symbols if s.kind == "class"]
         assert len(classes) >= 1
-
 
 class TestObjCInstantiationEdges:
     """Tests for detecting object instantiation."""
@@ -499,13 +469,11 @@ class TestObjCInstantiationEdges:
 
         result = analyze_objc(tmp_path)
 
-
         # Should detect instantiation patterns
         instantiate_edges = [e for e in result.edges if e.edge_type == "instantiates"]
         # At minimum should have some edges (may be calls instead)
         all_edges = result.edges
         assert len(all_edges) >= 0  # Just verify we can analyze
-
 
 class TestObjCSignatureExtraction:
     """Tests for Objective-C method signature extraction."""
@@ -551,7 +519,6 @@ class TestObjCSignatureExtraction:
         methods = [s for s in result.symbols if s.kind == "method" and "getName" in s.name]
         assert len(methods) == 1
         assert methods[0].signature == "(): NSString*"
-
 
 class TestObjCInheritanceExtraction:
     """Tests for Objective-C inheritance extraction (base_classes metadata).

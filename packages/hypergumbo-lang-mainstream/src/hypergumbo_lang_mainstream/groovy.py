@@ -47,7 +47,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -74,40 +74,6 @@ def is_groovy_tree_sitter_available() -> bool:
     return True
 
 
-@dataclass
-class GroovyAnalysisResult:
-    """Result of analyzing Groovy files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"groovy:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a Groovy file node (used as import edge source)."""
-    return f"groovy:{path}:1-1:file:file"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None
-
-
 def _extract_base_classes_groovy(node: "tree_sitter.Node", source: bytes) -> list[str]:
     """Extract base class and interface names from class declaration.
 
@@ -131,23 +97,23 @@ def _extract_base_classes_groovy(node: "tree_sitter.Node", source: bytes) -> lis
         if child.type == "superclass":
             for sub in child.children:
                 if sub.type == "type_identifier":
-                    base_classes.append(_node_text(sub, source))
+                    base_classes.append(node_text(sub, source))
                 elif sub.type == "generic_type":
                     # Generic type: List<String> -> extract just the type name
-                    type_id = _find_child_by_type(sub, "type_identifier")
+                    type_id = find_child_by_type(sub, "type_identifier")
                     if type_id:
-                        base_classes.append(_node_text(type_id, source))
+                        base_classes.append(node_text(type_id, source))
         # super_interfaces clause: class Foo implements IBar, IBaz
         elif child.type == "super_interfaces":
-            type_list = _find_child_by_type(child, "type_list")
+            type_list = find_child_by_type(child, "type_list")
             if type_list:
                 for sub in type_list.children:
                     if sub.type == "type_identifier":
-                        base_classes.append(_node_text(sub, source))
+                        base_classes.append(node_text(sub, source))
                     elif sub.type == "generic_type":
-                        type_id = _find_child_by_type(sub, "type_identifier")
+                        type_id = find_child_by_type(sub, "type_identifier")
                         if type_id:
-                            base_classes.append(_node_text(type_id, source))
+                            base_classes.append(node_text(type_id, source))
 
     return base_classes
 
@@ -162,9 +128,9 @@ def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[st
     current = node.parent
     while current is not None:
         if current.type in ("class_declaration", "interface_declaration", "trait_declaration"):
-            name_node = _find_child_by_type(current, "identifier")
+            name_node = find_child_by_type(current, "identifier")
             if name_node:
-                return _node_text(name_node, source)
+                return node_text(name_node, source)
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -178,15 +144,15 @@ def _get_enclosing_function_groovy(
     current = node.parent
     while current is not None:
         if current.type == "method_declaration":
-            name_node = _find_child_by_type(current, "identifier")
+            name_node = find_child_by_type(current, "identifier")
             if name_node:
-                method_name = _node_text(name_node, source)
+                method_name = node_text(name_node, source)
                 if method_name in local_symbols:
                     return local_symbols[method_name]
         elif current.type == "function_definition":
-            name_node = _find_child_by_type(current, "identifier")
+            name_node = find_child_by_type(current, "identifier")
             if name_node:
-                func_name = _node_text(name_node, source)
+                func_name = node_text(name_node, source)
                 if func_name in local_symbols:
                     return local_symbols[func_name]
         current = current.parent
@@ -214,9 +180,9 @@ def _extract_groovy_signature(
                     for pc in param.children:
                         if pc.type in ("type_identifier", "primitive_type",
                                        "array_type", "generic_type"):
-                            param_type = _node_text(pc, source)
+                            param_type = node_text(pc, source)
                         elif pc.type == "identifier":
-                            param_name = _node_text(pc, source)
+                            param_name = node_text(pc, source)
                     if param_type and param_name:
                         params.append(f"{param_type} {param_name}")
                     elif param_name:  # pragma: no cover - dynamic typing
@@ -224,7 +190,7 @@ def _extract_groovy_signature(
         elif child.type in ("type_identifier", "primitive_type", "void_type",
                             "array_type", "generic_type"):
             # Return type appears before the method name
-            return_type = _node_text(child, source)
+            return_type = node_text(child, source)
 
     params_str = ", ".join(params)
     signature = f"({params_str})"
@@ -259,12 +225,12 @@ def _extract_import_aliases(
 
         for child in node.children:
             if child.type == "scoped_identifier":
-                module_path = _node_text(child, source)
+                module_path = node_text(child, source)
             elif child.type == "as":
                 has_as = True
             elif child.type == "identifier" and has_as:
                 # This identifier comes after 'as', so it's the alias
-                alias_name = _node_text(child, source)
+                alias_name = node_text(child, source)
 
         if has_as and module_path and alias_name:
             aliases[alias_name] = module_path
@@ -298,10 +264,10 @@ def _extract_symbols_from_file(
     for node in iter_tree(tree.root_node):
         # Class declaration
         if node.type == "class_declaration":
-            name_node = _find_child_by_type(node, "identifier")
+            name_node = find_child_by_type(node, "identifier")
 
             if name_node:
-                class_name = _node_text(name_node, source)
+                class_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
@@ -310,7 +276,7 @@ def _extract_symbols_from_file(
                 meta = {"base_classes": base_classes} if base_classes else None
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, class_name, "class"),
+                    id=make_symbol_id("groovy", str(file_path), start_line, end_line, class_name, "class"),
                     name=class_name,
                     kind="class",
                     language="groovy",
@@ -330,15 +296,15 @@ def _extract_symbols_from_file(
 
         # Interface declaration
         elif node.type == "interface_declaration":
-            name_node = _find_child_by_type(node, "identifier")
+            name_node = find_child_by_type(node, "identifier")
 
             if name_node:
-                iface_name = _node_text(name_node, source)
+                iface_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, iface_name, "interface"),
+                    id=make_symbol_id("groovy", str(file_path), start_line, end_line, iface_name, "interface"),
                     name=iface_name,
                     kind="interface",
                     language="groovy",
@@ -359,15 +325,15 @@ def _extract_symbols_from_file(
         # NOTE: tree-sitter-groovy v0.1.2 doesn't produce trait_declaration nodes
         # This code is kept for future grammar updates
         elif node.type == "trait_declaration":  # pragma: no cover - grammar limitation
-            name_node = _find_child_by_type(node, "identifier")
+            name_node = find_child_by_type(node, "identifier")
 
             if name_node:
-                trait_name = _node_text(name_node, source)
+                trait_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, trait_name, "trait"),
+                    id=make_symbol_id("groovy", str(file_path), start_line, end_line, trait_name, "trait"),
                     name=trait_name,
                     kind="trait",
                     language="groovy",
@@ -386,15 +352,15 @@ def _extract_symbols_from_file(
 
         # Enum declaration
         elif node.type == "enum_declaration":
-            name_node = _find_child_by_type(node, "identifier")
+            name_node = find_child_by_type(node, "identifier")
 
             if name_node:
-                enum_name = _node_text(name_node, source)
+                enum_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, enum_name, "enum"),
+                    id=make_symbol_id("groovy", str(file_path), start_line, end_line, enum_name, "enum"),
                     name=enum_name,
                     kind="enum",
                     language="groovy",
@@ -413,10 +379,10 @@ def _extract_symbols_from_file(
 
         # Method declaration (inside class/trait)
         elif node.type == "method_declaration":
-            name_node = _find_child_by_type(node, "identifier")
+            name_node = find_child_by_type(node, "identifier")
 
             if name_node:
-                method_name = _node_text(name_node, source)
+                method_name = node_text(name_node, source)
                 current_class = _get_enclosing_class(node, source)
                 if current_class:
                     full_name = f"{current_class}.{method_name}"
@@ -427,7 +393,7 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "method"),
+                    id=make_symbol_id("groovy", str(file_path), start_line, end_line, full_name, "method"),
                     name=full_name,
                     kind="method",
                     language="groovy",
@@ -448,16 +414,16 @@ def _extract_symbols_from_file(
 
         # Function definition (def keyword at top level)
         elif node.type == "function_definition":
-            name_node = _find_child_by_type(node, "identifier")
+            name_node = find_child_by_type(node, "identifier")
             current_class = _get_enclosing_class(node, source)
 
             if name_node and current_class is None:
-                func_name = _node_text(name_node, source)
+                func_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, func_name, "function"),
+                    id=make_symbol_id("groovy", str(file_path), start_line, end_line, func_name, "function"),
                     name=func_name,
                     kind="function",
                     language="groovy",
@@ -507,17 +473,17 @@ def _extract_edges_from_file(
         return []
 
     edges: list[Edge] = []
-    file_id = _make_file_id(str(file_path))
+    file_id = make_file_id("groovy", str(file_path))
 
     for node in iter_tree(tree.root_node):
         # Detect import statements
         if node.type == "import_declaration":
             # Get the scoped identifier being imported
-            id_node = _find_child_by_type(node, "scoped_identifier")
+            id_node = find_child_by_type(node, "scoped_identifier")
             if not id_node:  # pragma: no cover - grammar fallback
-                id_node = _find_child_by_type(node, "identifier")
+                id_node = find_child_by_type(node, "identifier")
             if id_node:
-                import_path = _node_text(id_node, source)
+                import_path = node_text(id_node, source)
                 edges.append(Edge.create(
                     src=file_id,
                     dst=f"groovy:{import_path}:0-0:package:package",
@@ -548,16 +514,16 @@ def _extract_edges_from_file(
 
                     if has_dot and len(identifiers) >= 2:
                         # Qualified call: Receiver.method()
-                        receiver = _node_text(identifiers[0], source)
-                        callee_name = _node_text(identifiers[1], source)
+                        receiver = node_text(identifiers[0], source)
+                        callee_name = node_text(identifiers[1], source)
                     elif len(identifiers) >= 1:
                         # Simple call: method()
-                        callee_name = _node_text(identifiers[0], source)
+                        callee_name = node_text(identifiers[0], source)
                 else:
                     # juxt_function_call: println "hello"
-                    callee_node = _find_child_by_type(node, "identifier")
+                    callee_node = find_child_by_type(node, "identifier")
                     if callee_node:
-                        callee_name = _node_text(callee_node, source)
+                        callee_name = node_text(callee_node, source)
 
                 if callee_name:
                     # Get path hint from import aliases if receiver is aliased
@@ -597,10 +563,10 @@ def _extract_edges_from_file(
 
 
 @register_analyzer("groovy")
-def analyze_groovy(repo_root: Path) -> GroovyAnalysisResult:
+def analyze_groovy(repo_root: Path) -> AnalysisResult:
     """Analyze all Groovy files in a repository.
 
-    Returns a GroovyAnalysisResult with symbols, edges, and provenance.
+    Returns a AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-groovy is not available, returns a skipped result.
     """
     if not is_groovy_tree_sitter_available():
@@ -608,7 +574,7 @@ def analyze_groovy(repo_root: Path) -> GroovyAnalysisResult:
             "tree-sitter-groovy not available. Install with: pip install hypergumbo[groovy]",
             stacklevel=2,
         )
-        return GroovyAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-groovy not available",
         )
@@ -625,7 +591,7 @@ def analyze_groovy(repo_root: Path) -> GroovyAnalysisResult:
         parser = tree_sitter.Parser(lang)
     except Exception as e:
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return GroovyAnalysisResult(
+        return AnalysisResult(
             run=run,
             skipped=True,
             skip_reason=f"Failed to load Groovy parser: {e}",
@@ -669,7 +635,7 @@ def analyze_groovy(repo_root: Path) -> GroovyAnalysisResult:
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return GroovyAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

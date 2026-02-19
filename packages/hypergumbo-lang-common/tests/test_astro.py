@@ -5,14 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_common import astro as astro_module
-from hypergumbo_lang_common.astro import (
-    AstroAnalysisResult,
-    analyze_astro,
-    find_astro_files,
-    is_astro_tree_sitter_available,
-)
-
+from hypergumbo_lang_common.astro import analyze_astro, find_astro_files, is_astro_tree_sitter_available
 
 def make_astro_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create an Astro file in the temp directory."""
@@ -20,7 +15,6 @@ def make_astro_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindAstroFiles:
     """Tests for find_astro_files function."""
@@ -37,7 +31,6 @@ class TestFindAstroFiles:
         files = find_astro_files(tmp_path)
         assert files == []
 
-
 class TestIsAstroTreeSitterAvailable:
     """Tests for is_astro_tree_sitter_available function."""
 
@@ -48,7 +41,6 @@ class TestIsAstroTreeSitterAvailable:
     def test_returns_false_when_unavailable(self) -> None:
         with patch.object(astro_module, "is_astro_tree_sitter_available", return_value=False):
             assert astro_module.is_astro_tree_sitter_available() is False
-
 
 class TestAnalyzeAstro:
     """Tests for analyze_astro function."""

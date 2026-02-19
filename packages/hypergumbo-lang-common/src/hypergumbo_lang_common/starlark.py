@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, node_text
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -59,17 +59,6 @@ def find_starlark_files(repo_root: Path) -> Iterator[Path]:
         yield from find_files(repo_root, [pattern])
 
 
-@dataclass
-class StarlarkAnalysisResult:
-    """Result of analyzing Starlark files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
 def is_starlark_tree_sitter_available() -> bool:
     """Check if tree-sitter-starlark is available."""
     if importlib.util.find_spec("tree_sitter") is None:
@@ -85,26 +74,11 @@ def is_starlark_tree_sitter_available() -> bool:
         return False
 
 
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text from a tree-sitter node."""
-    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(
-    node: "tree_sitter.Node", child_type: str
-) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == child_type:
-            return child
-    return None  # pragma: no cover - defensive
-
-
 def _extract_string_content(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract string content from a string node."""
-    content = _find_child_by_type(node, "string_content")
+    content = find_child_by_type(node, "string_content")
     if content:
-        return _node_text(content, source)
+        return node_text(content, source)
     return None  # pragma: no cover - defensive
 
 
@@ -115,15 +89,15 @@ def _extract_function_signature(
     params = []
     for child in params_node.children:
         if child.type == "identifier":
-            params.append(_node_text(child, source))
+            params.append(node_text(child, source))
         elif child.type == "default_parameter":
-            name_node = _find_child_by_type(child, "identifier")
+            name_node = find_child_by_type(child, "identifier")
             if name_node:
-                params.append(f"{_node_text(name_node, source)} = ...")
+                params.append(f"{node_text(name_node, source)} = ...")
         elif child.type == "typed_default_parameter":  # pragma: no cover - defensive
-            name_node = _find_child_by_type(child, "identifier")
+            name_node = find_child_by_type(child, "identifier")
             if name_node:
-                params.append(f"{_node_text(name_node, source)} = ...")
+                params.append(f"{node_text(name_node, source)} = ...")
         elif child.type == "list_splat_pattern":  # pragma: no cover - defensive
             params.append("*args")
         elif child.type == "dictionary_splat_pattern":  # pragma: no cover - defensive
@@ -175,12 +149,12 @@ def _make_symbol(ctx: _FileContext, node: "tree_sitter.Node", name: str, kind: s
 
 def _process_function(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process a function definition."""
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
         return  # pragma: no cover
 
-    name = _node_text(name_node, ctx.source)
-    params_node = _find_child_by_type(node, "parameters")
+    name = node_text(name_node, ctx.source)
+    params_node = find_child_by_type(node, "parameters")
     signature = (
         _extract_function_signature(params_node, ctx.source) if params_node else "()"
     )
@@ -190,11 +164,11 @@ def _process_function(ctx: _FileContext, node: "tree_sitter.Node") -> None:
 
 def _process_assignment(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     """Process a variable assignment."""
-    name_node = _find_child_by_type(node, "identifier")
+    name_node = find_child_by_type(node, "identifier")
     if not name_node:
         return  # pragma: no cover
 
-    name = _node_text(name_node, ctx.source)
+    name = node_text(name_node, ctx.source)
 
     # Skip lowercase names (likely local variables in functions)
     # Only capture uppercase constants at top level
@@ -214,7 +188,7 @@ def _process_load(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     Both forms create import edges. Aliased imports also populate ctx.load_aliases
     for use in call resolution with path_hint disambiguation.
     """
-    arg_list = _find_child_by_type(node, "argument_list")
+    arg_list = find_child_by_type(node, "argument_list")
     if not arg_list:
         return  # pragma: no cover
 
@@ -233,10 +207,10 @@ def _process_load(ctx: _FileContext, node: "tree_sitter.Node") -> None:
                     loaded_symbols.append(content)
         elif child.type == "keyword_argument":
             # Aliased import: alias = "original_name"
-            alias_node = _find_child_by_type(child, "identifier")
-            value_node = _find_child_by_type(child, "string")
+            alias_node = find_child_by_type(child, "identifier")
+            value_node = find_child_by_type(child, "string")
             if alias_node and value_node:
-                alias = _node_text(alias_node, ctx.source)
+                alias = node_text(alias_node, ctx.source)
                 original_name = _extract_string_content(value_node, ctx.source)
                 if alias and original_name:
                     aliased_symbols.append((alias, original_name))
@@ -277,7 +251,7 @@ def _process_load(ctx: _FileContext, node: "tree_sitter.Node") -> None:
 
 def _process_target(ctx: _FileContext, node: "tree_sitter.Node", rule_type: str) -> None:
     """Process a build target invocation."""
-    arg_list = _find_child_by_type(node, "argument_list")
+    arg_list = find_child_by_type(node, "argument_list")
     if not arg_list:
         return  # pragma: no cover
 
@@ -287,11 +261,11 @@ def _process_target(ctx: _FileContext, node: "tree_sitter.Node", rule_type: str)
 
     for child in arg_list.children:
         if child.type == "keyword_argument":
-            key_node = _find_child_by_type(child, "identifier")
+            key_node = find_child_by_type(child, "identifier")
             if not key_node:
                 continue  # pragma: no cover - defensive
 
-            key = _node_text(key_node, ctx.source)
+            key = node_text(key_node, ctx.source)
 
             if key == "name":
                 # Get the value
@@ -343,9 +317,9 @@ def _find_enclosing_function_starlark(
     current = node.parent
     while current is not None:
         if current.type == "function_definition":
-            name_node = _find_child_by_type(current, "identifier")
+            name_node = find_child_by_type(current, "identifier")
             if name_node:
-                name = _node_text(name_node, source)
+                name = node_text(name_node, source)
                 sym = local_symbols.get(name)
                 if sym:
                     return sym
@@ -355,17 +329,17 @@ def _find_enclosing_function_starlark(
 
 def _get_call_target_name_starlark(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract the target name from a call expression."""
-    func_node = _find_child_by_type(node, "identifier")
+    func_node = find_child_by_type(node, "identifier")
     if func_node:
-        return _node_text(func_node, source)
+        return node_text(func_node, source)
     # Handle attribute access like module.function
-    attr_node = _find_child_by_type(node, "attribute")
+    attr_node = find_child_by_type(node, "attribute")
     if attr_node:
         # Get the last identifier (the function name)
         last_ident = None
         for child in attr_node.children:
             if child.type == "identifier":
-                last_ident = _node_text(child, source)
+                last_ident = node_text(child, source)
         return last_ident
     return None  # pragma: no cover - defensive
 
@@ -377,9 +351,9 @@ def _extract_starlark_symbols(ctx: _FileContext, root_node: "tree_sitter.Node",
         if node.type == "function_definition":
             _process_function(ctx, node)
             # Register function in symbol registry
-            name_node = _find_child_by_type(node, "identifier")
+            name_node = find_child_by_type(node, "identifier")
             if name_node:
-                name = _node_text(name_node, ctx.source)
+                name = node_text(name_node, ctx.source)
                 # Find the symbol we just added
                 for sym in reversed(ctx.symbols):
                     if sym.name == name and sym.kind == "function":
@@ -392,9 +366,9 @@ def _extract_starlark_symbols(ctx: _FileContext, root_node: "tree_sitter.Node",
                     _process_assignment(ctx, child)
                 elif child.type == "call":
                     # Only process load and target definitions in pass 1
-                    func_node = _find_child_by_type(child, "identifier")
+                    func_node = find_child_by_type(child, "identifier")
                     if func_node:
-                        func_name = _node_text(func_node, ctx.source)
+                        func_name = node_text(func_node, ctx.source)
                         if func_name == "load":
                             _process_load(ctx, child)
                         else:
@@ -449,19 +423,19 @@ def _extract_starlark_edges(ctx: _FileContext, root_node: "tree_sitter.Node",
 
 
 @register_analyzer("starlark")
-def analyze_starlark(repo_root: Path) -> StarlarkAnalysisResult:
+def analyze_starlark(repo_root: Path) -> AnalysisResult:
     """Analyze Starlark files in a repository.
 
     Uses two-pass analysis:
     - Pass 1: Extract all symbols from all files
     - Pass 2: Extract edges (imports + calls) using NameResolver
 
-    Returns a StarlarkAnalysisResult with symbols for functions, targets, and variables,
+    Returns a AnalysisResult with symbols for functions, targets, and variables,
     plus edges for load statements, target dependencies, and function calls.
     """
     if not is_starlark_tree_sitter_available():
         warnings.warn("Starlark analysis skipped: tree-sitter-starlark unavailable")
-        return StarlarkAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-starlark unavailable",
         )
@@ -535,7 +509,7 @@ def analyze_starlark(repo_root: Path) -> StarlarkAnalysisResult:
         _extract_starlark_edges(ctx, tree.root_node, local_symbols, resolver, load_aliases)  # type: ignore
 
     duration_ms = int((time.time() - start_time) * 1000)
-    return StarlarkAnalysisResult(
+    return AnalysisResult(
         symbols=symbols,
         edges=edges,
         run=AnalysisRun(

@@ -11,32 +11,25 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_mainstream.yaml_ansible import (
-    _make_symbol_id,
-    _make_file_id,
-    analyze_ansible,
-    find_ansible_files,
-)
-
+from hypergumbo_core.analyze.base import make_file_id, make_symbol_id
+from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible, find_ansible_files
 
 def make_ansible_file(tmp_path: Path, name: str, content: str) -> None:
     """Create an Ansible YAML file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestAnsibleHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("playbook.yml", 1, 10, "Deploy App", "playbook")
+        symbol_id = make_symbol_id("ansible", "playbook.yml", 1, 10, "Deploy App", "playbook")
         assert symbol_id == "ansible:playbook.yml:1-10:Deploy App:playbook"
 
     def test_make_file_id_format(self) -> None:
         """Test file ID format."""
-        file_id = _make_file_id("playbook.yml")
+        file_id = make_file_id("ansible", "playbook.yml")
         assert file_id == "ansible:playbook.yml:1-1:file:file"
-
 
 class TestPlaybookExtraction:
     """Branch coverage for playbook extraction."""
@@ -80,7 +73,6 @@ class TestPlaybookExtraction:
 
         assert len(playbooks) >= 2
 
-
 class TestTaskExtraction:
     """Branch coverage for task extraction."""
 
@@ -104,7 +96,6 @@ class TestTaskExtraction:
         assert len(tasks) >= 2
         assert any(t.name == "First Task" for t in tasks)
         assert any(t.name == "Second Task" for t in tasks)
-
 
 class TestHandlerExtraction:
     """Branch coverage for handler extraction."""
@@ -132,7 +123,6 @@ class TestHandlerExtraction:
         assert len(handlers) >= 1
         assert any(h.name == "Restart Nginx" for h in handlers)
 
-
 class TestVariableExtraction:
     """Branch coverage for variable extraction."""
 
@@ -155,7 +145,6 @@ class TestVariableExtraction:
         assert len(variables) >= 2
         assert any(v.name == "app_name" for v in variables)
         assert any(v.name == "app_port" for v in variables)
-
 
 class TestIncludeImportEdges:
     """Branch coverage for include/import edge extraction."""
@@ -216,7 +205,6 @@ class TestIncludeImportEdges:
 
         assert len(import_edges) >= 1
 
-
 class TestFindAnsibleFiles:
     """Branch coverage for file discovery."""
 
@@ -263,7 +251,6 @@ class TestFindAnsibleFiles:
         files = find_ansible_files(tmp_path)
         assert len(files) >= 1
 
-
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
 
@@ -274,7 +261,6 @@ class TestEmptyAndMinimalFiles:
 """)
         result = analyze_ansible(tmp_path)
         assert not result.skipped
-
 
 class TestAnalysisRun:
     """Branch coverage for analysis run metadata."""

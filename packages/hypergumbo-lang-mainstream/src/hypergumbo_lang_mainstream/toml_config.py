@@ -30,13 +30,12 @@ Why This Design
 
 import hashlib
 import time
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, iter_tree
 from hypergumbo_core.analyze.registry import register_analyzer
 
 
@@ -66,17 +65,6 @@ def is_toml_tree_sitter_available() -> bool:
         return True
     except (ImportError, OSError, Exception):  # pragma: no cover
         return False  # pragma: no cover
-
-
-@dataclass
-class TomlAnalysisResult:
-    """Result of TOML analysis."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    skipped: bool = False
-    skip_reason: str | None = None
-    run: AnalysisRun | None = None
 
 
 def find_toml_files(root: Path) -> Iterator[Path]:
@@ -304,17 +292,17 @@ def _process_toml_tree(
 
 
 @register_analyzer("toml")
-def analyze_toml_files(root: Path) -> TomlAnalysisResult:
+def analyze_toml_files(root: Path) -> AnalysisResult:
     """Analyze TOML files in a directory.
 
     Args:
         root: Directory to analyze (can be a file path for single file)
 
     Returns:
-        TomlAnalysisResult containing symbols and edges
+        AnalysisResult containing symbols and edges
     """
     if not is_toml_tree_sitter_available():  # pragma: no cover - toml installed
-        return TomlAnalysisResult(  # pragma: no cover
+        return AnalysisResult(  # pragma: no cover
             skipped=True,  # pragma: no cover
             skip_reason="tree-sitter-toml not installed",  # pragma: no cover
         )  # pragma: no cover
@@ -365,7 +353,7 @@ def analyze_toml_files(root: Path) -> TomlAnalysisResult:
     run.duration_ms = duration_ms
     run.warnings = warnings_list
 
-    return TomlAnalysisResult(
+    return AnalysisResult(
         symbols=symbols,
         edges=edges,
         run=run,

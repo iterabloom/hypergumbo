@@ -52,7 +52,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -82,17 +82,6 @@ def is_clojure_tree_sitter_available() -> bool:
 
 
 @dataclass
-class ClojureAnalysisResult:
-    """Result of analyzing Clojure files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-@dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file.
 
@@ -106,35 +95,12 @@ class FileAnalysis:
     require_aliases: dict[str, str] = field(default_factory=dict)
 
 
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"clojure:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a Clojure file node (used as import edge source)."""
-    return f"clojure:{path}:1-1:file:file"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None  # pragma: no cover - defensive fallback
-
-
 def _get_sym_name(node: "tree_sitter.Node", source: bytes) -> str:
     """Extract symbol name from sym_lit node."""
-    name_node = _find_child_by_type(node, "sym_name")
+    name_node = find_child_by_type(node, "sym_name")
     if name_node:
-        return _node_text(name_node, source)
-    return _node_text(node, source)  # pragma: no cover - fallback for unusual nodes
+        return node_text(name_node, source)
+    return node_text(node, source)  # pragma: no cover - fallback for unusual nodes
 
 
 def _extract_clojure_signature(
@@ -231,7 +197,7 @@ def _extract_symbols_from_file(
                             start_col=node.start_point[1],
                             end_col=node.end_point[1],
                         )
-                        sym_id = _make_symbol_id(file_path, start_line, end_line, ns_name, "module")
+                        sym_id = make_symbol_id("clojure", file_path, start_line, end_line, ns_name, "module")
                         symbols.append(Symbol(
                             id=sym_id,
                             name=ns_name,
@@ -257,7 +223,7 @@ def _extract_symbols_from_file(
                             start_col=node.start_point[1],
                             end_col=node.end_point[1],
                         )
-                        sym_id = _make_symbol_id(file_path, start_line, end_line, def_name, kind)
+                        sym_id = make_symbol_id("clojure", file_path, start_line, end_line, def_name, kind)
 
                         # Extract signature for functions
                         signature = None
@@ -323,8 +289,8 @@ def _extract_require_aliases(
     for node in iter_tree(tree.root_node):
         # Look for kwd_lit with :require
         if node.type == "kwd_lit":
-            kwd_name_node = _find_child_by_type(node, "kwd_name")
-            if kwd_name_node and _node_text(kwd_name_node, source) == "require":
+            kwd_name_node = find_child_by_type(node, "kwd_name")
+            if kwd_name_node and node_text(kwd_name_node, source) == "require":
                 # Found :require - parent should be the list_lit for (:require ...)
                 parent = node.parent
                 if parent and parent.type == "list_lit":
@@ -339,15 +305,15 @@ def _extract_require_aliases(
 
                             for child in vec_children:
                                 if child.type == "sym_lit" and ns_name is None:
-                                    ns_name = _node_text(child, source)
+                                    ns_name = node_text(child, source)
                                 elif child.type == "kwd_lit":
-                                    kwd = _node_text(child, source)
+                                    kwd = node_text(child, source)
                                     if kwd == ":as":
                                         looking_for_alias = True
                                     else:
                                         looking_for_alias = False
                                 elif child.type == "sym_lit" and looking_for_alias:
-                                    alias_name = _node_text(child, source)
+                                    alias_name = node_text(child, source)
                                     looking_for_alias = False
 
                             if ns_name and alias_name:
@@ -377,7 +343,7 @@ def _extract_edges_from_file(
     if require_aliases is None:  # pragma: no cover - defensive default
         require_aliases = {}
     edges: list[Edge] = []
-    file_id = _make_file_id(file_path)
+    file_id = make_file_id("clojure", file_path)
 
     # Build local symbol map for this file (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}
@@ -396,7 +362,7 @@ def _extract_edges_from_file(
                         if child.type == "list_lit":
                             list_inner = [c for c in child.children if c.type not in ("(", ")")]
                             if list_inner and list_inner[0].type == "kwd_lit":
-                                kwd_text = _node_text(list_inner[0], source)
+                                kwd_text = node_text(list_inner[0], source)
                                 if kwd_text == ":require":
                                     # Process require forms
                                     for req in list_inner[1:]:
@@ -442,9 +408,9 @@ def _extract_edges_from_file(
 
                         # Check for namespaced call (str/join -> ns=str, fn=join)
                         sym_node = inner[0]
-                        ns_node = _find_child_by_type(sym_node, "sym_ns")
+                        ns_node = find_child_by_type(sym_node, "sym_ns")
                         if ns_node:
-                            ns_alias = _node_text(ns_node, source)
+                            ns_alias = node_text(ns_node, source)
                             # Look up the full namespace from require aliases
                             path_hint = require_aliases.get(ns_alias)
 
@@ -467,10 +433,10 @@ def _extract_edges_from_file(
 
 
 @register_analyzer("clojure")
-def analyze_clojure(repo_root: Path) -> ClojureAnalysisResult:
+def analyze_clojure(repo_root: Path) -> AnalysisResult:
     """Analyze Clojure files in a repository.
 
-    Returns a ClojureAnalysisResult with symbols, edges, and provenance.
+    Returns a AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-language-pack is not available, returns a skipped result.
     """
     start_time = time.time()
@@ -485,7 +451,7 @@ def analyze_clojure(repo_root: Path) -> ClojureAnalysisResult:
         )
         warnings.warn(skip_reason)
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return ClojureAnalysisResult(
+        return AnalysisResult(
             run=run,
             skipped=True,
             skip_reason=skip_reason,
@@ -520,7 +486,7 @@ def analyze_clojure(repo_root: Path) -> ClojureAnalysisResult:
 
         # Create file symbol
         file_symbol = Symbol(
-            id=_make_file_id(rel_path),
+            id=make_file_id("clojure", rel_path),
             name="file",
             kind="file",
             language="clojure",
@@ -570,7 +536,7 @@ def analyze_clojure(repo_root: Path) -> ClojureAnalysisResult:
     run.files_analyzed = files_analyzed
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return ClojureAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

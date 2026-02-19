@@ -5,14 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_lang_mainstream import gitignore as gitignore_module
-from hypergumbo_lang_mainstream.gitignore import (
-    GitignoreAnalysisResult,
-    analyze_gitignore,
-    find_gitignore_files,
-    is_gitignore_tree_sitter_available,
-)
-
+from hypergumbo_lang_mainstream.gitignore import analyze_gitignore, find_gitignore_files, is_gitignore_tree_sitter_available
 
 def make_gitignore_file(tmp_path: Path, name: str, content: str) -> Path:
     """Create a gitignore file in the temp directory."""
@@ -20,7 +15,6 @@ def make_gitignore_file(tmp_path: Path, name: str, content: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
     return file_path
-
 
 class TestFindGitignoreFiles:
     """Tests for find_gitignore_files function."""
@@ -41,7 +35,6 @@ class TestFindGitignoreFiles:
         files = find_gitignore_files(tmp_path)
         assert files == []
 
-
 class TestIsGitignoreTreeSitterAvailable:
     """Tests for is_gitignore_tree_sitter_available function."""
 
@@ -52,7 +45,6 @@ class TestIsGitignoreTreeSitterAvailable:
     def test_returns_false_when_unavailable(self) -> None:
         with patch.object(gitignore_module, "is_gitignore_tree_sitter_available", return_value=False):
             assert gitignore_module.is_gitignore_tree_sitter_available() is False
-
 
 class TestAnalyzeGitignore:
     """Tests for analyze_gitignore function."""

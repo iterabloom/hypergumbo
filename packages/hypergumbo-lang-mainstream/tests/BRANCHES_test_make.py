@@ -13,25 +13,19 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_mainstream.make import (
-    _make_symbol_id,
-    _make_edge_id,
-    analyze_make_files,
-    find_make_files,
-)
-
+from hypergumbo_core.analyze.base import make_symbol_id
+from hypergumbo_lang_mainstream.make import _make_edge_id, analyze_make_files, find_make_files
 
 def make_makefile(tmp_path: Path, name: str, content: str) -> None:
     """Create a Makefile with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestMakeHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("Makefile", 1, 5, "build", "target")
+        symbol_id = make_symbol_id("make", "Makefile", 1, 5, "build", "target")
         assert symbol_id == "make:Makefile:1-5:build:target"
 
     def test_make_edge_id_deterministic(self) -> None:
@@ -40,7 +34,6 @@ class TestMakeHelperFunctions:
         edge_id2 = _make_edge_id("src1", "dst1", "depends_on")
         assert edge_id1 == edge_id2
         assert edge_id1.startswith("edge:sha256:")
-
 
 class TestVariableExtraction:
     """Branch coverage for variable extraction."""
@@ -68,7 +61,6 @@ CFLAGS += -O2
 
         # Should only have one CFLAGS entry
         assert len(variables) == 1
-
 
 class TestTargetExtraction:
     """Branch coverage for target extraction."""
@@ -123,7 +115,6 @@ build:
         assert len(special_targets) >= 1
         assert any(".PHONY" in t.name for t in special_targets)
 
-
 class TestPatternRuleExtraction:
     """Branch coverage for pattern rule extraction."""
 
@@ -137,7 +128,6 @@ class TestPatternRuleExtraction:
 
         assert len(pattern_rules) >= 1
         assert any("%.o" in p.name for p in pattern_rules)
-
 
 class TestPrerequisiteEdges:
     """Branch coverage for prerequisite edge extraction."""
@@ -165,7 +155,6 @@ class TestPrerequisiteEdges:
         # Should have lower confidence for unresolved targets
         assert any(e.confidence <= 0.75 for e in dep_edges)
 
-
 class TestIncludeDirective:
     """Branch coverage for include directive extraction."""
 
@@ -181,7 +170,6 @@ all:
         includes = [s for s in result.symbols if s.kind == "include"]
 
         assert len(includes) >= 1
-
 
 class TestDefineDirective:
     """Branch coverage for define directive extraction."""
@@ -200,7 +188,6 @@ all:
 
         assert len(functions) >= 1
         assert any(f.name == "compile_rule" for f in functions)
-
 
 class TestFindMakeFiles:
     """Branch coverage for file discovery."""
@@ -237,7 +224,6 @@ class TestFindMakeFiles:
         assert len(files) >= 1
         assert any(f.name == "GNUmakefile" for f in files)
 
-
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
 
@@ -254,7 +240,6 @@ class TestEmptyAndMinimalFiles:
         result = analyze_make_files(tmp_path)
         assert not result.skipped
 
-
 class TestAnalysisRun:
     """Branch coverage for analysis run metadata."""
 
@@ -266,7 +251,6 @@ class TestAnalysisRun:
         result = analyze_make_files(tmp_path)
         assert result.run is not None
         assert result.run.files_analyzed >= 1
-
 
 class TestComplexMakefile:
     """Branch coverage for complex Makefiles."""

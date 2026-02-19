@@ -1,8 +1,9 @@
 """Tests for Ruby analyzer."""
 import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
+from hypergumbo_core.analyze.base import find_child_by_type
+from unittest.mock import patch, MagicMock
 
 class TestFindRubyFiles:
     """Tests for Ruby file discovery."""
@@ -19,7 +20,6 @@ class TestFindRubyFiles:
 
         assert len(files) == 2
         assert all(f.suffix == ".rb" for f in files)
-
 
 class TestRubyTreeSitterAvailability:
     """Tests for tree-sitter-ruby availability checking."""
@@ -52,7 +52,6 @@ class TestRubyTreeSitterAvailability:
         with patch("importlib.util.find_spec", side_effect=mock_find_spec):
             assert is_ruby_tree_sitter_available() is False
 
-
 class TestAnalyzeRubyFallback:
     """Tests for fallback behavior when tree-sitter-ruby unavailable."""
 
@@ -67,7 +66,6 @@ class TestAnalyzeRubyFallback:
 
         assert result.skipped is True
         assert "tree-sitter-ruby" in result.skip_reason
-
 
 class TestRubyMethodExtraction:
     """Tests for extracting Ruby methods."""
@@ -89,14 +87,12 @@ end
 
         result = analyze_ruby(tmp_path)
 
-
         assert result.run is not None
         assert result.run.files_analyzed == 1
         methods = [s for s in result.symbols if s.kind == "method"]
         method_names = [s.name for s in methods]
         assert "greet" in method_names
         assert "helper" in method_names
-
 
     def test_extracts_singleton_method(self, tmp_path: Path) -> None:
         """Extracts Ruby class methods (def self.method_name)."""
@@ -173,7 +169,6 @@ end
         method_names = [s.name for s in methods]
         assert "standalone_helper" in method_names
 
-
 class TestRubyClassExtraction:
     """Tests for extracting Ruby classes."""
 
@@ -200,12 +195,10 @@ end
 
         result = analyze_ruby(tmp_path)
 
-
         classes = [s for s in result.symbols if s.kind == "class"]
         class_names = [s.name for s in classes]
         assert "User" in class_names
         assert "InternalData" in class_names
-
 
 class TestRubyInheritanceEdges:
     """Tests for extracting Ruby inheritance edges (META-001)."""
@@ -447,7 +440,6 @@ end
         # Should still create an edge (deterministic fallback)
         assert len(child_extends) == 1
 
-
 class TestRubyModuleExtraction:
     """Tests for extracting Ruby modules."""
 
@@ -473,12 +465,10 @@ end
 
         result = analyze_ruby(tmp_path)
 
-
         modules = [s for s in result.symbols if s.kind == "module"]
         module_names = [s.name for s in modules]
         assert "Helpers" in module_names
         assert "Internal" in module_names
-
 
 class TestRubyMethodCalls:
     """Tests for detecting method calls in Ruby."""
@@ -499,7 +489,6 @@ end
 """)
 
         result = analyze_ruby(tmp_path)
-
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         # Should have edge from caller to helper
@@ -701,7 +690,6 @@ end
                 f"Expected same-module resolution to Utils.normalize, got: {edge.dst}"
             )
 
-
 class TestRubyRequires:
     """Tests for detecting Ruby require statements."""
 
@@ -721,11 +709,9 @@ end
 
         result = analyze_ruby(tmp_path)
 
-
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         # Should have edges for require statements
         assert len(import_edges) >= 1
-
 
 class TestRubyEdgeCases:
     """Tests for edge cases and error handling."""
@@ -756,7 +742,6 @@ class TestRubyEdgeCases:
 
         result = analyze_ruby(tmp_path)
 
-
         assert result.run is not None
 
     def test_cross_file_method_call(self, tmp_path: Path) -> None:
@@ -781,10 +766,8 @@ end
 
         result = analyze_ruby(tmp_path)
 
-
         # Verify both files analyzed
         assert result.run.files_analyzed >= 2
-
 
 class TestRubyInstanceMethods:
     """Tests for Ruby instance method extraction."""
@@ -812,13 +795,11 @@ end
 
         result = analyze_ruby(tmp_path)
 
-
         methods = [s for s in result.symbols if s.kind == "method"]
         method_names = [s.name for s in methods]
         # Methods should include class context
         assert any("initialize" in name for name in method_names)
         assert any("get_name" in name for name in method_names)
-
 
 class TestRubyFileReadErrors:
     """Tests for file read error handling."""
@@ -875,7 +856,6 @@ class TestRubyFileReadErrors:
 
         assert result == []
 
-
 class TestRubyModuleMethods:
     """Tests for module-level methods."""
 
@@ -898,12 +878,10 @@ end
 
         result = analyze_ruby(tmp_path)
 
-
         methods = [s for s in result.symbols if s.kind == "method"]
         method_names = [s.name for s in methods]
         # Methods should be qualified with module name
         assert any("Helpers.format_text" in name for name in method_names)
-
 
 class TestRubyExplicitCalls:
     """Tests for explicit method calls with arguments."""
@@ -924,7 +902,6 @@ end
 """)
 
         result = analyze_ruby(tmp_path)
-
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
@@ -949,20 +926,15 @@ end
 
         result = analyze_ruby(tmp_path)
 
-
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         assert len(call_edges) >= 1
-
 
 class TestRubyHelperFunctions:
     """Tests for helper function edge cases."""
 
     def test_find_child_by_type_returns_none(self, tmp_path: Path) -> None:
         """_find_child_by_type returns None when no matching child."""
-        from hypergumbo_lang_mainstream.ruby import (
-            _find_child_by_type,
-            is_ruby_tree_sitter_available,
-        )
+        from hypergumbo_lang_mainstream.ruby import is_ruby_tree_sitter_available
 
         if not is_ruby_tree_sitter_available():
             pytest.skip("tree-sitter-ruby not available")
@@ -977,9 +949,8 @@ class TestRubyHelperFunctions:
         tree = parser.parse(source)
 
         # Try to find a child type that doesn't exist
-        result = _find_child_by_type(tree.root_node, "nonexistent_type")
+        result = find_child_by_type(tree.root_node, "nonexistent_type")
         assert result is None
-
 
 class TestRequireHintsExtraction:
     """Tests for require hints extraction for disambiguation."""
@@ -1051,7 +1022,6 @@ require_relative 'helpers/string_utils.rb'
         # .rb extension should be stripped, snake_case converted to PascalCase
         assert "StringUtils" in hints
         assert hints["StringUtils"] == "helpers/string_utils.rb"
-
 
 class TestRubySignatureExtraction:
     """Tests for Ruby method signature extraction."""
@@ -1127,7 +1097,6 @@ end
         assert len(methods) == 1
         assert methods[0].signature == "()"
 
-
 class TestSinatraUsageContext:
     """Tests for Sinatra block-based route detection."""
 
@@ -1187,7 +1156,6 @@ end
         assert "GET" in methods
         assert "POST" in methods
         assert "DELETE" in methods
-
 
 class TestRailsUsageContext:
     """Tests for Rails route DSL UsageContext extraction."""
@@ -1256,7 +1224,6 @@ end
         ctx = next((c for c in result.usage_contexts if c.context_name == "post"), None)
         assert ctx is not None
         assert ctx.metadata["controller_action"] == "sessions#create"
-
 
 class TestRailsRouteSymbols:
     """Tests for Rails route Symbol extraction (enables entrypoint detection)."""
@@ -1453,7 +1420,6 @@ end
         assert "sessions#destroy" in by_action
         assert "sessions#begin_password_reset" in by_action
 
-
 class TestRouteDetectionFileFiltering:
     """Tests for route detection false positive prevention.
 
@@ -1576,7 +1542,6 @@ end
             f"Bare HTTP calls without blocks should not produce routes, got: "
             f"{[s.name for s in route_symbols]}"
         )
-
 
 class TestRailsNamespaceRoutes:
     """Tests for namespace-aware Rails route extraction.
@@ -1709,7 +1674,6 @@ end
         # Post routes are NOT prefixed
         assert "posts#index" in routes_by_action
 
-
     def test_scope_path_not_treated_as_module(self, tmp_path: Path) -> None:
         """scope path: '/admin' should NOT prefix controller_action (path-only scope)."""
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
@@ -1731,7 +1695,6 @@ end
         # scope path: does NOT prefix controller (only affects URL)
         # Since we don't handle scope path: yet, controller stays unprefixed
         assert "dashboards#index" in routes_by_action
-
 
 class TestRailsNestedRoutes:
     """Tests for nested Rails route constructs.
@@ -1986,7 +1949,6 @@ end
         # Nested inside singular resource
         assert "GET /profile/:profile_id/posts" in route_names
 
-
 class TestRubyBlockCallAttribution:
     """Tests for call edge attribution inside Ruby blocks.
 
@@ -2122,7 +2084,6 @@ end
             None,
         )
         assert call_edge is not None, "Call inside nested blocks should be attributed to outermost method"
-
 
 class TestRubyReceiverCalls:
     """Tests for method calls with explicit receivers.
@@ -2463,7 +2424,6 @@ Service.work
         ]
         assert len(receiver_edges) == 0
 
-
 class TestRailsCallbackEdges:
     """Tests for Rails before_action/after_action/around_action callback detection.
 
@@ -2758,7 +2718,6 @@ end
             f"{[(e.src, e.dst) for e in callback_edges]}"
         )
 
-
 class TestRailsModelCallbackEdges:
     """Tests for Rails model lifecycle callbacks (before_save, after_create, validate, etc.).
 
@@ -2882,7 +2841,6 @@ end
             and e.dst == callback.id
         ]
         assert len(edges) == 1
-
 
 class TestBlockStyleCallbacks:
     """Tests for block-style Rails callbacks (do...end and lambda blocks).
@@ -3065,7 +3023,6 @@ end
         callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
         assert len(callback_edges) == 0
 
-
 class TestRubyJobEnqueueDetection:
     """Tests for ActiveJob perform_later / Sidekiq perform_async detection."""
 
@@ -3238,7 +3195,6 @@ end
         )
         edge = enqueue_edges[0]
         assert "SyncJob" in edge.dst
-
 
 class TestActiveRecordAssociationEdges:
     """Tests for ActiveRecord has_many/belongs_to/has_one association detection.
@@ -3451,7 +3407,6 @@ end
         assert _association_name_to_class("statuses") == "Status"
         assert _association_name_to_class("buses") == "Bus"
 
-
 class TestRubyDelegateEdges:
     """Tests for Ruby 'delegate' macro edge detection.
 
@@ -3636,7 +3591,6 @@ end
         ]
         assert len(delegate_edges) == 0
 
-
 class TestRubyVariableReceiverNoFalsePositive:
     """Tests that variable-receiver calls don't produce false positive edges.
 
@@ -3777,7 +3731,6 @@ end
         assert len(call_edges) >= 1, (
             "Constant receiver User.find should still resolve"
         )
-
 
 class TestRubyNewConstructorResolution:
     """Tests that SomeClass.new resolves to SomeClass#initialize, not a method named 'new'.
@@ -3925,7 +3878,6 @@ end
         assert len(false_edges) == 0, (
             "Simple.new should NOT create false edges to arbitrary methods"
         )
-
 
 class TestRubyReceiverTypeTracking:
     """Tests for receiver-type tracking on variable-receiver calls.

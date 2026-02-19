@@ -32,12 +32,12 @@ import hashlib
 import importlib.util
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
+from hypergumbo_core.analyze.base import AnalysisResult, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -80,31 +80,10 @@ def is_xml_tree_sitter_available() -> bool:
     return False  # pragma: no cover
 
 
-@dataclass
-class XMLAnalysisResult:
-    """Result of analyzing XML files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"xml:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
     """Generate deterministic edge ID."""
     content = f"{edge_type}:{src}:{dst}"
     return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
 
 
 def _get_element_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -113,11 +92,11 @@ def _get_element_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
         if child.type == "STag":
             for sub in child.children:
                 if sub.type == "Name":
-                    return _node_text(sub, source)
+                    return node_text(sub, source)
         elif child.type == "EmptyElemTag":
             for sub in child.children:
                 if sub.type == "Name":
-                    return _node_text(sub, source)
+                    return node_text(sub, source)
     return None  # pragma: no cover - element must have a name
 
 
@@ -135,11 +114,11 @@ def _get_attribute(node: "tree_sitter.Node", source: bytes, attr_name: str) -> O
                         elif attr_child.type == "AttValue":
                             value_node = attr_child
                     if name_node and value_node:
-                        name = _node_text(name_node, source)
+                        name = node_text(name_node, source)
                         # Handle both plain name and namespace:name
                         if name == attr_name or name.endswith(":" + attr_name):
                             # Remove quotes from value
-                            value = _node_text(value_node, source)
+                            value = node_text(value_node, source)
                             if value.startswith('"') and value.endswith('"'):
                                 return value[1:-1]
                             elif value.startswith("'") and value.endswith("'"):  # pragma: no cover - rare
@@ -154,7 +133,7 @@ def _get_text_content(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
         if child.type == "content":
             for sub in child.children:
                 if sub.type == "CharData":
-                    text = _node_text(sub, source).strip()
+                    text = node_text(sub, source).strip()
                     if text:
                         return text
     return None  # pragma: no cover - empty content
@@ -205,7 +184,7 @@ def _process_maven_dependency(
         start_line = dep_node.start_point[0] + 1
         end_line = dep_node.end_point[0] + 1
         dep_name = f"{group_id}:{artifact_id}"
-        symbol_id = _make_symbol_id(rel_path, start_line, end_line, dep_name, "dependency")
+        symbol_id = make_symbol_id("xml", rel_path, start_line, end_line, dep_name, "dependency")
 
         meta = {"groupId": group_id, "artifactId": artifact_id}
         if version:
@@ -286,7 +265,7 @@ def _process_maven_pom(
         start_line = project_node.start_point[0] + 1
         end_line = project_node.end_point[0] + 1
         project_name = f"{group_id}:{artifact_id}" if group_id else artifact_id
-        project_id = _make_symbol_id(rel_path, start_line, end_line, project_name, "module")
+        project_id = make_symbol_id("xml", rel_path, start_line, end_line, project_name, "module")
 
         meta = {"artifactId": artifact_id}
         if group_id:
@@ -357,7 +336,7 @@ def _process_android_manifest(
                             end_line = sub.end_point[0] + 1
                             # Extract just the permission name
                             short_name = perm_name.split(".")[-1]
-                            symbol_id = _make_symbol_id(rel_path, start_line, end_line, short_name, "permission")
+                            symbol_id = make_symbol_id("xml", rel_path, start_line, end_line, short_name, "permission")
 
                             sym = Symbol(
                                 id=symbol_id,
@@ -414,7 +393,7 @@ def _process_android_application(
                             end_line = sub.end_point[0] + 1
                             # Use short name without package prefix
                             short_name = full_name.split(".")[-1]
-                            symbol_id = _make_symbol_id(rel_path, start_line, end_line, short_name, elem_name)
+                            symbol_id = make_symbol_id("xml", rel_path, start_line, end_line, short_name, elem_name)
 
                             meta: dict = {"component_type": elem_name, "full_name": full_name}
                             if exported:
@@ -481,17 +460,17 @@ def _detect_xml_type(path: Path, source: bytes) -> str:
 
 
 @register_analyzer("xml")
-def analyze_xml_files(repo_root: Path) -> XMLAnalysisResult:
+def analyze_xml_files(repo_root: Path) -> AnalysisResult:
     """Analyze XML files in the repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        XMLAnalysisResult with symbols and edges
+        AnalysisResult with symbols and edges
     """
     if not is_xml_tree_sitter_available():  # pragma: no cover
-        return XMLAnalysisResult(  # pragma: no cover
+        return AnalysisResult(  # pragma: no cover
             skipped=True,  # pragma: no cover
             skip_reason="tree-sitter-xml not installed (pip install tree-sitter-xml or tree-sitter-language-pack)",  # pragma: no cover
         )  # pragma: no cover
@@ -519,7 +498,7 @@ def analyze_xml_files(repo_root: Path) -> XMLAnalysisResult:
             parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_xml.language()))  # pragma: no cover
     except Exception as e:  # pragma: no cover
         warnings.warn(f"Failed to initialize XML parser: {e}")
-        return XMLAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason=f"Failed to initialize parser: {e}",
         )
@@ -556,7 +535,7 @@ def analyze_xml_files(repo_root: Path) -> XMLAnalysisResult:
     run.duration_ms = duration_ms
     run.warnings = warnings_list
 
-    return XMLAnalysisResult(
+    return AnalysisResult(
         symbols=symbols,
         edges=edges,
         run=run,

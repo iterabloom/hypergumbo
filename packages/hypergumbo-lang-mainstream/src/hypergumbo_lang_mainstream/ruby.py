@@ -47,7 +47,7 @@ from typing import TYPE_CHECKING, Iterator, Optional
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -139,41 +139,6 @@ def is_ruby_tree_sitter_available() -> bool:
     return True
 
 
-@dataclass
-class RubyAnalysisResult:
-    """Result of analyzing Ruby files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    usage_contexts: list[UsageContext] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"ruby:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a Ruby file node (used as import edge source)."""
-    return f"ruby:{path}:1-1:file:file"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(node: "tree_sitter.Node", type_name: str) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None
-
-
 def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:
     """Find child by field name."""
     return node.child_by_field_name(field_name)
@@ -219,7 +184,7 @@ def _extract_require_hints(
         if not method_node:  # pragma: no cover - call nodes always have identifier
             continue
 
-        callee_name = _node_text(method_node, source)
+        callee_name = node_text(method_node, source)
         if callee_name not in ("require", "require_relative"):
             continue
 
@@ -230,9 +195,9 @@ def _extract_require_hints(
 
         for arg in args_node.children:
             if arg.type == "string":
-                content_node = _find_child_by_type(arg, "string_content")
+                content_node = find_child_by_type(arg, "string_content")
                 if content_node:
-                    require_path = _node_text(content_node, source)
+                    require_path = node_text(content_node, source)
                     # Extract the last component and convert to PascalCase
                     # 'math/calculator' -> 'calculator' -> 'Calculator'
                     basename = require_path.rsplit("/", 1)[-1]
@@ -256,11 +221,11 @@ def _get_enclosing_class_or_module(node: "tree_sitter.Node", source: bytes) -> t
         if current.type == "class":
             name_node = _find_child_by_field(current, "name")
             if name_node:
-                return _node_text(name_node, source), "class"
+                return node_text(name_node, source), "class"
         elif current.type == "module":
             name_node = _find_child_by_field(current, "name")
             if name_node:
-                return _node_text(name_node, source), "module"
+                return node_text(name_node, source), "module"
         current = current.parent
     return None, ""  # pragma: no cover - defensive
 
@@ -276,7 +241,7 @@ def _get_enclosing_method(
         if current.type in ("method", "singleton_method"):
             name_node = _find_child_by_field(current, "name")
             if name_node:
-                method_name = _node_text(name_node, source)
+                method_name = node_text(name_node, source)
                 if method_name in local_symbols:
                     return local_symbols[method_name]
         current = current.parent
@@ -299,13 +264,13 @@ def _get_enclosing_method_params(
     current = node.parent
     while current is not None:
         if current.type in ("method", "singleton_method"):
-            params_node = _find_child_by_type(current, "method_parameters")
+            params_node = find_child_by_type(current, "method_parameters")
             if params_node is None:
                 return set()
             names: set[str] = set()
             for param in iter_tree(params_node):
                 if param.type == "identifier":
-                    names.add(_node_text(param, source))
+                    names.add(node_text(param, source))
             return names
         current = current.parent
     return set()  # pragma: no cover - defensive
@@ -384,18 +349,18 @@ def _extract_ruby_signature(
     for child in params_node.children:
         if child.type == "identifier":
             # Simple positional parameter
-            params.append(_node_text(child, source))
+            params.append(node_text(child, source))
         elif child.type == "optional_parameter":
             # Parameter with default value: name = value
-            name_node = _find_child_by_type(child, "identifier")
+            name_node = find_child_by_type(child, "identifier")
             if name_node:
-                param_name = _node_text(name_node, source)
+                param_name = node_text(name_node, source)
                 params.append(f"{param_name} = ...")
         elif child.type == "keyword_parameter":
             # Keyword parameter: name: or name: value
-            name_node = _find_child_by_type(child, "identifier")
+            name_node = find_child_by_type(child, "identifier")
             if name_node:
-                param_name = _node_text(name_node, source)
+                param_name = node_text(name_node, source)
                 # Check if it has a default value (look for value node after identifier)
                 has_value = False
                 for pc in child.children:
@@ -409,25 +374,25 @@ def _extract_ruby_signature(
                     params.append(f"{param_name}:")
         elif child.type == "splat_parameter":
             # *args
-            name_node = _find_child_by_type(child, "identifier")
+            name_node = find_child_by_type(child, "identifier")
             if name_node:
-                param_name = _node_text(name_node, source)
+                param_name = node_text(name_node, source)
                 params.append(f"*{param_name}")
             else:
                 params.append("*")  # pragma: no cover - bare splat
         elif child.type == "hash_splat_parameter":
             # **kwargs
-            name_node = _find_child_by_type(child, "identifier")
+            name_node = find_child_by_type(child, "identifier")
             if name_node:
-                param_name = _node_text(name_node, source)
+                param_name = node_text(name_node, source)
                 params.append(f"**{param_name}")
             else:
                 params.append("**")  # pragma: no cover - bare hash splat
         elif child.type == "block_parameter":
             # &block
-            name_node = _find_child_by_type(child, "identifier")
+            name_node = find_child_by_type(child, "identifier")
             if name_node:
-                param_name = _node_text(name_node, source)
+                param_name = node_text(name_node, source)
                 params.append(f"&{param_name}")
 
     params_str = ", ".join(params)
@@ -502,7 +467,7 @@ def _find_namespace_blocks(
         if method_node is None:  # pragma: no cover
             continue
 
-        method_name = _node_text(method_node, source).lower()
+        method_name = node_text(method_node, source).lower()
 
         if method_name == "namespace":
             # namespace :admin do ... end
@@ -511,7 +476,7 @@ def _find_namespace_blocks(
                 continue
             for arg in args_node.children:
                 if arg.type == "simple_symbol":
-                    ns_name = _node_text(arg, source).strip(":")
+                    ns_name = node_text(arg, source).strip(":")
                     # Find the do_block to get the byte range
                     for child in n.children:
                         if child.type in ("do_block", "block"):
@@ -535,7 +500,7 @@ def _find_namespace_blocks(
                     pair_children = list(arg.children)
                     has_module_key = any(
                         c.type == "hash_key_symbol"
-                        and _node_text(c, source).strip(":") == "module"
+                        and node_text(c, source).strip(":") == "module"
                         for c in pair_children
                     )
                     if not has_module_key:
@@ -544,12 +509,12 @@ def _find_namespace_blocks(
                     val_node = None
                     for c in pair_children:
                         if c.type == "simple_symbol":
-                            text = _node_text(c, source).strip(":")
+                            text = node_text(c, source).strip(":")
                             if text != "module":
                                 val_node = c
                                 break
                     if val_node is not None:
-                        mod_name = _node_text(val_node, source).strip(":")
+                        mod_name = node_text(val_node, source).strip(":")
                         for child in n.children:
                             if child.type in ("do_block", "block"):
                                 blocks.append(_NamespaceBlock(
@@ -625,7 +590,7 @@ def _find_resource_blocks(
         if method_node is None:  # pragma: no cover
             continue
 
-        method_name = _node_text(method_node, source).lower()
+        method_name = node_text(method_node, source).lower()
 
         if method_name in ("resources", "resource"):
             # Check for do_block
@@ -644,7 +609,7 @@ def _find_resource_blocks(
             resource_name = None
             for arg in args_node.children:
                 if arg.type == "simple_symbol":
-                    resource_name = _node_text(arg, source).strip(":")
+                    resource_name = node_text(arg, source).strip(":")
                     break
             if resource_name is None:  # pragma: no cover
                 continue
@@ -828,7 +793,7 @@ def _extract_rails_routes(
         if method_node is None:  # pragma: no cover
             continue
 
-        method_name = _node_text(method_node, source).lower()
+        method_name = node_text(method_node, source).lower()
 
         # Check if it's an HTTP method route or resources
         if method_name not in HTTP_METHODS and method_name not in ("resources", "resource"):
@@ -852,13 +817,13 @@ def _extract_rails_routes(
         for arg in args_node.children:
             # String path for HTTP method routes
             if arg.type == "string" and method_name in HTTP_METHODS:
-                content_node = _find_child_by_type(arg, "string_content")
+                content_node = find_child_by_type(arg, "string_content")
                 if content_node:
-                    route_path = _node_text(content_node, source)
+                    route_path = node_text(content_node, source)
                     break
             # Symbol for resources/resource
             elif arg.type == "simple_symbol" and method_name in ("resources", "resource"):
-                resource_name = _node_text(arg, source).strip(":")
+                resource_name = node_text(arg, source).strip(":")
                 route_path = resource_name
                 break
             # Symbol for HTTP method inside member/collection block
@@ -868,7 +833,7 @@ def _extract_rails_routes(
                 and method_name in HTTP_METHODS
                 and res_context in ("member", "collection")
             ):
-                action_name = _node_text(arg, source).strip(":")
+                action_name = node_text(arg, source).strip(":")
                 if res_context == "member":
                     route_path = f"{res_path_prefix}/:id/{action_name}"
                 else:  # collection
@@ -883,13 +848,13 @@ def _extract_rails_routes(
                     key_node = pair_children[0]
                     val_node = pair_children[-1]  # Last child is value
                     if key_node.type == "string":
-                        key_content = _find_child_by_type(key_node, "string_content")
+                        key_content = find_child_by_type(key_node, "string_content")
                         if key_content:
-                            route_path = _node_text(key_content, source)
+                            route_path = node_text(key_content, source)
                     if val_node.type == "string":
-                        val_content = _find_child_by_type(val_node, "string_content")
+                        val_content = find_child_by_type(val_node, "string_content")
                         if val_content:
-                            controller_action = _node_text(val_content, source)
+                            controller_action = node_text(val_content, source)
                 if route_path:
                     break
 
@@ -901,13 +866,13 @@ def _extract_rails_routes(
             if arg.type == "pair":
                 for pair_child in arg.children:
                     if pair_child.type in ("hash_key_symbol", "simple_symbol"):
-                        key_text = _node_text(pair_child, source).strip(":")
+                        key_text = node_text(pair_child, source).strip(":")
                         if key_text == "to":
                             for sibling in arg.children:
                                 if sibling.type == "string":
-                                    content = _find_child_by_type(sibling, "string_content")
+                                    content = find_child_by_type(sibling, "string_content")
                                     if content:
-                                        controller_action = _node_text(content, source)
+                                        controller_action = node_text(content, source)
 
         # Check for block (Sinatra style: get '/path' do ... end)
         has_block = False
@@ -1005,7 +970,7 @@ def _extract_rails_routes(
             )
             for http_meth, route_pth, action in restful_routes:
                 route_name = f"{http_meth} {route_pth}"
-                route_id = _make_symbol_id(
+                route_id = make_symbol_id("ruby",
                     path=str(file_path),
                     start_line=span.start_line,
                     end_line=span.end_line,
@@ -1048,7 +1013,7 @@ def _extract_rails_routes(
             )
             for http_meth, route_pth, action in restful_routes:
                 route_name = f"{http_meth} {route_pth}"
-                route_id = _make_symbol_id(
+                route_id = make_symbol_id("ruby",
                     path=str(file_path),
                     start_line=span.start_line,
                     end_line=span.end_line,
@@ -1074,7 +1039,7 @@ def _extract_rails_routes(
         else:
             # Regular HTTP method route (get, post, etc.)
             route_name = f"{http_method} {normalized_path}"
-            route_id = _make_symbol_id(
+            route_id = make_symbol_id("ruby",
                 path=str(file_path),
                 start_line=span.start_line,
                 end_line=span.end_line,
@@ -1140,7 +1105,7 @@ def _extract_block_callback_edges(
             callee_node = child.child_by_field_name("method")
             if callee_node is None:
                 continue  # pragma: no cover
-            call_name = _node_text(callee_node, source)
+            call_name = node_text(callee_node, source)
         elif child.type == "identifier":
             # Bare identifiers at statement level may be method calls
             # (Ruby allows calling methods without parens)
@@ -1150,7 +1115,7 @@ def _extract_block_callback_edges(
                 "body_statement", "block_body",
             ):
                 continue  # pragma: no cover — identifiers nested in expressions
-            call_name = _node_text(child, source)
+            call_name = node_text(child, source)
         else:
             continue
 
@@ -1214,7 +1179,7 @@ def _extract_rails_callbacks(
         if method_node is None:  # pragma: no cover
             continue
 
-        method_name = _node_text(method_node, source)
+        method_name = node_text(method_node, source)
         if method_name not in RAILS_CALLBACK_METHODS:
             continue
 
@@ -1248,7 +1213,7 @@ def _extract_rails_callbacks(
                 if arg.type != "simple_symbol":
                     continue
 
-                callback_name = _node_text(arg, source).lstrip(":")
+                callback_name = node_text(arg, source).lstrip(":")
 
                 # Resolve the callback method:
                 # 1. Try qualified name in same class (ClassName#callback)
@@ -1344,9 +1309,9 @@ def _extract_class_name_option(
             val_node = child.child_by_field_name("value")
             if key_node is None or val_node is None:
                 continue  # pragma: no cover — defensive against malformed AST
-            key_text = _node_text(key_node, source).lstrip(":")
+            key_text = node_text(key_node, source).lstrip(":")
             if key_text == "class_name":
-                raw = _node_text(val_node, source)
+                raw = node_text(val_node, source)
                 # Strip surrounding quotes: "ChatMessage" or 'ChatMessage'
                 return raw.strip("\"'")
     return None
@@ -1385,7 +1350,7 @@ def _extract_activerecord_associations(
         if method_node is None:  # pragma: no cover
             continue
 
-        method_name = _node_text(method_node, source)
+        method_name = node_text(method_node, source)
         if method_name not in _ASSOCIATION_METHODS:
             continue
 
@@ -1422,7 +1387,7 @@ def _extract_activerecord_associations(
         assoc_name = None
         for arg in args_node.children:
             if arg.type == "simple_symbol":
-                assoc_name = _node_text(arg, source).lstrip(":")
+                assoc_name = node_text(arg, source).lstrip(":")
                 break
 
         if assoc_name is None:
@@ -1482,9 +1447,9 @@ def _extract_to_option(
             val_node = child.child_by_field_name("value")
             if key_node is None or val_node is None:
                 continue  # pragma: no cover — defensive against malformed AST
-            key_text = _node_text(key_node, source).lstrip(":")
+            key_text = node_text(key_node, source).lstrip(":")
             if key_text == "to":
-                raw = _node_text(val_node, source)
+                raw = node_text(val_node, source)
                 return raw.lstrip(":").strip("\"'")
     return None  # pragma: no cover — delegate without to: is invalid Ruby
 
@@ -1521,7 +1486,7 @@ def _extract_ruby_delegates(
         if method_node is None:  # pragma: no cover
             continue
 
-        method_name = _node_text(method_node, source)
+        method_name = node_text(method_node, source)
         if method_name != "delegate":
             continue
 
@@ -1572,7 +1537,7 @@ def _extract_ruby_delegates(
         delegated_methods: list[str] = []
         for arg in args_node.children:
             if arg.type == "simple_symbol":
-                delegated_methods.append(_node_text(arg, source).lstrip(":"))
+                delegated_methods.append(node_text(arg, source).lstrip(":"))
 
         # Create edges for each delegated method
         for method in delegated_methods:
@@ -1648,7 +1613,7 @@ def _extract_symbols_from_file(
         if node.type == "method":
             name_node = _find_child_by_field(node, "name")
             if name_node:
-                method_name = _node_text(name_node, source)
+                method_name = node_text(name_node, source)
                 # Qualify with class/module name if inside one
                 enclosing_name, enclosing_type = _get_enclosing_class_or_module(node, source)
                 if enclosing_type == "class" and enclosing_name:
@@ -1662,7 +1627,7 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "method"),
+                    id=make_symbol_id("ruby", str(file_path), start_line, end_line, full_name, "method"),
                     name=full_name,
                     kind="method",
                     language="ruby",
@@ -1685,7 +1650,7 @@ def _extract_symbols_from_file(
         elif node.type == "singleton_method":
             name_node = _find_child_by_field(node, "name")
             if name_node:
-                method_name = _node_text(name_node, source)
+                method_name = node_text(name_node, source)
                 # Class methods use dot separator: ClassName.method_name
                 enclosing_name, _ = _get_enclosing_class_or_module(node, source)
                 if enclosing_name:
@@ -1697,7 +1662,7 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "method"),
+                    id=make_symbol_id("ruby", str(file_path), start_line, end_line, full_name, "method"),
                     name=full_name,
                     kind="method",
                     language="ruby",
@@ -1720,7 +1685,7 @@ def _extract_symbols_from_file(
         elif node.type == "class":
             name_node = _find_child_by_field(node, "name")
             if name_node:
-                class_name = _node_text(name_node, source)
+                class_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
@@ -1734,12 +1699,12 @@ def _extract_symbols_from_file(
                     # We take the first named child which is the actual type reference
                     for child in superclass_node.children:
                         if child.is_named:
-                            superclass_name = _node_text(child, source)
+                            superclass_name = node_text(child, source)
                             meta = {"base_classes": [superclass_name]}
                             break
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, class_name, "class"),
+                    id=make_symbol_id("ruby", str(file_path), start_line, end_line, class_name, "class"),
                     name=class_name,
                     kind="class",
                     language="ruby",
@@ -1761,12 +1726,12 @@ def _extract_symbols_from_file(
         elif node.type == "module":
             name_node = _find_child_by_field(node, "name")
             if name_node:
-                module_name = _node_text(name_node, source)
+                module_name = node_text(name_node, source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), start_line, end_line, module_name, "module"),
+                    id=make_symbol_id("ruby", str(file_path), start_line, end_line, module_name, "module"),
                     name=module_name,
                     kind="module",
                     language="ruby",
@@ -1822,14 +1787,14 @@ def _try_receiver_call(
     receiver_class: str | None = None
     short_name: str | None = None
     if receiver_node.type == "constant":
-        receiver_class = _node_text(receiver_node, source)
+        receiver_class = node_text(receiver_node, source)
     elif receiver_node.type == "scope_resolution":
         # Extract full qualified name (e.g., "Voice::InboundCallBuilder")
         # for inline-namespace class definitions
-        full_name = _node_text(receiver_node, source)
+        full_name = node_text(receiver_node, source)
         # Also extract rightmost segment as fallback (e.g., "InboundCallBuilder")
         name_node = _find_child_by_field(receiver_node, "name")
-        short_name = _node_text(name_node, source) if name_node is not None else None
+        short_name = node_text(name_node, source) if name_node is not None else None
         receiver_class = full_name
     elif receiver_node.type == "call":
         # Handle chained calls: ClassName.new(args).method()
@@ -1838,9 +1803,9 @@ def _try_receiver_call(
         inner_receiver = receiver_node.child_by_field_name("receiver")
         if inner_receiver is not None:
             if inner_receiver.type == "constant":
-                receiver_class = _node_text(inner_receiver, source)
+                receiver_class = node_text(inner_receiver, source)
             elif inner_receiver.type == "scope_resolution":
-                receiver_class = _node_text(inner_receiver, source)
+                receiver_class = node_text(inner_receiver, source)
 
     if receiver_class is None:
         return False
@@ -2031,7 +1996,7 @@ def _extract_ruby_var_types(
         lhs = node.child_by_field_name("left")
         if lhs is None or lhs.type != "identifier":
             continue
-        var_name = _node_text(lhs, source)
+        var_name = node_text(lhs, source)
         if var_name in var_types:
             continue  # first-assignment wins
         # RHS must be a call node with a constant receiver
@@ -2042,10 +2007,10 @@ def _extract_ruby_var_types(
         if receiver is None:
             continue
         if receiver.type == "constant":
-            var_types[var_name] = _node_text(receiver, source)
+            var_types[var_name] = node_text(receiver, source)
         elif receiver.type == "scope_resolution":
             # Namespace::Class.new → use full qualified name
-            var_types[var_name] = _node_text(receiver, source)
+            var_types[var_name] = node_text(receiver, source)
     return var_types
 
 
@@ -2074,7 +2039,7 @@ def _extract_edges_from_file(
         return []
 
     edges: list[Edge] = []
-    file_id = _make_file_id(str(file_path))
+    file_id = make_file_id("ruby", str(file_path))
     var_types = _extract_ruby_var_types(tree, source)
 
     for node in iter_tree(tree.root_node):
@@ -2095,7 +2060,7 @@ def _extract_edges_from_file(
                         break
 
             if method_node:
-                callee_name = _node_text(method_node, source)
+                callee_name = node_text(method_node, source)
 
                 # Handle require/require_relative as imports
                 if callee_name in ("require", "require_relative"):
@@ -2103,9 +2068,9 @@ def _extract_edges_from_file(
                     if args_node:
                         for arg in args_node.children:
                             if arg.type == "string":
-                                content_node = _find_child_by_type(arg, "string_content")
+                                content_node = find_child_by_type(arg, "string_content")
                                 if content_node:
-                                    import_path = _node_text(content_node, source)
+                                    import_path = node_text(content_node, source)
                                     edges.append(Edge.create(
                                         src=file_id,
                                         dst=f"ruby:{import_path}:0-0:file:file",
@@ -2136,7 +2101,7 @@ def _extract_edges_from_file(
                             # Try typed receiver resolution: if var was assigned
                             # from ClassName.new / ClassName.find, resolve
                             # var.method → ClassName#method.
-                            receiver_text = _node_text(receiver_node, source)
+                            receiver_text = node_text(receiver_node, source)
                             inferred_class = var_types.get(receiver_text)
                             if inferred_class is not None:
                                 # Build candidate keys: full name first, then
@@ -2209,7 +2174,7 @@ def _extract_edges_from_file(
                 continue
             current_method = _get_enclosing_method(node, source, local_symbols)
             if current_method is not None:
-                callee_name = _node_text(node, source)
+                callee_name = node_text(node, source)
 
                 # Skip identifiers that match method parameter names.
                 # In Ruby, ``def initialize(ip); @ip = ip; end`` — the
@@ -2397,10 +2362,10 @@ def _extract_inheritance_edges(
 
 
 @register_analyzer("ruby")
-def analyze_ruby(repo_root: Path) -> RubyAnalysisResult:
+def analyze_ruby(repo_root: Path) -> AnalysisResult:
     """Analyze all Ruby files in a repository.
 
-    Returns a RubyAnalysisResult with symbols, edges, and provenance.
+    Returns a AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-ruby is not available, returns a skipped result.
     """
     if not is_ruby_tree_sitter_available():
@@ -2408,7 +2373,7 @@ def analyze_ruby(repo_root: Path) -> RubyAnalysisResult:
             "tree-sitter-ruby not available. Install with: pip install hypergumbo[ruby]",
             stacklevel=2,
         )
-        return RubyAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason="tree-sitter-ruby not available",
         )
@@ -2425,7 +2390,7 @@ def analyze_ruby(repo_root: Path) -> RubyAnalysisResult:
         parser = tree_sitter.Parser(lang)
     except Exception as e:
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return RubyAnalysisResult(
+        return AnalysisResult(
             run=run,
             skipped=True,
             skip_reason=f"Failed to load Ruby parser: {e}",
@@ -2562,7 +2527,7 @@ def analyze_ruby(repo_root: Path) -> RubyAnalysisResult:
     )
     all_edges.extend(inheritance_edges)
 
-    return RubyAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         usage_contexts=all_usage_contexts,

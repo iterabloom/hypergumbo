@@ -38,11 +38,11 @@ from __future__ import annotations
 
 import time
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, find_child_by_type, iter_tree, make_file_id, make_symbol_id, node_text
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -71,17 +71,6 @@ def is_perl_tree_sitter_available() -> bool:
 
 
 @dataclass
-class PerlAnalysisResult:
-    """Result of analyzing Perl files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-@dataclass
 class FileAnalysis:
     """Intermediate analysis result for a single file.
 
@@ -93,31 +82,6 @@ class FileAnalysis:
     tree: object  # tree_sitter.Tree
     symbols: list[Symbol]
     package_name: str  # The package name for this file
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"perl:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
-def _make_file_id(path: str) -> str:
-    """Generate ID for a Perl file node (used as import edge source)."""
-    return f"perl:{path}:1-1:file:file"
-
-
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
-def _find_child_by_type(
-    node: "tree_sitter.Node", type_name: str
-) -> Optional["tree_sitter.Node"]:
-    """Find first child of given type."""
-    for child in node.children:
-        if child.type == type_name:
-            return child
-    return None
 
 
 def _find_children_by_type(
@@ -143,14 +107,14 @@ def _extract_perl_signature(
     for child in node.children:
         if child.type in ("signature", "signature_params"):  # pragma: no cover - rare
             # Extract the full signature text
-            sig_text = _node_text(child, source).strip()
+            sig_text = node_text(child, source).strip()
             return sig_text
 
     # Check for prototype (old style) - e.g., sub foo($) { }
     # This is after bareword and before block
     for child in node.children:
         if child.type == "prototype":  # pragma: no cover - rare syntax
-            proto_text = _node_text(child, source).strip()
+            proto_text = node_text(child, source).strip()
             return proto_text
 
     # No explicit signature found
@@ -173,7 +137,7 @@ def _get_current_package(node: "tree_sitter.Node", source: bytes) -> str:
             if found_self and sibling.type == "package_statement":
                 package_nodes = _find_children_by_type(sibling, "package")
                 if len(package_nodes) >= 2:
-                    return _node_text(package_nodes[1], source)
+                    return node_text(package_nodes[1], source)
         current = current.parent
     return "main"  # pragma: no cover - defensive
 
@@ -202,7 +166,7 @@ def _extract_symbols_from_file(
             package_nodes = _find_children_by_type(node, "package")
             if len(package_nodes) >= 2:
                 # First is keyword "package", second is the actual name
-                package_name = _node_text(package_nodes[1], source)
+                package_name = node_text(package_nodes[1], source)
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 span = Span(
@@ -211,7 +175,7 @@ def _extract_symbols_from_file(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                sym_id = _make_symbol_id(file_path, start_line, end_line, package_name, "module")
+                sym_id = make_symbol_id("perl", file_path, start_line, end_line, package_name, "module")
                 symbols.append(Symbol(
                     id=sym_id,
                     name=package_name,
@@ -225,9 +189,9 @@ def _extract_symbols_from_file(
 
         elif node.type == "subroutine_declaration_statement":
             # Extract subroutine name from bareword child
-            bareword = _find_child_by_type(node, "bareword")
+            bareword = find_child_by_type(node, "bareword")
             if bareword:
-                sub_name = _node_text(bareword, source)
+                sub_name = node_text(bareword, source)
                 # Get current package context for this subroutine
                 current_pkg = _get_current_package(node, source)
                 if current_pkg != "main":
@@ -242,7 +206,7 @@ def _extract_symbols_from_file(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                sym_id = _make_symbol_id(file_path, start_line, end_line, sub_name, "function")
+                sym_id = make_symbol_id("perl", file_path, start_line, end_line, sub_name, "function")
                 symbols.append(Symbol(
                     id=sym_id,
                     name=qualified_name,
@@ -268,9 +232,9 @@ def _find_enclosing_function_perl(
     current = node.parent
     while current:
         if current.type == "subroutine_declaration_statement":
-            bareword = _find_child_by_type(current, "bareword")
+            bareword = find_child_by_type(current, "bareword")
             if bareword:
-                name = _node_text(bareword, source)
+                name = node_text(bareword, source)
                 qualified = f"{package_name}::{name}" if package_name != "main" else name
                 return local_symbols.get(qualified) or local_symbols.get(name)
         current = current.parent
@@ -294,7 +258,7 @@ def _extract_edges_from_file(
     - function calls (ambiguous_function_call_expression, method calls)
     """
     edges: list[Edge] = []
-    file_id = _make_file_id(file_path)
+    file_id = make_file_id("perl", file_path)
 
     # Build local symbol map for this file (unqualified name -> symbol)
     local_symbols: dict[str, Symbol] = {}
@@ -310,7 +274,7 @@ def _extract_edges_from_file(
         if node.type == "use_statement":
             package_nodes = _find_children_by_type(node, "package")
             if package_nodes:
-                module_name = _node_text(package_nodes[0], source)
+                module_name = node_text(package_nodes[0], source)
                 # Skip pragmas like 'strict', 'warnings'
                 if module_name not in ("strict", "warnings", "utf8", "vars", "constant"):
                     module_id = f"perl:{module_name}:0-0:module:module"
@@ -328,11 +292,11 @@ def _extract_edges_from_file(
 
         # Handle require expressions
         elif node.type == "require_expression":
-            string_node = _find_child_by_type(node, "string_literal")
+            string_node = find_child_by_type(node, "string_literal")
             if string_node:
-                content = _find_child_by_type(string_node, "string_content")
+                content = find_child_by_type(string_node, "string_content")
                 if content:
-                    required_file = _node_text(content, source)
+                    required_file = node_text(content, source)
                     module_id = f"perl:{required_file}:0-0:file:file"
                     edge = Edge.create(
                         src=file_id,
@@ -350,9 +314,9 @@ def _extract_edges_from_file(
         elif node.type in ("function_call_expression", "ambiguous_function_call_expression",
                            "func0op_call_expression", "func1op_call_expression"):
             # Get function name from first child (usually 'function' type or bareword)
-            func_node = _find_child_by_type(node, "function")
+            func_node = find_child_by_type(node, "function")
             if func_node:
-                func_name = _node_text(func_node, source)
+                func_name = node_text(func_node, source)
                 # Skip builtins
                 if func_name not in ("print", "say", "die", "warn", "exit", "return",
                                       "shift", "push", "pop", "splice", "join", "split",
@@ -396,9 +360,9 @@ def _extract_edges_from_file(
         # Handle method calls (arrow operator)
         elif node.type == "method_call_expression":
             # $obj->method() or ClassName->method()
-            method_node = _find_child_by_type(node, "method")
+            method_node = find_child_by_type(node, "method")
             if method_node:
-                method_name = _node_text(method_node, source)
+                method_name = node_text(method_node, source)
                 caller = _find_enclosing_function_perl(node, source, local_symbols, package_name)
                 if caller:
                     # Resolve callee using resolver only
@@ -422,10 +386,10 @@ def _extract_edges_from_file(
 
 
 @register_analyzer("perl")
-def analyze_perl(repo_root: Path) -> PerlAnalysisResult:
+def analyze_perl(repo_root: Path) -> AnalysisResult:
     """Analyze Perl files in a repository.
 
-    Returns a PerlAnalysisResult with symbols, edges, and provenance.
+    Returns a AnalysisResult with symbols, edges, and provenance.
     If tree-sitter with Perl support is not available, returns a skipped result.
     """
     start_time = time.time()
@@ -440,7 +404,7 @@ def analyze_perl(repo_root: Path) -> PerlAnalysisResult:
         )
         warnings.warn(skip_reason)
         run.duration_ms = int((time.time() - start_time) * 1000)
-        return PerlAnalysisResult(
+        return AnalysisResult(
             run=run,
             skipped=True,
             skip_reason=skip_reason,
@@ -471,7 +435,7 @@ def analyze_perl(repo_root: Path) -> PerlAnalysisResult:
 
         # Create file symbol
         file_symbol = Symbol(
-            id=_make_file_id(rel_path),
+            id=make_file_id("perl", rel_path),
             name=rel_path,
             kind="file",
             language="perl",
@@ -523,7 +487,7 @@ def analyze_perl(repo_root: Path) -> PerlAnalysisResult:
     run.files_analyzed = files_analyzed
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    return PerlAnalysisResult(
+    return AnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         run=run,

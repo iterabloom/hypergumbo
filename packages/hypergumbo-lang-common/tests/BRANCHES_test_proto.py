@@ -10,33 +10,25 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_common.proto import (
-    _make_file_id,
-    _make_symbol_id,
-    _node_text,
-    analyze_proto,
-    find_proto_files,
-)
-
+from hypergumbo_core.analyze.base import make_file_id, make_symbol_id, node_text
+from hypergumbo_lang_common.proto import analyze_proto, find_proto_files
 
 def make_proto_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a Proto file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestProtoHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("api/user.proto", 10, 20, "UserService", "service")
+        symbol_id = make_symbol_id("proto", "api/user.proto", 10, 20, "UserService", "service")
         assert symbol_id == "proto:api/user.proto:10-20:UserService:service"
 
     def test_make_file_id_format(self) -> None:
         """Test file ID format."""
-        file_id = _make_file_id("api/user.proto")
+        file_id = make_file_id("proto", "api/user.proto")
         assert file_id == "proto:api/user.proto:1-1:file:file"
-
 
 class TestRPCSignatureExtraction:
     """Branch coverage for RPC signature extraction."""
@@ -86,7 +78,6 @@ service ChatService {
         # Both request and response should be streaming
         assert rpcs[0].signature.count("stream") == 2
 
-
 class TestPackageNameExtraction:
     """Branch coverage for package name extraction."""
 
@@ -120,7 +111,6 @@ message DeepMessage {
         messages = [s for s in result.symbols if s.kind == "message"]
         assert len(messages) == 1
         assert "com.example.myservice.v1.api" in messages[0].canonical_name
-
 
 class TestNestedTypes:
     """Branch coverage for nested message/enum handling."""
@@ -164,7 +154,6 @@ message Container {
         assert len(enums) == 1
         assert enums[0].name == "Status"
 
-
 class TestMultipleImports:
     """Branch coverage for import handling."""
 
@@ -202,7 +191,6 @@ message MyType {
         # Public import should still create edge
         assert len(import_edges) >= 1
 
-
 class TestServiceContainsEdges:
     """Branch coverage for service-to-RPC contains edges."""
 
@@ -224,7 +212,6 @@ service ApiService {
         # Should have one contains edge per RPC
         assert len(contains_edges) == len(rpcs)
         assert len(rpcs) == 4
-
 
 class TestMultipleServicesInFile:
     """Branch coverage for multiple services handling."""
@@ -263,7 +250,6 @@ service ServiceB {
         assert method_b_edge is not None
         assert method_b_edge.src == services["ServiceB"].id
 
-
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
 
@@ -293,7 +279,6 @@ package myservice.v1;
         assert result.run is not None
         assert len(result.symbols) == 0
 
-
 class TestRPCCanonicalNames:
     """Branch coverage for RPC canonical name generation."""
 
@@ -314,7 +299,6 @@ service UserService {
         assert "myservice.v1" in rpc.canonical_name
         assert "UserService" in rpc.canonical_name
         assert "GetUser" in rpc.canonical_name
-
 
 class TestMessageCanonicalNames:
     """Branch coverage for message canonical name generation."""
@@ -338,7 +322,6 @@ message Response {
         assert "myservice.v1" in data_msg.canonical_name
         assert "Response" in data_msg.canonical_name
         assert "Data" in data_msg.canonical_name
-
 
 class TestFindProtoFilesEdgeCases:
     """Branch coverage for file discovery."""
@@ -365,7 +348,6 @@ class TestFindProtoFilesEdgeCases:
         files = list(find_proto_files(tmp_path))
         assert len(files) == 1
         assert files[0].name == "internal.proto"
-
 
 class TestEnumExtraction:
     """Branch coverage for enum extraction."""

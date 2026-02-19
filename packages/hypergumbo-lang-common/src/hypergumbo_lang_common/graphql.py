@@ -31,11 +31,10 @@ import hashlib
 import importlib.util
 import time
 import warnings
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional
 
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, make_symbol_id, node_text
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -61,38 +60,17 @@ def is_graphql_tree_sitter_available() -> bool:
     return True
 
 
-@dataclass
-class GraphQLAnalysisResult:
-    """Result of analyzing GraphQL files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: AnalysisRun | None = None
-    skipped: bool = False
-    skip_reason: str = ""
-
-
-def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
-    """Generate location-based ID."""
-    return f"graphql:{path}:{start_line}-{end_line}:{name}:{kind}"
-
-
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:  # pragma: no cover
     """Generate deterministic edge ID."""  # pragma: no cover
     content = f"{edge_type}:{src}:{dst}"  # pragma: no cover
     return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"  # pragma: no cover
 
 
-def _node_text(node: "tree_sitter.Node", source: bytes) -> str:
-    """Extract text for a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
-
 def _get_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract name from a definition node."""
     for child in node.children:
         if child.type == "name":
-            return _node_text(child, source)
+            return node_text(child, source)
     return None  # pragma: no cover
 
 
@@ -114,19 +92,19 @@ def _extract_graphql_signature(
             # Operation variable definitions: ($arg: Type)
             for var_child in child.children:
                 if var_child.type == "variable_definition":
-                    var_text = _node_text(var_child, source).strip()
+                    var_text = node_text(var_child, source).strip()
                     if var_text:
                         params.append(var_text)
         elif child.type == "arguments_definition":  # pragma: no cover - field args
             # Field argument definitions: (arg: Type)
             for arg_child in child.children:  # pragma: no cover
                 if arg_child.type == "input_value_definition":  # pragma: no cover
-                    arg_text = _node_text(arg_child, source).strip()  # pragma: no cover
+                    arg_text = node_text(arg_child, source).strip()  # pragma: no cover
                     if arg_text:  # pragma: no cover
                         params.append(arg_text)  # pragma: no cover
         elif child.type == "type":  # pragma: no cover - field return type
             # Return type for fields
-            return_type = _node_text(child, source).strip()  # pragma: no cover
+            return_type = node_text(child, source).strip()  # pragma: no cover
 
     if not params and not return_type:
         return None
@@ -172,7 +150,7 @@ def _process_graphql_tree(
             if type_name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, type_name, kind)
+                symbol_id = make_symbol_id("graphql", rel_path, start_line, end_line, type_name, kind)
 
                 sym = Symbol(
                     id=symbol_id,
@@ -200,7 +178,7 @@ def _process_graphql_tree(
             if directive_name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, directive_name, "directive")
+                symbol_id = make_symbol_id("graphql", rel_path, start_line, end_line, directive_name, "directive")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -232,7 +210,7 @@ def _process_graphql_tree(
             if frag_name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, frag_name, "fragment")
+                symbol_id = make_symbol_id("graphql", rel_path, start_line, end_line, frag_name, "fragment")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -264,10 +242,10 @@ def _process_graphql_tree(
                 op_type = "operation"
                 for child in node.children:
                     if child.type == "operation_type":
-                        op_type = _node_text(child, source).lower()
+                        op_type = node_text(child, source).lower()
                         break
 
-                symbol_id = _make_symbol_id(rel_path, start_line, end_line, op_name, op_type)
+                symbol_id = make_symbol_id("graphql", rel_path, start_line, end_line, op_name, op_type)
 
                 # Extract signature (variable definitions)
                 signature = _extract_graphql_signature(node, source)
@@ -295,17 +273,17 @@ def _process_graphql_tree(
 
 
 @register_analyzer("graphql")
-def analyze_graphql_files(repo_root: Path) -> GraphQLAnalysisResult:
+def analyze_graphql_files(repo_root: Path) -> AnalysisResult:
     """Analyze GraphQL files in the repository.
 
     Args:
         repo_root: Path to the repository root
 
     Returns:
-        GraphQLAnalysisResult with symbols and edges
+        AnalysisResult with symbols and edges
     """
     if not is_graphql_tree_sitter_available():  # pragma: no cover
-        return GraphQLAnalysisResult(  # pragma: no cover
+        return AnalysisResult(  # pragma: no cover
             skipped=True,  # pragma: no cover
             skip_reason="tree-sitter-graphql not installed (pip install tree-sitter-graphql)",  # pragma: no cover
         )  # pragma: no cover
@@ -329,7 +307,7 @@ def analyze_graphql_files(repo_root: Path) -> GraphQLAnalysisResult:
         parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_graphql.language()))
     except Exception as e:  # pragma: no cover
         warnings.warn(f"Failed to initialize GraphQL parser: {e}")
-        return GraphQLAnalysisResult(
+        return AnalysisResult(
             skipped=True,
             skip_reason=f"Failed to initialize parser: {e}",
         )
@@ -365,7 +343,7 @@ def analyze_graphql_files(repo_root: Path) -> GraphQLAnalysisResult:
     run.duration_ms = duration_ms
     run.warnings = warnings_list
 
-    return GraphQLAnalysisResult(
+    return AnalysisResult(
         symbols=symbols,
         edges=edges,
         run=run,

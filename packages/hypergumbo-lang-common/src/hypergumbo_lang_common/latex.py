@@ -27,27 +27,14 @@ LaTeX documents are structured differently from programming languages:
 - Custom commands/environments define reusable constructs
 """
 
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
-from hypergumbo_core.analyze.base import iter_tree
+from hypergumbo_core.analyze.base import AnalysisResult, iter_tree, make_symbol_id
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.analyze.registry import register_analyzer
 
 PASS_ID = "latex"
-
-
-@dataclass
-class LaTeXAnalysisResult:
-    """Result of analyzing LaTeX files."""
-
-    symbols: list[Symbol] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
-    run: Optional[AnalysisRun] = None
-    skipped: bool = False
-    skipped_reason: str = ""
 
 
 def is_latex_tree_sitter_available() -> bool:
@@ -66,13 +53,6 @@ def _get_parser():
     from tree_sitter_language_pack import get_parser
 
     return get_parser("latex")
-
-
-def _make_symbol_id(
-    path: str, start_line: int, end_line: int, name: str, kind: str
-) -> str:
-    """Generate location-based ID for a symbol."""
-    return f"latex:{path}:{start_line}-{end_line}:{name}:{kind}"
 
 
 def _extract_text(node, source_bytes: bytes) -> str:
@@ -135,7 +115,7 @@ def _extract_symbols_from_file(
             end_line = node.end_point[0] + 1
             symbols.append(
                 Symbol(
-                    id=_make_symbol_id(rel_path, start_line, end_line, title, "section"),
+                    id=make_symbol_id("latex", rel_path, start_line, end_line, title, "section"),
                     name=title,
                     kind="section",
                     language="latex",
@@ -168,7 +148,7 @@ def _extract_symbols_from_file(
             end_line = node.end_point[0] + 1
             symbols.append(
                 Symbol(
-                    id=_make_symbol_id(rel_path, start_line, end_line, label_name, "label"),
+                    id=make_symbol_id("latex", rel_path, start_line, end_line, label_name, "label"),
                     name=label_name,
                     kind="label",
                     language="latex",
@@ -199,7 +179,7 @@ def _extract_symbols_from_file(
             end_line = node.end_point[0] + 1
             symbols.append(
                 Symbol(
-                    id=_make_symbol_id(rel_path, start_line, end_line, cmd_name, "command"),
+                    id=make_symbol_id("latex", rel_path, start_line, end_line, cmd_name, "command"),
                     name=cmd_name,
                     kind="command",
                     language="latex",
@@ -230,7 +210,7 @@ def _extract_symbols_from_file(
             end_line = node.end_point[0] + 1
             symbols.append(
                 Symbol(
-                    id=_make_symbol_id(rel_path, start_line, end_line, env_name, "environment"),
+                    id=make_symbol_id("latex", rel_path, start_line, end_line, env_name, "environment"),
                     name=env_name,
                     kind="environment",
                     language="latex",
@@ -363,14 +343,14 @@ def _extract_edges_from_file(
 
 
 @register_analyzer("latex")
-def analyze_latex(repo_root: Path) -> LaTeXAnalysisResult:
+def analyze_latex(repo_root: Path) -> AnalysisResult:
     """Analyze LaTeX files in the repository.
 
     Args:
         repo_root: Root directory of the repository
 
     Returns:
-        LaTeXAnalysisResult with symbols and edges from LaTeX files
+        AnalysisResult with symbols and edges from LaTeX files
     """
     import warnings
 
@@ -381,11 +361,11 @@ def analyze_latex(repo_root: Path) -> LaTeXAnalysisResult:
             UserWarning,
             stacklevel=2,
         )
-        return LaTeXAnalysisResult(
+        return AnalysisResult(
             symbols=[],
             edges=[],
             skipped=True,
-            skipped_reason="tree-sitter-latex not available",
+            skip_reason="tree-sitter-latex not available",
         )
 
     parser = _get_parser()
@@ -431,4 +411,4 @@ def analyze_latex(repo_root: Path) -> LaTeXAnalysisResult:
     # Update run stats
     run.files_analyzed = len(file_trees)
 
-    return LaTeXAnalysisResult(symbols=symbols, edges=edges, run=run)
+    return AnalysisResult(symbols=symbols, edges=edges, run=run)

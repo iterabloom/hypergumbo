@@ -13,25 +13,19 @@ by the main test suite. Focuses on:
 """
 from pathlib import Path
 
-from hypergumbo_lang_common.nix import (
-    _make_edge_id,
-    _make_symbol_id,
-    analyze_nix_files,
-    find_nix_files,
-)
-
+from hypergumbo_core.analyze.base import make_symbol_id
+from hypergumbo_lang_common.nix import _make_edge_id, analyze_nix_files, find_nix_files
 
 def make_nix_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a Nix file with given content."""
     (tmp_path / name).write_text(content)
-
 
 class TestNixHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = _make_symbol_id("pkgs/utils.nix", 5, 10, "mkDerivation", "function")
+        symbol_id = make_symbol_id("nix", "pkgs/utils.nix", 5, 10, "mkDerivation", "function")
         assert symbol_id == "nix:pkgs/utils.nix:5-10:mkDerivation:function"
 
     def test_make_edge_id_deterministic(self) -> None:
@@ -40,7 +34,6 @@ class TestNixHelperFunctions:
         edge_id_2 = _make_edge_id("src1", "dst1", "imports")
         assert edge_id_1 == edge_id_2
         assert edge_id_1.startswith("edge:sha256:")
-
 
 class TestFunctionExtraction:
     """Branch coverage for function definition extraction."""
@@ -86,7 +79,6 @@ class TestFunctionExtraction:
         assert "dec" in names
         assert "double" in names
 
-
 class TestBindingExtraction:
     """Branch coverage for binding extraction."""
 
@@ -103,7 +95,6 @@ class TestBindingExtraction:
         names = [b.name for b in bindings]
         assert "version" in names
         assert "name" in names
-
 
 class TestFlakeInputs:
     """Branch coverage for flake input detection."""
@@ -126,7 +117,6 @@ class TestFlakeInputs:
         assert "nixpkgs" in names
         assert "flake-utils" in names
 
-
 class TestDerivationExtraction:
     """Branch coverage for derivation detection."""
 
@@ -142,7 +132,6 @@ pkgs.stdenv.mkDerivation {
         result = analyze_nix_files(tmp_path)
         # The derivation should be detected
         assert not result.skipped
-
 
 class TestImportEdges:
     """Branch coverage for import edge extraction."""
@@ -171,7 +160,6 @@ in
         import_edges = [e for e in result.edges if e.edge_type == "imports"]
         assert len(import_edges) >= 1
 
-
 class TestFunctionCallEdges:
     """Branch coverage for function call edge extraction."""
 
@@ -187,7 +175,6 @@ class TestFunctionCallEdges:
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         helper_calls = [e for e in call_edges if "helper" in e.dst]
         assert len(helper_calls) >= 1
-
 
 class TestFindNixFiles:
     """Branch coverage for file discovery."""
@@ -209,7 +196,6 @@ class TestFindNixFiles:
         files = list(find_nix_files(tmp_path))
         assert len(files) == 1
         assert files[0].name == "default.nix"
-
 
 class TestEmptyAndMinimalFiles:
     """Branch coverage for empty/minimal file handling."""
@@ -237,7 +223,6 @@ in
         assert not result.skipped
         assert len(result.symbols) == 0
 
-
 class TestTopLevelFunction:
     """Branch coverage for top-level function (module pattern)."""
 
@@ -255,7 +240,6 @@ class TestTopLevelFunction:
         funcs = [s for s in result.symbols if s.kind == "function"]
         # Should include a function named after the file
         assert len(funcs) >= 1
-
 
 class TestFunctionSignatures:
     """Branch coverage for function signature extraction."""
