@@ -25,12 +25,15 @@ language-specific parsing logic.
 from __future__ import annotations
 
 import importlib.util
+import time
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Iterator, Optional
+from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional
 
 from ..discovery import find_files
-from ..ir import AnalysisRun, Edge, Symbol, UsageContext
+from ..ir import AnalysisRun, Edge, Span, Symbol, UsageContext
+from ..symbol_resolution import NameResolver
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -277,3 +280,470 @@ def make_file_finder(patterns: list[str]) -> Callable[[Path], Iterator[Path]]:  
         yield from find_files(repo_root, patterns)
 
     return finder
+
+
+# ---------------------------------------------------------------------------
+# TreeSitterAnalyzer base class
+# ---------------------------------------------------------------------------
+
+
+class TreeSitterAnalyzer:
+    """Base class for tree-sitter-based language analyzers.
+
+    Encapsulates the universal two-pass architecture used by 100+ analyzers:
+      Pass 1: Discover files, parse with tree-sitter, extract symbols
+      Pass 2: Re-walk ASTs, resolve calls/imports against global symbol registry
+
+    Subclasses configure via class attributes and override template methods
+    for language-specific extraction logic.
+
+    How It Works
+    ------------
+    1. Check grammar availability (``_check_grammar_available``)
+    2. Initialize parser and AnalysisRun
+    3. Pass 1: ``extract_symbols_from_file()`` for each source file
+    4. Build global symbol registry via ``register_symbol()``
+    5. Pass 2: ``extract_edges_from_file()`` for each file
+    6. Pass 2b: ``extract_usage_contexts_from_file()`` for each file
+    7. ``post_process()`` hook for cross-cutting concerns
+    8. Assemble and return AnalysisResult
+
+    Why This Design
+    ---------------
+    Previously, each analyzer duplicated this two-pass loop (~100 lines).
+    The base class captures the scaffolding so subclasses focus solely on
+    language-specific extraction logic. Analyzers can override any template
+    method, or override ``analyze()`` entirely for full control.
+
+    Grammar Modes
+    -------------
+    Two ways to specify the grammar:
+
+    - ``grammar_module = "tree_sitter_go"`` — direct package import
+    - ``language_pack_name = "nim"`` — uses tree_sitter_language_pack
+
+    Exactly one should be set. The base class handles availability checking
+    and parser creation for both modes.
+
+    Example (simple analyzer)::
+
+        class NimAnalyzer(TreeSitterAnalyzer):
+            lang = "nim"
+            pass_id = "nim-v1"
+            pass_version = "hypergumbo-0.1.0"
+            file_patterns = ["*.nim", "*.nims"]
+            language_pack_name = "nim"
+
+            def extract_symbols_from_file(self, tree, source, file_path,
+                                          rel_path, run):
+                analysis = FileAnalysis()
+                for node in iter_tree(tree.root_node):
+                    if node.type == "proc_declaration":
+                        # ... extract symbol
+                return analysis
+
+            def extract_edges_from_file(self, ...):
+                # ... extract edges
+                return edges
+
+        _analyzer = NimAnalyzer()
+
+        @register_analyzer("nim")
+        def analyze_nim(repo_root, max_files=None):
+            return _analyzer.analyze(repo_root, max_files)
+    """
+
+    # -- Required configuration (set by subclass) --------------------------
+    lang: str = ""
+    """Language identifier (e.g., "go", "rust", "python")."""
+
+    pass_id: str = ""
+    """Pass identifier (e.g., "go-v1", "rust-v1")."""
+
+    pass_version: str = ""
+    """Version string (e.g., "hypergumbo-0.1.0")."""
+
+    file_patterns: ClassVar[list[str]] = []
+    """Glob patterns for source files (e.g., ["*.go"], ["*.rs"])."""
+
+    # -- Grammar source: exactly one of these should be set ----------------
+    grammar_module: Optional[str] = None
+    """Direct grammar package name (e.g., "tree_sitter_go")."""
+
+    language_pack_name: Optional[str] = None
+    """Language-pack grammar name (e.g., "nim")."""
+
+    # -- Optional configuration --------------------------------------------
+    resolver_class: type = NameResolver
+    """Resolver class for symbol lookup during Pass 2."""
+
+    create_file_symbols: bool = False
+    """Whether to emit file-level symbols for each source file."""
+
+    supports_max_files: bool = False
+    """Whether analyze() should respect the max_files parameter."""
+
+    # -- Template methods: grammar setup -----------------------------------
+
+    def _check_grammar_available(self) -> bool:
+        """Check if the tree-sitter grammar is available.
+
+        Default implementation handles both grammar_module and
+        language_pack_name modes. Override for custom availability logic.
+
+        Returns:
+            True if grammar is importable and usable.
+        """
+        if self.grammar_module is not None:
+            return is_grammar_available(self.grammar_module)
+        if self.language_pack_name is not None:
+            if importlib.util.find_spec("tree_sitter") is None:
+                return False  # pragma: no cover
+            if importlib.util.find_spec("tree_sitter_language_pack") is None:
+                return False  # pragma: no cover
+            try:
+                from tree_sitter_language_pack import get_language
+
+                get_language(self.language_pack_name)
+                return True
+            except Exception:  # pragma: no cover
+                return False
+        return False  # pragma: no cover - no grammar configured
+
+    def _create_parser(self) -> "tree_sitter.Parser":
+        """Create and return a tree-sitter parser.
+
+        Default implementation handles both grammar_module and
+        language_pack_name modes. Override for custom parser setup.
+
+        Returns:
+            A configured tree-sitter Parser instance.
+        """
+        import tree_sitter
+
+        if self.grammar_module is not None:
+            mod = importlib.import_module(self.grammar_module)
+            lang = tree_sitter.Language(mod.language())
+            return tree_sitter.Parser(lang)
+
+        # language_pack_name mode
+        from tree_sitter_language_pack import get_language
+
+        lang = get_language(self.language_pack_name)
+        return tree_sitter.Parser(lang)
+
+    # -- Template methods: symbol extraction (Pass 1) ----------------------
+
+    def extract_symbols_from_file(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+        file_path: Path,
+        rel_path: str,
+        run: AnalysisRun,
+    ) -> FileAnalysis:
+        """Extract symbols from a single parsed file.
+
+        Override this method with language-specific symbol extraction.
+        Default returns empty FileAnalysis.
+
+        Args:
+            tree: Parsed tree-sitter tree
+            source: Raw source bytes
+            file_path: Absolute path to the file
+            rel_path: Path relative to repo root
+            run: Current AnalysisRun for provenance
+
+        Returns:
+            FileAnalysis with symbols and symbol_by_name populated.
+        """
+        return FileAnalysis()  # pragma: no cover
+
+    def get_import_aliases(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+    ) -> dict[str, str]:
+        """Extract import alias to module path mappings.
+
+        Used during Pass 2 for call disambiguation (e.g., "np" -> "numpy").
+        Default returns empty dict.
+
+        Args:
+            tree: Parsed tree-sitter tree
+            source: Raw source bytes
+
+        Returns:
+            Mapping of alias name to full module path.
+        """
+        return {}
+
+    # -- Template methods: edge extraction (Pass 2) ------------------------
+
+    def extract_edges_from_file(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+        file_path: Path,
+        rel_path: str,
+        local_symbols: dict[str, Symbol],
+        global_symbols: dict,
+        run: AnalysisRun,
+        import_aliases: dict[str, str],
+        resolver: NameResolver,
+    ) -> list[Edge]:
+        """Extract edges from a single parsed file.
+
+        Override for language-specific edge extraction.
+        Default returns empty list.
+
+        Args:
+            tree: Parsed tree-sitter tree
+            source: Raw source bytes
+            file_path: Absolute path to the file
+            rel_path: Path relative to repo root
+            local_symbols: Symbol-by-name dict for this file
+            global_symbols: All symbols across all files
+            run: Current AnalysisRun for provenance
+            import_aliases: Import alias mappings from get_import_aliases
+            resolver: Configured name resolver for symbol lookup
+
+        Returns:
+            List of Edge instances.
+        """
+        return []  # pragma: no cover
+
+    def extract_usage_contexts_from_file(
+        self,
+        tree: "tree_sitter.Tree",
+        source: bytes,
+        file_path: Path,
+        symbol_by_name: dict[str, Symbol],
+    ) -> list[UsageContext]:
+        """Extract UsageContext records for framework pattern matching.
+
+        Default returns empty list. Override for route-emitting analyzers.
+
+        Args:
+            tree: Parsed tree-sitter tree
+            source: Raw source bytes
+            file_path: Absolute path to the file
+            symbol_by_name: Symbol-by-name dict for this file
+
+        Returns:
+            List of UsageContext instances.
+        """
+        return []
+
+    # -- Template methods: global symbol registry --------------------------
+
+    def register_symbol(
+        self,
+        symbol: Symbol,
+        global_symbols: dict,
+    ) -> None:
+        """Add a symbol to the global registry for cross-file resolution.
+
+        Default stores by short name (last segment after ".").
+        Override for language-specific indexing (e.g., Go stores lists).
+
+        Args:
+            symbol: Symbol to register
+            global_symbols: Mutable global registry dict
+        """
+        global_symbols[symbol.name] = symbol
+
+    # -- Template methods: post-processing ---------------------------------
+
+    def post_process(
+        self,
+        symbols: list[Symbol],
+        edges: list[Edge],
+        usage_contexts: list[UsageContext],
+        run: AnalysisRun,
+    ) -> tuple[list[Symbol], list[Edge], list[UsageContext]]:
+        """Optional post-processing after both passes complete.
+
+        Use for route extraction, annotation edges, or other
+        cross-cutting concerns. Default is identity.
+
+        Args:
+            symbols: All symbols from Pass 1
+            edges: All edges from Pass 2
+            usage_contexts: All usage contexts from Pass 2
+            run: Current AnalysisRun
+
+        Returns:
+            Tuple of (symbols, edges, usage_contexts), possibly modified.
+        """
+        return symbols, edges, usage_contexts
+
+    # -- Main analysis method (the two-pass loop) --------------------------
+
+    def analyze(
+        self,
+        repo_root: Path,
+        max_files: Optional[int] = None,
+    ) -> AnalysisResult:
+        """Run the full two-pass analysis.
+
+        This method orchestrates the entire analysis pipeline:
+        1. Check grammar availability
+        2. Initialize parser and AnalysisRun
+        3. Pass 1: extract symbols from each file
+        4. Build global symbol registry
+        5. Pass 2: extract edges from each file
+        6. Pass 2b: extract usage contexts
+        7. Post-process
+        8. Assemble and return AnalysisResult
+
+        Args:
+            repo_root: Root directory of the repository
+            max_files: Optional limit on files to process
+
+        Returns:
+            AnalysisResult with symbols, edges, usage_contexts, and run.
+        """
+        start_time = time.time()
+        run = AnalysisRun.create(pass_id=self.pass_id, version=self.pass_version)
+
+        # 1. Check grammar availability
+        if not self._check_grammar_available():
+            warnings.warn(
+                f"{self.lang} analysis skipped: grammar not available. "
+                f"Install the required tree-sitter grammar package.",
+                UserWarning,
+                stacklevel=2,
+            )
+            run.duration_ms = int((time.time() - start_time) * 1000)
+            return AnalysisResult(
+                run=run,
+                skipped=True,
+                skip_reason=f"{self.lang} tree-sitter grammar not available",
+            )
+
+        # 2. Initialize parser
+        parser = self._create_parser()
+
+        # 3. Pass 1: Extract symbols from all files
+        file_analyses: dict[Path, tuple[FileAnalysis, dict[str, str]]] = {}
+        files_analyzed = 0
+        files_skipped = 0
+
+        for source_file in find_files(repo_root, self.file_patterns):
+            if max_files is not None and files_analyzed >= max_files:
+                break
+
+            try:
+                source = source_file.read_bytes()
+            except OSError:
+                files_skipped += 1
+                continue
+
+            tree = parser.parse(source)
+            rel_path = str(source_file.relative_to(repo_root))
+
+            analysis = self.extract_symbols_from_file(
+                tree, source, source_file, rel_path, run
+            )
+
+            # Optional: create file-level symbol
+            if self.create_file_symbols:
+                file_sym = Symbol(
+                    id=make_file_id(self.lang, rel_path),
+                    name=rel_path,
+                    kind="file",
+                    language=self.lang,
+                    path=rel_path,
+                    span=Span(start_line=1, start_col=0, end_line=1, end_col=0),
+                    origin=self.pass_id,
+                    origin_run_id=run.execution_id,
+                )
+                analysis.symbols.insert(0, file_sym)
+
+            # Extract import aliases for Pass 2
+            import_aliases = self.get_import_aliases(tree, source)
+
+            file_analyses[source_file] = (analysis, import_aliases)
+            files_analyzed += 1
+
+        # 4. Build global symbol registry
+        global_symbols: dict = {}
+        for analysis, _ in file_analyses.values():
+            for symbol in analysis.symbols:
+                self.register_symbol(symbol, global_symbols)
+
+        # 5. Pass 2: Extract edges and usage contexts
+        all_symbols: list[Symbol] = []
+        all_edges: list[Edge] = []
+        all_contexts: list[UsageContext] = []
+        resolver = self.resolver_class(global_symbols)
+
+        for source_file, (analysis, import_aliases) in file_analyses.items():
+            all_symbols.extend(analysis.symbols)
+
+            # Re-parse for Pass 2
+            source = source_file.read_bytes()
+            tree = parser.parse(source)
+            rel_path = str(source_file.relative_to(repo_root))
+
+            edges = self.extract_edges_from_file(
+                tree, source, source_file, rel_path,
+                analysis.symbol_by_name, global_symbols, run,
+                import_aliases, resolver,
+            )
+            all_edges.extend(edges)
+
+            # 6. Usage contexts
+            contexts = self.extract_usage_contexts_from_file(
+                tree, source, source_file, analysis.symbol_by_name,
+            )
+            all_contexts.extend(contexts)
+
+        # 7. Post-process
+        all_symbols, all_edges, all_contexts = self.post_process(
+            all_symbols, all_edges, all_contexts, run,
+        )
+
+        # 8. Assemble result
+        run.files_analyzed = files_analyzed
+        run.files_skipped = files_skipped
+        run.duration_ms = int((time.time() - start_time) * 1000)
+
+        return AnalysisResult(
+            symbols=all_symbols,
+            edges=all_edges,
+            usage_contexts=all_contexts,
+            run=run,
+        )
+
+    # -- Registration helper -----------------------------------------------
+
+    def as_registered_analyzer(self) -> Callable:
+        """Return a function suitable for use with @register_analyzer.
+
+        Returns a function with signature
+        ``(repo_root: Path, max_files: int | None = None) -> AnalysisResult``
+        that delegates to ``self.analyze()``.
+
+        Example::
+
+            _analyzer = GoAnalyzer()
+
+            @register_analyzer("go", priority=50)
+            def analyze_go(repo_root, max_files=None):
+                return _analyzer.analyze(repo_root, max_files)
+
+            # Or equivalently:
+            analyze_go = register_analyzer("go")(_analyzer.as_registered_analyzer())
+
+        Returns:
+            A callable that wraps ``self.analyze()``.
+        """
+
+        def analyze_fn(
+            repo_root: Path, max_files: Optional[int] = None
+        ) -> AnalysisResult:
+            return self.analyze(repo_root, max_files)
+
+        return analyze_fn
