@@ -26,6 +26,18 @@ from hypergumbo_core.framework_patterns import (
 from hypergumbo_core.ir import Span, Symbol, UsageContext
 
 
+@pytest.fixture(autouse=True)
+def _clean_pattern_cache():
+    """Clear framework pattern cache between tests.
+
+    Tests that patch get_frameworks_dir poison _PATTERN_CACHE with None
+    entries for convention patterns (main-functions, config-conventions, etc.).
+    With xdist load distribution, stale entries leak to other tests in the
+    same worker process. Clearing before each test prevents this.
+    """
+    clear_pattern_cache()
+
+
 class TestPattern:
     """Tests for the Pattern dataclass."""
 
@@ -9044,9 +9056,6 @@ class TestConfigConventionPatterns:
 
     def test_enrich_symbols_with_npm_dependency(self) -> None:
         """enrich_symbols enriches NPM dependency with npm_dependency concept."""
-        # Clear cache to avoid stale entries from tests that patch get_frameworks_dir
-        clear_pattern_cache()
-
         symbol = Symbol(
             id="json:package.json:5-5:lodash:dependency",
             name="lodash",
@@ -9069,9 +9078,6 @@ class TestConfigConventionPatterns:
 
     def test_enrich_symbols_with_cargo_dependency(self) -> None:
         """enrich_symbols enriches Cargo dependency with cargo_dependency concept."""
-        # Clear cache to avoid stale entries from tests that patch get_frameworks_dir
-        clear_pattern_cache()
-
         symbol = Symbol(
             id="toml:Cargo.toml:10-10:tokio:dependency",
             name="tokio",
