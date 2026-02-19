@@ -663,7 +663,7 @@ class TestListNameResolverDisambiguation:
     """Tests for disambiguation in ListNameResolver."""
 
     def test_multiple_candidates_without_hint_returns_first(self) -> None:
-        """Multiple candidates without hint returns first with low confidence."""
+        """Multiple candidates without hint returns first with scaled confidence."""
         sym_grpc = make_symbol("Register", "/grpc/server.go", "grpc")
         sym_http = make_symbol("Register", "/http/server.go", "http")
         registry = {"Register": [sym_grpc, sym_http]}
@@ -672,8 +672,9 @@ class TestListNameResolverDisambiguation:
         result = resolver.lookup("Register")
 
         assert result.found is True
-        assert result.symbol is sym_grpc  # First candidate
-        assert result.confidence == ListNameResolver.CONFIDENCE_AMBIGUOUS
+        assert result.symbol is sym_grpc  # First candidate (sorted by path)
+        # 1/sqrt(2) ≈ 0.707
+        assert abs(result.confidence - (1.0 / 2**0.5)) < 0.01
         assert result.match_type == "ambiguous"
         assert len(result.candidates) == 2
 
@@ -716,7 +717,8 @@ class TestListNameResolverDisambiguation:
 
         assert result.found is True
         assert result.symbol is sym_grpc  # Falls back to first
-        assert result.confidence == ListNameResolver.CONFIDENCE_AMBIGUOUS
+        # 1/sqrt(2) ≈ 0.707
+        assert abs(result.confidence - (1.0 / 2**0.5)) < 0.01
 
     def test_short_path_hint_uses_full_path(self) -> None:
         """Short path hint like 'entities/bug' disambiguates via full path match.
@@ -735,3 +737,57 @@ class TestListNameResolverDisambiguation:
         assert result.symbol is sym_pkg
         assert result.confidence == ListNameResolver.CONFIDENCE_PATH_HINT
         assert result.match_type == "path_hint"
+
+
+class TestListNameResolverCandidateScaling:
+    """Ambiguous confidence scales down with more candidates.
+
+    When many types implement the same method (e.g., Close(), String(),
+    Name() in Go), a random pick among 50 candidates should have much
+    lower confidence than a pick among 2. The formula is
+    1/sqrt(num_candidates), giving:
+      2 → 0.707,  5 → 0.447,  10 → 0.316,  50 → 0.141
+    """
+
+    def test_two_candidates_confidence(self) -> None:
+        """Two candidates gives ~0.71 confidence."""
+        syms = [make_symbol("Close", f"/pkg{i}/x.go", "go") for i in range(2)]
+        resolver = ListNameResolver({"Close": syms})
+        result = resolver.lookup("Close")
+        assert result.found is True
+        assert result.match_type == "ambiguous"
+        assert abs(result.confidence - (1.0 / 2**0.5)) < 0.01
+
+    def test_ten_candidates_lower_confidence(self) -> None:
+        """Ten candidates gives ~0.32 confidence."""
+        syms = [make_symbol("String", f"/pkg{i}/x.go", "go") for i in range(10)]
+        resolver = ListNameResolver({"String": syms})
+        result = resolver.lookup("String")
+        assert result.found is True
+        assert result.confidence < 0.35
+        assert result.confidence > 0.28
+
+    def test_fifty_candidates_very_low_confidence(self) -> None:
+        """Fifty candidates gives ~0.14 confidence."""
+        syms = [make_symbol("Name", f"/pkg{i:02d}/x.go", "go") for i in range(50)]
+        resolver = ListNameResolver({"Name": syms})
+        result = resolver.lookup("Name")
+        assert result.found is True
+        assert result.confidence < 0.18
+        assert result.confidence > 0.10
+
+    def test_path_hint_not_affected_by_scaling(self) -> None:
+        """Path hint disambiguation maintains full confidence regardless of candidate count."""
+        syms = [make_symbol("Close", f"/pkg{i:02d}/x.go", "go") for i in range(50)]
+        resolver = ListNameResolver({"Close": syms})
+        result = resolver.lookup("Close", path_hint="/pkg07/")
+        assert result.found is True
+        assert result.confidence == ListNameResolver.CONFIDENCE_PATH_HINT
+
+    def test_single_candidate_not_affected(self) -> None:
+        """Single candidate still gets exact confidence."""
+        syms = [make_symbol("Unique", "/pkg/x.go", "go")]
+        resolver = ListNameResolver({"Unique": syms})
+        result = resolver.lookup("Unique")
+        assert result.found is True
+        assert result.confidence == ListNameResolver.CONFIDENCE_EXACT

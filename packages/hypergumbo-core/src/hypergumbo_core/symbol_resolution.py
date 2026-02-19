@@ -579,6 +579,7 @@ class ListNameResolver:
     # Confidence multipliers for different match types
     CONFIDENCE_EXACT = 1.0
     CONFIDENCE_PATH_HINT = 0.90
+    # Legacy constant; ambiguous confidence now scales as 1/sqrt(N)
     CONFIDENCE_AMBIGUOUS = 0.70
 
     def __init__(self, registry: dict[str, list[Symbol]]) -> None:
@@ -596,6 +597,12 @@ class ListNameResolver:
         path_hint: str | None = None,
     ) -> LookupResult:
         """Look up a symbol by name with disambiguation.
+
+        Ambiguous confidence scales as ``1/sqrt(N)`` where *N* is the number
+        of candidates.  This means common interface methods like ``Close()``,
+        ``String()``, or ``Name()`` that are defined on dozens of types get
+        proportionally lower confidence (e.g. 50 candidates → 0.14) than a
+        two-way ambiguity (0.71).
 
         Args:
             name: The symbol name to look up.
@@ -638,11 +645,14 @@ class ListNameResolver:
                         candidates=candidates,
                     )
 
-        # Ambiguous - sort for deterministic ordering, return first with low confidence
+        # Ambiguous — scale confidence by 1/sqrt(N) so that common interface
+        # methods (Close, String, Name) with dozens of implementations get
+        # proportionally lower confidence than a two-way ambiguity.
         sorted_candidates = sorted(candidates, key=lambda s: s.path)
+        scaled_confidence = 1.0 / (len(candidates) ** 0.5)
         return LookupResult(
             symbol=sorted_candidates[0],
-            confidence=self.CONFIDENCE_AMBIGUOUS,
+            confidence=scaled_confidence,
             match_type="ambiguous",
             candidates=candidates,
         )

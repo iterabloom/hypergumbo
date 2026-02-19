@@ -1940,7 +1940,7 @@ func main() {
         """Typed receiver resolution should have higher confidence than untyped.
 
         When we know the receiver type, the confidence should be 0.85 (type-tracked)
-        rather than 0.80 * 0.70 = 0.56 (ListNameResolver ambiguous).
+        rather than 0.80 * 1/sqrt(N) (ListNameResolver ambiguous, scaled by candidates).
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 
