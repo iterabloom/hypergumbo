@@ -410,6 +410,36 @@ class _NamespaceBlock:
     prefixes_path: bool  # True for namespace (prefixes URL), False for scope module:
 
 
+@dataclass
+class _ResourceBlock:
+    """A Rails resources/resource block with byte range and resource info.
+
+    Tracks do_block byte ranges so nested routes, member blocks, and
+    collection blocks can determine their parent resource context.
+    """
+
+    start_byte: int
+    end_byte: int
+    resource_name: str  # e.g. "users", "posts"
+    path_prefix: str  # e.g. "/users/:user_id" for nested resources
+    controller_name: str  # e.g. "users", "admin/users"
+    is_singular: bool  # True for 'resource', False for 'resources'
+
+
+@dataclass
+class _MemberCollectionBlock:
+    """A Rails member/collection block inside a resource.
+
+    member do ... end → routes at /:id/action
+    collection do ... end → routes at /action
+    """
+
+    start_byte: int
+    end_byte: int
+    block_type: str  # "member" or "collection"
+    resource_block: _ResourceBlock  # parent resource
+
+
 def _find_namespace_blocks(
     root: "tree_sitter.Node",
     source: bytes,
@@ -532,6 +562,180 @@ def _get_namespace_context(
     return "/".join(path_parts), "/".join(module_parts)
 
 
+def _find_resource_blocks(
+    root: "tree_sitter.Node",
+    source: bytes,
+    ns_blocks: list[_NamespaceBlock],
+) -> tuple[list[_ResourceBlock], list[_MemberCollectionBlock]]:
+    """Pre-scan tree for Rails resource blocks with do_block children.
+
+    Finds ``resources :name do ... end`` and ``resource :name do ... end``
+    calls that contain nested route definitions. Also finds ``member do``
+    and ``collection do`` blocks inside resource blocks.
+
+    Returns:
+        Tuple of (resource_blocks, member_collection_blocks).
+    """
+    resource_blocks: list[_ResourceBlock] = []
+    mc_blocks: list[_MemberCollectionBlock] = []
+
+    for n in iter_tree(root):
+        if n.type != "call":
+            continue
+
+        method_node = None
+        for child in n.children:
+            if child.type == "identifier":
+                method_node = child
+                break
+        if method_node is None:  # pragma: no cover
+            continue
+
+        method_name = _node_text(method_node, source).lower()
+
+        if method_name in ("resources", "resource"):
+            # Check for do_block
+            do_block = None
+            for child in n.children:
+                if child.type in ("do_block", "block"):
+                    do_block = child
+                    break
+            if do_block is None:
+                continue
+
+            # Extract resource name from arguments
+            args_node = _find_child_by_field(n, "arguments")
+            if not args_node:  # pragma: no cover
+                continue
+            resource_name = None
+            for arg in args_node.children:
+                if arg.type == "simple_symbol":
+                    resource_name = _node_text(arg, source).strip(":")
+                    break
+            if resource_name is None:  # pragma: no cover
+                continue
+
+            # Get namespace context for this resource
+            ns_path_prefix, module_prefix = _get_namespace_context(n, ns_blocks)
+
+            # Build path prefix: check if this resource is nested inside
+            # another resource block. Use innermost (narrowest byte range).
+            parent_path = ""
+            innermost_rb = None
+            for rb in resource_blocks:
+                if rb.start_byte <= n.start_byte and n.end_byte <= rb.end_byte:
+                    if innermost_rb is None or rb.start_byte > innermost_rb.start_byte:
+                        innermost_rb = rb
+            if innermost_rb is not None:
+                parent_path = innermost_rb.path_prefix
+
+            is_singular = method_name == "resource"
+            if innermost_rb is not None:
+                # Nested resource: include parent's :parent_id in path
+                parent_id = f":{_singularize(innermost_rb.resource_name)}_id"
+                path_prefix = f"{parent_path}/{parent_id}/{resource_name}"
+            elif ns_path_prefix:
+                path_prefix = f"/{ns_path_prefix}/{resource_name}"
+            else:
+                path_prefix = f"/{resource_name}"
+
+            controller_name = (
+                f"{module_prefix}/{resource_name}" if module_prefix else resource_name
+            )
+
+            resource_blocks.append(_ResourceBlock(
+                start_byte=do_block.start_byte,
+                end_byte=do_block.end_byte,
+                resource_name=resource_name,
+                path_prefix=path_prefix,
+                controller_name=controller_name,
+                is_singular=is_singular,
+            ))
+
+        elif method_name in ("member", "collection"):
+            # member/collection blocks inside a resource
+            do_block = None
+            for child in n.children:
+                if child.type in ("do_block", "block"):
+                    do_block = child
+                    break
+            if do_block is None:  # pragma: no cover - member/collection always has block
+                continue
+
+            # Find the innermost enclosing resource block
+            parent_rb = None
+            for rb in resource_blocks:
+                if rb.start_byte <= n.start_byte and n.end_byte <= rb.end_byte:
+                    if parent_rb is None or rb.start_byte > parent_rb.start_byte:
+                        parent_rb = rb
+            if parent_rb is None:  # pragma: no cover - member/collection always inside resource
+                continue
+
+            mc_blocks.append(_MemberCollectionBlock(
+                start_byte=do_block.start_byte,
+                end_byte=do_block.end_byte,
+                block_type=method_name,
+                resource_block=parent_rb,
+            ))
+
+    return resource_blocks, mc_blocks
+
+
+def _get_resource_context(
+    node: "tree_sitter.Node",
+    resource_blocks: list[_ResourceBlock],
+    mc_blocks: list[_MemberCollectionBlock],
+) -> tuple[str, str, str]:
+    """Determine the resource context for a route call node.
+
+    Checks if the node is inside a resource block's do_block (nested resource)
+    or inside a member/collection block.
+
+    Returns:
+        (path_prefix, controller_name, context_type) where context_type is
+        "nested", "member", "collection", or "" if no resource context.
+    """
+    # Check member/collection blocks first (more specific, innermost wins)
+    innermost_mc = None
+    for mc in mc_blocks:
+        if mc.start_byte <= node.start_byte and node.end_byte <= mc.end_byte:
+            if innermost_mc is None or mc.start_byte > innermost_mc.start_byte:
+                innermost_mc = mc
+    if innermost_mc is not None:
+        return (
+            innermost_mc.resource_block.path_prefix,
+            innermost_mc.resource_block.controller_name,
+            innermost_mc.block_type,
+        )
+
+    # Check resource blocks (for nested resources, innermost wins)
+    innermost_rb = None
+    for rb in resource_blocks:
+        if rb.start_byte <= node.start_byte and node.end_byte <= rb.end_byte:
+            if innermost_rb is None or rb.start_byte > innermost_rb.start_byte:
+                innermost_rb = rb
+    if innermost_rb is not None:
+        parent_id = f":{_singularize(innermost_rb.resource_name)}_id"
+        return f"{innermost_rb.path_prefix}/{parent_id}", "", "nested"
+
+    return "", "", ""
+
+
+def _singularize(name: str) -> str:
+    """Naive English singularization for Rails resource param names.
+
+    Converts plural resource names to singular for :resource_id params.
+    E.g., "users" → "user", "posts" → "post", "categories" → "category".
+    """
+    if name.endswith("ies"):
+        return name[:-3] + "y"
+    if name.endswith("ses") or name.endswith("xes") or name.endswith("zes"):
+        return name[:-2]
+    if name.endswith("s") and not name.endswith("ss"):
+        return name[:-1]
+    return name
+
+
 def _extract_rails_routes(
     node: "tree_sitter.Node",
     source: bytes,
@@ -547,12 +751,19 @@ def _extract_rails_routes(
     - Rails: resources :users, resource :profile
     - Rails: namespace :admin do resources :users end
     - Rails: scope module: :admin do resources :settings end
+    - Rails: resources :users do resources :posts end (nested)
+    - Rails: resources :users do member do post :activate end end
+    - Rails: resources :users do collection do get :active end end
     - Sinatra: get '/path' do ... end
     - Sinatra: post '/users' do ... end
 
     Namespace DSL blocks (``namespace :admin do ... end``) prepend a module
     path to controller_action and URL path. ``scope module: :name`` only
     prefixes the controller lookup, not the URL path.
+
+    Nested resources prepend parent path + :parent_id to child routes.
+    Member blocks generate routes at /:id/action. Collection blocks
+    generate routes at /action.
 
     The has_block metadata field distinguishes Sinatra (with block) from Rails (with to: option).
 
@@ -565,6 +776,9 @@ def _extract_rails_routes(
 
     # Pre-scan for namespace/scope-module blocks
     ns_blocks = _find_namespace_blocks(node, source)
+
+    # Pre-scan for resource blocks and member/collection blocks
+    resource_blocks, mc_blocks = _find_resource_blocks(node, source, ns_blocks)
 
     for n in iter_tree(node):
         if n.type != "call":
@@ -586,6 +800,11 @@ def _extract_rails_routes(
         if method_name not in HTTP_METHODS and method_name not in ("resources", "resource"):
             continue
 
+        # Check resource context (nested resources, member/collection blocks)
+        res_path_prefix, res_controller, res_context = _get_resource_context(
+            n, resource_blocks, mc_blocks
+        )
+
         # Extract route path from first argument
         args_node = _find_child_by_field(n, "arguments")
         if not args_node:  # pragma: no cover
@@ -594,6 +813,7 @@ def _extract_rails_routes(
         route_path = None
         controller_action = None
         resource_name = None  # Original resource name before namespace prefix
+        action_name = None  # For member/collection routes
 
         for arg in args_node.children:
             # String path for HTTP method routes
@@ -606,6 +826,20 @@ def _extract_rails_routes(
             elif arg.type == "simple_symbol" and method_name in ("resources", "resource"):
                 resource_name = _node_text(arg, source).strip(":")
                 route_path = resource_name
+                break
+            # Symbol for HTTP method inside member/collection block
+            # e.g., member do; post :activate; end → action_name = "activate"
+            elif (
+                arg.type == "simple_symbol"
+                and method_name in HTTP_METHODS
+                and res_context in ("member", "collection")
+            ):
+                action_name = _node_text(arg, source).strip(":")
+                if res_context == "member":
+                    route_path = f"{res_path_prefix}/:id/{action_name}"
+                else:  # collection
+                    route_path = f"{res_path_prefix}/{action_name}"
+                controller_action = f"{res_controller}#{action_name}"
                 break
             # Handle "path" => "controller#action" syntax (pair with string key)
             elif arg.type == "pair" and method_name in HTTP_METHODS:
@@ -651,12 +885,24 @@ def _extract_rails_routes(
         # Apply namespace prefix (e.g., namespace :admin do resources :users end)
         path_prefix, module_prefix = _get_namespace_context(n, ns_blocks)
 
-        # Prefix the URL path for namespace blocks (not for scope module:)
-        if path_prefix:
-            if route_path.startswith("/"):
-                route_path = f"/{path_prefix}{route_path}"
-            else:
-                route_path = f"{path_prefix}/{route_path}"
+        # For nested resources and member/collection routes, the resource
+        # block's path_prefix already includes the namespace path. Skip
+        # namespace path prefixing to avoid double-prefixing.
+        if res_context in ("nested", "member", "collection"):
+            # Resource nesting prefix already includes namespace path
+            if res_context == "nested" and method_name in ("resources", "resource"):
+                if route_path.startswith("/"):  # pragma: no cover - resource symbols don't start with /
+                    route_path = f"{res_path_prefix}{route_path}"
+                else:
+                    route_path = f"{res_path_prefix}/{route_path}"
+            # member/collection paths were already built in argument extraction
+        else:
+            # Standard namespace prefix (not inside a resource block)
+            if path_prefix:
+                if route_path.startswith("/"):
+                    route_path = f"/{path_prefix}{route_path}"
+                else:
+                    route_path = f"{path_prefix}/{route_path}"
 
         # Prefix the controller_action for both namespace and scope module:
         if module_prefix and controller_action:

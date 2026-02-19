@@ -1733,6 +1733,260 @@ end
         assert "dashboards#index" in routes_by_action
 
 
+class TestRailsNestedRoutes:
+    """Tests for nested Rails route constructs.
+
+    Rails supports nesting route definitions inside resource blocks:
+    - Nested resources: resources :users do; resources :posts; end
+    - Member routes: resources :users do; member do; post :activate; end; end
+    - Collection routes: resources :users do; collection do; get :active; end; end
+    """
+
+    def test_nested_resources(self, tmp_path: Path) -> None:
+        """Nested resources produce URL-prefixed routes with parent param."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        routes_rb = tmp_path / "config" / "routes.rb"
+        routes_rb.parent.mkdir(parents=True, exist_ok=True)
+        routes_rb.write_text("""
+Rails.application.routes.draw do
+  resources :users do
+    resources :posts
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+        route_syms = [s for s in result.symbols if s.kind == "route"]
+
+        # Should have 7 parent routes (users) + 7 nested routes (posts)
+        route_names = {s.name for s in route_syms}
+        # Nested routes should be prefixed with parent path + :user_id
+        assert "GET /users/:user_id/posts" in route_names
+        assert "POST /users/:user_id/posts" in route_names
+        assert "GET /users/:user_id/posts/:id" in route_names
+        assert "DELETE /users/:user_id/posts/:id" in route_names
+
+        # Verify controller_action for nested resource
+        nested_index = next(
+            s for s in route_syms if s.name == "GET /users/:user_id/posts"
+        )
+        assert nested_index.meta["controller_action"] == "posts#index"
+
+    def test_member_routes(self, tmp_path: Path) -> None:
+        """Member routes produce routes scoped to /:id/action."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        routes_rb = tmp_path / "config" / "routes.rb"
+        routes_rb.parent.mkdir(parents=True, exist_ok=True)
+        routes_rb.write_text("""
+Rails.application.routes.draw do
+  resources :users do
+    member do
+      post :activate
+      delete :deactivate
+    end
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+        route_syms = [s for s in result.symbols if s.kind == "route"]
+        route_names = {s.name for s in route_syms}
+
+        assert "POST /users/:id/activate" in route_names
+        assert "DELETE /users/:id/deactivate" in route_names
+
+        # Verify controller_action for member route
+        activate = next(
+            s for s in route_syms if s.name == "POST /users/:id/activate"
+        )
+        assert activate.meta["controller_action"] == "users#activate"
+
+    def test_collection_routes(self, tmp_path: Path) -> None:
+        """Collection routes produce routes at /resource/action (no :id)."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        routes_rb = tmp_path / "config" / "routes.rb"
+        routes_rb.parent.mkdir(parents=True, exist_ok=True)
+        routes_rb.write_text("""
+Rails.application.routes.draw do
+  resources :users do
+    collection do
+      get :active
+      get :inactive
+    end
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+        route_syms = [s for s in result.symbols if s.kind == "route"]
+        route_names = {s.name for s in route_syms}
+
+        assert "GET /users/active" in route_names
+        assert "GET /users/inactive" in route_names
+
+        # Verify controller_action for collection route
+        active = next(
+            s for s in route_syms if s.name == "GET /users/active"
+        )
+        assert active.meta["controller_action"] == "users#active"
+
+    def test_nested_resources_with_namespace(self, tmp_path: Path) -> None:
+        """Nested resources inside namespace get both namespace and parent prefix."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        routes_rb = tmp_path / "config" / "routes.rb"
+        routes_rb.parent.mkdir(parents=True, exist_ok=True)
+        routes_rb.write_text("""
+Rails.application.routes.draw do
+  namespace :admin do
+    resources :users do
+      resources :posts
+    end
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+        route_syms = [s for s in result.symbols if s.kind == "route"]
+        route_names = {s.name for s in route_syms}
+
+        # Should have namespace prefix + nested resource prefix
+        assert "GET /admin/users/:user_id/posts" in route_names
+
+        # Controller should have namespace prefix
+        nested = next(
+            s for s in route_syms if s.name == "GET /admin/users/:user_id/posts"
+        )
+        assert nested.meta["controller_action"] == "admin/posts#index"
+
+    def test_member_and_collection_combined(self, tmp_path: Path) -> None:
+        """Both member and collection blocks in same resource."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        routes_rb = tmp_path / "config" / "routes.rb"
+        routes_rb.parent.mkdir(parents=True, exist_ok=True)
+        routes_rb.write_text("""
+Rails.application.routes.draw do
+  resources :articles do
+    member do
+      post :publish
+    end
+    collection do
+      get :drafts
+    end
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+        route_syms = [s for s in result.symbols if s.kind == "route"]
+        route_names = {s.name for s in route_syms}
+
+        assert "POST /articles/:id/publish" in route_names
+        assert "GET /articles/drafts" in route_names
+
+    def test_nested_resources_singularize_parent_id(self, tmp_path: Path) -> None:
+        """Nested resources use singularized parent name for :parent_id param.
+
+        Tests singularization rules: categories → category (ies→y),
+        addresses → address (ses→trimmed), boxes → box (xes→trimmed).
+        """
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        routes_rb = tmp_path / "config" / "routes.rb"
+        routes_rb.parent.mkdir(parents=True, exist_ok=True)
+        routes_rb.write_text("""
+Rails.application.routes.draw do
+  resources :categories do
+    resources :items
+  end
+  resources :addresses do
+    resources :labels
+  end
+  resources :boxes do
+    resources :contents
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+        route_syms = [s for s in result.symbols if s.kind == "route"]
+        route_names = {s.name for s in route_syms}
+
+        # categories → category_id
+        assert "GET /categories/:category_id/items" in route_names
+        # addresses → address (ses → trimmed)
+        assert "GET /addresses/:address_id/labels" in route_names
+        # boxes → box (xes → trimmed)
+        assert "GET /boxes/:box_id/contents" in route_names
+
+    def test_deeply_nested_resources(self, tmp_path: Path) -> None:
+        """Resources nested 3 levels deep produce correct paths."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        routes_rb = tmp_path / "config" / "routes.rb"
+        routes_rb.parent.mkdir(parents=True, exist_ok=True)
+        routes_rb.write_text("""
+Rails.application.routes.draw do
+  resources :users do
+    resources :posts do
+      resources :comments
+    end
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+        route_syms = [s for s in result.symbols if s.kind == "route"]
+        route_names = {s.name for s in route_syms}
+
+        # 3-level nesting: users → posts → comments
+        assert "GET /users/:user_id/posts/:post_id/comments" in route_names
+        assert "GET /users/:user_id/posts/:post_id/comments/:id" in route_names
+
+    def test_member_without_resource_ignored(self, tmp_path: Path) -> None:
+        """member block not inside a resources block produces no extra routes."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        routes_rb = tmp_path / "config" / "routes.rb"
+        routes_rb.parent.mkdir(parents=True, exist_ok=True)
+        routes_rb.write_text("""
+Rails.application.routes.draw do
+  get '/home', to: 'pages#home'
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+        route_syms = [s for s in result.symbols if s.kind == "route"]
+        # Should just have the one explicit route
+        assert len(route_syms) == 1
+        assert route_syms[0].name == "GET /home"
+
+    def test_singular_resource_nested(self, tmp_path: Path) -> None:
+        """Singular resource (no :id) doesn't use _id param for nesting."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        routes_rb = tmp_path / "config" / "routes.rb"
+        routes_rb.parent.mkdir(parents=True, exist_ok=True)
+        routes_rb.write_text("""
+Rails.application.routes.draw do
+  resource :profile do
+    resources :posts
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+        route_syms = [s for s in result.symbols if s.kind == "route"]
+        route_names = {s.name for s in route_syms}
+
+        # Nested inside singular resource
+        assert "GET /profile/:profile_id/posts" in route_names
+
+
 class TestRubyBlockCallAttribution:
     """Tests for call edge attribution inside Ruby blocks.
 
