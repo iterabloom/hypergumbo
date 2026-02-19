@@ -234,6 +234,29 @@ poll_ci() {
 			echo "✅ CI Passed!"
 			return 0
 		elif [[ "$state" == "failure" || "$state" == "error" ]]; then
+			# Aggregate status is failure, but ci-complete (the gate job)
+			# may have succeeded — e.g., pytest failed but pytest-retry passed.
+			local ci_complete_state
+			ci_complete_state=$(echo "$API_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    for s in data.get('statuses', []):
+        if 'ci-complete' in s.get('context', ''):
+            print(s['status'])
+            break
+    else:
+        print('not_found')
+except Exception:
+    print('error')
+" 2>/dev/null || echo "error")
+
+			if [[ "$ci_complete_state" == "success" ]]; then
+				echo ""
+				echo "✅ CI Passed! (ci-complete succeeded; primary job failures were recovered by retries)"
+				return 0
+			fi
+
 			local failed_contexts
 			failed_contexts=$(echo "$API_RESPONSE" | python3 -c "
 import sys, json

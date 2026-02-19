@@ -168,12 +168,34 @@ else
 
 	if api_get "$API_BASE/commits/$HEAD_SHA/status"; then
 		ci_state=$(echo "$API_RESPONSE" | json_field "state")
+
 		if [[ "$ci_state" == "success" ]]; then
 			echo "✅ CI passed"
 		elif [[ "$ci_state" == "failure" || "$ci_state" == "error" ]]; then
-			echo "❌ CI has failed — refusing to merge"
-			echo "   Use --wait-for-ci to poll, or fix CI first"
-			exit 1
+			# Aggregate status is failure, but ci-complete (the gate job)
+			# may have succeeded — e.g., pytest failed but pytest-retry passed.
+			# Check ci-complete specifically before refusing to merge.
+			ci_complete_state=$(echo "$API_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    for s in data.get('statuses', []):
+        if 'ci-complete' in s.get('context', ''):
+            print(s['status'])
+            break
+    else:
+        print('not_found')
+except Exception:
+    print('error')
+" 2>/dev/null || echo "error")
+
+			if [[ "$ci_complete_state" == "success" ]]; then
+				echo "✅ CI passed (ci-complete succeeded; primary job failures were recovered by retries)"
+			else
+				echo "❌ CI has failed — refusing to merge"
+				echo "   Use --wait-for-ci to poll, or fix CI first"
+				exit 1
+			fi
 		elif [[ "$ci_state" == "pending" ]]; then
 			echo "⚠️  CI is still pending — refusing to merge"
 			echo "   Use --wait-for-ci to poll until CI completes"
