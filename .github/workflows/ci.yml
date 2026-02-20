@@ -655,10 +655,12 @@ jobs:
             else
               INCLUDE_PATTERN=$(echo "$EXISTING_FILES" | tr ' ' ',' | sed 's/,$//')
 
-              if ! coverage report --include="$INCLUDE_PATTERN" --fail-under=100; then
+              # Use no-embeddings rcfile so exclude_also patterns are respected
+              COV_RCFILE="--rcfile=.coveragerc.no-embeddings"
+              if ! coverage report $COV_RCFILE --include="$INCLUDE_PATTERN" --fail-under=100; then
                 echo ""
                 echo "❌ Changed source files are not at 100% coverage:"
-                coverage report --include="$INCLUDE_PATTERN" --show-missing
+                coverage report $COV_RCFILE --include="$INCLUDE_PATTERN" --show-missing
                 exit 1
               else
                 echo "✅ All changed source files are at 100% coverage"
@@ -857,10 +859,12 @@ jobs:
               echo "✅ All changed files were deleted - no coverage check needed"
             else
               INCLUDE_PATTERN=$(echo "$EXISTING_FILES" | tr ' ' ',' | sed 's/,$//')
-              if ! coverage report --include="$INCLUDE_PATTERN" --fail-under=100; then
+              # Use no-embeddings rcfile so exclude_also patterns are respected
+              COV_RCFILE="--rcfile=.coveragerc.no-embeddings"
+              if ! coverage report $COV_RCFILE --include="$INCLUDE_PATTERN" --fail-under=100; then
                 echo ""
                 echo "❌ Changed source files are not at 100% coverage:"
-                coverage report --include="$INCLUDE_PATTERN" --show-missing
+                coverage report $COV_RCFILE --include="$INCLUDE_PATTERN" --show-missing
                 exit 1
               else
                 echo "✅ All changed source files are at 100% coverage"
