@@ -1,0 +1,20 @@
+- op: create  # c34e
+  at: '2026-02-20T16:07:00Z'  # c34e
+  by: agent  # c34e
+  actor: jgstern_agent  # c34e
+  clock: 1  # c34e
+  nonce: c34e  # c34e
+  data:  # c34e
+    kind: work_item  # c34e
+    title: "Ruby: ambiguity guard for duck-typed method calls"  # c34e
+    status: todo_soft  # c34e
+    priority: 3  # c34e
+    parent:  # c34e
+    tags: []  # c34e
+    before: []  # c34e
+    duplicate_of: []  # c34e
+    not_duplicate_of: []  # c34e
+    pr_ref:  # c34e
+    justification:  # c34e
+    description: "Ruby duck typing, no type annotations, common method names (call, run, perform). Apply ambiguity guard for 3+ candidates."  # c34e
+    fields: {}  # c34e
