@@ -1,0 +1,22 @@
+- op: create  # 91d4
+  at: '2026-02-20T08:31:42Z'  # 91d4
+  by: agent  # 91d4
+  actor: jgstern_agent  # 91d4
+  clock: 1  # 91d4
+  nonce: 91d4  # 91d4
+  data:  # 91d4
+    kind: work_item  # 91d4
+    title: "Retire location-based stable_id strings in 27 analyzers"  # 91d4
+    status: todo_soft  # 91d4
+    priority: 3  # 91d4
+    parent: WI-tadof-zujaj-nizoz-zutam-sizad-nasid-sosob-nuhol  # 91d4
+    tags:  # 91d4
+    - phase-2  # 91d4
+    - stable-id  # 91d4
+    before: []  # 91d4
+    duplicate_of: []  # 91d4
+    not_duplicate_of: []  # 91d4
+    pr_ref:  # 91d4
+    justification:  # 91d4
+    description: "27 analyzers emit stable_id as location-based strings ({lang}:{path}:{name}:{kind}) that survive line shifts but not renames. Replace with signature-based hashes from the base-class compute_stable_id(). Affected analyzers: PureScript, V, Tcl, Haxe, Gleam, Odin, Fennel, Scheme, Racket, Meson, MATLAB, Apex, Janet, Jsonnet, Prisma, Luau, Pascal, Fish, Ada, D, Nim, ASM, HLSL, Starlark, Hack, Smithy, plus others. Depends on base-class compute_stable_id() being proven. See ADR-0014 Phase 2."  # 91d4
+    fields: {}  # 91d4
