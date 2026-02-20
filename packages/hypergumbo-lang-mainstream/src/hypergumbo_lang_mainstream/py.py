@@ -100,6 +100,22 @@ def find_python_files(
     yield from find_files(repo_root, ["*.py"], max_files=max_files)
 
 
+def _python_visibility_modifiers(name: str) -> list[str]:
+    """Derive visibility modifiers from Python naming convention.
+
+    Single underscore prefix (``_name``) = private.
+    Double underscore prefix without trailing double underscore (``__name``)
+    = private (name-mangled).
+    Dunders (``__name__``) are special methods, not private.
+    No prefix = public (empty list, since Python has no explicit modifier).
+    """
+    # Strip qualified prefix: "Class._method" → check "_method"
+    short = name.rsplit(".", 1)[-1] if "." in name else name
+    if short.startswith("_") and not (short.startswith("__") and short.endswith("__")):
+        return ["private"]
+    return []
+
+
 def _make_symbol_id(path: str, line: int, end_line: int, name: str, kind: str) -> str:
     """Generate location-based ID in format {lang}:{file}:{start}-{end}:{name}:{kind}."""
     return f"python:{path}:{line}-{end_line}:{name}:{kind}"
@@ -1423,6 +1439,7 @@ def _extract_file_analysis(
                 cyclomatic_complexity=_compute_cyclomatic_complexity(node),
                 lines_of_code=_compute_lines_of_code(node),
                 meta=class_meta if class_meta else None,
+                modifiers=_python_visibility_modifiers(node.name),
             )
             symbols.append(symbol)
             symbol_by_name[node.name] = symbol
@@ -1476,6 +1493,7 @@ def _extract_file_analysis(
                         lines_of_code=_compute_lines_of_code(item),
                         signature=_format_function_signature(item),
                         meta=method_meta if method_meta else None,
+                        modifiers=_python_visibility_modifiers(method_name),
                     )
                     symbols.append(method_symbol)
                     # Store by short name for self.method() lookups
@@ -1539,6 +1557,7 @@ def _extract_file_analysis(
                     cyclomatic_complexity=_compute_cyclomatic_complexity(node),
                     lines_of_code=_compute_lines_of_code(node),
                     signature=_format_function_signature(node),
+                    modifiers=_python_visibility_modifiers(node.name),
                 )
                 symbols.append(symbol)
                 symbol_by_name[node.name] = symbol

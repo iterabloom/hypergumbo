@@ -201,6 +201,45 @@ def _extract_swift_signature(
     return signature
 
 
+# Swift modifier keywords extractable from the AST.
+# tree-sitter-swift wraps modifiers in a ``modifiers`` container whose
+# children are ``visibility_modifier`` (etc.) nodes wrapping the keyword.
+SWIFT_MODIFIER_KEYWORDS = {
+    "public", "private", "internal", "open", "fileprivate",
+    "static", "class", "final", "override",
+    "mutating", "nonmutating", "lazy",
+}
+
+_SWIFT_MODIFIER_NODE_TYPES = {
+    "visibility_modifier", "ownership_modifier", "mutation_modifier",
+    "member_modifier", "function_modifier", "property_modifier",
+    "inheritance_modifier",
+}
+
+
+def _extract_modifiers_swift(node: "tree_sitter.Node") -> list[str]:
+    """Extract all modifiers from a Swift declaration node.
+
+    Swift tree-sitter groups modifiers under a ``modifiers`` container.
+    Each child is a typed wrapper (e.g. ``visibility_modifier``) whose
+    single child is the keyword token (e.g. ``public``).
+
+    Returns a list of modifier strings like ``["public", "static"]``.
+    """
+    modifiers: list[str] = []
+    for child in node.children:
+        if child.type == "modifiers":
+            for mod_node in child.children:
+                if mod_node.type in _SWIFT_MODIFIER_NODE_TYPES:
+                    for kw in mod_node.children:
+                        if kw.type in SWIFT_MODIFIER_KEYWORDS:
+                            modifiers.append(kw.type)
+                # Some modifiers appear as direct keyword children
+                elif mod_node.type in SWIFT_MODIFIER_KEYWORDS:  # pragma: no cover
+                    modifiers.append(mod_node.type)
+    return modifiers
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -248,6 +287,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     signature=signature,
+                    modifiers=_extract_modifiers_swift(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -293,6 +333,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     meta=meta,
+                    modifiers=_extract_modifiers_swift(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
@@ -324,6 +365,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     meta=meta,
+                    modifiers=_extract_modifiers_swift(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol

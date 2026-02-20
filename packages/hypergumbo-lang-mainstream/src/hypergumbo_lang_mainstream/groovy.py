@@ -73,6 +73,34 @@ def is_groovy_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
+# Groovy modifiers that can appear on declarations.
+# tree-sitter-groovy places keyword nodes directly inside a ``modifiers``
+# container (same pattern as Java).
+GROOVY_MODIFIERS = {
+    "public", "private", "protected",
+    "static", "abstract", "final",
+    "synchronized", "native", "transient",
+    "volatile", "strictfp", "default",
+}
+
+
+def _extract_modifiers_groovy(node: "tree_sitter.Node") -> list[str]:
+    """Extract all modifiers from a Groovy declaration node.
+
+    Groovy tree-sitter uses a ``modifiers`` container whose children are
+    keyword tokens (e.g. ``public``, ``static``), same pattern as Java.
+
+    Returns a list of modifier strings like ``["public", "static"]``.
+    """
+    modifiers: list[str] = []
+    for child in node.children:
+        if child.type == "modifiers":
+            for kw in child.children:
+                if kw.type in GROOVY_MODIFIERS:
+                    modifiers.append(kw.type)
+    return modifiers
+
+
 def _extract_base_classes_groovy(node: "tree_sitter.Node", source: bytes) -> list[str]:
     """Extract base class and interface names from class declaration.
 
@@ -299,6 +327,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         meta=meta,
+                        modifiers=_extract_modifiers_groovy(node),
                     )
                     analysis.symbols.append(symbol)
                     analysis.symbol_by_name[class_name] = symbol
@@ -326,6 +355,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         ),
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
+                        modifiers=_extract_modifiers_groovy(node),
                     )
                     analysis.symbols.append(symbol)
                     analysis.symbol_by_name[iface_name] = symbol
@@ -355,6 +385,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         ),
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
+                        modifiers=_extract_modifiers_groovy(node),
                     )
                     analysis.symbols.append(symbol)
                     analysis.symbol_by_name[trait_name] = symbol
@@ -382,6 +413,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         ),
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
+                        modifiers=_extract_modifiers_groovy(node),
                     )
                     analysis.symbols.append(symbol)
                     analysis.symbol_by_name[enum_name] = symbol
@@ -416,6 +448,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         signature=_extract_groovy_signature(node, source),
+                        modifiers=_extract_modifiers_groovy(node),
                     )
                     analysis.symbols.append(symbol)
                     analysis.symbol_by_name[method_name] = symbol
@@ -446,6 +479,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         signature=_extract_groovy_signature(node, source),
+                        modifiers=_extract_modifiers_groovy(node),
                     )
                     analysis.symbols.append(symbol)
                     analysis.symbol_by_name[func_name] = symbol

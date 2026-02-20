@@ -224,6 +224,8 @@ def _extract_symbols_from_file(
             end_col=end_col,
         )
         sym_id = make_symbol_id("dart", file_path, start_line, end_line, full_name, kind)
+        # Dart visibility: underscore-prefixed names are library-private
+        modifiers = ["private"] if name.startswith("_") else []
         return Symbol(
             id=sym_id,
             name=full_name,
@@ -234,6 +236,7 @@ def _extract_symbols_from_file(
             origin=PASS_ID,
             origin_run_id=run_id,
             signature=signature,
+            modifiers=modifiers,
         )
 
     for node in iter_tree(tree.root_node):

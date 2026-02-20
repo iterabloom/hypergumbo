@@ -660,3 +660,63 @@ class StandaloneClass {
         # Either no meta or no base_classes key
         if standalone.meta:
             assert "base_classes" not in standalone.meta or standalone.meta["base_classes"] == []
+
+
+class TestSwiftVisibilityModifiers:
+    """Tests for Swift visibility modifier extraction."""
+
+    def test_method_visibility(self, tmp_path: Path) -> None:
+        """Methods with visibility modifiers get them extracted."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        swift_file = tmp_path / "Vis.swift"
+        swift_file.write_text("""
+class Vis {
+    public func pubMethod() {}
+    private func privMethod() {}
+    internal func intMethod() {}
+}
+""")
+        result = analyze_swift(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "Vis.pubMethod")
+        assert "public" in pub.modifiers
+
+        priv = next(s for s in result.symbols if s.name == "Vis.privMethod")
+        assert "private" in priv.modifiers
+
+        internal = next(s for s in result.symbols if s.name == "Vis.intMethod")
+        assert "internal" in internal.modifiers
+
+    def test_class_visibility(self, tmp_path: Path) -> None:
+        """Classes with visibility modifiers get them extracted."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        swift_file = tmp_path / "Classes.swift"
+        swift_file.write_text("""
+public class PubClass {}
+""")
+        result = analyze_swift(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "PubClass")
+        assert "public" in pub.modifiers
+
+    def test_final_modifier(self, tmp_path: Path) -> None:
+        """Final modifier is extracted from functions and classes."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        swift_file = tmp_path / "Final.swift"
+        swift_file.write_text("""
+class Parent {
+    final func locked() {}
+}
+
+final class Sealed {}
+""")
+        result = analyze_swift(tmp_path)
+
+        locked = next(s for s in result.symbols if s.name == "Parent.locked")
+        assert "final" in locked.modifiers
+
+        sealed = next(s for s in result.symbols if s.name == "Sealed")
+        assert "final" in sealed.modifiers

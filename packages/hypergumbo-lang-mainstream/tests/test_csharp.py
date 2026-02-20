@@ -1710,3 +1710,126 @@ class Consumer {
         # 2 candidates is below the threshold — should still resolve
         run_calls = [e for e in dowork_calls if "Run" in e.dst]
         assert len(run_calls) >= 1, "2 candidates should still resolve"
+
+
+class TestCSharpVisibilityModifiers:
+    """Tests for visibility modifier extraction into Symbol.modifiers."""
+
+    def test_method_visibility_modifiers(self, tmp_path: Path) -> None:
+        """Methods with public/private/protected/internal get correct modifiers."""
+        (tmp_path / "Vis.cs").write_text("""
+public class Vis {
+    public void PubMethod() { }
+    private void PrivMethod() { }
+    protected void ProtMethod() { }
+    internal void IntMethod() { }
+    public static void StaticPub() { }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "Vis.PubMethod")
+        assert "public" in pub.modifiers
+
+        priv = next(s for s in result.symbols if s.name == "Vis.PrivMethod")
+        assert "private" in priv.modifiers
+
+        prot = next(s for s in result.symbols if s.name == "Vis.ProtMethod")
+        assert "protected" in prot.modifiers
+
+        internal = next(s for s in result.symbols if s.name == "Vis.IntMethod")
+        assert "internal" in internal.modifiers
+
+        static_pub = next(s for s in result.symbols if s.name == "Vis.StaticPub")
+        assert "public" in static_pub.modifiers
+        assert "static" in static_pub.modifiers
+
+    def test_class_visibility_modifiers(self, tmp_path: Path) -> None:
+        """Classes with visibility modifiers get them extracted."""
+        (tmp_path / "Classes.cs").write_text("""
+public class PubClass { }
+internal class IntClass { }
+public static class StaticClass { }
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "PubClass")
+        assert "public" in pub.modifiers
+
+        internal = next(s for s in result.symbols if s.name == "IntClass")
+        assert "internal" in internal.modifiers
+
+        static_cls = next(s for s in result.symbols if s.name == "StaticClass")
+        assert "public" in static_cls.modifiers
+        assert "static" in static_cls.modifiers
+
+    def test_constructor_visibility_modifiers(self, tmp_path: Path) -> None:
+        """Constructors with visibility modifiers get them extracted."""
+        (tmp_path / "Ctor.cs").write_text("""
+public class Foo {
+    public Foo() { }
+    private Foo(int x) { }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        ctors = [s for s in result.symbols if s.kind == "constructor"]
+        pub_ctor = next(s for s in ctors if "public" in s.modifiers)
+        assert pub_ctor is not None
+
+        priv_ctor = next(s for s in ctors if "private" in s.modifiers)
+        assert priv_ctor is not None
+
+    def test_no_modifiers_empty_list(self, tmp_path: Path) -> None:
+        """Symbols without explicit modifiers have empty modifiers list."""
+        (tmp_path / "NoMod.cs").write_text("""
+class DefaultClass {
+    void DefaultMethod() { }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        cls = next(s for s in result.symbols if s.name == "DefaultClass")
+        # No visibility modifier specified — modifiers list should not contain visibility
+        assert "public" not in cls.modifiers
+        assert "private" not in cls.modifiers
+
+    def test_interface_and_struct_modifiers(self, tmp_path: Path) -> None:
+        """Interfaces and structs also get visibility modifiers."""
+        (tmp_path / "Types.cs").write_text("""
+public interface IService { }
+internal struct DataPoint { }
+public enum Status { Active, Inactive }
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        iface = next(s for s in result.symbols if s.name == "IService")
+        assert "public" in iface.modifiers
+
+        struct = next(s for s in result.symbols if s.name == "DataPoint")
+        assert "internal" in struct.modifiers
+
+        enum = next(s for s in result.symbols if s.name == "Status")
+        assert "public" in enum.modifiers
+
+    def test_property_visibility_modifiers(self, tmp_path: Path) -> None:
+        """Properties get visibility modifiers extracted."""
+        (tmp_path / "Props.cs").write_text("""
+public class Config {
+    public string Name { get; set; }
+    private int Count { get; set; }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        name_prop = next(s for s in result.symbols if s.name == "Config.Name")
+        assert "public" in name_prop.modifiers
+
+        count_prop = next(s for s in result.symbols if s.name == "Config.Count")
+        assert "private" in count_prop.modifiers

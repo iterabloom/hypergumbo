@@ -71,6 +71,50 @@ def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional[
     return node.child_by_field_name(field_name)
 
 
+# Kotlin modifier keyword types grouped by category.
+# tree-sitter-kotlin wraps each in a typed node (visibility_modifier,
+# inheritance_modifier, etc.) whose single child is the keyword.
+KOTLIN_MODIFIER_KEYWORDS = {
+    # visibility
+    "public", "private", "protected", "internal",
+    # inheritance
+    "open", "final", "abstract", "sealed",
+    # member
+    "override", "lateinit",
+    # class
+    "data", "inner", "enum", "annotation", "value",
+    # function
+    "inline", "tailrec", "operator", "infix", "suspend",
+}
+
+# Node types that wrap modifier keywords
+_KOTLIN_MODIFIER_NODE_TYPES = {
+    "visibility_modifier", "inheritance_modifier", "member_modifier",
+    "class_modifier", "function_modifier", "type_modifier",
+    "property_modifier", "parameter_modifier",
+}
+
+
+def _extract_modifiers(node: "tree_sitter.Node") -> list[str]:
+    """Extract all modifiers from a Kotlin declaration node.
+
+    Kotlin tree-sitter groups modifiers under a ``modifiers`` container.
+    Each child is a typed wrapper (e.g. ``visibility_modifier``) whose
+    single child is the keyword token (e.g. ``public``).
+
+    Returns a list of modifier strings like ``["public", "open"]``.
+    """
+    modifiers: list[str] = []
+    for child in node.children:
+        if child.type == "modifiers":
+            for mod_node in child.children:
+                if mod_node.type in _KOTLIN_MODIFIER_NODE_TYPES:
+                    for kw in mod_node.children:
+                        if kw.type in KOTLIN_MODIFIER_KEYWORDS:
+                            modifiers.append(kw.type)
+    return modifiers
+
+
 def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Walk up the tree to find the enclosing class/object/interface name."""
     current = node.parent
@@ -392,6 +436,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
+                    modifiers=_extract_modifiers(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -434,6 +479,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+                    modifiers=_extract_modifiers(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
@@ -463,6 +509,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    modifiers=_extract_modifiers(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[object_name] = symbol

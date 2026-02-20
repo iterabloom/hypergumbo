@@ -1428,3 +1428,43 @@ fn caller() {
         )
         assert call_edge is not None, "Call inside map closure should be attributed to caller"
 
+
+class TestRustVisibilityModifiers:
+    """Tests for Rust visibility modifier extraction."""
+
+    def test_pub_function(self, tmp_path: Path) -> None:
+        """pub functions get 'pub' modifier."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text("""
+pub fn public_fn() {}
+fn private_fn() {}
+pub(crate) fn crate_fn() {}
+""")
+        result = analyze_rust(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "public_fn")
+        assert "pub" in pub.modifiers
+
+        priv = next(s for s in result.symbols if s.name == "private_fn")
+        assert len(priv.modifiers) == 0
+
+        crate = next(s for s in result.symbols if s.name == "crate_fn")
+        assert any("pub" in m for m in crate.modifiers)
+
+    def test_pub_struct(self, tmp_path: Path) -> None:
+        """pub structs get 'pub' modifier."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "types.rs").write_text("""
+pub struct PubStruct {}
+struct PrivStruct {}
+""")
+        result = analyze_rust(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "PubStruct")
+        assert "pub" in pub.modifiers
+
+        priv = next(s for s in result.symbols if s.name == "PrivStruct")
+        assert len(priv.modifiers) == 0
+

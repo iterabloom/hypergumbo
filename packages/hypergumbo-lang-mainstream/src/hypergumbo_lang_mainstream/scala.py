@@ -214,6 +214,45 @@ def _extract_scala_signature(
     return signature
 
 
+# Scala modifier keywords extractable from the AST.
+# tree-sitter-scala wraps access modifiers in ``modifiers`` → ``access_modifier``
+# whose children are the keywords (private, protected, etc.).
+SCALA_MODIFIER_KEYWORDS = {
+    "private", "protected",
+    "abstract", "final", "sealed",
+    "override", "implicit", "lazy",
+    "case",
+}
+
+
+def _extract_modifiers_scala(node: "tree_sitter.Node") -> list[str]:
+    """Extract all modifiers from a Scala declaration node.
+
+    Scala tree-sitter groups modifiers under a ``modifiers`` container.
+    Access modifiers appear as ``access_modifier`` children wrapping
+    the keyword (``private``, ``protected``).  Other modifiers like
+    ``abstract``, ``sealed`` appear as direct keyword children inside
+    ``modifiers``.  The ``case`` keyword is a direct child of the
+    declaration node (not inside ``modifiers``).
+
+    Returns a list of modifier strings like ``["private", "case"]``.
+    """
+    modifiers: list[str] = []
+    for child in node.children:
+        if child.type == "modifiers":
+            for mod_node in child.children:
+                if mod_node.type == "access_modifier":
+                    for kw in mod_node.children:
+                        if kw.type in SCALA_MODIFIER_KEYWORDS:
+                            modifiers.append(kw.type)
+                elif mod_node.type in SCALA_MODIFIER_KEYWORDS:
+                    modifiers.append(mod_node.type)
+        # ``case`` is a direct child, not inside modifiers
+        elif child.type == "case":
+            modifiers.append("case")
+    return modifiers
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -255,6 +294,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     signature=signature,
+                    modifiers=_extract_modifiers_scala(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -289,6 +329,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     signature=signature,
+                    modifiers=_extract_modifiers_scala(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -318,6 +359,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     meta=meta,
+                    modifiers=_extract_modifiers_scala(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
@@ -343,6 +385,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    modifiers=_extract_modifiers_scala(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol
@@ -371,6 +414,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     meta=meta,
+                    modifiers=_extract_modifiers_scala(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[type_name] = symbol

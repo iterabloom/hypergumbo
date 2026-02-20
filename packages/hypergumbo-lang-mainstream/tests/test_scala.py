@@ -832,3 +832,50 @@ trait Drawable {
         methods = [s for s in result.symbols if s.kind == "method" and "draw" in s.name]
         assert len(methods) == 1
         assert methods[0].signature == "()"
+
+
+class TestScalaVisibilityModifiers:
+    """Tests for Scala visibility modifier extraction."""
+
+    def test_method_visibility(self, tmp_path: Path) -> None:
+        """Methods with access modifiers get them extracted."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "Vis.scala").write_text("""
+class Vis {
+    private def privMethod(): Unit = {}
+    protected def protMethod(): Int = 0
+    def defaultMethod(): Unit = {}
+}
+""")
+        result = analyze_scala(tmp_path)
+
+        priv = next(s for s in result.symbols if "privMethod" in s.name)
+        assert "private" in priv.modifiers
+
+        prot = next(s for s in result.symbols if "protMethod" in s.name)
+        assert "protected" in prot.modifiers
+
+        default = next(s for s in result.symbols if "defaultMethod" in s.name)
+        assert "private" not in default.modifiers
+        assert "protected" not in default.modifiers
+
+    def test_class_modifiers(self, tmp_path: Path) -> None:
+        """Classes with modifiers get them extracted."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "Classes.scala").write_text("""
+abstract class AbsClass {}
+sealed class SealedClass {}
+case class CaseClass(x: Int)
+""")
+        result = analyze_scala(tmp_path)
+
+        abs_cls = next(s for s in result.symbols if s.name == "AbsClass")
+        assert "abstract" in abs_cls.modifiers
+
+        sealed_cls = next(s for s in result.symbols if s.name == "SealedClass")
+        assert "sealed" in sealed_cls.modifiers
+
+        case_cls = next(s for s in result.symbols if s.name == "CaseClass")
+        assert "case" in case_cls.modifiers

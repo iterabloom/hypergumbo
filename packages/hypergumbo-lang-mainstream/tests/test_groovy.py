@@ -911,3 +911,54 @@ def execute() {
         # 2 candidates is below the threshold — should still resolve
         run_calls = [e for e in execute_calls if "run" in e.dst.lower()]
         assert len(run_calls) >= 1, "2 candidates should still resolve"
+
+
+class TestGroovyVisibilityModifiers:
+    """Tests for visibility modifier extraction into Symbol.modifiers."""
+
+    def test_method_visibility_modifiers(self, tmp_path: Path) -> None:
+        """Methods with visibility modifiers get them extracted."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "Vis.groovy").write_text("""
+class Vis {
+    public void pubMethod() {}
+    private void privMethod() {}
+    protected void protMethod() {}
+    static void staticMethod() {}
+    void defaultMethod() {}
+}
+""")
+        result = analyze_groovy(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "Vis.pubMethod")
+        assert "public" in pub.modifiers
+
+        priv = next(s for s in result.symbols if s.name == "Vis.privMethod")
+        assert "private" in priv.modifiers
+
+        prot = next(s for s in result.symbols if s.name == "Vis.protMethod")
+        assert "protected" in prot.modifiers
+
+        static = next(s for s in result.symbols if s.name == "Vis.staticMethod")
+        assert "static" in static.modifiers
+
+        default = next(s for s in result.symbols if s.name == "Vis.defaultMethod")
+        assert "public" not in default.modifiers
+        assert "private" not in default.modifiers
+
+    def test_class_modifiers(self, tmp_path: Path) -> None:
+        """Classes with modifiers get them extracted."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "Classes.groovy").write_text("""
+public class PubClass {}
+abstract class AbsClass {}
+""")
+        result = analyze_groovy(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "PubClass")
+        assert "public" in pub.modifiers
+
+        abs_cls = next(s for s in result.symbols if s.name == "AbsClass")
+        assert "abstract" in abs_cls.modifiers

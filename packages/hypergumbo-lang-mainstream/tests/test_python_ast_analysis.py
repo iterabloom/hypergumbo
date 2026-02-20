@@ -4396,3 +4396,72 @@ class TestPythonInheritanceEdges:
         assert len(extends_edges) == 0
 
 
+class TestPythonVisibilityModifiers:
+    """Tests for Python visibility modifier extraction (underscore convention)."""
+
+    def test_private_function(self, tmp_path: Path) -> None:
+        """Functions with underscore prefix get 'private' modifier."""
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "funcs.py").write_text("""
+def public_func():
+    pass
+
+def _private_func():
+    pass
+""")
+        result = analyze_python(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "public_func")
+        assert "private" not in pub.modifiers
+
+        priv = next(s for s in result.symbols if s.name == "_private_func")
+        assert "private" in priv.modifiers
+
+    def test_private_method(self, tmp_path: Path) -> None:
+        """Methods with underscore prefix get 'private' modifier."""
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "cls.py").write_text("""
+class MyClass:
+    def public_method(self):
+        pass
+
+    def _private_method(self):
+        pass
+
+    def __init__(self):
+        pass
+""")
+        result = analyze_python(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "MyClass.public_method")
+        assert "private" not in pub.modifiers
+
+        priv = next(s for s in result.symbols if s.name == "MyClass._private_method")
+        assert "private" in priv.modifiers
+
+        # Dunder methods are NOT private
+        init = next(s for s in result.symbols if s.name == "MyClass.__init__")
+        assert "private" not in init.modifiers
+
+    def test_private_class(self, tmp_path: Path) -> None:
+        """Classes with underscore prefix get 'private' modifier."""
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "cls.py").write_text("""
+class PublicClass:
+    pass
+
+class _PrivateClass:
+    pass
+""")
+        result = analyze_python(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "PublicClass")
+        assert "private" not in pub.modifiers
+
+        priv = next(s for s in result.symbols if s.name == "_PrivateClass")
+        assert "private" in priv.modifiers
+
+

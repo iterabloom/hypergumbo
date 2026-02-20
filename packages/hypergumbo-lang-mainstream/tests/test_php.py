@@ -1332,3 +1332,61 @@ function execute($obj) {
         assert len(run_calls) >= 1, (
             "2 candidates should still resolve"
         )
+
+
+class TestPHPVisibilityModifiers:
+    """Tests for PHP visibility modifier extraction."""
+
+    def test_method_visibility(self, tmp_path: Path) -> None:
+        """Methods with visibility modifiers get them extracted."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "Vis.php").write_text("""<?php
+class Vis {
+    public function pubMethod() {}
+    private function privMethod() {}
+    protected function protMethod() {}
+    public static function staticPub() {}
+}
+?>""")
+        result = analyze_php(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "Vis.pubMethod")
+        assert "public" in pub.modifiers
+
+        priv = next(s for s in result.symbols if s.name == "Vis.privMethod")
+        assert "private" in priv.modifiers
+
+        prot = next(s for s in result.symbols if s.name == "Vis.protMethod")
+        assert "protected" in prot.modifiers
+
+        static_pub = next(s for s in result.symbols if s.name == "Vis.staticPub")
+        assert "public" in static_pub.modifiers
+        assert "static" in static_pub.modifiers
+
+    def test_abstract_final_readonly_class(self, tmp_path: Path) -> None:
+        """Abstract, final, readonly class modifiers are extracted."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        (tmp_path / "Mods.php").write_text("""<?php
+abstract class Base {
+    abstract function doWork();
+}
+
+final class Sealed {}
+
+readonly class Data {}
+?>""")
+        result = analyze_php(tmp_path)
+
+        base = next(s for s in result.symbols if s.name == "Base")
+        assert "abstract" in base.modifiers
+
+        do_work = next(s for s in result.symbols if s.name == "Base.doWork")
+        assert "abstract" in do_work.modifiers
+
+        sealed = next(s for s in result.symbols if s.name == "Sealed")
+        assert "final" in sealed.modifiers
+
+        data = next(s for s in result.symbols if s.name == "Data")
+        assert "readonly" in data.modifiers

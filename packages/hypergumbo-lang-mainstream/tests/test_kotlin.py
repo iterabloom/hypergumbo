@@ -1642,3 +1642,60 @@ fun execute() {
         # 2 candidates is below the threshold — should still resolve
         run_calls = [e for e in execute_calls if "run" in e.dst.lower()]
         assert len(run_calls) >= 1, "2 candidates should still resolve"
+
+
+class TestKotlinVisibilityModifiers:
+    """Tests for visibility modifier extraction into Symbol.modifiers."""
+
+    def test_method_visibility_modifiers(self, tmp_path: Path) -> None:
+        """Methods with visibility modifiers get them extracted."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Vis.kt").write_text("""
+class Vis {
+    public fun pubMethod() {}
+    private fun privMethod() {}
+    protected fun protMethod() {}
+    internal fun intMethod() {}
+    fun defaultMethod() {}
+}
+""")
+        result = analyze_kotlin(tmp_path)
+
+        pub = next(s for s in result.symbols if s.name == "Vis.pubMethod")
+        assert "public" in pub.modifiers
+
+        priv = next(s for s in result.symbols if s.name == "Vis.privMethod")
+        assert "private" in priv.modifiers
+
+        prot = next(s for s in result.symbols if s.name == "Vis.protMethod")
+        assert "protected" in prot.modifiers
+
+        internal = next(s for s in result.symbols if s.name == "Vis.intMethod")
+        assert "internal" in internal.modifiers
+
+        default = next(s for s in result.symbols if s.name == "Vis.defaultMethod")
+        assert "public" not in default.modifiers
+        assert "private" not in default.modifiers
+
+    def test_class_modifiers(self, tmp_path: Path) -> None:
+        """Classes with visibility and inheritance modifiers get them extracted."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Classes.kt").write_text("""
+public open class PubOpen {}
+internal data class IntData(val x: Int)
+abstract class AbsClass {}
+""")
+        result = analyze_kotlin(tmp_path)
+
+        pub_open = next(s for s in result.symbols if s.name == "PubOpen")
+        assert "public" in pub_open.modifiers
+        assert "open" in pub_open.modifiers
+
+        int_data = next(s for s in result.symbols if s.name == "IntData")
+        assert "internal" in int_data.modifiers
+        assert "data" in int_data.modifiers
+
+        abs_cls = next(s for s in result.symbols if s.name == "AbsClass")
+        assert "abstract" in abs_cls.modifiers

@@ -430,6 +430,20 @@ def _get_enclosing_func_name(
     return None
 
 
+def _go_visibility_modifiers(name: str) -> list[str]:
+    """Derive visibility modifiers from Go naming convention.
+
+    In Go, identifiers starting with an uppercase letter are exported (public).
+    All others are unexported (package-private).  We use Go-native terms
+    so the cross-language normalization layer (WI-silik) can map them.
+    """
+    # For qualified names like "Receiver.Method", check the method part
+    short = name.rsplit(".", 1)[-1] if "." in name else name
+    if short and short[0].isupper():
+        return ["exported"]
+    return ["unexported"]
+
+
 def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -481,6 +495,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
+                    modifiers=_go_visibility_modifiers(func_name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -521,6 +536,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
+                    modifiers=_go_visibility_modifiers(full_name),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[method_name] = symbol
@@ -559,6 +575,7 @@ def _extract_symbols_from_file(
                             ),
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
+                            modifiers=_go_visibility_modifiers(type_name),
                         )
                         analysis.symbols.append(symbol)
                         analysis.symbol_by_name[type_name] = symbol

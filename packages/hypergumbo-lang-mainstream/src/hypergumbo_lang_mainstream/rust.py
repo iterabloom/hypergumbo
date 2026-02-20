@@ -347,6 +347,23 @@ def _add_rust_arg(arg: str, args: list[str], kwargs: dict[str, str]) -> None:
         args.append(arg)
 
 
+def _extract_modifiers_rust(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Extract visibility modifiers from a Rust declaration node.
+
+    Rust tree-sitter uses a ``visibility_modifier`` child node containing
+    ``pub`` optionally followed by a scope like ``(crate)`` or ``(super)``.
+    Items without ``visibility_modifier`` are private by default.
+
+    Returns e.g. ``["pub"]``, ``["pub(crate)"]``, or ``[]`` (private).
+    """
+    modifiers: list[str] = []
+    for child in node.children:
+        if child.type == "visibility_modifier":
+            vis_text = child.text.decode("utf-8") if child.text else "pub"
+            modifiers.append(vis_text)
+    return modifiers
+
+
 def _extract_symbols_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -401,6 +418,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run_id,
                     signature=signature,
                     meta=meta,
+                    modifiers=_extract_modifiers_rust(node, source),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -433,6 +451,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     meta=meta,
+                    modifiers=_extract_modifiers_rust(node, source),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[struct_name] = symbol
@@ -464,6 +483,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     meta=meta,
+                    modifiers=_extract_modifiers_rust(node, source),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[enum_name] = symbol
@@ -492,6 +512,7 @@ def _extract_symbols_from_file(
                         start_col=node.start_point[1],
                         end_col=node.end_point[1],
                     ),
+                    modifiers=_extract_modifiers_rust(node, source),
                     origin=PASS_ID,
                     origin_run_id=run_id,
                     meta=meta,

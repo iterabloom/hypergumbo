@@ -2699,3 +2699,56 @@ func (c *Client) Get() {
         assert has_client_get, (
             f"Client.Get should be a source of helper() call, sources: {sources}"
         )
+
+
+class TestGoVisibilityModifiers:
+    """Tests for Go visibility modifier extraction (naming convention)."""
+
+    def test_exported_function(self, tmp_path: Path) -> None:
+        """Uppercase functions get 'exported' modifier."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "main.go").write_text("""package main
+func ExportedFunc() {}
+func unexportedFunc() {}
+""")
+        result = analyze_go(tmp_path)
+
+        exported = next(s for s in result.symbols if s.name == "ExportedFunc")
+        assert "exported" in exported.modifiers
+
+        unexported = next(s for s in result.symbols if s.name == "unexportedFunc")
+        assert "unexported" in unexported.modifiers
+
+    def test_exported_type(self, tmp_path: Path) -> None:
+        """Uppercase type names get 'exported' modifier."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""package main
+type ExportedType struct {}
+type unexportedType struct {}
+""")
+        result = analyze_go(tmp_path)
+
+        exported = next(s for s in result.symbols if s.name == "ExportedType")
+        assert "exported" in exported.modifiers
+
+        unexported = next(s for s in result.symbols if s.name == "unexportedType")
+        assert "unexported" in unexported.modifiers
+
+    def test_exported_method(self, tmp_path: Path) -> None:
+        """Method visibility based on method name, not receiver."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "methods.go").write_text("""package main
+type Foo struct {}
+func (f *Foo) ExportedMethod() {}
+func (f *Foo) unexportedMethod() {}
+""")
+        result = analyze_go(tmp_path)
+
+        exported = next(s for s in result.symbols if "ExportedMethod" in s.name)
+        assert "exported" in exported.modifiers
+
+        unexported = next(s for s in result.symbols if "unexportedMethod" in s.name)
+        assert "unexported" in unexported.modifiers

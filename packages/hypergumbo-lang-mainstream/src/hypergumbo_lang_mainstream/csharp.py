@@ -152,6 +152,36 @@ def _extract_annotations(
     return annotations
 
 
+# C# modifiers that can appear on declarations.
+# tree-sitter-c-sharp wraps each keyword in a ``modifier`` node whose
+# single child has the keyword as its node type.
+CSHARP_MODIFIERS = {
+    "public", "private", "protected", "internal",
+    "static", "abstract", "virtual", "override",
+    "sealed", "async", "readonly", "extern",
+    "partial", "unsafe", "volatile", "new",
+}
+
+
+def _extract_modifiers(node: "tree_sitter.Node") -> list[str]:
+    """Extract all modifiers from a C# declaration node.
+
+    In tree-sitter-c-sharp, each modifier keyword is wrapped in a separate
+    ``modifier`` child node.  For example ``public static void Foo()``
+    produces two ``modifier`` children: one containing ``public`` and one
+    containing ``static``.
+
+    Returns a list of modifier strings like ``["public", "static"]``.
+    """
+    modifiers: list[str] = []
+    for child in node.children:
+        if child.type == "modifier":
+            for kw in child.children:
+                if kw.type in CSHARP_MODIFIERS:
+                    modifiers.append(kw.type)
+    return modifiers
+
+
 def _find_children_by_type(node: "tree_sitter.Node", type_name: str) -> list["tree_sitter.Node"]:
     """Find all children of given type."""
     return [child for child in node.children if child.type == type_name]
@@ -565,6 +595,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+                    modifiers=_extract_modifiers(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol
@@ -590,6 +621,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    modifiers=_extract_modifiers(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol
@@ -615,6 +647,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    modifiers=_extract_modifiers(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol
@@ -640,6 +673,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    modifiers=_extract_modifiers(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol
@@ -684,6 +718,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run.execution_id,
                     meta=meta,
                     signature=signature,
+                    modifiers=_extract_modifiers(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol
@@ -717,6 +752,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
+                    modifiers=_extract_modifiers(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol
@@ -746,6 +782,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    modifiers=_extract_modifiers(node),
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol

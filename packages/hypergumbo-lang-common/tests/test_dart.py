@@ -1041,3 +1041,48 @@ void execute() {
         run_calls = [e for e in execute_calls if "run" in e.dst.lower()]
         assert len(run_calls) >= 1, "2 candidates should still resolve"
 
+
+class TestDartVisibilityModifiers:
+    """Tests for Dart visibility modifier extraction (underscore convention)."""
+
+    def test_private_symbols_get_private_modifier(self, tmp_path: Path) -> None:
+        """Underscore-prefixed names get 'private' modifier."""
+        from hypergumbo_lang_common.dart import analyze_dart
+
+        make_dart_file(tmp_path, "main.dart", """
+class _PrivateClass {
+  void _privateMethod() {}
+}
+
+void _privateFunc() {}
+
+class PublicClass {
+  void publicMethod() {}
+}
+
+void publicFunc() {}
+""")
+        result = analyze_dart(tmp_path)
+
+        priv_cls = next(s for s in result.symbols if s.name == "_PrivateClass")
+        assert "private" in priv_cls.modifiers
+
+        priv_method = next(
+            s for s in result.symbols if s.name == "_PrivateClass._privateMethod"
+        )
+        assert "private" in priv_method.modifiers
+
+        priv_func = next(s for s in result.symbols if s.name == "_privateFunc")
+        assert "private" in priv_func.modifiers
+
+        pub_cls = next(s for s in result.symbols if s.name == "PublicClass")
+        assert "private" not in pub_cls.modifiers
+
+        pub_method = next(
+            s for s in result.symbols if s.name == "PublicClass.publicMethod"
+        )
+        assert "private" not in pub_method.modifiers
+
+        pub_func = next(s for s in result.symbols if s.name == "publicFunc")
+        assert "private" not in pub_func.modifiers
+

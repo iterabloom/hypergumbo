@@ -550,6 +550,30 @@ class _ParsedFile:
     use_aliases: dict[str, str] = field(default_factory=dict)
 
 
+def _extract_modifiers_php(node: "tree_sitter.Node") -> list[str]:
+    """Extract visibility and other modifiers from a PHP declaration node.
+
+    PHP tree-sitter uses ``visibility_modifier`` and ``static_modifier`` as
+    direct children of method/property declarations.  Classes may have
+    ``abstract`` or ``final`` modifier nodes.
+
+    Returns e.g. ``["public", "static"]`` or ``["private"]``.
+    """
+    modifiers: list[str] = []
+    for child in node.children:
+        if child.type == "visibility_modifier":
+            for kw in child.children:
+                if kw.type in ("public", "private", "protected"):
+                    modifiers.append(kw.type)
+        elif child.type == "static_modifier":
+            modifiers.append("static")
+        elif child.type in ("abstract_modifier", "final_modifier", "readonly_modifier"):
+            # e.g. abstract_modifier wraps "abstract" keyword
+            keyword = child.type.removesuffix("_modifier")
+            modifiers.append(keyword)
+    return modifiers
+
+
 def _extract_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -581,6 +605,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
+                    modifiers=_extract_modifiers_php(node),
                 )
                 symbols.append(symbol)
 
@@ -609,6 +634,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+                    modifiers=_extract_modifiers_php(node),
                 )
                 symbols.append(symbol)
 
@@ -635,6 +661,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
+                    modifiers=_extract_modifiers_php(node),
                 )
                 symbols.append(symbol)
 
