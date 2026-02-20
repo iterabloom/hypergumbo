@@ -21,3 +21,12 @@
     justification:  # f492
     description: "Analyzer signature extraction currently strips generic type parameters (List<T>→List). For typed stable_id, signatures must preserve generics in a normalized form (e.g., List<$0> for positional type variables). Affects all languages with generics: Java, Kotlin, C#, TypeScript, Dart, Rust, Go (type parameters), etc."  # f492
     fields: {}  # f492
+- op: update  # 1f3a
+  at: '2026-02-20T21:16:20Z'  # 1f3a
+  by: agent  # 1f3a
+  actor: jgstern_agent  # 1f3a
+  clock: 2  # 1f3a
+  nonce: 1f3a  # 1f3a
+  set:  # 1f3a
+    status: done  # 1f3a
+    justification: "Investigation shows signatures ALREADY preserve generic type parameters (e.g., Java: '(Map<String, Integer> scores) List<String>', Kotlin: '(items: List<T>, pred: (T) -> Boolean): List<T>', C#: '(Dictionary<string, T> map) List<T>'). Generics are only stripped during type inference for method resolution, which is correct behavior. No work needed."  # 1f3a

@@ -38,3 +38,11 @@
   set:  # 23ca
     priority: 3  # 23ca
     title: "Implement typed stable_id tier (Phase 3)"  # 23ca
+- op: update  # 6ac7
+  at: '2026-02-20T21:16:52Z'  # 6ac7
+  by: agent  # 6ac7
+  actor: jgstern_agent  # 6ac7
+  clock: 4  # 6ac7
+  nonce: 6ac7  # 6ac7
+  set:  # 6ac7
+    description: "Typed tier: sha256({kind}:{normalized_signature}:{visibility}:{containing_module_stable_id}). Blockers status: (1) generic type parameter preservation — DONE, signatures already preserve generics (WI-murig). (2) visibility modifier extraction — DONE, 11 languages covered (WI-gifoh, PR #1282). (3) cross-language type normalization — needs human review (WI-silik). Depends on untyped tier (Phase 2) being proven and ADR-0006 future work items 6-7. See ADR-0014 §3."  # 6ac7

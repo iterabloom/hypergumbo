@@ -21,3 +21,12 @@
     justification:  # 3bae
     description: "Typed stable_id hashes include normalized signatures. Equivalent types across languages (String/str/string, int/Int/i32, bool/Boolean/boolean) must not collide in the hash. Requires a canonical type mapping table and normalization step before hashing. See ADR-0014 future work items 6-7."  # 3bae
     fields: {}  # 3bae
+- op: update  # cc1d
+  at: '2026-02-20T21:16:46Z'  # cc1d
+  by: agent  # cc1d
+  actor: jgstern_agent  # cc1d
+  clock: 2  # cc1d
+  nonce: cc1d  # cc1d
+  set:  # cc1d
+    status: needs_human_review  # cc1d
+    justification: "Two of three typed stable_id blockers resolved (generics preserved, visibility extracted). Cross-language type normalization requires architectural decisions: which types to normalize, whether to use a shared mapping table, and whether typed stable_id is even needed yet. Recommend deferring until typed stable_id (WI-duzul) is actively being built."  # cc1d
