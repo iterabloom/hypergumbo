@@ -919,8 +919,8 @@ def main() -> int:
         if "Auto-generated" not in content:
             print("ERROR: docs/ARCHITECTURE.md doesn't appear to be auto-generated")
             return 1
-        if "hypergumbo self-analysis" not in content:
-            print("ERROR: docs/ARCHITECTURE.md is missing expected content")
+        if not re.search(r"commit:\s+[0-9a-f]{6,}", content):
+            print("ERROR: docs/ARCHITECTURE.md is missing commit hash")
             return 1
 
         # Check for commit SHA drift (warn-only, not a hard failure)
