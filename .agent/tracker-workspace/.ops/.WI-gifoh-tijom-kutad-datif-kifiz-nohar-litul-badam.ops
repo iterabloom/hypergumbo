@@ -21,3 +21,13 @@
     justification:  # e16c
     description: "No analyzer currently tracks visibility modifiers (public/private/protected/internal/package-private). Typed stable_id requires visibility as a component of the hash: sha256({kind}:{normalized_signature}:{visibility}:{containing_module_stable_id}). Must be added to Symbol metadata across all languages that have visibility modifiers."  # e16c
     fields: {}  # e16c
+- op: update  # 330e
+  at: '2026-02-20T21:14:19Z'  # 330e
+  by: agent  # 330e
+  actor: jgstern_agent  # 330e
+  clock: 2  # 330e
+  nonce: 330e  # 330e
+  set:  # 330e
+    status: done  # 330e
+    pr_ref: '#1282'  # 330e
+    justification: "Visibility modifiers extracted for 11 languages: C#, Kotlin, Groovy, Go, Rust, Swift, PHP, Scala, Dart, Python. Deferred: Ruby, C++, Obj-C."  # 330e
