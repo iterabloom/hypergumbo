@@ -1390,3 +1390,19 @@ readonly class Data {}
 
         data = next(s for s in result.symbols if s.name == "Data")
         assert "readonly" in data.modifiers
+
+
+class TestNormalizePhpSignature:
+    """Tests for PHP signature normalization (ADR-0014 §3)."""
+
+    def test_basic_method(self) -> None:
+        from hypergumbo_lang_mainstream.php import normalize_php_signature
+        assert normalize_php_signature("(int $x, int $y): int") == "(int,int)int"
+
+    def test_void_stripped(self) -> None:
+        from hypergumbo_lang_mainstream.php import normalize_php_signature
+        assert normalize_php_signature("(string $msg): void") == "(string)"
+
+    def test_none(self) -> None:
+        from hypergumbo_lang_mainstream.php import normalize_php_signature
+        assert normalize_php_signature(None) is None

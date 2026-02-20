@@ -228,6 +228,15 @@ def _extract_java_signature(
     return signature
 
 
+def normalize_java_signature(
+    signature: str | None,
+    type_params: list[str] | None = None,
+) -> str | None:
+    """Normalize a Java signature for typed stable_id (ADR-0014 §3)."""
+    from hypergumbo_core.analyze.base import normalize_signature_types_first
+    return normalize_signature_types_first(signature, type_params)
+
+
 def _extract_java_return_type_name(signature: str | None) -> str | None:
     """Extract simple return type name from a Java method signature.
 

@@ -1468,3 +1468,19 @@ struct PrivStruct {}
         priv = next(s for s in result.symbols if s.name == "PrivStruct")
         assert len(priv.modifiers) == 0
 
+
+class TestNormalizeRustSignature:
+    """Tests for Rust signature normalization (ADR-0014 §3)."""
+
+    def test_basic_function(self) -> None:
+        from hypergumbo_lang_mainstream.rust import normalize_rust_signature
+        assert normalize_rust_signature("(x: i32, y: String) -> bool") == "(i32,String)bool"
+
+    def test_self_stripped(self) -> None:
+        from hypergumbo_lang_mainstream.rust import normalize_rust_signature
+        assert normalize_rust_signature("(&self, x: i32) -> bool") == "(i32)bool"
+
+    def test_none(self) -> None:
+        from hypergumbo_lang_mainstream.rust import normalize_rust_signature
+        assert normalize_rust_signature(None) is None
+

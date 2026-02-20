@@ -720,3 +720,19 @@ final class Sealed {}
 
         sealed = next(s for s in result.symbols if s.name == "Sealed")
         assert "final" in sealed.modifiers
+
+
+class TestNormalizeSwiftSignature:
+    """Tests for Swift signature normalization (ADR-0014 §3)."""
+
+    def test_basic_method(self) -> None:
+        from hypergumbo_lang_mainstream.swift import normalize_swift_signature
+        assert normalize_swift_signature("(x: Int, y: Int) -> Int") == "(Int,Int)Int"
+
+    def test_no_return(self) -> None:
+        from hypergumbo_lang_mainstream.swift import normalize_swift_signature
+        assert normalize_swift_signature("(msg: String)") == "(String)"
+
+    def test_none(self) -> None:
+        from hypergumbo_lang_mainstream.swift import normalize_swift_signature
+        assert normalize_swift_signature(None) is None

@@ -962,3 +962,15 @@ abstract class AbsClass {}
 
         abs_cls = next(s for s in result.symbols if s.name == "AbsClass")
         assert "abstract" in abs_cls.modifiers
+
+
+class TestNormalizeGroovySignature:
+    """Tests for Groovy signature normalization (ADR-0014 §3)."""
+
+    def test_basic_method(self) -> None:
+        from hypergumbo_lang_mainstream.groovy import normalize_groovy_signature
+        assert normalize_groovy_signature("(String name, int age): String") == "(String,int)String"
+
+    def test_none(self) -> None:
+        from hypergumbo_lang_mainstream.groovy import normalize_groovy_signature
+        assert normalize_groovy_signature(None) is None

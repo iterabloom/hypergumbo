@@ -156,6 +156,15 @@ def _extract_dart_signature(
     return sig
 
 
+def normalize_dart_signature(
+    signature: str | None,
+    type_params: list[str] | None = None,
+) -> str | None:
+    """Normalize a Dart signature for typed stable_id (ADR-0014 §3)."""
+    from hypergumbo_core.analyze.base import normalize_signature_types_first
+    return normalize_signature_types_first(signature, type_params)
+
+
 def _extract_dart_return_type_name(signature: str | None) -> str | None:
     """Extract the return type name from a Dart function signature.
 

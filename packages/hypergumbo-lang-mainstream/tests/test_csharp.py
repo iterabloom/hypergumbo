@@ -1833,3 +1833,20 @@ public class Config {
 
         count_prop = next(s for s in result.symbols if s.name == "Config.Count")
         assert "private" in count_prop.modifiers
+
+
+class TestNormalizeCSharpSignature:
+    """Tests for C# signature normalization (ADR-0014 §3)."""
+
+    def test_basic_method(self) -> None:
+        from hypergumbo_lang_mainstream.csharp import normalize_csharp_signature
+        assert normalize_csharp_signature("(int x, int y) int") == "(int,int)int"
+
+    def test_generic(self) -> None:
+        from hypergumbo_lang_mainstream.csharp import normalize_csharp_signature
+        result = normalize_csharp_signature("(List<T> items) T", ["T"])
+        assert result == "(List<$0>)$0"
+
+    def test_none(self) -> None:
+        from hypergumbo_lang_mainstream.csharp import normalize_csharp_signature
+        assert normalize_csharp_signature(None) is None

@@ -201,6 +201,15 @@ def _extract_swift_signature(
     return signature
 
 
+def normalize_swift_signature(
+    signature: str | None,
+    type_params: list[str] | None = None,
+) -> str | None:
+    """Normalize a Swift signature for typed stable_id (ADR-0014 §3)."""
+    from hypergumbo_core.analyze.base import normalize_signature_names_first
+    return normalize_signature_names_first(signature, type_params, return_sep="->")
+
+
 # Swift modifier keywords extractable from the AST.
 # tree-sitter-swift wraps modifiers in a ``modifiers`` container whose
 # children are ``visibility_modifier`` (etc.) nodes wrapping the keyword.

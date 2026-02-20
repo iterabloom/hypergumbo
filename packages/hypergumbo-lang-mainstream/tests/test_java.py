@@ -2906,3 +2906,24 @@ public class Callback {
             None,
         )
         assert call_edge is not None, "Call inside callback lambda should be attributed to caller"
+
+
+class TestNormalizeJavaSignature:
+    """Tests for Java signature normalization (ADR-0014 §3)."""
+
+    def test_basic_method(self) -> None:
+        from hypergumbo_lang_mainstream.java import normalize_java_signature
+        assert normalize_java_signature("(String name, int age) User") == "(String,int)User"
+
+    def test_void_method(self) -> None:
+        from hypergumbo_lang_mainstream.java import normalize_java_signature
+        assert normalize_java_signature("(String msg)") == "(String)"
+
+    def test_generics(self) -> None:
+        from hypergumbo_lang_mainstream.java import normalize_java_signature
+        result = normalize_java_signature("(List<T> items) Map<K, V>", ["T", "K", "V"])
+        assert result == "(List<$0>)Map<$1, $2>"
+
+    def test_none(self) -> None:
+        from hypergumbo_lang_mainstream.java import normalize_java_signature
+        assert normalize_java_signature(None) is None

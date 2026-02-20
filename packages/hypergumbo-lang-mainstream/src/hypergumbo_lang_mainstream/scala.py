@@ -214,6 +214,15 @@ def _extract_scala_signature(
     return signature
 
 
+def normalize_scala_signature(
+    signature: str | None,
+    type_params: list[str] | None = None,
+) -> str | None:
+    """Normalize a Scala signature for typed stable_id (ADR-0014 §3)."""
+    from hypergumbo_core.analyze.base import normalize_signature_names_first
+    return normalize_signature_names_first(signature, type_params, return_sep=":")
+
+
 # Scala modifier keywords extractable from the AST.
 # tree-sitter-scala wraps access modifiers in ``modifiers`` → ``access_modifier``
 # whose children are the keywords (private, protected, etc.).

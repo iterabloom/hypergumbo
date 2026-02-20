@@ -266,6 +266,15 @@ def _extract_php_signature(
     return signature
 
 
+def normalize_php_signature(
+    signature: str | None,
+    type_params: list[str] | None = None,
+) -> str | None:
+    """Normalize a PHP signature for typed stable_id (ADR-0014 §3)."""
+    from hypergumbo_core.analyze.base import normalize_signature_php
+    return normalize_signature_php(signature, type_params)
+
+
 def _extract_controller_action(
     args_node: "tree_sitter.Node", source: bytes
 ) -> str | None:

@@ -188,6 +188,15 @@ def _extract_go_signature(
     return sig
 
 
+def normalize_go_signature(
+    signature: str | None,
+    type_params: list[str] | None = None,
+) -> str | None:
+    """Normalize a Go signature for typed stable_id (ADR-0014 §3)."""
+    from hypergumbo_core.analyze.base import normalize_signature_go
+    return normalize_signature_go(signature, type_params)
+
+
 def _extract_import_aliases(
     root_node: "tree_sitter.Node",
     source: bytes,

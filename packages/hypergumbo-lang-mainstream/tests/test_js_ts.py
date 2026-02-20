@@ -5592,3 +5592,19 @@ function execute(obj: any) {
         assert len(run_calls) >= 1, (
             "2 candidates should still resolve"
         )
+
+
+class TestNormalizeJstsSignature:
+    """Tests for JS/TS signature normalization (ADR-0014 §3)."""
+
+    def test_typescript_typed(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import normalize_jsts_signature
+        assert normalize_jsts_signature("(name: string, age: number): boolean") == "(string,number)boolean"
+
+    def test_javascript_untyped(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import normalize_jsts_signature
+        assert normalize_jsts_signature("(name, age)") == "(name,age)"
+
+    def test_none(self) -> None:
+        from hypergumbo_lang_mainstream.js_ts import normalize_jsts_signature
+        assert normalize_jsts_signature(None) is None

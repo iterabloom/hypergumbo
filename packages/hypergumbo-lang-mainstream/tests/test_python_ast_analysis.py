@@ -4465,3 +4465,21 @@ class _PrivateClass:
         assert "private" in priv.modifiers
 
 
+class TestNormalizePythonSignature:
+    """Tests for Python signature normalization (ADR-0014 §3)."""
+
+    def test_basic_function(self) -> None:
+        from hypergumbo_lang_mainstream.py import normalize_python_signature
+        assert normalize_python_signature("(name: str, age: int) -> bool") == "(str,int)bool"
+
+    def test_self_stripped(self) -> None:
+        from hypergumbo_lang_mainstream.py import normalize_python_signature
+        assert normalize_python_signature("(self, name: str) -> bool") == "(str)bool"
+
+    def test_cls_stripped(self) -> None:
+        from hypergumbo_lang_mainstream.py import normalize_python_signature
+        assert normalize_python_signature("(cls, name: str) -> bool") == "(str)bool"
+
+    def test_none(self) -> None:
+        from hypergumbo_lang_mainstream.py import normalize_python_signature
+        assert normalize_python_signature(None) is None

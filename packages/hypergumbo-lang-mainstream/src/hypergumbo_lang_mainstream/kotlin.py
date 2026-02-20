@@ -199,6 +199,15 @@ def _extract_kotlin_signature(
     return signature
 
 
+def normalize_kotlin_signature(
+    signature: str | None,
+    type_params: list[str] | None = None,
+) -> str | None:
+    """Normalize a Kotlin signature for typed stable_id (ADR-0014 §3)."""
+    from hypergumbo_core.analyze.base import normalize_signature_names_first
+    return normalize_signature_names_first(signature, type_params, return_sep=":")
+
+
 def _extract_kotlin_return_type_name(signature: str | None) -> str | None:
     """Extract the return type name from a Kotlin function signature.
 

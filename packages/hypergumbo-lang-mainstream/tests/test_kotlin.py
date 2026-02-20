@@ -1699,3 +1699,19 @@ abstract class AbsClass {}
 
         abs_cls = next(s for s in result.symbols if s.name == "AbsClass")
         assert "abstract" in abs_cls.modifiers
+
+
+class TestNormalizeKotlinSignature:
+    """Tests for Kotlin signature normalization (ADR-0014 §3)."""
+
+    def test_basic_method(self) -> None:
+        from hypergumbo_lang_mainstream.kotlin import normalize_kotlin_signature
+        assert normalize_kotlin_signature("(name: String, age: Int): User") == "(String,Int)User"
+
+    def test_no_return(self) -> None:
+        from hypergumbo_lang_mainstream.kotlin import normalize_kotlin_signature
+        assert normalize_kotlin_signature("(msg: String)") == "(String)"
+
+    def test_none(self) -> None:
+        from hypergumbo_lang_mainstream.kotlin import normalize_kotlin_signature
+        assert normalize_kotlin_signature(None) is None

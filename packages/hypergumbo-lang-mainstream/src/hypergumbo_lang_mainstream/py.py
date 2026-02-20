@@ -116,6 +116,17 @@ def _python_visibility_modifiers(name: str) -> list[str]:
     return []
 
 
+def normalize_python_signature(
+    signature: str | None,
+    type_params: list[str] | None = None,
+) -> str | None:
+    """Normalize a Python signature for typed stable_id (ADR-0014 §3)."""
+    from hypergumbo_core.analyze.base import normalize_signature_names_first
+    return normalize_signature_names_first(
+        signature, type_params, return_sep="->", skip_self=True,
+    )
+
+
 def _make_symbol_id(path: str, line: int, end_line: int, name: str, kind: str) -> str:
     """Generate location-based ID in format {lang}:{file}:{start}-{end}:{name}:{kind}."""
     return f"python:{path}:{line}-{end_line}:{name}:{kind}"

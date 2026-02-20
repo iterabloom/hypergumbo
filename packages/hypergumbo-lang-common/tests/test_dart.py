@@ -1086,3 +1086,19 @@ void publicFunc() {}
         pub_func = next(s for s in result.symbols if s.name == "publicFunc")
         assert "private" not in pub_func.modifiers
 
+
+class TestNormalizeDartSignature:
+    """Tests for Dart signature normalization (ADR-0014 §3)."""
+
+    def test_basic_function(self) -> None:
+        from hypergumbo_lang_common.dart import normalize_dart_signature
+        assert normalize_dart_signature("(int a, int b) int") == "(int,int)int"
+
+    def test_void_function(self) -> None:
+        from hypergumbo_lang_common.dart import normalize_dart_signature
+        assert normalize_dart_signature("(String name)") == "(String)"
+
+    def test_none(self) -> None:
+        from hypergumbo_lang_common.dart import normalize_dart_signature
+        assert normalize_dart_signature(None) is None
+

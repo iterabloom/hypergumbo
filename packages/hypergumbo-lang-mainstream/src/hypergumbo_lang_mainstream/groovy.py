@@ -228,6 +228,17 @@ def _extract_groovy_signature(
     return signature
 
 
+def normalize_groovy_signature(
+    signature: str | None,
+    type_params: list[str] | None = None,
+) -> str | None:
+    """Normalize a Groovy signature for typed stable_id (ADR-0014 §3)."""
+    from hypergumbo_core.analyze.base import normalize_signature_types_first
+    return normalize_signature_types_first(
+        signature, type_params, skip_void_return=False, return_sep=":",
+    )
+
+
 def _extract_import_aliases(
     tree: "tree_sitter.Tree",
     source: bytes,

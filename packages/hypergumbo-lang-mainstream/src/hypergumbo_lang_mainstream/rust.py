@@ -127,6 +127,17 @@ def _extract_rust_signature(
     return sig
 
 
+def normalize_rust_signature(
+    signature: str | None,
+    type_params: list[str] | None = None,
+) -> str | None:
+    """Normalize a Rust signature for typed stable_id (ADR-0014 §3)."""
+    from hypergumbo_core.analyze.base import normalize_signature_names_first
+    return normalize_signature_names_first(
+        signature, type_params, return_sep="->", skip_self=True,
+    )
+
+
 def _extract_base_type_name(type_node: "tree_sitter.Node", source: bytes) -> str:
     """Extract the base type identifier from a type node.
 

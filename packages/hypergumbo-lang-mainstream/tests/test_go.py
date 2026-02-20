@@ -2752,3 +2752,19 @@ func (f *Foo) unexportedMethod() {}
 
         unexported = next(s for s in result.symbols if "unexportedMethod" in s.name)
         assert "unexported" in unexported.modifiers
+
+
+class TestNormalizeGoSignature:
+    """Tests for Go signature normalization (ADR-0014 §3)."""
+
+    def test_basic_function(self) -> None:
+        from hypergumbo_lang_mainstream.go import normalize_go_signature
+        assert normalize_go_signature("(name string, age int) error") == "(string,int)error"
+
+    def test_pointer_stripped(self) -> None:
+        from hypergumbo_lang_mainstream.go import normalize_go_signature
+        assert normalize_go_signature("(r *http.Request) error") == "(Request)error"
+
+    def test_none(self) -> None:
+        from hypergumbo_lang_mainstream.go import normalize_go_signature
+        assert normalize_go_signature(None) is None

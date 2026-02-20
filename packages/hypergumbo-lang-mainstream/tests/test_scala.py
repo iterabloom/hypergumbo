@@ -879,3 +879,15 @@ case class CaseClass(x: Int)
 
         case_cls = next(s for s in result.symbols if s.name == "CaseClass")
         assert "case" in case_cls.modifiers
+
+
+class TestNormalizeScalaSignature:
+    """Tests for Scala signature normalization (ADR-0014 §3)."""
+
+    def test_basic_method(self) -> None:
+        from hypergumbo_lang_mainstream.scala import normalize_scala_signature
+        assert normalize_scala_signature("(x: Int, y: Int): Int") == "(Int,Int)Int"
+
+    def test_none(self) -> None:
+        from hypergumbo_lang_mainstream.scala import normalize_scala_signature
+        assert normalize_scala_signature(None) is None

@@ -241,6 +241,365 @@ def make_entry_stable_id(entry_type: str, name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Signature normalization utilities (ADR-0014 §3)
+# ---------------------------------------------------------------------------
+
+import re as _re
+
+
+def strip_fqn_prefix(type_name: str) -> str:
+    """Strip fully-qualified name prefix, keeping just the simple name.
+
+    Handles dotted paths like ``java.lang.String`` → ``String``
+    and ``System.Collections.Generic.List`` → ``List``.
+    Preserves generic parameters: ``java.util.List<String>`` → ``List<String>``.
+
+    Does NOT strip if the name contains no dots (already simple).
+    """
+    # Split at first '<' to preserve generic params
+    if "<" in type_name:
+        base, rest = type_name.split("<", 1)
+        return strip_fqn_prefix(base) + "<" + rest
+    if "[" in type_name:
+        # Go/Scala square-bracket generics
+        base, rest = type_name.split("[", 1)
+        return strip_fqn_prefix(base) + "[" + rest
+    if "." in type_name:
+        return type_name.rsplit(".", 1)[-1]
+    return type_name
+
+
+# Regex to match type parameter names in generic brackets.
+# Matches single uppercase letter or conventional names like T1, TKey, etc.
+_TYPE_PARAM_RE = _re.compile(r"\b([A-Z][A-Za-z0-9]*)\b")
+
+
+def normalize_generic_params(
+    text: str,
+    type_params: list[str],
+) -> str:
+    """Replace declared type parameter names with positional markers.
+
+    ``T, U`` → ``$0, $1`` within the given text.  Only replaces
+    names that exactly match a declared type parameter — concrete
+    type names like ``String`` or ``Integer`` are untouched.
+
+    Args:
+        text: The signature text to transform.
+        type_params: Ordered list of declared type parameter names
+            (e.g., ``["T", "U", "V"]``).
+
+    Returns:
+        Transformed text with type params replaced by positional markers.
+    """
+    if not type_params:
+        return text
+    mapping = {tp: f"${i}" for i, tp in enumerate(type_params)}
+
+    def _replace(m: _re.Match) -> str:
+        name = m.group(1)
+        return mapping.get(name, name)
+
+    return _TYPE_PARAM_RE.sub(_replace, text)
+
+
+def split_params_top_level(params_str: str) -> list[str]:
+    """Split a parameter list by commas, respecting generic nesting.
+
+    ``"Map<String, Integer>, int"`` → ``["Map<String, Integer>", "int"]``
+
+    Handles ``<>``, ``[]``, and ``()`` nesting.  Leading/trailing
+    whitespace on each part is stripped.
+    """
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for ch in params_str:
+        if ch in ("<", "[", "("):
+            depth += 1
+            current.append(ch)
+        elif ch in (">", "]", ")"):
+            depth = max(0, depth - 1)
+            current.append(ch)
+        elif ch == "," and depth == 0:
+            parts.append("".join(current).strip())
+            current = []
+        else:
+            current.append(ch)
+    tail = "".join(current).strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def _normalize_type(raw_type: str, type_params: list[str] | None) -> str:
+    """Apply FQN stripping and generic-param normalization to a single type."""
+    t = strip_fqn_prefix(raw_type.strip())
+    if type_params:
+        t = normalize_generic_params(t, type_params)
+    return t
+
+
+def normalize_signature_types_first(
+    signature: str | None,
+    type_params: list[str] | None = None,
+    *,
+    skip_void_return: bool = True,
+    return_sep: str = "",
+) -> str | None:
+    """Normalize a signature where params are ``Type name`` (Java, C#, Dart, Groovy).
+
+    Input format: ``(Type name, Type name) ReturnType``
+    or with return_sep ``":"``: ``(Type name, Type name): ReturnType``
+    Output format: ``(Type,Type)ReturnType``
+
+    Strips parameter names, FQN prefixes, and normalizes generic type
+    parameters by position.  Used by Java, C#, Dart, Groovy, Objective-C.
+    """
+    if not signature:
+        return None
+
+    # Split into params part and return type
+    paren_close = _find_matching_paren(signature, 0)
+    if paren_close < 0:
+        return None
+
+    params_str = signature[1:paren_close]
+    rest = signature[paren_close + 1:].strip()
+
+    # Extract return type, stripping separator if present
+    if return_sep and rest.startswith(return_sep):
+        return_str = rest[len(return_sep):].strip()
+    else:
+        return_str = rest
+
+    # Parse params: "Type name" → extract Type
+    raw_params = split_params_top_level(params_str)
+    types: list[str] = []
+    for p in raw_params:
+        p = p.strip()
+        if not p:
+            continue
+        # Handle varargs: "Type... name"
+        if "..." in p:
+            p = p.replace("...", " ").strip()
+        # Type comes first, name is last space-separated token
+        # But type itself may have spaces (e.g., "unsigned int x" in C)
+        # For most languages, split on last space
+        parts = p.rsplit(None, 1)
+        if len(parts) == 2:
+            types.append(_normalize_type(parts[0], type_params))
+        else:
+            # Single token — it's either just a type or just a name
+            types.append(_normalize_type(parts[0], type_params))
+
+    norm_params = ",".join(types)
+
+    if return_str and not (skip_void_return and return_str.lower() == "void"):
+        norm_return = _normalize_type(return_str, type_params)
+        return f"({norm_params}){norm_return}"
+    return f"({norm_params})"
+
+
+def normalize_signature_names_first(
+    signature: str | None,
+    type_params: list[str] | None = None,
+    *,
+    return_sep: str = ":",
+    skip_self: bool = False,
+) -> str | None:
+    """Normalize a signature where params are ``name: Type`` (Kotlin, Scala, TS, Swift, Rust, Python).
+
+    Input format: ``(name: Type, name: Type): ReturnType`` or
+                  ``(name: Type, name: Type) -> ReturnType``
+    Output format: ``(Type,Type)ReturnType``
+
+    Args:
+        signature: The raw signature string.
+        type_params: Declared generic type parameter names.
+        return_sep: Separator before return type (``":"`` or ``"->"``)
+        skip_self: If True, skip ``self``/``cls`` parameters (Python/Rust).
+    """
+    if not signature:
+        return None
+
+    # Split into params part and return type
+    paren_close = _find_matching_paren(signature, 0)
+    if paren_close < 0:
+        return None
+
+    params_str = signature[1:paren_close]
+    rest = signature[paren_close + 1:].strip()
+
+    # Extract return type
+    return_str = ""
+    if rest.startswith(return_sep):
+        return_str = rest[len(return_sep):].strip()
+    elif rest.startswith("->"):
+        return_str = rest[2:].strip()
+    elif rest:
+        return_str = rest.strip()
+
+    # Parse params: "name: Type" → extract Type
+    raw_params = split_params_top_level(params_str)
+    types: list[str] = []
+    for p in raw_params:
+        p = p.strip()
+        if not p:
+            continue
+        # Skip self/cls parameters
+        if skip_self and p in ("self", "cls", "&self", "&mut self"):
+            continue
+        # Find the colon separator — "name: Type"
+        colon_idx = p.find(":")
+        if colon_idx >= 0:
+            type_part = p[colon_idx + 1:].strip()
+            types.append(_normalize_type(type_part, type_params))
+        else:
+            # No type annotation (e.g., bare name in Python)
+            # Include as-is for untyped params
+            types.append(p.strip())
+
+    norm_params = ",".join(types)
+
+    if return_str:
+        norm_return = _normalize_type(return_str, type_params)
+        return f"({norm_params}){norm_return}"
+    return f"({norm_params})"
+
+
+def normalize_signature_php(
+    signature: str | None,
+    type_params: list[str] | None = None,
+) -> str | None:
+    """Normalize a PHP signature: ``(Type $name, Type $name): ReturnType``.
+
+    Output format: ``(Type,Type)ReturnType``
+    """
+    if not signature:
+        return None
+
+    paren_close = _find_matching_paren(signature, 0)
+    if paren_close < 0:
+        return None
+
+    params_str = signature[1:paren_close]
+    rest = signature[paren_close + 1:].strip()
+
+    return_str = ""
+    if rest.startswith(":"):
+        return_str = rest[1:].strip()
+
+    raw_params = split_params_top_level(params_str)
+    types: list[str] = []
+    for p in raw_params:
+        p = p.strip()
+        if not p:
+            continue
+        # PHP format: "Type $name" or "Type $name = ..." or "$name" (untyped)
+        dollar_idx = p.find("$")
+        if dollar_idx > 0:
+            type_part = p[:dollar_idx].strip()
+            types.append(_normalize_type(type_part, type_params))
+        else:
+            # Untyped param: "$name" or just name
+            types.append(p.strip())
+
+    norm_params = ",".join(types)
+
+    if return_str and return_str.lower() != "void":
+        norm_return = _normalize_type(return_str, type_params)
+        return f"({norm_params}){norm_return}"
+    return f"({norm_params})"
+
+
+def normalize_signature_go(
+    signature: str | None,
+    type_params: list[str] | None = None,
+) -> str | None:
+    """Normalize a Go signature: ``(name Type, name Type) ReturnType``.
+
+    Go has a unique convention where multiple names can share a type:
+    ``(a, b int)`` means both are ``int``.  The return type may be
+    a tuple: ``(int, error)``.
+
+    Output format: ``(Type,Type)ReturnType``
+    """
+    if not signature:
+        return None
+
+    paren_close = _find_matching_paren(signature, 0)
+    if paren_close < 0:
+        return None
+
+    params_str = signature[1:paren_close]
+    rest = signature[paren_close + 1:].strip()
+
+    # Return type in Go — could be "(Type, Type)" or "Type"
+    return_str = rest.strip()
+
+    # Parse params — Go format: "name Type" where Type is the last token
+    raw_params = split_params_top_level(params_str)
+    types: list[str] = []
+    for p in raw_params:
+        p = p.strip()
+        if not p:
+            continue
+        # Strip pointer: "*Type" → "Type"
+        parts = p.split()
+        if len(parts) >= 2:
+            # Last token is the type
+            raw_type = parts[-1]
+            if raw_type.startswith("*"):
+                raw_type = raw_type[1:]
+            types.append(_normalize_type(raw_type, type_params))
+        else:
+            # Single token — might be a type with no name
+            raw_type = parts[0]
+            if raw_type.startswith("*"):
+                raw_type = raw_type[1:]
+            types.append(_normalize_type(raw_type, type_params))
+
+    norm_params = ",".join(types)
+
+    if return_str:
+        # Normalize return type (strip pointer prefixes, FQN)
+        ret = return_str
+        if ret.startswith("(") and ret.endswith(")"):
+            # Tuple return: "(int, error)" → normalize each
+            inner = ret[1:-1]
+            ret_parts = split_params_top_level(inner)
+            norm_ret = "(" + ",".join(
+                _normalize_type(r.strip().lstrip("*"), type_params)
+                for r in ret_parts
+            ) + ")"
+            return f"({norm_params}){norm_ret}"
+        if ret.startswith("*"):
+            ret = ret[1:]
+        norm_return = _normalize_type(ret, type_params)
+        return f"({norm_params}){norm_return}"
+    return f"({norm_params})"
+
+
+def _find_matching_paren(s: str, start: int) -> int:
+    """Find the index of the closing paren matching the opening paren at *start*.
+
+    Returns -1 if not found or *s[start]* is not ``(``.
+    """
+    if start >= len(s) or s[start] != "(":
+        return -1
+    depth = 0
+    for i in range(start, len(s)):
+        if s[i] == "(":
+            depth += 1
+        elif s[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1
+
+
+# ---------------------------------------------------------------------------
 # Grammar availability checking
 # ---------------------------------------------------------------------------
 
