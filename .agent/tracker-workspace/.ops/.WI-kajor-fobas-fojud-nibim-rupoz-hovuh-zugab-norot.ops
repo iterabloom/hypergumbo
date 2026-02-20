@@ -1,0 +1,20 @@
+- op: create  # e725
+  at: '2026-02-20T16:13:16Z'  # e725
+  by: agent  # e725
+  actor: jgstern_agent  # e725
+  clock: 1  # e725
+  nonce: e725  # e725
+  data:  # e725
+    kind: work_item  # e725
+    title: "Groovy: ambiguity guard for dynamic dispatch"  # e725
+    status: todo_soft  # e725
+    priority: 4  # e725
+    parent:  # e725
+    tags: []  # e725
+    before: []  # e725
+    duplicate_of: []  # e725
+    not_duplicate_of: []  # e725
+    pr_ref:  # e725
+    justification:  # e725
+    description: "Groovy dynamic dispatch similar to Ruby. Apply guard for 3+ candidates."  # e725
+    fields: {}  # e725
