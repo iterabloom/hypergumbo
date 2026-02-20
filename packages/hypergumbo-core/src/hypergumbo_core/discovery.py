@@ -128,6 +128,7 @@ DEFAULT_EXCLUDES = [
     "gcov-reports",  # C/C++ (gcov)
     "jest-coverage",  # JavaScript (Jest)
     ".jest",  # JavaScript (Jest cache)
+    "snapshot_report.html",  # pytest-html snapshot report
     # Documentation output
     "site",  # mkdocs
     "_site",  # Jekyll

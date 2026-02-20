@@ -11,7 +11,7 @@ hypergumbo is a local-first CLI that generates behavior maps and sketches from s
 pip install hypergumbo
 ```
 
-> Requires Python 3.10+. Includes PyTorch (~1.5GB) for embedding-based features. For a lighter install without embeddings: `pip install hypergumbo-core hypergumbo-lang-mainstream hypergumbo-lang-common hypergumbo-lang-extended1`
+> Requires Python 3.10+. For optional extras (embeddings, gitleaks, grammars), run `hypergumbo add-extras` after installing.
 
 > Intel Mac users: Some tree-sitter packages lack x86_64 wheels. See [docs/INTEL_MAC.md](https://codeberg.org/iterabloom/hypergumbo/src/branch/dev/docs/INTEL_MAC.md) for a Docker-based workaround.
 
