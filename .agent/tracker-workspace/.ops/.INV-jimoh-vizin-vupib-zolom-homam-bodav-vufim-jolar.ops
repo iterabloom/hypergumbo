@@ -32,3 +32,13 @@
     fields:  # 6135
       statement: "Build-from-source grammars must be pinned to specific commits for shape_id reproducibility"  # 6135
       root_cause: "scripts/build-source-grammars clones from HEAD with no commit SHA"  # 6135
+- op: update  # ad9f
+  at: '2026-02-20T08:24:24Z'  # ad9f
+  by: agent  # ad9f
+  actor: jgstern_agent  # ad9f
+  clock: 3  # ad9f
+  nonce: ad9f  # ad9f
+  set:  # ad9f
+    parent: WI-tadof-zujaj-nizoz-zutam-sizad-nasid-sosob-nuhol  # ad9f
+  add:  # ad9f
+    tags: [phase-0]  # ad9f
