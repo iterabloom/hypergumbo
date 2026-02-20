@@ -20,3 +20,13 @@
     justification:  # 9c4e
     description: "Hack (hack.py:89) and Smithy (smithy.py:62) emit stable_id as '{lang}:{path}:{kind}:{name}' while the other 25 location-based analyzers use '{lang}:{path}:{name}:{kind}'. If these location-based IDs are ever used for cross-analyzer comparison, the inconsistent format would cause silent mismatches. Fix: align to majority format '{lang}:{path}:{name}:{kind}'. See ADR-0014 Phase 0."  # 9c4e
     fields: {}  # 9c4e
+- op: update  # 05a7
+  at: '2026-02-20T08:25:38Z'  # 05a7
+  by: agent  # 05a7
+  actor: jgstern_agent  # 05a7
+  clock: 2  # 05a7
+  nonce: 05a7  # 05a7
+  set:  # 05a7
+    parent: WI-tadof-zujaj-nizoz-zutam-sizad-nasid-sosob-nuhol  # 05a7
+  add:  # 05a7
+    tags: [phase-0]  # 05a7
