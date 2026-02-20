@@ -20,11 +20,17 @@ How It Works
    - Pass 1: Parse all files, extract all symbols into global registry
    - Pass 2: Extract variable-type bindings, detect calls, imports, and routes
 5. Receiver-type disambiguation:
-   - Tracks variable types from ``:=`` composite literals, ``var`` declarations,
-     and function parameters (e.g., ``s := &Server{}`` → s has type Server)
+   - Tracks variable types **per function scope** from ``:=`` composite
+     literals, ``var`` declarations, and function parameters
+     (e.g., in ``func foo() { s := &Server{} }``, s has type Server only in foo)
    - When resolving ``s.Method()``, looks up ``Server.Method`` before falling
      back to short-name resolution, preventing incorrect disambiguation when
      multiple types define the same method name
+6. Ambiguous method call guard:
+   - When a method call ``x.Method()`` has no inferred receiver type and the
+     method name has 3+ candidates in global symbols, creates an unresolved
+     edge with ``evidence_type="ambiguous_method_call"`` instead of picking
+     an arbitrary candidate (which would produce a false-positive call edge)
 4. Route detection:
    - Gin/Echo: r.GET("/path", handler), e.POST("/path", handler)
    - Fiber: app.Get("/path", handler) (lowercase methods)
@@ -364,6 +370,66 @@ def _extract_struct_from_assertion_rhs(
     return None
 
 
+def _extract_receiver_type_from_node(
+    receiver_node: "tree_sitter.Node",
+    source: bytes,
+) -> str:
+    """Extract the receiver type name from a method_declaration's receiver node.
+
+    Given the parameter_list node that serves as the receiver, walks through
+    its children to find the parameter_declaration and extracts the type name.
+    Handles both value receivers (``u User``) and pointer receivers (``u *User``),
+    returning just the type name in either case (e.g., ``"User"``).
+
+    Returns an empty string if no type can be extracted.
+    """
+    for child in receiver_node.children:
+        if child.type == "parameter_declaration":
+            type_node = find_child_by_field(child, "type")
+            if type_node:
+                if type_node.type == "pointer_type":
+                    elem_node = find_child_by_type(type_node, "type_identifier")
+                    if elem_node:
+                        return node_text(elem_node, source)
+                elif type_node.type == "type_identifier":
+                    return node_text(type_node, source)
+    return ""  # pragma: no cover - well-formed Go always has a typed receiver
+
+
+def _get_enclosing_func_name(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> str | None:
+    """Walk up the tree to find the enclosing function/method name.
+
+    For method declarations, returns the qualified name (``Type.Method``).
+    For function declarations, returns the simple function name.
+    For positions outside any function, returns None.
+
+    Used to scope variable type bindings to their enclosing function.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type == "function_declaration":
+            name_node = find_child_by_field(current, "name")
+            if name_node:
+                return node_text(name_node, source)
+        elif current.type == "method_declaration":
+            name_node = find_child_by_field(current, "name")
+            receiver_node = find_child_by_field(current, "receiver")
+            if name_node:
+                method_name = node_text(name_node, source)
+                if receiver_node:
+                    receiver_type = _extract_receiver_type_from_node(
+                        receiver_node, source,
+                    )
+                    if receiver_type:
+                        return f"{receiver_type}.{method_name}"
+                return method_name  # pragma: no cover - methods always have receivers
+        current = current.parent
+    return None
+
+
 def _extract_symbols_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -429,19 +495,9 @@ def _extract_symbols_from_file(
                 receiver_type = ""
 
                 if receiver_node:
-                    # Extract receiver type (e.g., "User" from "(u User)" or "(u *User)")
-                    param_list = receiver_node
-                    for child in param_list.children:
-                        if child.type == "parameter_declaration":
-                            type_node = find_child_by_field(child, "type")
-                            if type_node:
-                                if type_node.type == "pointer_type":
-                                    # *User -> User
-                                    elem_node = find_child_by_type(type_node, "type_identifier")
-                                    if elem_node:
-                                        receiver_type = node_text(elem_node, source)
-                                elif type_node.type == "type_identifier":
-                                    receiver_type = node_text(type_node, source)
+                    receiver_type = _extract_receiver_type_from_node(
+                        receiver_node, source,
+                    )
 
                 full_name = f"{receiver_type}.{method_name}" if receiver_type else method_name
                 start_line = node.start_point[0] + 1
@@ -536,6 +592,10 @@ def _get_enclosing_function(
     to find the containing named function. This enables call attribution for
     patterns like: go func() { helper() }()
 
+    For method declarations, tries the qualified name first (``Type.Method``)
+    to avoid incorrect attribution when multiple types define the same method
+    name. Falls back to short name if the qualified name isn't in local_symbols.
+
     Args:
         node: The current node.
         source: Source bytes for extracting text.
@@ -546,12 +606,29 @@ def _get_enclosing_function(
     """
     current = node.parent
     while current is not None:
-        if current.type in ("function_declaration", "method_declaration"):
+        if current.type == "function_declaration":
             name_node = find_child_by_field(current, "name")
             if name_node:
                 func_name = node_text(name_node, source)
                 if func_name in local_symbols:
                     return local_symbols[func_name]
+        elif current.type == "method_declaration":
+            name_node = find_child_by_field(current, "name")
+            if name_node:
+                method_name = node_text(name_node, source)
+                # Try qualified name first to handle same-name methods
+                receiver_node = find_child_by_field(current, "receiver")
+                if receiver_node:
+                    receiver_type = _extract_receiver_type_from_node(
+                        receiver_node, source,
+                    )
+                    if receiver_type:
+                        qualified = f"{receiver_type}.{method_name}"
+                        if qualified in local_symbols:
+                            return local_symbols[qualified]
+                # Fall back to short name (when qualified name not in local_symbols)
+                if method_name in local_symbols:  # pragma: no cover - qualified always present
+                    return local_symbols[method_name]  # pragma: no cover
         # For func_literal (anonymous functions), continue walking up
         # to find the containing named function rather than returning None
         # This handles: go func() { helper() }(), callbacks, etc.
@@ -562,23 +639,27 @@ def _get_enclosing_function(
 def _extract_go_var_types(
     root_node: "tree_sitter.Node",
     source: bytes,
-) -> dict[str, str]:
-    """Extract variable-to-type-name mappings from Go assignment patterns.
+) -> dict[str, dict[str, str]]:
+    """Extract function-scoped variable-to-type-name mappings from Go code.
 
     Scans for statements and declarations where a variable is bound to a
-    known type.  Recognized patterns:
+    known type, scoped by the enclosing function/method name.
 
-        s := &Server{}            → s has type Server
-        s := Server{}             → s has type Server
-        var c Client              → c has type Client
-        var p *Client             → p has type Client
-        func foo(s *Server)       → s has type Server (parameter)
+    Recognized patterns:
 
-    Only the first assignment to a variable wins (single-assignment SSA
-    assumption within a function body).  Built-in types (string, int, etc.)
-    are excluded because they don't correspond to user-defined methods.
+        s := &Server{}            → s has type Server (in enclosing func)
+        s := Server{}             → s has type Server (in enclosing func)
+        var c Client              → c has type Client (in enclosing func)
+        var p *Client             → p has type Client (in enclosing func)
+        func foo(s *Server)       → s has type Server (in foo)
 
-    Returns a dict mapping variable names to inferred type names.
+    Only the first assignment to a variable within a function wins
+    (single-assignment SSA assumption per function scope). Built-in types
+    (string, int, etc.) are excluded because they don't correspond to
+    user-defined methods.
+
+    Returns a nested dict: ``{func_name: {var_name: type_name}}``.
+    For methods, func_name is qualified (``Type.Method``).
     """
     # Go built-in types that don't have user-defined methods
     _GO_BUILTINS = frozenset({
@@ -587,7 +668,7 @@ def _extract_go_var_types(
         "float32", "float64", "complex64", "complex128",
         "bool", "byte", "rune", "error", "any",
     })
-    var_types: dict[str, str] = {}
+    scoped_var_types: dict[str, dict[str, str]] = {}
 
     for node in iter_tree(root_node):
         # Pattern 1: Short var declaration  s := &Server{} or s := Server{}
@@ -605,13 +686,21 @@ def _extract_go_var_types(
                     if child.type == "identifier":
                         var_name = node_text(child, source)
                         break
-            if var_name is None or var_name in var_types:
-                continue  # first-assignment wins (SSA assumption)
+            if var_name is None:
+                continue  # pragma: no cover - short var always has identifier LHS
+
+            # Scope to enclosing function
+            func_name = _get_enclosing_func_name(node, source)
+            if func_name is None:
+                continue  # pragma: no cover - short vars always inside functions
+            func_vars = scoped_var_types.setdefault(func_name, {})
+            if var_name in func_vars:
+                continue  # pragma: no cover - Go forbids redeclaration in same scope
 
             # Get type from right side
             type_name = _type_from_rhs(rhs, source)
             if type_name and type_name not in _GO_BUILTINS:
-                var_types[var_name] = type_name
+                func_vars[var_name] = type_name
 
         # Pattern 2: Var declaration  var c Client  or  var p *Client
         elif node.type == "var_spec":
@@ -628,12 +717,18 @@ def _extract_go_var_types(
                 continue
 
             var_name = node_text(name_node, source)
-            if var_name in var_types:
+
+            # Scope to enclosing function (file-level vars have no enclosing func)
+            func_name = _get_enclosing_func_name(node, source)
+            if func_name is None:
                 continue
+            func_vars = scoped_var_types.setdefault(func_name, {})
+            if var_name in func_vars:
+                continue  # pragma: no cover - Go forbids redeclaration in same scope
 
             type_name = _type_identifier_from_node(type_node, source)
             if type_name and type_name not in _GO_BUILTINS:
-                var_types[var_name] = type_name
+                func_vars[var_name] = type_name
 
         # Pattern 3: Function/method parameters
         elif node.type == "parameter_declaration":
@@ -664,14 +759,20 @@ def _extract_go_var_types(
                 continue
 
             var_name = node_text(name_node, source)
-            if var_name in var_types:
-                continue
+
+            # Scope to enclosing function
+            func_name = _get_enclosing_func_name(node, source)
+            if func_name is None:
+                continue  # pragma: no cover - params always inside functions
+            func_vars = scoped_var_types.setdefault(func_name, {})
+            if var_name in func_vars:
+                continue  # pragma: no cover - Go forbids duplicate param names
 
             type_name = _type_identifier_from_node(type_node, source)
             if type_name and type_name not in _GO_BUILTINS:
-                var_types[var_name] = type_name
+                func_vars[var_name] = type_name
 
-    return var_types
+    return scoped_var_types
 
 
 def _type_from_rhs(
@@ -853,8 +954,8 @@ def _extract_edges_from_file(
     edges: list[Edge] = []
     file_id = make_file_id("go", str(file_path))
 
-    # Extract variable-to-type bindings for receiver disambiguation
-    var_types = _extract_go_var_types(tree.root_node, source)
+    # Extract function-scoped variable-to-type bindings for receiver disambiguation
+    scoped_var_types = _extract_go_var_types(tree.root_node, source)
 
     for node in iter_tree(tree.root_node):
         # Detect import statements
@@ -896,6 +997,9 @@ def _extract_edges_from_file(
         elif node.type == "call_expression":
             current_function = _get_enclosing_function(node, source, local_symbols)
             if current_function is not None:
+                # Get var_types scoped to the current enclosing function
+                var_types = scoped_var_types.get(current_function.name, {})
+
                 func_node = find_child_by_field(node, "function")
                 if func_node:
                     callee_name = None
@@ -949,6 +1053,26 @@ def _extract_edges_from_file(
                                             origin_run_id=run.execution_id,
                                         ))
                                         callee_name = None  # Already resolved
+                            # Ambiguity guard: when operand type is unknown
+                            # and method name has 3+ candidates, create
+                            # unresolved edge instead of picking arbitrarily
+                            elif (
+                                callee_name
+                                and callee_name in global_symbols
+                                and len(global_symbols[callee_name]) >= 3
+                            ):
+                                dst_id = f"go:external:0-0:{callee_name}:unresolved"
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=dst_id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="ambiguous_method_call",
+                                    confidence=0.50,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                ))
+                                callee_name = None  # Already handled
 
                     if callee_name:
                         # Check local symbols first — but NOT when the call

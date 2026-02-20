@@ -2079,12 +2079,12 @@ func main() {
             f"found destinations: {[e.dst for e in string_calls]}"
         )
 
-    def test_first_assignment_wins_across_functions(self, tmp_path: Path) -> None:
-        """First type assignment to a variable name wins (file-level SSA).
+    def test_function_scoped_var_types(self, tmp_path: Path) -> None:
+        """Each function has its own variable type scope.
 
-        When the same variable name appears in multiple functions with
-        different types, the first occurrence (in file order) wins.
-        This exercises the first-assignment-wins guard in var_types.
+        When the same variable name 's' appears in foo() as &Server{}
+        and in bar() as &Client{}, each function should resolve s.Run()
+        to the correct type's method — Server.Run and Client.Run respectively.
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -2114,20 +2114,20 @@ func bar() {
         foo_calls = [e for e in call_edges if "foo" in e.src]
         bar_calls = [e for e in call_edges if "bar" in e.src]
 
-        # foo's s is Server, bar's s is also treated as Server (first-assignment wins)
-        # Both should resolve to something with Run
-        assert any("Run" in e.dst for e in foo_calls), (
-            f"foo should call Run, found: {foo_calls}"
+        # foo's s is Server → should resolve to Server.Run
+        assert any("Server.Run" in e.dst for e in foo_calls), (
+            f"foo's s.Run() should resolve to Server.Run, found: {[e.dst for e in foo_calls]}"
         )
-        assert any("Run" in e.dst for e in bar_calls), (
-            f"bar should call Run, found: {bar_calls}"
+        # bar's s is Client → should resolve to Client.Run
+        assert any("Client.Run" in e.dst for e in bar_calls), (
+            f"bar's s.Run() should resolve to Client.Run, found: {[e.dst for e in bar_calls]}"
         )
 
-    def test_first_assignment_wins_var_vs_param(self, tmp_path: Path) -> None:
-        """First binding wins when same name is used as var and param.
+    def test_parameter_types_per_function(self, tmp_path: Path) -> None:
+        """Each function resolves parameter types independently.
 
-        If a short_var_declaration with name 's' appears before a parameter
-        declaration with name 's' in file order, the var binding wins.
+        first() uses ``s := &Server{}`` while second() has ``s *Client``
+        as a parameter. Each should resolve s.Do() to the correct type.
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -2161,11 +2161,9 @@ func second(s *Client) {
             f"first's s.Do() should resolve to Server.Do, "
             f"found: {[e.dst for e in first_calls]}"
         )
-        # second() has s as *Client param, but first-assignment-wins means
-        # s is still treated as Server. This is a known limitation of
-        # file-level (not scope-level) type tracking.
-        assert any("Do" in e.dst for e in second_calls), (
-            f"second's s.Do() should resolve to some Do method, "
+        # second() has s as *Client param → should resolve to Client.Do
+        assert any("Client.Do" in e.dst for e in second_calls), (
+            f"second's s.Do() should resolve to Client.Do, "
             f"found: {[e.dst for e in second_calls]}"
         )
 
@@ -2459,4 +2457,245 @@ func indirect() {
         assert indirect_ref.confidence < direct_call.confidence, (
             f"Function reference confidence ({indirect_ref.confidence}) should be "
             f"lower than direct call confidence ({direct_call.confidence})"
+        )
+
+
+class TestGoAmbiguousMethodCallGuard:
+    """Tests for the ambiguous method call resolution guard.
+
+    When a method call ``x.Method()`` cannot be resolved to a specific
+    receiver type and the method name has 3+ definitions across different
+    types, the system must NOT produce a resolved call edge (which would
+    be a false positive). Instead it should produce an unresolved edge
+    with evidence_type="ambiguous_method_call".
+
+    Invariant: Method calls with 3+ ambiguous receiver types must not
+    produce resolved call edges.
+    """
+
+    def test_ambiguous_method_three_plus_types_produces_unresolved(self, tmp_path: Path) -> None:
+        """x.Close() with 3 types defining Close() → unresolved edge.
+
+        When Server, Client, and Worker all define Close(), and x's type
+        cannot be inferred, the call should produce an unresolved edge
+        rather than picking an arbitrary candidate.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Server struct{}
+type Client struct{}
+type Worker struct{}
+
+func (s *Server) Close() {}
+func (c *Client) Close() {}
+func (w *Worker) Close() {}
+
+func cleanup(x interface{}) {
+    x.Close()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        cleanup_calls = [e for e in call_edges if "cleanup" in e.src]
+
+        # Should have an edge for x.Close()
+        close_calls = [e for e in cleanup_calls if "Close" in e.dst]
+        assert len(close_calls) >= 1, (
+            f"cleanup should have a call edge for x.Close(), found: {cleanup_calls}"
+        )
+
+        # The edge should be UNRESOLVED (ambiguous_method_call), not resolved
+        # to any specific type
+        for edge in close_calls:
+            assert edge.evidence_type == "ambiguous_method_call", (
+                f"x.Close() with 3+ candidates should have evidence_type='ambiguous_method_call', "
+                f"got '{edge.evidence_type}'"
+            )
+            assert edge.confidence <= 0.55, (
+                f"Ambiguous method call should have low confidence, got {edge.confidence}"
+            )
+            # Should NOT resolve to any specific type
+            assert "Server.Close" not in edge.dst, (
+                f"Should not resolve to Server.Close, got {edge.dst}"
+            )
+            assert "Client.Close" not in edge.dst, (
+                f"Should not resolve to Client.Close, got {edge.dst}"
+            )
+            assert "Worker.Close" not in edge.dst, (
+                f"Should not resolve to Worker.Close, got {edge.dst}"
+            )
+
+    def test_two_candidates_still_resolves(self, tmp_path: Path) -> None:
+        """x.Run() with only 2 types → still resolves (guard threshold is 3+).
+
+        The ambiguity guard only activates at 3+ candidates. With 2 candidates,
+        the ListNameResolver picks one with 1/sqrt(2) confidence.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Server struct{}
+type Client struct{}
+
+func (s *Server) Run() {}
+func (c *Client) Run() {}
+
+func start(x interface{}) {
+    x.Run()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        start_calls = [e for e in call_edges if "start" in e.src]
+
+        # With 2 candidates, should still produce a resolved edge
+        run_calls = [e for e in start_calls if "Run" in e.dst]
+        assert len(run_calls) >= 1, (
+            f"start should have call edge for x.Run() even with 2 candidates, "
+            f"found: {start_calls}"
+        )
+
+        # Should NOT be marked as ambiguous_method_call
+        for edge in run_calls:
+            assert edge.evidence_type != "ambiguous_method_call", (
+                "2-candidate method should not trigger ambiguity guard"
+            )
+
+    def test_package_qualified_calls_unaffected(self, tmp_path: Path) -> None:
+        """fmt.Println() is never guarded even if many packages define Println.
+
+        Package-qualified calls should bypass the ambiguity guard entirely
+        since the package alias resolves to a specific import path.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import "fmt"
+
+func main() {
+    fmt.Println("hello")
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        main_calls = [e for e in call_edges if "main:function" in e.src]
+
+        # No edge should have evidence_type="ambiguous_method_call"
+        for edge in main_calls:
+            assert edge.evidence_type != "ambiguous_method_call", (
+                f"Package-qualified call should not be guarded, got {edge.evidence_type}"
+            )
+
+    def test_typed_receiver_bypasses_guard(self, tmp_path: Path) -> None:
+        """s.Close() where s has known type bypasses guard even with 3+ candidates.
+
+        When the variable type is inferred (e.g., s := &Server{}), the call
+        is resolved via typed_receiver_call and should NOT trigger the guard.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Server struct{}
+type Client struct{}
+type Worker struct{}
+
+func (s *Server) Close() {}
+func (c *Client) Close() {}
+func (w *Worker) Close() {}
+
+func main() {
+    s := &Server{}
+    s.Close()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        main_calls = [e for e in call_edges if "main:function" in e.src]
+
+        close_calls = [e for e in main_calls if "Close" in e.dst]
+        assert len(close_calls) >= 1, (
+            f"main should have call edge for s.Close(), found: {main_calls}"
+        )
+
+        # Should resolve to Server.Close (typed) — NOT ambiguous
+        assert any("Server.Close" in e.dst for e in close_calls), (
+            f"s.Close() should resolve to Server.Close, found: {[e.dst for e in close_calls]}"
+        )
+        assert all(e.evidence_type != "ambiguous_method_call" for e in close_calls), (
+            "Typed receiver call should not be marked as ambiguous"
+        )
+
+
+class TestGoEnclosingFunctionAttribution:
+    """Tests for correct enclosing function attribution with same-name methods.
+
+    When Server.Get and Client.Get both exist, _get_enclosing_function should
+    correctly attribute edges to the right enclosing method via qualified name
+    lookup when the short name is ambiguous.
+    """
+
+    def test_same_name_methods_attributed_correctly(self, tmp_path: Path) -> None:
+        """Server.Get and Client.Get both calling helper() → correct attribution.
+
+        When two types define the same method name, edges from within
+        each method should be attributed to the correct qualified symbol
+        (Server.Get vs Client.Get), not to whichever happened to be
+        last in symbol_by_name.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Server struct{}
+type Client struct{}
+
+func helper() {}
+
+func (s *Server) Get() {
+    helper()
+}
+
+func (c *Client) Get() {
+    helper()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        # Find edges to helper
+        helper_edges = [e for e in call_edges if "helper" in e.dst]
+        assert len(helper_edges) >= 2, (
+            f"Both Server.Get and Client.Get should call helper(), "
+            f"found {len(helper_edges)} edges: {helper_edges}"
+        )
+
+        # Both Server.Get and Client.Get should be sources
+        sources = {e.src for e in helper_edges}
+        has_server_get = any("Server.Get" in s for s in sources)
+        has_client_get = any("Client.Get" in s for s in sources)
+        assert has_server_get, (
+            f"Server.Get should be a source of helper() call, sources: {sources}"
+        )
+        assert has_client_get, (
+            f"Client.Get should be a source of helper() call, sources: {sources}"
         )
