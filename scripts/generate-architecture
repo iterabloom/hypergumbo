@@ -610,6 +610,7 @@ def generate_architecture_md() -> str:
     # and remove section code fences
     sketch = filter_ai_folders_from_structure(sketch)
     sketch = _remove_sketch_sections(sketch, [
+        "Entry Points",
         "Source Files Content",
         "Additional Files Content",
     ])

@@ -34,7 +34,7 @@ from typing import List, Optional
 from .discovery import find_files, DEFAULT_EXCLUDES
 from .profile import detect_profile, RepoProfile
 from .ir import Symbol, Edge
-from .entrypoints import detect_entrypoints, Entrypoint
+from .entrypoints import detect_entrypoints, Entrypoint, EntrypointKind
 from .datamodels import detect_datamodels, DataModel
 from .ranking import (
     compute_centrality,
@@ -4748,6 +4748,70 @@ def _run_analysis(
     return all_symbols, all_edges, coverage_stats
 
 
+# Display groups for entry points, in presentation order.
+# Each group maps a heading to the EntrypointKind values it contains.
+# Groups with zero entries are omitted from output.
+_ENTRYPOINT_GROUPS: list[tuple[str, set[str]]] = [
+    ("CLI & Scripts", {
+        EntrypointKind.CLI_MAIN.value,
+        EntrypointKind.CLI_COMMAND.value,
+        EntrypointKind.MAIN_FUNCTION.value,
+        EntrypointKind.ELECTRON_MAIN.value,
+        EntrypointKind.ELECTRON_PRELOAD.value,
+        EntrypointKind.ELECTRON_RENDERER.value,
+    }),
+    ("HTTP Routes", {
+        EntrypointKind.HTTP_ROUTE.value,
+        EntrypointKind.DJANGO_VIEW.value,
+        EntrypointKind.EXPRESS_ROUTE.value,
+        EntrypointKind.SINATRA_ROUTE.value,
+        EntrypointKind.KTOR_ROUTE.value,
+        EntrypointKind.VAPOR_ROUTE.value,
+        EntrypointKind.PLUG_ROUTE.value,
+        EntrypointKind.HAPI_ROUTE.value,
+        EntrypointKind.FASTIFY_ROUTE.value,
+        EntrypointKind.KOA_ROUTE.value,
+        EntrypointKind.SLIM_ROUTE.value,
+        EntrypointKind.GO_HANDLER.value,
+        EntrypointKind.RUST_HANDLER.value,
+        EntrypointKind.AIOHTTP_VIEW.value,
+        EntrypointKind.TORNADO_HANDLER.value,
+    }),
+    ("Controllers", {
+        EntrypointKind.CONTROLLER.value,
+        EntrypointKind.NESTJS_CONTROLLER.value,
+        EntrypointKind.SPRING_CONTROLLER.value,
+        EntrypointKind.RAILS_CONTROLLER.value,
+        EntrypointKind.PHOENIX_CONTROLLER.value,
+        EntrypointKind.LARAVEL_CONTROLLER.value,
+        EntrypointKind.ASPNET_CONTROLLER.value,
+        EntrypointKind.MICRONAUT_CONTROLLER.value,
+        EntrypointKind.GRAPE_API.value,
+    }),
+    ("GraphQL", {
+        EntrypointKind.GRAPHQL_SERVER.value,
+    }),
+    ("WebSocket Handlers", {
+        EntrypointKind.WEBSOCKET_HANDLER.value,
+    }),
+    ("Event & Background Tasks", {
+        EntrypointKind.EVENT_HANDLER.value,
+        EntrypointKind.BACKGROUND_TASK.value,
+        EntrypointKind.SCHEDULED_TASK.value,
+    }),
+    ("Mobile", {
+        EntrypointKind.ANDROID_ACTIVITY.value,
+        EntrypointKind.ANDROID_APPLICATION.value,
+    }),
+    ("Library API", {
+        EntrypointKind.LIBRARY_EXPORT.value,
+    }),
+    ("Other", {
+        EntrypointKind.CONNECTIVITY_BASED.value,
+    }),
+]
+
+
 def _format_entrypoints(
     entrypoints: list[Entrypoint],
     symbols: list[Symbol],
@@ -4755,30 +4819,73 @@ def _format_entrypoints(
     max_entries: int = 20,
     exclude_tests: bool = False,
 ) -> str:
-    """Format detected entry points as a Markdown section."""
+    """Format detected entry points as a Markdown section grouped by kind.
+
+    Entry points are organized into display groups (CLI & Scripts, HTTP Routes,
+    Controllers, etc.). Groups with zero entries are omitted. Test functions
+    are excluded entirely — the Tests section already covers them.
+
+    Within each group, entries are sorted by confidence (highest first) and
+    capped at max_entries per group.
+    """
     if not entrypoints:
         return ""
 
     # Build symbol lookup for path info
     symbol_by_id = {s.id: s for s in symbols}
 
-    # Sort by confidence (highest first)
-    sorted_eps = sorted(entrypoints, key=lambda e: -e.confidence)
+    # Exclude test functions — the Tests section covers them
+    non_test_eps = [
+        ep for ep in entrypoints
+        if ep.kind != EntrypointKind.TEST_FUNCTION
+    ]
+
+    if not non_test_eps:
+        return ""
+
+    # Bucket entrypoints by group
+    grouped: dict[str, list[Entrypoint]] = {}
+    ungrouped: list[Entrypoint] = []
+    for ep in sorted(non_test_eps, key=lambda e: -e.confidence):
+        placed = False
+        for group_name, kinds in _ENTRYPOINT_GROUPS:
+            if ep.kind.value in kinds:
+                grouped.setdefault(group_name, []).append(ep)
+                placed = True
+                break
+        if not placed:
+            ungrouped.append(ep)
+
+    # Add ungrouped to "Other"
+    if ungrouped:
+        grouped.setdefault("Other", []).extend(ungrouped)
 
     lines = [_section_header("Entry Points", exclude_tests), ""]
 
-    for ep in sorted_eps[:max_entries]:
-        sym = symbol_by_id.get(ep.symbol_id)
-        if sym:
-            rel_path = sym.path
-            if rel_path.startswith(str(repo_root)):
-                rel_path = rel_path[len(str(repo_root)) + 1:]
-            lines.append(f"- `{sym.name}` ({ep.label}) — `{rel_path}`")
-        else:
-            lines.append(f"- `{ep.symbol_id}` ({ep.label})")
+    repo_root_str = str(repo_root)
+    for group_name, _kinds in _ENTRYPOINT_GROUPS:
+        eps = grouped.get(group_name)
+        if not eps:
+            continue
 
-    if len(entrypoints) > max_entries:
-        lines.append(f"- ... and {len(entrypoints) - max_entries} more entry points")
+        lines.append(f"### {group_name}")
+        lines.append("")
+
+        shown = eps[:max_entries]
+        for ep in shown:
+            sym = symbol_by_id.get(ep.symbol_id)
+            if sym:
+                rel_path = sym.path
+                if rel_path.startswith(repo_root_str):
+                    rel_path = rel_path[len(repo_root_str) + 1:]
+                lines.append(f"- `{sym.name}` ({ep.label}) — `{rel_path}`")
+            else:
+                lines.append(f"- `{ep.symbol_id}` ({ep.label})")
+
+        if len(eps) > max_entries:
+            lines.append(f"- ... and {len(eps) - max_entries} more")
+
+        lines.append("")
 
     return "\n".join(lines)
 

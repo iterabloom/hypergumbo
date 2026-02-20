@@ -2686,7 +2686,7 @@ class TestFormatEntrypoints:
     """Tests for entry point formatting."""
 
     def test_formats_entrypoints(self, tmp_path: Path) -> None:
-        """Formats entry points as Markdown."""
+        """Formats entry points as Markdown with group sub-headers."""
         symbols = [
             Symbol(id="main", name="main", kind="function", language="python",
                    path=str(tmp_path / "cli.py"), span=Span(1, 1, 1, 10)),
@@ -2699,11 +2699,12 @@ class TestFormatEntrypoints:
         result = _format_entrypoints(entrypoints, symbols, tmp_path)
 
         assert "## Entry Points" in result
+        assert "### CLI & Scripts" in result
         assert "`main`" in result
         assert "CLI main" in result
 
     def test_respects_max_entries(self, tmp_path: Path) -> None:
-        """Limits output to max_entries."""
+        """Limits output to max_entries per group."""
         symbols = [
             Symbol(id=f"ep{i}", name=f"ep{i}", kind="function", language="python",
                    path=str(tmp_path / "app.py"), span=Span(i, 1, i, 10))
@@ -2717,7 +2718,8 @@ class TestFormatEntrypoints:
 
         result = _format_entrypoints(entrypoints, symbols, tmp_path, max_entries=3)
 
-        assert "... and 7 more entry points" in result
+        assert "### HTTP Routes" in result
+        assert "... and 7 more" in result
 
     def test_empty_entrypoints_returns_empty(self, tmp_path: Path) -> None:
         """Returns empty string for empty entry points."""
@@ -2735,6 +2737,84 @@ class TestFormatEntrypoints:
 
         assert "`unknown:symbol`" in result
         assert "CLI main" in result
+
+    def test_groups_by_kind(self, tmp_path: Path) -> None:
+        """Multiple kinds get separate group sub-headers; empty groups omitted."""
+        symbols = [
+            Symbol(id="cli_ep", name="cli_ep", kind="function", language="python",
+                   path=str(tmp_path / "cli.py"), span=Span(1, 1, 1, 10)),
+            Symbol(id="route_ep", name="route_ep", kind="function", language="python",
+                   path=str(tmp_path / "api.py"), span=Span(1, 1, 1, 10)),
+        ]
+        entrypoints = [
+            Entrypoint(symbol_id="cli_ep", kind=EntrypointKind.CLI_MAIN,
+                       confidence=0.9, label="CLI main"),
+            Entrypoint(symbol_id="route_ep", kind=EntrypointKind.HTTP_ROUTE,
+                       confidence=0.8, label="HTTP GET /"),
+        ]
+
+        result = _format_entrypoints(entrypoints, symbols, tmp_path)
+
+        assert "### CLI & Scripts" in result
+        assert "### HTTP Routes" in result
+        # Empty groups should NOT appear
+        assert "### Controllers" not in result
+        assert "### GraphQL" not in result
+        assert "### Mobile" not in result
+
+    def test_excludes_test_functions(self, tmp_path: Path) -> None:
+        """TEST_FUNCTION entries are excluded from output."""
+        symbols = [
+            Symbol(id="main", name="main", kind="function", language="python",
+                   path=str(tmp_path / "cli.py"), span=Span(1, 1, 1, 10)),
+            Symbol(id="test_main", name="test_main", kind="function", language="python",
+                   path=str(tmp_path / "test_cli.py"), span=Span(1, 1, 1, 10)),
+        ]
+        entrypoints = [
+            Entrypoint(symbol_id="main", kind=EntrypointKind.CLI_MAIN,
+                       confidence=0.9, label="CLI main"),
+            Entrypoint(symbol_id="test_main", kind=EntrypointKind.TEST_FUNCTION,
+                       confidence=0.95, label="pytest"),
+        ]
+
+        result = _format_entrypoints(entrypoints, symbols, tmp_path)
+
+        assert "`main`" in result
+        assert "test_main" not in result
+
+    def test_only_test_functions_returns_empty(self, tmp_path: Path) -> None:
+        """Returns empty string when all entries are test functions."""
+        entrypoints = [
+            Entrypoint(symbol_id="test_a", kind=EntrypointKind.TEST_FUNCTION,
+                       confidence=0.95, label="pytest"),
+            Entrypoint(symbol_id="test_b", kind=EntrypointKind.TEST_FUNCTION,
+                       confidence=0.90, label="pytest"),
+        ]
+
+        result = _format_entrypoints(entrypoints, [], tmp_path)
+
+        assert result == ""
+
+    def test_ungrouped_kind_falls_to_other(self, tmp_path: Path) -> None:
+        """Entry points with kinds not in any group land in 'Other'."""
+        from unittest.mock import patch
+        import hypergumbo_core.sketch as sketch_mod
+
+        symbols = [
+            Symbol(id="ep1", name="ep1", kind="function", language="python",
+                   path=str(tmp_path / "app.py"), span=Span(1, 1, 1, 10)),
+        ]
+        entrypoints = [
+            Entrypoint(symbol_id="ep1", kind=EntrypointKind.CLI_MAIN,
+                       confidence=0.9, label="CLI main"),
+        ]
+
+        # Patch _ENTRYPOINT_GROUPS to an empty list so CLI_MAIN is ungrouped
+        with patch.object(sketch_mod, "_ENTRYPOINT_GROUPS", [("Other", {EntrypointKind.CONNECTIVITY_BASED.value})]):
+            result = _format_entrypoints(entrypoints, symbols, tmp_path)
+
+        assert "### Other" in result
+        assert "`ep1`" in result
 
 
 class TestFormatDatamodels:
