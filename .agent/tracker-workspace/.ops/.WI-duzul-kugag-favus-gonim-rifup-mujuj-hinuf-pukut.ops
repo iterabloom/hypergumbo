@@ -29,3 +29,12 @@
   set: {}  # 441e
   add:  # 441e
     before: [WI-dapoh-migav-novik-lusub-ratof-datad-rubag-tikas]  # 441e
+- op: update  # 23ca
+  at: '2026-02-20T18:44:27Z'  # 23ca
+  by: agent  # 23ca
+  actor: jgstern_agent  # 23ca
+  clock: 3  # 23ca
+  nonce: 23ca  # 23ca
+  set:  # 23ca
+    priority: 3  # 23ca
+    title: "Implement typed stable_id tier (Phase 3)"  # 23ca
