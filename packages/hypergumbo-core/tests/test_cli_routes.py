@@ -566,7 +566,7 @@ def test_cmd_routes_shows_kind_route_symbols(tmp_path: Path, capsys) -> None:
                 "language": "go",
                 "path": "cmd/webui.go",
                 "span": {"start_line": 10, "end_line": 10, "start_col": 0, "end_col": 50},
-                "stable_id": "any",
+                "stable_id": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
                 "meta": {
                     "route_path": "/graphql",
                     "http_method": "ANY",
@@ -580,7 +580,7 @@ def test_cmd_routes_shows_kind_route_symbols(tmp_path: Path, capsys) -> None:
                 "language": "go",
                 "path": "cmd/webui.go",
                 "span": {"start_line": 12, "end_line": 12, "start_col": 0, "end_col": 60},
-                "stable_id": "post",
+                "stable_id": "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3",
                 "meta": {
                     "route_path": "/upload/{repo}",
                     "http_method": "POST",

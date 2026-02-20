@@ -63,7 +63,8 @@ fn vs_main(@location(0) position: vec4<f32>) -> @builtin(position) vec4<f32> {
     vs_main = next((f for f in functions if f.name == "vs_main"), None)
     assert vs_main is not None
     assert vs_main.language == "wgsl"
-    assert vs_main.stable_id == "vertex"
+    assert vs_main.stable_id is not None
+    assert len(vs_main.stable_id) == 64  # sha256 hex digest (ADR-0014 §4)
     assert vs_main.meta is not None
     assert vs_main.meta.get("entry_point") == "vertex"
 
@@ -81,7 +82,8 @@ fn fs_main() -> @location(0) vec4<f32> {
     functions = [s for s in result.symbols if s.kind == "function"]
     fs_main = next((f for f in functions if f.name == "fs_main"), None)
     assert fs_main is not None
-    assert fs_main.stable_id == "fragment"
+    assert fs_main.stable_id is not None
+    assert len(fs_main.stable_id) == 64  # sha256 hex digest (ADR-0014 §4)
     assert fs_main.meta.get("entry_point") == "fragment"
 
 def test_analyze_compute_shader(tmp_path):
@@ -98,7 +100,8 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     functions = [s for s in result.symbols if s.kind == "function"]
     cs_main = next((f for f in functions if f.name == "cs_main"), None)
     assert cs_main is not None
-    assert cs_main.stable_id == "compute"
+    assert cs_main.stable_id is not None
+    assert len(cs_main.stable_id) == 64  # sha256 hex digest (ADR-0014 §4)
     assert cs_main.meta.get("entry_point") == "compute"
 
 def test_analyze_struct(tmp_path):
@@ -276,7 +279,29 @@ fn main() -> @builtin(position) vec4<f32> {
 
     main_fn = next((f for f in functions if f.name == "main"), None)
     assert main_fn is not None
-    assert main_fn.stable_id == "vertex"  # Has @vertex attribute
+    assert main_fn.stable_id is not None
+    assert len(main_fn.stable_id) == 64  # Has @vertex → sha256 entry stable_id
+
+def test_entry_point_stable_id_no_collision(tmp_path):
+    """Different @vertex functions must have different stable_ids (ADR-0014 §4)."""
+    wgsl_file = tmp_path / "shader.wgsl"
+    wgsl_file.write_text("""
+@vertex
+fn main_vs(@location(0) position: vec4<f32>) -> @builtin(position) vec4<f32> {
+    return position;
+}
+
+@vertex
+fn shadow_vs(@location(0) position: vec4<f32>) -> @builtin(position) vec4<f32> {
+    return position;
+}
+""")
+    result = analyze_wgsl_files(tmp_path)
+
+    entry_fns = [s for s in result.symbols if s.kind == "function" and s.stable_id is not None]
+    assert len(entry_fns) >= 2
+    stable_ids = [s.stable_id for s in entry_fns]
+    assert len(set(stable_ids)) == len(stable_ids), f"stable_id collision: {stable_ids}"
 
 class TestWGSLSignatureExtraction:
     """Tests for WGSL function signature extraction."""

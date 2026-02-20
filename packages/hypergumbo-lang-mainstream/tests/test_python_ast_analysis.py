@@ -1017,10 +1017,14 @@ def test_django_cbv_http_methods(tmp_path: Path) -> None:
     method_by_name = {m["name"]: m for m in methods}
 
     # Methods named get/post in a View class should be marked as HTTP handlers
+    # stable_id is now sha256-based (ADR-0014 §4), not bare HTTP method strings
     assert "UserView.get" in method_by_name
     assert "UserView.post" in method_by_name
-    assert method_by_name["UserView.get"]["stable_id"] == "GET"
-    assert method_by_name["UserView.post"]["stable_id"] == "POST"
+    get_sid = method_by_name["UserView.get"]["stable_id"]
+    post_sid = method_by_name["UserView.post"]["stable_id"]
+    assert len(get_sid) == 64  # sha256 hex digest
+    assert len(post_sid) == 64
+    assert get_sid != post_sid  # Different methods must not collide
 
 
 def test_drf_api_view_no_args_fallback(tmp_path: Path) -> None:
@@ -1071,6 +1075,32 @@ def test_django_path_urlpattern(tmp_path: Path) -> None:
     route_paths = {r.get("meta", {}).get("route_path") for r in routes}
     assert "/users/" in route_paths or "users/" in route_paths
     assert "/users/<int:pk>/" in route_paths or "users/<int:pk>/" in route_paths
+
+
+def test_django_route_stable_id_no_collision(tmp_path: Path) -> None:
+    """Different Django URL routes must have different stable_ids (ADR-0014 §4)."""
+    urls_file = tmp_path / "urls.py"
+    urls_file.write_text(
+        "from django.urls import path\n"
+        "from . import views\n"
+        "\n"
+        "urlpatterns = [\n"
+        "    path('users/', views.user_list),\n"
+        "    path('posts/', views.post_list),\n"
+        "]\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    routes = [n for n in data["nodes"] if n["kind"] == "route"]
+    assert len(routes) == 2
+    stable_ids = [r["stable_id"] for r in routes]
+    assert stable_ids[0] != stable_ids[1], f"stable_id collision: {stable_ids}"
+    # Both should be sha256 hex digests
+    assert all(len(sid) == 64 for sid in stable_ids)
 
 
 def test_django_path_empty_string_root_route(tmp_path: Path) -> None:

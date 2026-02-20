@@ -24,6 +24,7 @@ language-specific parsing logic.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import time
 import warnings
@@ -169,6 +170,44 @@ def make_file_id(lang: str, path: str) -> str:
         A file-level symbol ID.
     """
     return f"{lang}:{path}:1-1:file:file"
+
+
+def make_route_stable_id(method: str, path: str) -> str:
+    """Compute a collision-free stable_id for route symbols.
+
+    Uses sha256("route:{method}:{path}") per ADR-0014 §4.  The previous
+    approach set stable_id to bare HTTP methods (e.g. "GET"), causing every
+    same-method route to collide.
+
+    Args:
+        method: HTTP method (e.g. "GET", "POST", "ANY"). Case-insensitive —
+            the value is upper-cased internally for consistency.
+        path: Route path (e.g. "/users", "/posts/:id").
+
+    Returns:
+        A hex-digest string that uniquely identifies the (method, path) pair.
+    """
+    key = f"route:{method.upper()}:{path}"
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
+def make_entry_stable_id(entry_type: str, name: str) -> str:
+    """Compute a collision-free stable_id for entry-point symbols.
+
+    Uses sha256("entry:{entry_type}:{name}") per ADR-0014 §4.  Used for
+    symbols like WGSL shader stages (@vertex, @fragment, @compute) where the
+    previous approach set stable_id to the bare entry type string, causing
+    same-type entry points to collide.
+
+    Args:
+        entry_type: Entry point category (e.g. "vertex", "fragment", "compute").
+        name: Symbol name (e.g. the function name).
+
+    Returns:
+        A hex-digest string that uniquely identifies the (entry_type, name) pair.
+    """
+    key = f"entry:{entry_type}:{name}"
+    return hashlib.sha256(key.encode()).hexdigest()
 
 
 # ---------------------------------------------------------------------------

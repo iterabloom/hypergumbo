@@ -2268,7 +2268,8 @@ class TestExpressRouteDetection:
             pytest.skip("tree-sitter not available")
 
     def test_express_get_route_detected(self, tmp_path: Path) -> None:
-        """Express app.get() route handler sets stable_id to 'get'."""
+        """Express app.get() route handler has sha256-based stable_id (ADR-0014 §4)."""
+        from hypergumbo_core.analyze.base import make_route_stable_id
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "app.js"
@@ -2283,19 +2284,20 @@ app.get('/users', function getUsers(req, res) {
 
         result = analyze_javascript(tmp_path)
 
-        # Find the route handler function
+        # Find the route handler function by meta
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id in ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")]
+        route_handlers = [f for f in functions if f.meta and f.meta.get("http_method")]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
         assert handler.name == "getUsers"
-        assert handler.stable_id == "GET"
+        assert handler.stable_id == make_route_stable_id("GET", "/users")
         assert handler.meta is not None
         assert handler.meta.get("route_path") == "/users"
 
     def test_express_post_route_detected(self, tmp_path: Path) -> None:
-        """Express app.post() route handler sets stable_id to 'post'."""
+        """Express app.post() route handler has sha256-based stable_id (ADR-0014 §4)."""
+        from hypergumbo_core.analyze.base import make_route_stable_id
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "app.js"
@@ -2311,13 +2313,15 @@ app.post('/users', function createUser(req, res) {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "POST"]
+        route_handlers = [f for f in functions if f.meta and f.meta.get("http_method") == "POST"]
 
         assert len(route_handlers) == 1
+        assert route_handlers[0].stable_id == make_route_stable_id("POST", "/users")
         assert route_handlers[0].meta.get("route_path") == "/users"
 
     def test_express_router_route_detected(self, tmp_path: Path) -> None:
-        """Express router.get() also sets stable_id to HTTP method."""
+        """Express router routes have unique sha256-based stable_ids (ADR-0014 §4)."""
+        from hypergumbo_core.analyze.base import make_route_stable_id
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         js_file = tmp_path / "routes.js"
@@ -2337,15 +2341,17 @@ router.delete('/items/:id', function deleteItem(req, res) {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id in ("GET", "DELETE")]
+        route_handlers = [f for f in functions if f.meta and f.meta.get("http_method")]
 
         assert len(route_handlers) == 2
 
-        get_handler = next(f for f in route_handlers if f.stable_id == "GET")
-        delete_handler = next(f for f in route_handlers if f.stable_id == "DELETE")
+        get_handler = next(f for f in route_handlers if f.meta.get("http_method") == "GET")
+        delete_handler = next(f for f in route_handlers if f.meta.get("http_method") == "DELETE")
 
-        assert get_handler.meta.get("route_path") == "/items/:id"
-        assert delete_handler.meta.get("route_path") == "/items/:id"
+        assert get_handler.stable_id == make_route_stable_id("GET", "/items/:id")
+        assert delete_handler.stable_id == make_route_stable_id("DELETE", "/items/:id")
+        # Different methods on same path must have different stable_ids
+        assert get_handler.stable_id != delete_handler.stable_id
 
     def test_express_arrow_function_route(self, tmp_path: Path) -> None:
         """Express route with arrow function handler."""
@@ -2365,7 +2371,7 @@ app.get('/health', (req, res) => {
 
         # Arrow functions in route calls should get route info
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "GET"]
+        route_handlers = [f for f in functions if f.meta and f.meta.get("http_method") == "GET"]
 
         # Even anonymous arrow functions should be detected as routes
         assert len(route_handlers) >= 0  # May or may not create symbol for anonymous
@@ -2388,13 +2394,20 @@ app.delete('/delete', function doDelete(req, res) { res.send('delete'); });
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = {f.stable_id: f for f in functions if f.stable_id in ("GET", "POST", "PUT", "PATCH", "DELETE")}
+        route_handlers = {
+            f.meta["http_method"]: f
+            for f in functions
+            if f.meta and f.meta.get("http_method")
+        }
 
         assert "GET" in route_handlers
         assert "POST" in route_handlers
         assert "PUT" in route_handlers
         assert "PATCH" in route_handlers
         assert "DELETE" in route_handlers
+        # All five routes must have distinct stable_ids
+        stable_ids = [f.stable_id for f in route_handlers.values()]
+        assert len(set(stable_ids)) == 5
 
     def test_non_route_function_keeps_original_stable_id(self, tmp_path: Path) -> None:
         """Functions not in route calls keep their original stable_id."""
@@ -2432,7 +2445,7 @@ app.get('/users', function getUsers(req: Request, res: Response): void {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "GET"]
+        route_handlers = [f for f in functions if f.meta and f.meta.get("http_method") == "GET"]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].meta.get("route_path") == "/users"
@@ -2465,9 +2478,12 @@ router.delete('/users/:id', userController.deleteUser);
         assert "userController.getUsers" in route_names
         assert "userController.deleteUser" in route_names
 
-        # Verify HTTP methods
-        methods = {r.stable_id for r in routes}
+        # Verify HTTP methods via meta
+        methods = {r.meta["http_method"] for r in routes}
         assert methods == {"POST", "GET", "DELETE"}
+        # All routes must have unique stable_ids (no collisions)
+        stable_ids = [r.stable_id for r in routes]
+        assert len(set(stable_ids)) == 3
 
         # Verify route paths
         for route in routes:
@@ -2499,7 +2515,9 @@ router.get('/users', handleUsers);
 
         assert len(routes) == 1
         assert routes[0].name == "handleUsers"
-        assert routes[0].stable_id == "GET"
+        assert routes[0].meta.get("http_method") == "GET"
+        assert routes[0].stable_id is not None
+        assert len(routes[0].stable_id) == 64  # sha256 hex digest
         assert routes[0].meta.get("handler_ref") == "handleUsers"
 
     def test_express_chained_route_syntax(self, tmp_path: Path) -> None:
@@ -2533,13 +2551,17 @@ router
         # Verify routes have correct paths from chained .route() call
         root_routes = [r for r in routes if r.meta.get("route_path") == "/"]
         assert len(root_routes) == 2
-        root_methods = {r.stable_id for r in root_routes}
+        root_methods = {r.meta["http_method"] for r in root_routes}
         assert root_methods == {"POST", "GET"}
+        # Root routes must have distinct stable_ids
+        assert len({r.stable_id for r in root_routes}) == 2
 
         param_routes = [r for r in routes if r.meta.get("route_path") == "/:userId"]
         assert len(param_routes) == 3
-        param_methods = {r.stable_id for r in param_routes}
+        param_methods = {r.meta["http_method"] for r in param_routes}
         assert param_methods == {"GET", "PATCH", "DELETE"}
+        # Param routes must have distinct stable_ids
+        assert len({r.stable_id for r in param_routes}) == 3
 
     def test_express_inline_handler_usage_context_has_symbol_ref(self, tmp_path: Path) -> None:
         """UsageContext for inline Express handlers should reference the Symbol.
@@ -2723,7 +2745,7 @@ class TestNestJSRouteDetection:
             pytest.skip("tree-sitter not available")
 
     def test_nestjs_get_decorator(self, tmp_path: Path) -> None:
-        """NestJS @Get() decorator should set stable_id to 'get'."""
+        """NestJS @Get() decorator should set sha256-based stable_id (ADR-0014 §4)."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "users.controller.ts"
@@ -2742,13 +2764,13 @@ export class UsersController {
         result = analyze_javascript(tmp_path)
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id == "GET"]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].name == "UsersController.findAll"
 
     def test_nestjs_post_decorator(self, tmp_path: Path) -> None:
-        """NestJS @Post() decorator should set stable_id to 'post'."""
+        """NestJS @Post() decorator should set sha256-based stable_id (ADR-0014 §4)."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         ts_file = tmp_path / "users.controller.ts"
@@ -2767,7 +2789,7 @@ export class UsersController {
         result = analyze_javascript(tmp_path)
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id == "POST"]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].name == "UsersController.create"
@@ -2799,7 +2821,7 @@ export class UsersController {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id == "GET"]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -2842,13 +2864,11 @@ export class ResourceController {
         result = analyze_javascript(tmp_path)
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        stable_ids = {m.stable_id for m in methods}
-
-        assert "GET" in stable_ids
-        assert "POST" in stable_ids
-        assert "PUT" in stable_ids
-        assert "PATCH" in stable_ids
-        assert "DELETE" in stable_ids
+        # All 5 methods should have sha256-based stable_ids, and all should be unique
+        route_methods = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
+        assert len(route_methods) == 5
+        stable_ids = {m.stable_id for m in route_methods}
+        assert len(stable_ids) == 5, "NestJS route stable_ids must be unique per method"
 
     def test_nestjs_controller_no_path_method_with_path(self, tmp_path: Path) -> None:
         """NestJS @Controller() with no path + @Get('users/:id') gives just method path."""
@@ -2873,7 +2893,7 @@ export class UsersController {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id == "GET"]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -2906,7 +2926,7 @@ export class UsersController {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id == "GET"]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -2939,7 +2959,7 @@ export class ApiController {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id == "GET"]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -2969,7 +2989,7 @@ class UsersService {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id == "GET"]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -3000,7 +3020,7 @@ class InternalController {
         enrich_symbols(result.symbols, {"nestjs"})
 
         methods = [s for s in result.symbols if s.kind == "method"]
-        route_handlers = [m for m in methods if m.stable_id == "GET"]
+        route_handlers = [m for m in methods if m.stable_id and len(m.stable_id) == 64]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -3050,7 +3070,7 @@ module.exports = router;
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "GET"]
+        route_handlers = [f for f in functions if f.meta and f.meta.get("http_method") == "GET"]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -3075,7 +3095,7 @@ router.post('/users', function createUser(ctx) {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "POST"]
+        route_handlers = [f for f in functions if f.meta and f.meta.get("http_method") == "POST"]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].meta.get("route_path") == "/users"
@@ -3097,7 +3117,7 @@ router.delete('/users/:id', async (ctx) => {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "DELETE"]
+        route_handlers = [f for f in functions if f.meta and f.meta.get("http_method") == "DELETE"]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].meta.get("route_path") == "/users/:id"
@@ -3139,7 +3159,7 @@ fastify.get('/users', function getUsers(request, reply) {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "GET"]
+        route_handlers = [f for f in functions if f.meta and f.meta.get("http_method") == "GET"]
 
         assert len(route_handlers) == 1
         handler = route_handlers[0]
@@ -3163,7 +3183,7 @@ fastify.post('/users', function createUser(request, reply) {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "POST"]
+        route_handlers = [f for f in functions if f.meta and f.meta.get("http_method") == "POST"]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].meta.get("route_path") == "/users"
@@ -3184,7 +3204,7 @@ fastify.put('/users/:id', async (request, reply) => {
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        route_handlers = [f for f in functions if f.stable_id == "PUT"]
+        route_handlers = [f for f in functions if f.meta and f.meta.get("http_method") == "PUT"]
 
         assert len(route_handlers) == 1
         assert route_handlers[0].meta.get("route_path") == "/users/:id"
@@ -3209,15 +3229,22 @@ fastify.options('/g', function handleOptions(r, p) {});
         result = analyze_javascript(tmp_path)
 
         functions = [s for s in result.symbols if s.kind == "function"]
-        stable_ids = {f.stable_id for f in functions}
+        http_methods = {
+            f.meta["http_method"]: f
+            for f in functions
+            if f.meta and f.meta.get("http_method")
+        }
 
-        assert "GET" in stable_ids
-        assert "POST" in stable_ids
-        assert "PUT" in stable_ids
-        assert "PATCH" in stable_ids
-        assert "DELETE" in stable_ids
-        assert "HEAD" in stable_ids
-        assert "OPTIONS" in stable_ids
+        assert "GET" in http_methods
+        assert "POST" in http_methods
+        assert "PUT" in http_methods
+        assert "PATCH" in http_methods
+        assert "DELETE" in http_methods
+        assert "HEAD" in http_methods
+        assert "OPTIONS" in http_methods
+        # All routes must have unique stable_ids
+        stable_ids = [f.stable_id for f in http_methods.values()]
+        assert len(set(stable_ids)) == 7
 
 
 class TestReexportResolution:

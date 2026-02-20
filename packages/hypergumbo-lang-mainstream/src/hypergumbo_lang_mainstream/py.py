@@ -86,7 +86,7 @@ from typing import TYPE_CHECKING, Iterator
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.analyze.base import AnalysisResult, make_route_stable_id
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -1437,10 +1437,11 @@ def _extract_file_analysis(
                     method_name = f"{class_name}.{item.name}"
 
                     # For Django/DRF class-based views, methods named get/post/etc.
-                    # should have stable_id set to the HTTP method (uppercase for consistency)
+                    # use route-style stable_id with class name as path for uniqueness
+                    # (ADR-0014 §4: sha256("route:{method}:{path}"))
                     stable_id = _compute_stable_id(item)
                     if item.name.lower() in HTTP_METHODS:
-                        stable_id = item.name.upper()
+                        stable_id = make_route_stable_id(item.name, class_name)
 
                     # Build rich metadata for method (ADR-0003)
                     method_meta: dict[str, object] = {}
@@ -1557,7 +1558,7 @@ def _extract_file_analysis(
             language="python",
             path=str(py_file),
             span=ctx.span,
-            stable_id="GET",  # Django defaults to GET, all methods allowed
+            stable_id=make_route_stable_id("GET", route_path),
             meta={
                 "route_path": route_path,
                 "http_method": "GET",

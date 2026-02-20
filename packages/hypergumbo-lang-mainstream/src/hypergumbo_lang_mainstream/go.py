@@ -30,7 +30,7 @@ How It Works
    - Fiber: app.Get("/path", handler) (lowercase methods)
    - Gorilla mux: router.HandleFunc("/path", handler), router.Handle("/path", handler)
    - Gorilla mux builder: router.Path("/path").Methods("GET").Handler(handler)
-   - Creates route symbols with stable_id = HTTP method
+   - Creates route symbols with stable_id = sha256("route:{method}:{path}")
 
 Why This Design
 ---------------
@@ -57,6 +57,7 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_file_id,
+    make_route_stable_id,
     make_symbol_id,
     node_text,
 )
@@ -1183,7 +1184,7 @@ def _extract_go_routes(
                                         "go", str(file_path), start_line, end_line,
                                         f"{normalized_method} {route_path}", "route"
                                     ),
-                                    stable_id=normalized_method.lower(),
+                                    stable_id=make_route_stable_id(normalized_method, route_path),
                                     name=handler_name,
                                     kind="route",
                                     language="go",
@@ -1228,7 +1229,7 @@ def _extract_go_routes(
                                         "go", str(file_path), start_line, end_line,
                                         f"ANY {route_path}", "route"
                                     ),
-                                    stable_id="any",
+                                    stable_id=make_route_stable_id("ANY", route_path),
                                     name=handler_name,
                                     kind="route",
                                     language="go",
@@ -1265,7 +1266,7 @@ def _extract_go_routes(
                                     "go", str(file_path), start_line, end_line,
                                     f"{normalized_method} {route_path}", "route"
                                 ),
-                                stable_id=normalized_method.lower(),
+                                stable_id=make_route_stable_id(normalized_method, route_path),
                                 name=handler_name,
                                 kind="route",
                                 language="go",

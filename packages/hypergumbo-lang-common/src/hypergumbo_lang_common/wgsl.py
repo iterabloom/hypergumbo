@@ -41,6 +41,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
+    make_entry_stable_id,
     make_symbol_id,
     node_text,
 )
@@ -229,7 +230,7 @@ def _extract_wgsl_symbols(
 
                 sym = Symbol(
                     id=symbol_id,
-                    stable_id=entry_type,  # Set stable_id to entry point type
+                    stable_id=make_entry_stable_id(entry_type, func_name) if entry_type else None,
                     shape_id=None,
                     canonical_name=func_name,
                     fingerprint=hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16],

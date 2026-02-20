@@ -19,7 +19,9 @@ from hypergumbo_core.analyze.base import (
     is_grammar_available,
     iter_tree,
     iter_tree_with_context,
+    make_entry_stable_id,
     make_file_id,
+    make_route_stable_id,
     make_symbol_id,
     node_text,
 )
@@ -231,6 +233,68 @@ class TestMakeFileId:
         result = make_file_id("python", "src/main.py")
 
         assert result == "python:src/main.py:1-1:file:file"
+
+
+class TestMakeRouteStableId:
+    """Tests for make_route_stable_id — ADR-0014 §4 route identity."""
+
+    def test_different_paths_produce_different_ids(self) -> None:
+        """GET /users and GET /posts must NOT collide."""
+        id1 = make_route_stable_id("GET", "/users")
+        id2 = make_route_stable_id("GET", "/posts")
+        assert id1 != id2
+
+    def test_different_methods_produce_different_ids(self) -> None:
+        """GET /users and POST /users must NOT collide."""
+        id1 = make_route_stable_id("GET", "/users")
+        id2 = make_route_stable_id("POST", "/users")
+        assert id1 != id2
+
+    def test_case_insensitive_method(self) -> None:
+        """Method is normalized to uppercase internally."""
+        id1 = make_route_stable_id("get", "/users")
+        id2 = make_route_stable_id("GET", "/users")
+        assert id1 == id2
+
+    def test_returns_hex_digest(self) -> None:
+        """Result is a hex string (sha256 digest)."""
+        result = make_route_stable_id("GET", "/users")
+        assert len(result) == 64
+        assert all(c in "0123456789abcdef" for c in result)
+
+    def test_deterministic(self) -> None:
+        """Same inputs produce same output."""
+        id1 = make_route_stable_id("POST", "/api/v1/items")
+        id2 = make_route_stable_id("POST", "/api/v1/items")
+        assert id1 == id2
+
+
+class TestMakeEntryStableId:
+    """Tests for make_entry_stable_id — ADR-0014 §4 entry-point identity."""
+
+    def test_different_names_produce_different_ids(self) -> None:
+        """Two @vertex functions with different names must NOT collide."""
+        id1 = make_entry_stable_id("vertex", "main_vs")
+        id2 = make_entry_stable_id("vertex", "shadow_vs")
+        assert id1 != id2
+
+    def test_different_types_produce_different_ids(self) -> None:
+        """@vertex main and @fragment main must NOT collide."""
+        id1 = make_entry_stable_id("vertex", "main")
+        id2 = make_entry_stable_id("fragment", "main")
+        assert id1 != id2
+
+    def test_returns_hex_digest(self) -> None:
+        """Result is a hex string (sha256 digest)."""
+        result = make_entry_stable_id("compute", "dispatch")
+        assert len(result) == 64
+        assert all(c in "0123456789abcdef" for c in result)
+
+    def test_deterministic(self) -> None:
+        """Same inputs produce same output."""
+        id1 = make_entry_stable_id("fragment", "main_fs")
+        id2 = make_entry_stable_id("fragment", "main_fs")
+        assert id1 == id2
 
 
 class TestIsGrammarAvailable:

@@ -65,6 +65,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     find_child_by_field,
     iter_tree,
+    make_route_stable_id,
     node_text as _node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -1975,7 +1976,7 @@ def _extract_symbols(
                             span=span,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
-                            stable_id=http_method,
+                            stable_id=make_route_stable_id(http_method, route_path) if route_path else None,
                             meta={"route_path": route_path, "http_method": http_method, "handler_ref": handler_name},
                         )
                         symbols.append(symbol)
@@ -2003,7 +2004,7 @@ def _extract_symbols(
                             span=span,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
-                            stable_id=http_method,
+                            stable_id=make_route_stable_id(http_method, route_path) if route_path else None,
                             meta={"route_path": route_path, "http_method": http_method} if route_path else None,
                         )
                         symbols.append(symbol)
@@ -2208,7 +2209,12 @@ def _extract_symbols(
                 full_name = f"{current_class_name}.{name}" if current_class_name else name
 
                 http_method, _method_route_path = _detect_nestjs_decorator(node, source)
-                stable_id = http_method if http_method else None
+                if http_method:
+                    # Use route path if available, fall back to method name for identity
+                    _nestjs_path = _method_route_path or full_name
+                    stable_id = make_route_stable_id(http_method, _nestjs_path)
+                else:
+                    stable_id = None
 
                 # Build meta with decorators
                 # Note: Route path combination is handled by enrichment via prefix_from_parent
