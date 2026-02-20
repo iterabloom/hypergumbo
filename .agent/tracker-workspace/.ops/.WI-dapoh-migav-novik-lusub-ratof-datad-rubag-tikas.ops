@@ -29,3 +29,10 @@
   set: {}  # 3676
   add:  # 3676
     before: [WI-sapak-nahob-zibod-pobav-vazop-baval-roruj-vufuv]  # 3676
+- op: discuss  # 2c20
+  at: '2026-02-20T11:17:14Z'  # 2c20
+  by: agent  # 2c20
+  actor: jgstern_agent  # 2c20
+  clock: 3  # 2c20
+  nonce: 2c20  # 2c20
+  message: "Pascal proof-of-concept merged (PR #1256). Starting systematic retirement of location-based stable_ids across remaining analyzers."  # 2c20

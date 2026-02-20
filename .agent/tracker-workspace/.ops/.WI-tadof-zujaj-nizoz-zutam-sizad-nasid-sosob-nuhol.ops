@@ -27,3 +27,10 @@
   clock: 2  # 5261
   nonce: '5261'  # 5261
   message: "Phase 0 complete: route collisions (PR #1246), grammar pinning (PR #1247), Hack/Smithy order (PR #1249), containing_module_stable_id + scheme v2 (PR #1250). Phase 1 (shape_id) next."  # 5261
+- op: discuss  # 04fa
+  at: '2026-02-20T11:00:39Z'  # 04fa
+  by: agent  # 04fa
+  actor: jgstern_agent  # 04fa
+  clock: 3  # 04fa
+  nonce: 04fa  # 04fa
+  message: "Phase 2 core infrastructure complete: ArityFlags (PR #1253), compute_stable_id (PR #1254). Remaining: WI-dapoh (retire location-based stable_ids in 27 analyzers)."  # 04fa
