@@ -1,0 +1,23 @@
+- op: create  # f492
+  at: '2026-02-20T20:20:56Z'  # f492
+  by: agent  # f492
+  actor: jgstern_agent  # f492
+  clock: 1  # f492
+  nonce: f492  # f492
+  data:  # f492
+    kind: work_item  # f492
+    title: "Preserve generic type parameters in signatures"  # f492
+    status: todo_soft  # f492
+    priority: 3  # f492
+    parent:  # f492
+    tags:  # f492
+    - stable-id  # f492
+    - phase-3  # f492
+    before:  # f492
+    - WI-duzul-kugag-favus-gonim-rifup-mujuj-hinuf-pukut  # f492
+    duplicate_of: []  # f492
+    not_duplicate_of: []  # f492
+    pr_ref:  # f492
+    justification:  # f492
+    description: "Analyzer signature extraction currently strips generic type parameters (List<T>→List). For typed stable_id, signatures must preserve generics in a normalized form (e.g., List<$0> for positional type variables). Affects all languages with generics: Java, Kotlin, C#, TypeScript, Dart, Rust, Go (type parameters), etc."  # f492
+    fields: {}  # f492
