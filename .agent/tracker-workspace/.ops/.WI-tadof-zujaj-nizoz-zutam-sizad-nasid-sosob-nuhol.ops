@@ -34,3 +34,10 @@
   clock: 3  # 04fa
   nonce: 04fa  # 04fa
   message: "Phase 2 core infrastructure complete: ArityFlags (PR #1253), compute_stable_id (PR #1254). Remaining: WI-dapoh (retire location-based stable_ids in 27 analyzers)."  # 04fa
+- op: discuss  # 6451
+  at: '2026-02-20T12:09:19Z'  # 6451
+  by: agent  # 6451
+  actor: jgstern_agent  # 6451
+  clock: 4  # 6451
+  nonce: '6451'  # 6451
+  message: "Phase 2 complete: ADR-0014 §2 stable_id retirement finished across all 27 analyzers (PRs #1256-#1258). All analyzers now use compute_stable_id() for sha256-based stable_ids and make_symbol_id() for location-based ids. HLSL also has node_for_symbol wiring for shape_id. Remaining: Phase 3 (typed stable_id tier, WI-duzul) is deferred P4."  # 6451
