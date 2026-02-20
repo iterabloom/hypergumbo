@@ -1,0 +1,22 @@
+- op: create  # cd71
+  at: '2026-02-20T08:33:16Z'  # cd71
+  by: agent  # cd71
+  actor: jgstern_agent  # cd71
+  clock: 1  # cd71
+  nonce: cd71  # cd71
+  data:  # cd71
+    kind: work_item  # cd71
+    title: "Implement typed stable_id tier (Phase 3, deferred)"  # cd71
+    status: todo_soft  # cd71
+    priority: 4  # cd71
+    parent: WI-tadof-zujaj-nizoz-zutam-sizad-nasid-sosob-nuhol  # cd71
+    tags:  # cd71
+    - phase-3  # cd71
+    - stable-id  # cd71
+    before: []  # cd71
+    duplicate_of: []  # cd71
+    not_duplicate_of: []  # cd71
+    pr_ref:  # cd71
+    justification:  # cd71
+    description: "Typed tier: sha256({kind}:{normalized_signature}:{visibility}:{containing_module_stable_id}). Three blockers must be resolved first: (1) generic type parameter preservation (currently stripped: List<T>→List, need List<$0>), (2) visibility modifier extraction (public/private/protected — not tracked by any analyzer), (3) cross-language type normalization (String vs str vs string must not collide). Depends on untyped tier (Phase 2) being proven and ADR-0006 future work items 6-7. See ADR-0014 §3."  # cd71
+    fields: {}  # cd71
