@@ -49,3 +49,11 @@
   nonce: 879a  # 879a
   set:  # 879a
     justification: "Deferred: P4 niche language. DTS files found in kernel repos but not in current bakeoff cohorts."  # 879a
+- op: update  # 75c6
+  at: '2026-02-20T20:30:13Z'  # 75c6
+  by: agent  # 75c6
+  actor: jgstern_agent  # 75c6
+  clock: 6  # 75c6
+  nonce: 75c6  # 75c6
+  set:  # 75c6
+    status: needs_human_review  # 75c6

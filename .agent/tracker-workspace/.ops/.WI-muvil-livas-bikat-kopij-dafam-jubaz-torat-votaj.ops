@@ -49,3 +49,11 @@
   nonce: '2783'  # 2783
   set:  # 2783
     justification: "Deferred: P4 niche language. Kconfig found in kernel repos but not in current bakeoff cohorts."  # 2783
+- op: update  # 92f4
+  at: '2026-02-20T20:30:14Z'  # 92f4
+  by: agent  # 92f4
+  actor: jgstern_agent  # 92f4
+  clock: 6  # 92f4
+  nonce: 92f4  # 92f4
+  set:  # 92f4
+    status: needs_human_review  # 92f4

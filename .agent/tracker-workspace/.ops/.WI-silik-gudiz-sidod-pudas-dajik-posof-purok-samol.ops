@@ -1,0 +1,23 @@
+- op: create  # 3bae
+  at: '2026-02-20T20:22:59Z'  # 3bae
+  by: agent  # 3bae
+  actor: jgstern_agent  # 3bae
+  clock: 1  # 3bae
+  nonce: 3bae  # 3bae
+  data:  # 3bae
+    kind: work_item  # 3bae
+    title: "Cross-language type normalization for stable_id"  # 3bae
+    status: todo_soft  # 3bae
+    priority: 3  # 3bae
+    parent:  # 3bae
+    tags:  # 3bae
+    - stable-id  # 3bae
+    - phase-3  # 3bae
+    before:  # 3bae
+    - WI-duzul-kugag-favus-gonim-rifup-mujuj-hinuf-pukut  # 3bae
+    duplicate_of: []  # 3bae
+    not_duplicate_of: []  # 3bae
+    pr_ref:  # 3bae
+    justification:  # 3bae
+    description: "Typed stable_id hashes include normalized signatures. Equivalent types across languages (String/str/string, int/Int/i32, bool/Boolean/boolean) must not collide in the hash. Requires a canonical type mapping table and normalization step before hashing. See ADR-0014 future work items 6-7."  # 3bae
+    fields: {}  # 3bae
