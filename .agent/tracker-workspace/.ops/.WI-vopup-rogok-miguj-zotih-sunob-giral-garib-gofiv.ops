@@ -1,0 +1,22 @@
+- op: create  # 9c4e
+  at: '2026-02-20T07:59:00Z'  # 9c4e
+  by: agent  # 9c4e
+  actor: jgstern_agent  # 9c4e
+  clock: 1  # 9c4e
+  nonce: 9c4e  # 9c4e
+  data:  # 9c4e
+    kind: work_item  # 9c4e
+    title: "Fix Hack/Smithy stable_id field order inconsistency"  # 9c4e
+    status: todo_soft  # 9c4e
+    priority: 3  # 9c4e
+    parent:  # 9c4e
+    tags:  # 9c4e
+    - stable-id  # 9c4e
+    - consistency  # 9c4e
+    before: []  # 9c4e
+    duplicate_of: []  # 9c4e
+    not_duplicate_of: []  # 9c4e
+    pr_ref:  # 9c4e
+    justification:  # 9c4e
+    description: "Hack (hack.py:89) and Smithy (smithy.py:62) emit stable_id as '{lang}:{path}:{kind}:{name}' while the other 25 location-based analyzers use '{lang}:{path}:{name}:{kind}'. If these location-based IDs are ever used for cross-analyzer comparison, the inconsistent format would cause silent mismatches. Fix: align to majority format '{lang}:{path}:{name}:{kind}'. See ADR-0014 Phase 0."  # 9c4e
+    fields: {}  # 9c4e
