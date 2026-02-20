@@ -1,6 +1,7 @@
 # 6. Variable Type Inference for Method Call Resolution
 
 Date: 2025-01-21
+Updated: 2026-02-20
 Status: Accepted
 
 ## Context
@@ -31,25 +32,27 @@ Variable types can be inferred from:
 3. **Field declarations**: `self.db: Database` → `self.db` has type `Database`
 4. **Return type annotations**: `def get_db() -> Database` → return value has type `Database`
 
-Currently, hypergumbo implements #1 (constructor) and #2 (parameters). Sources #3 and #4
-are not yet implemented.
+All four sources are now implemented in multiple analyzers (see table below).
 
 ## Decision
 
 ### Current Implementation
 
-Six analyzers implement variable type inference:
+Nine analyzers implement variable type inference. The original six (Python, Java, Kotlin, TypeScript, C#, Dart) now support return type tracking and several support field tracking. Three additional analyzers (Go, Ruby, Lua) have been added since the original decision.
 
-| Analyzer | Constructor Tracking | Parameter Tracking | Field Tracking | Return Tracking |
-|----------|---------------------|-------------------|----------------|-----------------|
-| Python   | ✅ | ✅ | ❌ | ❌ |
-| Java     | ✅ | ✅ | ❌ | ❌ |
-| Kotlin   | ✅ | ✅ | ❌ | ❌ |
-| TypeScript | ✅ | ✅ | ❌ | ❌ |
-| C#       | ✅ | ✅ | ❌ | ❌ |
-| Dart     | ✅ | ✅ | ❌ | ❌ |
+| Analyzer | Constructor | Parameter | Field | Return | Scope |
+|----------|:-----------:|:---------:|:-----:|:------:|:------|
+| Python   | ✅ | ✅ | ✅ (`__init__` field scanning, `py.py:1904-1942`) | ✅ (`py.py:118`, `1648-1661`) | Method-scoped (`py.py:1944-1960`) |
+| Java     | ✅ | ✅ | ✅ (`field_declaration`, `java.py:1060-1070`) | ✅ (`java.py:231`, `1197-1210`) | File-scoped |
+| Kotlin   | ✅ | ✅ | Partial (constructor params = fields, `kotlin.py:529-541`) | ✅ (`kotlin.py:158`, `702-720`) | File-scoped |
+| TypeScript | ✅ | ✅ | ❌ | ✅ (`js_ts.py:526`, `2514-2528`) | File-scoped |
+| C#       | ✅ | ✅ | ✅ (`field_declaration`, `csharp.py:865-889`) | ✅ (`csharp.py:302`, `327-362`) | File-scoped |
+| Dart     | ✅ | ✅ | ❌ | ✅ (`dart.py:157`, `539-601`) | File-scoped |
+| Go       | ✅ (short var, var spec, `go.py:593-635`) | ✅ (`go.py:638-671`) | ❌ | ❌ | File-scoped |
+| Ruby     | ✅ (pattern-based: `.new`, `.find`, `.create`, `ruby.py:1973-2017`) | ❌ (no type annotations) | ❌ | ❌ | File-scoped |
+| Lua      | ✅ (pattern-based: `MyClass:new()`, `lua.py:235-295`) | ❌ (no type annotations) | ❌ | ❌ | File-scoped |
 
-All four use the same pattern:
+All use the same core pattern:
 
 ```python
 # Data structure
@@ -71,7 +74,7 @@ if receiver_name in var_types:
 
 ### Scope Handling
 
-The current implementation is **file-scoped**, not method-scoped:
+Most analyzers use **file-scoped** tracking — a single `var_types` dict per file:
 
 ```python
 def method_a():
@@ -87,47 +90,23 @@ different types. However:
 
 - Variable name collisions across methods are rare in practice
 - False positives (extra edges) are preferable to false negatives (missing edges)
-- Method-scoped tracking would require significant refactoring of the AST traversal
+
+**Exception: Python is method-scoped.** Each function gets a fresh `param_types` dict
+(seeded from parameter annotations + class field types) passed to `process_code_block()`.
+The dict does not leak across function boundaries (`py.py:1944-1960`).
 
 ### Analyzers Without Type Tracking
 
-Four analyzers do not currently implement type tracking:
-
 | Analyzer | Should Add? | Complexity | Value | Notes |
 |----------|-------------|------------|-------|-------|
-| **Go** | ⚠️ Maybe | Medium | Medium | Interface-based, implicit satisfaction |
-| **Rust** | ⚠️ Maybe | Medium | Medium | Trait-based, similar to Go |
-| **C/C++** | ⚠️ Maybe | High | Low-Medium | Pointers complicate things; C has no methods |
+| **Rust** | ⚠️ Maybe | Medium | Medium | Trait-based; `impl Trait` return types are opaque. Valuable for concrete type calls. |
+| **C/C++** | ⚠️ Maybe | High | Low-Medium | Pointers vs references vs values; virtual methods; templates; C has no methods |
+| **Swift** | ⚠️ Maybe | Medium | Medium | Protocol-based, similar to Go interfaces |
+| **PHP** | ⚠️ Maybe | Low-Medium | Medium | Has type hints since PHP 7; straightforward extraction |
+| **Scala** | ⚠️ Maybe | Medium | Medium | Rich type system with implicits |
 | **OCaml** | ❌ No | N/A | Low | Functional paradigm, pattern matching not methods |
 
-**Note:** C# and Dart were added in PR #488, following the same pattern as Java/Kotlin.
-
-#### Why Go and Rust are more complex
-
-**Go:**
-- Interfaces are satisfied implicitly (no `implements` keyword)
-- A `Database` interface could have multiple implementations
-- Would need interface → implementation mapping
-- Still valuable for struct method calls
-
-**Rust:**
-- Trait bounds add complexity
-- `impl Trait` return types are opaque
-- Ownership/borrowing affects method resolution
-- Still valuable for concrete type calls
-
-#### Why C++ is complex
-
-- Pointers vs references vs values: `Client*`, `Client&`, `Client`
-- Virtual methods and inheritance hierarchies
-- Templates add another dimension
-- C code (without methods) mixed with C++ code
-
-#### Why OCaml is not applicable
-
-- Functional paradigm with pattern matching
-- No `obj.method()` patterns to resolve
-- Type inference is the compiler's job, not the analyzer's
+**Note:** Go was previously listed here as "Maybe" but now has full type inference (short var declarations, var specs, function parameters). Ruby and Lua were added with constructor-based pattern matching (no type annotations available in those languages).
 
 ## Consequences
 
@@ -139,16 +118,20 @@ Four analyzers do not currently implement type tracking:
 
 ### Limitations
 
-1. **File-scoped, not method-scoped**: Potential for false positives
+1. **Mostly file-scoped**: Python is method-scoped; all others use a single file-level dict (potential for false positives)
 2. **Only first-party types**: External library types (Pydantic, SQLAlchemy) won't resolve
 3. **No inheritance awareness**: `SubClass` parameters won't resolve `ParentClass.method()`
+4. **Generics stripped**: `List<T>` → `List` (adequate for method resolution but insufficient for typed `stable_id`; see ADR-0014)
 
 ### Future Work
 
-1. **Consider Go/Rust support** (medium effort, good value)
-2. **Add field type tracking** (`self.db: Database`)
-3. **Add return type tracking** (`def get_db() -> Database`)
-4. **Consider method-scoped tracking** (if false positives become a problem)
+1. ~~**Consider Go/Rust support**~~ — Go done; Rust remains a candidate
+2. ~~**Add field type tracking**~~ — Done for Python, Java, C#, partial for Kotlin
+3. ~~**Add return type tracking**~~ — Done for Python, Java, Kotlin, TypeScript, C#, Dart
+4. **Consider method-scoped tracking for non-Python analyzers** (if false positives become a problem)
+5. **Add Rust type tracking** (medium effort, good value for trait-based dispatch)
+6. **Preserve generic type parameters** (needed for ADR-0014 typed `stable_id` tier; currently stripped)
+7. **Extract visibility modifiers** (needed for ADR-0014 typed `stable_id` tier; not currently tracked)
 
 ## Implementation Pattern
 
@@ -201,3 +184,4 @@ def _extract_edges(...):
 - PR #486: Java, Kotlin, TypeScript parameter type inference
 - PR #488: C# and Dart parameter type inference
 - gRPC stub pattern: The original motivation for constructor-based tracking
+- ADR-0014: Generalized Symbol Identity — typed `stable_id` tier depends on this infrastructure

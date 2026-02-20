@@ -91,15 +91,42 @@ This matches the spec's untyped tier formula. Analyzers can override the entire 
 
 ### 3. stable_id typed tier: design principles (deferred)
 
-The typed tier (`sha256({kind}:{normalized_signature}:{visibility}:{containing_module_stable_id})`) requires extracting type signatures from tree-sitter CSTs for Java, Go, TypeScript, Rust, C#, Kotlin, and Dart. This intersects with ADR-0006 (Variable Type Inference), which already tracks type extraction capabilities per language.
+The typed tier (`sha256({kind}:{normalized_signature}:{visibility}:{containing_module_stable_id})`) requires extracting type signatures from declaration sites for Java, Go, TypeScript, Rust, C#, Kotlin, and Dart.
+
+**Existing type extraction infrastructure (per ADR-0006, updated):**
+
+| Analyzer | Parameter types | Return types | Field types | Scope |
+|----------|:-:|:-:|:-:|---|
+| Python | Yes | Yes | Yes | Method-scoped |
+| Java | Yes | Yes | Yes | File-scoped |
+| Kotlin | Yes | Yes | Partial (constructor params) | File-scoped |
+| TypeScript | Yes | Yes | No | File-scoped |
+| C# | Yes | Yes | Yes | File-scoped |
+| Dart | Yes | Yes | No | File-scoped |
+| Go | Yes | No | No | File-scoped |
+| Ruby | Constructor-based only | No | No | File-scoped |
+| Lua | Constructor-based only | No | No | File-scoped |
+
+This infrastructure was built for method call resolution (tracking `var_types` to answer "which `save()` is this?"). The typed `stable_id` tier needs it for a different purpose: extracting the canonical type signature from a function's *declaration site* to answer "what is this function's interface identity?". The extraction logic is reusable; the consumption differs.
+
+**Remaining blockers (narrower than originally stated):**
+
+| Typed tier needs | State | Blocking? |
+|---|---|---|
+| Parameter type names | 9 analyzers extract them | No |
+| Return types | 6 analyzers extract them | No |
+| Generic type parameter normalization | Currently stripped (`List<T>` → `List`) | **Yes** — the typed tier needs `List<$0>` not `List` |
+| Visibility modifiers (public/private/protected) | Not tracked by any analyzer | **Yes** — trivial to extract from tree-sitter but no infrastructure exists |
+| Cross-language type normalization | Not designed | **Yes** — `String` (Java) vs `str` (Python) vs `string` (TS) must not collide |
 
 **Design principles for future implementation:**
 - Normalize generic type parameters by position, not name (`T` and `U` → `$0` and `$1`)
 - Include return types where the language has them
 - Exclude implementation details (method bodies, default values)
 - Prefer the typed tier when type information is available; fall back to untyped
+- Visibility defaults to empty string for languages without access modifiers (Python, Go)
 
-Implementation is deferred until the untyped tier is proven across multiple languages.
+Implementation is deferred until the untyped tier is proven across multiple languages and the three blockers above are addressed. The untyped tier is independently valuable and does not require type information.
 
 ### 4. Route and entry-point stable_id
 
@@ -185,7 +212,7 @@ The `containing_stable_id` component is computed recursively: a method's `stable
 
 ## Relationship to Other ADRs
 
-- **ADR-0006** (Variable Type Inference): Type extraction capabilities per language are a prerequisite for the typed `stable_id` tier (Phase 3). The untyped tier (Phases 1-2) is independent.
+- **ADR-0006** (Variable Type Inference): 9 analyzers already extract parameter types, 6 extract return types, 4 extract field types. This infrastructure is reusable for the typed `stable_id` tier (Phase 3). The remaining blockers are narrow: generic type parameter preservation, visibility extraction, and cross-language normalization. The untyped tier (Phases 1-2) is independent of ADR-0006.
 - **ADR-0012** (Pass Unification): If `stable_id`/`shape_id` computation moves to base-class methods, it integrates naturally with the unified pass interface. The identity computation happens within each analyzer's `run()` method, not as a separate pass.
 - **ADR-0010** (Modular Packages): Per-language `classify_parameter_flags()` overrides live in the language packages, following the existing package boundary conventions.
 
