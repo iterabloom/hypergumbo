@@ -59,7 +59,7 @@ def _get_node_text(node: "tree_sitter.Node") -> str:
 
 def _make_stable_id(rel_path: str, name: str, kind: str) -> str:
     """Create a stable identifier for a symbol."""
-    return f"smithy:{rel_path}:{kind}:{name}"
+    return f"smithy:{rel_path}:{name}:{kind}"
 
 
 def find_smithy_files(repo_root: Path) -> list[Path]:

@@ -277,6 +277,8 @@ function myFunc(): void {}
         assert func.id == func.stable_id
         assert "hack:" in func.id
         assert "test.hack" in func.id
+        # Verify field order: lang:path:name:kind (not lang:path:kind:name)
+        assert func.id == "hack:test.hack:myFunc:fn"
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_hack_file(tmp_path, "test.hack", """<?hh

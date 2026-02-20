@@ -268,6 +268,8 @@ service MyService {}
         assert svc.id == svc.stable_id
         assert "smithy:" in svc.id
         assert "test.smithy" in svc.id
+        # Verify field order: lang:path:name:kind (not lang:path:kind:name)
+        assert svc.id == "smithy:test.smithy:example#MyService:service"
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_smithy_file(tmp_path, "test.smithy", """
