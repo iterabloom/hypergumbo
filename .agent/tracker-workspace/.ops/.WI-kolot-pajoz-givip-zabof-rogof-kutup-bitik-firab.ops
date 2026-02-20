@@ -26,3 +26,12 @@
   nonce: ad2c  # ad2c
   set:  # ad2c
     description: "Ruby uses NameResolver (exact match, last-write-wins) not ListNameResolver. Wiring ambiguity_threshold requires either switching to ListNameResolver for method resolution or adding an explicit candidate-count check before resolution. More involved than PHP/JS/TS."  # ad2c
+- op: update  # 4dd8
+  at: '2026-02-20T18:33:16Z'  # 4dd8
+  by: agent  # 4dd8
+  actor: jgstern_agent  # 4dd8
+  clock: 3  # 4dd8
+  nonce: 4dd8  # 4dd8
+  set:  # 4dd8
+    status: done  # 4dd8
+    pr_ref: PR-1273  # 4dd8
