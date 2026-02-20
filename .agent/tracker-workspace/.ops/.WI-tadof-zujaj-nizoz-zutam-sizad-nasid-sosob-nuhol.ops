@@ -20,3 +20,10 @@
     justification:  # 6151
     description: "Umbrella item for ADR-0014 implementation. Makes stable_id and shape_id universal across all 100+ language analyzers. Four phases: Phase 0 (immediate fixes), Phase 1 (shape_id generalization), Phase 2 (stable_id untyped tier), Phase 3 (stable_id typed tier, deferred). See docs/adr/0014-generalized-symbol-identity.md."  # 6151
     fields: {}  # 6151
+- op: discuss  # 5261
+  at: '2026-02-20T10:05:36Z'  # 5261
+  by: agent  # 5261
+  actor: jgstern_agent  # 5261
+  clock: 2  # 5261
+  nonce: '5261'  # 5261
+  message: "Phase 0 complete: route collisions (PR #1246), grammar pinning (PR #1247), Hack/Smithy order (PR #1249), containing_module_stable_id + scheme v2 (PR #1250). Phase 1 (shape_id) next."  # 5261

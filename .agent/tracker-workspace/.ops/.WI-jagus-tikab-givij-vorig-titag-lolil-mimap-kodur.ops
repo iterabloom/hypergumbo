@@ -20,3 +20,12 @@
     justification:  # 926e
     description: "Python's _compute_stable_id() (py.py:836-877) omits containing_module_stable_id. Spec includes it. Two methods with identical signatures in different classes collide (Foo.process(x) == Bar.process(x)). Fix: include recursive parent stable_id in the hash. Bump STABLE_ID_SCHEME from v1 to v2 in schema.py. This is a prerequisite for Phase 2 (base-class stable_id generalization). See ADR-0014 §5."  # 926e
     fields: {}  # 926e
+- op: update  # 896e
+  at: '2026-02-20T10:05:31Z'  # 896e
+  by: agent  # 896e
+  actor: jgstern_agent  # 896e
+  clock: 2  # 896e
+  nonce: 896e  # 896e
+  set:  # 896e
+    status: done  # 896e
+    pr_ref: 'PR #1250'  # 896e
