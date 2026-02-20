@@ -6,5 +6,6 @@
   "pending_hard_todos": 0,
   "pending_soft_todos": 3,
   "unfixed_invariants": 0,
-  "notes": "PR #1222 merged (ambiguous confidence scaling 1/sqrt(N) + autouse fixture fixing pre-existing CI cache poisoning in test_framework_patterns.py). PR #1221 (C dispatch table edges) merged earlier. DEEP bakeoff cohort #6 findings addressed. P4 tracker items remain: Rego/DTS/Kconfig analyzers."
+  "notes": "PR #1222 merged (ambiguous confidence scaling 1/sqrt(N) + autouse fixture fixing pre-existing CI cache poisoning in test_framework_patterns.py). PR #1221 (C dispatch table edges) merged earlier. DEEP bakeoff cohort #6 findings addressed. P4 tracker items remain: Rego/DTS/Kconfig analyzers.",
+  "guidance_file": "/home/jgstern_agent/hypergumbo_lab_notebook/guidance_log/stop_guidance_02202026_0844.md"
 }
