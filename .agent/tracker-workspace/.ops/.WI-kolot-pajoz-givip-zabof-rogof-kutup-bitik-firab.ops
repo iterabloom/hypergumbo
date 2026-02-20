@@ -18,3 +18,11 @@
     justification:  # c34e
     description: "Ruby duck typing, no type annotations, common method names (call, run, perform). Apply ambiguity guard for 3+ candidates."  # c34e
     fields: {}  # c34e
+- op: update  # ad2c
+  at: '2026-02-20T17:51:05Z'  # ad2c
+  by: agent  # ad2c
+  actor: jgstern_agent  # ad2c
+  clock: 2  # ad2c
+  nonce: ad2c  # ad2c
+  set:  # ad2c
+    description: "Ruby uses NameResolver (exact match, last-write-wins) not ListNameResolver. Wiring ambiguity_threshold requires either switching to ListNameResolver for method resolution or adding an explicit candidate-count check before resolution. More involved than PHP/JS/TS."  # ad2c

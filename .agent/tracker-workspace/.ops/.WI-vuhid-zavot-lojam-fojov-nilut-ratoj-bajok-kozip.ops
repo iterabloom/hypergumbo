@@ -18,3 +18,13 @@
     justification:  # 093e
     description: "PHP has no type annotations on most codebases. Method calls are ambiguous when multiple classes define the same method."  # 093e
     fields: {}  # 093e
+- op: update  # 10aa
+  at: '2026-02-20T17:34:50Z'  # 10aa
+  by: agent  # 10aa
+  actor: jgstern_agent  # 10aa
+  clock: 2  # 10aa
+  nonce: 10aa  # 10aa
+  set:  # 10aa
+    status: done  # 10aa
+    pr_ref: 'PR #1271'  # 10aa
+    description: "PHP ambiguity guard wired via ListNameResolver ambiguity_threshold=3. Method calls with 3+ candidate classes return unresolved instead of arbitrary pick."  # 10aa

@@ -30,3 +30,13 @@
     fields:  # 8031
       statement: "Method/member-function calls with ambiguous receiver types (3+ candidates) must not produce resolved call edges."  # 8031
       root_cause: "Fallback resolution (ListNameResolver or local_symbols) picks an arbitrary candidate when receiver type cannot be inferred, producing false-positive edges for common method names like Get, Set, String, Close."  # 8031
+- op: update  # b22e
+  at: '2026-02-20T17:20:54Z'  # b22e
+  by: agent  # b22e
+  actor: jgstern_agent  # b22e
+  clock: 3  # b22e
+  nonce: b22e  # b22e
+  set:  # b22e
+    status: done  # b22e
+    pr_ref: 'PR #1261 (Go guard), PR #1270 (ListNameResolver threshold)'  # b22e
+    description: "Cross-language invariant. Go fixed in PR #1261 with analyzer-level guard. ListNameResolver ambiguity_threshold added in PR #1270 — any language using ListNameResolver can opt in. Per-language adoption tracked separately: Ruby (P3), Java (P3), PHP (P3), C# (P4), Kotlin (P4), Groovy (P4), Dart (P4)."  # b22e

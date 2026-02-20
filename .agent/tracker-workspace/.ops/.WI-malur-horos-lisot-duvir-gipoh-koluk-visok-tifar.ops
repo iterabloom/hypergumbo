@@ -18,3 +18,12 @@
     justification:  # dab9
     description: "symbol_resolution.py: Add ambiguity_threshold param to ListNameResolver. When candidate count >= threshold, return unresolved instead of picking arbitrary. Benefits Go/Ruby/PHP/JS without per-language changes."  # dab9
     fields: {}  # dab9
+- op: update  # aa32
+  at: '2026-02-20T16:57:36Z'  # aa32
+  by: agent  # aa32
+  actor: jgstern_agent  # aa32
+  clock: 2  # aa32
+  nonce: aa32  # aa32
+  set:  # aa32
+    status: done  # aa32
+    pr_ref: 'PR #1270'  # aa32

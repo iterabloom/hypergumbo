@@ -18,3 +18,11 @@
     justification:  # 61eb
     description: "Java has overloaded method names across class hierarchy. Direct global_symbols lookup can pick arbitrary candidate."  # 61eb
     fields: {}  # 61eb
+- op: update  # 7019
+  at: '2026-02-20T17:51:12Z'  # 7019
+  by: agent  # 7019
+  actor: jgstern_agent  # 7019
+  clock: 2  # 7019
+  nonce: '7019'  # 7019
+  set:  # 7019
+    description: "Java uses NameResolver (exact match, last-write-wins) not ListNameResolver. Same approach needed as Ruby: either switch to ListNameResolver or add explicit candidate-count check. More involved than PHP/JS/TS."  # 7019
