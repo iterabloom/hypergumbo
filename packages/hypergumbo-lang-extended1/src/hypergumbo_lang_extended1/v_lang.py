@@ -31,6 +31,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -47,12 +48,6 @@ def find_v_files(root: Path) -> Iterator[Path]:
     for path in find_files(root, ["*.v"]):
         if path.is_file():
             yield path
-
-
-def _make_stable_id(path: Path, repo_root: Path, name: str, kind: str) -> str:
-    """Create a stable ID for a V symbol."""
-    rel_path = path.relative_to(repo_root)
-    return f"v:{rel_path}:{name}:{kind}"
 
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
@@ -144,7 +139,7 @@ def _find_enclosing_function(
         if current.type == "function_declaration":
             name = _get_identifier(current)
             if name:
-                return _make_stable_id(path, repo_root, name, "fn")
+                return make_symbol_id("v", str(path.relative_to(repo_root)), current.start_point[0] + 1, current.end_point[0] + 1, name, "fn")
         current = current.parent
     return None  # pragma: no cover
 
@@ -189,8 +184,8 @@ class VAnalyzer(TreeSitterAnalyzer):
                     signature += f" {return_type}"
 
                 sym = Symbol(
-                    id=_make_stable_id(path, repo_root, name, "fn"),
-                    stable_id=_make_stable_id(path, repo_root, name, "fn"),
+                    id=make_symbol_id("v", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "fn"),
+                    stable_id=self.compute_stable_id(node, kind="fn"),
                     name=name,
                     kind="function",
                     language="v",
@@ -207,6 +202,7 @@ class VAnalyzer(TreeSitterAnalyzer):
                     meta={"is_public": is_pub},
                 )
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
                 analysis.symbol_by_name[name] = sym
 
         elif node.type == "struct_declaration":
@@ -215,8 +211,8 @@ class VAnalyzer(TreeSitterAnalyzer):
                 field_count = _count_struct_fields(node)
                 is_pub = _is_public(node)
                 sym = Symbol(
-                    id=_make_stable_id(path, repo_root, name, "struct"),
-                    stable_id=_make_stable_id(path, repo_root, name, "struct"),
+                    id=make_symbol_id("v", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "struct"),
+                    stable_id=self.compute_stable_id(node, kind="struct"),
                     name=name,
                     kind="class",
                     language="v",
@@ -232,6 +228,7 @@ class VAnalyzer(TreeSitterAnalyzer):
                     meta={"is_public": is_pub, "field_count": field_count},
                 )
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
 
         elif node.type == "enum_declaration":
             name = _get_type_identifier(node)
@@ -239,8 +236,8 @@ class VAnalyzer(TreeSitterAnalyzer):
                 variant_count = _count_enum_variants(node)
                 is_pub = _is_public(node)
                 sym = Symbol(
-                    id=_make_stable_id(path, repo_root, name, "enum"),
-                    stable_id=_make_stable_id(path, repo_root, name, "enum"),
+                    id=make_symbol_id("v", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "enum"),
+                    stable_id=self.compute_stable_id(node, kind="enum"),
                     name=name,
                     kind="enum",
                     language="v",
@@ -256,14 +253,15 @@ class VAnalyzer(TreeSitterAnalyzer):
                     meta={"is_public": is_pub, "variant_count": variant_count},
                 )
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
 
         elif node.type == "interface_declaration":
             name = _get_type_identifier(node)
             if name:
                 is_pub = _is_public(node)
                 sym = Symbol(
-                    id=_make_stable_id(path, repo_root, name, "interface"),
-                    stable_id=_make_stable_id(path, repo_root, name, "interface"),
+                    id=make_symbol_id("v", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "interface"),
+                    stable_id=self.compute_stable_id(node, kind="interface"),
                     name=name,
                     kind="interface",
                     language="v",
@@ -279,6 +277,7 @@ class VAnalyzer(TreeSitterAnalyzer):
                     meta={"is_public": is_pub},
                 )
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
 
         # Recursively process children
         for child in node.children:

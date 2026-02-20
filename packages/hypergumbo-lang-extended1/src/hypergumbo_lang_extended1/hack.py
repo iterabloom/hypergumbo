@@ -39,6 +39,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -82,11 +83,6 @@ HACK_BUILTINS = frozenset({
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
     return node.text.decode("utf-8") if node.text else ""
-
-
-def _make_stable_id(rel_path: str, name: str, kind: str) -> str:
-    """Create a stable identifier for a symbol."""
-    return f"hack:{rel_path}:{name}:{kind}"
 
 
 def find_hack_files(repo_root: Path) -> list[Path]:
@@ -142,6 +138,7 @@ def _get_qualified_name(name: str, current_namespace: Optional[str]) -> str:
 
 def _extract_method_symbol(
     node: "tree_sitter.Node", rel_path: str, current_class: str,
+    analyzer: "HackAnalyzer",
 ) -> Optional[Symbol]:
     """Extract a method declaration."""
     name = None
@@ -169,8 +166,8 @@ def _extract_method_symbol(
             signature += f": {return_type}"
 
         return Symbol(
-            id=_make_stable_id(rel_path, qualified_name, "method"),
-            stable_id=_make_stable_id(rel_path, qualified_name, "method"),
+            id=make_symbol_id("hack", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "method"),
+            stable_id=analyzer.compute_stable_id(node, kind="method"),
             name=qualified_name,
             kind="method",
             language="hack",
@@ -195,20 +192,22 @@ def _extract_method_symbol(
 
 def _extract_members(
     node: "tree_sitter.Node", rel_path: str, current_class: str,
-    analysis: FileAnalysis,
+    analysis: FileAnalysis, analyzer: "HackAnalyzer",
 ) -> None:
     """Extract method declarations from a member_declarations node."""
     for child in node.children:
         if child.type == "method_declaration":
-            sym = _extract_method_symbol(child, rel_path, current_class)
+            sym = _extract_method_symbol(child, rel_path, current_class, analyzer)
             if sym:
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = child
                 analysis.symbol_by_name[sym.name] = sym
 
 
 def _extract_class_like(
     node: "tree_sitter.Node", rel_path: str, kind: str,
     current_namespace: Optional[str], analysis: FileAnalysis,
+    analyzer: "HackAnalyzer",
 ) -> None:
     """Extract a class, interface, or trait declaration."""
     name = None
@@ -221,8 +220,8 @@ def _extract_class_like(
         qualified_name = _get_qualified_name(name, current_namespace)
 
         sym = Symbol(
-            id=_make_stable_id(rel_path, qualified_name, kind),
-            stable_id=_make_stable_id(rel_path, qualified_name, kind),
+            id=make_symbol_id("hack", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, kind),
+            stable_id=analyzer.compute_stable_id(node, kind=kind),
             name=qualified_name,
             kind=kind,
             language="hack",
@@ -236,17 +235,19 @@ def _extract_class_like(
             origin=PASS_ID,
         )
         analysis.symbols.append(sym)
+        analysis.node_for_symbol[sym.id] = node
         analysis.symbol_by_name[sym.name] = sym
 
         # Extract methods
         for child in node.children:
             if child.type == "member_declarations":
-                _extract_members(child, rel_path, qualified_name, analysis)
+                _extract_members(child, rel_path, qualified_name, analysis, analyzer)
 
 
 def _extract_symbols_recursive(
     node: "tree_sitter.Node", rel_path: str,
     current_namespace: Optional[str], analysis: FileAnalysis,
+    analyzer: "HackAnalyzer",
 ) -> None:
     """Recursively extract symbols from a syntax tree."""
     if node.type == "namespace_declaration":
@@ -254,8 +255,8 @@ def _extract_symbols_recursive(
             if child.type == "qualified_identifier":
                 ns_name = _get_node_text(child)
                 sym = Symbol(
-                    id=_make_stable_id(rel_path, ns_name, "namespace"),
-                    stable_id=_make_stable_id(rel_path, ns_name, "namespace"),
+                    id=make_symbol_id("hack", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, ns_name, "namespace"),
+                    stable_id=analyzer.compute_stable_id(node, kind="namespace"),
                     name=ns_name,
                     kind="namespace",
                     language="hack",
@@ -269,6 +270,7 @@ def _extract_symbols_recursive(
                     origin=PASS_ID,
                 )
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
                 analysis.symbol_by_name[sym.name] = sym
                 # Update namespace for children - store in import_aliases as context
                 analysis.import_aliases["__namespace__"] = ns_name
@@ -276,15 +278,15 @@ def _extract_symbols_recursive(
 
     elif node.type == "class_declaration":
         ns = analysis.import_aliases.get("__namespace__")
-        _extract_class_like(node, rel_path, "class", ns, analysis)
+        _extract_class_like(node, rel_path, "class", ns, analysis, analyzer)
 
     elif node.type == "interface_declaration":
         ns = analysis.import_aliases.get("__namespace__")
-        _extract_class_like(node, rel_path, "interface", ns, analysis)
+        _extract_class_like(node, rel_path, "interface", ns, analysis, analyzer)
 
     elif node.type == "trait_declaration":
         ns = analysis.import_aliases.get("__namespace__")
-        _extract_class_like(node, rel_path, "trait", ns, analysis)
+        _extract_class_like(node, rel_path, "trait", ns, analysis, analyzer)
 
     elif node.type == "function_declaration":
         name = None
@@ -307,8 +309,8 @@ def _extract_symbols_recursive(
                 signature += f": {return_type}"
 
             sym = Symbol(
-                id=_make_stable_id(rel_path, qualified_name, "fn"),
-                stable_id=_make_stable_id(rel_path, qualified_name, "fn"),
+                id=make_symbol_id("hack", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "fn"),
+                stable_id=analyzer.compute_stable_id(node, kind="fn"),
                 name=qualified_name,
                 kind="function",
                 language="hack",
@@ -324,10 +326,11 @@ def _extract_symbols_recursive(
                 meta={"param_count": len(params)},
             )
             analysis.symbols.append(sym)
+            analysis.node_for_symbol[sym.id] = node
             analysis.symbol_by_name[sym.name] = sym
 
     for child in node.children:
-        _extract_symbols_recursive(child, rel_path, current_namespace, analysis)
+        _extract_symbols_recursive(child, rel_path, current_namespace, analysis, analyzer)
 
 
 def _find_enclosing_method(node: "tree_sitter.Node") -> Optional[str]:
@@ -471,7 +474,7 @@ class HackAnalyzer(TreeSitterAnalyzer):
     ) -> FileAnalysis:
         """Extract symbols from a single Hack file."""
         analysis = FileAnalysis()
-        _extract_symbols_recursive(tree.root_node, rel_path, None, analysis)
+        _extract_symbols_recursive(tree.root_node, rel_path, None, analysis, self)
         return analysis
 
     def register_symbol(

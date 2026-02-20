@@ -39,6 +39,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -72,11 +73,6 @@ APEX_BUILTINS = frozenset({
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
     return node.text.decode("utf-8") if node.text else ""
-
-
-def _make_stable_id(rel_path: str, name: str, kind: str) -> str:
-    """Create a stable identifier for a symbol."""
-    return f"apex:{rel_path}:{kind}:{name}"
 
 
 def _extract_base_classes_apex(node: "tree_sitter.Node") -> list[str]:
@@ -170,6 +166,7 @@ def _extract_params(node: "tree_sitter.Node") -> list[str]:
 
 def _extract_method_symbol(
     node: "tree_sitter.Node", rel_path: str, current_class: Optional[str],
+    analyzer: TreeSitterAnalyzer,
 ) -> Optional[Symbol]:
     """Extract a method symbol from a method_declaration node."""
     name = None
@@ -217,8 +214,8 @@ def _extract_method_symbol(
     signature = f"{name}({', '.join(params)})"
 
     return Symbol(
-        id=_make_stable_id(rel_path, qualified_name, "method"),
-        stable_id=_make_stable_id(rel_path, qualified_name, "method"),
+        id=make_symbol_id("apex", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "method"),
+        stable_id=analyzer.compute_stable_id(node, kind="method"),
         name=qualified_name,
         kind="method",
         language="apex",
@@ -237,6 +234,7 @@ def _extract_method_symbol(
 
 def _extract_constructor_symbol(
     node: "tree_sitter.Node", rel_path: str, current_class: Optional[str],
+    analyzer: TreeSitterAnalyzer,
 ) -> Optional[Symbol]:
     """Extract a constructor symbol from a constructor_declaration node."""
     name = None
@@ -269,8 +267,8 @@ def _extract_constructor_symbol(
     signature = f"{name}({', '.join(params)})"
 
     return Symbol(
-        id=_make_stable_id(rel_path, qualified_name, "constructor"),
-        stable_id=_make_stable_id(rel_path, qualified_name, "constructor"),
+        id=make_symbol_id("apex", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "constructor"),
+        stable_id=analyzer.compute_stable_id(node, kind="constructor"),
         name=qualified_name,
         kind="constructor",
         language="apex",
@@ -289,6 +287,7 @@ def _extract_constructor_symbol(
 
 def _extract_field_symbols(
     node: "tree_sitter.Node", rel_path: str, current_class: Optional[str],
+    analyzer: TreeSitterAnalyzer,
 ) -> list[Symbol]:
     """Extract field symbols from a field_declaration node."""
     symbols: list[Symbol] = []
@@ -325,8 +324,8 @@ def _extract_field_symbols(
                     meta["visibility"] = "global"
 
                 sym = Symbol(
-                    id=_make_stable_id(rel_path, qualified_name, "field"),
-                    stable_id=_make_stable_id(rel_path, qualified_name, "field"),
+                    id=make_symbol_id("apex", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "field"),
+                    stable_id=analyzer.compute_stable_id(node, kind="field"),
                     name=qualified_name,
                     kind="field",
                     language="apex",
@@ -346,34 +345,38 @@ def _extract_field_symbols(
 
 def _extract_class_body(
     body_node: "tree_sitter.Node", rel_path: str, current_class: str,
-    analysis: FileAnalysis,
+    analysis: FileAnalysis, analyzer: TreeSitterAnalyzer,
 ) -> None:
     """Extract members from a class body, recursing into inner classes."""
     for child in body_node.children:
         if child.type == "method_declaration":
-            sym = _extract_method_symbol(child, rel_path, current_class)
+            sym = _extract_method_symbol(child, rel_path, current_class, analyzer)
             if sym:
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = child
                 analysis.symbol_by_name[sym.name] = sym
         elif child.type == "constructor_declaration":
-            sym = _extract_constructor_symbol(child, rel_path, current_class)
+            sym = _extract_constructor_symbol(child, rel_path, current_class, analyzer)
             if sym:
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = child
                 analysis.symbol_by_name[sym.name] = sym
         elif child.type == "field_declaration":
-            for sym in _extract_field_symbols(child, rel_path, current_class):
+            for sym in _extract_field_symbols(child, rel_path, current_class, analyzer):
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = child
                 analysis.symbol_by_name[sym.name] = sym
         elif child.type == "class_declaration":
-            _extract_class_node(child, rel_path, analysis)
+            _extract_class_node(child, rel_path, analysis, analyzer)
         elif child.type == "interface_declaration":
-            _extract_interface_node(child, rel_path, analysis)
+            _extract_interface_node(child, rel_path, analysis, analyzer)
         elif child.type == "enum_declaration":
-            _extract_enum_node(child, rel_path, analysis)
+            _extract_enum_node(child, rel_path, analysis, analyzer)
 
 
 def _extract_class_node(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
+    analyzer: TreeSitterAnalyzer,
 ) -> None:
     """Extract a class and its members."""
     name = None
@@ -406,8 +409,8 @@ def _extract_class_node(
             meta["base_classes"] = base_classes
 
         sym = Symbol(
-            id=_make_stable_id(rel_path, name, "class"),
-            stable_id=_make_stable_id(rel_path, name, "class"),
+            id=make_symbol_id("apex", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "class"),
+            stable_id=analyzer.compute_stable_id(node, kind="class"),
             name=name,
             kind="class",
             language="apex",
@@ -422,15 +425,17 @@ def _extract_class_node(
             meta=meta if meta else {},
         )
         analysis.symbols.append(sym)
+        analysis.node_for_symbol[sym.id] = node
         analysis.symbol_by_name[sym.name] = sym
 
         for child in node.children:
             if child.type == "class_body":
-                _extract_class_body(child, rel_path, name, analysis)
+                _extract_class_body(child, rel_path, name, analysis, analyzer)
 
 
 def _extract_interface_node(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
+    analyzer: TreeSitterAnalyzer,
 ) -> None:
     """Extract an interface and its methods."""
     name = None
@@ -452,8 +457,8 @@ def _extract_interface_node(
             meta["visibility"] = "global"
 
         sym = Symbol(
-            id=_make_stable_id(rel_path, name, "interface"),
-            stable_id=_make_stable_id(rel_path, name, "interface"),
+            id=make_symbol_id("apex", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "interface"),
+            stable_id=analyzer.compute_stable_id(node, kind="interface"),
             name=name,
             kind="interface",
             language="apex",
@@ -468,20 +473,23 @@ def _extract_interface_node(
             meta=meta if meta else {},
         )
         analysis.symbols.append(sym)
+        analysis.node_for_symbol[sym.id] = node
         analysis.symbol_by_name[sym.name] = sym
 
         for child in node.children:
             if child.type == "interface_body":
                 for member in child.children:
                     if member.type == "method_declaration":
-                        method_sym = _extract_method_symbol(member, rel_path, name)
+                        method_sym = _extract_method_symbol(member, rel_path, name, analyzer)
                         if method_sym:
                             analysis.symbols.append(method_sym)
+                            analysis.node_for_symbol[method_sym.id] = member
                             analysis.symbol_by_name[method_sym.name] = method_sym
 
 
 def _extract_enum_node(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
+    analyzer: TreeSitterAnalyzer,
 ) -> None:
     """Extract an enum definition."""
     name = None
@@ -509,8 +517,8 @@ def _extract_enum_node(
             meta["visibility"] = "global"
 
         sym = Symbol(
-            id=_make_stable_id(rel_path, name, "enum"),
-            stable_id=_make_stable_id(rel_path, name, "enum"),
+            id=make_symbol_id("apex", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "enum"),
+            stable_id=analyzer.compute_stable_id(node, kind="enum"),
             name=name,
             kind="enum",
             language="apex",
@@ -525,11 +533,13 @@ def _extract_enum_node(
             meta=meta if meta else {},
         )
         analysis.symbols.append(sym)
+        analysis.node_for_symbol[sym.id] = node
         analysis.symbol_by_name[sym.name] = sym
 
 
 def _extract_trigger_node(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
+    analyzer: TreeSitterAnalyzer,
 ) -> None:
     """Extract a trigger definition."""
     name = None
@@ -548,8 +558,8 @@ def _extract_trigger_node(
             meta["sobject"] = sobject
 
         sym = Symbol(
-            id=_make_stable_id(rel_path, name, "trigger"),
-            stable_id=_make_stable_id(rel_path, name, "trigger"),
+            id=make_symbol_id("apex", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "trigger"),
+            stable_id=analyzer.compute_stable_id(node, kind="trigger"),
             name=name,
             kind="trigger",
             language="apex",
@@ -564,28 +574,30 @@ def _extract_trigger_node(
             meta=meta if meta else {},
         )
         analysis.symbols.append(sym)
+        analysis.node_for_symbol[sym.id] = node
         analysis.symbol_by_name[sym.name] = sym
 
 
 def _extract_symbols_recursive(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
+    analyzer: TreeSitterAnalyzer,
 ) -> None:
     """Recursively extract symbols from a syntax tree."""
     if node.type == "class_declaration":
-        _extract_class_node(node, rel_path, analysis)
+        _extract_class_node(node, rel_path, analysis, analyzer)
         return
     elif node.type == "interface_declaration":
-        _extract_interface_node(node, rel_path, analysis)
+        _extract_interface_node(node, rel_path, analysis, analyzer)
         return
     elif node.type == "enum_declaration":
-        _extract_enum_node(node, rel_path, analysis)
+        _extract_enum_node(node, rel_path, analysis, analyzer)
         return
     elif node.type == "trigger_declaration":
-        _extract_trigger_node(node, rel_path, analysis)
+        _extract_trigger_node(node, rel_path, analysis, analyzer)
         return
 
     for child in node.children:
-        _extract_symbols_recursive(child, rel_path, analysis)
+        _extract_symbols_recursive(child, rel_path, analysis, analyzer)
 
 
 # ---------------------------------------------------------------------------
@@ -794,7 +806,7 @@ class ApexAnalyzer(TreeSitterAnalyzer):
     ) -> FileAnalysis:
         """Extract symbols from a single Apex file."""
         analysis = FileAnalysis()
-        _extract_symbols_recursive(tree.root_node, rel_path, analysis)
+        _extract_symbols_recursive(tree.root_node, rel_path, analysis, self)
         return analysis
 
     def register_symbol(

@@ -412,9 +412,9 @@ public class Service {}
         result = analyze_apex(tmp_path)
         cls = next((s for s in result.symbols if s.kind == "class"), None)
         assert cls is not None
-        assert cls.id == cls.stable_id
-        assert "apex:" in cls.id
-        assert "Service.cls" in cls.id
+        assert cls.id != cls.stable_id
+        assert cls.id.startswith("apex:Service.cls:")
+        assert cls.stable_id.startswith("sha256:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_apex_file(tmp_path, "Service.cls", """

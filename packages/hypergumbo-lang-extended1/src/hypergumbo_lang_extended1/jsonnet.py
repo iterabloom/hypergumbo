@@ -39,6 +39,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -97,11 +98,6 @@ def _get_node_text(node: "tree_sitter.Node") -> str:
     return node.text.decode("utf-8") if node.text else ""
 
 
-def _make_stable_id(rel_path: str, name: str, kind: str) -> str:
-    """Create a stable identifier for a symbol."""
-    return f"jsonnet:{rel_path}:{kind}:{name}"
-
-
 def find_jsonnet_files(repo_root: Path) -> list[Path]:
     """Find all Jsonnet files in the repository."""
     patterns = ["**/*.jsonnet", "**/*.libsonnet"]
@@ -119,6 +115,7 @@ def _is_builtin(name: str) -> bool:
 
 def _extract_symbols_recursive(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
+    analyzer: "JsonnetAnalyzer",
 ) -> None:
     """Recursively extract symbols from a syntax tree."""
     if node.type == "bind":
@@ -138,8 +135,8 @@ def _extract_symbols_recursive(
             kind = "function" if is_function else "variable"
 
             sym = Symbol(
-                id=_make_stable_id(rel_path, name, kind),
-                stable_id=_make_stable_id(rel_path, name, kind),
+                id=make_symbol_id("jsonnet", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, kind),
+                stable_id=analyzer.compute_stable_id(node, kind=kind),
                 name=name,
                 kind=kind,
                 language="jsonnet",
@@ -154,6 +151,7 @@ def _extract_symbols_recursive(
                 meta={"param_count": param_count} if is_function else {},
             )
             analysis.symbols.append(sym)
+            analysis.node_for_symbol[sym.id] = node
             analysis.symbol_by_name[sym.name] = sym
 
     elif node.type == "field":
@@ -178,8 +176,8 @@ def _extract_symbols_recursive(
             kind = "method" if has_params else "field"
 
             sym = Symbol(
-                id=_make_stable_id(rel_path, field_name, kind),
-                stable_id=_make_stable_id(rel_path, field_name, kind),
+                id=make_symbol_id("jsonnet", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, field_name, kind),
+                stable_id=analyzer.compute_stable_id(node, kind=kind),
                 name=field_name,
                 kind=kind,
                 language="jsonnet",
@@ -197,6 +195,7 @@ def _extract_symbols_recursive(
                 },
             )
             analysis.symbols.append(sym)
+            analysis.node_for_symbol[sym.id] = node
             analysis.symbol_by_name[sym.name] = sym
 
     elif node.type == "import":
@@ -210,8 +209,8 @@ def _extract_symbols_recursive(
 
         if import_path:
             sym = Symbol(
-                id=_make_stable_id(rel_path, import_path, "import"),
-                stable_id=_make_stable_id(rel_path, import_path, "import"),
+                id=make_symbol_id("jsonnet", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, import_path, "import"),
+                stable_id=analyzer.compute_stable_id(node, kind="import"),
                 name=import_path,
                 kind="import",
                 language="jsonnet",
@@ -225,10 +224,11 @@ def _extract_symbols_recursive(
                 origin=PASS_ID,
             )
             analysis.symbols.append(sym)
+            analysis.node_for_symbol[sym.id] = node
             analysis.symbol_by_name[sym.name] = sym
 
     for child in node.children:
-        _extract_symbols_recursive(child, rel_path, analysis)
+        _extract_symbols_recursive(child, rel_path, analysis, analyzer)
 
 
 def _extract_edges_recursive(
@@ -317,7 +317,7 @@ class JsonnetAnalyzer(TreeSitterAnalyzer):
     ) -> FileAnalysis:
         """Extract symbols from a single Jsonnet file."""
         analysis = FileAnalysis()
-        _extract_symbols_recursive(tree.root_node, rel_path, analysis)
+        _extract_symbols_recursive(tree.root_node, rel_path, analysis, self)
         return analysis
 
     def extract_edges_from_file(

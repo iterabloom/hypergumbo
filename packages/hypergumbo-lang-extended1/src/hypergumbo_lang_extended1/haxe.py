@@ -31,6 +31,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -47,12 +48,6 @@ def find_haxe_files(root: Path) -> Iterator[Path]:
     for path in find_files(root, ["*.hx"]):
         if path.is_file():
             yield path
-
-
-def _make_stable_id(path: Path, repo_root: Path, name: str, kind: str) -> str:
-    """Create a stable ID for a Haxe symbol."""
-    rel_path = path.relative_to(repo_root)
-    return f"haxe:{rel_path}:{name}:{kind}"
 
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
@@ -161,20 +156,23 @@ def _find_enclosing_context(
     """
     current = node.parent
     func_name = None
+    func_node = None
     class_name = None
 
     while current is not None:
         if current.type == "function_declaration":
             if func_name is None:
                 func_name = _get_function_name(current)
+                func_node = current
         elif current.type in ("class_declaration", "interface_declaration"):
             if class_name is None:
                 class_name = _get_identifier(current)
         current = current.parent
 
-    if func_name:
+    if func_name and func_node is not None:
         qualified_name = f"{class_name}.{func_name}" if class_name else func_name
-        func_id = _make_stable_id(path, repo_root, qualified_name, "fn")
+        rel_path = str(path.relative_to(repo_root))
+        func_id = make_symbol_id("haxe", rel_path, func_node.start_point[0] + 1, func_node.end_point[0] + 1, qualified_name, "fn")
         return func_id, class_name
     return None, class_name  # pragma: no cover
 
@@ -214,8 +212,8 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
                 is_abstract = any(c.type == "abstract" for c in node.children)
 
                 sym = Symbol(
-                    id=_make_stable_id(path, repo_root, name, "class"),
-                    stable_id=_make_stable_id(path, repo_root, name, "class"),
+                    id=make_symbol_id("haxe", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "class"),
+                    stable_id=self.compute_stable_id(node, kind="class"),
                     name=name,
                     kind="class",
                     language="haxe",
@@ -231,6 +229,7 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
                     meta={"is_abstract": is_abstract},
                 )
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
 
                 for child in node.children:
                     self._extract_symbols_recursive(
@@ -242,8 +241,8 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
             name = _get_identifier(node)
             if name:
                 sym = Symbol(
-                    id=_make_stable_id(path, repo_root, name, "interface"),
-                    stable_id=_make_stable_id(path, repo_root, name, "interface"),
+                    id=make_symbol_id("haxe", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "interface"),
+                    stable_id=self.compute_stable_id(node, kind="interface"),
                     name=name,
                     kind="interface",
                     language="haxe",
@@ -258,6 +257,7 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
                     origin_run_id=run.execution_id,
                 )
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
 
                 for child in node.children:
                     self._extract_symbols_recursive(
@@ -279,8 +279,8 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
                 signature = f"function {name}({', '.join(params)}): {type_str}"
 
                 sym = Symbol(
-                    id=_make_stable_id(path, repo_root, qualified_name, "fn"),
-                    stable_id=_make_stable_id(path, repo_root, qualified_name, "fn"),
+                    id=make_symbol_id("haxe", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "fn"),
+                    stable_id=self.compute_stable_id(node, kind="fn"),
                     name=qualified_name,
                     kind="function",
                     language="haxe",
@@ -302,6 +302,7 @@ class HaxeAnalyzer(TreeSitterAnalyzer):
                     },
                 )
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
                 analysis.symbol_by_name[qualified_name] = sym
             return  # Don't recurse into function bodies for symbol extraction
 

@@ -43,6 +43,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
+    make_symbol_id,
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -71,14 +72,14 @@ def is_nim_tree_sitter_available() -> bool:
 
 
 def _make_symbol(
-    rel_path: str, run_id: str, node: "tree_sitter.Node",
+    analyzer: "NimAnalyzer", rel_path: str, run_id: str, node: "tree_sitter.Node",
     name: str, kind: str, source: bytes,
     signature: Optional[str] = None, meta: Optional[dict] = None,
 ) -> Symbol:
     """Create a Symbol with consistent formatting."""
     start_line = node.start_point[0] + 1
     end_line = node.end_point[0] + 1
-    sym_id = f"nim:{rel_path}:{start_line}-{end_line}:{name}:{kind}"
+    sym_id = make_symbol_id("nim", rel_path, start_line, end_line, name, kind)
     span = Span(
         start_line=start_line,
         start_col=node.start_point[1],
@@ -95,14 +96,14 @@ def _make_symbol(
         span=span,
         origin=PASS_ID,
         origin_run_id=run_id,
-        stable_id=f"nim:{rel_path}:{name}",
+        stable_id=analyzer.compute_stable_id(node, kind=kind),
         signature=signature,
         meta=meta,
     )
 
 
 def _process_proc_declaration(
-    source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+    analyzer: "NimAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
 ) -> Optional[Symbol]:
     """Process a proc declaration."""
     name_node = find_child_by_type(node, "identifier")
@@ -113,11 +114,11 @@ def _process_proc_declaration(
     params = find_child_by_type(node, "parameter_declaration_list")
     signature = node_text(params, source) if params else "()"
 
-    return _make_symbol(rel_path, run_id, node, proc_name, "function", source, signature=signature)
+    return _make_symbol(analyzer, rel_path, run_id, node, proc_name, "function", source, signature=signature)
 
 
 def _process_func_declaration(
-    source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+    analyzer: "NimAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
 ) -> Optional[Symbol]:
     """Process a func declaration (pure function)."""
     name_node = find_child_by_type(node, "identifier")
@@ -128,11 +129,11 @@ def _process_func_declaration(
     params = find_child_by_type(node, "parameter_declaration_list")
     signature = node_text(params, source) if params else "()"
 
-    return _make_symbol(rel_path, run_id, node, func_name, "function", source, signature=signature)
+    return _make_symbol(analyzer, rel_path, run_id, node, func_name, "function", source, signature=signature)
 
 
 def _process_method_declaration(
-    source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+    analyzer: "NimAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
 ) -> Optional[Symbol]:
     """Process a method declaration."""
     name_node = find_child_by_type(node, "identifier")
@@ -143,11 +144,11 @@ def _process_method_declaration(
     params = find_child_by_type(node, "parameter_declaration_list")
     signature = node_text(params, source) if params else "()"
 
-    return _make_symbol(rel_path, run_id, node, method_name, "method", source, signature=signature)
+    return _make_symbol(analyzer, rel_path, run_id, node, method_name, "method", source, signature=signature)
 
 
 def _process_type_declaration(
-    source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+    analyzer: "NimAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
 ) -> Optional[Symbol]:
     """Process a type declaration."""
     type_sym = find_child_by_type(node, "type_symbol_declaration")
@@ -159,7 +160,7 @@ def _process_type_declaration(
         return None  # pragma: no cover - defensive
 
     type_name = node_text(name_node, source)
-    return _make_symbol(rel_path, run_id, node, type_name, "type", source)
+    return _make_symbol(analyzer, rel_path, run_id, node, type_name, "type", source)
 
 
 # ---------------------------------------------------------------------------
@@ -315,16 +316,17 @@ class NimAnalyzer(TreeSitterAnalyzer):
         for node in iter_tree(tree.root_node):
             sym: Optional[Symbol] = None
             if node.type == "proc_declaration":
-                sym = _process_proc_declaration(source, rel_path, run.execution_id, node)
+                sym = _process_proc_declaration(self, source, rel_path, run.execution_id, node)
             elif node.type == "func_declaration":
-                sym = _process_func_declaration(source, rel_path, run.execution_id, node)
+                sym = _process_func_declaration(self, source, rel_path, run.execution_id, node)
             elif node.type == "method_declaration":
-                sym = _process_method_declaration(source, rel_path, run.execution_id, node)
+                sym = _process_method_declaration(self, source, rel_path, run.execution_id, node)
             elif node.type == "type_declaration":
-                sym = _process_type_declaration(source, rel_path, run.execution_id, node)
+                sym = _process_type_declaration(self, source, rel_path, run.execution_id, node)
 
             if sym:
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
                 if sym.kind in ("function", "method"):
                     analysis.symbol_by_name[sym.name] = sym
 

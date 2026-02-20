@@ -29,6 +29,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -46,12 +47,6 @@ def find_tcl_files(root: Path) -> Iterator[Path]:
         for path in find_files(root, [ext]):
             if path.is_file():
                 yield path
-
-
-def _make_stable_id(path: Path, repo_root: Path, name: str, kind: str) -> str:
-    """Create a stable ID for a Tcl symbol."""
-    rel_path = path.relative_to(repo_root)
-    return f"tcl:{rel_path}:{name}:{kind}"
 
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
@@ -144,6 +139,7 @@ def _find_enclosing_proc(
     current = node.parent
     namespace_name = None
     proc_name = None
+    proc_node = None
 
     while current is not None:
         if current.type == "namespace":
@@ -152,11 +148,13 @@ def _find_enclosing_proc(
         if current.type == "procedure":
             if proc_name is None:
                 proc_name = _get_proc_name(current)
+                proc_node = current
         current = current.parent
 
-    if proc_name:
+    if proc_name and proc_node is not None:
         qualified_name = f"{namespace_name}::{proc_name}" if namespace_name else proc_name
-        return _make_stable_id(path, repo_root, qualified_name, "proc")
+        rel_path = str(path.relative_to(repo_root))
+        return make_symbol_id("tcl", rel_path, proc_node.start_point[0] + 1, proc_node.end_point[0] + 1, qualified_name, "proc")
     return None  # pragma: no cover
 
 
@@ -198,8 +196,8 @@ class TclAnalyzer(TreeSitterAnalyzer):
                 qualified_name = f"{namespace}::{name}" if namespace else name
 
                 sym = Symbol(
-                    id=_make_stable_id(path, repo_root, qualified_name, "proc"),
-                    stable_id=_make_stable_id(path, repo_root, qualified_name, "proc"),
+                    id=make_symbol_id("tcl", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "proc"),
+                    stable_id=self.compute_stable_id(node, kind="proc"),
                     name=name,
                     kind="function",
                     language="tcl",
@@ -216,6 +214,7 @@ class TclAnalyzer(TreeSitterAnalyzer):
                     meta={"namespace": namespace} if namespace else None,
                 )
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
                 analysis.symbol_by_name[name] = sym
 
         elif node.type == "namespace":
@@ -224,8 +223,8 @@ class TclAnalyzer(TreeSitterAnalyzer):
                 proc_count = _count_namespace_procs(node)
 
                 sym = Symbol(
-                    id=_make_stable_id(path, repo_root, name, "namespace"),
-                    stable_id=_make_stable_id(path, repo_root, name, "namespace"),
+                    id=make_symbol_id("tcl", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "namespace"),
+                    stable_id=self.compute_stable_id(node, kind="namespace"),
                     name=name,
                     kind="namespace",
                     language="tcl",
@@ -241,6 +240,7 @@ class TclAnalyzer(TreeSitterAnalyzer):
                     meta={"proc_count": proc_count},
                 )
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
 
                 # Extract procedures within the namespace
                 for child in node.children:

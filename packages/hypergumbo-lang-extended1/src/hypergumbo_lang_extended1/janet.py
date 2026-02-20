@@ -29,6 +29,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -45,12 +46,6 @@ def find_janet_files(root: Path) -> Iterator[Path]:
     for path in find_files(root, ["*.janet"]):
         if path.is_file():
             yield path
-
-
-def _make_stable_id(path: Path, repo_root: Path, name: str, kind: str) -> str:
-    """Create a stable ID for a Janet symbol."""
-    rel_path = path.relative_to(repo_root)
-    return f"janet:{rel_path}:{name}:{kind}"
 
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
@@ -126,7 +121,8 @@ def _find_enclosing_function(
         if current.type == "extra_defs":
             name = _get_function_name(current)
             if name:
-                return _make_stable_id(path, repo_root, name, "fn")
+                rel_path = str(path.relative_to(repo_root))
+                return make_symbol_id("janet", rel_path, current.start_point[0] + 1, current.end_point[0] + 1, name, "fn")
         current = current.parent
     return None  # pragma: no cover
 
@@ -168,8 +164,8 @@ class JanetAnalyzer(TreeSitterAnalyzer):
                 signature = f"(defn {name} [{' '.join(params)}] ...)"
 
                 sym = Symbol(
-                    id=_make_stable_id(path, repo_root, name, "fn"),
-                    stable_id=_make_stable_id(path, repo_root, name, "fn"),
+                    id=make_symbol_id("janet", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "fn"),
+                    stable_id=self.compute_stable_id(node, kind="fn"),
                     name=name,
                     kind="function",
                     language="janet",
@@ -186,6 +182,7 @@ class JanetAnalyzer(TreeSitterAnalyzer):
                     meta={"param_count": len(params)},
                 )
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
                 analysis.symbol_by_name[name] = sym
             return  # Don't process children of function definitions
 
@@ -193,8 +190,8 @@ class JanetAnalyzer(TreeSitterAnalyzer):
             name = _get_variable_name(node)
             if name:
                 sym = Symbol(
-                    id=_make_stable_id(path, repo_root, name, "var"),
-                    stable_id=_make_stable_id(path, repo_root, name, "var"),
+                    id=make_symbol_id("janet", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "var"),
+                    stable_id=self.compute_stable_id(node, kind="var"),
                     name=name,
                     kind="variable",
                     language="janet",
@@ -209,6 +206,7 @@ class JanetAnalyzer(TreeSitterAnalyzer):
                     origin_run_id=run.execution_id,
                 )
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
             return  # Don't process children of variable definitions
 
         # Recursively process children

@@ -34,6 +34,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -55,11 +56,6 @@ def find_gleam_files(root: Path) -> Iterator[Path]:
     for path in find_files(root, ["*.gleam"]):
         if path.is_file():
             yield path
-
-
-def _make_stable_id(rel_path: str, name: str, kind: str) -> str:
-    """Create a stable ID for a Gleam symbol."""
-    return f"gleam:{rel_path}:{name}:{kind}"
 
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
@@ -135,7 +131,7 @@ def _find_enclosing_function(
         if current.type == "function":
             name = _get_identifier(current)
             if name:
-                return _make_stable_id(rel_path, name, "fn")
+                return make_symbol_id("gleam", rel_path, current.start_point[0]+1, current.end_point[0]+1, name, "fn")
         current = current.parent
     return None  # pragma: no cover
 
@@ -178,8 +174,8 @@ class GleamAnalyzer(TreeSitterAnalyzer):
                     signature += f" -> {return_type}"
 
                 sym = Symbol(
-                    id=_make_stable_id(rel_path, name, "fn"),
-                    stable_id=_make_stable_id(rel_path, name, "fn"),
+                    id=make_symbol_id("gleam", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "fn"),
+                    stable_id=self.compute_stable_id(node, kind="fn"),
                     name=name,
                     kind="function",
                     language="gleam",
@@ -195,6 +191,7 @@ class GleamAnalyzer(TreeSitterAnalyzer):
                     meta={"is_public": is_pub},
                 )
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
                 analysis.symbol_by_name[name] = sym
 
         elif node.type == "type_definition":
@@ -203,8 +200,8 @@ class GleamAnalyzer(TreeSitterAnalyzer):
                 constructor_count = _count_constructors(node)
                 is_pub = _is_public(node)
                 sym = Symbol(
-                    id=_make_stable_id(rel_path, name, "type"),
-                    stable_id=_make_stable_id(rel_path, name, "type"),
+                    id=make_symbol_id("gleam", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "type"),
+                    stable_id=self.compute_stable_id(node, kind="type"),
                     name=name,
                     kind="class",
                     language="gleam",
@@ -219,14 +216,15 @@ class GleamAnalyzer(TreeSitterAnalyzer):
                     meta={"is_public": is_pub, "constructor_count": constructor_count},
                 )
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
 
         elif node.type == "type_alias":
             name = _get_type_name(node)
             if name:
                 is_pub = _is_public(node)
                 sym = Symbol(
-                    id=_make_stable_id(rel_path, name, "type_alias"),
-                    stable_id=_make_stable_id(rel_path, name, "type_alias"),
+                    id=make_symbol_id("gleam", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "type_alias"),
+                    stable_id=self.compute_stable_id(node, kind="type_alias"),
                     name=name,
                     kind="type",
                     language="gleam",
@@ -241,6 +239,7 @@ class GleamAnalyzer(TreeSitterAnalyzer):
                     meta={"is_public": is_pub, "is_alias": True},
                 )
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
 
         # Recursively process children
         for child in node.children:

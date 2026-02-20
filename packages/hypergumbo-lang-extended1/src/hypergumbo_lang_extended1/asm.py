@@ -157,9 +157,10 @@ class AsmAnalyzer(TreeSitterAnalyzer):
                         ),
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
-                        stable_id=f"asm:{rel_path}:{label_name}",
+                        stable_id=self.compute_stable_id(node, kind=kind),
                     )
                     analysis.symbols.append(sym)
+                    analysis.node_for_symbol[sym.id] = node
                     if kind == "function":
                         analysis.symbol_by_name[label_name] = sym
 

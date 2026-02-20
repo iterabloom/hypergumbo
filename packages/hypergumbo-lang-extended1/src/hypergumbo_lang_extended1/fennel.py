@@ -33,6 +33,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -54,11 +55,6 @@ def find_fennel_files(root: Path) -> Iterator[Path]:
     for path in find_files(root, ["*.fnl"]):
         if path.is_file():
             yield path
-
-
-def _make_stable_id(rel_path: str, name: str, kind: str) -> str:
-    """Create a stable ID for a Fennel symbol."""
-    return f"fennel:{rel_path}:{name}:{kind}"
 
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
@@ -114,7 +110,7 @@ def _find_enclosing_function(
         if current.type == "fn":
             name = _get_function_name(current)
             if name:
-                return _make_stable_id(rel_path, name, "fn")
+                return make_symbol_id("fennel", rel_path, current.start_point[0]+1, current.end_point[0]+1, name, "fn")
         current = current.parent
     return None  # pragma: no cover
 
@@ -181,8 +177,8 @@ class FennelAnalyzer(TreeSitterAnalyzer):
                 signature = f"(fn {name} [{' '.join(params)}] ...)"
 
                 sym = Symbol(
-                    id=_make_stable_id(rel_path, name, "fn"),
-                    stable_id=_make_stable_id(rel_path, name, "fn"),
+                    id=make_symbol_id("fennel", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "fn"),
+                    stable_id=self.compute_stable_id(node, kind="fn"),
                     name=name,
                     kind="function",
                     language="fennel",
@@ -198,6 +194,7 @@ class FennelAnalyzer(TreeSitterAnalyzer):
                     meta={"param_count": len(params)},
                 )
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
                 analysis.symbol_by_name[name] = sym
             return  # Don't process children of function definitions
 
@@ -205,8 +202,8 @@ class FennelAnalyzer(TreeSitterAnalyzer):
             name = _get_local_name(node)
             if name:
                 sym = Symbol(
-                    id=_make_stable_id(rel_path, name, "var"),
-                    stable_id=_make_stable_id(rel_path, name, "var"),
+                    id=make_symbol_id("fennel", rel_path, node.start_point[0]+1, node.end_point[0]+1, name, "var"),
+                    stable_id=self.compute_stable_id(node, kind="var"),
                     name=name,
                     kind="variable",
                     language="fennel",
@@ -220,6 +217,7 @@ class FennelAnalyzer(TreeSitterAnalyzer):
                     origin=PASS_ID,
                 )
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
             return  # Don't process children of variable definitions
 
         # Recursively process children

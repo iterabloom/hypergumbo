@@ -265,11 +265,9 @@ service MyService {}
         result = analyze_smithy(tmp_path)
         svc = next((s for s in result.symbols if s.kind == "service"), None)
         assert svc is not None
-        assert svc.id == svc.stable_id
-        assert "smithy:" in svc.id
-        assert "test.smithy" in svc.id
-        # Verify field order: lang:path:name:kind (not lang:path:kind:name)
-        assert svc.id == "smithy:test.smithy:example#MyService:service"
+        assert svc.id != svc.stable_id
+        assert svc.id.startswith("smithy:test.smithy:")
+        assert svc.stable_id.startswith("sha256:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_smithy_file(tmp_path, "test.smithy", """

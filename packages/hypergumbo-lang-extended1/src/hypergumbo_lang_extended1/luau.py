@@ -37,6 +37,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -89,11 +90,6 @@ def _get_node_text(node: "tree_sitter.Node") -> str:
     return node.text.decode("utf-8") if node.text else ""
 
 
-def _make_stable_id(rel_path: str, name: str, kind: str) -> str:
-    """Create a stable identifier for a symbol."""
-    return f"luau:{rel_path}:{kind}:{name}"
-
-
 def find_luau_files(repo_root: Path) -> list[Path]:
     """Find all Luau (.luau) files in the repository.
 
@@ -131,6 +127,7 @@ def _extract_params(node: "tree_sitter.Node") -> list[str]:
 
 def _extract_function(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
+    analyzer: "LuauAnalyzer",
 ) -> None:
     """Extract a function definition."""
     name = None
@@ -170,8 +167,8 @@ def _extract_function(
         signature = f"{name}({', '.join(params)})"
 
         sym = Symbol(
-            id=_make_stable_id(rel_path, name, "function"),
-            stable_id=_make_stable_id(rel_path, name, "function"),
+            id=make_symbol_id("luau", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "function"),
+            stable_id=analyzer.compute_stable_id(node, kind="function"),
             name=name,
             kind="function",
             language="luau",
@@ -187,11 +184,13 @@ def _extract_function(
             meta=meta if meta else {},
         )
         analysis.symbols.append(sym)
+        analysis.node_for_symbol[sym.id] = node
         analysis.symbol_by_name[sym.name] = sym
 
 
 def _extract_type(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
+    analyzer: "LuauAnalyzer",
 ) -> None:
     """Extract a type definition."""
     name = None
@@ -210,8 +209,8 @@ def _extract_type(
             meta["exported"] = True
 
         sym = Symbol(
-            id=_make_stable_id(rel_path, name, "type"),
-            stable_id=_make_stable_id(rel_path, name, "type"),
+            id=make_symbol_id("luau", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "type"),
+            stable_id=analyzer.compute_stable_id(node, kind="type"),
             name=name,
             kind="type",
             language="luau",
@@ -226,11 +225,13 @@ def _extract_type(
             meta=meta if meta else {},
         )
         analysis.symbols.append(sym)
+        analysis.node_for_symbol[sym.id] = node
         analysis.symbol_by_name[sym.name] = sym
 
 
 def _extract_variable(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
+    analyzer: "LuauAnalyzer",
 ) -> None:
     """Extract a variable declaration."""
     # Only extract top-level module tables (e.g., local MyModule = {})
@@ -245,8 +246,8 @@ def _extract_variable(
                             # Only extract if it looks like a module (capital letter)
                             if name and name[0].isupper():
                                 sym = Symbol(
-                                    id=_make_stable_id(rel_path, name, "variable"),
-                                    stable_id=_make_stable_id(rel_path, name, "variable"),
+                                    id=make_symbol_id("luau", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "variable"),
+                                    stable_id=analyzer.compute_stable_id(node, kind="variable"),
                                     name=name,
                                     kind="variable",
                                     language="luau",
@@ -261,23 +262,25 @@ def _extract_variable(
                                     meta={"local": True},
                                 )
                                 analysis.symbols.append(sym)
+                                analysis.node_for_symbol[sym.id] = node
                                 analysis.symbol_by_name[sym.name] = sym
 
 
 def _extract_symbols_recursive(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
+    analyzer: "LuauAnalyzer",
 ) -> None:
     """Recursively extract symbols from a syntax tree."""
     if node.type == "function_declaration":
-        _extract_function(node, rel_path, analysis)
+        _extract_function(node, rel_path, analysis, analyzer)
     elif node.type == "type_definition":
-        _extract_type(node, rel_path, analysis)
+        _extract_type(node, rel_path, analysis, analyzer)
     elif node.type == "variable_declaration":
-        _extract_variable(node, rel_path, analysis)
+        _extract_variable(node, rel_path, analysis, analyzer)
 
     # Recurse into children
     for child in node.children:
-        _extract_symbols_recursive(child, rel_path, analysis)
+        _extract_symbols_recursive(child, rel_path, analysis, analyzer)
 
 
 def _extract_function_call(
@@ -423,7 +426,7 @@ class LuauAnalyzer(TreeSitterAnalyzer):
     ) -> FileAnalysis:
         """Extract symbols from a single Luau file."""
         analysis = FileAnalysis()
-        _extract_symbols_recursive(tree.root_node, rel_path, analysis)
+        _extract_symbols_recursive(tree.root_node, rel_path, analysis, self)
         return analysis
 
     def register_symbol(

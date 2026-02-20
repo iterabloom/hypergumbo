@@ -43,6 +43,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     iter_tree,
+    make_symbol_id,
     node_text,
     find_child_by_type,
 )
@@ -71,12 +72,12 @@ def find_d_files(repo_root: Path) -> Iterator[Path]:
 def _make_symbol(
     rel_path: str, run_id: str, node: "tree_sitter.Node",
     name: str, kind: str, source: bytes,
+    analyzer: "DAnalyzer",
     signature: Optional[str] = None, meta: Optional[dict] = None,
 ) -> Symbol:
     """Create a Symbol with consistent formatting."""
     start_line = node.start_point[0] + 1
     end_line = node.end_point[0] + 1
-    sym_id = f"d:{rel_path}:{start_line}-{end_line}:{name}:{kind}"
     span = Span(
         start_line=start_line,
         start_col=node.start_point[1],
@@ -84,7 +85,7 @@ def _make_symbol(
         end_col=node.end_point[1],
     )
     return Symbol(
-        id=sym_id,
+        id=make_symbol_id("d", rel_path, start_line, end_line, name, kind),
         name=name,
         canonical_name=name,
         kind=kind,
@@ -93,7 +94,7 @@ def _make_symbol(
         span=span,
         origin=PASS_ID,
         origin_run_id=run_id,
-        stable_id=f"d:{rel_path}:{name}",
+        stable_id=analyzer.compute_stable_id(node, kind=kind),
         signature=signature,
         meta=meta,
     )
@@ -101,6 +102,7 @@ def _make_symbol(
 
 def _process_module_declaration(
     source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+    analyzer: "DAnalyzer",
 ) -> Optional[Symbol]:
     """Process a module declaration."""
     fqn = find_child_by_type(node, "module_fqn")
@@ -108,7 +110,7 @@ def _process_module_declaration(
         return None  # pragma: no cover - defensive
 
     mod_name = node_text(fqn, source)
-    return _make_symbol(rel_path, run_id, node, mod_name, "module", source)
+    return _make_symbol(rel_path, run_id, node, mod_name, "module", source, analyzer)
 
 
 _CONTAINER_NODE_TYPES = frozenset({
@@ -132,6 +134,7 @@ def _find_parent_container(
 
 def _process_function_declaration(
     source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+    analyzer: "DAnalyzer",
 ) -> Optional[Symbol]:
     """Process a function declaration.
 
@@ -153,13 +156,14 @@ def _process_function_declaration(
     parent_name = _find_parent_container(node, source)
     if parent_name:
         qualified_name = f"{parent_name}.{func_name}"
-        return _make_symbol(rel_path, run_id, node, qualified_name, "method", source, signature=signature)
+        return _make_symbol(rel_path, run_id, node, qualified_name, "method", source, analyzer, signature=signature)
     else:
-        return _make_symbol(rel_path, run_id, node, func_name, "function", source, signature=signature)
+        return _make_symbol(rel_path, run_id, node, func_name, "function", source, analyzer, signature=signature)
 
 
 def _process_struct_declaration(
     source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+    analyzer: "DAnalyzer",
 ) -> Optional[Symbol]:
     """Process a struct declaration."""
     name_node = find_child_by_type(node, "identifier")
@@ -167,11 +171,12 @@ def _process_struct_declaration(
         return None  # pragma: no cover - defensive
 
     struct_name = node_text(name_node, source)
-    return _make_symbol(rel_path, run_id, node, struct_name, "struct", source)
+    return _make_symbol(rel_path, run_id, node, struct_name, "struct", source, analyzer)
 
 
 def _process_class_declaration(
     source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+    analyzer: "DAnalyzer",
 ) -> Optional[Symbol]:
     """Process a class declaration."""
     name_node = find_child_by_type(node, "identifier")
@@ -179,11 +184,12 @@ def _process_class_declaration(
         return None  # pragma: no cover - defensive
 
     class_name = node_text(name_node, source)
-    return _make_symbol(rel_path, run_id, node, class_name, "class", source)
+    return _make_symbol(rel_path, run_id, node, class_name, "class", source, analyzer)
 
 
 def _process_interface_declaration(
     source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
+    analyzer: "DAnalyzer",
 ) -> Optional[Symbol]:
     """Process an interface declaration."""
     name_node = find_child_by_type(node, "identifier")
@@ -191,7 +197,7 @@ def _process_interface_declaration(
         return None  # pragma: no cover - defensive
 
     iface_name = node_text(name_node, source)
-    return _make_symbol(rel_path, run_id, node, iface_name, "interface", source)
+    return _make_symbol(rel_path, run_id, node, iface_name, "interface", source, analyzer)
 
 
 # ---------------------------------------------------------------------------
@@ -492,18 +498,19 @@ class DAnalyzer(TreeSitterAnalyzer):
         for node in iter_tree(tree.root_node):
             sym: Optional[Symbol] = None
             if node.type == "module_declaration":
-                sym = _process_module_declaration(source, rel_path, run.execution_id, node)
+                sym = _process_module_declaration(source, rel_path, run.execution_id, node, self)
             elif node.type == "function_declaration":
-                sym = _process_function_declaration(source, rel_path, run.execution_id, node)
+                sym = _process_function_declaration(source, rel_path, run.execution_id, node, self)
             elif node.type == "struct_declaration":
-                sym = _process_struct_declaration(source, rel_path, run.execution_id, node)
+                sym = _process_struct_declaration(source, rel_path, run.execution_id, node, self)
             elif node.type == "class_declaration":
-                sym = _process_class_declaration(source, rel_path, run.execution_id, node)
+                sym = _process_class_declaration(source, rel_path, run.execution_id, node, self)
             elif node.type == "interface_declaration":
-                sym = _process_interface_declaration(source, rel_path, run.execution_id, node)
+                sym = _process_interface_declaration(source, rel_path, run.execution_id, node, self)
 
             if sym:
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
                 if sym.kind in ("function", "method"):
                     analysis.symbol_by_name[sym.name] = sym
 

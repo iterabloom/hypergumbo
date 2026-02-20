@@ -244,9 +244,9 @@ class TestAnalyzeHaxe:
         result = analyze_haxe(tmp_path)
         func = next((s for s in result.symbols if "myFunc" in s.name), None)
         assert func is not None
-        assert func.id == func.stable_id
-        assert "haxe:" in func.id
-        assert "Test.hx" in func.id
+        assert func.id != func.stable_id
+        assert func.id.startswith("haxe:Test.hx:")
+        assert func.stable_id.startswith("sha256:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_haxe_file(tmp_path, "Test.hx", """class Test {

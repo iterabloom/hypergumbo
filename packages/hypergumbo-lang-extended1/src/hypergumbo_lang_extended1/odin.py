@@ -37,6 +37,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -53,11 +54,6 @@ def find_odin_files(root: Path) -> Iterator[Path]:
     for path in find_files(root, ["*.odin"]):
         if path.is_file():
             yield path
-
-
-def _make_stable_id(rel_path: str, name: str, kind: str) -> str:
-    """Create a stable ID for an Odin symbol."""
-    return f"odin:{rel_path}:{name}:{kind}"
 
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
@@ -116,6 +112,7 @@ def _extract_procedure_return_type(node: "tree_sitter.Node") -> Optional[str]:
 
 def _extract_symbols_recursive(
     node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
+    analyzer: "OdinAnalyzer",
 ) -> None:
     """Extract symbols from a syntax tree node."""
     if node.type == "procedure_declaration":
@@ -128,8 +125,8 @@ def _extract_symbols_recursive(
                 signature += f" -> {return_type}"
 
             sym = Symbol(
-                id=_make_stable_id(rel_path, name, "proc"),
-                stable_id=_make_stable_id(rel_path, name, "proc"),
+                id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "proc"),
+                stable_id=analyzer.compute_stable_id(node, kind="proc"),
                 name=name,
                 kind="function",
                 language="odin",
@@ -144,6 +141,7 @@ def _extract_symbols_recursive(
                 signature=signature,
             )
             analysis.symbols.append(sym)
+            analysis.node_for_symbol[sym.id] = node
             analysis.symbol_by_name[sym.name] = sym
 
     elif node.type == "struct_declaration":
@@ -153,8 +151,8 @@ def _extract_symbols_recursive(
             field_count = sum(1 for c in node.children if c.type == "field")
 
             sym = Symbol(
-                id=_make_stable_id(rel_path, name, "struct"),
-                stable_id=_make_stable_id(rel_path, name, "struct"),
+                id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "struct"),
+                stable_id=analyzer.compute_stable_id(node, kind="struct"),
                 name=name,
                 kind="class",
                 language="odin",
@@ -169,14 +167,15 @@ def _extract_symbols_recursive(
                 meta={"field_count": field_count},
             )
             analysis.symbols.append(sym)
+            analysis.node_for_symbol[sym.id] = node
             analysis.symbol_by_name[sym.name] = sym
 
     elif node.type == "enum_declaration":
         name = _get_identifier(node)
         if name:
             sym = Symbol(
-                id=_make_stable_id(rel_path, name, "enum"),
-                stable_id=_make_stable_id(rel_path, name, "enum"),
+                id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "enum"),
+                stable_id=analyzer.compute_stable_id(node, kind="enum"),
                 name=name,
                 kind="enum",
                 language="odin",
@@ -190,14 +189,15 @@ def _extract_symbols_recursive(
                 origin=PASS_ID,
             )
             analysis.symbols.append(sym)
+            analysis.node_for_symbol[sym.id] = node
             analysis.symbol_by_name[sym.name] = sym
 
     elif node.type == "union_declaration":
         name = _get_identifier(node)
         if name:
             sym = Symbol(
-                id=_make_stable_id(rel_path, name, "union"),
-                stable_id=_make_stable_id(rel_path, name, "union"),
+                id=make_symbol_id("odin", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "union"),
+                stable_id=analyzer.compute_stable_id(node, kind="union"),
                 name=name,
                 kind="class",
                 language="odin",
@@ -212,11 +212,12 @@ def _extract_symbols_recursive(
                 meta={"is_union": True},
             )
             analysis.symbols.append(sym)
+            analysis.node_for_symbol[sym.id] = node
             analysis.symbol_by_name[sym.name] = sym
 
     # Recursively process children
     for child in node.children:
-        _extract_symbols_recursive(child, rel_path, analysis)
+        _extract_symbols_recursive(child, rel_path, analysis, analyzer)
 
 
 def _find_enclosing_function(
@@ -228,7 +229,7 @@ def _find_enclosing_function(
         if current.type == "procedure_declaration":
             name = _get_identifier(current)
             if name:
-                return _make_stable_id(rel_path, name, "proc")
+                return make_symbol_id("odin", rel_path, current.start_point[0] + 1, current.end_point[0] + 1, name, "proc")
         current = current.parent
     return None  # pragma: no cover
 
@@ -361,7 +362,7 @@ class OdinAnalyzer(TreeSitterAnalyzer):
     ) -> FileAnalysis:
         """Extract symbols from a single Odin file."""
         analysis = FileAnalysis()
-        _extract_symbols_recursive(tree.root_node, rel_path, analysis)
+        _extract_symbols_recursive(tree.root_node, rel_path, analysis, self)
         return analysis
 
     def extract_edges_from_file(

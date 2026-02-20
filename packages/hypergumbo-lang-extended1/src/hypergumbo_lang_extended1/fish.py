@@ -39,6 +39,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     iter_tree,
+    make_symbol_id,
     node_text,
 )
 from hypergumbo_core.discovery import find_files
@@ -71,14 +72,14 @@ def _find_children_by_type(
 
 
 def _make_symbol(
-    rel_path: str, run_id: str, node: "tree_sitter.Node",
+    analyzer: "FishAnalyzer", rel_path: str, run_id: str, node: "tree_sitter.Node",
     source: bytes, name: str, kind: str,
     signature: Optional[str] = None, meta: Optional[dict] = None,
 ) -> Symbol:
     """Create a Symbol with consistent formatting."""
     start_line = node.start_point[0] + 1
     end_line = node.end_point[0] + 1
-    sym_id = f"fish:{rel_path}:{start_line}-{end_line}:{name}:{kind}"
+    sym_id = make_symbol_id("fish", rel_path, start_line, end_line, name, kind)
     span = Span(
         start_line=start_line,
         start_col=node.start_point[1],
@@ -95,7 +96,7 @@ def _make_symbol(
         span=span,
         origin=PASS_ID,
         origin_run_id=run_id,
-        stable_id=f"fish:{rel_path}:{name}",
+        stable_id=analyzer.compute_stable_id(node, kind=kind),
         signature=signature,
         meta=meta,
     )
@@ -171,8 +172,9 @@ class FishAnalyzer(TreeSitterAnalyzer):
 
         if func_name:
             signature = f"({', '.join(arguments)})" if arguments else "()"
-            sym = _make_symbol(rel_path, run_id, node, source, func_name, "function", signature=signature)
+            sym = _make_symbol(self, rel_path, run_id, node, source, func_name, "function", signature=signature)
             analysis.symbols.append(sym)
+            analysis.node_for_symbol[sym.id] = node
             analysis.symbol_by_name[func_name] = sym
 
     def _process_command_symbols(
@@ -188,7 +190,9 @@ class FishAnalyzer(TreeSitterAnalyzer):
 
         if cmd_name == "alias" and len(words) >= 2:
             alias_name = node_text(words[1], source)
-            analysis.symbols.append(_make_symbol(rel_path, run_id, node, source, alias_name, "alias"))
+            sym = _make_symbol(self, rel_path, run_id, node, source, alias_name, "alias")
+            analysis.symbols.append(sym)
+            analysis.node_for_symbol[sym.id] = node
 
         elif cmd_name == "set" and len(words) >= 2:
             var_name = None
@@ -203,7 +207,9 @@ class FishAnalyzer(TreeSitterAnalyzer):
                     break
 
             if var_name and is_global:
-                analysis.symbols.append(_make_symbol(rel_path, run_id, node, source, var_name, "variable"))
+                sym = _make_symbol(self, rel_path, run_id, node, source, var_name, "variable")
+                analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
 
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,

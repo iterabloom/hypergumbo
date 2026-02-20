@@ -41,9 +41,10 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
-    iter_tree,
-    node_text,
     find_child_by_type,
+    iter_tree,
+    make_symbol_id,
+    node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -68,12 +69,12 @@ def _extract_formal_part(node: "tree_sitter.Node", source: bytes) -> Optional[st
     return None
 
 
-def _make_symbol(rel_path: str, run_id: str, node: "tree_sitter.Node", name: str, kind: str,
+def _make_symbol(analyzer: "AdaAnalyzer", rel_path: str, run_id: str, node: "tree_sitter.Node", name: str, kind: str,
                  source: bytes, signature: Optional[str] = None, meta: Optional[dict] = None) -> Symbol:
     """Create a Symbol with consistent formatting."""
     start_line = node.start_point[0] + 1
     end_line = node.end_point[0] + 1
-    sym_id = f"ada:{rel_path}:{start_line}-{end_line}:{name}:{kind}"
+    sym_id = make_symbol_id("ada", rel_path, start_line, end_line, name, kind)
     span = Span(
         start_line=start_line,
         start_col=node.start_point[1],
@@ -90,57 +91,57 @@ def _make_symbol(rel_path: str, run_id: str, node: "tree_sitter.Node", name: str
         span=span,
         origin=PASS_ID,
         origin_run_id=run_id,
-        stable_id=f"ada:{rel_path}:{name}",
+        stable_id=analyzer.compute_stable_id(node, kind=kind),
         signature=signature,
         meta=meta,
     )
 
 
-def _process_package_declaration(source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
+def _process_package_declaration(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
     """Process a package declaration (spec)."""
     name_node = find_child_by_type(node, "identifier")
     if not name_node:
         return None  # pragma: no cover - defensive
 
     pkg_name = node_text(name_node, source)
-    return _make_symbol(rel_path, run_id, node, pkg_name, "package", source)
+    return _make_symbol(analyzer, rel_path, run_id, node, pkg_name, "package", source)
 
 
-def _process_package_body(source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
+def _process_package_body(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
     """Process a package body."""
     name_node = find_child_by_type(node, "identifier")
     if not name_node:
         return None  # pragma: no cover - defensive
 
     pkg_name = node_text(name_node, source)
-    return _make_symbol(rel_path, run_id, node, pkg_name, "package", source)
+    return _make_symbol(analyzer, rel_path, run_id, node, pkg_name, "package", source)
 
 
-def _process_subprogram_declaration(source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
+def _process_subprogram_declaration(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
     """Process a function or procedure declaration."""
     func_spec = find_child_by_type(node, "function_specification")
     proc_spec = find_child_by_type(node, "procedure_specification")
 
     if func_spec:
-        return _process_function_spec(source, rel_path, run_id, func_spec)
+        return _process_function_spec(analyzer, source, rel_path, run_id, func_spec)
     elif proc_spec:
-        return _process_procedure_spec(source, rel_path, run_id, proc_spec)
+        return _process_procedure_spec(analyzer, source, rel_path, run_id, proc_spec)
     return None  # pragma: no cover - defensive
 
 
-def _process_subprogram_body(source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
+def _process_subprogram_body(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
     """Process a function or procedure body (implementation)."""
     func_spec = find_child_by_type(node, "function_specification")
     proc_spec = find_child_by_type(node, "procedure_specification")
 
     if func_spec:
-        return _process_function_spec(source, rel_path, run_id, func_spec)
+        return _process_function_spec(analyzer, source, rel_path, run_id, func_spec)
     elif proc_spec:
-        return _process_procedure_spec(source, rel_path, run_id, proc_spec)
+        return _process_procedure_spec(analyzer, source, rel_path, run_id, proc_spec)
     return None  # pragma: no cover - defensive
 
 
-def _process_function_spec(source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
+def _process_function_spec(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
     """Process a function specification."""
     name_node = find_child_by_type(node, "identifier")
     if not name_node:
@@ -159,10 +160,10 @@ def _process_function_spec(source: bytes, rel_path: str, run_id: str, node: "tre
         signature_parts.append(node_text(result, source))
 
     signature = " ".join(signature_parts) if signature_parts else None
-    return _make_symbol(rel_path, run_id, node, func_name, "function", source, signature=signature)
+    return _make_symbol(analyzer, rel_path, run_id, node, func_name, "function", source, signature=signature)
 
 
-def _process_procedure_spec(source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
+def _process_procedure_spec(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
     """Process a procedure specification."""
     name_node = find_child_by_type(node, "identifier")
     if not name_node:
@@ -170,20 +171,20 @@ def _process_procedure_spec(source: bytes, rel_path: str, run_id: str, node: "tr
 
     proc_name = node_text(name_node, source)
     signature = _extract_formal_part(node, source)
-    return _make_symbol(rel_path, run_id, node, proc_name, "procedure", source, signature=signature)
+    return _make_symbol(analyzer, rel_path, run_id, node, proc_name, "procedure", source, signature=signature)
 
 
-def _process_type_declaration(source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
+def _process_type_declaration(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
     """Process a type declaration (record, enum, etc.)."""
     name_node = find_child_by_type(node, "identifier")
     if not name_node:
         return None  # pragma: no cover - defensive
 
     type_name = node_text(name_node, source)
-    return _make_symbol(rel_path, run_id, node, type_name, "type", source)
+    return _make_symbol(analyzer, rel_path, run_id, node, type_name, "type", source)
 
 
-def _process_object_declaration(source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
+def _process_object_declaration(analyzer: "AdaAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node") -> Optional[Symbol]:
     """Process an object declaration (constant or variable)."""
     name_node = find_child_by_type(node, "identifier")
     if not name_node:
@@ -195,7 +196,7 @@ def _process_object_declaration(source: bytes, rel_path: str, run_id: str, node:
     is_constant = find_child_by_type(node, "constant") is not None
     kind = "constant" if is_constant else "variable"
 
-    return _make_symbol(rel_path, run_id, node, obj_name, kind, source)
+    return _make_symbol(analyzer, rel_path, run_id, node, obj_name, kind, source)
 
 
 def _extract_package_renames(
@@ -294,20 +295,21 @@ class AdaAnalyzer(TreeSitterAnalyzer):
         for node in iter_tree(tree.root_node):
             sym: Optional[Symbol] = None
             if node.type == "package_declaration":
-                sym = _process_package_declaration(source, rel_path, run.execution_id, node)
+                sym = _process_package_declaration(self, source, rel_path, run.execution_id, node)
             elif node.type == "package_body":
-                sym = _process_package_body(source, rel_path, run.execution_id, node)
+                sym = _process_package_body(self, source, rel_path, run.execution_id, node)
             elif node.type == "subprogram_declaration":
-                sym = _process_subprogram_declaration(source, rel_path, run.execution_id, node)
+                sym = _process_subprogram_declaration(self, source, rel_path, run.execution_id, node)
             elif node.type == "subprogram_body":
-                sym = _process_subprogram_body(source, rel_path, run.execution_id, node)
+                sym = _process_subprogram_body(self, source, rel_path, run.execution_id, node)
             elif node.type == "full_type_declaration":
-                sym = _process_type_declaration(source, rel_path, run.execution_id, node)
+                sym = _process_type_declaration(self, source, rel_path, run.execution_id, node)
             elif node.type == "object_declaration":
-                sym = _process_object_declaration(source, rel_path, run.execution_id, node)
+                sym = _process_object_declaration(self, source, rel_path, run.execution_id, node)
 
             if sym:
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
                 if sym.kind in ("function", "procedure"):
                     analysis.symbol_by_name[sym.name] = sym
 

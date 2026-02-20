@@ -274,11 +274,9 @@ function myFunc(): void {}
         result = analyze_hack(tmp_path)
         func = next((s for s in result.symbols if s.name == "myFunc"), None)
         assert func is not None
-        assert func.id == func.stable_id
-        assert "hack:" in func.id
-        assert "test.hack" in func.id
-        # Verify field order: lang:path:name:kind (not lang:path:kind:name)
-        assert func.id == "hack:test.hack:myFunc:fn"
+        assert func.id != func.stable_id
+        assert func.id.startswith("hack:test.hack:")
+        assert func.stable_id.startswith("sha256:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_hack_file(tmp_path, "test.hack", """<?hh

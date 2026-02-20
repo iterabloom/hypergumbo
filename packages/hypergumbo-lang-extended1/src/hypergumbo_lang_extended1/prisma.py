@@ -31,6 +31,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -47,12 +48,6 @@ def find_prisma_files(root: Path) -> Iterator[Path]:
     for path in find_files(root, ["*.prisma"]):
         if path.is_file():
             yield path
-
-
-def _make_stable_id(path: Path, repo_root: Path, name: str, kind: str) -> str:
-    """Create a stable ID for a Prisma symbol."""
-    rel_path = path.relative_to(repo_root)
-    return f"prisma:{rel_path}:{name}:{kind}"
 
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
@@ -120,8 +115,8 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
             if name:
                 field_count = sum(1 for c in node.children if c.type == "model_field")
                 sym = Symbol(
-                    id=_make_stable_id(path, repo_root, name, "model"),
-                    stable_id=_make_stable_id(path, repo_root, name, "model"),
+                    id=make_symbol_id("prisma", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "model"),
+                    stable_id=self.compute_stable_id(node, kind="model"),
                     name=name,
                     kind="class",
                     language="prisma",
@@ -137,6 +132,7 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
                     meta={"field_count": field_count, "is_model": True},
                 )
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
                 analysis.symbol_by_name[name] = sym
 
         elif node.type == "enum_block":
@@ -145,8 +141,8 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
                 identifiers = [c for c in node.children if c.type == "identifier"]
                 variant_count = len(identifiers) - 1  # Subtract 1 for the enum name
                 sym = Symbol(
-                    id=_make_stable_id(path, repo_root, name, "enum"),
-                    stable_id=_make_stable_id(path, repo_root, name, "enum"),
+                    id=make_symbol_id("prisma", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, "enum"),
+                    stable_id=self.compute_stable_id(node, kind="enum"),
                     name=name,
                     kind="enum",
                     language="prisma",
@@ -162,6 +158,7 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
                     meta={"variant_count": variant_count},
                 )
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
                 analysis.symbol_by_name[name] = sym
 
         elif node.type == "key_value_block":
@@ -175,8 +172,8 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
                 name = _get_identifier(node)
                 if name:
                     sym = Symbol(
-                        id=_make_stable_id(path, repo_root, name, block_type),
-                        stable_id=_make_stable_id(path, repo_root, name, block_type),
+                        id=make_symbol_id("prisma", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, name, block_type),
+                        stable_id=self.compute_stable_id(node, kind=block_type),
                         name=name,
                         kind="config",
                         language="prisma",
@@ -192,6 +189,7 @@ class PrismaAnalyzer(TreeSitterAnalyzer):
                         meta={"block_type": block_type},
                     )
                     analysis.symbols.append(sym)
+                    analysis.node_for_symbol[sym.id] = node
 
         # Recursively process children
         for child in node.children:

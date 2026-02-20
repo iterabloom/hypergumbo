@@ -41,6 +41,7 @@ from hypergumbo_core.analyze.base import (
     FileAnalysis,
     TreeSitterAnalyzer,
     iter_tree,
+    make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -55,11 +56,6 @@ PASS_ID = make_pass_id("smithy")
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
     return node.text.decode("utf-8") if node.text else ""
-
-
-def _make_stable_id(rel_path: str, name: str, kind: str) -> str:
-    """Create a stable identifier for a symbol."""
-    return f"smithy:{rel_path}:{name}:{kind}"
 
 
 def find_smithy_files(repo_root: Path) -> list[Path]:
@@ -89,6 +85,7 @@ def _get_trait_name(node: "tree_sitter.Node") -> Optional[str]:
 
 def _extract_namespace(
     node: "tree_sitter.Node", rel_path: str,
+    analyzer: "SmithyAnalyzer",
 ) -> tuple[Optional[Symbol], Optional[str]]:
     """Extract namespace declaration. Returns (symbol, namespace_name)."""
     for child in node.children:
@@ -96,8 +93,8 @@ def _extract_namespace(
             text = _get_node_text(child)
             if text != "namespace":  # Skip the keyword
                 sym = Symbol(
-                    id=_make_stable_id(rel_path, text, "namespace"),
-                    stable_id=_make_stable_id(rel_path, text, "namespace"),
+                    id=make_symbol_id("smithy", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, text, "namespace"),
+                    stable_id=analyzer.compute_stable_id(node, kind="namespace"),
                     name=text,
                     kind="namespace",
                     language="smithy",
@@ -116,7 +113,7 @@ def _extract_namespace(
 
 def _extract_shape(
     node: "tree_sitter.Node", rel_path: str, kind: str,
-    current_namespace: Optional[str],
+    current_namespace: Optional[str], analyzer: "SmithyAnalyzer",
 ) -> Optional[Symbol]:
     """Extract a shape definition."""
     name = None
@@ -141,8 +138,8 @@ def _extract_shape(
         qualified_name = _get_qualified_name(name, current_namespace)
 
         return Symbol(
-            id=_make_stable_id(rel_path, qualified_name, kind),
-            stable_id=_make_stable_id(rel_path, qualified_name, kind),
+            id=make_symbol_id("smithy", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, kind),
+            stable_id=analyzer.compute_stable_id(node, kind=kind),
             name=qualified_name,
             kind=kind,
             language="smithy",
@@ -161,7 +158,7 @@ def _extract_shape(
 
 def _extract_simple_shape(
     node: "tree_sitter.Node", rel_path: str,
-    current_namespace: Optional[str],
+    current_namespace: Optional[str], analyzer: "SmithyAnalyzer",
 ) -> Optional[Symbol]:
     """Extract a simple shape definition (e.g., string CityId)."""
     shape_type = None
@@ -179,8 +176,8 @@ def _extract_simple_shape(
         qualified_name = _get_qualified_name(name, current_namespace)
 
         return Symbol(
-            id=_make_stable_id(rel_path, qualified_name, "simple_type"),
-            stable_id=_make_stable_id(rel_path, qualified_name, "simple_type"),
+            id=make_symbol_id("smithy", rel_path, node.start_point[0] + 1, node.end_point[0] + 1, qualified_name, "simple_type"),
+            stable_id=analyzer.compute_stable_id(node, kind="simple_type"),
             name=qualified_name,
             kind="simple_type",
             language="smithy",
@@ -403,65 +400,75 @@ class SmithyAnalyzer(TreeSitterAnalyzer):
 
         for node in iter_tree(tree.root_node):
             if node.type == "namespace_statement":
-                sym, ns_name = _extract_namespace(node, rel_path)
+                sym, ns_name = _extract_namespace(node, rel_path, self)
                 if sym:
                     analysis.symbols.append(sym)
+                    analysis.node_for_symbol[sym.id] = node
                     current_namespace = ns_name
                     # Store namespace for edge extraction
                     analysis.import_aliases["__namespace__"] = ns_name or ""
 
             elif node.type == "service_statement":
-                sym = _extract_shape(node, rel_path, "service", current_namespace)
+                sym = _extract_shape(node, rel_path, "service", current_namespace, self)
                 if sym:
                     analysis.symbols.append(sym)
+                    analysis.node_for_symbol[sym.id] = node
                     analysis.symbol_by_name[sym.name] = sym
 
             elif node.type == "operation_statement":
-                sym = _extract_shape(node, rel_path, "operation", current_namespace)
+                sym = _extract_shape(node, rel_path, "operation", current_namespace, self)
                 if sym:
                     analysis.symbols.append(sym)
+                    analysis.node_for_symbol[sym.id] = node
                     analysis.symbol_by_name[sym.name] = sym
 
             elif node.type == "structure_statement":
-                sym = _extract_shape(node, rel_path, "structure", current_namespace)
+                sym = _extract_shape(node, rel_path, "structure", current_namespace, self)
                 if sym:
                     analysis.symbols.append(sym)
+                    analysis.node_for_symbol[sym.id] = node
                     analysis.symbol_by_name[sym.name] = sym
 
             elif node.type == "resource_statement":
-                sym = _extract_shape(node, rel_path, "resource", current_namespace)
+                sym = _extract_shape(node, rel_path, "resource", current_namespace, self)
                 if sym:
                     analysis.symbols.append(sym)
+                    analysis.node_for_symbol[sym.id] = node
                     analysis.symbol_by_name[sym.name] = sym
 
             elif node.type == "simple_shape_statement":
-                sym = _extract_simple_shape(node, rel_path, current_namespace)
+                sym = _extract_simple_shape(node, rel_path, current_namespace, self)
                 if sym:
                     analysis.symbols.append(sym)
+                    analysis.node_for_symbol[sym.id] = node
                     analysis.symbol_by_name[sym.name] = sym
 
             elif node.type == "union_statement":
-                sym = _extract_shape(node, rel_path, "union", current_namespace)
+                sym = _extract_shape(node, rel_path, "union", current_namespace, self)
                 if sym:
                     analysis.symbols.append(sym)
+                    analysis.node_for_symbol[sym.id] = node
                     analysis.symbol_by_name[sym.name] = sym
 
             elif node.type == "enum_statement":
-                sym = _extract_shape(node, rel_path, "enum", current_namespace)
+                sym = _extract_shape(node, rel_path, "enum", current_namespace, self)
                 if sym:
                     analysis.symbols.append(sym)
+                    analysis.node_for_symbol[sym.id] = node
                     analysis.symbol_by_name[sym.name] = sym
 
             elif node.type == "list_statement":
-                sym = _extract_shape(node, rel_path, "list", current_namespace)
+                sym = _extract_shape(node, rel_path, "list", current_namespace, self)
                 if sym:
                     analysis.symbols.append(sym)
+                    analysis.node_for_symbol[sym.id] = node
                     analysis.symbol_by_name[sym.name] = sym
 
             elif node.type == "map_statement":
-                sym = _extract_shape(node, rel_path, "map", current_namespace)
+                sym = _extract_shape(node, rel_path, "map", current_namespace, self)
                 if sym:
                     analysis.symbols.append(sym)
+                    analysis.node_for_symbol[sym.id] = node
                     analysis.symbol_by_name[sym.name] = sym
 
         return analysis

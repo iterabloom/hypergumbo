@@ -224,9 +224,9 @@ local myFunc(x) = x;
         result = analyze_jsonnet(tmp_path)
         func = next((s for s in result.symbols if s.name == "myFunc"), None)
         assert func is not None
-        assert func.id == func.stable_id
-        assert "jsonnet:" in func.id
-        assert "test.jsonnet" in func.id
+        assert func.id != func.stable_id
+        assert func.id.startswith("jsonnet:test.jsonnet:")
+        assert func.stable_id.startswith("sha256:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_jsonnet_file(tmp_path, "test.jsonnet", """
