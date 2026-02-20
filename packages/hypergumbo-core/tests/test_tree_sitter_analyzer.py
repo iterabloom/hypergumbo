@@ -21,7 +21,9 @@ Coverage targets:
 """
 from __future__ import annotations
 
+import hashlib
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import ClassVar, Optional
 from unittest.mock import MagicMock, patch
@@ -37,6 +39,20 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, UsageContext
 from hypergumbo_core.symbol_resolution import NameResolver
+
+
+# ---------------------------------------------------------------------------
+# Mock tree-sitter node for shape_id tests
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class MockNode:
+    """Lightweight mock of tree_sitter.Node for shape_id tests."""
+
+    type: str
+    is_named: bool = True
+    children: list["MockNode"] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -570,3 +586,237 @@ class TestTreeSitterAnalyzerReparse:
         assert len(trees_received) == 1
         # The tree should be a mock (from our _create_parser)
         assert trees_received[0] is not None
+
+
+# ---------------------------------------------------------------------------
+# shape_id computation tests (ADR-0014 §1)
+# ---------------------------------------------------------------------------
+
+
+def _make_tree(
+    type_name: str,
+    *children: MockNode,
+    named: bool = True,
+) -> MockNode:
+    """Shortcut to build a MockNode tree."""
+    return MockNode(type=type_name, is_named=named, children=list(children))
+
+
+class TestComputeShapeId:
+    """Tests for TreeSitterAnalyzer.compute_shape_id() and _cst_structure()."""
+
+    def setup_method(self) -> None:
+        self.analyzer = StubAnalyzer()
+
+    def test_leaf_node_returns_type_name(self) -> None:
+        """A named leaf node should produce just its type name."""
+        node = MockNode(type="identifier", is_named=True, children=[])
+        structure = self.analyzer._cst_structure(node)
+        assert structure == "identifier"
+
+    def test_nested_structure_produces_s_expression(self) -> None:
+        """A node with named children should produce an S-expression."""
+        # function_definition → identifier + parameters(identifier) + block(return_statement(integer))
+        tree = _make_tree(
+            "function_definition",
+            MockNode(type="identifier"),
+            _make_tree("parameters", MockNode(type="identifier")),
+            _make_tree("block", _make_tree("return_statement", MockNode(type="integer"))),
+        )
+        structure = self.analyzer._cst_structure(tree)
+        # Closing parens are space-separated tokens (consistent for hashing)
+        assert structure == (
+            "(function_definition identifier (parameters identifier )"
+            " (block (return_statement integer ) ) )"
+        )
+
+    def test_anonymous_nodes_skipped(self) -> None:
+        """Anonymous nodes (punctuation) should be filtered out."""
+        tree = _make_tree(
+            "function_definition",
+            MockNode(type="identifier"),
+            MockNode(type="(", is_named=False),  # punctuation
+            _make_tree("parameters", MockNode(type="identifier")),
+            MockNode(type=")", is_named=False),  # punctuation
+            MockNode(type=":", is_named=False),
+            _make_tree("block", MockNode(type="pass_statement")),
+        )
+        structure = self.analyzer._cst_structure(tree)
+        assert structure == (
+            "(function_definition identifier"
+            " (parameters identifier ) (block pass_statement ) )"
+        )
+
+    def test_comment_nodes_skipped(self) -> None:
+        """Comment nodes should be filtered from the structure."""
+        tree = _make_tree(
+            "block",
+            MockNode(type="comment"),
+            MockNode(type="line_comment"),
+            MockNode(type="block_comment"),
+            MockNode(type="return_statement"),
+        )
+        structure = self.analyzer._cst_structure(tree)
+        # Only return_statement should remain, making block a parent of one child
+        assert structure == "(block return_statement )"
+
+    def test_error_and_missing_nodes_skipped(self) -> None:
+        """ERROR and MISSING nodes should be filtered out."""
+        tree = _make_tree(
+            "block",
+            MockNode(type="ERROR"),
+            MockNode(type="expression_statement"),
+            MockNode(type="MISSING"),
+        )
+        structure = self.analyzer._cst_structure(tree)
+        assert structure == "(block expression_statement )"
+
+    def test_compute_shape_id_format(self) -> None:
+        """compute_shape_id should return sha256:{16-hex-chars} format."""
+        node = MockNode(type="identifier")
+        shape_id = self.analyzer.compute_shape_id(node)
+        assert shape_id.startswith("sha256:")
+        hex_part = shape_id.split(":")[1]
+        assert len(hex_part) == 16
+        int(hex_part, 16)  # should not raise
+
+    def test_same_structure_same_hash(self) -> None:
+        """Structurally identical trees should produce the same shape_id."""
+        tree_a = _make_tree("function_definition", MockNode(type="identifier"),
+                            _make_tree("block", MockNode(type="pass_statement")))
+        tree_b = _make_tree("function_definition", MockNode(type="identifier"),
+                            _make_tree("block", MockNode(type="pass_statement")))
+        assert self.analyzer.compute_shape_id(tree_a) == self.analyzer.compute_shape_id(tree_b)
+
+    def test_different_structure_different_hash(self) -> None:
+        """Structurally different trees should produce different shape_ids."""
+        tree_a = _make_tree("function_definition", MockNode(type="identifier"),
+                            _make_tree("block", MockNode(type="pass_statement")))
+        tree_b = _make_tree("function_definition", MockNode(type="identifier"),
+                            _make_tree("block", MockNode(type="return_statement")))
+        assert self.analyzer.compute_shape_id(tree_a) != self.analyzer.compute_shape_id(tree_b)
+
+    def test_hash_matches_manual_computation(self) -> None:
+        """The hash should match a manual sha256 of the structure string."""
+        node = _make_tree("block", MockNode(type="expression_statement"))
+        structure = self.analyzer._cst_structure(node)
+        expected = hashlib.sha256(structure.encode()).hexdigest()[:16]
+        assert self.analyzer.compute_shape_id(node) == f"sha256:{expected}"
+
+    def test_node_becomes_leaf_when_only_anonymous_children(self) -> None:
+        """A named node with only anonymous children should be treated as a leaf."""
+        node = _make_tree(
+            "string",
+            MockNode(type='"', is_named=False),
+            MockNode(type="string_content", is_named=False),
+            MockNode(type='"', is_named=False),
+        )
+        structure = self.analyzer._cst_structure(node)
+        assert structure == "string"
+
+    def test_skip_type_as_root_produces_empty(self) -> None:
+        """A skip-type node (ERROR, comment) as root produces empty structure."""
+        error_node = MockNode(type="ERROR")
+        assert self.analyzer._cst_structure(error_node) == ""
+
+        comment_node = MockNode(type="comment")
+        assert self.analyzer._cst_structure(comment_node) == ""
+
+    def test_anonymous_root_produces_empty(self) -> None:
+        """An anonymous root node produces empty structure."""
+        anon = MockNode(type=";", is_named=False)
+        assert self.analyzer._cst_structure(anon) == ""
+
+    def test_deeply_nested_does_not_recurse(self) -> None:
+        """Deeply nested trees should work without hitting recursion limits."""
+        # Build a chain 500 levels deep — would blow the stack with recursion
+        node = MockNode(type="leaf_node")
+        for i in range(500):
+            node = _make_tree(f"wrapper_{i}", node)
+        # Should not raise RecursionError
+        shape_id = self.analyzer.compute_shape_id(node)
+        assert shape_id.startswith("sha256:")
+
+
+class TestShapeIdAutoComputation:
+    """Tests for automatic shape_id computation via node_for_symbol in analyze()."""
+
+    def test_shape_id_computed_from_node_for_symbol(self, tmp_path: Path) -> None:
+        """Symbols in node_for_symbol should get shape_id auto-computed."""
+        (tmp_path / "test.stub").write_text("content")
+
+        # Build a mock node to return in node_for_symbol
+        mock_node = _make_tree(
+            "function_definition",
+            MockNode(type="identifier"),
+            _make_tree("block", MockNode(type="pass_statement")),
+        )
+
+        class ShapeIdAnalyzer(StubAnalyzer):
+            def extract_symbols_from_file(self, tree, source, file_path, rel_path, run):
+                analysis = FileAnalysis()
+                sym = Symbol(
+                    id=make_symbol_id("stub", rel_path, 1, 10, "test", "function"),
+                    name="test",
+                    kind="function",
+                    language="stub",
+                    path=rel_path,
+                    span=Span(start_line=1, start_col=0, end_line=10, end_col=0),
+                    origin=self.pass_id,
+                    origin_run_id=run.execution_id,
+                )
+                analysis.symbols.append(sym)
+                analysis.symbol_by_name["test"] = sym
+                analysis.node_for_symbol[sym.id] = mock_node
+                return analysis
+
+        analyzer = ShapeIdAnalyzer()
+        result = analyzer.analyze(tmp_path)
+        sym = result.symbols[0]
+
+        assert sym.shape_id is not None
+        assert sym.shape_id.startswith("sha256:")
+        assert sym.shape_id == analyzer.compute_shape_id(mock_node)
+
+    def test_shape_id_not_overwritten_if_already_set(self, tmp_path: Path) -> None:
+        """If a symbol already has shape_id, auto-computation should not overwrite."""
+        (tmp_path / "test.stub").write_text("content")
+
+        mock_node = MockNode(type="identifier")
+
+        class PresetShapeIdAnalyzer(StubAnalyzer):
+            def extract_symbols_from_file(self, tree, source, file_path, rel_path, run):
+                analysis = FileAnalysis()
+                sym = Symbol(
+                    id=make_symbol_id("stub", rel_path, 1, 10, "test", "function"),
+                    name="test",
+                    kind="function",
+                    language="stub",
+                    path=rel_path,
+                    span=Span(start_line=1, start_col=0, end_line=10, end_col=0),
+                    origin=self.pass_id,
+                    origin_run_id=run.execution_id,
+                    shape_id="sha256:preset_value_abc",
+                )
+                analysis.symbols.append(sym)
+                analysis.symbol_by_name["test"] = sym
+                analysis.node_for_symbol[sym.id] = mock_node
+                return analysis
+
+        analyzer = PresetShapeIdAnalyzer()
+        result = analyzer.analyze(tmp_path)
+        sym = result.symbols[0]
+
+        # Should keep the preset value, not overwrite
+        assert sym.shape_id == "sha256:preset_value_abc"
+
+    def test_no_node_for_symbol_no_shape_id(self, tmp_path: Path) -> None:
+        """Symbols without entries in node_for_symbol keep shape_id=None."""
+        (tmp_path / "test.stub").write_text("content")
+
+        analyzer = StubAnalyzer()
+        result = analyzer.analyze(tmp_path)
+        sym = result.symbols[0]
+
+        # StubAnalyzer doesn't populate node_for_symbol
+        assert sym.shape_id is None

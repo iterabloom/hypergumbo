@@ -75,11 +75,15 @@ class FileAnalysis:
         symbols: Symbols detected in this file
         symbol_by_name: Quick lookup by symbol name for edge resolution
         import_aliases: Mapping of import alias → import path (Go, etc.)
+        node_for_symbol: Mapping of symbol ID → tree-sitter node for
+            automatic shape_id computation (ADR-0014 §1). Analyzers that
+            populate this get shape_id computed by the base class.
     """
 
     symbols: list[Symbol] = field(default_factory=list)
     symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
     import_aliases: dict[str, str] = field(default_factory=dict)
+    node_for_symbol: dict[str, "tree_sitter.Node"] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -631,6 +635,86 @@ class TreeSitterAnalyzer:
         """
         return symbols, edges, usage_contexts
 
+    # -- shape_id computation (ADR-0014 §1) ---------------------------------
+
+    _SHAPE_SKIP_TYPES: ClassVar[frozenset[str]] = frozenset(
+        {"comment", "line_comment", "block_comment", "ERROR", "MISSING"}
+    )
+
+    def compute_shape_id(self, node: "tree_sitter.Node") -> str:
+        """Compute shape_id by hashing the structural skeleton of a CST subtree.
+
+        Walks the tree-sitter concrete syntax tree non-recursively, strips
+        identifiers, literals, comments, and punctuation, then hashes the
+        resulting S-expression.  This captures the structural "shape" of code
+        independent of naming and formatting.
+
+        Filtering strategy (ADR-0014 §1):
+        - Anonymous nodes (punctuation like ``{``, ``;``, ``(``) are skipped
+        - Comment, ERROR, and MISSING nodes are skipped
+        - Named leaf nodes (identifiers, literals) emit only their type name
+        - Named non-leaf nodes emit ``(type child1 child2 ...)`` structure
+
+        Returns:
+            Shape hash in ``sha256:{16-hex-chars}`` format matching
+            the Python analyzer's convention.
+        """
+        structure = self._cst_structure(node)
+        hash_val = hashlib.sha256(structure.encode()).hexdigest()[:16]
+        return f"sha256:{hash_val}"
+
+    def _cst_structure(self, node: "tree_sitter.Node") -> str:
+        """Build an S-expression skeleton of a CST subtree.
+
+        Uses an explicit stack to avoid RecursionError on deeply nested code
+        (same rationale as ``iter_tree()``).  The output is a parenthesised
+        S-expression where only *named* structural nodes contribute, with
+        leaf nodes (identifiers, literals, keywords) represented by their
+        type name alone.
+
+        Example output for ``def foo(x): return x + 1``::
+
+            (function_definition identifier (parameters identifier)
+             (block (return_statement (binary_operator identifier integer))))
+        """
+        parts: list[str] = []
+        skip = self._SHAPE_SKIP_TYPES
+        # Stack entries: (node | None, phase)
+        #   phase 0 → process / open the node
+        #   phase 1 → close the node (append ")")
+        stack: list[tuple["tree_sitter.Node | None", int]] = [(node, 0)]
+
+        while stack:
+            current, phase = stack.pop()
+
+            if phase == 1:
+                parts.append(")")
+                continue
+
+            assert current is not None  # pragma: no cover - type narrowing
+
+            # Skip anonymous nodes (punctuation) and filtered types
+            if not current.is_named or current.type in skip:
+                continue
+
+            # Collect named, non-skip children
+            named_children = [
+                c for c in current.children
+                if c.is_named and c.type not in skip
+            ]
+
+            if not named_children:
+                # Leaf: just emit the type name (covers identifiers, literals, etc.)
+                parts.append(current.type)
+            else:
+                # Non-leaf: open S-expression, push closing marker + children
+                parts.append(f"({current.type}")
+                stack.append((None, 1))
+                for child in reversed(named_children):
+                    stack.append((child, 0))
+
+        return " ".join(parts)
+
     # -- Main analysis method (the two-pass loop) --------------------------
 
     def analyze(
@@ -715,6 +799,14 @@ class TreeSitterAnalyzer:
                     origin_run_id=run.execution_id,
                 )
                 analysis.symbols.insert(0, file_sym)
+
+            # Auto-compute shape_id for symbols with associated nodes (ADR-0014 §1)
+            if analysis.node_for_symbol:
+                sym_by_id = {s.id: s for s in analysis.symbols}
+                for sym_id, ts_node in analysis.node_for_symbol.items():
+                    sym = sym_by_id.get(sym_id)
+                    if sym is not None and sym.shape_id is None:
+                        sym.shape_id = self.compute_shape_id(ts_node)
 
             # Extract import aliases for Pass 2
             import_aliases = self.get_import_aliases(tree, source)
