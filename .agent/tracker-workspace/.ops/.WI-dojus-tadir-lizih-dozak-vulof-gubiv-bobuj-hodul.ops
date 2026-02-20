@@ -18,3 +18,11 @@
     justification:  # beef
     description: "Dart has mixin methods similar to Java. Direct global_symbols lookup can pick arbitrary candidate."  # beef
     fields: {}  # beef
+- op: update  # 6369
+  at: '2026-02-20T18:44:25Z'  # 6369
+  by: agent  # 6369
+  actor: jgstern_agent  # 6369
+  clock: 2  # 6369
+  nonce: '6369'  # 6369
+  set:  # 6369
+    priority: 2  # 6369
