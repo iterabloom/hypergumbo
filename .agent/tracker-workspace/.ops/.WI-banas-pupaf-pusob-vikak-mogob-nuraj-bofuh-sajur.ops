@@ -1,0 +1,20 @@
+- op: create  # 9cbf
+  at: '2026-02-20T16:12:13Z'  # 9cbf
+  by: agent  # 9cbf
+  actor: jgstern_agent  # 9cbf
+  clock: 1  # 9cbf
+  nonce: 9cbf  # 9cbf
+  data:  # 9cbf
+    kind: work_item  # 9cbf
+    title: "Kotlin: ambiguity guard for extension functions"  # 9cbf
+    status: todo_soft  # 9cbf
+    priority: 4  # 9cbf
+    parent:  # 9cbf
+    tags: []  # 9cbf
+    before: []  # 9cbf
+    duplicate_of: []  # 9cbf
+    not_duplicate_of: []  # 9cbf
+    pr_ref:  # 9cbf
+    justification:  # 9cbf
+    description: "Kotlin extension functions similar to Java. Apply guard for 3+ candidates."  # 9cbf
+    fields: {}  # 9cbf
