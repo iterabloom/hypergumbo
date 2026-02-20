@@ -1,0 +1,32 @@
+- op: create  # ad44
+  at: '2026-02-20T15:51:15Z'  # ad44
+  by: agent  # ad44
+  actor: jgstern_agent  # ad44
+  clock: 1  # ad44
+  nonce: ad44  # ad44
+  data:  # ad44
+    kind: invariant  # ad44
+    title: "AMB-METHOD: Method calls with 3+ ambiguous receiver types must not produce resolved edges"  # ad44
+    status: todo_hard  # ad44
+    priority: 2  # ad44
+    parent:  # ad44
+    tags: []  # ad44
+    before: []  # ad44
+    duplicate_of: []  # ad44
+    not_duplicate_of: []  # ad44
+    pr_ref:  # ad44
+    justification:  # ad44
+    description: "Cross-language invariant. Go fixed in PR #1261. Same pattern exists in PHP, Java, Ruby, C#, Kotlin, Groovy, Dart. Next step: factor ambiguity guard into ListNameResolver (symbol_resolution.py) to protect all languages."  # ad44
+    fields:  # ad44
+      statement: "Method/member-function calls with ambiguous receiver types (3+ candidates) must not produce resolved call edges."  # ad44
+      root_cause: "Fallback resolution (ListNameResolver or local_symbols) picks an arbitrary candidate when receiver type cannot be inferred, producing false-positive edges for common method names like Get, Set, String, Close."  # ad44
+- op: update  # 8031
+  at: '2026-02-20T15:51:23Z'  # 8031
+  by: agent  # 8031
+  actor: jgstern_agent  # 8031
+  clock: 2  # 8031
+  nonce: '8031'  # 8031
+  set:  # 8031
+    fields:  # 8031
+      statement: "Method/member-function calls with ambiguous receiver types (3+ candidates) must not produce resolved call edges."  # 8031
+      root_cause: "Fallback resolution (ListNameResolver or local_symbols) picks an arbitrary candidate when receiver type cannot be inferred, producing false-positive edges for common method names like Get, Set, String, Close."  # 8031
