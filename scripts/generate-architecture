@@ -624,6 +624,8 @@ def generate_architecture_md() -> str:
     # Count stats
     analyzer_count = len(categories.get("Analyzers", []))
     linker_count = len(categories.get("Linkers", []))
+    core_count = len(categories.get("Core", []))
+    cli_count = len(categories.get("CLI & I/O", []))
     total_modules = sum(len(v) for v in categories.values())
     pattern_total, conv_count, fw_count = count_framework_patterns()
     node_count = len(analysis.get("nodes", []))
@@ -644,7 +646,7 @@ def generate_architecture_md() -> str:
         "## Self-Analysis Summary",
         "",
         f"hypergumbo analyzed its own source code and found:",
-        f"- **{total_modules}** Python modules ({analyzer_count} analyzers, {linker_count} linkers)",
+        f"- **{total_modules}** Python modules ({analyzer_count} analyzers, {linker_count} linkers, {core_count} core, {cli_count} CLI)",
         f"- **{node_count}** symbols (functions, classes, methods)",
         f"- **{edge_count}** edges by type:",
     ]
