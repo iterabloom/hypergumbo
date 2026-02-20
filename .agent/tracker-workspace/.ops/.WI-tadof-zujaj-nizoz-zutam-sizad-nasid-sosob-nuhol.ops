@@ -1,0 +1,22 @@
+- op: create  # 6151
+  at: '2026-02-20T08:22:30Z'  # 6151
+  by: agent  # 6151
+  actor: jgstern_agent  # 6151
+  clock: 1  # 6151
+  nonce: '6151'  # 6151
+  data:  # 6151
+    kind: work_item  # 6151
+    title: "ADR-0014: Generalized Symbol Identity (stable_id / shape_id)"  # 6151
+    status: todo_soft  # 6151
+    priority: 2  # 6151
+    parent:  # 6151
+    tags:  # 6151
+    - stable-id  # 6151
+    - adr-0014  # 6151
+    before: []  # 6151
+    duplicate_of: []  # 6151
+    not_duplicate_of: []  # 6151
+    pr_ref:  # 6151
+    justification:  # 6151
+    description: "Umbrella item for ADR-0014 implementation. Makes stable_id and shape_id universal across all 100+ language analyzers. Four phases: Phase 0 (immediate fixes), Phase 1 (shape_id generalization), Phase 2 (stable_id untyped tier), Phase 3 (stable_id typed tier, deferred). See docs/adr/0014-generalized-symbol-identity.md."  # 6151
+    fields: {}  # 6151
