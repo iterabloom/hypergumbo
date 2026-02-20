@@ -30,6 +30,7 @@ from hypergumbo_tracker.cli import (
     _format_item_short,
     _item_to_dict,
     _maybe_auto_sync,
+    _print_sync_reminder,
     _print_screen_warning,
     main,
     textconv_main,
@@ -2138,3 +2139,67 @@ class TestAutoSync:
         assert "show" not in _MUTATION_COMMANDS
         assert "ready" not in _MUTATION_COMMANDS
         assert "sync" not in _MUTATION_COMMANDS
+
+
+class TestSyncReminder:
+    """Tests for _print_sync_reminder."""
+
+    def test_prints_reminder_on_success(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Reminder prints pending lines and threshold to stderr."""
+        with patch(
+            "hypergumbo_tracker.cli.subprocess.run",
+        ) as mock_run, patch(
+            "hypergumbo_tracker.sync.pending_sync_lines",
+        ) as mock_pending:
+            mock_run.return_value = MagicMock(returncode=0, stdout="/repo\n")
+            mock_pending.return_value = 12
+            _print_sync_reminder()
+        captured = capsys.readouterr()
+        assert "Auto-sync is AUTOMATIC" in captured.err
+        assert "do NOT push or sync" in captured.err
+        assert "12 pending line(s)" in captured.err
+        assert "threshold=" in captured.err
+
+    def test_invalid_threshold_env_falls_back(
+        self,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Non-integer TRACKER_AUTO_SYNC_THRESHOLD falls back to default."""
+        monkeypatch.setenv("TRACKER_AUTO_SYNC_THRESHOLD", "not_a_number")
+        with patch(
+            "hypergumbo_tracker.cli.subprocess.run",
+        ) as mock_run, patch(
+            "hypergumbo_tracker.sync.pending_sync_lines",
+        ) as mock_pending:
+            mock_run.return_value = MagicMock(returncode=0, stdout="/repo\n")
+            mock_pending.return_value = 5
+            _print_sync_reminder()
+        captured = capsys.readouterr()
+        assert "threshold=40" in captured.err
+
+    def test_git_failure_silently_returns(
+        self,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """If git rev-parse fails, no output, no error."""
+        with patch(
+            "hypergumbo_tracker.cli.subprocess.run",
+        ) as mock_run:
+            mock_run.return_value = MagicMock(returncode=128, stdout="")
+            _print_sync_reminder()
+        captured = capsys.readouterr()
+        assert captured.err == ""
+
+    def test_exception_silently_caught(
+        self,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Unexpected exceptions are swallowed."""
+        with patch(
+            "hypergumbo_tracker.cli.subprocess.run",
+            side_effect=RuntimeError("boom"),
+        ):
+            _print_sync_reminder()
+        captured = capsys.readouterr()
+        assert captured.err == ""

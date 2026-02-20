@@ -1,0 +1,20 @@
+- op: create  # beef
+  at: '2026-02-20T16:44:10Z'  # beef
+  by: agent  # beef
+  actor: jgstern_agent  # beef
+  clock: 1  # beef
+  nonce: beef  # beef
+  data:  # beef
+    kind: work_item  # beef
+    title: "Dart: ambiguity guard for mixin methods"  # beef
+    status: todo_soft  # beef
+    priority: 4  # beef
+    parent:  # beef
+    tags: []  # beef
+    before: []  # beef
+    duplicate_of: []  # beef
+    not_duplicate_of: []  # beef
+    pr_ref:  # beef
+    justification:  # beef
+    description: "Dart has mixin methods similar to Java. Direct global_symbols lookup can pick arbitrary candidate."  # beef
+    fields: {}  # beef

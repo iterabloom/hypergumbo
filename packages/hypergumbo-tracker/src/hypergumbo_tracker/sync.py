@@ -449,7 +449,7 @@ _OPS_PATHS = (
     ".agent/tracker-workspace/.ops/",
 )
 
-AUTO_SYNC_DEFAULT_THRESHOLD = 20
+AUTO_SYNC_DEFAULT_THRESHOLD = 40
 
 
 def _sum_added_lines(numstat_output: str) -> int:

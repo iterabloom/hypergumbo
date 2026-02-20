@@ -582,13 +582,23 @@ class ListNameResolver:
     # Legacy constant; ambiguous confidence now scales as 1/sqrt(N)
     CONFIDENCE_AMBIGUOUS = 0.70
 
-    def __init__(self, registry: dict[str, list[Symbol]]) -> None:
+    def __init__(
+        self,
+        registry: dict[str, list[Symbol]],
+        ambiguity_threshold: int | None = None,
+    ) -> None:
         """Initialize resolver with a list-valued symbol registry.
 
         Args:
             registry: Dict mapping symbol_name -> list of Symbol objects.
+            ambiguity_threshold: When set, if the candidate count for a name
+                meets or exceeds this value and no path_hint disambiguates,
+                return an unresolved result instead of picking an arbitrary
+                candidate. Set to 3 to guard against common method name
+                false positives (Get, Set, Close, String).
         """
         self.registry = registry
+        self.ambiguity_threshold = ambiguity_threshold
 
     def lookup(
         self,
@@ -644,6 +654,19 @@ class ListNameResolver:
                         match_type="path_hint",
                         candidates=candidates,
                     )
+
+        # Ambiguity guard: when candidate count meets or exceeds the threshold,
+        # return unresolved instead of picking an arbitrary candidate.
+        # This prevents false-positive call edges for common method names.
+        if (
+            self.ambiguity_threshold is not None
+            and len(candidates) >= self.ambiguity_threshold
+        ):
+            return LookupResult(
+                symbol=None,
+                match_type="ambiguous",
+                candidates=candidates,
+            )
 
         # Ambiguous — scale confidence by 1/sqrt(N) so that common interface
         # methods (Close, String, Name) with dozens of implementations get

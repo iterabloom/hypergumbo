@@ -54,6 +54,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Tier 2 embedding-based near-duplicate detection**: `validate --deep-similar` uses dense embeddings (ONNX ModernBERT) to detect semantically similar items. Requires `pip install hypergumbo-tracker[dedup]`.
 - **SQLite read cache**: Read operations consult a per-tier cache, avoiding YAML reparse on every invocation.
 - **Positional alias persistence**: `:N` aliases from `list`/`ready` output persist across CLI invocations.
+- **Auto-sync reminder**: Every successful tracker CLI command prints a one-line stderr reminder showing pending line count and auto-sync threshold, preventing agents from manually pushing tracker changes.
+- **Auto-sync threshold increase**: Default threshold raised from 20 to 40 lines to reduce CI queue pressure from frequent small syncs.
 
 #### Tracker TUI
 
@@ -91,6 +93,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Bidirectional centrality ranking**: Uses `in_degree * (1 + ln(1 + out_degree))` instead of pure in-degree, rewarding connectors over pure sinks.
 - **Hub in-degree saturation**: Symbols above 100 in-degree get saturated to `threshold + ln(1 + in_degree − threshold)`. Prevents infrastructure utilities from dominating centrality rankings.
 - **Ambiguous method confidence scaling**: Scales as `1/sqrt(N)` instead of flat 0.70 for N matching symbols. Two candidates: ~0.71; fifty candidates: ~0.14.
+- **ListNameResolver ambiguity threshold**: New `ambiguity_threshold` parameter. When candidate count meets or exceeds threshold and no `path_hint` disambiguates, returns unresolved result instead of picking an arbitrary candidate. Protects Go, Ruby, PHP, and JS/TS method calls against false-positive edges from common method names (Get, Set, Close, String).
 - **Slice improvements**: Forward slices skip structural edges (`extends`/`implements`/`contains`). New `--hub-threshold N` flag (default 50). Class/interface entry points auto-expand to include member methods.
 - **Entrypoint improvements**: Transitive out-degree scoring, connectivity-based fallback, library export detection (Go, Elixir, Python), aggressive test demotion, `--entry auto` respects `--exclude-tests`/`--max-tier`.
 - **Test edge filtering**: `--exclude-tests` now preserves `extends`/`implements` edges from test files.

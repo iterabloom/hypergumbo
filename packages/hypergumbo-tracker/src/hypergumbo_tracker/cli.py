@@ -1204,6 +1204,55 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Sync reminder
+# ---------------------------------------------------------------------------
+
+
+def _print_sync_reminder() -> None:
+    """Print a short reminder about automatic sync to stderr.
+
+    Shows how many tracker lines are pending and the auto-sync threshold
+    so agents remember NOT to push or sync manually — the tracker handles
+    that automatically when the threshold is exceeded.
+
+    Never raises; silently no-ops if git or pending_sync_lines fails.
+    """
+    from hypergumbo_tracker.sync import (
+        AUTO_SYNC_DEFAULT_THRESHOLD,
+        pending_sync_lines,
+    )
+
+    try:
+        result = subprocess.run(  # nosec B603, B607
+            ["git", "rev-parse", "--show-toplevel"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return
+        repo_root = Path(result.stdout.strip())
+
+        threshold_str = os.environ.get(
+            "TRACKER_AUTO_SYNC_THRESHOLD",
+            str(AUTO_SYNC_DEFAULT_THRESHOLD),
+        )
+        try:
+            threshold = int(threshold_str)
+        except ValueError:
+            threshold = AUTO_SYNC_DEFAULT_THRESHOLD
+
+        lines = pending_sync_lines(repo_root)
+        print(
+            f"[tracker] Auto-sync is AUTOMATIC — do NOT push or sync manually."
+            f" {lines} pending line(s), threshold={threshold}.",
+            file=sys.stderr,
+        )
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # Main entry points
 # ---------------------------------------------------------------------------
 
@@ -1311,6 +1360,9 @@ def main(argv: list[str] | None = None) -> None:
         and not args.no_auto_sync
     ):
         _maybe_auto_sync(tracker_root)
+
+    if exit_code == EXIT_SUCCESS:
+        _print_sync_reminder()
 
     raise SystemExit(exit_code)
 

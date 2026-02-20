@@ -791,3 +791,76 @@ class TestListNameResolverCandidateScaling:
         result = resolver.lookup("Unique")
         assert result.found is True
         assert result.confidence == ListNameResolver.CONFIDENCE_EXACT
+
+
+class TestListNameResolverAmbiguityThreshold:
+    """Tests for the ambiguity_threshold parameter.
+
+    When candidate count >= ambiguity_threshold and no path_hint match,
+    the resolver should return an unresolved result (found=False) instead
+    of picking an arbitrary candidate. This prevents false-positive call
+    edges for common method names like Get(), Set(), Close(), String().
+
+    Invariant: AMB-METHOD — method calls with 3+ ambiguous receiver types
+    must not produce resolved call edges.
+    """
+
+    def test_threshold_returns_unresolved_at_boundary(self) -> None:
+        """Exactly 3 candidates with threshold=3 → unresolved."""
+        syms = [make_symbol("Close", f"/pkg{i}/x.go", "go") for i in range(3)]
+        resolver = ListNameResolver({"Close": syms}, ambiguity_threshold=3)
+        result = resolver.lookup("Close")
+        assert result.found is False, (
+            "3 candidates at threshold=3 should be unresolved"
+        )
+        assert result.is_ambiguous is True
+        assert len(result.candidates) == 3
+
+    def test_threshold_returns_unresolved_above_boundary(self) -> None:
+        """5 candidates with threshold=3 → unresolved."""
+        syms = [make_symbol("Get", f"/pkg{i}/x.go", "go") for i in range(5)]
+        resolver = ListNameResolver({"Get": syms}, ambiguity_threshold=3)
+        result = resolver.lookup("Get")
+        assert result.found is False, (
+            "5 candidates at threshold=3 should be unresolved"
+        )
+        assert result.is_ambiguous is True
+
+    def test_below_threshold_still_resolves(self) -> None:
+        """2 candidates with threshold=3 → still resolves (below threshold)."""
+        syms = [make_symbol("Run", f"/pkg{i}/x.go", "go") for i in range(2)]
+        resolver = ListNameResolver({"Run": syms}, ambiguity_threshold=3)
+        result = resolver.lookup("Run")
+        assert result.found is True, (
+            "2 candidates below threshold=3 should still resolve"
+        )
+        assert result.match_type == "ambiguous"
+        assert abs(result.confidence - (1.0 / 2**0.5)) < 0.01
+
+    def test_path_hint_bypasses_threshold(self) -> None:
+        """Path hint resolves even when candidate count >= threshold."""
+        syms = [make_symbol("Close", f"/pkg{i:02d}/x.go", "go") for i in range(5)]
+        resolver = ListNameResolver({"Close": syms}, ambiguity_threshold=3)
+        result = resolver.lookup("Close", path_hint="/pkg03/")
+        assert result.found is True, (
+            "Path hint should bypass ambiguity threshold"
+        )
+        assert result.confidence == ListNameResolver.CONFIDENCE_PATH_HINT
+
+    def test_default_threshold_is_none(self) -> None:
+        """Default threshold is None (no guard), preserving backward compat."""
+        syms = [make_symbol("Close", f"/pkg{i}/x.go", "go") for i in range(10)]
+        resolver = ListNameResolver({"Close": syms})
+        result = resolver.lookup("Close")
+        assert result.found is True, (
+            "Default (no threshold) should still resolve ambiguous lookups"
+        )
+
+    def test_threshold_single_candidate_unaffected(self) -> None:
+        """Single candidate is never affected by threshold."""
+        syms = [make_symbol("Unique", "/pkg/x.go", "go")]
+        resolver = ListNameResolver({"Unique": syms}, ambiguity_threshold=1)
+        result = resolver.lookup("Unique")
+        assert result.found is True, (
+            "Single candidate should always resolve regardless of threshold"
+        )

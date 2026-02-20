@@ -1,0 +1,20 @@
+- op: create  # 093e
+  at: '2026-02-20T16:43:57Z'  # 093e
+  by: agent  # 093e
+  actor: jgstern_agent  # 093e
+  clock: 1  # 093e
+  nonce: 093e  # 093e
+  data:  # 093e
+    kind: work_item  # 093e
+    title: "PHP: scope-aware var types + ambiguity guard"  # 093e
+    status: todo_soft  # 093e
+    priority: 3  # 093e
+    parent:  # 093e
+    tags: []  # 093e
+    before: []  # 093e
+    duplicate_of: []  # 093e
+    not_duplicate_of: []  # 093e
+    pr_ref:  # 093e
+    justification:  # 093e
+    description: "PHP has no type annotations on most codebases. Method calls are ambiguous when multiple classes define the same method."  # 093e
+    fields: {}  # 093e

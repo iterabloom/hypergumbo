@@ -1,0 +1,20 @@
+- op: create  # 61eb
+  at: '2026-02-20T16:44:03Z'  # 61eb
+  by: agent  # 61eb
+  actor: jgstern_agent  # 61eb
+  clock: 1  # 61eb
+  nonce: 61eb  # 61eb
+  data:  # 61eb
+    kind: work_item  # 61eb
+    title: "Java: ambiguity guard for overloaded methods"  # 61eb
+    status: todo_soft  # 61eb
+    priority: 3  # 61eb
+    parent:  # 61eb
+    tags: []  # 61eb
+    before: []  # 61eb
+    duplicate_of: []  # 61eb
+    not_duplicate_of: []  # 61eb
+    pr_ref:  # 61eb
+    justification:  # 61eb
+    description: "Java has overloaded method names across class hierarchy. Direct global_symbols lookup can pick arbitrary candidate."  # 61eb
+    fields: {}  # 61eb

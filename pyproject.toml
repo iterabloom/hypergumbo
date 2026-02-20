@@ -7,6 +7,8 @@
 python_files = ["test_*.py", "*_test.py", "BRANCHES_*.py"]
 # Required for hypergumbo-tracker's Textual TUI tests (async pilot tests)
 asyncio_mode = "auto"
+# Tracker tests import a shared 'helpers' module from their tests/ directory
+pythonpath = ["packages/hypergumbo-tracker/tests"]
 # Filter expected warnings from tests
 filterwarnings = [
     # tree-sitter unavailability in fallback tests
