@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
@@ -478,6 +478,7 @@ def _extract_edges_from_file(
     imports: dict[str, str],
     run: AnalysisRun,
     resolver: NameResolver | None = None,
+    method_resolver: ListNameResolver | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -743,6 +744,12 @@ def _extract_edges_from_file(
                     callee_name = node_text(callee_node, source)
                     resolved_simple_sym = None
 
+                    # AMB-METHOD guard: when 3+ classes define the same
+                    # method name, suppress the edge to avoid false positives.
+                    if method_resolver is not None:
+                        amb_check = method_resolver.lookup(callee_name)
+                        if not amb_check.found and amb_check.candidates:
+                            continue  # 3+ method candidates, suppress
                     # Check local symbols first
                     if callee_name in local_symbols:
                         callee = local_symbols[callee_name]
@@ -759,7 +766,6 @@ def _extract_edges_from_file(
                         resolved_simple_sym = callee
                     # Check global symbols via resolver
                     else:
-                        # Use import path as hint for disambiguation
                         import_hint = imports.get(callee_name)
                         lookup_result = resolver.lookup(callee_name, path_hint=import_hint)
                         if lookup_result.found and lookup_result.symbol is not None:
@@ -997,15 +1003,20 @@ class KotlinAnalyzer(TreeSitterAnalyzer):
 
         # Build global symbol registry
         global_symbols: dict[str, Symbol] = {}
+        # AMB-METHOD: multi-value method registry for ambiguity guard
+        global_methods: dict[str, list[Symbol]] = {}
         for analysis in file_analyses.values():
             for symbol in analysis.symbols:
                 # Store by short name for cross-file resolution
                 short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
                 global_symbols[short_name] = symbol
                 global_symbols[symbol.name] = symbol
+                if symbol.kind == "method":
+                    global_methods.setdefault(short_name, []).append(symbol)
 
         # Pass 2: Extract edges
         resolver = NameResolver(global_symbols)
+        method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
         all_symbols: list[Symbol] = []
         all_edges: list[Edge] = []
 
@@ -1014,7 +1025,7 @@ class KotlinAnalyzer(TreeSitterAnalyzer):
 
             edges = _extract_edges_from_file(
                 kt_file, parser, analysis.symbol_by_name, global_symbols,
-                analysis.imports, run, resolver
+                analysis.imports, run, resolver, method_resolver=method_resolver,
             )
             all_edges.extend(edges)
 

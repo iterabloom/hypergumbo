@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, make_pass_id
-from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -495,6 +495,18 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
         method_invocation and juxt_function_call forms).
         Uses import aliases as path_hint for resolver disambiguation.
         """
+        # AMB-METHOD: build method resolver for ambiguity guard
+        global_methods: dict[str, list[Symbol]] = {}
+        seen_ids: set[str] = set()
+        for sym in global_symbols.values():
+            if sym.id in seen_ids:
+                continue
+            seen_ids.add(sym.id)
+            if sym.kind == "method":
+                short = sym.name.split(".")[-1] if "." in sym.name else sym.name
+                global_methods.setdefault(short, []).append(sym)
+        method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
+
         edges: list[Edge] = []
         file_id = make_file_id("groovy", str(file_path))
 
@@ -553,6 +565,12 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         path_hint: Optional[str] = None
                         if receiver and receiver in import_aliases:
                             path_hint = import_aliases[receiver]
+
+                        # AMB-METHOD guard: when 3+ classes define the same
+                        # method name, suppress the edge to avoid false positives.
+                        amb_check = method_resolver.lookup(callee_name)
+                        if not amb_check.found and amb_check.candidates:
+                            continue  # 3+ method candidates, suppress
 
                         # Check local symbols first
                         if callee_name in local_symbols:

@@ -1622,3 +1622,91 @@ public class Example {
 
         assert filter_call is not None, "Filter call in LINQ chain should be attributed to Process"
         assert transform_call is not None, "Transform call in LINQ chain should be attributed to Process"
+
+
+class TestCSharpAmbiguousMethodGuard:
+    """Tests for AMB-METHOD invariant in C#.
+
+    When a method name has 3+ definitions across different classes and
+    the receiver type cannot be inferred, the analyzer must NOT produce
+    a resolved call edge (which would be a false positive).
+
+    Invariant: Method calls with 3+ ambiguous receiver types must not
+    produce resolved call edges.
+    """
+
+    def test_ambiguous_method_three_plus_classes_no_resolved_edge(
+        self, tmp_path: Path,
+    ) -> None:
+        """obj.Close() with 3 classes defining Close() → no resolved edge."""
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        cs_file = tmp_path / "multi.cs"
+        cs_file.write_text("""
+class ServiceA {
+    public void Close() { }
+}
+
+class ServiceB {
+    public void Close() { }
+}
+
+class ServiceC {
+    public void Close() { }
+}
+
+class Consumer {
+    public void DoWork() {
+        Close();
+    }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        dowork_calls = [e for e in call_edges if "DoWork" in e.src]
+
+        # Should NOT have a resolved edge to any specific class's Close()
+        for edge in dowork_calls:
+            assert "ServiceA" not in edge.dst, (
+                f"Ambiguous method should not resolve to ServiceA, got {edge.dst}"
+            )
+            assert "ServiceB" not in edge.dst, (
+                f"Ambiguous method should not resolve to ServiceB, got {edge.dst}"
+            )
+            assert "ServiceC" not in edge.dst, (
+                f"Ambiguous method should not resolve to ServiceC, got {edge.dst}"
+            )
+
+    def test_two_classes_same_method_still_resolves(
+        self, tmp_path: Path,
+    ) -> None:
+        """obj.Run() with 2 classes → still resolves (below threshold)."""
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        cs_file = tmp_path / "two.cs"
+        cs_file.write_text("""
+class ServiceA {
+    public void Run() { }
+}
+
+class ServiceB {
+    public void Run() { }
+}
+
+class Consumer {
+    public void DoWork() {
+        Run();
+    }
+}
+""")
+
+        result = analyze_csharp(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        dowork_calls = [e for e in call_edges if "DoWork" in e.src]
+
+        # 2 candidates is below the threshold — should still resolve
+        run_calls = [e for e in dowork_calls if "Run" in e.dst]
+        assert len(run_calls) >= 1, "2 candidates should still resolve"

@@ -73,6 +73,8 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
+from hypergumbo_core.symbol_resolution import ListNameResolver
+
 if TYPE_CHECKING:
     import tree_sitter
     from hypergumbo_core.ir import AnalysisRun
@@ -507,11 +509,13 @@ def _extract_edges_from_file(
     resolver: NameResolver,
     run_id: str,
     import_hints: dict[str, str] | None = None,
+    method_resolver: ListNameResolver | None = None,
 ) -> list[Edge]:
     """Extract call, import, and instantiation edges from a parsed Dart file.
 
     Args:
         import_hints: Optional dict mapping short names to full import paths for disambiguation.
+        method_resolver: Optional ListNameResolver for AMB-METHOD ambiguity guard.
     """
     if import_hints is None:  # pragma: no cover - defensive default
         import_hints = {}
@@ -670,7 +674,15 @@ def _extract_edges_from_file(
                             edges.append(edge)
                     elif not method_name:
                         # Simple function call: func()
+                        # AMB-METHOD guard: when 3+ classes define the same
+                        # method name, suppress the edge to avoid false positives.
                         path_hint = import_hints.get(first_ident)
+                        if method_resolver is not None:
+                            amb_check = method_resolver.lookup(
+                                first_ident, path_hint=path_hint,
+                            )
+                            if not amb_check.found and amb_check.candidates:
+                                continue  # 3+ method candidates, suppress
                         lookup_result = resolver.lookup(first_ident, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol:
                             callee = lookup_result.symbol
@@ -821,11 +833,22 @@ class DartAnalyzer(TreeSitterAnalyzer):
         resolver: "NameResolver",
     ) -> list[Edge]:
         """Extract call, import, and instantiation edges from a Dart file."""
+        # AMB-METHOD: build method resolver for ambiguity guard.
+        # Dart's base register_symbol stores each symbol under its qualified
+        # name only (no short-name duplicates), so no dedup needed.
+        global_methods: dict[str, list[Symbol]] = {}
+        for sym in global_symbols.values():
+            if sym.kind == "method":
+                short = sym.name.split(".")[-1] if "." in sym.name else sym.name
+                global_methods.setdefault(short, []).append(sym)
+        method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
+
         file_symbols = list(local_symbols.values())
         return _extract_edges_from_file(
             tree, source, rel_path,
             file_symbols, resolver,
             run.execution_id, import_hints=import_aliases,
+            method_resolver=method_resolver,
         )
 
 

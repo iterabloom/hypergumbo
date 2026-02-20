@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis as _BaseFileAnalysis,
@@ -793,6 +793,7 @@ def _extract_edges_from_file(
     run: AnalysisRun,
     resolver: NameResolver | None = None,
     using_aliases: dict[str, str] | None = None,
+    method_resolver: ListNameResolver | None = None,
 ) -> list[Edge]:
     """Extract call, import, and instantiation edges from a file.
 
@@ -964,6 +965,12 @@ def _extract_edges_from_file(
                 # Fallback to original simple name resolution
                 callee_name = get_callee_name(node)
                 if callee_name:
+                    # AMB-METHOD guard: when 3+ classes define the same
+                    # method name, suppress the edge to avoid false positives.
+                    if method_resolver is not None:
+                        amb_check = method_resolver.lookup(callee_name)
+                        if not amb_check.found and amb_check.candidates:
+                            continue  # 3+ method candidates, suppress
                     # Check local symbols first
                     if callee_name in local_symbols:
                         callee = local_symbols[callee_name]
@@ -982,7 +989,6 @@ def _extract_edges_from_file(
                         )
                     # Check global symbols via resolver
                     else:
-                        # Use import path for disambiguation
                         import_hint = using_aliases.get(callee_name)
                         lookup_result = resolver.lookup(callee_name, path_hint=import_hint)
                         if lookup_result.found and lookup_result.symbol is not None:
@@ -1212,12 +1218,18 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
 
         # Build global symbol registry
         global_symbols: dict[str, Symbol] = {}
+        # AMB-METHOD: multi-value method registry for ambiguity guard
+        global_methods: dict[str, list[Symbol]] = {}
         for analysis in file_analyses.values():
             for symbol in analysis.symbols:
                 self.register_symbol(symbol, global_symbols)
+                if symbol.kind == "method":
+                    short = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
+                    global_methods.setdefault(short, []).append(symbol)
 
         # Pass 2: Extract edges
         resolver = NameResolver(global_symbols)
+        method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
         all_symbols: list[Symbol] = []
         all_edges: list[Edge] = []
 
@@ -1227,6 +1239,7 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
             edges = _extract_edges_from_file(
                 cs_file, parser, analysis.symbol_by_name, global_symbols, run, resolver,
                 using_aliases=analysis.import_aliases,
+                method_resolver=method_resolver,
             )
             all_edges.extend(edges)
 
