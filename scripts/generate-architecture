@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import math
 import os
 import platform
 import re
@@ -99,22 +100,11 @@ def run_command(args: list[str], description: str) -> subprocess.CompletedProces
     Raises:
         SystemExit: If command fails
     """
-    # Set PYTHONPATH to include package src/ directories for module imports
-    env = os.environ.copy()
-    package_paths = [
-        str(REPO_ROOT / "packages" / "hypergumbo-core" / "src"),
-        str(REPO_ROOT / "packages" / "hypergumbo-lang-mainstream" / "src"),
-        str(REPO_ROOT / "packages" / "hypergumbo-lang-common" / "src"),
-        str(REPO_ROOT / "packages" / "hypergumbo-lang-extended1" / "src"),
-    ]
-    env["PYTHONPATH"] = os.pathsep.join(package_paths) + os.pathsep + env.get("PYTHONPATH", "")
-
     result = subprocess.run(
         args,
         capture_output=True,
         text=True,
         cwd=REPO_ROOT,
-        env=env,
     )
 
     if result.returncode != 0:
@@ -354,29 +344,43 @@ def categorize_modules() -> dict[str, list[tuple[str, str | None]]]:
 
 
 def get_top_symbols(analysis: dict, limit: int = 20) -> list[dict]:
-    """Get the top symbols by in-degree centrality."""
-    # Count incoming edges per symbol
+    """Get the top symbols by bidirectional centrality.
+
+    Uses the same formula as ``hypergumbo symbols``:
+        score = in_degree * (1 + ln(1 + out_degree))
+    """
     in_degree: dict[str, int] = defaultdict(int)
+    out_degree: dict[str, int] = defaultdict(int)
     for edge in analysis.get("edges", []):
         dst = edge.get("dst", "")
+        src = edge.get("src", "")
         if dst:
             in_degree[dst] += 1
+        if src:
+            out_degree[src] += 1
 
-    # Get symbol details
     symbols_by_id = {s["id"]: s for s in analysis.get("nodes", [])}
+    all_ids = set(in_degree) | set(out_degree)
 
-    # Sort by in-degree with deterministic tie-breaking (by symbol ID)
-    sorted_symbols = sorted(in_degree.items(), key=lambda x: (-x[1], x[0]))[:limit]
+    scored: list[tuple[str, float, int]] = []
+    for sym_id in all_ids:
+        ind = in_degree.get(sym_id, 0)
+        outd = out_degree.get(sym_id, 0)
+        score = ind * (1 + math.log(1 + outd))
+        scored.append((sym_id, score, ind))
+
+    scored.sort(key=lambda x: (-x[1], x[0]))
 
     result = []
-    for sym_id, count in sorted_symbols:
+    for sym_id, score, ind in scored[:limit]:
         if sym_id in symbols_by_id:
             sym = symbols_by_id[sym_id]
             result.append({
                 "name": sym.get("name", ""),
                 "kind": sym.get("kind", ""),
                 "path": sym.get("path", ""),
-                "in_degree": count,
+                "score": score,
+                "in_degree": ind,
             })
 
     return result
@@ -396,17 +400,166 @@ def get_edge_type_distribution(analysis: dict) -> dict[str, int]:
     return dict(sorted(type_counts.items(), key=lambda x: (-x[1], x[0])))
 
 
-def count_linkers() -> int:
-    """Count the number of linker modules (excluding __init__ and registry)."""
-    linkers_dir = REPO_ROOT / "packages" / "hypergumbo-core" / "src" / "hypergumbo_core" / "linkers"
-    if not linkers_dir.exists():
-        return 0
-    count = 0
-    for py_file in linkers_dir.glob("*.py"):
-        # Exclude __init__.py and registry.py
-        if py_file.name not in {"__init__.py", "registry.py"}:
-            count += 1
-    return count
+def count_framework_patterns() -> tuple[int, int, int]:
+    """Count convention vs framework YAML pattern files.
+
+    Convention patterns have ``language: multi``; all others are framework patterns.
+
+    Returns (total, convention_count, framework_count).
+    """
+    frameworks_dir = (
+        REPO_ROOT / "packages" / "hypergumbo-core" / "src"
+        / "hypergumbo_core" / "frameworks"
+    )
+    convention = framework = 0
+    for yaml_file in sorted(frameworks_dir.glob("*.yaml")):
+        content = yaml_file.read_text(encoding="utf-8")
+        if re.search(r"^language:\s*multi", content, re.MULTILINE):
+            convention += 1
+        else:
+            framework += 1
+    return (convention + framework, convention, framework)
+
+
+def extract_ir_abstractions() -> str:
+    """Extract Key Abstractions markdown from ir.py class docstrings.
+
+    Parses Span, Symbol, Edge, and AnalysisRun classes using the ast module
+    and formats their numpydoc Attributes sections as markdown lists.
+    """
+    ir_path = (
+        REPO_ROOT / "packages" / "hypergumbo-core" / "src"
+        / "hypergumbo_core" / "ir.py"
+    )
+    try:
+        source = ir_path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+    except Exception:
+        return ""
+
+    target_classes = ["Span", "Symbol", "Edge", "AnalysisRun"]
+    sections: list[str] = []
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef) or node.name not in target_classes:
+            continue
+        docstring = ast.get_docstring(node)
+        if not docstring:
+            continue
+
+        # Extract first paragraph (up to first blank line or Attributes)
+        first_para_lines: list[str] = []
+        for line in docstring.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("Attributes"):
+                break
+            first_para_lines.append(stripped)
+        first_para = " ".join(first_para_lines)
+
+        # Extract Attributes section
+        attrs: list[str] = []
+        in_attrs = False
+        for line in docstring.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("Attributes"):
+                in_attrs = True
+                continue
+            if in_attrs:
+                if stripped.startswith("---"):
+                    continue
+                # A new numpydoc section header (word followed by line of dashes)
+                if stripped and not stripped.startswith(" ") and ":" not in stripped:
+                    break
+                if ": " in stripped:
+                    name, desc = stripped.split(": ", 1)
+                    attrs.append(f"- `{name.strip()}`: {desc}")
+                elif stripped and attrs:
+                    # Continuation line
+                    attrs[-1] += " " + stripped
+
+        section = f"### {node.name} (`ir.py`)\n{first_para}\n"
+        if attrs:
+            section += "\n".join(attrs) + "\n"
+        sections.append(section)
+
+    return "\n".join(sections)
+
+
+def extract_linker_howto() -> str:
+    """Extract the linker registration example from registry.py's Usage docstring.
+
+    Falls back to a generic pointer if extraction fails.
+    """
+    registry_path = (
+        REPO_ROOT / "packages" / "hypergumbo-core" / "src"
+        / "hypergumbo_core" / "linkers" / "registry.py"
+    )
+    try:
+        source = registry_path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        docstring = ast.get_docstring(tree)
+    except Exception:
+        docstring = None
+
+    if not docstring:
+        return (
+            "1. Create `packages/hypergumbo-core/src/hypergumbo_core/linkers/<name>.py`\n"
+            "2. See `linkers/registry.py` for the registration API\n"
+            "3. Add tests in `packages/hypergumbo-core/tests/test_<name>_linker.py`"
+        )
+
+    # Extract the first code block from the Usage section.
+    # We look for lines starting with typical Python code tokens
+    # (from, @, def, class, return, #) and stop when we see a non-code line
+    # after a blank separator.
+    _CODE_STARTS = ("from ", "@", "def ", "class ", "return ", "#", "repo_root")
+    doc_lines = docstring.splitlines()
+    in_usage = False
+    in_code = False
+    pending_blanks = 0
+    code_lines: list[str] = []
+    for i, line in enumerate(doc_lines):
+        stripped = line.strip()
+        if stripped.startswith("Usage"):
+            in_usage = True
+            continue
+        if in_usage and not in_code:
+            if stripped.startswith("from ") or stripped.startswith("@register_linker"):
+                in_code = True
+                code_lines.append(stripped)
+        elif in_code:
+            if not stripped:
+                pending_blanks += 1
+                continue
+            if pending_blanks and not any(stripped.startswith(t) for t in _CODE_STARTS):
+                # Non-code line after a blank — end of code block
+                break
+            # Flush pending blanks into code
+            for _ in range(pending_blanks):
+                code_lines.append("")
+            pending_blanks = 0
+            code_lines.append(stripped)
+
+    # Trim trailing blank lines
+    while code_lines and not code_lines[-1].strip():
+        code_lines.pop()
+
+    if not code_lines:
+        return (
+            "1. Create `packages/hypergumbo-core/src/hypergumbo_core/linkers/<name>.py`\n"
+            "2. See `linkers/registry.py` for the registration API\n"
+            "3. Add tests in `packages/hypergumbo-core/tests/test_<name>_linker.py`"
+        )
+
+    code_block = "\n".join(code_lines)
+    return (
+        "1. Create `packages/hypergumbo-core/src/hypergumbo_core/linkers/<name>.py`\n"
+        "2. Register using the decorator pattern:\n\n"
+        "```python\n"
+        f"{code_block}\n"
+        "```\n\n"
+        "3. Add tests in `packages/hypergumbo-core/tests/test_<name>_linker.py`"
+    )
 
 
 def generate_architecture_md() -> str:
@@ -427,8 +580,8 @@ def generate_architecture_md() -> str:
     # Count stats
     analyzer_count = len(categories.get("Analyzers", []))
     linker_count = len(categories.get("Linkers", []))
-    linker_file_count = count_linkers()  # For data flow diagram (excludes registry.py)
     total_modules = sum(len(v) for v in categories.values())
+    pattern_total, conv_count, fw_count = count_framework_patterns()
     node_count = len(analysis.get("nodes", []))
     edge_count = len(analysis.get("edges", []))
     edge_types = get_edge_type_distribution(analysis)
@@ -506,7 +659,7 @@ def generate_architecture_md() -> str:
         "│  └─────────────────────────────────────────────────────────┘    │",
         "│  ┌─────────────────────────────────────────────────────────┐    │",
         "│  │  Framework Patterns (loaded when framework detected):   │    │",
-        "│  │  - 82 framework YAML files (fastapi, django, etc.)      │    │",
+        f"│  │  - {fw_count} framework YAML files (fastapi, django, etc.)".ljust(60) + "│    │",
         "│  └─────────────────────────────────────────────────────────┘    │",
         "│  Output: Symbols enriched with meta.concepts                    │",
         "└─────────────────────────────────────────────────────────────────┘",
@@ -516,7 +669,7 @@ def generate_architecture_md() -> str:
         "│                          LINKERS                                │",
         "│  Cross-language edge creation                                   │",
         "│  Match via meta.concepts (route paths, gRPC services, etc.)     │",
-        f"│  {linker_file_count} linkers: HTTP, gRPC, GraphQL, WebSocket, IPC, JNI, etc.     │",
+        f"│  {linker_count} linkers: HTTP, gRPC, GraphQL, WebSocket, IPC, JNI, etc.".ljust(66) + "│",
         "└─────────────────────────────────────────────────────────────────┘",
         "                          │",
         "                          ▼",
@@ -535,14 +688,15 @@ def generate_architecture_md() -> str:
         lines.extend([
             "## Most-Connected Symbols",
             "",
-            "These symbols have the highest in-degree (most referenced by other symbols):",
+            "These symbols have the highest bidirectional centrality",
+            "(`score = in_degree * (1 + ln(1 + out_degree))`):",
             "",
-            "| Symbol | Kind | In-Degree | Location |",
-            "|--------|------|-----------|----------|",
+            "| Symbol | Kind | Score | Location |",
+            "|--------|------|-------|----------|",
         ])
         for sym in top_symbols[:15]:
             path = Path(sym["path"]).name if sym["path"] else ""
-            lines.append(f"| `{sym['name']}` | {sym['kind']} | {sym['in_degree']} | {path} |")
+            lines.append(f"| `{sym['name']}` | {sym['kind']} | {sym['score']:.1f} | {path} |")
         lines.append("")
 
     # Module reference
@@ -573,35 +727,17 @@ def generate_architecture_md() -> str:
 
         lines.append("")
 
+    # Key Abstractions (auto-generated from ir.py docstrings)
+    ir_abstractions = extract_ir_abstractions()
     lines.extend([
         "## Key Abstractions",
         "",
-        "> **Note:** This section is manually maintained. Update if IR classes change.",
-        "",
-        "### Symbol (`ir.py`)",
-        "Represents a code entity (function, class, method, etc.) with:",
-        "- `id`: Unique identifier within the analysis",
-        "- `name`: Human-readable name",
-        "- `kind`: Type of symbol (function, class, method, etc.)",
-        "- `path`: File path",
-        "- `span`: Location in source (start/end line/column)",
-        "- `stable_id`: Cross-run stable identifier",
-        "- `supply_chain`: Object with `tier` (1-4), `tier_name`, and `reason`",
-        "",
-        "### Edge (`ir.py`)",
-        "Represents a relationship between symbols:",
-        "- `src`, `dst`: Source and destination symbol IDs",
-        "- `type`: Relationship type (calls, imports, instantiates, etc.)",
-        "- `confidence`: 0.0-1.0 confidence score",
-        "- `meta.evidence_type`: How the edge was detected",
-        "",
-        "### AnalysisRun (`ir.py`)",
-        "Provenance tracking for reproducibility:",
-        "- `pass`: Which analyzer produced this data",
-        "- `execution_id`: Unique run identifier",
-        "- `duration_ms`: Analysis time",
-        "- `files_analyzed`: Count of processed files",
-        "",
+    ])
+    if ir_abstractions:
+        lines.append(ir_abstractions)
+    lines.append("")
+
+    lines.extend([
         "## Adding a New Analyzer",
         "",
         "1. Create analyzer in the appropriate lang package:",
@@ -613,57 +749,25 @@ def generate_architecture_md() -> str:
         "4. Add tests in the package's `tests/` directory",
         "5. Register in the package's `__init__.py` ANALYZER_SPECS",
         "",
+    ])
+
+    # Adding a New Linker (auto-generated from registry.py docstring)
+    linker_howto = extract_linker_howto()
+    lines.extend([
         "## Adding a New Linker",
         "",
-        "1. Create `packages/hypergumbo-core/src/hypergumbo_core/linkers/<name>.py`",
-        "2. Implement `link_<name>(root: Path) -> LinkResult`",
-        "3. Match patterns across existing symbols",
-        "4. Create cross-language edges",
-        "5. Add tests in `packages/hypergumbo-core/tests/test_<name>_linker.py`",
-        "",
-        "## Pattern System Architecture (ADR-0003)",
-        "",
-        "> **Note:** This section is manually maintained. See `docs/adr/0003-architectural-analysis-and-revision-plan.md` for the full design rationale.",
-        "",
-        "ADR-0003 introduced a layered architecture for framework-aware analysis:",
-        "",
-        "```",
-        "Source Files",
-        "     │",
-        "     ▼",
-        "┌─────────────────┐",
-        "│    Analyzers    │  Extract language-level metadata only",
-        "│   (py.py, etc.) │  - Decorators, annotations, base classes",
-        "└─────────────────┘  - No framework-specific interpretation",
-        "     │",
-        "     ▼",
-        "┌─────────────────────────┐",
-        "│  PATTERN SYSTEM         │  Data-driven symbol enrichment",
-        "│  (framework_patterns.py)│  - Definition: decorators, base classes",
-        "│                         │  - Usage: UsageContext (v1.1.x)",
-        "│                         │  - Output: meta.concepts",
-        "│                         │",
-        "│  Convention patterns:   │  Always loaded (language-agnostic):",
-        "│  - main-functions       │  main() entrypoints",
-        "│  - test-frameworks      │  test function detection",
-        "│  - language-conventions │  CUDA/WGSL/COBOL/LaTeX/Starlark",
-        "│  - config-conventions   │  NPM/Maven/Cargo dependencies",
-        "│                         │",
-        "│  Framework patterns:    │  Loaded when framework detected:",
-        "│  - fastapi, django, etc │  82 framework YAML files",
-        "└─────────────────────────┘",
-        "     │",
-        "     ▼",
-        "┌─────────────────┐",
-        "│    Linkers      │  Cross-language edge creation",
-        "│   (http.py, etc)│  - Match via meta.concepts",
-        "└─────────────────┘",
-        "```",
+    ])
+    lines.append(linker_howto)
+    lines.append("")
+
+    # Pattern System section (Key Components, meta.concepts, Adding a New Pattern)
+    lines.extend([
+        "## Pattern System",
         "",
         "### Key Components",
         "",
         "- **`framework_patterns.py`**: Loads and applies YAML pattern files",
-        "- **`frameworks/*.yaml`**: 87 pattern files (5 convention + 82 framework)",
+        f"- **`frameworks/*.yaml`**: {pattern_total} pattern files ({conv_count} convention + {fw_count} framework)",
         "- **`meta.concepts`**: List of matched concepts (single source of truth)",
         "- **`meta.decorators`/`meta.annotations`**: Raw metadata for pattern matching",
         "",
