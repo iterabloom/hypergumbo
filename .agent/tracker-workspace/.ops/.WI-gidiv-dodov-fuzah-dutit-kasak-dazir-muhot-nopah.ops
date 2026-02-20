@@ -1,0 +1,21 @@
+- op: create  # ebd8
+  at: '2026-02-20T06:22:52Z'  # ebd8
+  by: agent  # ebd8
+  actor: jgstern_agent  # ebd8
+  clock: 1  # ebd8
+  nonce: ebd8  # ebd8
+  data:  # ebd8
+    kind: work_item  # ebd8
+    title: "Add --require-section flag to sketch"  # ebd8
+    status: todo_soft  # ebd8
+    priority: 4  # ebd8
+    parent:  # ebd8
+    tags:  # ebd8
+    - sketch  # ebd8
+    before: []  # ebd8
+    duplicate_of: []  # ebd8
+    not_duplicate_of: []  # ebd8
+    pr_ref:  # ebd8
+    justification:  # ebd8
+    description: "Allow users to specify sections that must appear in sketch output regardless of budget pressure. Design analysis at ~/hypergumbo_lab_notebook/require_sections_design_02202026.md. Recommended approach: Option C (conditional threshold override)."  # ebd8
+    fields: {}  # ebd8
