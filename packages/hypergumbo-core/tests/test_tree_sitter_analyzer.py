@@ -32,6 +32,7 @@ import pytest
 
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
+    ArityFlags,
     FileAnalysis,
     TreeSitterAnalyzer,
     make_file_id,
@@ -820,3 +821,127 @@ class TestShapeIdAutoComputation:
 
         # StubAnalyzer doesn't populate node_for_symbol
         assert sym.shape_id is None
+
+
+# ---------------------------------------------------------------------------
+# ArityFlags and classify_parameter_flags tests (ADR-0014 §2)
+# ---------------------------------------------------------------------------
+
+
+class TestArityFlags:
+    """Tests for the ArityFlags dataclass."""
+
+    def test_frozen(self) -> None:
+        """ArityFlags should be immutable."""
+        flags = ArityFlags(param_count=2, has_defaults=True, has_varargs=False, has_kwargs=False)
+        with pytest.raises(AttributeError):
+            flags.param_count = 3  # type: ignore[misc]
+
+    def test_as_flags_str(self) -> None:
+        """as_flags_str should produce the canonical form used in hashing."""
+        flags = ArityFlags(param_count=3, has_defaults=True, has_varargs=False, has_kwargs=True)
+        assert flags.as_flags_str() == "True,False,True"
+
+    def test_as_flags_str_all_false(self) -> None:
+        flags = ArityFlags(param_count=0, has_defaults=False, has_varargs=False, has_kwargs=False)
+        assert flags.as_flags_str() == "False,False,False"
+
+    def test_equality(self) -> None:
+        a = ArityFlags(param_count=2, has_defaults=True, has_varargs=False, has_kwargs=False)
+        b = ArityFlags(param_count=2, has_defaults=True, has_varargs=False, has_kwargs=False)
+        assert a == b
+
+    def test_inequality(self) -> None:
+        a = ArityFlags(param_count=2, has_defaults=True, has_varargs=False, has_kwargs=False)
+        b = ArityFlags(param_count=3, has_defaults=True, has_varargs=False, has_kwargs=False)
+        assert a != b
+
+
+class TestClassifyParameterFlags:
+    """Tests for TreeSitterAnalyzer.classify_parameter_flags()."""
+
+    def setup_method(self) -> None:
+        self.analyzer = StubAnalyzer()
+
+    def test_empty_params(self) -> None:
+        """No parameters should yield count=0 and all flags False."""
+        params = MockNode(type="formal_parameters", children=[
+            MockNode(type="(", is_named=False),
+            MockNode(type=")", is_named=False),
+        ])
+        flags = self.analyzer.classify_parameter_flags(params)
+        assert flags == ArityFlags(param_count=0, has_defaults=False, has_varargs=False, has_kwargs=False)
+
+    def test_regular_params(self) -> None:
+        """Regular named params should be counted."""
+        params = MockNode(type="formal_parameters", children=[
+            MockNode(type="(", is_named=False),
+            MockNode(type="identifier"),
+            MockNode(type=",", is_named=False),
+            MockNode(type="identifier"),
+            MockNode(type=")", is_named=False),
+        ])
+        flags = self.analyzer.classify_parameter_flags(params)
+        assert flags.param_count == 2
+        assert not flags.has_defaults
+        assert not flags.has_varargs
+        assert not flags.has_kwargs
+
+    def test_varargs_detected(self) -> None:
+        """rest_pattern/spread_parameter/splat_parameter should set has_varargs."""
+        for vararg_type in ["rest_pattern", "spread_parameter", "splat_parameter",
+                            "variadic_parameter"]:
+            params = MockNode(type="parameters", children=[
+                MockNode(type="identifier"),
+                MockNode(type=vararg_type),
+            ])
+            flags = self.analyzer.classify_parameter_flags(params)
+            assert flags.has_varargs, f"{vararg_type} should set has_varargs"
+            assert flags.param_count == 2
+
+    def test_kwargs_detected(self) -> None:
+        """hash_splat_parameter/dictionary_splat_pattern should set has_kwargs."""
+        for kwargs_type in ["hash_splat_parameter", "dictionary_splat_pattern"]:
+            params = MockNode(type="parameters", children=[
+                MockNode(type="identifier"),
+                MockNode(type=kwargs_type),
+            ])
+            flags = self.analyzer.classify_parameter_flags(params)
+            assert flags.has_kwargs, f"{kwargs_type} should set has_kwargs"
+            assert flags.param_count == 2
+
+    def test_default_param_detected(self) -> None:
+        """assignment_pattern/optional_parameter/default_parameter should set has_defaults."""
+        for default_type in ["assignment_pattern", "optional_parameter", "default_parameter"]:
+            params = MockNode(type="parameters", children=[
+                MockNode(type="identifier"),
+                MockNode(type=default_type),
+            ])
+            flags = self.analyzer.classify_parameter_flags(params)
+            assert flags.has_defaults, f"{default_type} should set has_defaults"
+            assert flags.param_count == 2
+
+    def test_nested_default_value_detected(self) -> None:
+        """A typed_parameter with a default_value child should set has_defaults."""
+        typed_param = MockNode(type="typed_parameter", children=[
+            MockNode(type="identifier"),
+            MockNode(type=":", is_named=False),
+            MockNode(type="type_identifier"),
+            MockNode(type="=", is_named=False),
+            MockNode(type="default_value"),
+        ])
+        params = MockNode(type="parameters", children=[typed_param])
+        flags = self.analyzer.classify_parameter_flags(params)
+        assert flags.has_defaults
+        assert flags.param_count == 1
+
+    def test_mixed_params(self) -> None:
+        """A mix of regular, default, varargs, and kwargs params."""
+        params = MockNode(type="parameters", children=[
+            MockNode(type="identifier"),          # regular
+            MockNode(type="optional_parameter"),   # default
+            MockNode(type="splat_parameter"),      # varargs
+            MockNode(type="hash_splat_parameter"), # kwargs
+        ])
+        flags = self.analyzer.classify_parameter_flags(params)
+        assert flags == ArityFlags(param_count=4, has_defaults=True, has_varargs=True, has_kwargs=True)

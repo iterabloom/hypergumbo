@@ -86,6 +86,32 @@ class FileAnalysis:
     node_for_symbol: dict[str, "tree_sitter.Node"] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class ArityFlags:
+    """Parameter arity classification for stable_id computation (ADR-0014 §2).
+
+    Captures the structural shape of a function's parameter list without
+    recording names or types.  Two functions with the same ArityFlags and
+    kind will produce the same untyped-tier stable_id (by design — they
+    have the same *interface shape*).
+
+    Attributes:
+        param_count: Number of regular parameters (excludes self/cls/receiver).
+        has_defaults: Whether any parameter has a default value.
+        has_varargs: Whether variadic positional args exist (``*args``, ``...``).
+        has_kwargs: Whether variadic keyword args exist (``**kwargs``).
+    """
+
+    param_count: int
+    has_defaults: bool
+    has_varargs: bool
+    has_kwargs: bool
+
+    def as_flags_str(self) -> str:
+        """Return the canonical string form used in stable_id hashing."""
+        return f"{self.has_defaults},{self.has_varargs},{self.has_kwargs}"
+
+
 # ---------------------------------------------------------------------------
 # Tree-sitter helper functions
 # ---------------------------------------------------------------------------
@@ -714,6 +740,89 @@ class TreeSitterAnalyzer:
                     stack.append((child, 0))
 
         return " ".join(parts)
+
+    # -- Parameter classification (ADR-0014 §2) ----------------------------
+
+    # Node types that indicate variadic positional params, by grammar.
+    # Languages may add to this set via _VARARGS_NODE_TYPES class attribute.
+    _VARARGS_NODE_TYPES: ClassVar[frozenset[str]] = frozenset({
+        "rest_pattern",          # JS/TS
+        "rest_element",          # JS/TS (alternative)
+        "spread_parameter",      # Java
+        "splat_parameter",       # Ruby
+        "variadic_parameter",    # C/C++, PHP
+    })
+
+    # Node types that indicate variadic keyword params.
+    _KWARGS_NODE_TYPES: ClassVar[frozenset[str]] = frozenset({
+        "hash_splat_parameter",  # Ruby
+        "dictionary_splat_pattern",  # Python (tree-sitter)
+    })
+
+    # Node types that indicate default parameter values.
+    _DEFAULT_NODE_TYPES: ClassVar[frozenset[str]] = frozenset({
+        "assignment_pattern",    # JS/TS
+        "optional_parameter",    # Ruby, TypeScript
+        "default_parameter",     # Python (tree-sitter)
+    })
+
+    def classify_parameter_flags(
+        self, params_node: "tree_sitter.Node",
+    ) -> ArityFlags:
+        """Classify a function's parameter list into ArityFlags.
+
+        Examines the children of a tree-sitter parameter-list node to
+        determine parameter count, defaults, varargs, and kwargs.
+
+        The default implementation uses heuristic node-type matching that
+        covers most C-family and scripting languages.  Override for
+        languages with unusual parameter models.
+
+        Args:
+            params_node: A tree-sitter node representing the parameter list
+                (e.g., ``formal_parameters``, ``parameters``, ``parameter_list``).
+
+        Returns:
+            ArityFlags with the classified values.
+        """
+        param_count = 0
+        has_defaults = False
+        has_varargs = False
+        has_kwargs = False
+
+        for child in params_node.children:
+            if not child.is_named:
+                continue  # skip punctuation
+
+            node_type = child.type
+
+            # Check for varargs/kwargs/defaults
+            if node_type in self._VARARGS_NODE_TYPES:
+                has_varargs = True
+                param_count += 1
+            elif node_type in self._KWARGS_NODE_TYPES:
+                has_kwargs = True
+                param_count += 1
+            elif node_type in self._DEFAULT_NODE_TYPES:
+                has_defaults = True
+                param_count += 1
+            else:
+                # Regular parameter (identifier, typed_parameter, etc.)
+                param_count += 1
+                # Check if any child has a default value (= expr)
+                for sub in child.children:
+                    if not sub.is_named:
+                        continue
+                    if sub.type in self._DEFAULT_NODE_TYPES or sub.type == "default_value":
+                        has_defaults = True
+                        break
+
+        return ArityFlags(
+            param_count=param_count,
+            has_defaults=has_defaults,
+            has_varargs=has_varargs,
+            has_kwargs=has_kwargs,
+        )
 
     # -- Main analysis method (the two-pass loop) --------------------------
 
