@@ -664,7 +664,7 @@ def _extract_edges(
     if symbol_resolver is None:  # pragma: no cover - defensive
         symbol_resolver = NameResolver(global_symbols)
     if method_resolver is None:  # pragma: no cover - defensive
-        method_resolver = ListNameResolver(global_methods)
+        method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
     if class_resolver is None:  # pragma: no cover - defensive
         class_resolver = NameResolver(global_classes)
     if use_aliases is None:  # pragma: no cover - defensive default
@@ -931,7 +931,7 @@ class PHPAnalyzer(TreeSitterAnalyzer):
 
         # Pass 2: Extract edges using global symbol registry
         symbol_resolver = NameResolver(global_symbols)
-        method_resolver = ListNameResolver(global_methods)
+        method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
         class_resolver = NameResolver(global_classes)
         all_edges: list[Edge] = []
         for pf in parsed_files:

@@ -5500,3 +5500,95 @@ class MyComponent extends React.Component {
             f"FormValidator implements edge should point to core/validator.ts::Validator, "
             f"but points to: {edge.dst}"
         )
+
+
+class TestJsTsAmbiguousMethodGuard:
+    """Tests for AMB-METHOD invariant in JavaScript/TypeScript.
+
+    When a method name has 3+ definitions across different classes and
+    the receiver type cannot be inferred, the analyzer must NOT produce
+    a resolved call edge (which would be a false positive).
+
+    Invariant: Method calls with 3+ ambiguous receiver types must not
+    produce resolved call edges.
+    """
+
+    def test_ambiguous_method_three_plus_classes_no_resolved_edge(
+        self, tmp_path: Path,
+    ) -> None:
+        """obj.close() with 3 classes defining close() → no resolved edge.
+
+        When Server, Client, and Worker all define close(), and obj's type
+        cannot be inferred, the call should NOT produce a resolved edge
+        pointing to any specific class's close() method.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "multi.ts"
+        ts_file.write_text("""
+class Server {
+    close() { return true; }
+}
+
+class Client {
+    close() { return true; }
+}
+
+class Worker {
+    close() { return true; }
+}
+
+function cleanup(obj: any) {
+    obj.close();
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        cleanup_calls = [e for e in call_edges if "cleanup" in e.src]
+
+        # Should NOT have a resolved edge to any specific class's close()
+        for edge in cleanup_calls:
+            if "close" in edge.dst.lower():
+                assert "Server.close" not in edge.dst, (
+                    f"Should not resolve to Server.close, got {edge.dst}"
+                )
+                assert "Client.close" not in edge.dst, (
+                    f"Should not resolve to Client.close, got {edge.dst}"
+                )
+                assert "Worker.close" not in edge.dst, (
+                    f"Should not resolve to Worker.close, got {edge.dst}"
+                )
+
+    def test_two_classes_same_method_still_resolves(
+        self, tmp_path: Path,
+    ) -> None:
+        """obj.run() with 2 classes → still resolves (below threshold)."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        ts_file = tmp_path / "two.ts"
+        ts_file.write_text("""
+class Server {
+    run() { return true; }
+}
+
+class Client {
+    run() { return true; }
+}
+
+function execute(obj: any) {
+    obj.run();
+}
+""")
+
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        execute_calls = [e for e in call_edges if "execute" in e.src]
+
+        # 2 candidates is below the threshold — should still resolve
+        run_calls = [e for e in execute_calls if "run" in e.dst.lower()]
+        assert len(run_calls) >= 1, (
+            "2 candidates should still resolve"
+        )

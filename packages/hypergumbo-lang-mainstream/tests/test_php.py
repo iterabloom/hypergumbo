@@ -1240,3 +1240,95 @@ class User extends BaseModel {
         assert len(extends_edges) == 1
         assert "User" in extends_edges[0].src
         assert "BaseModel" in extends_edges[0].dst
+
+
+class TestPhpAmbiguousMethodGuard:
+    """Tests for AMB-METHOD invariant in PHP.
+
+    When a method name has 3+ definitions across different classes and
+    the receiver type cannot be inferred, the analyzer must NOT produce
+    a resolved call edge (which would be a false positive).
+
+    Invariant: Method calls with 3+ ambiguous receiver types must not
+    produce resolved call edges.
+    """
+
+    def test_ambiguous_method_three_plus_classes_no_resolved_edge(
+        self, tmp_path: Path,
+    ) -> None:
+        """$obj->close() with 3 classes defining close() → no resolved edge.
+
+        When Server, Client, and Worker all define close(), and $obj's type
+        cannot be inferred, the call should NOT produce a resolved edge
+        pointing to any specific class's close() method.
+        """
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        php_file = tmp_path / "multi.php"
+        php_file.write_text("""<?php
+class Server {
+    public function close() { return true; }
+}
+
+class Client {
+    public function close() { return true; }
+}
+
+class Worker {
+    public function close() { return true; }
+}
+
+function cleanup($obj) {
+    $obj->close();
+}
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        cleanup_calls = [e for e in call_edges if "cleanup" in e.src]
+
+        # Should NOT have a resolved edge to any specific class's close()
+        for edge in cleanup_calls:
+            if "close" in edge.dst.lower():
+                assert edge.dst == "close", (
+                    "Ambiguous method call should not resolve to a specific class, "
+                    f"got {edge.dst}"
+                )
+                # If an edge exists, it should NOT be high confidence
+                assert edge.confidence < 0.50, (
+                    f"Ambiguous method with 3+ candidates should have low confidence, "
+                    f"got {edge.confidence}"
+                )
+
+    def test_two_classes_same_method_still_resolves(
+        self, tmp_path: Path,
+    ) -> None:
+        """$obj->run() with 2 classes → still resolves (below threshold)."""
+        from hypergumbo_lang_mainstream.php import analyze_php
+
+        php_file = tmp_path / "two.php"
+        php_file.write_text("""<?php
+class Server {
+    public function run() { return true; }
+}
+
+class Client {
+    public function run() { return true; }
+}
+
+function execute($obj) {
+    $obj->run();
+}
+?>""")
+
+        result = analyze_php(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        execute_calls = [e for e in call_edges if "execute" in e.src]
+
+        # 2 candidates is below the threshold — should still resolve
+        run_calls = [e for e in execute_calls if "run" in e.dst.lower()]
+        assert len(run_calls) >= 1, (
+            "2 candidates should still resolve"
+        )

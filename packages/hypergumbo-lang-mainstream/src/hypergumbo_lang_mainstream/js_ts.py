@@ -2413,7 +2413,7 @@ def _extract_edges(
     if resolver is None:  # pragma: no cover - defensive
         resolver = NameResolver(global_symbols)
     if method_resolver is None:  # pragma: no cover - defensive
-        method_resolver = ListNameResolver(global_methods)
+        method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
     if class_resolver is None:  # pragma: no cover - defensive
         class_resolver = NameResolver(global_classes)
     edges: list[Edge] = []
@@ -3090,7 +3090,7 @@ def _analyze_javascript_impl(
 
     # Pass 2: Extract edges using global symbol registry
     resolver = NameResolver(global_symbols)
-    method_resolver = ListNameResolver(global_methods)
+    method_resolver = ListNameResolver(global_methods, ambiguity_threshold=3)
     class_resolver = NameResolver(global_classes)
     all_edges: list[Edge] = []
     for pf in parsed_files:
