@@ -126,7 +126,7 @@ def run_hypergumbo_sketch() -> str:
     """
     result = run_command(
         [sys.executable, "-m", "hypergumbo_core", "sketch", str(REPO_ROOT),
-         "-t", "8000"],
+         "-t", "8000", "--no-source"],
         "hypergumbo sketch",
     )
     output = result.stdout
@@ -199,8 +199,15 @@ def filter_ai_folders_from_structure(sketch: str) -> str:
 def _remove_sketch_sections(sketch: str, sections: list[str]) -> str:
     """Remove entire sections (header through next same-level header) from sketch.
 
-    Used to strip bulky content sections (e.g. Source Files Content) that are
+    Used to strip bulky content sections (e.g. Entry Points) that are
     useful in a standalone sketch but noise in architecture documentation.
+
+    Limitation: this function is NOT code-fence-aware.  A ``## Heading``
+    inside a fenced code block (e.g. README content rendered by the sketch)
+    will be treated as a real section boundary, causing premature end of
+    skipping and content leakage.  Avoid using this to strip sections that
+    embed file content (use ``--no-source`` to prevent their generation
+    instead).
     """
     lines = sketch.split("\n")
     result: list[str] = []
@@ -611,8 +618,6 @@ def generate_architecture_md() -> str:
     sketch = filter_ai_folders_from_structure(sketch)
     sketch = _remove_sketch_sections(sketch, [
         "Entry Points",
-        "Source Files Content",
-        "Additional Files Content",
     ])
     sketch = remove_section_code_fences(sketch, ["Structure", "Configuration"])
 

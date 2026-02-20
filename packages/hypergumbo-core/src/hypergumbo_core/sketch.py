@@ -3848,7 +3848,35 @@ def _format_all_files(
     return "\n".join(lines)
 
 
-def _format_additional_files(
+def _select_additional_files_preselected(
+    preselected_files: list[Path],
+    symbols: list[Symbol],
+    in_degree: dict[str, int],
+) -> tuple[list[Path], list[Path], dict[Path, set[str]], dict[str, int]]:
+    """Fast path for additional file selection when files are already chosen.
+
+    Computes centrality stats on the pre-selected files but skips all file
+    discovery, embedding, and ranking work.
+
+    Returns:
+        (selected_files, candidate_files, symbols_per_file, name_to_in_degree)
+    """
+    centrality_result = compute_symbol_mention_centrality_batch(
+        files=preselected_files,
+        symbols=symbols,
+        in_degree=in_degree,
+        min_in_degree=2,
+        max_file_size=100 * 1024,
+    )
+    return (
+        preselected_files,
+        preselected_files,  # candidate_files == selected (no overflow)
+        centrality_result.symbols_per_file,
+        centrality_result.name_to_in_degree,
+    )
+
+
+def _select_additional_files(
     repo_root: Path,
     source_files: list[Path],
     symbols: list[Symbol],
@@ -3858,47 +3886,17 @@ def _format_additional_files(
     progress_callback: "callable | None" = None,
     centrality_progress_callback: "callable | None" = None,
     cached_centrality_scores: dict[str, float] | None = None,
-    exclude_tests: bool = False,
-    token_budget: int | None = None,
-    include_content: bool = False,
-) -> tuple[str, list[Path], int]:
-    """Format additional files (non-source) as a Markdown section.
+) -> tuple[list[Path], list[Path], dict[Path, set[str]], dict[str, int]]:
+    """Select additional files using README-first hybrid ordering.
 
-    Uses a README-first hybrid ordering approach:
-    1. README is always first (truncated if it exceeds budget)
-    2. Files linked from README in document order
-    3. Round-robin from similarity-ranked and centrality-ranked files
-
-    When include_content=True, uses dynamic truncation based on median token
-    count of already-selected files.
-
-    Args:
-        repo_root: Repository root path.
-        source_files: List of source files (to be excluded from output).
-        symbols: List of symbols from analysis.
-        in_degree: Raw in-degree counts for symbols.
-        max_files: Maximum files to show.
-        semantic_top_n: Number of files to pick by semantic similarity.
-        progress_callback: Optional callback for embedding progress updates.
-            Called with (current, total) for each embedding computed.
-        centrality_progress_callback: Optional callback for centrality progress.
-            Called with (current, total) for each file scored.
-        cached_centrality_scores: Optional pre-computed centrality scores from
-            run_behavior_map(). Maps relative path strings to scores. When
-            provided, uses these for RANKING (efficiency). Centrality is always
-            recomputed to get per-file symbol data for accurate representativeness.
-        exclude_tests: Whether tests are excluded (for section header).
-        token_budget: Optional token budget for content. Required if include_content=True.
-        include_content: If True, include file contents with dynamic truncation.
+    Discovers candidate files (non-source, non-excluded), ranks them via
+    semantic similarity and symbol-mention centrality, then selects via
+    round-robin from README links, similarity, and centrality rankings.
 
     Returns:
-        Tuple of (Markdown formatted section, list of selected file paths,
-        de-duplicated in-degree sum). The in-degree sum represents how much
-        symbol connectivity is covered by the selected documentation files,
-        counting each unique symbol only once across all selected files.
+        (selected_files, candidate_files, symbols_per_file, name_to_in_degree)
     """
     from fnmatch import fnmatch
-    from statistics import median
 
     from .sketch_embeddings import (
         batch_embed_files,
@@ -3930,6 +3928,9 @@ def _format_additional_files(
 
         return False
 
+    # Create set of source file paths for exclusion
+    source_set = {str(f.relative_to(repo_root)) for f in source_files}
+
     def _is_additional_candidate(filepath: Path) -> bool:
         """Check if file is a valid additional file candidate."""
         if _is_excluded(filepath):
@@ -3944,10 +3945,7 @@ def _format_additional_files(
             all_files.append(f)
 
     if not all_files:
-        return "", [], 0.0
-
-    # Create set of source file paths for exclusion
-    source_set = {str(f.relative_to(repo_root)) for f in source_files}
+        return [], [], {}, {}
 
     # Exclude source files from candidates
     candidate_files = [
@@ -3955,7 +3953,7 @@ def _format_additional_files(
     ]
 
     if not candidate_files:
-        return "", [], 0.0  # pragma: no cover - defensive
+        return [], [], {}, {}  # pragma: no cover - defensive
 
     # ========== README-First Hybrid Ordering ==========
 
@@ -4081,11 +4079,88 @@ def _format_additional_files(
             else:
                 sources_exhausted[2] = True
 
-    # ========== Format Output ==========
+    return selected_files, candidate_files, symbols_per_file, name_to_in_degree
+
+
+def _format_additional_files(
+    repo_root: Path,
+    source_files: list[Path],
+    symbols: list[Symbol],
+    in_degree: dict[str, int],
+    max_files: int = 200,
+    semantic_top_n: int = 10,
+    progress_callback: "callable | None" = None,
+    centrality_progress_callback: "callable | None" = None,
+    cached_centrality_scores: dict[str, float] | None = None,
+    exclude_tests: bool = False,
+    token_budget: int | None = None,
+    include_content: bool = False,
+    section_title: str = "Additional Files",
+    preselected_files: list[Path] | None = None,
+) -> tuple[str, list[Path], int]:
+    """Format additional files (non-source) as a Markdown section.
+
+    Delegates to ``_select_additional_files`` for file discovery and ranking
+    (README-first hybrid ordering with semantic similarity and centrality),
+    or accepts ``preselected_files`` to skip selection entirely.
+
+    Two output modes controlled by ``include_content``:
+    - False (default): file listing only (``## Additional Files``)
+    - True: file contents with dynamic truncation (``## Additional Files Content``)
+
+    Args:
+        repo_root: Repository root path.
+        source_files: List of source files (excluded from candidates).
+        symbols: List of symbols from analysis.
+        in_degree: Raw in-degree counts for symbols.
+        max_files: Maximum files to show (ignored when preselected_files set).
+        semantic_top_n: Files to pick by semantic similarity (ignored when
+            preselected_files set).
+        progress_callback: Embedding progress callback (ignored when
+            preselected_files set).
+        centrality_progress_callback: Centrality progress callback (ignored
+            when preselected_files set).
+        cached_centrality_scores: Pre-computed centrality scores (ignored when
+            preselected_files set).
+        exclude_tests: Whether tests are excluded (for section header marker).
+        token_budget: Token budget for content mode. Required when
+            include_content=True.
+        include_content: If True, include file contents with dynamic truncation.
+        section_title: Header text for the section.
+        preselected_files: Pre-selected file list — skips all discovery,
+            embedding, and ranking. Use when a prior call already determined
+            the file order.
+
+    Returns:
+        Tuple of (Markdown section, selected file paths, de-duplicated
+        in-degree sum).
+    """
+    from statistics import median
+
+    if preselected_files is not None:
+        selected_files, candidate_files, symbols_per_file, name_to_in_degree = (
+            _select_additional_files_preselected(
+                preselected_files, symbols, in_degree,
+            )
+        )
+    else:
+        selected_files, candidate_files, symbols_per_file, name_to_in_degree = (
+            _select_additional_files(
+                repo_root, source_files, symbols, in_degree,
+                max_files=max_files,
+                semantic_top_n=semantic_top_n,
+                progress_callback=progress_callback,
+                centrality_progress_callback=centrality_progress_callback,
+                cached_centrality_scores=cached_centrality_scores,
+            )
+        )
+
+    if not selected_files:
+        return "", [], 0
 
     # Calculate accurate de-duplicated in-degree for representativeness:
-    # 1. Collect unique symbols mentioned across ALL selected files
-    # 2. Sum in-degrees for those unique symbols (no double-counting)
+    # Collect unique symbols mentioned across ALL selected files,
+    # sum in-degrees for those unique symbols (no double-counting).
     unique_symbols_in_selected: set[str] = set()
     for f in selected_files:
         unique_symbols_in_selected.update(symbols_per_file.get(f, set()))
@@ -4094,8 +4169,8 @@ def _format_additional_files(
     )
 
     if not include_content or token_budget is None:
-        # Simple list format (backward compatible)
-        lines = [_section_header("Additional Files", exclude_tests), ""]
+        # Simple list format
+        lines = [_section_header(section_title, exclude_tests), ""]
         for f in selected_files:
             rel_path = f.relative_to(repo_root)
             lines.append(f"- `{rel_path}`")
@@ -4108,7 +4183,7 @@ def _format_additional_files(
 
     # ========== Content Mode with Dynamic Truncation ==========
 
-    lines = [_section_header("Additional Files", exclude_tests), ""]
+    lines = [_section_header(section_title, exclude_tests), ""]
     included_files: list[Path] = []
     token_counts: list[int] = []
     tokens_used = estimate_tokens("\n".join(lines))
@@ -6092,29 +6167,22 @@ def generate_sketch(
                     "centrality_scores"
                 )
 
-            # Use the new README-first hybrid approach with content
+            # Render content for the already-selected additional files
             additional_content_section, additional_content_files_added, additional_content_centrality = (
                 _format_additional_files(
                     repo_root,
                     source_files=source_files,
                     symbols=symbols,
                     in_degree=raw_in_degree,
-                    max_files=max_additional_files,
-                    semantic_top_n=10,
-                    cached_centrality_scores=cached_centrality,
                     exclude_tests=exclude_tests,
                     token_budget=remaining_tokens - 50,  # Reserve 50 tokens
                     include_content=True,
+                    section_title="Additional Files Content",
+                    preselected_files=additional_files_selected,
                 )
             )
 
             if additional_content_section:
-                # Replace the header to be "Additional Files Content"
-                header_to_replace = _section_header("Additional Files", exclude_tests)
-                new_header = _section_header("Additional Files Content", exclude_tests)
-                additional_content_section = additional_content_section.replace(
-                    header_to_replace, new_header, 1
-                )
                 sections.append(additional_content_section)
 
                 # Track stats using mention centrality
