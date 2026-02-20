@@ -436,8 +436,9 @@ import sys, json
 try:
     data = json.load(sys.stdin)
     runs = data.get('workflow_runs', data if isinstance(data, list) else [])
-    # Prefer ci.yml runs over full-suite.yml (ci.yml has the pytest job)
-    ci_runs = [r for r in runs if 'ci' in str(r.get('workflow_id', '')).lower()]
+    # Prefer ci.yml (exact match) over tracker-ci.yml / full-suite.yml.
+    # ci.yml has the pytest job; tracker-ci.yml has only tracker validation.
+    ci_runs = [r for r in runs if str(r.get('workflow_id', '')) == 'ci.yml']
     pick = ci_runs[0] if ci_runs else (runs[0] if runs else None)
     if pick:
         print(f'{pick[\"id\"]} {pick.get(\"index_in_repo\", \"\")}')
