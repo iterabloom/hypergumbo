@@ -20,3 +20,12 @@
     justification:  # 91d4
     description: "27 analyzers emit stable_id as location-based strings ({lang}:{path}:{name}:{kind}) that survive line shifts but not renames. Replace with signature-based hashes from the base-class compute_stable_id(). Affected analyzers: PureScript, V, Tcl, Haxe, Gleam, Odin, Fennel, Scheme, Racket, Meson, MATLAB, Apex, Janet, Jsonnet, Prisma, Luau, Pascal, Fish, Ada, D, Nim, ASM, HLSL, Starlark, Hack, Smithy, plus others. Depends on base-class compute_stable_id() being proven. See ADR-0014 Phase 2."  # 91d4
     fields: {}  # 91d4
+- op: update  # 3676
+  at: '2026-02-20T08:34:41Z'  # 3676
+  by: agent  # 3676
+  actor: jgstern_agent  # 3676
+  clock: 2  # 3676
+  nonce: '3676'  # 3676
+  set: {}  # 3676
+  add:  # 3676
+    before: [WI-sapak-nahob-zibod-pobav-vazop-baval-roruj-vufuv]  # 3676

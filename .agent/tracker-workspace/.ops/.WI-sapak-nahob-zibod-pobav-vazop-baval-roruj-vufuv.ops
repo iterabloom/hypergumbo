@@ -20,3 +20,12 @@
     justification:  # 1f9c
     description: "Add compute_stable_id() to TreeSitterAnalyzer that computes sha256({kind}:{param_count}:{arity_flags}:{decorator_names_sorted}:{containing_stable_id}). Uses classify_parameter_flags() hook for arity. Extracts decorator/annotation names where applicable. Computes containing_stable_id recursively (top-level functions use empty string). Analyzers can override entirely for special cases. See ADR-0014 §2, §5."  # 1f9c
     fields: {}  # 1f9c
+- op: update  # d3c9
+  at: '2026-02-20T08:34:39Z'  # d3c9
+  by: agent  # d3c9
+  actor: jgstern_agent  # d3c9
+  clock: 2  # d3c9
+  nonce: d3c9  # d3c9
+  set: {}  # d3c9
+  add:  # d3c9
+    before: [WI-fovav-huhig-taham-kalip-misab-habus-zusuv-gapiv]  # d3c9

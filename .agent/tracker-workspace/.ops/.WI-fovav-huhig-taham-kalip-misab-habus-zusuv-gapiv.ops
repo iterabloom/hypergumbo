@@ -20,3 +20,12 @@
     justification:  # 640e
     description: "Add ArityFlags dataclass (param_count, has_defaults, has_varargs, has_kwargs) and classify_parameter_flags(params_node) hook to TreeSitterAnalyzer. Default implementation counts children and checks common node types. Per-language overrides for: Java (spread_parameter), JS/TS (rest_pattern, assignment_pattern), Ruby (splat_parameter, hash_splat_parameter, optional_parameter), Go (no defaults/varargs — flags False). ~30 lines per language. See ADR-0014 §2."  # 640e
     fields: {}  # 640e
+- op: update  # 8a72
+  at: '2026-02-20T08:34:38Z'  # 8a72
+  by: agent  # 8a72
+  actor: jgstern_agent  # 8a72
+  clock: 2  # 8a72
+  nonce: 8a72  # 8a72
+  set: {}  # 8a72
+  add:  # 8a72
+    before: [WI-jagus-tikab-givij-vorig-titag-lolil-mimap-kodur]  # 8a72
