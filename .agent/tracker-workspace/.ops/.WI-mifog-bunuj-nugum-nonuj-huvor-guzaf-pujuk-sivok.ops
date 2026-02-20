@@ -20,3 +20,12 @@
     justification:  # 10bf
     description: "Add compute_shape_id(node) to TreeSitterAnalyzer base class. Walks any tree-sitter CST, strips identifier/literal/comment/error nodes, hashes structural skeleton. Build on iter_tree() (base.py:200-222) for non-recursive traversal. Filter strategy: skip anonymous nodes (punctuation), comment nodes, ERROR/MISSING nodes; replace identifier and literal leaves with type names only. Python retains ast-based _compute_shape_id() override for hash stability. All other tree-sitter analyzers get shape_id automatically via base class. See ADR-0014 §1."  # 10bf
     fields: {}  # 10bf
+- op: update  # 7ea3
+  at: '2026-02-20T10:27:06Z'  # 7ea3
+  by: agent  # 7ea3
+  actor: jgstern_agent  # 7ea3
+  clock: 2  # 7ea3
+  nonce: 7ea3  # 7ea3
+  set:  # 7ea3
+    status: done  # 7ea3
+    pr_ref: 'PR #1252'  # 7ea3
