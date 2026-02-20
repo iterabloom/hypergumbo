@@ -66,6 +66,7 @@ from hypergumbo_core.analyze.base import (
     find_child_by_field,
     iter_tree,
     make_route_stable_id,
+    make_typed_stable_id,
     node_text as _node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -2033,6 +2034,13 @@ def _extract_symbols(
                     end_col=node.end_point[1],
                 )
                 signature = _extract_jsts_signature(node, source)
+
+                # Typed stable_id (ADR-0014 §3)
+                norm_sig = normalize_jsts_signature(signature)
+                stable_id = make_typed_stable_id(
+                    "function", norm_sig,
+                ) if norm_sig else None
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function", lang),
                     name=name,
@@ -2042,6 +2050,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=stable_id,
                     signature=signature,
                 )
                 symbols.append(symbol)
@@ -2076,6 +2085,13 @@ def _extract_symbols(
                             end_col=value_node.end_point[1],
                         )
                         signature = _extract_jsts_signature(value_node, source)
+
+                        # Typed stable_id (ADR-0014 §3)
+                        norm_sig = normalize_jsts_signature(signature)
+                        stable_id = make_typed_stable_id(
+                            "function", norm_sig,
+                        ) if norm_sig else None
+
                         symbol = Symbol(
                             id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function", lang),
                             name=name,
@@ -2085,6 +2101,7 @@ def _extract_symbols(
                             span=span,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
+                            stable_id=stable_id,
                             signature=signature,
                         )
                         symbols.append(symbol)
@@ -2235,6 +2252,12 @@ def _extract_symbols(
 
                 signature = _extract_jsts_signature(node, source)
 
+                # Typed stable_id for non-route methods (ADR-0014 §3)
+                if stable_id is None:
+                    norm_sig = normalize_jsts_signature(signature)
+                    if norm_sig:
+                        stable_id = make_typed_stable_id(kind, norm_sig)
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, kind, lang),
                     name=full_name,
@@ -2263,6 +2286,13 @@ def _extract_symbols(
                             end_col=child.end_point[1],
                         )
                         signature = _extract_jsts_signature(child, source)
+
+                        # Typed stable_id (ADR-0014 §3)
+                        norm_sig = normalize_jsts_signature(signature)
+                        stable_id = make_typed_stable_id(
+                            "function", norm_sig,
+                        ) if norm_sig else None
+
                         symbol = Symbol(
                             id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "function", lang),
                             name=name,
@@ -2272,6 +2302,7 @@ def _extract_symbols(
                             span=span,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
+                            stable_id=stable_id,
                             signature=signature,
                         )
                         symbols.append(symbol)

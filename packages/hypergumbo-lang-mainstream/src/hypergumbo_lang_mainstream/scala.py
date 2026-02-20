@@ -45,7 +45,9 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_file_id,
     make_symbol_id,
+    make_typed_stable_id,
     node_text,
+    visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -287,6 +289,13 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 signature = _extract_scala_signature(node, source)
+                modifiers = _extract_modifiers_scala(node)
+
+                # Typed stable_id (ADR-0014 §3)
+                norm_sig = normalize_scala_signature(signature)
+                stable_id = make_typed_stable_id(
+                    kind, norm_sig, visibility_from_modifiers(modifiers),
+                ) if norm_sig else None
 
                 symbol = Symbol(
                     id=make_symbol_id("scala", str(file_path), start_line, end_line, full_name, kind),
@@ -302,8 +311,9 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    stable_id=stable_id,
                     signature=signature,
-                    modifiers=_extract_modifiers_scala(node),
+                    modifiers=modifiers,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -322,6 +332,13 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 signature = _extract_scala_signature(node, source)
+                modifiers = _extract_modifiers_scala(node)
+
+                # Typed stable_id (ADR-0014 §3)
+                norm_sig = normalize_scala_signature(signature)
+                stable_id = make_typed_stable_id(
+                    "method", norm_sig, visibility_from_modifiers(modifiers),
+                ) if norm_sig else None
 
                 symbol = Symbol(
                     id=make_symbol_id("scala", str(file_path), start_line, end_line, full_name, "method"),
@@ -337,8 +354,9 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    stable_id=stable_id,
                     signature=signature,
-                    modifiers=_extract_modifiers_scala(node),
+                    modifiers=modifiers,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol

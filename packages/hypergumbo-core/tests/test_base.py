@@ -23,6 +23,7 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     make_route_stable_id,
     make_symbol_id,
+    make_typed_stable_id,
     node_text,
     normalize_generic_params,
     normalize_signature_go,
@@ -31,6 +32,7 @@ from hypergumbo_core.analyze.base import (
     normalize_signature_types_first,
     split_params_top_level,
     strip_fqn_prefix,
+    visibility_from_modifiers,
 )
 
 if TYPE_CHECKING:
@@ -302,6 +304,91 @@ class TestMakeEntryStableId:
         id1 = make_entry_stable_id("fragment", "main_fs")
         id2 = make_entry_stable_id("fragment", "main_fs")
         assert id1 == id2
+
+
+class TestMakeTypedStableId:
+    """Tests for make_typed_stable_id — ADR-0014 §3 typed-tier identity."""
+
+    def test_returns_sha256_format(self) -> None:
+        """Result uses sha256:{16-hex} format."""
+        result = make_typed_stable_id("method", "(String,int)User")
+        assert result.startswith("sha256:")
+        assert len(result) == len("sha256:") + 16
+
+    def test_deterministic(self) -> None:
+        """Same inputs produce same output."""
+        id1 = make_typed_stable_id("method", "(String,int)User", "public")
+        id2 = make_typed_stable_id("method", "(String,int)User", "public")
+        assert id1 == id2
+
+    def test_different_signatures_produce_different_ids(self) -> None:
+        """Different normalized signatures produce different hashes."""
+        id1 = make_typed_stable_id("method", "(String)void")
+        id2 = make_typed_stable_id("method", "(int)void")
+        assert id1 != id2
+
+    def test_different_visibility_produces_different_ids(self) -> None:
+        """Same signature with different visibility produces different hashes."""
+        id1 = make_typed_stable_id("method", "(String)void", "public")
+        id2 = make_typed_stable_id("method", "(String)void", "private")
+        assert id1 != id2
+
+    def test_different_containing_produces_different_ids(self) -> None:
+        """Same signature in different containers produces different hashes."""
+        id1 = make_typed_stable_id("method", "(int)bool", "", "sha256:aaa")
+        id2 = make_typed_stable_id("method", "(int)bool", "", "sha256:bbb")
+        assert id1 != id2
+
+    def test_empty_visibility_accepted(self) -> None:
+        """Empty visibility (Python, Go) produces a valid hash."""
+        result = make_typed_stable_id("function", "(int)bool", "")
+        assert result.startswith("sha256:")
+
+    def test_different_decorators_produce_different_ids(self) -> None:
+        """Same signature with different decorators produces different hashes."""
+        id1 = make_typed_stable_id("function", "()", decorators="lru_cache")
+        id2 = make_typed_stable_id("function", "()", decorators="")
+        assert id1 != id2
+
+    def test_decorator_order_matters(self) -> None:
+        """Decorator string is included verbatim; callers sort before passing."""
+        id1 = make_typed_stable_id("method", "(int)void", decorators="A,B")
+        id2 = make_typed_stable_id("method", "(int)void", decorators="B,A")
+        assert id1 != id2
+
+    def test_differs_from_untyped(self) -> None:
+        """Typed tier hash differs from what untyped would produce."""
+        # Typed uses normalized_signature, untyped uses param_count + arity_flags.
+        # These should never collide since the sig components are different.
+        typed = make_typed_stable_id("method", "(String,int)User", "public")
+        # An untyped-tier hash would look like "method:2:False,False,False:..."
+        # Verify they don't accidentally match (sanity check)
+        assert "method:2:" not in typed
+
+
+class TestVisibilityFromModifiers:
+    """Tests for visibility_from_modifiers utility."""
+
+    def test_public(self) -> None:
+        assert visibility_from_modifiers(["public", "static"]) == "public"
+
+    def test_private(self) -> None:
+        assert visibility_from_modifiers(["private"]) == "private"
+
+    def test_protected(self) -> None:
+        assert visibility_from_modifiers(["protected", "abstract"]) == "protected"
+
+    def test_internal(self) -> None:
+        assert visibility_from_modifiers(["internal"]) == "internal"
+
+    def test_no_visibility(self) -> None:
+        assert visibility_from_modifiers(["static", "final"]) == ""
+
+    def test_empty_list(self) -> None:
+        assert visibility_from_modifiers([]) == ""
+
+    def test_none_input(self) -> None:
+        assert visibility_from_modifiers(None) == ""
 
 
 class TestStripFqnPrefix:

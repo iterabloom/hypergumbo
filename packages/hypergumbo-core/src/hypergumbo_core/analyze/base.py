@@ -240,6 +240,70 @@ def make_entry_stable_id(entry_type: str, name: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 
+def make_typed_stable_id(
+    kind: str,
+    normalized_signature: str,
+    visibility: str = "",
+    containing_stable_id: str = "",
+    decorators: str = "",
+) -> str:
+    """Compute a typed-tier stable_id from a normalized signature.
+
+    Uses the formula from ADR-0014 §3::
+
+        sha256({kind}:{normalized_signature}:{visibility}:{decorators}:{containing_stable_id})
+
+    The typed tier is preferred when type information is available (e.g. Java,
+    C#, Kotlin, TypeScript, Dart, Go, Python with annotations).  It produces
+    higher-quality identity than the untyped tier because it captures the full
+    interface shape including parameter and return types.
+
+    Decorators/annotations are included because they change runtime behavior
+    (e.g. ``@staticmethod``, ``@lru_cache``, ``@Override``).  Two functions
+    with identical signatures but different decorators are semantically
+    distinct and must receive different stable_ids.
+
+    Args:
+        kind: Symbol kind (``"function"``, ``"method"``, ``"class"``).
+        normalized_signature: Output of a ``normalize_*_signature()`` function
+            (e.g. ``"(String,int)User"``).  Must already be normalized.
+        visibility: Access modifier (``"public"``, ``"private"``, ``"protected"``).
+            Empty string for languages without access modifiers (Python, Go).
+        containing_stable_id: Stable ID of the enclosing scope (class or
+            module).  Empty string for top-level definitions.
+        decorators: Sorted, comma-joined decorator/annotation names (e.g.
+            ``"Override,Test"``).  Empty string when no decorators are present.
+
+    Returns:
+        Stable ID in ``sha256:{16-hex-chars}`` format.
+    """
+    sig = (
+        f"{kind}:{normalized_signature}:{visibility}"
+        f":{decorators}:{containing_stable_id}"
+    )
+    hash_val = hashlib.sha256(sig.encode()).hexdigest()[:16]
+    return f"sha256:{hash_val}"
+
+
+_VISIBILITY_MODIFIERS = frozenset({"public", "private", "protected", "internal"})
+
+
+def visibility_from_modifiers(modifiers: list[str] | None) -> str:
+    """Extract the visibility modifier from a list of modifiers.
+
+    Returns the first visibility keyword found (``"public"``, ``"private"``,
+    ``"protected"``, ``"internal"``), or an empty string if none is present.
+    Languages without visibility modifiers (Python, Go) will have empty
+    modifier lists or lists without visibility keywords.
+    """
+    if not modifiers:
+        return ""
+    for m in modifiers:
+        if m in _VISIBILITY_MODIFIERS:
+            return m
+    return ""
+
+
 # ---------------------------------------------------------------------------
 # Signature normalization utilities (ADR-0014 §3)
 # ---------------------------------------------------------------------------

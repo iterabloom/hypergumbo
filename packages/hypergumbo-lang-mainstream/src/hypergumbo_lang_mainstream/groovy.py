@@ -50,7 +50,9 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_file_id,
     make_symbol_id,
+    make_typed_stable_id,
     node_text,
+    visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -443,6 +445,14 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
 
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
+                    signature = _extract_groovy_signature(node, source)
+                    modifiers = _extract_modifiers_groovy(node)
+
+                    # Typed stable_id (ADR-0014 §3)
+                    norm_sig = normalize_groovy_signature(signature)
+                    stable_id = make_typed_stable_id(
+                        "method", norm_sig, visibility_from_modifiers(modifiers),
+                    ) if norm_sig else None
 
                     symbol = Symbol(
                         id=make_symbol_id("groovy", str(file_path), start_line, end_line, full_name, "method"),
@@ -458,8 +468,9 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         ),
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
-                        signature=_extract_groovy_signature(node, source),
-                        modifiers=_extract_modifiers_groovy(node),
+                        stable_id=stable_id,
+                        signature=signature,
+                        modifiers=modifiers,
                     )
                     analysis.symbols.append(symbol)
                     analysis.symbol_by_name[method_name] = symbol
@@ -474,6 +485,14 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                     func_name = node_text(name_node, source)
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
+                    signature = _extract_groovy_signature(node, source)
+                    modifiers = _extract_modifiers_groovy(node)
+
+                    # Typed stable_id (ADR-0014 §3)
+                    norm_sig = normalize_groovy_signature(signature)
+                    stable_id = make_typed_stable_id(
+                        "function", norm_sig, visibility_from_modifiers(modifiers),
+                    ) if norm_sig else None
 
                     symbol = Symbol(
                         id=make_symbol_id("groovy", str(file_path), start_line, end_line, func_name, "function"),
@@ -489,8 +508,9 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         ),
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
-                        signature=_extract_groovy_signature(node, source),
-                        modifiers=_extract_modifiers_groovy(node),
+                        stable_id=stable_id,
+                        signature=signature,
+                        modifiers=modifiers,
                     )
                     analysis.symbols.append(symbol)
                     analysis.symbol_by_name[func_name] = symbol

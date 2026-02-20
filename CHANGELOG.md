@@ -31,6 +31,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Return type tracking**: Variable type inference handles function return type annotations in Python, TypeScript, Java, Kotlin, C#, and Dart (simple, non-generic types).
 - **C dispatch table edge detection**: Static array initializers with function pointer references (e.g., `static struct cmd commands[] = { {"add", cmd_add}, ... }`) produce `dispatches_to` edges. Common in C projects like git, nginx, Linux kernel.
 - **Go interface-implementation assertion detection**: Compile-time assertions (`var _ Interface = &Struct{}`) produce inheritance edges.
+- **Typed stable_id tier (ADR-0014 Phase 3)**: Per-language `normalize_signature()` functions strip parameter names, FQN prefixes, and normalize generics. `make_typed_stable_id()` hashes `sha256(kind:normalized_sig:visibility:decorators:containing_stable_id)` for 12 analyzers: Java, C#, Kotlin, Scala, Swift, Rust, Go, PHP, Groovy, JS/TS, Python, Dart. Four normalization families: types-first (Java/C#/Dart/Groovy), names-first (Kotlin/Scala/Swift/Rust/TS/Python), PHP-specific, Go-specific.
 
 #### Language & framework support
 

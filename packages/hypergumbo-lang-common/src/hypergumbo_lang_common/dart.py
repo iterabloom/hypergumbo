@@ -69,7 +69,9 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_file_id,
     make_symbol_id,
+    make_typed_stable_id,
     node_text,
+    visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -235,6 +237,16 @@ def _extract_symbols_from_file(
         sym_id = make_symbol_id("dart", file_path, start_line, end_line, full_name, kind)
         # Dart visibility: underscore-prefixed names are library-private
         modifiers = ["private"] if name.startswith("_") else []
+
+        # Typed stable_id (ADR-0014 §3)
+        stable_id = None
+        if signature:
+            norm_sig = normalize_dart_signature(signature)
+            if norm_sig:
+                stable_id = make_typed_stable_id(
+                    kind, norm_sig, visibility_from_modifiers(modifiers),
+                )
+
         return Symbol(
             id=sym_id,
             name=full_name,
@@ -244,6 +256,7 @@ def _extract_symbols_from_file(
             span=span,
             origin=PASS_ID,
             origin_run_id=run_id,
+            stable_id=stable_id,
             signature=signature,
             modifiers=modifiers,
         )

@@ -48,7 +48,9 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_file_id,
     make_symbol_id,
+    make_typed_stable_id,
     node_text,
+    visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -413,6 +415,14 @@ def _extract_symbols_from_file(
                 if annotations:
                     meta = {"annotations": annotations}
 
+                modifiers = _extract_modifiers_rust(node, source)
+
+                # Typed stable_id (ADR-0014 §3)
+                norm_sig = normalize_rust_signature(signature)
+                stable_id = make_typed_stable_id(
+                    kind, norm_sig, visibility_from_modifiers(modifiers),
+                ) if norm_sig else None
+
                 symbol = Symbol(
                     id=make_symbol_id("rust", str(file_path), start_line, end_line, full_name, kind),
                     name=full_name,
@@ -427,9 +437,10 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
+                    stable_id=stable_id,
                     signature=signature,
                     meta=meta,
-                    modifiers=_extract_modifiers_rust(node, source),
+                    modifiers=modifiers,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol

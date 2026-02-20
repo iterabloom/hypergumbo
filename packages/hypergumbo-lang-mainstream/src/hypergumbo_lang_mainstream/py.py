@@ -86,7 +86,12 @@ from typing import TYPE_CHECKING, Iterator
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, make_route_stable_id
+from hypergumbo_core.analyze.base import (
+    AnalysisResult,
+    make_route_stable_id,
+    make_typed_stable_id,
+    visibility_from_modifiers,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -860,6 +865,28 @@ def _extract_flask_usage_contexts(
     return contexts
 
 
+def _extract_py_decorator_names(node: ast.FunctionDef | ast.ClassDef) -> str:
+    """Extract sorted, comma-joined decorator names from an AST node.
+
+    Walks the decorator list and extracts plain names (stripping module
+    paths and arguments).  Returns a sorted, comma-joined string suitable
+    for inclusion in stable_id formulas.  Returns empty string when no
+    decorators are present.
+    """
+    names: list[str] = []
+    for dec in node.decorator_list:
+        if isinstance(dec, ast.Name):
+            names.append(dec.id)
+        elif isinstance(dec, ast.Attribute):
+            names.append(dec.attr)
+        elif isinstance(dec, ast.Call):
+            if isinstance(dec.func, ast.Name):
+                names.append(dec.func.id)
+            elif isinstance(dec.func, ast.Attribute):
+                names.append(dec.func.attr)
+    return ",".join(sorted(names))
+
+
 def _compute_stable_id(
     node: ast.FunctionDef | ast.ClassDef,
     containing_stable_id: str = "",
@@ -888,19 +915,7 @@ def _compute_stable_id(
         param_count = 0
         arity_flags = "False,False,False"
 
-    # Extract decorator names
-    decorators = []
-    for dec in node.decorator_list:
-        if isinstance(dec, ast.Name):
-            decorators.append(dec.id)
-        elif isinstance(dec, ast.Attribute):
-            decorators.append(dec.attr)
-        elif isinstance(dec, ast.Call):
-            if isinstance(dec.func, ast.Name):
-                decorators.append(dec.func.id)
-            elif isinstance(dec.func, ast.Attribute):
-                decorators.append(dec.func.attr)
-    decorators_str = ",".join(sorted(decorators))
+    decorators_str = _extract_py_decorator_names(node)
 
     # Build signature string and hash (ADR-0014 §5: includes containing_stable_id)
     sig = f"{kind}:{param_count}:{arity_flags}:{decorators_str}:{containing_stable_id}"
@@ -1471,11 +1486,24 @@ def _extract_file_analysis(
                     # For Django/DRF class-based views, methods named get/post/etc.
                     # use route-style stable_id with class name as path for uniqueness
                     # (ADR-0014 §4: sha256("route:{method}:{path}"))
-                    stable_id = _compute_stable_id(
-                        item, containing_stable_id=symbol.stable_id
-                    )
                     if item.name.lower() in HTTP_METHODS:
                         stable_id = make_route_stable_id(item.name, class_name)
+                    else:
+                        # Try typed tier first (ADR-0014 §3), fall back to untyped
+                        sig = _format_function_signature(item)
+                        norm_sig = normalize_python_signature(sig)
+                        modifiers = _python_visibility_modifiers(method_name)
+                        if norm_sig:
+                            stable_id = make_typed_stable_id(
+                                "method", norm_sig,
+                                visibility_from_modifiers(modifiers),
+                                symbol.stable_id,
+                                _extract_py_decorator_names(item),
+                            )
+                        else:
+                            stable_id = _compute_stable_id(
+                                item, containing_stable_id=symbol.stable_id
+                            )
 
                     # Build rich metadata for method (ADR-0003)
                     method_meta: dict[str, object] = {}
@@ -1555,6 +1583,19 @@ def _extract_file_analysis(
                 if params:
                     func_meta["parameters"] = params
 
+                # Try typed tier first (ADR-0014 §3), fall back to untyped
+                func_sig = _format_function_signature(node)
+                func_modifiers = _python_visibility_modifiers(node.name)
+                norm_sig = normalize_python_signature(func_sig)
+                if norm_sig:
+                    func_stable_id = make_typed_stable_id(
+                        "function", norm_sig,
+                        visibility_from_modifiers(func_modifiers),
+                        decorators=_extract_py_decorator_names(node),
+                    )
+                else:
+                    func_stable_id = _compute_stable_id(node)
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(py_file), node.lineno, end_line, node.name, "function"),
                     name=node.name,
@@ -1562,13 +1603,13 @@ def _extract_file_analysis(
                     language="python",
                     path=str(py_file),
                     span=span,
-                    stable_id=_compute_stable_id(node),
+                    stable_id=func_stable_id,
                     shape_id=_compute_shape_id(node),
                     meta=func_meta if func_meta else None,
                     cyclomatic_complexity=_compute_cyclomatic_complexity(node),
                     lines_of_code=_compute_lines_of_code(node),
-                    signature=_format_function_signature(node),
-                    modifiers=_python_visibility_modifiers(node.name),
+                    signature=func_sig,
+                    modifiers=func_modifiers,
                 )
                 symbols.append(symbol)
                 symbol_by_name[node.name] = symbol

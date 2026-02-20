@@ -2152,6 +2152,34 @@ class TestPythonSignatureExtraction:
         assert len(sig) <= 60
         assert sig.endswith("…")
 
+    def test_method_long_signature_untyped_fallback(self, tmp_path: Path) -> None:
+        """Class method with truncated signature falls back to untyped stable_id.
+
+        When ``_format_function_signature`` truncates the signature (>60 chars),
+        ``normalize_python_signature`` returns None because the closing paren is
+        missing.  The analyzer must fall back to the untyped ``_compute_stable_id``
+        (ADR-0014 §2) rather than crash.
+        """
+        py_file = tmp_path / "test.py"
+        py_file.write_text(
+            "class MyClass:\n"
+            "    def long_method(self, param_a: str, param_b: str, "
+            "param_c: str, param_d: str, param_e: str, param_f: str) -> str:\n"
+            "        return 'x'\n"
+        )
+
+        out_path = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+        data = json.loads(out_path.read_text())
+
+        methods = [n for n in data["nodes"] if n["kind"] == "method"]
+        assert len(methods) == 1
+        method = methods[0]
+        # Signature is truncated (no closing paren)
+        assert method["signature"].endswith("…")
+        # stable_id still assigned via untyped fallback
+        assert method["stable_id"].startswith("sha256:")
+
     def test_signature_constant_annotation(self, tmp_path: Path) -> None:
         """Extract signature with constant type like Literal['a', 'b']."""
         py_file = tmp_path / "test.py"

@@ -75,7 +75,9 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     iter_tree,
     make_symbol_id as _base_make_symbol_id,
+    make_typed_stable_id,
     node_text as _node_text,
+    visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -789,6 +791,12 @@ def _extract_symbols(
                 # Extract signature
                 signature = _extract_java_signature(node, source, is_constructor=False)
 
+                # Typed stable_id (ADR-0014 §3)
+                norm_sig = normalize_java_signature(signature)
+                stable_id = make_typed_stable_id(
+                    "method", norm_sig, visibility_from_modifiers(modifiers),
+                ) if norm_sig else None
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "method"),
                     name=full_name,
@@ -799,6 +807,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+                    stable_id=stable_id,
                     signature=signature,
                     modifiers=modifiers,
                 )
@@ -822,6 +831,12 @@ def _extract_symbols(
                 # Extract modifiers for constructors too
                 modifiers = _extract_modifiers(node, source)
 
+                # Typed stable_id (ADR-0014 §3)
+                norm_sig = normalize_java_signature(signature)
+                stable_id = make_typed_stable_id(
+                    "constructor", norm_sig, visibility_from_modifiers(modifiers),
+                ) if norm_sig else None
+
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "constructor"),
                     name=full_name,
@@ -831,6 +846,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=stable_id,
                     signature=signature,
                     modifiers=modifiers,
                 )

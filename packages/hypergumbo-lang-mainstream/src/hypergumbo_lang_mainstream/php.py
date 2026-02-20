@@ -45,7 +45,9 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     iter_tree,
     make_symbol_id,
+    make_typed_stable_id,
     node_text,
+    visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -604,6 +606,14 @@ def _extract_symbols(
                     end_col=node.end_point[1],
                 )
                 signature = _extract_php_signature(node, source)
+                modifiers = _extract_modifiers_php(node)
+
+                # Typed stable_id (ADR-0014 §3)
+                norm_sig = normalize_php_signature(signature)
+                stable_id = make_typed_stable_id(
+                    "function", norm_sig, visibility_from_modifiers(modifiers),
+                ) if norm_sig else None
+
                 symbol = Symbol(
                     id=make_symbol_id("php", str(file_path), span.start_line, span.end_line, name, "function"),
                     name=name,
@@ -613,8 +623,9 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=stable_id,
                     signature=signature,
-                    modifiers=_extract_modifiers_php(node),
+                    modifiers=modifiers,
                 )
                 symbols.append(symbol)
 
@@ -660,6 +671,14 @@ def _extract_symbols(
                 enclosing_class = _get_enclosing_class(node, source)
                 full_name = f"{enclosing_class}.{name}" if enclosing_class else name
                 signature = _extract_php_signature(node, source)
+                modifiers = _extract_modifiers_php(node)
+
+                # Typed stable_id (ADR-0014 §3)
+                norm_sig = normalize_php_signature(signature)
+                stable_id = make_typed_stable_id(
+                    "method", norm_sig, visibility_from_modifiers(modifiers),
+                ) if norm_sig else None
+
                 symbol = Symbol(
                     id=make_symbol_id("php", str(file_path), span.start_line, span.end_line, full_name, "method"),
                     name=full_name,
@@ -669,8 +688,9 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=stable_id,
                     signature=signature,
-                    modifiers=_extract_modifiers_php(node),
+                    modifiers=modifiers,
                 )
                 symbols.append(symbol)
 

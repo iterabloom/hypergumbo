@@ -272,11 +272,13 @@ class AnalysisIR:
   - Changes when code moves to different file/line
   - Purpose: Reproducible slicing, deterministic diffs
 * `stable_id` (semantic, optional): Interface identity (signature-based), **not implementation identity**
-  - 🟪 **For typed languages or annotated Python**: `sha256({kind}:{normalized_signature}:{visibility}:{containing_module_stable_id})`
-    - `normalized_signature`: Canonical type signature (param types, return type, type params), normalized per-language (strip FQN prefixes, normalize generic type params by position: `T,U` → `$0,$1`). Normalization is language-scoped — cross-language collision is structurally prevented by `containing_module_stable_id`. A cross-language canonical mapping table may be layered on top if a use case emerges (see ADR-0014 §3).
+  - 🟩 **For typed languages or annotated Python**: `sha256({kind}:{normalized_signature}:{visibility}:{decorators}:{containing_module_stable_id})`
+    - `normalized_signature`: Canonical type signature (param types, return type, type params), normalized per-language (strip FQN prefixes, normalize generic type params by position: `T,U` → `$0,$1`). Normalization is language-scoped — cross-language collision is structurally prevented by `containing_module_stable_id`. A cross-language canonical mapping table may be layered on top if a use case emerges (see ADR-0014 §3). Four normalization families: types-first (Java, C#, Dart, Groovy), names-first (Kotlin, Scala, Swift, Rust, TS, Python), PHP-specific, Go-specific.
     - `visibility`: public, private, protected (if language has concept)
+    - `decorators`: Sorted, comma-joined decorator/annotation names
     - `containing_module_stable_id`: Recursive stable_id of parent module/class
     - **Excludes**: Implementation details, docstrings, comments
+    - Implemented for 12 analyzers: Java, C#, Kotlin, Scala, Swift, Rust, Go, PHP, Groovy, JS/TS, Python, Dart
   - 🟩 **For untyped code**: `sha256({kind}:{parameter_count}:{arity_flags}:{decorator_presence}:{containing_module_stable_id})`
     - `arity_flags`: has_defaults, has_varargs, has_kwargs (structural signature info)
     - `decorator_presence`: Sorted list of decorator names (e.g., `["property", "staticmethod"]`)

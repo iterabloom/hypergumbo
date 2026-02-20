@@ -65,7 +65,9 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     make_route_stable_id,
     make_symbol_id,
+    make_typed_stable_id,
     node_text,
+    visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.symbol_resolution import ListNameResolver
@@ -488,6 +490,13 @@ def _extract_symbols_from_file(
 
                 # Extract function signature
                 signature = _extract_go_signature(node, source)
+                modifiers = _go_visibility_modifiers(func_name)
+
+                # Typed stable_id (ADR-0014 §3)
+                norm_sig = normalize_go_signature(signature)
+                stable_id = make_typed_stable_id(
+                    "function", norm_sig, visibility_from_modifiers(modifiers),
+                ) if norm_sig else None
 
                 symbol = Symbol(
                     id=make_symbol_id("go", str(file_path), start_line, end_line, func_name, "function"),
@@ -503,8 +512,9 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=stable_id,
                     signature=signature,
-                    modifiers=_go_visibility_modifiers(func_name),
+                    modifiers=modifiers,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -529,6 +539,13 @@ def _extract_symbols_from_file(
 
                 # Extract method signature
                 signature = _extract_go_signature(node, source)
+                modifiers = _go_visibility_modifiers(full_name)
+
+                # Typed stable_id (ADR-0014 §3)
+                norm_sig = normalize_go_signature(signature)
+                stable_id = make_typed_stable_id(
+                    "method", norm_sig, visibility_from_modifiers(modifiers),
+                ) if norm_sig else None
 
                 symbol = Symbol(
                     id=make_symbol_id("go", str(file_path), start_line, end_line, full_name, "method"),
@@ -544,8 +561,9 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    stable_id=stable_id,
                     signature=signature,
-                    modifiers=_go_visibility_modifiers(full_name),
+                    modifiers=modifiers,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[method_name] = symbol
