@@ -20,3 +20,12 @@
     justification:  # cd71
     description: "Typed tier: sha256({kind}:{normalized_signature}:{visibility}:{containing_module_stable_id}). Three blockers must be resolved first: (1) generic type parameter preservation (currently stripped: List<T>→List, need List<$0>), (2) visibility modifier extraction (public/private/protected — not tracked by any analyzer), (3) cross-language type normalization (String vs str vs string must not collide). Depends on untyped tier (Phase 2) being proven and ADR-0006 future work items 6-7. See ADR-0014 §3."  # cd71
     fields: {}  # cd71
+- op: update  # 441e
+  at: '2026-02-20T08:36:06Z'  # 441e
+  by: agent  # 441e
+  actor: jgstern_agent  # 441e
+  clock: 2  # 441e
+  nonce: 441e  # 441e
+  set: {}  # 441e
+  add:  # 441e
+    before: [WI-dapoh-migav-novik-lusub-ratof-datad-rubag-tikas]  # 441e
