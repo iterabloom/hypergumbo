@@ -109,24 +109,36 @@ The typed tier (`sha256({kind}:{normalized_signature}:{visibility}:{containing_m
 
 This infrastructure was built for method call resolution (tracking `var_types` to answer "which `save()` is this?"). The typed `stable_id` tier needs it for a different purpose: extracting the canonical type signature from a function's *declaration site* to answer "what is this function's interface identity?". The extraction logic is reusable; the consumption differs.
 
-**Remaining blockers (narrower than originally stated):**
+**Blocker status (updated 2026-02-20):**
 
 | Typed tier needs | State | Blocking? |
 |---|---|---|
 | Parameter type names | 9 analyzers extract them | No |
 | Return types | 6 analyzers extract them | No |
-| Generic type parameter normalization | Currently stripped (`List<T>` → `List`) | **Yes** — the typed tier needs `List<$0>` not `List` |
-| Visibility modifiers (public/private/protected) | Not tracked by any analyzer | **Yes** — trivial to extract from tree-sitter but no infrastructure exists |
-| Cross-language type normalization | Not designed | **Yes** — `String` (Java) vs `str` (Python) vs `string` (TS) must not collide |
+| Generic type parameter normalization | Signatures already preserve generics (`List<T>` stays `List<T>`). Positional normalization (`$0`, `$1`) still needed. | **Partially resolved** |
+| Visibility modifiers (public/private/protected) | Extracted for 11 languages (C#, Kotlin, Groovy, Go, Rust, Swift, PHP, Scala, Dart, Python, Java). PR #1282. | **Resolved** |
+| Type normalization | Per-language normalization decided (Option A). See below. | **Resolved** — design decided |
 
-**Design principles for future implementation:**
+**Type normalization decision: language-scoped (Option A)**
+
+Each language's `normalize_signature()` method canonicalizes types within that language's own conventions. No cross-language canonical mapping table.
+
+*Rationale:* Cross-language collision is structurally impossible because `containing_module_stable_id` already separates languages — a Java method and a Python function will never share the same `containing_module_stable_id`. This matches the `shape_id` precedent (§1), where Python uses `ast` and everything else uses tree-sitter, producing different hashes for the same code, which is "acceptable because `shape_id` is compared within-language, not cross-language."
+
+*Per-language normalization rules:*
+- Strip fully-qualified prefixes to simple names (`java.lang.String` → `String`, `kotlin.String` → `String`)
 - Normalize generic type parameters by position, not name (`T` and `U` → `$0` and `$1`)
+- Strip pointer/reference decorators that don't affect interface identity (`&'a str` → `str`, `*http.Request` → `http.Request`)
 - Include return types where the language has them
 - Exclude implementation details (method bodies, default values)
+
+*Option B (cross-language canonical mapping) is not foreclosed.* If a use case emerges (e.g., polyglot linkers wanting to match equivalent interfaces across languages), a shared mapping layer could be added on top of per-language normalization. Option A is a strict subset of Option B — the per-language `normalize_signature()` methods are needed either way.
+
+**Additional design principles:**
 - Prefer the typed tier when type information is available; fall back to untyped
 - Visibility defaults to empty string for languages without access modifiers (Python, Go)
 
-Implementation is deferred until the untyped tier is proven across multiple languages and the three blockers above are addressed. The untyped tier is independently valuable and does not require type information.
+Implementation is deferred until the untyped tier is proven across multiple languages. The untyped tier is independently valuable and does not require type information.
 
 ### 4. Route and entry-point stable_id
 

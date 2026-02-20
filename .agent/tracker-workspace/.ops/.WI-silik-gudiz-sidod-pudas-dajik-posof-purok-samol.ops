@@ -30,3 +30,14 @@
   set:  # cc1d
     status: needs_human_review  # cc1d
     justification: "Two of three typed stable_id blockers resolved (generics preserved, visibility extracted). Cross-language type normalization requires architectural decisions: which types to normalize, whether to use a shared mapping table, and whether typed stable_id is even needed yet. Recommend deferring until typed stable_id (WI-duzul) is actively being built."  # cc1d
+- op: update  # 7d9d
+  at: '2026-02-20T21:49:45Z'  # 7d9d
+  by: agent  # 7d9d
+  actor: jgstern_agent  # 7d9d
+  clock: 3  # 7d9d
+  nonce: 7d9d  # 7d9d
+  set:  # 7d9d
+    status: todo_soft  # 7d9d
+    title: "Implement per-language normalize_signature() for typed stable_id"  # 7d9d
+    justification: "Option A (language-scoped normalization) chosen over Option B (canonical cross-language mapping) because: (1) stable_id tracks single-symbol identity across refactors, not cross-language comparison; (2) containing_module_stable_id already prevents cross-language collisions structurally; (3) Option A is a strict subset of Option B — per-language normalization is needed either way; (4) matches shape_id precedent (within-language, not cross-language)."  # 7d9d
+    description: "Each language analyzer needs a normalize_signature() method that canonicalizes its own types for the typed stable_id tier. Per-language normalization (Option A): strip FQN prefixes to simple names (java.lang.String → String), normalize generic type params by position (T,U → $0,$1), strip pointer/reference decorators that don't affect interface identity. Cross-language collision is structurally impossible because containing_module_stable_id already separates languages. A cross-language canonical mapping table (Option B) is not foreclosed — it would layer on top of per-language normalization if a use case emerges (e.g., polyglot interface matching). Languages needing normalize_signature(): Java, Kotlin, C#, TypeScript, Dart, Rust, Go, Python, Swift, PHP, Scala."  # 7d9d
