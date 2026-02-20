@@ -1,0 +1,22 @@
+- op: create  # 10bf
+  at: '2026-02-20T08:27:09Z'  # 10bf
+  by: agent  # 10bf
+  actor: jgstern_agent  # 10bf
+  clock: 1  # 10bf
+  nonce: 10bf  # 10bf
+  data:  # 10bf
+    kind: work_item  # 10bf
+    title: "Implement generic shape_id CST walker in TreeSitterAnalyzer"  # 10bf
+    status: todo_soft  # 10bf
+    priority: 2  # 10bf
+    parent: WI-tadof-zujaj-nizoz-zutam-sizad-nasid-sosob-nuhol  # 10bf
+    tags:  # 10bf
+    - phase-1  # 10bf
+    - stable-id  # 10bf
+    before: []  # 10bf
+    duplicate_of: []  # 10bf
+    not_duplicate_of: []  # 10bf
+    pr_ref:  # 10bf
+    justification:  # 10bf
+    description: "Add compute_shape_id(node) to TreeSitterAnalyzer base class. Walks any tree-sitter CST, strips identifier/literal/comment/error nodes, hashes structural skeleton. Build on iter_tree() (base.py:200-222) for non-recursive traversal. Filter strategy: skip anonymous nodes (punctuation), comment nodes, ERROR/MISSING nodes; replace identifier and literal leaves with type names only. Python retains ast-based _compute_shape_id() override for hash stability. All other tree-sitter analyzers get shape_id automatically via base class. See ADR-0014 §1."  # 10bf
+    fields: {}  # 10bf
