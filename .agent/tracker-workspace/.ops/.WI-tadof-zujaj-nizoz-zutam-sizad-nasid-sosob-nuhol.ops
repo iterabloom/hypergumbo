@@ -41,3 +41,18 @@
   clock: 4  # 6451
   nonce: '6451'  # 6451
   message: "Phase 2 complete: ADR-0014 §2 stable_id retirement finished across all 27 analyzers (PRs #1256-#1258). All analyzers now use compute_stable_id() for sha256-based stable_ids and make_symbol_id() for location-based ids. HLSL also has node_for_symbol wiring for shape_id. Remaining: Phase 3 (typed stable_id tier, WI-duzul) is deferred P4."  # 6451
+- op: update  # ac65
+  at: '2026-02-20T12:12:03Z'  # ac65
+  by: agent  # ac65
+  actor: jgstern_agent  # ac65
+  clock: 5  # ac65
+  nonce: ac65  # ac65
+  set:  # ac65
+    status: done  # ac65
+- op: discuss  # 59f9
+  at: '2026-02-20T12:12:03Z'  # 59f9
+  by: agent  # 59f9
+  actor: jgstern_agent  # 59f9
+  clock: 6  # 59f9
+  nonce: 59f9  # 59f9
+  message: "Closed. Phases 0-2 complete. Phase 3 (typed stable_id tier) tracked separately in WI-duzul (P4, deferred)."  # 59f9
