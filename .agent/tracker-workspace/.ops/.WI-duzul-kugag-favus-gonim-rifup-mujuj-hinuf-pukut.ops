@@ -46,3 +46,11 @@
   nonce: 6ac7  # 6ac7
   set:  # 6ac7
     description: "Typed tier: sha256({kind}:{normalized_signature}:{visibility}:{containing_module_stable_id}). Blockers status: (1) generic type parameter preservation — DONE, signatures already preserve generics (WI-murig). (2) visibility modifier extraction — DONE, 11 languages covered (WI-gifoh, PR #1282). (3) cross-language type normalization — needs human review (WI-silik). Depends on untyped tier (Phase 2) being proven and ADR-0006 future work items 6-7. See ADR-0014 §3."  # 6ac7
+- op: update  # 565a
+  at: '2026-02-20T22:51:45Z'  # 565a
+  by: agent  # 565a
+  actor: jgstern_agent  # 565a
+  clock: 5  # 565a
+  nonce: 565a  # 565a
+  set:  # 565a
+    description: "Typed tier: sha256({kind}:{normalized_signature}:{visibility}:{containing_module_stable_id}). All three prerequisite blockers resolved: (1) generic type parameter preservation — DONE (WI-murig). (2) visibility modifier extraction — DONE, 11 languages (WI-gifoh, PR #1282). (3) per-language normalize_signature() — DONE, 12 languages (WI-silik, PR #1285). Remaining work: wire typed formula into analyzers with sufficient type extraction (Java, Kotlin, TypeScript, C#, Dart, Go, Python). Phase 2 (untyped tier) should be proven first per ADR-0014. See ADR-0014 §3."  # 565a
