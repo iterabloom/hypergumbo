@@ -41,3 +41,18 @@
     title: "Implement per-language normalize_signature() for typed stable_id"  # 7d9d
     justification: "Option A (language-scoped normalization) chosen over Option B (canonical cross-language mapping) because: (1) stable_id tracks single-symbol identity across refactors, not cross-language comparison; (2) containing_module_stable_id already prevents cross-language collisions structurally; (3) Option A is a strict subset of Option B — per-language normalization is needed either way; (4) matches shape_id precedent (within-language, not cross-language)."  # 7d9d
     description: "Each language analyzer needs a normalize_signature() method that canonicalizes its own types for the typed stable_id tier. Per-language normalization (Option A): strip FQN prefixes to simple names (java.lang.String → String), normalize generic type params by position (T,U → $0,$1), strip pointer/reference decorators that don't affect interface identity. Cross-language collision is structurally impossible because containing_module_stable_id already separates languages. A cross-language canonical mapping table (Option B) is not foreclosed — it would layer on top of per-language normalization if a use case emerges (e.g., polyglot interface matching). Languages needing normalize_signature(): Java, Kotlin, C#, TypeScript, Dart, Rust, Go, Python, Swift, PHP, Scala."  # 7d9d
+- op: update  # 8842
+  at: '2026-02-20T22:50:33Z'  # 8842
+  by: agent  # 8842
+  actor: jgstern_agent  # 8842
+  clock: 4  # 8842
+  nonce: '8842'  # 8842
+  set:  # 8842
+    status: done  # 8842
+- op: discuss  # 2c97
+  at: '2026-02-20T22:50:40Z'  # 2c97
+  by: agent  # 2c97
+  actor: jgstern_agent  # 2c97
+  clock: 5  # 2c97
+  nonce: 2c97  # 2c97
+  message: "Implemented in PR #1285. Shared utilities in base.py + per-language wrappers for 12 analyzers (Java, C#, Kotlin, Scala, Swift, Rust, Go, PHP, Groovy, JS/TS, Python, Dart). 88 tests, 100% coverage."  # 2c97
