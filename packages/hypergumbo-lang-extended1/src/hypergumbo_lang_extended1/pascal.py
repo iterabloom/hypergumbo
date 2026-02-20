@@ -35,6 +35,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -58,11 +59,6 @@ def find_pascal_files(root: Path) -> Iterator[Path]:
         for path in find_files(root, [ext]):
             if path.is_file():
                 yield path
-
-
-def _make_stable_id(rel_path: str, name: str, kind: str) -> str:
-    """Create a stable ID for a Pascal symbol."""
-    return f"pascal:{rel_path}:{name}:{kind}"
 
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
@@ -137,13 +133,22 @@ def _get_call_name(node: "tree_sitter.Node") -> Optional[str]:
 def _find_enclosing_function(
     node: "tree_sitter.Node", rel_path: str,
 ) -> Optional[str]:
-    """Find the enclosing function/procedure for a node."""
+    """Find the enclosing function/procedure for a node.
+
+    Returns the symbol ID (make_symbol_id format) of the nearest defProc
+    ancestor, or None if the node is at module level.
+    """
     current = node.parent
     while current is not None:
         if current.type == "defProc":
             name = _get_proc_name(current)
             if name:
-                return _make_stable_id(rel_path, name, "fn")
+                return make_symbol_id(
+                    "pascal", rel_path,
+                    current.start_point[0] + 1,
+                    current.end_point[0] + 1,
+                    name, "function",
+                )
         current = current.parent
     return None  # pragma: no cover
 
@@ -208,9 +213,14 @@ class PascalAnalyzer(TreeSitterAnalyzer):
                         name = _get_node_text(child)
                         break
             if name:
+                sym_id = make_symbol_id(
+                    "pascal", rel_path,
+                    node.start_point[0] + 1, node.end_point[0] + 1,
+                    name, "program",
+                )
                 sym = Symbol(
-                    id=_make_stable_id(rel_path, name, "program"),
-                    stable_id=_make_stable_id(rel_path, name, "program"),
+                    id=sym_id,
+                    stable_id=self.compute_stable_id(node, kind="program"),
                     name=name,
                     kind="program",
                     language="pascal",
@@ -224,6 +234,7 @@ class PascalAnalyzer(TreeSitterAnalyzer):
                     origin=PASS_ID,
                 )
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
 
         elif node.type == "unit":
             name = None
@@ -234,9 +245,14 @@ class PascalAnalyzer(TreeSitterAnalyzer):
                         name = _get_node_text(child)
                     break
             if name:
+                sym_id = make_symbol_id(
+                    "pascal", rel_path,
+                    node.start_point[0] + 1, node.end_point[0] + 1,
+                    name, "module",
+                )
                 sym = Symbol(
-                    id=_make_stable_id(rel_path, name, "unit"),
-                    stable_id=_make_stable_id(rel_path, name, "unit"),
+                    id=sym_id,
+                    stable_id=self.compute_stable_id(node, kind="module"),
                     name=name,
                     kind="module",
                     language="pascal",
@@ -250,6 +266,7 @@ class PascalAnalyzer(TreeSitterAnalyzer):
                     origin=PASS_ID,
                 )
                 analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
 
         elif node.type == "defProc":
             name = _get_proc_name(node)
@@ -263,9 +280,14 @@ class PascalAnalyzer(TreeSitterAnalyzer):
                 else:
                     signature = f"procedure {name}({', '.join(params)})"
 
+                sym_id = make_symbol_id(
+                    "pascal", rel_path,
+                    node.start_point[0] + 1, node.end_point[0] + 1,
+                    name, "function",
+                )
                 sym = Symbol(
-                    id=_make_stable_id(rel_path, name, "fn"),
-                    stable_id=_make_stable_id(rel_path, name, "fn"),
+                    id=sym_id,
+                    stable_id=self.compute_stable_id(node, kind="function"),
                     name=name,
                     kind="function",
                     language="pascal",
@@ -282,6 +304,7 @@ class PascalAnalyzer(TreeSitterAnalyzer):
                 )
                 analysis.symbols.append(sym)
                 analysis.symbol_by_name[name] = sym
+                analysis.node_for_symbol[sym.id] = node
             return  # Don't recurse into function bodies for symbol extraction
 
         # Recursively process children

@@ -316,10 +316,15 @@ end.
         result = analyze_pascal(tmp_path)
         func = next((s for s in result.symbols if s.name == "MyFunc"), None)
         assert func is not None
-        assert func.id == func.stable_id
+        # id is location-based; stable_id is signature-based hash (ADR-0014 §2)
         assert "pascal:" in func.id
         assert "test.pas" in func.id
         assert "MyFunc" in func.id
+        assert func.stable_id is not None
+        assert func.stable_id.startswith("sha256:")
+        # shape_id is auto-computed via node_for_symbol
+        assert func.shape_id is not None
+        assert func.shape_id.startswith("sha256:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_pascal_file(tmp_path, "test.pas", """program Test;
