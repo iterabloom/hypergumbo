@@ -1,0 +1,34 @@
+- op: create  # 60f5
+  at: '2026-02-20T07:55:48Z'  # 60f5
+  by: agent  # 60f5
+  actor: jgstern_agent  # 60f5
+  clock: 1  # 60f5
+  nonce: 60f5  # 60f5
+  data:  # 60f5
+    kind: invariant  # 60f5
+    title: "Pin build-from-source grammars to specific commits"  # 60f5
+    status: todo_soft  # 60f5
+    priority: 2  # 60f5
+    parent:  # 60f5
+    tags:  # 60f5
+    - stable-id  # 60f5
+    - reproducibility  # 60f5
+    before: []  # 60f5
+    duplicate_of: []  # 60f5
+    not_duplicate_of: []  # 60f5
+    pr_ref:  # 60f5
+    justification:  # 60f5
+    description: "scripts/build-source-grammars uses git clone --depth 1 from HEAD for Lean and Wolfram grammars (line 105). No commit SHA is pinned, so shape_id values for these languages are non-reproducible across builds. Replace with git clone + git checkout <commit-sha> and track SHAs as constants in the script. See ADR-0014 Phase 0."  # 60f5
+    fields:  # 60f5
+      statement: "Build-from-source grammars must be pinned to specific commits for shape_id reproducibility"  # 60f5
+      root_cause: "scripts/build-source-grammars clones from HEAD with no commit SHA"  # 60f5
+- op: update  # 6135
+  at: '2026-02-20T07:56:12Z'  # 6135
+  by: agent  # 6135
+  actor: jgstern_agent  # 6135
+  clock: 2  # 6135
+  nonce: '6135'  # 6135
+  set:  # 6135
+    fields:  # 6135
+      statement: "Build-from-source grammars must be pinned to specific commits for shape_id reproducibility"  # 6135
+      root_cause: "scripts/build-source-grammars clones from HEAD with no commit SHA"  # 6135
