@@ -27,7 +27,7 @@ from typing import Iterator, Optional, ClassVar, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -42,12 +42,6 @@ def find_purescript_files(root: Path) -> Iterator[Path]:
     for path in find_files(root, ["*.purs"]):
         if path.is_file():
             yield path
-
-
-def _make_stable_id(path: Path, repo_root: Path, name: str, kind: str) -> str:
-    """Create a stable ID for a PureScript symbol."""
-    rel_path = path.relative_to(repo_root)
-    return f"purescript:{rel_path}:{name}:{kind}"
 
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
@@ -127,8 +121,9 @@ def _get_call_name(node: "tree_sitter.Node") -> Optional[str]:
 class _PureScriptExtractor:
     """Analyzer for PureScript source files."""
 
-    def __init__(self, repo_root: Path):
+    def __init__(self, repo_root: Path, analyzer: "TreeSitterAnalyzer"):
         self.repo_root = repo_root
+        self._ts_analyzer = analyzer
         self.symbols: list[Symbol] = []
         self.edges: list[Edge] = []
         self._symbol_registry: dict[str, str] = {}  # name -> id
@@ -214,8 +209,8 @@ class _PureScriptExtractor:
                 self._current_module = mod_name
                 rel_path = str(path.relative_to(self.repo_root))
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, mod_name, "module"),
-                    stable_id=_make_stable_id(path, self.repo_root, mod_name, "module"),
+                    id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, mod_name, "module"),
+                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="module"),
                     name=mod_name,
                     kind="module",
                     language="purescript",
@@ -238,8 +233,8 @@ class _PureScriptExtractor:
                 qualified_name = f"{self._current_module}.{name}" if self._current_module else name
 
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, qualified_name, "fn"),
-                    stable_id=_make_stable_id(path, self.repo_root, qualified_name, "fn"),
+                    id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, qualified_name, "function"),
+                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="function"),
                     name=qualified_name,
                     kind="function",
                     language="purescript",
@@ -272,8 +267,8 @@ class _PureScriptExtractor:
                     # Create symbol for signature without implementation
                     rel_path = str(path.relative_to(self.repo_root))
                     sym = Symbol(
-                        id=_make_stable_id(path, self.repo_root, qualified_name, "fn"),
-                        stable_id=_make_stable_id(path, self.repo_root, qualified_name, "fn"),
+                        id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, qualified_name, "function"),
+                        stable_id=self._ts_analyzer.compute_stable_id(node, kind="function"),
                         name=qualified_name,
                         kind="function",
                         language="purescript",
@@ -301,8 +296,8 @@ class _PureScriptExtractor:
                 constructors = [c for c in node.children if c.type == "constructor"]
 
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, qualified_name, "type"),
-                    stable_id=_make_stable_id(path, self.repo_root, qualified_name, "type"),
+                    id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, qualified_name, "type"),
+                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="type"),
                     name=qualified_name,
                     kind="type",
                     language="purescript",
@@ -326,8 +321,8 @@ class _PureScriptExtractor:
                 qualified_name = f"{self._current_module}.{name}" if self._current_module else name
 
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, qualified_name, "type_alias"),
-                    stable_id=_make_stable_id(path, self.repo_root, qualified_name, "type_alias"),
+                    id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, qualified_name, "type_alias"),
+                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="type_alias"),
                     name=qualified_name,
                     kind="type_alias",
                     language="purescript",
@@ -351,8 +346,8 @@ class _PureScriptExtractor:
                 qualified_name = f"{self._current_module}.{name}" if self._current_module else name
 
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, qualified_name, "class"),
-                    stable_id=_make_stable_id(path, self.repo_root, qualified_name, "class"),
+                    id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, qualified_name, "class"),
+                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="class"),
                     name=qualified_name,
                     kind="class",
                     language="purescript",
@@ -376,8 +371,8 @@ class _PureScriptExtractor:
                 qualified_name = f"{self._current_module}.{name}" if self._current_module else name
 
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, qualified_name, "instance"),
-                    stable_id=_make_stable_id(path, self.repo_root, qualified_name, "instance"),
+                    id=make_symbol_id("purescript", rel_path, node.start_point[0]+1, node.end_point[0]+1, qualified_name, "instance"),
+                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="instance"),
                     name=qualified_name,
                     kind="instance",
                     language="purescript",
@@ -461,7 +456,9 @@ class _PureScriptExtractor:
                 name = _get_function_name(current)
                 if name:
                     qualified = f"{self._current_module}.{name}" if self._current_module else name
-                    return _make_stable_id(path, self.repo_root, qualified, "fn")
+                    rel_path = str(path.relative_to(self.repo_root))
+                    return make_symbol_id("purescript", rel_path,
+                        current.start_point[0]+1, current.end_point[0]+1, qualified, "function")
             current = current.parent
         return None  # pragma: no cover
 
@@ -492,7 +489,7 @@ class PureScriptAnalyzer(TreeSitterAnalyzer):
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
             )
 
-        extractor = _PureScriptExtractor(repo_root)
+        extractor = _PureScriptExtractor(repo_root, self)
         return extractor.analyze()
 
 

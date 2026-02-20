@@ -28,7 +28,7 @@ from typing import ClassVar, Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import classify_dot_m_file, find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -46,12 +46,6 @@ def find_matlab_files(root: Path) -> Iterator[Path]:
     for path in find_files(root, ["*.m"]):
         if path.is_file() and classify_dot_m_file(path) == "matlab":
             yield path
-
-
-def _make_stable_id(path: Path, repo_root: Path, name: str, kind: str) -> str:
-    """Create a stable ID for a MATLAB symbol."""
-    rel_path = path.relative_to(repo_root)
-    return f"matlab:{rel_path}:{name}:{kind}"
 
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
@@ -116,6 +110,7 @@ def _extract_symbols_recursive(
     repo_root: Path,
     symbols: list[Symbol],
     run_id: str,
+    analyzer: "MatlabAnalyzer",
     class_name: Optional[str] = None,
 ) -> None:
     """Extract symbols from a syntax tree node recursively."""
@@ -136,8 +131,12 @@ def _extract_symbols_recursive(
             qualified_name = f"{class_name}.{name}" if class_name else name
 
             sym = Symbol(
-                id=_make_stable_id(path, repo_root, qualified_name, "fn"),
-                stable_id=_make_stable_id(path, repo_root, qualified_name, "fn"),
+                id=make_symbol_id(
+                    "matlab", rel_path,
+                    node.start_point[0] + 1, node.end_point[0] + 1,
+                    qualified_name, kind,
+                ),
+                stable_id=analyzer.compute_stable_id(node, kind=kind),
                 name=name,
                 kind=kind,
                 language="matlab",
@@ -161,8 +160,12 @@ def _extract_symbols_recursive(
             method_count = _count_methods(node)
             rel_path = str(path.relative_to(repo_root))
             sym = Symbol(
-                id=_make_stable_id(path, repo_root, name, "class"),
-                stable_id=_make_stable_id(path, repo_root, name, "class"),
+                id=make_symbol_id(
+                    "matlab", rel_path,
+                    node.start_point[0] + 1, node.end_point[0] + 1,
+                    name, "class",
+                ),
+                stable_id=analyzer.compute_stable_id(node, kind="class"),
                 name=name,
                 kind="class",
                 language="matlab",
@@ -184,13 +187,14 @@ def _extract_symbols_recursive(
                     for method_child in child.children:
                         if method_child.type == "function_definition":
                             _extract_symbols_recursive(
-                                method_child, path, repo_root, symbols, run_id, class_name=name
+                                method_child, path, repo_root, symbols, run_id,
+                                analyzer, class_name=name,
                             )
             return  # Don't recursively process class children again
 
     # Recursively process children
     for child in node.children:
-        _extract_symbols_recursive(child, path, repo_root, symbols, run_id, class_name)
+        _extract_symbols_recursive(child, path, repo_root, symbols, run_id, analyzer, class_name)
 
 
 def _find_enclosing_function(
@@ -200,6 +204,7 @@ def _find_enclosing_function(
     current = node.parent
     class_name = None
     func_name = None
+    func_node = None
     # Walk all the way up to find both function and class context
     while current is not None:
         if current.type == "class_definition":
@@ -208,11 +213,17 @@ def _find_enclosing_function(
         if current.type == "function_definition":
             if func_name is None:  # Capture innermost function
                 func_name = _get_identifier(current)
+                func_node = current
         current = current.parent
 
-    if func_name:
+    if func_name and func_node:
         qualified_name = f"{class_name}.{func_name}" if class_name else func_name
-        return _make_stable_id(path, repo_root, qualified_name, "fn")
+        kind = "method" if class_name else "function"
+        return make_symbol_id(
+            "matlab", str(path.relative_to(repo_root)),
+            func_node.start_point[0] + 1, func_node.end_point[0] + 1,
+            qualified_name, kind,
+        )
     return None  # pragma: no cover
 
 
@@ -301,7 +312,7 @@ class MatlabAnalyzer(TreeSitterAnalyzer):
             try:
                 content = path.read_bytes()
                 tree = parser.parse(content)
-                _extract_symbols_recursive(tree.root_node, path, repo_root, symbols, run_id)
+                _extract_symbols_recursive(tree.root_node, path, repo_root, symbols, run_id, self)
             except Exception:  # pragma: no cover
                 pass
 

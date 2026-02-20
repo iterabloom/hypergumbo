@@ -16,7 +16,6 @@ from hypergumbo_lang_common.racket import (
     _is_define_form,
     _is_function_define,
     _is_struct_form,
-    _make_stable_id,
     analyze_racket,
     find_racket_files,
 )
@@ -25,17 +24,6 @@ from hypergumbo_lang_common.racket import (
 def make_racket_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a Racket file with given content."""
     (tmp_path / name).write_text(content)
-
-
-class TestRacketHelperFunctions:
-    """Branch coverage for helper functions."""
-
-    def test_make_stable_id_format(self, tmp_path: Path) -> None:
-        """Test stable ID format."""
-        path = tmp_path / "test.rkt"
-        path.touch()
-        stable_id = _make_stable_id(path, tmp_path, "add", "fn")
-        assert stable_id == "racket:test.rkt:add:fn"
 
 
 class TestDefineForms:

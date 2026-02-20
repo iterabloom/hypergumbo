@@ -41,6 +41,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
+    make_symbol_id,
     node_text,
 )
 from hypergumbo_core.discovery import find_files
@@ -103,13 +104,14 @@ def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
     return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
 
 
-def _make_symbol(rel_path: str, run_id: str, source: bytes, node: "tree_sitter.Node",
+def _make_symbol(analyzer: "TreeSitterAnalyzer", rel_path: str, run_id: str,
+                 source: bytes, node: "tree_sitter.Node",
                  name: str, kind: str,
                  signature: Optional[str] = None, meta: Optional[dict] = None) -> Symbol:
     """Create a Symbol with consistent formatting."""
     start_line = node.start_point[0] + 1
     end_line = node.end_point[0] + 1
-    sym_id = f"hlsl:{rel_path}:{start_line}-{end_line}:{name}:{kind}"
+    sym_id = make_symbol_id("hlsl", rel_path, start_line, end_line, name, kind)
     span = Span(
         start_line=start_line,
         start_col=node.start_point[1],
@@ -126,7 +128,7 @@ def _make_symbol(rel_path: str, run_id: str, source: bytes, node: "tree_sitter.N
         span=span,
         origin=PASS_ID,
         origin_run_id=run_id,
-        stable_id=f"hlsl:{rel_path}:{name}",
+        stable_id=analyzer.compute_stable_id(node, kind=kind),
         signature=signature,
         meta=meta,
     )
@@ -141,8 +143,10 @@ def _extract_function_signature(node: "tree_sitter.Node", source: bytes) -> str:
 
 
 def _extract_hlsl_symbols(
+    analyzer: "TreeSitterAnalyzer",
     rel_path: str, run_id: str, source: bytes, tree: "tree_sitter.Tree",
     symbols: list[Symbol], local_symbols: dict[str, Symbol],
+    node_for_symbol: dict[str, "tree_sitter.Node"],
 ) -> None:
     """Extract symbols from a tree-sitter tree (pass 1)."""
     for node in iter_tree(tree.root_node):
@@ -155,24 +159,29 @@ def _extract_hlsl_symbols(
                 continue  # pragma: no cover
             func_name = node_text(name_node, source)
             signature = _extract_function_signature(func_decl, source)
-            sym = _make_symbol(rel_path, run_id, source, node, func_name, "function",
+            sym = _make_symbol(analyzer, rel_path, run_id, source, node, func_name, "function",
                                signature=signature)
             symbols.append(sym)
             local_symbols[func_name] = sym
+            node_for_symbol[sym.id] = node
 
         elif node.type == "struct_specifier":
             name_node = find_child_by_type(node, "type_identifier")
             if not name_node:
                 continue  # pragma: no cover
             struct_name = node_text(name_node, source)
-            symbols.append(_make_symbol(rel_path, run_id, source, node, struct_name, "struct"))
+            sym = _make_symbol(analyzer, rel_path, run_id, source, node, struct_name, "struct")
+            symbols.append(sym)
+            node_for_symbol[sym.id] = node
 
         elif node.type == "declaration":
             name_node = find_child_by_type(node, "identifier")
             if not name_node:
                 continue  # pragma: no cover - defensive
             var_name = node_text(name_node, source)
-            symbols.append(_make_symbol(rel_path, run_id, source, node, var_name, "variable"))
+            sym = _make_symbol(analyzer, rel_path, run_id, source, node, var_name, "variable")
+            symbols.append(sym)
+            node_for_symbol[sym.id] = node
 
 
 def _extract_hlsl_edges(
@@ -238,8 +247,8 @@ class HlslAnalyzer(TreeSitterAnalyzer):
         local_symbols: dict[str, Symbol] = {}
 
         _extract_hlsl_symbols(
-            rel_path, run.execution_id, source, tree,
-            analysis.symbols, local_symbols,
+            self, rel_path, run.execution_id, source, tree,
+            analysis.symbols, local_symbols, analysis.node_for_symbol,
         )
 
         # Populate symbol_by_name for callable symbols (functions only)

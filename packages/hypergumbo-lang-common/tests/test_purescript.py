@@ -221,9 +221,9 @@ myFunc = 42
         result = analyze_purescript(tmp_path)
         func = next((s for s in result.symbols if "myFunc" in s.name), None)
         assert func is not None
-        assert func.id == func.stable_id
-        assert "purescript:" in func.id
-        assert "Test.purs" in func.id
+        assert func.id != func.stable_id
+        assert func.id.startswith("purescript:Test.purs:")
+        assert func.stable_id.startswith("sha256:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_purescript_file(tmp_path, "Test.purs", """module Test where

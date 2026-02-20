@@ -14,7 +14,6 @@ by the main test suite. Focuses on:
 from pathlib import Path
 
 from hypergumbo_lang_common.purescript import (
-    _make_stable_id,
     analyze_purescript,
     find_purescript_files,
 )
@@ -23,17 +22,6 @@ from hypergumbo_lang_common.purescript import (
 def make_purs_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a PureScript file with given content."""
     (tmp_path / name).write_text(content)
-
-
-class TestPureScriptHelperFunctions:
-    """Branch coverage for helper functions."""
-
-    def test_make_stable_id_format(self, tmp_path: Path) -> None:
-        """Test stable ID format."""
-        path = tmp_path / "Main.purs"
-        path.touch()
-        stable_id = _make_stable_id(path, tmp_path, "main", "fn")
-        assert stable_id == "purescript:Main.purs:main:fn"
 
 
 class TestModuleExtraction:

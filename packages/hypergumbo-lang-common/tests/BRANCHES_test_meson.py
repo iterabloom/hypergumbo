@@ -13,7 +13,6 @@ by the main test suite. Focuses on:
 from pathlib import Path
 
 from hypergumbo_lang_common.meson import (
-    _make_stable_id,
     _is_target_command,
     analyze_meson,
     find_meson_files,
@@ -27,13 +26,6 @@ def make_meson_file(tmp_path: Path, name: str, content: str) -> None:
 
 class TestMesonHelperFunctions:
     """Branch coverage for helper functions."""
-
-    def test_make_stable_id_format(self, tmp_path: Path) -> None:
-        """Test stable ID format."""
-        path = tmp_path / "meson.build"
-        path.touch()
-        stable_id = _make_stable_id(path, tmp_path, "myproject", "project")
-        assert stable_id == "meson:meson.build:myproject:project"
 
     def test_is_target_command_true(self) -> None:
         """Test target command detection."""

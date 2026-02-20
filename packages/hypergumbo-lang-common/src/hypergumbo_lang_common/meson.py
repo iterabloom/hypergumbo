@@ -29,7 +29,7 @@ from typing import ClassVar, Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -52,12 +52,6 @@ def find_meson_files(root: Path) -> Iterator[Path]:
     for path in find_files(root, ["meson.options"]):
         if path.is_file():
             yield path
-
-
-def _make_stable_id(path: Path, repo_root: Path, name: str, kind: str) -> str:
-    """Create a stable ID for a Meson symbol."""
-    rel_path = path.relative_to(repo_root)
-    return f"meson:{rel_path}:{name}:{kind}"
 
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
@@ -162,6 +156,7 @@ def _extract_symbols_recursive(
     symbols: list[Symbol],
     target_registry: dict[str, str],
     run_id: str,
+    analyzer: "MesonAnalyzer",
 ) -> None:
     """Extract symbols from a syntax tree node recursively."""
     if node.type == "normal_command":
@@ -173,8 +168,12 @@ def _extract_symbols_recursive(
                 if proj_name:
                     rel_path = str(path.relative_to(repo_root))
                     sym = Symbol(
-                        id=_make_stable_id(path, repo_root, proj_name, "project"),
-                        stable_id=_make_stable_id(path, repo_root, proj_name, "project"),
+                        id=make_symbol_id(
+                            "meson", rel_path,
+                            node.start_point[0] + 1, node.end_point[0] + 1,
+                            proj_name, "project",
+                        ),
+                        stable_id=analyzer.compute_stable_id(node, kind="project"),
                         name=proj_name,
                         kind="project",
                         language="meson",
@@ -204,8 +203,12 @@ def _extract_symbols_recursive(
                         kind = "target"
 
                     sym = Symbol(
-                        id=_make_stable_id(path, repo_root, target_name, kind),
-                        stable_id=_make_stable_id(path, repo_root, target_name, kind),
+                        id=make_symbol_id(
+                            "meson", rel_path,
+                            node.start_point[0] + 1, node.end_point[0] + 1,
+                            target_name, kind,
+                        ),
+                        stable_id=analyzer.compute_stable_id(node, kind=kind),
                         name=target_name,
                         kind=kind,
                         language="meson",
@@ -233,15 +236,18 @@ def _extract_symbols_recursive(
                         target_name = _get_first_argument(child)
                         if target_name:
                             # Register this variable as pointing to a target
-                            target_id = _make_stable_id(
-                                path, repo_root, target_name,
-                                "library" if "library" in cmd_name else "executable"
+                            target_kind = "library" if "library" in cmd_name else "executable"
+                            rel_path = str(path.relative_to(repo_root))
+                            target_id = make_symbol_id(
+                                "meson", rel_path,
+                                child.start_point[0] + 1, child.end_point[0] + 1,
+                                target_name, target_kind,
                             )
                             target_registry[var_name] = target_id
 
     # Recursively process children
     for child in node.children:
-        _extract_symbols_recursive(child, path, repo_root, symbols, target_registry, run_id)
+        _extract_symbols_recursive(child, path, repo_root, symbols, target_registry, run_id, analyzer)
 
 
 def _extract_edges_recursive(
@@ -271,8 +277,10 @@ def _extract_edges_recursive(
                                 if dep_id:
                                     # Create dependency edge
                                     src_kind = "library" if "library" in cmd_name else "executable"
-                                    src_id = _make_stable_id(
-                                        path, repo_root, target_name, src_kind
+                                    src_id = make_symbol_id(
+                                        "meson", str(path.relative_to(repo_root)),
+                                        child.start_point[0] + 1, child.end_point[0] + 1,
+                                        target_name, src_kind,
                                     )
                                     edge = Edge.create(
                                         src=src_id,
@@ -365,7 +373,7 @@ class MesonAnalyzer(TreeSitterAnalyzer):
                 content = path.read_bytes()
                 tree = parser.parse(content)
                 _extract_symbols_recursive(
-                    tree.root_node, path, repo_root, symbols, target_registry, run_id
+                    tree.root_node, path, repo_root, symbols, target_registry, run_id, self
                 )
             except Exception:  # pragma: no cover
                 pass

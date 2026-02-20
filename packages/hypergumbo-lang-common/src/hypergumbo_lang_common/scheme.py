@@ -25,6 +25,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    make_symbol_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -40,12 +41,6 @@ def find_scheme_files(root: Path) -> Iterator[Path]:
         for path in find_files(root, [ext]):
             if path.is_file():
                 yield path
-
-
-def _make_stable_id(path: Path, repo_root: Path, name: str, kind: str) -> str:
-    """Create a stable ID for a Scheme symbol."""
-    rel_path = path.relative_to(repo_root)
-    return f"scheme:{rel_path}:{name}:{kind}"
 
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
@@ -122,6 +117,7 @@ def _extract_scheme_symbols(
     path: Path,
     repo_root: Path,
     symbols: list[Symbol],
+    analyzer: "SchemeAnalyzer",
 ) -> None:
     """Extract symbols from a syntax tree node (recursive)."""
     if _is_define_form(node):
@@ -133,8 +129,12 @@ def _extract_scheme_symbols(
                 rel_path = str(path.relative_to(repo_root))
 
                 sym = Symbol(
-                    id=_make_stable_id(path, repo_root, name, "fn"),
-                    stable_id=_make_stable_id(path, repo_root, name, "fn"),
+                    id=make_symbol_id(
+                        "scheme", rel_path,
+                        node.start_point[0] + 1, node.end_point[0] + 1,
+                        name, "function",
+                    ),
+                    stable_id=analyzer.compute_stable_id(node, kind="function"),
                     name=name,
                     kind="function",
                     language="scheme",
@@ -156,8 +156,12 @@ def _extract_scheme_symbols(
                 rel_path = str(path.relative_to(repo_root))
 
                 sym = Symbol(
-                    id=_make_stable_id(path, repo_root, name, "var"),
-                    stable_id=_make_stable_id(path, repo_root, name, "var"),
+                    id=make_symbol_id(
+                        "scheme", rel_path,
+                        node.start_point[0] + 1, node.end_point[0] + 1,
+                        name, "variable",
+                    ),
+                    stable_id=analyzer.compute_stable_id(node, kind="variable"),
                     name=name,
                     kind="variable",
                     language="scheme",
@@ -175,7 +179,7 @@ def _extract_scheme_symbols(
 
     # Recursively process children
     for child in node.children:
-        _extract_scheme_symbols(child, path, repo_root, symbols)
+        _extract_scheme_symbols(child, path, repo_root, symbols, analyzer)
 
 
 # Scheme special forms and builtins that should not generate call edges
@@ -203,7 +207,8 @@ _BUILTINS = frozenset({
 
 
 def _find_enclosing_function(
-    node: "tree_sitter.Node", path: Path, repo_root: Path
+    node: "tree_sitter.Node", path: Path, repo_root: Path,
+    analyzer: "SchemeAnalyzer",
 ) -> Optional[str]:
     """Find the enclosing function for a node."""
     current = node.parent
@@ -211,7 +216,11 @@ def _find_enclosing_function(
         if _is_define_form(current) and _is_function_define(current):
             name = _get_function_name(current)
             if name:
-                return _make_stable_id(path, repo_root, name, "fn")
+                return make_symbol_id(
+                    "scheme", str(path.relative_to(repo_root)),
+                    current.start_point[0] + 1, current.end_point[0] + 1,
+                    name, "function",
+                )
         current = current.parent
     return None  # pragma: no cover
 
@@ -223,6 +232,7 @@ def _extract_scheme_edges(
     symbol_registry: dict[str, str],
     run_id: str,
     edges: list[Edge],
+    analyzer: "SchemeAnalyzer",
 ) -> None:
     """Extract edges from a syntax tree node (recursive)."""
     # Skip processing inside define forms' signature lists
@@ -232,7 +242,7 @@ def _extract_scheme_edges(
             children = [c for c in node.children if c.type not in ("(", ")")]
             # Skip define symbol (0), skip signature list (1), process body (2+)
             for child in children[2:]:
-                _extract_scheme_edges(child, path, repo_root, symbol_registry, run_id, edges)
+                _extract_scheme_edges(child, path, repo_root, symbol_registry, run_id, edges, analyzer)
         return  # Don't process other parts of define forms
 
     # Look for function calls (list expressions that aren't special forms)
@@ -240,7 +250,7 @@ def _extract_scheme_edges(
         call_name = _get_call_name(node)
         if call_name:
             if call_name not in _SPECIAL_FORMS and call_name not in _BUILTINS:
-                caller_id = _find_enclosing_function(node, path, repo_root)
+                caller_id = _find_enclosing_function(node, path, repo_root, analyzer)
                 if caller_id:
                     callee_id = symbol_registry.get(call_name)
                     confidence = 1.0 if callee_id else 0.6
@@ -263,7 +273,7 @@ def _extract_scheme_edges(
 
     # Recursively process children
     for child in node.children:
-        _extract_scheme_edges(child, path, repo_root, symbol_registry, run_id, edges)
+        _extract_scheme_edges(child, path, repo_root, symbol_registry, run_id, edges, analyzer)
 
 
 class SchemeAnalyzer(TreeSitterAnalyzer):
@@ -309,7 +319,7 @@ class SchemeAnalyzer(TreeSitterAnalyzer):
             try:
                 content = path.read_bytes()
                 tree = parser.parse(content)
-                _extract_scheme_symbols(tree.root_node, path, repo_root, symbols)
+                _extract_scheme_symbols(tree.root_node, path, repo_root, symbols, self)
             except Exception:  # pragma: no cover
                 pass
 
@@ -324,7 +334,7 @@ class SchemeAnalyzer(TreeSitterAnalyzer):
                 tree = parser.parse(content)
                 _extract_scheme_edges(
                     tree.root_node, path, repo_root,
-                    symbol_registry, run.execution_id, edges,
+                    symbol_registry, run.execution_id, edges, self,
                 )
             except Exception:  # pragma: no cover
                 pass

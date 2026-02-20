@@ -14,7 +14,6 @@ from pathlib import Path
 from hypergumbo_lang_common.scheme import (
     _is_define_form,
     _is_function_define,
-    _make_stable_id,
     analyze_scheme,
     find_scheme_files,
 )
@@ -23,17 +22,6 @@ from hypergumbo_lang_common.scheme import (
 def make_scheme_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a Scheme file with given content."""
     (tmp_path / name).write_text(content)
-
-
-class TestSchemeHelperFunctions:
-    """Branch coverage for helper functions."""
-
-    def test_make_stable_id_format(self, tmp_path: Path) -> None:
-        """Test stable ID format."""
-        path = tmp_path / "test.scm"
-        path.touch()
-        stable_id = _make_stable_id(path, tmp_path, "add", "fn")
-        assert stable_id == "scheme:test.scm:add:fn"
 
 
 class TestDefineForms:

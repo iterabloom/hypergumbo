@@ -25,7 +25,7 @@ from typing import Iterator, Optional, ClassVar, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -41,12 +41,6 @@ def find_racket_files(root: Path) -> Iterator[Path]:
         for path in find_files(root, [ext]):
             if path.is_file():
                 yield path
-
-
-def _make_stable_id(path: Path, repo_root: Path, name: str, kind: str) -> str:
-    """Create a stable ID for a Racket symbol."""
-    rel_path = path.relative_to(repo_root)
-    return f"racket:{rel_path}:{name}:{kind}"
 
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
@@ -154,8 +148,9 @@ def _get_call_name(node: "tree_sitter.Node") -> Optional[str]:
 class _RacketExtractor:
     """Extraction logic for Racket source files."""
 
-    def __init__(self, repo_root: Path):
+    def __init__(self, repo_root: Path, ts_analyzer: "RacketAnalyzer"):
         self.repo_root = repo_root
+        self._ts_analyzer = ts_analyzer
         self.symbols: list[Symbol] = []
         self.edges: list[Edge] = []
         self._symbol_registry: dict[str, str] = {}  # name -> id
@@ -240,8 +235,12 @@ class _RacketExtractor:
                     rel_path = str(path.relative_to(self.repo_root))
 
                     sym = Symbol(
-                        id=_make_stable_id(path, self.repo_root, name, "fn"),
-                        stable_id=_make_stable_id(path, self.repo_root, name, "fn"),
+                        id=make_symbol_id(
+                            "racket", rel_path,
+                            node.start_point[0] + 1, node.end_point[0] + 1,
+                            name, "function",
+                        ),
+                        stable_id=self._ts_analyzer.compute_stable_id(node, kind="function"),
                         name=name,
                         kind="function",
                         language="racket",
@@ -263,8 +262,12 @@ class _RacketExtractor:
                     rel_path = str(path.relative_to(self.repo_root))
 
                     sym = Symbol(
-                        id=_make_stable_id(path, self.repo_root, name, "var"),
-                        stable_id=_make_stable_id(path, self.repo_root, name, "var"),
+                        id=make_symbol_id(
+                            "racket", rel_path,
+                            node.start_point[0] + 1, node.end_point[0] + 1,
+                            name, "variable",
+                        ),
+                        stable_id=self._ts_analyzer.compute_stable_id(node, kind="variable"),
                         name=name,
                         kind="variable",
                         language="racket",
@@ -287,8 +290,12 @@ class _RacketExtractor:
                 rel_path = str(path.relative_to(self.repo_root))
 
                 sym = Symbol(
-                    id=_make_stable_id(path, self.repo_root, name, "struct"),
-                    stable_id=_make_stable_id(path, self.repo_root, name, "struct"),
+                    id=make_symbol_id(
+                        "racket", rel_path,
+                        node.start_point[0] + 1, node.end_point[0] + 1,
+                        name, "class",
+                    ),
+                    stable_id=self._ts_analyzer.compute_stable_id(node, kind="class"),
                     name=name,
                     kind="class",
                     language="racket",
@@ -389,7 +396,11 @@ class _RacketExtractor:
             if _is_define_form(current) and _is_function_define(current):
                 name = _get_function_name(current)
                 if name:
-                    return _make_stable_id(path, self.repo_root, name, "fn")
+                    return make_symbol_id(
+                        "racket", str(path.relative_to(self.repo_root)),
+                        current.start_point[0] + 1, current.end_point[0] + 1,
+                        name, "function",
+                    )
             current = current.parent
         return None  # pragma: no cover
 
@@ -420,7 +431,7 @@ class RacketAnalyzer(TreeSitterAnalyzer):
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
             )
 
-        extractor = _RacketExtractor(repo_root)
+        extractor = _RacketExtractor(repo_root, self)
         return extractor.analyze()
 
 

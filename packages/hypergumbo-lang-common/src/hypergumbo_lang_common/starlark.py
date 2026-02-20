@@ -37,6 +37,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
+    make_symbol_id,
     node_text,
 )
 from hypergumbo_core.discovery import find_files
@@ -114,12 +115,13 @@ class _FileContext:
         self.load_aliases: dict[str, str] = load_aliases if load_aliases is not None else {}
 
 
-def _make_symbol(ctx: _FileContext, node: "tree_sitter.Node", name: str, kind: str,
+def _make_symbol(analyzer: "TreeSitterAnalyzer", ctx: _FileContext,
+                 node: "tree_sitter.Node", name: str, kind: str,
                  signature: Optional[str] = None, meta: Optional[dict] = None) -> Symbol:
     """Create a Symbol with consistent formatting."""
     start_line = node.start_point[0] + 1
     end_line = node.end_point[0] + 1
-    sym_id = f"starlark:{ctx.rel_path}:{start_line}-{end_line}:{name}:{kind}"
+    sym_id = make_symbol_id("starlark", ctx.rel_path, start_line, end_line, name, kind)
     span = Span(
         start_line=start_line,
         start_col=node.start_point[1],
@@ -136,13 +138,14 @@ def _make_symbol(ctx: _FileContext, node: "tree_sitter.Node", name: str, kind: s
         span=span,
         origin=PASS_ID,
         origin_run_id=ctx.run_id,
-        stable_id=f"starlark:{ctx.rel_path}:{name}",
+        stable_id=analyzer.compute_stable_id(node, kind=kind),
         signature=signature,
         meta=meta,
     )
 
 
-def _process_function(ctx: _FileContext, node: "tree_sitter.Node") -> None:
+def _process_function(analyzer: "TreeSitterAnalyzer", ctx: _FileContext,
+                      node: "tree_sitter.Node") -> None:
     """Process a function definition."""
     name_node = find_child_by_type(node, "identifier")
     if not name_node:
@@ -154,10 +157,11 @@ def _process_function(ctx: _FileContext, node: "tree_sitter.Node") -> None:
         _extract_function_signature(params_node, ctx.source) if params_node else "()"
     )
 
-    ctx.symbols.append(_make_symbol(ctx, node, name, "function", signature=signature))
+    ctx.symbols.append(_make_symbol(analyzer, ctx, node, name, "function", signature=signature))
 
 
-def _process_assignment(ctx: _FileContext, node: "tree_sitter.Node") -> None:
+def _process_assignment(analyzer: "TreeSitterAnalyzer", ctx: _FileContext,
+                        node: "tree_sitter.Node") -> None:
     """Process a variable assignment."""
     name_node = find_child_by_type(node, "identifier")
     if not name_node:
@@ -170,7 +174,7 @@ def _process_assignment(ctx: _FileContext, node: "tree_sitter.Node") -> None:
     if not name.isupper() and not name[0].isupper():
         return  # pragma: no cover - filtering lowercase
 
-    ctx.symbols.append(_make_symbol(ctx, node, name, "variable"))
+    ctx.symbols.append(_make_symbol(analyzer, ctx, node, name, "variable"))
 
 
 def _process_load(ctx: _FileContext, node: "tree_sitter.Node") -> None:
@@ -244,7 +248,8 @@ def _process_load(ctx: _FileContext, node: "tree_sitter.Node") -> None:
             ctx.load_aliases[alias] = source_file
 
 
-def _process_target(ctx: _FileContext, node: "tree_sitter.Node", rule_type: str) -> None:
+def _process_target(analyzer: "TreeSitterAnalyzer", ctx: _FileContext,
+                    node: "tree_sitter.Node", rule_type: str) -> None:
     """Process a build target invocation."""
     arg_list = find_child_by_type(node, "argument_list")
     if not arg_list:
@@ -279,12 +284,10 @@ def _process_target(ctx: _FileContext, node: "tree_sitter.Node", rule_type: str)
                                     deps_list.append(dep)
 
     if target_name:
-        stable_id = f"starlark:{ctx.rel_path}:{target_name}"
-        ctx.target_ids[target_name] = stable_id
-
-        ctx.symbols.append(
-            _make_symbol(ctx, node, target_name, "target", meta={"rule_type": rule_type})
-        )
+        sym = _make_symbol(analyzer, ctx, node, target_name, "target",
+                           meta={"rule_type": rule_type})
+        ctx.target_ids[target_name] = sym.id
+        ctx.symbols.append(sym)
 
         # Create dependency edges
         for dep in deps_list:
@@ -292,7 +295,7 @@ def _process_target(ctx: _FileContext, node: "tree_sitter.Node", rule_type: str)
             ctx.edges.append(
                 Edge(
                     id=f"edge:starlark:{uuid.uuid4().hex[:12]}",
-                    src=stable_id,
+                    src=sym.id,
                     dst=f"starlark:{ctx.rel_path}:{dep}",
                     edge_type="depends_on",
                     line=node.start_point[0] + 1,
@@ -339,12 +342,13 @@ def _get_call_target_name_starlark(node: "tree_sitter.Node", source: bytes) -> O
     return None  # pragma: no cover - defensive
 
 
-def _extract_starlark_symbols(ctx: _FileContext, root_node: "tree_sitter.Node",
+def _extract_starlark_symbols(analyzer: "TreeSitterAnalyzer", ctx: _FileContext,
+                               root_node: "tree_sitter.Node",
                                symbol_registry: dict[str, Symbol]) -> None:
     """Extract symbols from Starlark AST (pass 1)."""
     for node in iter_tree(root_node):
         if node.type == "function_definition":
-            _process_function(ctx, node)
+            _process_function(analyzer, ctx, node)
             # Register function in symbol registry
             name_node = find_child_by_type(node, "identifier")
             if name_node:
@@ -358,7 +362,7 @@ def _extract_starlark_symbols(ctx: _FileContext, root_node: "tree_sitter.Node",
             # Check for assignment or call (targets)
             for child in node.children:
                 if child.type == "assignment":
-                    _process_assignment(ctx, child)
+                    _process_assignment(analyzer, ctx, child)
                 elif child.type == "call":
                     # Only process load and target definitions in pass 1
                     func_node = find_child_by_type(child, "identifier")
@@ -367,7 +371,7 @@ def _extract_starlark_symbols(ctx: _FileContext, root_node: "tree_sitter.Node",
                         if func_name == "load":
                             _process_load(ctx, child)
                         else:
-                            _process_target(ctx, child, func_name)
+                            _process_target(analyzer, ctx, child, func_name)
 
 
 def _extract_starlark_edges(ctx: _FileContext, root_node: "tree_sitter.Node",
@@ -482,7 +486,7 @@ class StarlarkAnalyzer(TreeSitterAnalyzer):
                 target_ids=target_ids,
             )
 
-            _extract_starlark_symbols(ctx, tree.root_node, global_symbol_registry)
+            _extract_starlark_symbols(self, ctx, tree.root_node, global_symbol_registry)
 
             # Store for pass 2 (including load_aliases for path_hint resolution)
             parsed_files.append((rel_path, source, tree, ctx.load_aliases))

@@ -12,7 +12,6 @@ by the main test suite. Focuses on:
 from pathlib import Path
 
 from hypergumbo_lang_common.matlab import (
-    _make_stable_id,
     analyze_matlab,
     find_matlab_files,
 )
@@ -21,17 +20,6 @@ from hypergumbo_lang_common.matlab import (
 def make_matlab_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a MATLAB file with given content."""
     (tmp_path / name).write_text(content)
-
-
-class TestMatlabHelperFunctions:
-    """Branch coverage for helper functions."""
-
-    def test_make_stable_id_format(self, tmp_path: Path) -> None:
-        """Test stable ID format."""
-        path = tmp_path / "utils.m"
-        path.touch()
-        stable_id = _make_stable_id(path, tmp_path, "myFunc", "fn")
-        assert stable_id == "matlab:utils.m:myFunc:fn"
 
 
 class TestFunctionExtraction:

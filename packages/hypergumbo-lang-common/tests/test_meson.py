@@ -181,9 +181,9 @@ executable('myapp', 'main.c')
         result = analyze_meson(tmp_path)
         exe = next((s for s in result.symbols if s.name == "myapp"), None)
         assert exe is not None
-        assert exe.id == exe.stable_id
-        assert "meson:" in exe.id
-        assert "meson.build" in exe.id
+        assert exe.id != exe.stable_id
+        assert exe.id.startswith("meson:meson.build:")
+        assert exe.stable_id.startswith("sha256:")
 
     def test_span_info(self, tmp_path: Path) -> None:
         make_meson_file(tmp_path, "meson.build", """project('test', 'c')
