@@ -126,7 +126,7 @@ def run_hypergumbo_sketch() -> str:
     """
     result = run_command(
         [sys.executable, "-m", "hypergumbo_core", "sketch", str(REPO_ROOT),
-         "-t", "8000", "--no-source"],
+         "-t", "8000"],
         "hypergumbo sketch",
     )
     output = result.stdout
@@ -199,29 +199,42 @@ def filter_ai_folders_from_structure(sketch: str) -> str:
 def _remove_sketch_sections(sketch: str, sections: list[str]) -> str:
     """Remove entire sections (header through next same-level header) from sketch.
 
-    Used to strip bulky content sections (e.g. Entry Points) that are
+    Used to strip sections (e.g. Entry Points, Source Files Content) that are
     useful in a standalone sketch but noise in architecture documentation.
 
-    Limitation: this function is NOT code-fence-aware.  A ``## Heading``
-    inside a fenced code block (e.g. README content rendered by the sketch)
-    will be treated as a real section boundary, causing premature end of
-    skipping and content leakage.  Avoid using this to strip sections that
-    embed file content (use ``--no-source`` to prevent their generation
-    instead).
+    Code-fence-aware: ``## Heading`` lines inside fenced code blocks (e.g.
+    README content rendered by the sketch) are ignored rather than treated as
+    section boundaries.  Handles nested fences per the CommonMark spec: a
+    closing fence must have at least as many backticks as the opening fence.
     """
     lines = sketch.split("\n")
     result: list[str] = []
     skipping = False
+    fence_delim_len = 0  # 0 = not inside a fence
 
     for line in lines:
-        # Detect start of a target section
-        if any(line.startswith(f"## {s}") for s in sections):
-            skipping = True
-            continue
+        # Track code fence boundaries per CommonMark: opening fence is 3+
+        # backticks; closing fence must match or exceed that count.
+        stripped = line.lstrip()
+        if stripped.startswith("```"):
+            backtick_count = len(stripped) - len(stripped.lstrip("`"))
+            if fence_delim_len == 0:
+                # Opening a fence
+                fence_delim_len = backtick_count
+            elif backtick_count >= fence_delim_len:
+                # Closing a fence (matching or longer delimiter)
+                fence_delim_len = 0
 
-        # Detect next ## header — stop skipping
-        if skipping and line.startswith("## "):
-            skipping = False
+        # Inside a code fence, headings are literal content, not structure.
+        if fence_delim_len == 0:
+            # Detect start of a target section
+            if any(line.startswith(f"## {s}") for s in sections):
+                skipping = True
+                continue
+
+            # Detect next ## header — stop skipping
+            if skipping and line.startswith("## "):
+                skipping = False
 
         if not skipping:
             result.append(line)
@@ -618,6 +631,8 @@ def generate_architecture_md() -> str:
     sketch = filter_ai_folders_from_structure(sketch)
     sketch = _remove_sketch_sections(sketch, [
         "Entry Points",
+        "Source Files Content",
+        "Additional Files Content",
     ])
     sketch = remove_section_code_fences(sketch, ["Structure", "Configuration"])
 

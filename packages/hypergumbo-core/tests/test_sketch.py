@@ -35,6 +35,7 @@ from hypergumbo_core.sketch import (
     _resolve_pages_url,
     _extract_path_from_forge_url,
     _extract_readme_internal_links,
+    _format_file_content_block,
 )
 from hypergumbo_core.ranking import compute_centrality, _is_test_path
 from hypergumbo_core.profile import detect_profile
@@ -1538,6 +1539,38 @@ def _make_test_symbol(
         path=path,
         span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
     )
+
+
+class TestFormatFileContentBlock:
+    """Tests for _format_file_content_block fence delimiter selection."""
+
+    def test_simple_content_uses_triple_backticks(self) -> None:
+        """Content without backticks uses standard triple-backtick fence."""
+        lines = _format_file_content_block("readme.md", "Hello world")
+        assert lines[1] == "```"
+        assert lines[3] == "```"
+
+    def test_content_with_triple_backticks_uses_longer_fence(self) -> None:
+        """Content containing ``` gets a fence with 4+ backticks."""
+        content = "Some text\n```python\nprint('hi')\n```\nMore text"
+        lines = _format_file_content_block("readme.md", content)
+        fence = lines[1]
+        assert len(fence) >= 4
+        assert fence == "`" * len(fence)
+        assert lines[3] == fence
+
+    def test_content_with_quad_backticks_uses_five(self) -> None:
+        """Content containing ```` gets a fence with 5 backticks."""
+        content = "Outer\n````\ninner\n````\nEnd"
+        lines = _format_file_content_block("file.md", content)
+        fence = lines[1]
+        assert len(fence) >= 5
+
+    def test_markers_present(self) -> None:
+        """START and END markers are present in output."""
+        lines = _format_file_content_block("src/app.py", "x = 1")
+        assert "START of src/app.py" in lines[0]
+        assert "END of src/app.py" in lines[4]
 
 
 class TestFormatAdditionalFiles:

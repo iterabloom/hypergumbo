@@ -7,9 +7,9 @@
 
 hypergumbo analyzed its own source code and found:
 - **166** Python modules (108 analyzers, 31 linkers, 23 core, 4 CLI)
-- **3228** symbols (functions, classes, methods)
-- **30159** edges by type:
-  - calls: 17827
+- **3230** symbols (functions, classes, methods)
+- **30162** edges by type:
+  - calls: 17830
   - imports: 6493
   - instantiates: 4112
   - contains: 895
@@ -27,7 +27,7 @@ hypergumbo is a local-first CLI that generates behavior maps and sketches from s
 ## Overview
 Python (90%), Markdown (5%), Yaml (3%)
 705 files    (372 non-test + 333 test)
-~282,218 LOC (~120,176 non-test + ~162,042 test)
+~282,272 LOC (~120,230 non-test + ~162,042 test)
 
 ## Structure
 
@@ -81,7 +81,7 @@ hypergumbo/
 
 333 test files · hypothesis, pytest, unittest
 
-*~93% estimated coverage (2512/2688 functions called by tests)*
+*~93% estimated coverage (2514/2690 functions called by tests)*
 
 ## Configuration
 
@@ -216,8 +216,8 @@ LICENSE: AGPL
 - `packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/kdl.py`
 - `packages/hypergumbo-lang-mainstream/tests/test_properties.py`
 - `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/markdown.py`
-- `packages/hypergumbo-lang-mainstream/tests/BRANCHES_test_swift.py`
 - `packages/hypergumbo-core/src/hypergumbo_core/ranking.py`
+- `packages/hypergumbo-lang-mainstream/tests/BRANCHES_test_swift.py`
 - `packages/hypergumbo-core/src/hypergumbo_core/linkers/websocket.py`
 - `packages/hypergumbo-core/src/hypergumbo_core/selection/filters.py`
 - `packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/requirements.py`
@@ -313,7 +313,7 @@ LICENSE: AGPL
 ### `packages/hypergumbo-tracker/src/hypergumbo_tracker/cli.py`
 - `main(argv: list[str] | None=…) -> None` (function) — Primary CLI entry point.
 
-(... and 3096 more symbols across 193 other files)
+(... and 3098 more symbols across 193 other files)
 
 ## Additional Files
 
@@ -335,19 +335,10 @@ LICENSE: AGPL
 - `docs/LINKERS.md`
 - `docs/history/planning-v1.md`
 - `docs/FRAMEWORKS.md`
-- `docs/example-output.md`
-- `packages/hypergumbo-core/src/hypergumbo_core/frameworks/remix.yaml`
 - `docs/ARCHITECTURE.md`
+- `packages/hypergumbo-core/src/hypergumbo_core/frameworks/remix.yaml`
+- `docs/example-output.md`
 - ... and 126 more files
-
-## Overview
-Python (88%), Markdown (6%), Yaml (4%)
-495 files    (321 non-test + 174 test)
-~186,506 LOC (~96,384 non-test + ~90,122 test)
-
-[...truncated...]
-```
-------------------- END of README.md -----------------------
 ````
 
 ## Data Flow (ADR-0003)
@@ -366,7 +357,7 @@ Source Files
 ┌─────────────────────────────────────────────────────────────────┐
 │                         ANALYZERS                               │
 │  Pure language processors - NO framework knowledge              │
-│  Output: 3228 Symbols + 30159 Edges + UsageContexts             │
+│  Output: 3230 Symbols + 30162 Edges + UsageContexts             │
 │  Rich metadata: decorators, base_classes, parameters            │
 └─────────────────────────────────────────────────────────────────┘
      │
@@ -748,7 +739,7 @@ patterns:
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: a8d278ff6a9b
+  commit: 5a685fd59689
   hypergumbo: 2.0.2
   python: 3.12.3
 -->

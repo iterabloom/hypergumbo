@@ -2089,6 +2089,8 @@ def _format_file_content_block(rel_path: str, content: str) -> list[str]:
     """Format file content with visible START/END markers.
 
     Creates clear visual delineation of file boundaries for easier parsing.
+    Uses a fence delimiter long enough to avoid ambiguity with any backtick
+    sequences inside the content (per CommonMark spec).
 
     Args:
         rel_path: Relative path to the file.
@@ -2104,11 +2106,24 @@ def _format_file_content_block(rel_path: str, content: str) -> list[str]:
     end_marker = f"------------------- END of {rel_path} "
     end_marker += "-" * max(0, 60 - len(end_marker))
 
+    # Choose a fence delimiter longer than any backtick run in the content
+    # so inner code blocks don't close the outer fence.
+    max_run = 0
+    run = 0
+    for ch in content:
+        if ch == "`":
+            run += 1
+            if run > max_run:
+                max_run = run
+        else:
+            run = 0
+    fence = "`" * max(3, max_run + 1)
+
     return [
         start_marker,
-        "```",
+        fence,
         content.rstrip(),
-        "```",
+        fence,
         end_marker,
         "",  # Blank line for separation
     ]
