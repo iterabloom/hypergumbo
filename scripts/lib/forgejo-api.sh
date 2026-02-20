@@ -257,13 +257,35 @@ except Exception:
 				return 0
 			fi
 
+			# Check if there are still pending jobs (e.g., pytest-retry).
+			# If so, keep polling — the retry may succeed and ci-complete
+			# will flip to success.
+			local has_pending
+			has_pending=$(echo "$API_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    pending = [s.get('context', '') for s in data.get('statuses', [])
+               if s.get('status') == 'pending']
+    print('yes' if pending else 'no')
+except Exception:
+    print('no')
+" 2>/dev/null || echo "no")
+
+			if [[ "$has_pending" == "yes" ]]; then
+				# Jobs still running — keep polling
+				printf "."
+				sleep 16
+				continue
+			fi
+
 			local failed_contexts
 			failed_contexts=$(echo "$API_RESPONSE" | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
     failed = [s.get('context', 'unknown') for s in data.get('statuses', [])
-              if s.get('state') in ('failure', 'error')]
+              if s.get('status') in ('failure', 'error')]
     print(', '.join(failed) if failed else 'unknown')
 except Exception:
     print('unknown')
