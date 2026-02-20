@@ -689,6 +689,48 @@ def test_non_route_function_keeps_hash_stable_id(tmp_path: Path) -> None:
     assert func["stable_id"].startswith("sha256:")
 
 
+def test_containing_module_differentiates_stable_id(tmp_path: Path) -> None:
+    """Methods with identical signatures in different classes must get different stable_ids.
+
+    ADR-0014 §5: containing_stable_id is included in the hash formula so
+    Foo.process(x) and Bar.process(x) produce distinct stable_id values
+    when their containing classes have different stable_ids (e.g. different
+    decorators). Classes with identical structure produce the same stable_id
+    by design (survives renames); the typed tier (Phase 3) addresses that.
+    """
+    py_file = tmp_path / "models.py"
+    py_file.write_text(
+        "def my_decorator(cls):\n"
+        "    return cls\n"
+        "\n"
+        "class Foo:\n"
+        "    def process(self, x):\n"
+        "        pass\n"
+        "\n"
+        "@my_decorator\n"
+        "class Bar:\n"
+        "    def process(self, x):\n"
+        "        pass\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    methods = [n for n in data["nodes"] if n["kind"] == "method"]
+    foo_process = next(m for m in methods if m["name"] == "Foo.process")
+    bar_process = next(m for m in methods if m["name"] == "Bar.process")
+
+    # Both should have sha256-based stable_ids
+    assert foo_process["stable_id"].startswith("sha256:")
+    assert bar_process["stable_id"].startswith("sha256:")
+
+    # They must differ because containing classes have different stable_ids
+    # (Bar has @my_decorator, Foo does not)
+    assert foo_process["stable_id"] != bar_process["stable_id"]
+
+
 def test_flask_route_decorator_metadata(tmp_path: Path) -> None:
     """Flask @app.route decorator metadata should be extracted."""
     py_file = tmp_path / "main.py"

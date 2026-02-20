@@ -583,7 +583,7 @@ Single file: `hypergumbo.results.json`
 {
   "schema_version": "0.2.1",
   "confidence_model": "hypergumbo-evidence-v1",
-  "stable_id_scheme": "hypergumbo-stableid-v1",
+  "stable_id_scheme": "hypergumbo-stableid-v2",
   "shape_id_scheme": "hypergumbo-shapeid-v1",
   "repo_fingerprint_scheme": "hypergumbo-repofp-v1",
   "view": "behavior_map",

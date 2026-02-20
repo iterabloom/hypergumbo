@@ -8,7 +8,7 @@ def test_new_behavior_map_has_required_top_level_fields():
     assert bm["schema_version"] == SCHEMA_VERSION
     assert bm["view"] == "behavior_map"
     assert bm["confidence_model"] == "hypergumbo-evidence-v1"
-    assert bm["stable_id_scheme"] == "hypergumbo-stableid-v1"
+    assert bm["stable_id_scheme"] == "hypergumbo-stableid-v2"
     assert bm["shape_id_scheme"] == "hypergumbo-shapeid-v1"
     assert bm["repo_fingerprint_scheme"] == "hypergumbo-repofp-v1"
 

@@ -833,14 +833,18 @@ def _extract_flask_usage_contexts(
     return contexts
 
 
-def _compute_stable_id(node: ast.FunctionDef | ast.ClassDef) -> str:
+def _compute_stable_id(
+    node: ast.FunctionDef | ast.ClassDef,
+    containing_stable_id: str = "",
+) -> str:
     """Compute stable_id based on signature (survives renames/moves).
 
     Returns:
-    sha256({kind}:{param_count}:{arity_flags}:{decorators})
+    sha256({kind}:{param_count}:{arity_flags}:{decorators}:{containing_stable_id})
 
     arity_flags: has_defaults, has_varargs, has_kwargs
     decorators: sorted list of decorator names
+    containing_stable_id: stable_id of the enclosing class/module (ADR-0014 §5)
     """
     kind = "function" if isinstance(node, ast.FunctionDef) else "class"
 
@@ -871,8 +875,8 @@ def _compute_stable_id(node: ast.FunctionDef | ast.ClassDef) -> str:
                 decorators.append(dec.func.attr)
     decorators_str = ",".join(sorted(decorators))
 
-    # Build signature string and hash
-    sig = f"{kind}:{param_count}:{arity_flags}:{decorators_str}"
+    # Build signature string and hash (ADR-0014 §5: includes containing_stable_id)
+    sig = f"{kind}:{param_count}:{arity_flags}:{decorators_str}:{containing_stable_id}"
     hash_val = hashlib.sha256(sig.encode()).hexdigest()[:16]
     return f"sha256:{hash_val}"
 
@@ -1439,7 +1443,9 @@ def _extract_file_analysis(
                     # For Django/DRF class-based views, methods named get/post/etc.
                     # use route-style stable_id with class name as path for uniqueness
                     # (ADR-0014 §4: sha256("route:{method}:{path}"))
-                    stable_id = _compute_stable_id(item)
+                    stable_id = _compute_stable_id(
+                        item, containing_stable_id=symbol.stable_id
+                    )
                     if item.name.lower() in HTTP_METHODS:
                         stable_id = make_route_stable_id(item.name, class_name)
 
