@@ -4106,3 +4106,153 @@ end
         assert edge is None, (
             "var = bare_method() should not infer type; account.balance should not resolve"
         )
+
+
+class TestRubyAmbiguousMethodGuard:
+    """Tests for AMB-METHOD invariant in Ruby.
+
+    When a bare method call has 3+ definitions across different classes,
+    the analyzer must NOT produce a resolved call edge (false positive).
+    Ruby's duck typing means common method names (run, call, perform, close)
+    appear in many classes.
+
+    Invariant: Method calls with 3+ ambiguous receiver types must not
+    produce resolved call edges.
+    """
+
+    def test_ambiguous_bare_call_three_plus_classes(
+        self, tmp_path: Path,
+    ) -> None:
+        """Bare close() with 3 classes defining close() → no resolved edge.
+
+        When Server#close, Client#close, and Worker#close all exist, a bare
+        close() call should not resolve to any specific class's method.
+        """
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        rb_file = tmp_path / "multi.rb"
+        rb_file.write_text("""
+class Server
+  def close
+    true
+  end
+end
+
+class Client
+  def close
+    true
+  end
+end
+
+class Worker
+  def close
+    true
+  end
+end
+
+class Cleanup
+  def run
+    close
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        run_calls = [e for e in call_edges if "Cleanup#run" in e.src]
+
+        # Any edge targeting a close() method should NOT be to a specific class
+        for edge in run_calls:
+            if "close" in edge.dst.lower():
+                assert "Server#close" not in edge.dst, (
+                    f"Should not resolve to Server#close, got {edge.dst}"
+                )
+                assert "Client#close" not in edge.dst, (
+                    f"Should not resolve to Client#close, got {edge.dst}"
+                )
+                assert "Worker#close" not in edge.dst, (
+                    f"Should not resolve to Worker#close, got {edge.dst}"
+                )
+
+    def test_ambiguous_call_with_parens(
+        self, tmp_path: Path,
+    ) -> None:
+        """close() with parens (call node) also guarded when 3+ classes."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        rb_file = tmp_path / "parens.rb"
+        rb_file.write_text("""
+class Server
+  def close
+    true
+  end
+end
+
+class Client
+  def close
+    true
+  end
+end
+
+class Worker
+  def close
+    true
+  end
+end
+
+class Cleanup
+  def run
+    close()
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        run_calls = [e for e in call_edges if "Cleanup#run" in e.src]
+
+        for edge in run_calls:
+            if "close" in edge.dst.lower():
+                assert "Server#close" not in edge.dst
+                assert "Client#close" not in edge.dst
+                assert "Worker#close" not in edge.dst
+
+    def test_two_classes_same_method_still_resolves(
+        self, tmp_path: Path,
+    ) -> None:
+        """Bare run() with 2 classes → still resolves (below threshold)."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        rb_file = tmp_path / "two.rb"
+        rb_file.write_text("""
+class Server
+  def run
+    true
+  end
+end
+
+class Client
+  def run
+    true
+  end
+end
+
+class Main
+  def start
+    run
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        start_calls = [e for e in call_edges if "Main#start" in e.src]
+
+        # 2 candidates is below the threshold — should still resolve
+        run_calls = [e for e in start_calls if "run" in e.dst.lower()]
+        assert len(run_calls) >= 1, (
+            "2 candidates should still resolve"
+        )

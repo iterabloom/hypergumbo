@@ -2026,6 +2026,7 @@ def _extract_edges_from_file(
     run_id: str,
     resolver: NameResolver,
     require_hints: dict[str, str],
+    method_candidates: dict[str, list[Symbol]] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -2042,6 +2043,7 @@ def _extract_edges_from_file(
     edges: list[Edge] = []
     file_id = make_file_id("ruby", str(file_path))
     var_types = _extract_ruby_var_types(tree, source)
+    _mc = method_candidates or {}
 
     for node in iter_tree(tree.root_node):
         # Detect call nodes (require statements and method calls)
@@ -2132,6 +2134,10 @@ def _extract_edges_from_file(
                                     ))
                             # else: variable receiver with unknown type — no edge
                             # (avoids false positives from bare-name matching)
+                        # AMB-METHOD guard: skip bare-call resolution when
+                        # 3+ classes define the same method name.
+                        elif len(_mc.get(callee_name, ())) >= 3:
+                            pass
                         # Check local symbols (bare calls only, no receiver)
                         elif callee_name in local_symbols:
                             callee = local_symbols[callee_name]
@@ -2191,6 +2197,10 @@ def _extract_edges_from_file(
                 # → "Worker", "Utils.process" → "Utils").
                 enclosing_class = _enclosing_class_from_method(current_method)
 
+                # AMB-METHOD guard: when 3+ classes define the same
+                # method name, only allow same-class resolution.
+                ambiguous = len(_mc.get(callee_name, ())) >= 3
+
                 # Priority cascade:
                 # 1. Same-class qualified lookup (confidence 0.90)
                 # 2. Unqualified local_symbols lookup (confidence 0.75)
@@ -2206,18 +2216,22 @@ def _extract_edges_from_file(
                             enclosing_class is not None
                             and _symbol_belongs_to_class(callee, enclosing_class)
                         )
-                        confidence = 0.90 if same_class else 0.75
-                        edges.append(Edge.create(
-                            src=current_method.id,
-                            dst=callee.id,
-                            edge_type="calls",
-                            line=node.start_point[0] + 1,
-                            evidence_type="bare_method_call",
-                            confidence=confidence,
-                            origin=PASS_ID,
-                            origin_run_id=run_id,
-                        ))
-                else:
+                        # AMB-METHOD: skip cross-class matches when ambiguous
+                        if ambiguous and not same_class:
+                            pass
+                        else:
+                            confidence = 0.90 if same_class else 0.75
+                            edges.append(Edge.create(
+                                src=current_method.id,
+                                dst=callee.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="bare_method_call",
+                                confidence=confidence,
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                            ))
+                elif not ambiguous:
                     # Use require hints for disambiguation
                     path_hint = require_hints.get(callee_name)
                     lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
@@ -2452,11 +2466,16 @@ class RubyAnalyzer(TreeSitterAnalyzer):
             else:
                 files_skipped += 1
 
-        # Build global symbol registry
+        # Build global symbol registry and method candidate counts
         global_symbols: dict[str, Symbol] = {}
+        method_candidates: dict[str, list[Symbol]] = {}
         for analysis in file_analyses.values():
             for symbol in analysis.symbols:
                 self.register_symbol(symbol, global_symbols)
+                if symbol.kind == "method":
+                    short = symbol.name.split("#")[-1] if "#" in symbol.name else symbol.name
+                    short = short.split(".")[-1] if "." in short else short
+                    method_candidates.setdefault(short, []).append(symbol)
 
         # Pass 2: Extract edges from files with symbols
         resolver = NameResolver(global_symbols)
@@ -2476,6 +2495,7 @@ class RubyAnalyzer(TreeSitterAnalyzer):
                 analysis.symbol_by_name, global_symbols,
                 run.execution_id, resolver,
                 require_hints=analysis.import_aliases,
+                method_candidates=method_candidates,
             )
             all_edges.extend(edges)
 
