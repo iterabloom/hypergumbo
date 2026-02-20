@@ -49,11 +49,12 @@ from hypergumbo_core.symbol_resolution import NameResolver
 
 @dataclass
 class MockNode:
-    """Lightweight mock of tree_sitter.Node for shape_id tests."""
+    """Lightweight mock of tree_sitter.Node for shape_id and stable_id tests."""
 
     type: str
     is_named: bool = True
     children: list["MockNode"] = field(default_factory=list)
+    text: bytes | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -945,3 +946,224 @@ class TestClassifyParameterFlags:
         ])
         flags = self.analyzer.classify_parameter_flags(params)
         assert flags == ArityFlags(param_count=4, has_defaults=True, has_varargs=True, has_kwargs=True)
+
+
+# ---------------------------------------------------------------------------
+# compute_stable_id tests (ADR-0014 §2)
+# ---------------------------------------------------------------------------
+
+
+class TestComputeStableId:
+    """Tests for TreeSitterAnalyzer.compute_stable_id()."""
+
+    def setup_method(self) -> None:
+        self.analyzer = StubAnalyzer()
+
+    def _make_function_node(
+        self,
+        params: list[MockNode] | None = None,
+        decorators: list[MockNode] | None = None,
+    ) -> MockNode:
+        """Build a mock function_definition node."""
+        children: list[MockNode] = []
+        if decorators:
+            children.extend(decorators)
+        children.append(MockNode(type="identifier", text=b"my_func"))
+        if params is not None:
+            children.append(MockNode(type="parameters", children=params))
+        else:
+            children.append(MockNode(type="parameters", children=[]))
+        children.append(_make_tree("block", MockNode(type="pass_statement")))
+        return MockNode(type="function_definition", children=children)
+
+    def test_format(self) -> None:
+        """compute_stable_id should return sha256:{16-hex-chars} format."""
+        node = self._make_function_node()
+        sid = self.analyzer.compute_stable_id(node, kind="function")
+        assert sid.startswith("sha256:")
+        hex_part = sid.split(":")[1]
+        assert len(hex_part) == 16
+        int(hex_part, 16)
+
+    def test_same_shape_same_id(self) -> None:
+        """Two functions with identical signatures produce the same stable_id."""
+        node_a = self._make_function_node(params=[MockNode(type="identifier")])
+        node_b = self._make_function_node(params=[MockNode(type="identifier")])
+        assert (
+            self.analyzer.compute_stable_id(node_a, kind="function")
+            == self.analyzer.compute_stable_id(node_b, kind="function")
+        )
+
+    def test_different_kind_different_id(self) -> None:
+        """Different kind values produce different stable_ids."""
+        node = self._make_function_node()
+        sid_func = self.analyzer.compute_stable_id(node, kind="function")
+        sid_method = self.analyzer.compute_stable_id(node, kind="method")
+        assert sid_func != sid_method
+
+    def test_different_param_count_different_id(self) -> None:
+        """Different parameter counts produce different stable_ids."""
+        node_1 = self._make_function_node(params=[MockNode(type="identifier")])
+        node_2 = self._make_function_node(params=[
+            MockNode(type="identifier"), MockNode(type="identifier"),
+        ])
+        assert (
+            self.analyzer.compute_stable_id(node_1, kind="function")
+            != self.analyzer.compute_stable_id(node_2, kind="function")
+        )
+
+    def test_containing_stable_id_differentiates(self) -> None:
+        """Different containing_stable_id values produce different hashes."""
+        node = self._make_function_node()
+        sid_a = self.analyzer.compute_stable_id(node, "method", containing_stable_id="sha256:classA")
+        sid_b = self.analyzer.compute_stable_id(node, "method", containing_stable_id="sha256:classB")
+        assert sid_a != sid_b
+
+    def test_no_params_node(self) -> None:
+        """Nodes without a recognizable params child use default arity."""
+        node = MockNode(type="class_definition", children=[
+            MockNode(type="identifier", text=b"MyClass"),
+            _make_tree("block", MockNode(type="pass_statement")),
+        ])
+        sid = self.analyzer.compute_stable_id(node, kind="class")
+        assert sid.startswith("sha256:")
+
+    def test_hash_matches_manual(self) -> None:
+        """The hash should match a manual sha256 of the canonical string."""
+        node = self._make_function_node(params=[
+            MockNode(type="identifier"),
+            MockNode(type="identifier"),
+        ])
+        sid = self.analyzer.compute_stable_id(node, kind="function")
+        # Manual: kind=function, param_count=2, arity=False,False,False, decorators="", containing=""
+        expected_sig = "function:2:False,False,False::"
+        expected_hash = hashlib.sha256(expected_sig.encode()).hexdigest()[:16]
+        assert sid == f"sha256:{expected_hash}"
+
+    def test_decorators_extracted(self) -> None:
+        """Decorator names should be included in the hash."""
+        decorator = MockNode(type="decorator", children=[
+            MockNode(type="identifier", text=b"staticmethod"),
+        ])
+        node = self._make_function_node(decorators=[decorator])
+        sid_with = self.analyzer.compute_stable_id(node, kind="function")
+
+        node_without = self._make_function_node()
+        sid_without = self.analyzer.compute_stable_id(node_without, kind="function")
+        assert sid_with != sid_without
+
+    def test_decorator_names_sorted(self) -> None:
+        """Decorators should be sorted so order doesn't matter."""
+        dec_a = MockNode(type="decorator", children=[
+            MockNode(type="identifier", text=b"alpha"),
+        ])
+        dec_b = MockNode(type="decorator", children=[
+            MockNode(type="identifier", text=b"beta"),
+        ])
+        node_ab = self._make_function_node(decorators=[dec_a, dec_b])
+        node_ba = self._make_function_node(decorators=[dec_b, dec_a])
+        assert (
+            self.analyzer.compute_stable_id(node_ab, kind="function")
+            == self.analyzer.compute_stable_id(node_ba, kind="function")
+        )
+
+
+class TestFindParamsNode:
+    """Tests for TreeSitterAnalyzer._find_params_node()."""
+
+    def setup_method(self) -> None:
+        self.analyzer = StubAnalyzer()
+
+    def test_finds_parameters(self) -> None:
+        params = MockNode(type="parameters", children=[])
+        node = MockNode(type="function_definition", children=[
+            MockNode(type="identifier"),
+            params,
+        ])
+        assert self.analyzer._find_params_node(node) is params
+
+    def test_finds_formal_parameters(self) -> None:
+        params = MockNode(type="formal_parameters", children=[])
+        node = MockNode(type="method_declaration", children=[
+            MockNode(type="identifier"),
+            params,
+        ])
+        assert self.analyzer._find_params_node(node) is params
+
+    def test_returns_none_when_missing(self) -> None:
+        node = MockNode(type="class_definition", children=[
+            MockNode(type="identifier"),
+            _make_tree("block", MockNode(type="pass_statement")),
+        ])
+        assert self.analyzer._find_params_node(node) is None
+
+
+class TestExtractDecoratorNames:
+    """Tests for TreeSitterAnalyzer._extract_decorator_names()."""
+
+    def setup_method(self) -> None:
+        self.analyzer = StubAnalyzer()
+
+    def test_simple_decorator(self) -> None:
+        """@staticmethod extracts 'staticmethod'."""
+        node = MockNode(type="function_definition", children=[
+            MockNode(type="decorator", children=[
+                MockNode(type="identifier", text=b"staticmethod"),
+            ]),
+            MockNode(type="identifier", text=b"func"),
+        ])
+        assert self.analyzer._extract_decorator_names(node) == ["staticmethod"]
+
+    def test_annotation_node_type(self) -> None:
+        """Java-style @Override extracts 'Override'."""
+        node = MockNode(type="method_declaration", children=[
+            MockNode(type="annotation", children=[
+                MockNode(type="identifier", text=b"Override"),
+            ]),
+            MockNode(type="identifier", text=b"run"),
+        ])
+        assert self.analyzer._extract_decorator_names(node) == ["Override"]
+
+    def test_no_decorators(self) -> None:
+        node = MockNode(type="function_definition", children=[
+            MockNode(type="identifier", text=b"func"),
+        ])
+        assert self.analyzer._extract_decorator_names(node) == []
+
+    def test_dotted_decorator(self) -> None:
+        """@app.route extracts 'route' (last segment)."""
+        node = MockNode(type="function_definition", children=[
+            MockNode(type="decorator", children=[
+                MockNode(type="attribute", children=[
+                    MockNode(type="identifier", text=b"app"),
+                    MockNode(type=".", is_named=False),
+                    MockNode(type="identifier", text=b"route"),
+                ]),
+            ]),
+            MockNode(type="identifier", text=b"handler"),
+        ])
+        assert self.analyzer._extract_decorator_names(node) == ["route"]
+
+    def test_call_decorator(self) -> None:
+        """@decorator(args) extracts 'decorator'."""
+        node = MockNode(type="function_definition", children=[
+            MockNode(type="decorator", children=[
+                MockNode(type="call", children=[
+                    MockNode(type="identifier", text=b"property"),
+                    MockNode(type="argument_list", children=[]),
+                ]),
+            ]),
+            MockNode(type="identifier", text=b"value"),
+        ])
+        assert self.analyzer._extract_decorator_names(node) == ["property"]
+
+    def test_decorator_without_identifier(self) -> None:
+        """A malformed decorator node without identifier returns empty name."""
+        node = MockNode(type="function_definition", children=[
+            MockNode(type="decorator", children=[
+                MockNode(type="@", is_named=False),
+            ]),
+            MockNode(type="identifier", text=b"func"),
+        ])
+        # Empty name is filtered since _decorator_node_name returns ""
+        assert self.analyzer._extract_decorator_names(node) == []

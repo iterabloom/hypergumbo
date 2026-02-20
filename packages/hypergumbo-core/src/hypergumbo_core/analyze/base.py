@@ -824,6 +824,135 @@ class TreeSitterAnalyzer:
             has_kwargs=has_kwargs,
         )
 
+    # -- stable_id computation (ADR-0014 §2) ---------------------------------
+
+    # Node types for decorator/annotation wrappers, by grammar.
+    _DECORATOR_NODE_TYPES: ClassVar[frozenset[str]] = frozenset({
+        "decorator",             # Python, JS/TS
+        "annotation",            # Java, Kotlin
+        "attribute",             # C#, Rust
+        "attribute_item",        # Rust inner
+    })
+
+    # Node types for parameter-list containers.
+    _PARAMS_NODE_TYPES: ClassVar[frozenset[str]] = frozenset({
+        "parameters",            # Python, Ruby
+        "formal_parameters",     # Java, JS/TS
+        "parameter_list",        # C, C++, C#
+        "function_parameters",   # Rust
+    })
+
+    def compute_stable_id(
+        self,
+        node: "tree_sitter.Node",
+        kind: str,
+        containing_stable_id: str = "",
+    ) -> str:
+        """Compute an untyped-tier stable_id for a function/class/method node.
+
+        Uses the formula from ADR-0014 §2::
+
+            sha256({kind}:{param_count}:{arity_flags}:{decorators}:{containing_stable_id})
+
+        The result survives renames and file moves because it captures
+        only the *interface shape*, not names or locations.
+
+        Args:
+            node: Tree-sitter node for the symbol's definition.
+            kind: Symbol kind (``"function"``, ``"method"``, ``"class"``).
+            containing_stable_id: Stable ID of the enclosing scope (class or
+                module).  Empty string for top-level definitions.
+
+        Returns:
+            Stable ID in ``sha256:{16-hex-chars}`` format.
+        """
+        # 1. Extract parameter arity
+        params_node = self._find_params_node(node)
+        if params_node is not None:
+            flags = self.classify_parameter_flags(params_node)
+        else:
+            flags = ArityFlags(
+                param_count=0,
+                has_defaults=False,
+                has_varargs=False,
+                has_kwargs=False,
+            )
+
+        # 2. Extract decorator/annotation names
+        decorators = self._extract_decorator_names(node)
+        decorators_str = ",".join(sorted(decorators))
+
+        # 3. Build signature string and hash
+        sig = (
+            f"{kind}:{flags.param_count}:{flags.as_flags_str()}"
+            f":{decorators_str}:{containing_stable_id}"
+        )
+        hash_val = hashlib.sha256(sig.encode()).hexdigest()[:16]
+        return f"sha256:{hash_val}"
+
+    def _find_params_node(
+        self, node: "tree_sitter.Node",
+    ) -> "tree_sitter.Node | None":
+        """Find the parameter-list child of a definition node.
+
+        Searches immediate children for a node whose type is in
+        ``_PARAMS_NODE_TYPES``.  Returns ``None`` for class definitions
+        or nodes without parameter lists.
+        """
+        for child in node.children:
+            if child.type in self._PARAMS_NODE_TYPES:
+                return child
+        return None
+
+    def _extract_decorator_names(
+        self, node: "tree_sitter.Node",
+    ) -> list[str]:
+        """Extract decorator/annotation names from a definition node.
+
+        Looks at the node's parent (if available) or siblings for
+        decorator nodes.  Returns a list of plain decorator names
+        (without arguments or module paths).
+
+        The default implementation looks for decorator children preceding
+        the definition node.  Override for grammars where decorators are
+        structured differently.
+        """
+        names: list[str] = []
+        # Some grammars nest decorators as children of the definition node
+        # (e.g., Python's decorated_definition → decorator* + definition).
+        # Others make them siblings. Check children first.
+        for child in node.children:
+            if child.type in self._DECORATOR_NODE_TYPES:
+                name = self._decorator_node_name(child)
+                if name:
+                    names.append(name)
+        return names
+
+    def _decorator_node_name(
+        self, decorator_node: "tree_sitter.Node",
+    ) -> str:
+        """Extract the plain name from a single decorator/annotation node.
+
+        Walks the decorator's children to find the identifier.  Handles
+        both simple (``@foo``) and call (``@foo(arg)``) forms.
+        """
+        for child in decorator_node.children:
+            if child.type == "identifier":
+                return child.text.decode("utf-8") if child.text else ""
+            # Dotted path: @module.decorator → take last segment
+            if child.type in ("attribute", "dotted_name"):
+                # Find the last identifier in the chain
+                last_ident = ""
+                for sub in child.children:
+                    if sub.type == "identifier":
+                        last_ident = sub.text.decode("utf-8") if sub.text else ""
+                if last_ident:
+                    return last_ident
+            # Call form: @decorator(args) → look inside the call
+            if child.type == "call":
+                return self._decorator_node_name(child)
+        return ""
+
     # -- Main analysis method (the two-pass loop) --------------------------
 
     def analyze(
