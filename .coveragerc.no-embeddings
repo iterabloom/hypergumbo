@@ -29,3 +29,7 @@ exclude_also =
     # File header handling (only reached via embedding output)
     if.*has_file_headers
     for file_header, file_lines in file_sections
+    # Sketch: semantic similarity ranking (requires sentence-transformers)
+    if.*_has_sentence_transformers
+    # Tracker: ONNX-based embedding dedup (requires onnxruntime + tokenizers)
+    def _check_embedding_duplicates
