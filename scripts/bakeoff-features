@@ -904,6 +904,14 @@ def cmd_run(args):
             json.dump({"method": rslice_method, "seeds": rslice_seeds}, f, indent=2)
         for i, entry in enumerate(rslice_seeds):
             print(f"  reverse-slice[{entry[:30]}]...", end=" ", flush=True)
+            # Reverse slices need more permissive parameters than forward slices:
+            # - hub_threshold 200 (vs 50 forward): in reverse direction, hub pruning
+            #   severs cross-layer edges.  Find (in=710) is the seed (exempt), but
+            #   intermediate nodes like model helpers (in=60-100) get pruned, trapping
+            #   the traversal in models/ and never reaching routers/ or services/.
+            # - max_files 500 (vs 200 forward): a layered app (models+services+routers)
+            #   spans many directories.  200 files fills up within a single layer,
+            #   preventing cross-layer discovery.
             rc, stdout, stderr = run_cmd([
                 "hypergumbo", "slice",
                 "--input", hg_json,
@@ -911,7 +919,8 @@ def cmd_run(args):
                 "--reverse",
                 "--inline",
                 "--max-hops", "10",
-                "--max-files", "200",
+                "--max-files", "500",
+                "--hub-threshold", "200",
                 "--out", os.path.join(repo_out, f"rslice.{i}.json"),
             ])
             with open(os.path.join(repo_out, f"rslice.{i}.exit"), "w") as f:
