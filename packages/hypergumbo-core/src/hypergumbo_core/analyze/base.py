@@ -1426,7 +1426,9 @@ class TreeSitterAnalyzer:
         parser = self._create_parser()
 
         # 3. Pass 1: Extract symbols from all files
-        file_analyses: dict[Path, tuple[FileAnalysis, dict[str, str]]] = {}
+        # Cache source bytes per file so Pass 2 can reuse them without
+        # re-reading from disk.  The tuple stores (analysis, aliases, source).
+        file_analyses: dict[Path, tuple[FileAnalysis, dict[str, str], bytes]] = {}
         files_analyzed = 0
         files_skipped = 0
 
@@ -1472,26 +1474,25 @@ class TreeSitterAnalyzer:
             # Extract import aliases for Pass 2
             import_aliases = self.get_import_aliases(tree, source)
 
-            file_analyses[source_file] = (analysis, import_aliases)
+            file_analyses[source_file] = (analysis, import_aliases, source)
             files_analyzed += 1
 
         # 4. Build global symbol registry
         global_symbols: dict = {}
-        for analysis, _ in file_analyses.values():
+        for analysis, _, _source in file_analyses.values():
             for symbol in analysis.symbols:
                 self.register_symbol(symbol, global_symbols)
 
         # 5. Pass 2: Extract edges and usage contexts
+        # Reuses cached source bytes from Pass 1 to avoid re-reading files.
         all_symbols: list[Symbol] = []
         all_edges: list[Edge] = []
         all_contexts: list[UsageContext] = []
         resolver = self.resolver_class(global_symbols)
 
-        for source_file, (analysis, import_aliases) in file_analyses.items():
+        for source_file, (analysis, import_aliases, source) in file_analyses.items():
             all_symbols.extend(analysis.symbols)
 
-            # Re-parse for Pass 2
-            source = source_file.read_bytes()
             tree = parser.parse(source)
             rel_path = str(source_file.relative_to(repo_root))
 

@@ -1894,7 +1894,7 @@ def cmd_catalog(args: argparse.Namespace) -> int:
         # Detect repo profile using existing language detection
         # Use max_file_size to skip large files - catalog is just for quick hints,
         # not accurate analysis
-        profile = detect_profile(cwd, max_file_size=100 * 1024)
+        profile = detect_profile(cwd)
         detected_languages = set(profile.languages.keys())
 
     # Show suggested passes based on detected languages
@@ -3937,6 +3937,8 @@ def run_behavior_map(
     behavior_map = new_behavior_map()
 
     # Detect repo profile (languages, frameworks)
+    # LOC is set to 0 here (avoids reading every file).
+    # generate_sketch backfills LOC from _analyze_test_files when it runs.
     show_progress("Detecting profile", 5)
     profile = detect_profile(repo_root, extra_excludes=extra_excludes, frameworks=frameworks)
     behavior_map["profile"] = profile.to_dict()

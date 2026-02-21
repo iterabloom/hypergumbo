@@ -151,6 +151,64 @@ DEFAULT_EXCLUDES = [
 ]
 
 
+def _has_glob_chars(pattern: str) -> bool:
+    """Check whether a pattern contains fnmatch glob characters."""
+    return any(c in pattern for c in "*?[")
+
+
+# Pre-classify DEFAULT_EXCLUDES at module load time for fast matching.
+# Exact names (no glob chars) use O(1) frozenset lookup; only the 2 glob
+# patterns (*.egg-info, hypergumbo.results*.json) fall back to fnmatch.
+_EXACT_DEFAULT_EXCLUDES = frozenset(
+    p for p in DEFAULT_EXCLUDES if not _has_glob_chars(p)
+)
+_GLOB_DEFAULT_EXCLUDES = tuple(
+    p for p in DEFAULT_EXCLUDES if _has_glob_chars(p)
+)
+
+
+def _classify_excludes(
+    excludes: list[str],
+) -> tuple[frozenset[str], tuple[str, ...]]:
+    """Split exclude patterns into exact names and glob patterns.
+
+    Exact names are matched via frozenset membership (O(1) per check).
+    Glob patterns are matched via fnmatch (O(n) per check, but n is
+    typically 2 for DEFAULT_EXCLUDES).
+    """
+    if excludes is DEFAULT_EXCLUDES:
+        return _EXACT_DEFAULT_EXCLUDES, _GLOB_DEFAULT_EXCLUDES
+    exact = frozenset(p for p in excludes if not _has_glob_chars(p))
+    globs = tuple(p for p in excludes if _has_glob_chars(p))
+    return exact, globs
+
+
+def _is_excluded_classified(
+    path: Path,
+    repo_root: Path,
+    exact: frozenset[str],
+    globs: tuple[str, ...],
+) -> bool:
+    """Fast exclusion check using pre-classified patterns.
+
+    Uses frozenset membership for exact names and fnmatch only for
+    the small number of glob patterns.
+    """
+    try:
+        rel_path = path.relative_to(repo_root)
+    except ValueError:
+        rel_path = path
+
+    for part in rel_path.parts:
+        if part in exact:
+            return True
+        for pattern in globs:
+            if fnmatch(part, pattern):
+                return True
+
+    return False
+
+
 def is_excluded(path: Path, repo_root: Path, excludes: list[str] | None = None) -> bool:
     """Check if a path should be excluded from analysis.
 
@@ -169,18 +227,8 @@ def is_excluded(path: Path, repo_root: Path, excludes: list[str] | None = None) 
     if excludes is None:
         excludes = DEFAULT_EXCLUDES
 
-    try:
-        rel_path = path.relative_to(repo_root)
-    except ValueError:
-        rel_path = path
-
-    # Check each path component against exclude patterns
-    for part in rel_path.parts:
-        for pattern in excludes:
-            if fnmatch(part, pattern):
-                return True
-
-    return False
+    exact, globs = _classify_excludes(excludes)
+    return _is_excluded_classified(path, repo_root, exact, globs)
 
 
 def find_files(
@@ -191,6 +239,10 @@ def find_files(
 ) -> Iterator[Path]:
     """Find files matching patterns while respecting exclude rules.
 
+    Exclude patterns are classified once per call into exact names
+    (frozenset lookup) and glob patterns (fnmatch). This avoids
+    per-file pattern classification overhead.
+
     Args:
         repo_root: The repository root to search from
         patterns: List of glob patterns to match (e.g., ["*.py", "*.pyi"])
@@ -200,11 +252,17 @@ def find_files(
     Yields:
         Paths to files matching the patterns that are not excluded.
     """
+    if excludes is None:
+        excludes = DEFAULT_EXCLUDES
+
+    # Classify once, use for all files in this call
+    exact, globs = _classify_excludes(excludes)
+
     count = 0
     for pattern in patterns:
         for path in repo_root.rglob(pattern):
             if max_files is not None and count >= max_files:
                 return
-            if not is_excluded(path, repo_root, excludes):
+            if not _is_excluded_classified(path, repo_root, exact, globs):
                 yield path
                 count += 1

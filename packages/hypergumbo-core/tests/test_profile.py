@@ -20,7 +20,8 @@ def test_detects_python_language(tmp_path: Path) -> None:
     assert "languages" in data["profile"]
     assert "python" in data["profile"]["languages"]
     assert data["profile"]["languages"]["python"]["files"] == 2
-    assert data["profile"]["languages"]["python"]["loc"] > 0
+    # LOC is deferred to sketch generation (not computed during profile detection)
+    assert data["profile"]["languages"]["python"]["loc"] == 0
 
 
 def test_detects_javascript_language(tmp_path: Path) -> None:
@@ -230,7 +231,7 @@ def test_profile_empty_when_no_source_files(tmp_path: Path) -> None:
 
 
 def test_counts_lines_of_code_correctly(tmp_path: Path) -> None:
-    """Should count non-empty lines as LOC."""
+    """LOC is deferred: behavior map has loc=0, sketch populates it."""
     (tmp_path / "app.py").write_text("def main():\n    # comment\n    pass\n\n\n")
 
     out_path = tmp_path / "out.json"
@@ -238,8 +239,9 @@ def test_counts_lines_of_code_correctly(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
 
-    # 3 non-empty lines (def, comment, pass)
-    assert data["profile"]["languages"]["python"]["loc"] == 3
+    # LOC is deferred to sketch generation — profile detection only counts files
+    assert data["profile"]["languages"]["python"]["loc"] == 0
+    assert data["profile"]["languages"]["python"]["files"] == 1
 
 
 def test_handles_unreadable_dependency_file(tmp_path: Path) -> None:
@@ -1327,26 +1329,18 @@ def test_count_loc_with_max_file_size(tmp_path: Path) -> None:
     assert _count_loc(large_file, max_file_size=10000) == 500
 
 
-def test_detect_languages_with_max_file_size(tmp_path: Path) -> None:
-    """_detect_languages should respect max_file_size for LOC counting."""
+def test_detect_languages_defers_loc_counting(tmp_path: Path) -> None:
+    """_detect_languages returns loc=0; LOC is computed lazily later."""
     from hypergumbo_core.profile import _detect_languages
 
-    # Create a small Python file
+    # Create Python files
     (tmp_path / "small.py").write_text("print('hi')\n")
+    (tmp_path / "large.py").write_text("x = 1\n" * 500)
 
-    # Create a larger Python file (over 1 KB for testing)
-    large_content = "x = 1\n" * 500  # ~3000 bytes
-    (tmp_path / "large.py").write_text(large_content)
-
-    # Without max_file_size, counts all LOC
     langs = _detect_languages(tmp_path)
     assert langs["python"].files == 2
-    assert langs["python"].loc == 501  # 1 + 500
-
-    # With max_file_size, skips large file's LOC
-    langs_limited = _detect_languages(tmp_path, max_file_size=1000)
-    assert langs_limited["python"].files == 2  # Still counts the file
-    assert langs_limited["python"].loc == 1  # Only small file's LOC
+    # LOC counting is deferred to _analyze_test_files in sketch.py
+    assert langs["python"].loc == 0
 
 
 # Recursive manifest scanning tests

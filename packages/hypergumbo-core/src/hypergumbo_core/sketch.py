@@ -2151,52 +2151,171 @@ def _estimate_file_block_tokens(rel_path: str, content: str) -> int:
     return total_chars // 4
 
 
-def _count_test_loc(
-    repo_root: Path,
-    profile: RepoProfile,
-    extra_excludes: Optional[List[str]] = None,
-) -> tuple[int, int]:
-    """Count LOC in test files.
+@dataclass
+class _TestAnalysis:
+    """Cached results from a single source-file walk.
 
-    Only counts source code files (SOURCE_EXTENSIONS), not config/build files.
-    This ensures consistency with the Tests section which also uses SOURCE_EXTENSIONS.
+    Consolidates data that was previously computed by separate walks in
+    ``_count_test_loc``, ``_detect_test_summary``, and the LOC counting
+    portion of ``profile._detect_languages`` into a single directory
+    traversal.
+    """
+
+    test_loc: int = 0
+    test_files: int = 0
+    summary: Optional[str] = None
+    frameworks: set[str] = None  # type: ignore[assignment]
+    language_loc: dict[str, int] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.frameworks is None:  # pragma: no cover - defensive default
+            self.frameworks = set()
+        if self.language_loc is None:  # pragma: no cover - defensive default
+            self.language_loc = {}
+
+
+def _build_ext_to_lang_map() -> dict[str, str]:
+    """Build a mapping from file suffix to language name.
+
+    Uses LANGUAGE_EXTENSIONS from taxonomy. For glob patterns like "*.py",
+    maps ".py" → "python". Non-extension patterns (e.g., "Makefile") are
+    mapped as-is.
+    """
+    from .taxonomy import LANGUAGE_EXTENSIONS
+
+    ext_map: dict[str, str] = {}
+    for lang, patterns in LANGUAGE_EXTENSIONS.items():
+        for pat in patterns:
+            if pat.startswith("*."):
+                ext_map[pat[1:]] = lang  # "*.py" → ".py" → "python"
+            elif pat.startswith("*"):  # pragma: no cover - no current patterns match
+                ext_map[pat[1:]] = lang  # "*_test.go" → "_test.go" → lang
+            else:
+                ext_map[pat] = lang  # "Makefile" → lang
+    return ext_map
+
+
+def _classify_file_language(path: Path, ext_map: dict[str, str]) -> Optional[str]:
+    """Classify a file into a language using the extension map.
+
+    Tries longest-suffix-first matching so ".d.ts" beats ".ts".
+    """
+    name = path.name
+    # Try progressively shorter suffixes
+    for i in range(len(name)):
+        suffix = name[i:]
+        if suffix in ext_map:
+            return ext_map[suffix]
+    return None
+
+
+def _analyze_test_files(
+    repo_root: Path,
+    extra_excludes: Optional[List[str]] = None,
+) -> _TestAnalysis:
+    """Single-walk analysis of all source files.
+
+    Replaces the separate walks previously done by ``_count_test_loc``
+    (test LOC counting), ``_detect_test_summary`` (framework detection),
+    and the LOC counting in ``profile._detect_languages``.
+
+    Walks LANGUAGE_EXTENSIONS + test-only extensions once.  For every file:
+    * counts non-empty lines (per-language LOC)
+    * if it is a test file, accumulates test LOC and collects the path for
+      framework detection
+
+    After the walk it samples up to 20 test files and scans their first
+    5 000 chars for test-framework import patterns.
 
     Args:
         repo_root: Repository root path.
-        profile: Repository profile with detected languages.
-        extra_excludes: Additional exclude patterns.
+        extra_excludes: Additional exclude patterns beyond DEFAULT_EXCLUDES.
 
     Returns:
-        (test_loc, test_files) tuple.
+        ``_TestAnalysis`` with test_loc, test_files, summary string,
+        detected frameworks, and per-language LOC.
     """
-    from .discovery import find_files, DEFAULT_EXCLUDES
+    import re
+    from .taxonomy import LANGUAGE_EXTENSIONS
 
-    # Combine default and extra excludes (same as detect_profile)
     excludes = list(DEFAULT_EXCLUDES)
     if extra_excludes:  # pragma: no cover
         excludes.extend(extra_excludes)
 
-    test_loc = 0
-    test_files = 0
-
-    # Use SOURCE_EXTENSIONS (source code only) instead of LANGUAGE_EXTENSIONS
-    # This excludes config/build files like Makefile from test counts
+    # Build combined pattern set from all language extensions + test-only
     all_patterns: set[str] = set()
-    for pattern_list in SOURCE_EXTENSIONS.values():
+    for pattern_list in LANGUAGE_EXTENSIONS.values():
         all_patterns.update(pattern_list)
+    all_patterns.add("*.bats")  # Bash Automated Testing System (test-only)
     patterns = list(all_patterns)
 
-    for f in find_files(repo_root, patterns, excludes=excludes):
-        rel_path = str(f.relative_to(repo_root))
-        if _is_test_path(rel_path):
-            test_files += 1
-            try:
-                content = f.read_text(encoding="utf-8", errors="ignore")
-                test_loc += sum(1 for line in content.splitlines() if line.strip())
-            except Exception:  # pragma: no cover
-                pass  # Skip unreadable files
+    # Build extension → language map for per-language LOC classification
+    ext_map = _build_ext_to_lang_map()
 
-    return test_loc, test_files
+    test_loc = 0
+    test_file_paths: list[Path] = []
+    language_loc: dict[str, int] = {}
+    seen: set[Path] = set()
+
+    for f in find_files(repo_root, patterns, excludes=excludes):
+        # Deduplicate: overlapping patterns can yield the same file
+        if f in seen:  # pragma: no cover - defensive dedup
+            continue
+        seen.add(f)
+
+        rel_path = str(f.relative_to(repo_root))
+        is_test = _is_test_path(rel_path)
+
+        try:
+            content = f.read_text(encoding="utf-8", errors="ignore")
+            file_loc = sum(1 for line in content.splitlines() if line.strip())
+        except OSError:  # pragma: no cover
+            continue
+
+        # Accumulate per-language LOC
+        lang = _classify_file_language(f, ext_map)
+        if lang is not None:
+            language_loc[lang] = language_loc.get(lang, 0) + file_loc
+
+        if is_test:
+            test_file_paths.append(f)
+            test_loc += file_loc
+
+    test_files = len(test_file_paths)
+
+    if not test_file_paths:
+        return _TestAnalysis(
+            test_loc=0, test_files=0, summary=None,
+            frameworks=set(), language_loc=language_loc,
+        )
+
+    # Detect frameworks from a sample of test files
+    frameworks_found: set[str] = set()
+    sample_size = min(20, test_files)
+    for test_file in test_file_paths[:sample_size]:
+        try:
+            content = test_file.read_text(encoding="utf-8", errors="replace")[:5000]
+            for pattern, framework in TEST_FRAMEWORK_PATTERNS:
+                if re.search(pattern, content):
+                    frameworks_found.add(framework)
+        except OSError:  # pragma: no cover
+            continue
+
+    # Build summary string
+    file_word = "file" if test_files == 1 else "files"
+    if frameworks_found:
+        framework_str = ", ".join(sorted(frameworks_found))
+        summary = f"{test_files} test {file_word} · {framework_str}"
+    else:
+        summary = f"{test_files} test {file_word}"
+
+    return _TestAnalysis(
+        test_loc=test_loc,
+        test_files=test_files,
+        summary=summary,
+        frameworks=frameworks_found,
+        language_loc=language_loc,
+    )
 
 
 def _format_language_stats(
@@ -2204,6 +2323,7 @@ def _format_language_stats(
     repo_root: Optional[Path] = None,
     extra_excludes: Optional[List[str]] = None,
     exclude_tests: bool = False,
+    test_analysis: Optional[_TestAnalysis] = None,
 ) -> str:
     """Format language statistics as a multi-line summary.
 
@@ -2212,6 +2332,9 @@ def _format_language_stats(
         repo_root: If provided, compute and show test LOC separately.
         extra_excludes: Additional exclude patterns for test LOC counting.
         exclude_tests: If True, add [IGNORING TESTS] marker to output.
+        test_analysis: Pre-computed test analysis data. When provided,
+            avoids a redundant directory walk. Computed on demand if
+            ``repo_root`` is given but ``test_analysis`` is ``None``.
 
     Returns:
         Formatted statistics (multi-line if test files detected).
@@ -2243,9 +2366,11 @@ def _format_language_stats(
 
     # Compute test LOC if repo_root provided
     if repo_root is not None:
-        # Always use _count_test_loc to get accurate test counts from the profile
-        # (profile.languages includes all file types: code, markdown, JSON, etc.)
-        test_loc, test_files = _count_test_loc(repo_root, profile, extra_excludes)
+        # Use pre-computed test analysis if available, else compute on demand
+        if test_analysis is None:
+            test_analysis = _analyze_test_files(repo_root, extra_excludes)
+        test_loc = test_analysis.test_loc
+        test_files = test_analysis.test_files
 
         # Always show breakdown format for consistency (with or without -x flag)
         non_test_loc = total_loc - test_loc
@@ -4272,74 +4397,6 @@ TEST_FRAMEWORK_PATTERNS = [
 ]
 
 
-def _detect_test_summary(repo_root: Path) -> tuple[Optional[str], set[str]]:
-    """Detect test files and frameworks, return a summary string and frameworks.
-
-    This is a static analysis - it detects test files using the same path-based
-    detection as the Overview section (_is_test_path), ensuring consistency.
-    Framework detection uses import patterns. It does NOT measure coverage
-    (which requires execution).
-
-    Args:
-        repo_root: Path to the repository root.
-
-    Returns:
-        Tuple of (summary_string, frameworks_set) where:
-        - summary_string: Like "103 test files · pytest, hypothesis" or None if no tests
-        - frameworks_set: Set of detected framework names
-    """
-    import re
-    from .discovery import find_files, DEFAULT_EXCLUDES
-
-    test_files: list[Path] = []
-    frameworks_found: set[str] = set()
-
-    # Find all source files using SOURCE_EXTENSIONS (already imported at module level)
-    # SOURCE_EXTENSIONS is a dict of language -> list of extensions (patterns like "*.py")
-    all_patterns: set[str] = set()
-    for pattern_list in SOURCE_EXTENSIONS.values():
-        all_patterns.update(pattern_list)
-
-    # Also include test-only file extensions not in SOURCE_EXTENSIONS
-    # These are files that are only used for tests, never for regular source code
-    test_only_extensions = ["*.bats"]  # Bash Automated Testing System
-    all_patterns.update(test_only_extensions)
-
-    patterns = list(all_patterns)
-
-    # Find test files using _is_test_path (same as Overview section)
-    for f in find_files(repo_root, patterns, excludes=list(DEFAULT_EXCLUDES)):
-        rel_path = str(f.relative_to(repo_root))
-        if _is_test_path(rel_path):
-            test_files.append(f)
-
-    if not test_files:
-        return None, set()
-
-    # Sample test files to detect frameworks (don't read all of them)
-    sample_size = min(20, len(test_files))
-    sample_files = test_files[:sample_size]
-
-    for test_file in sample_files:
-        try:
-            content = test_file.read_text(encoding="utf-8", errors="replace")[:5000]
-            for pattern, framework in TEST_FRAMEWORK_PATTERNS:
-                if re.search(pattern, content):
-                    frameworks_found.add(framework)
-        except OSError:  # pragma: no cover
-            continue
-
-    # Build summary
-    file_count = len(test_files)
-    file_word = "file" if file_count == 1 else "files"
-
-    if frameworks_found:
-        framework_str = ", ".join(sorted(frameworks_found))
-        return f"{file_count} test {file_word} · {framework_str}", frameworks_found
-    else:
-        return f"{file_count} test {file_word}", frameworks_found
-
-
 def _detect_project_binary_names(repo_root: Path) -> list[str]:
     """Detect likely binary/executable names from build files.
 
@@ -4581,6 +4638,7 @@ def _format_test_summary(
     coverage_stats: tuple[int, int, float] | None = None,
     exclude_tests: bool = False,
     shell_integration_count: int = 0,
+    test_analysis: Optional[_TestAnalysis] = None,
 ) -> str:
     """Format test summary as a Markdown section.
 
@@ -4590,6 +4648,9 @@ def _format_test_summary(
         exclude_tests: If True, show that tests are being ignored.
         shell_integration_count: Number of shell scripts that invoke the project binary.
             These are integration tests that can't be tracked via call graph analysis.
+        test_analysis: Pre-computed test analysis data. When provided,
+            avoids a redundant directory walk. Computed on demand if not
+            supplied.
 
     Returns:
         Markdown section string (always returns a section, even if no tests detected).
@@ -4598,7 +4659,11 @@ def _format_test_summary(
     if exclude_tests:
         return f"{_section_header('Tests', exclude_tests)}\n\n0 tests (excluded via -x flag)"
 
-    summary, frameworks = _detect_test_summary(repo_root)
+    # Use pre-computed test analysis if available, else compute on demand
+    if test_analysis is None:
+        test_analysis = _analyze_test_files(repo_root)
+    summary = test_analysis.summary
+
     if not summary:
         # No tests detected - still show the section for consistency
         return f"{_section_header('Tests', exclude_tests)}\n\nNo test files detected"
@@ -5545,6 +5610,19 @@ def generate_sketch(
     # Collect source files early (needed for accurate LOC counts when exclude_tests=True)
     source_files = _collect_source_files(repo_root, profile, exclude_tests=exclude_tests)
 
+    # Pre-compute test analysis once (shared by Overview and Tests sections).
+    # Previously _count_test_loc and _detect_test_summary each did their own
+    # full directory walk; this consolidates both into a single pass.
+    # Also computes per-language LOC which we backfill into the profile
+    # when the profile was freshly detected (loc=0).  Cached profiles
+    # already carry their own LOC data and should not be overwritten.
+    test_analysis = _analyze_test_files(repo_root, extra_excludes)
+    profile_has_loc = any(s.loc > 0 for s in profile.languages.values())
+    if not profile_has_loc:
+        for lang, loc in test_analysis.language_loc.items():
+            if lang in profile.languages:
+                profile.languages[lang].loc = loc
+
     # Build base sections (always included)
     sections = []
 
@@ -5566,12 +5644,12 @@ def generate_sketch(
         header = (
             f"# {repo_name}\n\n"
             f"{readme_desc}\n\n"
-            f"{_section_header('Overview', exclude_tests)}\n{_format_language_stats(profile, repo_root, extra_excludes, exclude_tests)}"
+            f"{_section_header('Overview', exclude_tests)}\n{_format_language_stats(profile, repo_root, extra_excludes, exclude_tests, test_analysis=test_analysis)}"
         )
     else:
         header = (
             f"# {repo_name}\n\n{_section_header('Overview', exclude_tests)}\n"
-            f"{_format_language_stats(profile, repo_root, extra_excludes, exclude_tests)}"
+            f"{_format_language_stats(profile, repo_root, extra_excludes, exclude_tests, test_analysis=test_analysis)}"
         )
     sections.append(header)
 
@@ -5594,7 +5672,7 @@ def generate_sketch(
 
     # Section 3.25: Tests (static summary - count and frameworks)
     prog.start_phase("tests")
-    test_summary_section = _format_test_summary(repo_root, exclude_tests=exclude_tests)
+    test_summary_section = _format_test_summary(repo_root, exclude_tests=exclude_tests, test_analysis=test_analysis)
     prog.complete_phase("tests")
     if test_summary_section:
         sections.append(test_summary_section)
@@ -5738,7 +5816,8 @@ def generate_sketch(
     if coverage_stats is not None and not exclude_tests:
         # Find and replace the test summary section with coverage info
         updated_test_summary = _format_test_summary(
-            repo_root, coverage_stats, shell_integration_count=shell_integration_count
+            repo_root, coverage_stats, shell_integration_count=shell_integration_count,
+            test_analysis=test_analysis,
         )
         for i, section in enumerate(sections):
             if section.startswith("## Tests"):
@@ -5748,7 +5827,8 @@ def generate_sketch(
         # No call graph coverage but we have shell integration tests
         # (rare: happens when analysis returns no countable symbols)
         updated_test_summary = _format_test_summary(
-            repo_root, shell_integration_count=shell_integration_count
+            repo_root, shell_integration_count=shell_integration_count,
+            test_analysis=test_analysis,
         )
         for i, section in enumerate(sections):
             if section.startswith("## Tests"):

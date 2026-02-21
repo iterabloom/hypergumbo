@@ -655,22 +655,23 @@ def _count_loc(file_path: Path, max_file_size: int | None = None) -> int:
             return 0
         content = file_path.read_text(errors="ignore")
         return sum(1 for line in content.splitlines() if line.strip())
-    except (OSError, IOError):
+    except (OSError, IOError):  # pragma: no cover - defensive
         return 0
 
 
 def _detect_languages(
     repo_root: Path,
     extra_excludes: list[str] | None = None,
-    max_file_size: int | None = None,
 ) -> dict[str, LanguageStats]:
     """Detect languages by scanning file extensions.
+
+    Returns file counts per language.  LOC is set to zero here and
+    populated lazily later (by ``_analyze_test_files`` in sketch.py)
+    to avoid reading every source file during profile detection.
 
     Args:
         repo_root: Path to the repository root.
         extra_excludes: Additional exclude patterns beyond DEFAULT_EXCLUDES.
-        max_file_size: If set, skip files larger than this when counting LOC.
-            Used by catalog command for quick heuristic scanning.
     """
     languages: dict[str, LanguageStats] = {}
 
@@ -684,10 +685,7 @@ def _detect_languages(
         # Use a set to deduplicate files (e.g., *.ts and *.d.ts both match foo.d.ts)
         files = set(find_files(repo_root, patterns, excludes=excludes))
         if files:
-            stats = LanguageStats(files=len(files))
-            for f in files:
-                stats.loc += _count_loc(f, max_file_size=max_file_size)
-            languages[lang] = stats
+            languages[lang] = LanguageStats(files=len(files), loc=0)
 
     return languages
 
@@ -1550,7 +1548,6 @@ def detect_profile(
     repo_root: Path,
     extra_excludes: list[str] | None = None,
     frameworks: str | None = None,
-    max_file_size: int | None = None,
 ) -> RepoProfile:
     """Detect the profile of a repository.
 
@@ -1562,13 +1559,11 @@ def detect_profile(
             - "none": Skip framework detection
             - "all": Check all frameworks for detected languages
             - "fastapi,celery": Only check specified frameworks
-        max_file_size: If set, skip files larger than this when counting LOC.
-            Used by catalog command for quick heuristic scanning.
 
     Returns a RepoProfile with detected languages and frameworks.
     """
     languages = _detect_languages(
-        repo_root, extra_excludes=extra_excludes, max_file_size=max_file_size
+        repo_root, extra_excludes=extra_excludes,
     )
     detected_languages = set(languages.keys())
 

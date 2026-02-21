@@ -20,7 +20,7 @@ from hypergumbo_core.sketch import (
     _collect_important_files,
     _extract_python_docstrings,
     _extract_domain_vocabulary,
-    _detect_test_summary,
+    _analyze_test_files,
     _format_test_summary,
     _estimate_test_coverage,
     SketchStats,
@@ -5748,78 +5748,84 @@ class TestLogScaledSampling:
         assert chunk_explicit == "A B C"
 
 
-class TestDetectTestSummary:
-    """Tests for _detect_test_summary function."""
+class TestAnalyzeTestFiles:
+    """Tests for _analyze_test_files function (consolidates _count_test_loc + _detect_test_summary)."""
 
     def test_no_test_files(self, tmp_path: Path) -> None:
-        """Returns None when no test files exist."""
+        """Returns empty analysis when no test files exist."""
         (tmp_path / "main.py").write_text("print('hello')")
-        summary, frameworks = _detect_test_summary(tmp_path)
-        assert summary is None
-        assert frameworks == set()
+        result = _analyze_test_files(tmp_path)
+        assert result.summary is None
+        assert result.frameworks == set()
+        assert result.test_files == 0
+        assert result.test_loc == 0
 
     def test_single_python_test_file(self, tmp_path: Path) -> None:
-        """Detects a single Python test file."""
+        """Detects a single Python test file with LOC."""
         (tmp_path / "test_example.py").write_text("def test_foo(): pass")
-        summary, frameworks = _detect_test_summary(tmp_path)
-        assert summary is not None
-        assert "1 test file" in summary  # Singular
+        result = _analyze_test_files(tmp_path)
+        assert result.summary is not None
+        assert "1 test file" in result.summary  # Singular
+        assert result.test_files == 1
+        assert result.test_loc == 1  # One non-empty line
 
     def test_multiple_python_test_files(self, tmp_path: Path) -> None:
         """Detects multiple Python test files."""
         (tmp_path / "test_foo.py").write_text("def test_foo(): pass")
         (tmp_path / "test_bar.py").write_text("def test_bar(): pass")
         (tmp_path / "baz_test.py").write_text("def test_baz(): pass")
-        summary, frameworks = _detect_test_summary(tmp_path)
-        assert summary is not None
-        assert "3 test files" in summary  # Plural
+        result = _analyze_test_files(tmp_path)
+        assert result.summary is not None
+        assert "3 test files" in result.summary  # Plural
+        assert result.test_files == 3
+        assert result.test_loc == 3
 
     def test_detects_pytest_framework(self, tmp_path: Path) -> None:
         """Detects pytest framework from imports."""
         (tmp_path / "test_example.py").write_text("import pytest\n\ndef test_foo(): pass")
-        summary, frameworks = _detect_test_summary(tmp_path)
-        assert summary is not None
-        assert "pytest" in summary
-        assert "pytest" in frameworks
+        result = _analyze_test_files(tmp_path)
+        assert result.summary is not None
+        assert "pytest" in result.summary
+        assert "pytest" in result.frameworks
 
     def test_detects_unittest_framework(self, tmp_path: Path) -> None:
         """Detects unittest framework from imports."""
         (tmp_path / "test_example.py").write_text(
             "import unittest\n\nclass TestFoo(unittest.TestCase): pass"
         )
-        summary, frameworks = _detect_test_summary(tmp_path)
-        assert summary is not None
-        assert "unittest" in summary
-        assert "unittest" in frameworks
+        result = _analyze_test_files(tmp_path)
+        assert result.summary is not None
+        assert "unittest" in result.summary
+        assert "unittest" in result.frameworks
 
     def test_detects_multiple_frameworks(self, tmp_path: Path) -> None:
         """Detects multiple test frameworks."""
         (tmp_path / "test_a.py").write_text("import pytest\n\ndef test_a(): pass")
         (tmp_path / "test_b.py").write_text("import unittest\n\nclass TestB: pass")
-        summary, frameworks = _detect_test_summary(tmp_path)
-        assert summary is not None
-        assert "pytest" in summary
-        assert "unittest" in summary
-        assert frameworks == {"pytest", "unittest"}
+        result = _analyze_test_files(tmp_path)
+        assert result.summary is not None
+        assert "pytest" in result.summary
+        assert "unittest" in result.summary
+        assert result.frameworks == {"pytest", "unittest"}
 
     def test_javascript_test_files(self, tmp_path: Path) -> None:
         """Detects JavaScript/TypeScript test files."""
         (tmp_path / "app.spec.ts").write_text("describe('app', () => {})")
         (tmp_path / "utils.test.js").write_text("test('utils', () => {})")
-        summary, frameworks = _detect_test_summary(tmp_path)
-        assert summary is not None
-        assert "2 test files" in summary
+        result = _analyze_test_files(tmp_path)
+        assert result.summary is not None
+        assert "2 test files" in result.summary
 
     def test_go_test_files(self, tmp_path: Path) -> None:
         """Detects Go test files."""
         (tmp_path / "main_test.go").write_text(
             'package main\nimport "testing"\nfunc TestFoo(t *testing.T) {}'
         )
-        summary, frameworks = _detect_test_summary(tmp_path)
-        assert summary is not None
-        assert "1 test file" in summary
-        assert "go test" in summary
-        assert "go test" in frameworks
+        result = _analyze_test_files(tmp_path)
+        assert result.summary is not None
+        assert "1 test file" in result.summary
+        assert "go test" in result.summary
+        assert "go test" in result.frameworks
 
     def test_excludes_node_modules(self, tmp_path: Path) -> None:
         """Test files in excluded directories are not counted."""
@@ -5827,15 +5833,23 @@ class TestDetectTestSummary:
         nm.mkdir(parents=True)
         (nm / "test.spec.js").write_text("test('foo', () => {})")
         # Only the excluded file, no test files in main tree
-        summary, frameworks = _detect_test_summary(tmp_path)
-        assert summary is None
+        result = _analyze_test_files(tmp_path)
+        assert result.summary is None
 
     def test_bats_test_files(self, tmp_path: Path) -> None:
         """Detects shell test files (.bats)."""
         (tmp_path / "test_cli.bats").write_text("@test 'example' { true; }")
-        summary, frameworks = _detect_test_summary(tmp_path)
-        assert summary is not None
-        assert "1 test file" in summary
+        result = _analyze_test_files(tmp_path)
+        assert result.summary is not None
+        assert "1 test file" in result.summary
+
+    def test_counts_loc_correctly(self, tmp_path: Path) -> None:
+        """Counts non-empty lines in test files."""
+        (tmp_path / "test_example.py").write_text(
+            "import pytest\n\n\ndef test_foo():\n    assert True\n\n"
+        )
+        result = _analyze_test_files(tmp_path)
+        assert result.test_loc == 3  # import, def, assert (blank lines excluded)
 
 
 class TestFormatTestSummary:
