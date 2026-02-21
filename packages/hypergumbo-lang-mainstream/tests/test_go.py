@@ -706,7 +706,7 @@ func main() {
         source = go_file.read_bytes()
         tree = parser.parse(source)
 
-        routes = _extract_go_routes(tree.root_node, source, go_file, run)
+        routes, _mount_edges = _extract_go_routes(tree.root_node, source, go_file, run)
 
         assert len(routes) == 1
         assert routes[0].name == "submitHandler"
@@ -1178,6 +1178,146 @@ func listPosts() {}
         assert len(routes) >= 2
         stable_ids = [s.stable_id for s in routes]
         assert len(set(stable_ids)) == len(stable_ids), f"stable_id collision: {stable_ids}"
+
+
+class TestGoRouteMountDetection:
+    """Tests for Go route mount point detection.
+
+    When Go web frameworks use ``r.Mount("/prefix", handler)``, we create
+    a route_mount symbol that records the mount prefix and the handler
+    function reference.  This enables downstream composition of full URL
+    paths (e.g., ``Mount("/api/v1", apiRoutes())`` + ``GET /users`` →
+    ``GET /api/v1/users``).
+    """
+
+    def test_mount_creates_route_mount_symbol(self, tmp_path: Path) -> None:
+        """Mount("/prefix", handler) creates a route_mount symbol."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import "github.com/go-chi/chi/v5"
+
+func main() {
+    r := chi.NewRouter()
+    r.Mount("/api/v1", apiRoutes())
+}
+
+func apiRoutes() chi.Router {
+    r := chi.NewRouter()
+    r.Get("/users", listUsers)
+    return r
+}
+
+func listUsers(w http.ResponseWriter, r *http.Request) {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        mounts = [s for s in result.symbols if s.kind == "route_mount"]
+        assert len(mounts) == 1, (
+            f"Expected 1 route_mount symbol, found {len(mounts)}: "
+            f"{[s.name for s in mounts]}"
+        )
+        mount = mounts[0]
+        assert mount.meta is not None
+        assert mount.meta["mount_prefix"] == "/api/v1"
+        assert mount.meta["handler_ref"] == "apiRoutes"
+
+    def test_mount_creates_edge_to_handler(self, tmp_path: Path) -> None:
+        """Mount creates a calls edge from enclosing function to handler."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import "github.com/go-chi/chi/v5"
+
+func setupRoutes() chi.Router {
+    r := chi.NewRouter()
+    r.Mount("/admin", adminRoutes())
+    return r
+}
+
+func adminRoutes() chi.Router {
+    r := chi.NewRouter()
+    r.Get("/dashboard", showDashboard)
+    return r
+}
+
+func showDashboard(w http.ResponseWriter, r *http.Request) {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        # There should be an edge from setupRoutes → adminRoutes
+        mount_edges = [
+            e for e in result.edges
+            if e.evidence_type == "route_mount"
+        ]
+        assert len(mount_edges) == 1, (
+            f"Expected 1 route_mount edge, found {len(mount_edges)}"
+        )
+        edge = mount_edges[0]
+        # src should be setupRoutes, dst should be adminRoutes
+        assert "setupRoutes" in edge.src
+        assert "adminRoutes" in edge.dst
+
+    def test_multiple_mounts(self, tmp_path: Path) -> None:
+        """Multiple Mount calls in the same function are all detected."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import "github.com/go-chi/chi/v5"
+
+func main() {
+    r := chi.NewRouter()
+    r.Mount("/api/v1", apiV1Routes())
+    r.Mount("/admin", adminRoutes())
+    r.Mount("/webhooks", webhookRoutes())
+}
+
+func apiV1Routes() chi.Router { return nil }
+func adminRoutes() chi.Router { return nil }
+func webhookRoutes() chi.Router { return nil }
+""")
+
+        result = analyze_go(tmp_path)
+
+        mounts = [s for s in result.symbols if s.kind == "route_mount"]
+        prefixes = sorted([s.meta["mount_prefix"] for s in mounts if s.meta])
+        assert prefixes == ["/admin", "/api/v1", "/webhooks"], (
+            f"Expected 3 mount prefixes, found: {prefixes}"
+        )
+
+    def test_mount_with_method_call_handler(self, tmp_path: Path) -> None:
+        """Mount with a package-qualified handler like pkg.Routes() is detected."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import (
+    "github.com/go-chi/chi/v5"
+    "myapp/api"
+)
+
+func main() {
+    r := chi.NewRouter()
+    r.Mount("/api/v1", api.Routes())
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        mounts = [s for s in result.symbols if s.kind == "route_mount"]
+        assert len(mounts) == 1
+        assert mounts[0].meta["mount_prefix"] == "/api/v1"
+        # For package-qualified calls, handler_ref includes the package
+        assert mounts[0].meta["handler_ref"] == "api.Routes"
 
 
 class TestGoSignatureExtraction:

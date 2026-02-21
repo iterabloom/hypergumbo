@@ -108,6 +108,11 @@ GORILLA_PATH_METHODS = {"Path", "PathPrefix"}
 # Macaron/Chi/Gin/Echo/Fiber all use Group; Chi also uses Route.
 _GO_GROUP_METHODS = {"Group", "Route"}
 
+# Route mount methods that attach a sub-handler at a path prefix.
+# Unlike Group/Route (which use closures), Mount takes a handler argument
+# that typically comes from a separate function.
+_GO_MOUNT_METHODS = {"Mount"}
+
 # Go builtin type names.  When used as bare call expressions — e.g.
 # ``string(data)`` or ``int(x)`` — these are type conversions, not
 # function calls.  We skip them during call resolution to avoid
@@ -1450,7 +1455,8 @@ def _extract_go_routes(
     source: bytes,
     file_path: Path,
     run: AnalysisRun,
-) -> list[Symbol]:
+    local_symbols: dict[str, Symbol] | None = None,
+) -> tuple[list[Symbol], list[Edge]]:
     """Extract Go web framework route symbols from a tree-sitter node.
 
     Detects patterns like:
@@ -1459,11 +1465,16 @@ def _extract_go_routes(
     - Gorilla mux: router.HandleFunc("/path", handler), router.Handle("/path", handler)
     - Gorilla mux builder: router.Path("/path").Methods("GET").Handler(handler)
     - Group prefix composition: r.Group("/api", func() { r.GET("/users", h) }) → /api/users
+    - Mount points: r.Mount("/api/v1", apiRoutes()) → route_mount symbol + edge
 
     Creates symbols with stable_id = HTTP method for route discovery.
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
+
+    Returns:
+        Tuple of (route symbols, mount edges).
     """
     routes: list[Symbol] = []
+    mount_edges: list[Edge] = []
 
     for n in iter_tree(node):
         # Look for call_expression with selector_expression function
@@ -1626,7 +1637,94 @@ def _extract_go_routes(
                             )
                             routes.append(route_sym)
 
-    return routes
+                    elif method_name in _GO_MOUNT_METHODS:
+                        # Chi/Gorilla: r.Mount("/api/v1", handler)
+                        args_node = find_child_by_field(n, "arguments")
+                        if args_node:
+                            mount_prefix = _extract_first_string_arg(
+                                args_node, source,
+                            )
+                            if mount_prefix:
+                                # Find handler ref (second non-punctuation arg)
+                                handler_ref: str | None = None
+                                found_first = False
+                                for arg in args_node.children:
+                                    if arg.type in ("(", ")", ","):
+                                        continue
+                                    if arg.type == "interpreted_string_literal":
+                                        found_first = True
+                                        continue
+                                    if found_first:
+                                        handler_ref = _extract_handler_name(
+                                            arg, source,
+                                        )
+                                        break
+
+                                if handler_ref:
+                                    start_line = n.start_point[0] + 1
+                                    end_line = n.end_point[0] + 1
+
+                                    mount_sym = Symbol(
+                                        id=make_symbol_id(
+                                            "go", str(file_path), start_line,
+                                            end_line,
+                                            f"MOUNT {mount_prefix}",
+                                            "route_mount",
+                                        ),
+                                        stable_id=f"go:mount:{mount_prefix}",
+                                        name=handler_ref,
+                                        kind="route_mount",
+                                        language="go",
+                                        path=str(file_path),
+                                        span=Span(
+                                            start_line=start_line,
+                                            end_line=end_line,
+                                            start_col=n.start_point[1],
+                                            end_col=n.end_point[1],
+                                        ),
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                        meta={
+                                            "mount_prefix": mount_prefix,
+                                            "handler_ref": handler_ref,
+                                        },
+                                    )
+                                    routes.append(mount_sym)
+
+                                    # Create edge from enclosing function
+                                    # to handler, carrying mount prefix.
+                                    if local_symbols is not None:
+                                        enclosing = _get_enclosing_function(
+                                            n, source, local_symbols,
+                                        )
+                                        if enclosing is not None:
+                                            # Resolve handler dst: try
+                                            # local_symbols first, then
+                                            # build synthetic ID.
+                                            dst_id: str | None = None
+                                            if handler_ref in local_symbols:
+                                                dst_id = local_symbols[
+                                                    handler_ref
+                                                ].id
+                                            else:
+                                                dst_id = (
+                                                    f"go:external:0-0:"
+                                                    f"{handler_ref}:function"
+                                                )
+                                            mount_edges.append(Edge.create(
+                                                src=enclosing.id,
+                                                dst=dst_id,
+                                                edge_type="calls",
+                                                line=start_line,
+                                                confidence=0.90,
+                                                origin=PASS_ID,
+                                                origin_run_id=(
+                                                    run.execution_id
+                                                ),
+                                                evidence_type="route_mount",
+                                            ))
+
+    return (routes, mount_edges)
 
 
 def _extract_go_usage_contexts(
@@ -1848,8 +1946,12 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
         try:
             source = go_file.read_bytes()
             tree = parser.parse(source)
-            routes = _extract_go_routes(tree.root_node, source, go_file, run)
-            all_symbols.extend(routes)
+            route_syms, route_mount_edges = _extract_go_routes(
+                tree.root_node, source, go_file, run,
+                local_symbols=analysis.symbol_by_name,
+            )
+            all_symbols.extend(route_syms)
+            all_edges.extend(route_mount_edges)
 
             # Extract usage contexts for YAML pattern matching (v1.1.x)
             usage_contexts = _extract_go_usage_contexts(
