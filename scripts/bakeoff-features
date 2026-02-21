@@ -467,6 +467,18 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     # while accepting functions that make meaningful calls (out>=10).
     _OUT_THRESHOLD = 10
 
+    # Minimum out-degree to be a candidate at all.  Functions with fewer
+    # than 3 callees are infrastructure sinks (die, strbuf_release, GetEngine)
+    # or thin wrappers, not domain logic hubs.
+    _MIN_OUT_DEGREE = 3
+
+    # In-degree cap prevents mega-hubs (in_degree > 500) from dominating
+    # via sheer volume.  A function called 1200 times isn't 5x more
+    # interesting as a seed than one called 250 times — it's likely
+    # infrastructure.  Capping at 300 equalises domain functions
+    # (in=100-300) against infrastructure (in=500-2000).
+    _IN_DEGREE_CAP = 300
+
     candidates = []
     for node_id, in_deg in in_degree.items():
         node = node_map.get(node_id)
@@ -483,10 +495,13 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
         if not entry:
             continue
         out_deg = out_degree.get(node_id, 0)
-        # Score: in_degree weighted by out-degree ratio.
-        # Pure sinks (out=0) get score 0; utility wrappers (out=1)
-        # get 20% of their in-degree; domain functions (out>=5) get full.
-        score = in_deg * min(1.0, out_deg / _OUT_THRESHOLD)
+        # Hard filter: skip pure sinks and thin wrappers entirely.
+        if out_deg < _MIN_OUT_DEGREE:
+            continue
+        # Score: capped in_degree weighted by out-degree ratio.
+        # Cap prevents infrastructure mega-hubs from dominating.
+        capped_in = min(in_deg, _IN_DEGREE_CAP)
+        score = capped_in * min(1.0, out_deg / _OUT_THRESHOLD)
         candidates.append((score, in_deg, entry, name))
 
     # Sort by score descending, then in-degree descending, name for stability

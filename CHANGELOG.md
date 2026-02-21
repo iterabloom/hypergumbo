@@ -45,6 +45,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Rails namespace-aware route extraction**: `namespace :admin do resources :users end` correctly generates `admin/users#index` controller_action and `/admin/users` URL paths. Supports nested namespaces and `scope module:`.
 - **Django & Flask framework patterns**: Django template tags/filters and signal receivers; Flask Jinja2 customizations, Blinker signals, and Flask-RESTful support.
 - **Test classification**: Test directories/files classified as tier 2; test functions registered as entrypoints with 90% penalty to avoid dominating `--entry auto`.
+- **Kafka Connect framework patterns**: SinkTask, SourceTask, SinkConnector, and SourceConnector base class patterns detected as controller entrypoints. Framework detection from `connect-api` in Maven/Gradle builds. Enables entrypoint detection for streaming data connectors (e.g., Apache Iceberg's IcebergSinkTask, Debezium connectors).
 
 #### CLI & developer tooling
 
@@ -185,6 +186,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **smart-test scoped mode**: No longer fails when total project coverage is below 100%.
 - **Go test/benchmark/example function classification**: Now requires `_test.go` file suffix. Previously, production functions like `TestPullRequest` in `services/pull/pull.go` (Forgejo) were falsely classified as test functions because the pattern only checked the `Test[A-Z]` name prefix. Go's test toolchain requires test functions to be in `*_test.go` files.
 - **D file misclassification**: `.d` files are now disambiguated between D language source and GCC Makefile dependency files (`gcc -MMD` output). Content heuristics detect D source patterns (module/import declarations, class/struct/interface) vs GCC dependency patterns (`target.o: prerequisite`). Prevents false D language analysis of build artifacts.
+- **Handler naming convention false positives**: `handler_by_name` pattern now requires file path to be in an HTTP-context directory (routers/, handlers/, api/, web/, controllers/, endpoints/, servlets/, resources/). Previously, any class ending in "Handler" was classified as an HTTP handler — `PartitionStatsHandler` in Iceberg's core module, `OAuth2RefreshCredentialsHandler`, logging handlers, etc.
+- **Pattern matching base_class fall-through**: When a pattern specifies `base_class` (or `decorator`, `annotation`, `parameter_type`) and the symbol doesn't match, the pattern no longer falls through to symbol_kind-only matching. Previously, a pattern like `{base_class: "^SinkTask$", symbol_kind: "^class$"}` would match ANY class if the base class didn't match, because the symbol_kind-only fallback path didn't check for unmatched specific fields.
 
 ### Removed
 

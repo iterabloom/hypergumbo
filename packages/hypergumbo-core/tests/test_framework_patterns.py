@@ -9478,11 +9478,12 @@ class TestNamingConventionsPatterns:
         assert result is None  # Doesn't end in "Controller"
 
     def test_handler_by_name_pattern_matches(self) -> None:
-        """Pattern matches classes ending in 'Handler'."""
+        """Pattern matches Handler classes in HTTP-context paths."""
         pattern = Pattern(
             concept="handler_by_name",
             symbol_name=r"^[A-Z][a-zA-Z0-9_]*Handler$",
             symbol_kind="^class$",
+            symbol_path=r"(routers?|handlers?|controllers?|endpoints?|api|web|views?|servlets?|resources?)/",
         )
         symbol = Symbol(
             id="java:WebSocketHandler.java:5-30:WebSocketHandler:class",
@@ -9498,19 +9499,85 @@ class TestNamingConventionsPatterns:
         assert result["concept"] == "handler_by_name"
         assert result["matched_symbol_name"] == "WebSocketHandler"
 
+    def test_handler_by_name_matches_various_http_paths(self) -> None:
+        """Pattern matches Handler classes in various HTTP-context directories."""
+        pattern = Pattern(
+            concept="handler_by_name",
+            symbol_name=r"^[A-Z][a-zA-Z0-9_]*Handler$",
+            symbol_kind="^class$",
+            symbol_path=r"(routers?|handlers?|controllers?|endpoints?|api|web|views?|servlets?|resources?)/",
+        )
+        http_paths = [
+            "routers/api/UserHandler.java",
+            "src/api/v1/AuthHandler.java",
+            "web/RequestHandler.py",
+            "app/controllers/PaymentHandler.rb",
+            "endpoints/HealthHandler.go",
+            "servlets/UploadHandler.java",
+            "resources/ItemHandler.java",
+        ]
+        for path in http_paths:
+            name = path.rsplit("/", 1)[1].split(".")[0]
+            symbol = Symbol(
+                id=f"java:{path}:1-10:{name}:class",
+                name=name,
+                kind="class",
+                language="java",
+                path=path,
+                span=Span(1, 10, 0, 100),
+                meta={},
+            )
+            result = pattern.matches(symbol)
+            assert result is not None, f"Should match {name} in path {path}"
+
+    def test_handler_by_name_rejects_non_http_path(self) -> None:
+        """Handler classes in non-HTTP paths are NOT classified as handlers.
+
+        PartitionStatsHandler in core/src/.../PartitionStatsHandler.java is
+        domain logic, not an HTTP request handler. Same for logging handlers,
+        event handlers in generic utility code, etc.
+        """
+        pattern = Pattern(
+            concept="handler_by_name",
+            symbol_name=r"^[A-Z][a-zA-Z0-9_]*Handler$",
+            symbol_kind="^class$",
+            symbol_path=r"(routers?|handlers?|controllers?|endpoints?|api|web|views?|servlets?|resources?)/",
+        )
+        non_http_paths = [
+            ("PartitionStatsHandler", "core/src/main/java/org/apache/iceberg/PartitionStatsHandler.java"),
+            ("OAuth2RefreshCredentialsHandler", "core/src/main/java/org/apache/iceberg/rest/auth/OAuth2RefreshCredentialsHandler.java"),
+            ("LogHandler", "src/utils/logging/LogHandler.java"),
+            ("EventHandler", "lib/events/EventHandler.py"),
+        ]
+        for name, path in non_http_paths:
+            symbol = Symbol(
+                id=f"java:{path}:1-10:{name}:class",
+                name=name,
+                kind="class",
+                language="java",
+                path=path,
+                span=Span(1, 10, 0, 100),
+                meta={},
+            )
+            result = pattern.matches(symbol)
+            assert result is None, (
+                f"{name} at {path} should NOT be classified as handler_by_name"
+            )
+
     def test_handler_by_name_rejects_non_class(self) -> None:
         """Pattern does not match functions named Handler."""
         pattern = Pattern(
             concept="handler_by_name",
             symbol_name=r"^[A-Z][a-zA-Z0-9_]*Handler$",
             symbol_kind="^class$",
+            symbol_path=r"(routers?|handlers?|controllers?|endpoints?|api|web|views?|servlets?|resources?)/",
         )
         symbol = Symbol(
-            id="python:utils.py:1-5:RequestHandler:function",
+            id="python:handlers/utils.py:1-5:RequestHandler:function",
             name="RequestHandler",
             kind="function",
             language="python",
-            path="utils.py",
+            path="handlers/utils.py",
             span=Span(1, 5, 0, 50),
             meta={},
         )
@@ -15397,3 +15464,115 @@ class TestOpenRestyPhaseHandlerPatterns:
         results = match_patterns(symbol, [pattern_def])
         handlers = [r for r in results if r["concept"] == "event_handler"]
         assert len(handlers) == 0
+
+
+class TestKafkaConnectPatterns:
+    """Tests for Kafka Connect framework patterns.
+
+    Kafka Connect SinkTask/SourceTask subclasses are canonical entrypoints
+    for streaming data connectors (e.g., Apache Iceberg's IcebergSinkTask,
+    Debezium's PostgresConnector).
+    """
+
+    def test_kafka_connect_yaml_loads(self) -> None:
+        """kafka-connect.yaml loads correctly."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("kafka-connect")
+        assert pattern_def is not None
+        assert pattern_def.id == "kafka-connect"
+        assert pattern_def.language == "java"
+        assert len(pattern_def.patterns) == 4
+
+    def test_sink_task_matches(self) -> None:
+        """SinkTask subclass detected as controller entrypoint."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("kafka-connect")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:IcebergSinkTask.java:10-100:IcebergSinkTask:class",
+            name="IcebergSinkTask",
+            kind="class",
+            language="java",
+            path="kafka-connect/src/main/java/org/apache/iceberg/connect/IcebergSinkTask.java",
+            span=Span(10, 100, 0, 1000),
+            meta={"base_classes": ["SinkTask"]},
+        )
+        results = match_patterns(symbol, [pattern_def])
+        controllers = [r for r in results if r["concept"] == "controller"]
+        assert len(controllers) == 1
+
+    def test_source_task_matches(self) -> None:
+        """SourceTask subclass detected as controller entrypoint."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("kafka-connect")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:PostgresSourceTask.java:5-80:PostgresSourceTask:class",
+            name="PostgresSourceTask",
+            kind="class",
+            language="java",
+            path="src/main/java/io/debezium/connector/postgresql/PostgresSourceTask.java",
+            span=Span(5, 80, 0, 800),
+            meta={"base_classes": ["SourceTask"]},
+        )
+        results = match_patterns(symbol, [pattern_def])
+        controllers = [r for r in results if r["concept"] == "controller"]
+        assert len(controllers) == 1
+
+    def test_sink_connector_matches(self) -> None:
+        """SinkConnector subclass detected as controller entrypoint."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("kafka-connect")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:IcebergSinkConnector.java:5-50:IcebergSinkConnector:class",
+            name="IcebergSinkConnector",
+            kind="class",
+            language="java",
+            path="kafka-connect/src/main/java/org/apache/iceberg/connect/IcebergSinkConnector.java",
+            span=Span(5, 50, 0, 500),
+            meta={"base_classes": ["SinkConnector"]},
+        )
+        results = match_patterns(symbol, [pattern_def])
+        controllers = [r for r in results if r["concept"] == "controller"]
+        assert len(controllers) == 1
+
+    def test_source_connector_matches(self) -> None:
+        """SourceConnector subclass detected as controller entrypoint."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("kafka-connect")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:PostgresConnector.java:5-40:PostgresConnector:class",
+            name="PostgresConnector",
+            kind="class",
+            language="java",
+            path="src/main/java/io/debezium/connector/postgresql/PostgresConnector.java",
+            span=Span(5, 40, 0, 400),
+            meta={"base_classes": ["SourceConnector"]},
+        )
+        results = match_patterns(symbol, [pattern_def])
+        controllers = [r for r in results if r["concept"] == "controller"]
+        assert len(controllers) == 1
+
+    def test_unrelated_class_no_match(self) -> None:
+        """Classes not extending Kafka Connect base classes don't match."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("kafka-connect")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:PartitionStatsHandler.java:10-50:PartitionStatsHandler:class",
+            name="PartitionStatsHandler",
+            kind="class",
+            language="java",
+            path="core/src/main/java/org/apache/iceberg/PartitionStatsHandler.java",
+            span=Span(10, 50, 0, 500),
+            meta={"base_classes": ["Object"]},
+        )
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 0

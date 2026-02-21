@@ -1,0 +1,39 @@
+# Kafka Connect framework patterns
+#
+# Kafka Connect is a framework for building streaming data connectors.
+# SinkTask/SourceTask subclasses are the canonical entrypoints where
+# developers implement data transformation logic.
+#
+# The key classes:
+# - SinkTask: Consumes records from Kafka topics (put, start, stop)
+# - SourceTask: Produces records to Kafka topics (poll, start, stop)
+# - SinkConnector: Factory for SinkTask instances (taskClass, start, config)
+# - SourceConnector: Factory for SourceTask instances (taskClass, start, config)
+#
+# Examples: Apache Iceberg's IcebergSinkTask, Debezium's PostgresConnector
+
+id: kafka-connect
+language: java
+
+patterns:
+  # SinkTask subclasses - consume data from Kafka
+  - concept: controller
+    base_class: "^SinkTask$"
+    symbol_kind: "^class$"
+
+  # SourceTask subclasses - produce data to Kafka
+  - concept: controller
+    base_class: "^SourceTask$"
+    symbol_kind: "^class$"
+
+  # SinkConnector subclasses - factory/config for sink tasks
+  - concept: controller
+    base_class: "^SinkConnector$"
+    symbol_kind: "^class$"
+
+  # SourceConnector subclasses - factory/config for source tasks
+  - concept: controller
+    base_class: "^SourceConnector$"
+    symbol_kind: "^class$"
+
+linkers: []

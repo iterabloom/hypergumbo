@@ -346,8 +346,20 @@ class Pattern:
                     # Only symbol_name specified, and it matches
                     return result
 
-        # Try symbol_kind match (alone, without symbol_name or parent_base_class/method_name)
-        if self._symbol_kind_re and not self._symbol_name_re and not self._parent_base_class_re and not self._method_name_re:
+        # Try symbol_kind match (alone, without any other specific match field).
+        # If decorator/base_class/annotation/param_type were specified but didn't
+        # match above, we must NOT fall through to symbol_kind-only matching —
+        # those fields are AND conditions, not independent alternatives.
+        if (
+            self._symbol_kind_re
+            and not self._symbol_name_re
+            and not self._parent_base_class_re
+            and not self._method_name_re
+            and not self._decorator_re
+            and not self._base_class_re
+            and not self._annotation_re
+            and not self._param_type_re
+        ):
             if self._symbol_kind_re.match(symbol.kind):
                 result["matched_symbol_kind"] = symbol.kind
                 return result

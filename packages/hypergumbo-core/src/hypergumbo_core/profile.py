@@ -298,6 +298,8 @@ JAVA_FRAMEWORKS = {
         "android.app.activity",
     ],
     "jetpack-compose": ["androidx.compose", "compose.ui", "compose.runtime", "compose.material"],
+    # Kafka Connect
+    "kafka-connect": ["org.apache.kafka:connect-api", "kafka-connect", "connect-api"],
 }
 
 # Swift Package.swift detection patterns

@@ -25,10 +25,14 @@ patterns:
     # because controller naming is common across Java, Python, Ruby, PHP, etc.
 
   # ====== Handler-like classes ======
-  # Classes ending in "Handler" may be request handlers
+  # Classes ending in "Handler" may be request handlers, but "Handler" is
+  # also used for logging, event handling, data processing, and generic
+  # callback patterns.  Require the file path to suggest HTTP context to
+  # avoid false positives like PartitionStatsHandler, OAuth2Handler, etc.
   - concept: handler_by_name
     symbol_name: "^[A-Z][a-zA-Z0-9_]*Handler$"
     symbol_kind: "^class$"
+    symbol_path: "(routers?|handlers?|controllers?|endpoints?|api|web|views?|servlets?|resources?)/"
 
   # ====== Service-like classes ======
   # Classes ending in "Service" are often business logic entry points
