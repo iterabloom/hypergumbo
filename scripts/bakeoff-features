@@ -123,9 +123,9 @@ _CODE_NODE_KINDS = frozenset({
 # slicing with --exclude-tests (test-file entries yield empty slices).
 # Covers: Python (tests/, test_), JS (__tests__/, spec/, _test.),
 # JVM (Test*.java, *IT.java, *Tests.java, src/test/, src/integration/),
-# Go (unittest/).
+# Go (unittest/), C/Perl (t/, test-*.c).
 _TEST_PATH_RE = re.compile(
-    r'/(tests?|spec|__tests__|test_|_test\.|integration/|unittest/)'
+    r'/(tests?|t|spec|__tests__|test_|test-|_test\.|integration/|unittest/)'
     r'|/Test[A-Z][^/]*\.java'
     r'|/[A-Z]\w*(?:IT|Tests?)\.(?:java|scala|kt)'
 )

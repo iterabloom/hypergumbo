@@ -183,12 +183,12 @@ def is_test_file(path: str) -> bool:
     Used for filtering and deprioritizing test code in analysis results.
 
     Matches:
-    - Files starting with test_ or ending with _test.* (py/js/ts/go)
+    - Files starting with test_ or test- or ending with _test.* (py/js/ts/go)
     - Files starting with spec_ or ending with _spec.* or .spec.*
     - Files ending with .test.* (e.g., main.test.py, main.test.js)
     - Go test files (*_test.go)
     - Mock/fake files (*_mock.*, *_fake.*, fake_*.*, mock_*.*)
-    - Files in tests/, test/, spec/, fakes/, mocks/, fixtures/ directories
+    - Files in tests/, test/, t/, spec/, fakes/, mocks/, fixtures/ directories
 
     Args:
         path: File path to check
@@ -199,8 +199,12 @@ def is_test_file(path: str) -> bool:
     filename = get_filename(path)
     filename_lower = filename.lower()
 
-    # Test patterns with _test suffix (any language)
+    # Test patterns with _test suffix or test- prefix (any language)
     if filename.startswith("test_"):
+        return True
+    # Hyphen-separated test prefix: test-reach.c, test-date.c, test-parse.c
+    # Common in C projects. Check for "test-" followed by non-empty string.
+    if filename_lower.startswith("test-"):
         return True
     if "_test." in filename_lower:  # Matches _test.py, _test.js, _test.ts, _test.go
         return True
@@ -226,7 +230,7 @@ def is_test_file(path: str) -> bool:
     normalized = normalize_path(path)
     path_parts = normalized.split("/")
     test_dirs = {
-        "tests", "test", "spec", "__tests__",  # Test directories
+        "tests", "test", "t", "spec", "__tests__",  # Test directories
         "fakes", "mocks", "testfakes", "testmocks",  # Mock directories
         "fixtures", "testdata", "testutils",  # Test support directories
     }

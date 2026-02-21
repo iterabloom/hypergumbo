@@ -129,6 +129,37 @@ class TestIsTestFile:
         assert is_test_file("pkg/rtc/transport/transportfakes/handler.go")
         assert is_test_file("internal/servicemocks/client.go")
 
+    def test_t_directory_convention(self) -> None:
+        """Detect t/ as test directory (C/Perl convention).
+
+        Used by git (t/helper/test-reach.c), Perl core (t/op/eval.t),
+        and many C projects. The t/ convention is a well-known test
+        directory pattern in these ecosystems.
+        """
+        assert is_test_file("t/helper/test-reach.c")
+        assert is_test_file("t/t0000-basic.sh")
+        assert is_test_file("t/op/eval.t")
+
+    def test_t_directory_not_confused_with_src(self) -> None:
+        """t/ detection should not match other single-char directories."""
+        # These should NOT be test files
+        assert not is_test_file("s/helper/util.c")
+        assert not is_test_file("a/main.go")
+
+    def test_hyphen_test_prefix_c_files(self) -> None:
+        """Detect test-*.c filename pattern (hyphen-separated).
+
+        Common in C projects: test-reach.c, test-path-utils.c, test-date.c.
+        """
+        assert is_test_file("t/helper/test-reach.c")
+        assert is_test_file("test-date.c")
+        assert is_test_file("src/test-parse.c")
+
+    def test_hyphen_test_prefix_not_confused(self) -> None:
+        """test- prefix detection should require word boundary."""
+        # "testament.c" should NOT be a test file
+        assert not is_test_file("src/testament.c")
+
 
 class TestSemanticEntryDetection:
     """Tests for semantic entry detection from concept metadata.
