@@ -8355,12 +8355,63 @@ class TestTestFrameworkPatterns:
         assert result is None
 
     def test_go_test_function_pattern(self) -> None:
-        """Pattern matches Go Test* functions."""
+        """Pattern matches Go Test* functions in _test.go files."""
         pattern = Pattern(
             concept="test_function",
             symbol_name="^Test[A-Z]",
             symbol_kind="^function$",
             language="^go$",
+            symbol_path="_test\\.go$",
+        )
+        symbol = Symbol(
+            id="go:user_test.go:10-30:TestCreateUser:function",
+            name="TestCreateUser",
+            kind="function",
+            language="go",
+            path="user_test.go",
+            span=Span(10, 30, 0, 100),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "test_function"
+
+    def test_go_test_function_not_in_test_file(self) -> None:
+        """Go Test* functions NOT in _test.go files should NOT match.
+
+        TestPullRequest in services/pull/pull.go is a core service function,
+        not a test.  Go test functions MUST be in _test.go files.
+        """
+        pattern = Pattern(
+            concept="test_function",
+            symbol_name="^Test[A-Z]",
+            symbol_kind="^function$",
+            language="^go$",
+            symbol_path="_test\\.go$",
+        )
+        symbol = Symbol(
+            id="go:services/pull/pull.go:10-100:TestPullRequest:function",
+            name="TestPullRequest",
+            kind="function",
+            language="go",
+            path="services/pull/pull.go",
+            span=Span(10, 100, 0, 100),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is None, (
+            "Test* function in non-_test.go file should NOT be classified "
+            "as a test function"
+        )
+
+    def test_go_test_function_in_test_file(self) -> None:
+        """Go Test* functions in _test.go files should still match."""
+        pattern = Pattern(
+            concept="test_function",
+            symbol_name="^Test[A-Z]",
+            symbol_kind="^function$",
+            language="^go$",
+            symbol_path="_test\\.go$",
         )
         symbol = Symbol(
             id="go:user_test.go:10-30:TestCreateUser:function",
@@ -8376,11 +8427,12 @@ class TestTestFrameworkPatterns:
         assert result["concept"] == "test_function"
 
     def test_go_benchmark_function_pattern(self) -> None:
-        """Pattern matches Go Benchmark* functions."""
+        """Pattern matches Go Benchmark* functions in _test.go files."""
         pattern = Pattern(
             concept="benchmark_function",
             symbol_name="^Benchmark[A-Z]",
             symbol_kind="^function$",
+            symbol_path="_test\\.go$",
             language="^go$",
         )
         symbol = Symbol(

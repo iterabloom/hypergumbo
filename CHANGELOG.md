@@ -183,6 +183,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Dangling edge dst after tier filtering**: Edges pointing to tier-filtered nodes no longer create dangling references.
 - **WebSocket generic event edge explosion**: Generic `send_text()`/`ws.send()` no longer create NxM combinatorial edges.
 - **smart-test scoped mode**: No longer fails when total project coverage is below 100%.
+- **Go test/benchmark/example function classification**: Now requires `_test.go` file suffix. Previously, production functions like `TestPullRequest` in `services/pull/pull.go` (Forgejo) were falsely classified as test functions because the pattern only checked the `Test[A-Z]` name prefix. Go's test toolchain requires test functions to be in `*_test.go` files.
+- **D file misclassification**: `.d` files are now disambiguated between D language source and GCC Makefile dependency files (`gcc -MMD` output). Content heuristics detect D source patterns (module/import declarations, class/struct/interface) vs GCC dependency patterns (`target.o: prerequisite`). Prevents false D language analysis of build artifacts.
 
 ### Removed
 

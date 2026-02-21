@@ -58,22 +58,25 @@ patterns:
     language: "^python$"
 
   # ====== Go ======
-  # Go testing: Test* functions
+  # Go testing: Test* functions (must be in _test.go files)
   - concept: test_function
     symbol_name: "^Test[A-Z]"
     symbol_kind: "^function$"
+    symbol_path: "_test\\.go$"
     language: "^go$"
 
-  # Go testing: Benchmark* functions
+  # Go testing: Benchmark* functions (must be in _test.go files)
   - concept: benchmark_function
     symbol_name: "^Benchmark[A-Z]"
     symbol_kind: "^function$"
+    symbol_path: "_test\\.go$"
     language: "^go$"
 
-  # Go testing: Example* functions
+  # Go testing: Example* functions (must be in _test.go files)
   - concept: example_function
     symbol_name: "^Example[A-Z]?"
     symbol_kind: "^function$"
+    symbol_path: "_test\\.go$"
     language: "^go$"
 
   # ====== Java ======
