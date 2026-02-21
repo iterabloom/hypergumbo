@@ -147,6 +147,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Go route handler vs middleware**: Route handler name now extracted from the last non-string argument instead of the first. Go frameworks pass middleware before the handler (`r.GET("/path", mw1, mw2, handler)`); previously the first middleware was incorrectly reported as the handler.
 - **Dropwizard framework false positive**: `io.dropwizard.metrics:metrics-core` (standalone metrics library) no longer triggers Dropwizard REST framework detection. Detection now requires `dropwizard-core` or `dropwizard-jersey` artifact names.
 - **Chained member access call resolution**: `this.field.method()` / `self.field.method()` call graph extraction in Kotlin, C#, Scala, and Python.
 - **Route path prefix inheritance**: Class-level route annotations now correctly combine with method-level annotations in Spring Boot, JAX-RS, Micronaut, and ASP.NET.

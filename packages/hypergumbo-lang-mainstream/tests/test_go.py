@@ -756,6 +756,79 @@ func main() {
         assert len(routes) >= 1
         assert routes[0].name == "handlers.GetAPI"
 
+    def test_handler_picked_over_middleware(self, tmp_path: Path) -> None:
+        """When multiple non-string arguments are passed, handler is the last one.
+
+        Go web frameworks (Chi, Gin, Echo, Macaron) pass middleware before the
+        handler: r.GET("/path", middleware1, middleware2, handler). The route
+        handler name should be the last argument, not the first.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+func main() {
+    r.GET("/raw/*", referencesGitRepo, repoRefForAPI, reqRepoReader, GetRawFile)
+}
+
+func referencesGitRepo() {}
+func repoRefForAPI() {}
+func reqRepoReader() {}
+func GetRawFile() {}
+""")
+
+        result = analyze_go(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        # Handler is the LAST argument, not the first middleware
+        assert routes[0].name == "GetRawFile"
+
+    def test_handler_picked_over_middleware_with_selector(self, tmp_path: Path) -> None:
+        """Middleware with selector expressions (context.ReferencesGitRepo)."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+func main() {
+    m.Get("/raw/*", context.ReferencesGitRepo(), context.RepoRefForAPI, repo.GetRawFile)
+}
+""")
+
+        result = analyze_go(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        # Last arg is the handler, not the middleware
+        assert routes[0].name == "repo.GetRawFile"
+
+    def test_handler_skips_closure_to_find_named(self, tmp_path: Path) -> None:
+        """When the last arg is an anonymous closure, skip it for a named handler.
+
+        Pattern: r.GET("/path", authMiddleware, func(c *gin.Context){...})
+        The closure is not a useful handler name. The named identifier before it
+        (authMiddleware) is used instead.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+func main() {
+    r.GET("/inline", authMiddleware, func(c *Context) {
+        c.JSON(200, "ok")
+    })
+}
+
+func authMiddleware() {}
+""")
+
+        result = analyze_go(tmp_path)
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) >= 1
+        # The closure can't be named, so the named identifier before it is used
+        assert routes[0].name == "authMiddleware"
+
     def test_group_prefix_composition(self, tmp_path: Path) -> None:
         """Routes inside Group() closures get the group prefix prepended.
 

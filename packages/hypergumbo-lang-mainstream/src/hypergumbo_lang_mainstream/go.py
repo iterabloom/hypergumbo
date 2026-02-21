@@ -1292,11 +1292,15 @@ def _extract_gorilla_chain_route(
         Tuple of (route_path, http_method, handler_name).
         Any element may be None if not found.
     """
-    # Step 1: Extract handler from the outermost call's arguments
+    # Step 1: Extract handler from the outermost call's arguments.
+    # Pick the last resolvable argument (consistent with HTTP-method and
+    # Handle branches where middleware precedes the handler).
     args_node = find_child_by_field(call_node, "arguments")
     handler_name = None
     if args_node:
-        for arg in args_node.children:
+        for arg in reversed(args_node.children):
+            if arg.type in ("(", ")", ","):
+                continue
             handler_name = _extract_handler_name(arg, source)
             if handler_name is not None:
                 break
@@ -1430,9 +1434,17 @@ def _extract_go_routes(
                             handler_name = None
 
                             if route_path:
-                                for arg in args_node.children:
-                                    if arg.type == "interpreted_string_literal":
-                                        continue  # Skip the path arg
+                                # Pick the LAST non-string argument as handler.
+                                # Go frameworks pass middleware before the handler:
+                                # r.GET("/path", mw1, mw2, handler)
+                                for arg in reversed(args_node.children):
+                                    if arg.type in (
+                                        "interpreted_string_literal",
+                                        "(",
+                                        ")",
+                                        ",",
+                                    ):
+                                        continue
                                     handler_name = _extract_handler_name(arg, source)
                                     if handler_name is not None:
                                         break
@@ -1478,8 +1490,15 @@ def _extract_go_routes(
                             handler_name = None
 
                             if route_path:
-                                for arg in args_node.children:
-                                    if arg.type == "interpreted_string_literal":
+                                # Last non-string arg is handler (same
+                                # middleware convention as HTTP methods).
+                                for arg in reversed(args_node.children):
+                                    if arg.type in (
+                                        "interpreted_string_literal",
+                                        "(",
+                                        ")",
+                                        ",",
+                                    ):
                                         continue
                                     handler_name = _extract_handler_name(arg, source)
                                     if handler_name is not None:
@@ -1617,24 +1636,25 @@ def _extract_go_usage_contexts(
         route_path = None
         handler_name = None
 
+        # Extract route path (first string literal)
         for arg in args_node.children:
-            # First string literal is the route path
-            if arg.type == "interpreted_string_literal" and route_path is None:
+            if arg.type == "interpreted_string_literal":
                 content_node = find_child_by_type(arg, "interpreted_string_literal_content")
                 if content_node:
                     route_path = node_text(content_node, source)
                 else:  # pragma: no cover
                     route_path = node_text(arg, source).strip('"')
-
-            # Handler is usually an identifier after the path
-            elif arg.type == "identifier" and route_path is not None:
-                handler_name = node_text(arg, source)
                 break
 
-            # Handler could also be a selector (pkg.Handler)
-            elif arg.type == "selector_expression" and route_path is not None:
-                handler_name = node_text(arg, source)
-                break
+        # Handler is the LAST identifier/selector arg (middleware precedes it)
+        if route_path is not None:
+            for arg in reversed(args_node.children):
+                if arg.type == "identifier":
+                    handler_name = node_text(arg, source)
+                    break
+                elif arg.type == "selector_expression":
+                    handler_name = node_text(arg, source)
+                    break
 
         if not route_path:  # pragma: no cover
             continue
