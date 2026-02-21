@@ -40,6 +40,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     iter_tree,
     make_symbol_id,
+    populate_docstrings_from_tree,
 )
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, PASS_VERSION, Span, Symbol, make_pass_id
@@ -441,6 +442,7 @@ class LatexAnalyzer(TreeSitterAnalyzer):
                 rel_path = str(file_path.relative_to(repo_root))
                 file_symbols = _extract_symbols_from_file(rel_path, source_bytes, tree, run)
                 symbols.extend(file_symbols)
+                populate_docstrings_from_tree(tree.root_node, source_bytes, file_symbols)
             except (OSError, IOError):  # pragma: no cover
                 continue
 

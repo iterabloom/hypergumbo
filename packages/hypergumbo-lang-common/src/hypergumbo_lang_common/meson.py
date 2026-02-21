@@ -29,7 +29,7 @@ from typing import ClassVar, Iterator, Optional, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -372,9 +372,11 @@ class MesonAnalyzer(TreeSitterAnalyzer):
             try:
                 content = path.read_bytes()
                 tree = parser.parse(content)
+                before = len(symbols)
                 _extract_symbols_recursive(
                     tree.root_node, path, repo_root, symbols, target_registry, run_id, self
                 )
+                populate_docstrings_from_tree(tree.root_node, content, symbols[before:])
             except Exception:  # pragma: no cover
                 pass
 

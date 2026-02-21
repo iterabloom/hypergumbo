@@ -40,6 +40,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_symbol_id,
     node_text,
+    populate_docstrings_from_tree,
 )
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
@@ -446,6 +447,7 @@ class RAnalyzer(TreeSitterAnalyzer):
                 files_analyzed += 1
 
                 # Extract symbols
+                before = len(symbols)
                 _extract_r_symbols(
                     tree.root_node,
                     source,
@@ -453,6 +455,7 @@ class RAnalyzer(TreeSitterAnalyzer):
                     symbols,
                     global_symbol_registry,
                 )
+                populate_docstrings_from_tree(tree.root_node, source, symbols[before:])
 
                 # Extract loaded packages for ADR-0007
                 loaded_packages = _extract_loaded_packages(tree.root_node, source)

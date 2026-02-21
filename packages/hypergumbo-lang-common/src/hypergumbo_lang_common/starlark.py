@@ -39,6 +39,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_symbol_id,
     node_text,
+    populate_docstrings_from_tree,
 )
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
@@ -486,7 +487,9 @@ class StarlarkAnalyzer(TreeSitterAnalyzer):
                 target_ids=target_ids,
             )
 
+            before = len(ctx.symbols)
             _extract_starlark_symbols(self, ctx, tree.root_node, global_symbol_registry)
+            populate_docstrings_from_tree(tree.root_node, source, ctx.symbols[before:])
 
             # Store for pass 2 (including load_aliases for path_hint resolution)
             parsed_files.append((rel_path, source, tree, ctx.load_aliases))

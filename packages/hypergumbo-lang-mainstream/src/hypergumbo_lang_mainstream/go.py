@@ -59,7 +59,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
-    extract_doc_comment,
+    populate_docstrings_from_tree,
     find_child_by_field,
     find_child_by_type,
     iter_tree,
@@ -515,7 +515,6 @@ def _extract_symbols_from_file(
                     origin_run_id=run.execution_id,
                     stable_id=stable_id,
                     signature=signature,
-                    docstring=extract_doc_comment(node, source),
                     modifiers=modifiers,
                 )
                 analysis.symbols.append(symbol)
@@ -565,7 +564,6 @@ def _extract_symbols_from_file(
                     origin_run_id=run.execution_id,
                     stable_id=stable_id,
                     signature=signature,
-                    docstring=extract_doc_comment(node, source),
                     modifiers=modifiers,
                 )
                 analysis.symbols.append(symbol)
@@ -605,7 +603,6 @@ def _extract_symbols_from_file(
                             ),
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
-                            docstring=extract_doc_comment(node, source),
                             modifiers=_go_visibility_modifiers(type_name),
                         )
                         analysis.symbols.append(symbol)
@@ -616,6 +613,9 @@ def _extract_symbols_from_file(
             for child in node.children:
                 if child.type == "var_spec":
                     _detect_interface_assertion(child, source, impl_assertions)
+
+    # Populate docstrings from tree-sitter comments in a single pass
+    populate_docstrings_from_tree(tree.root_node, source, analysis.symbols)
 
     # Apply interface assertions to struct symbols as base_classes metadata
     for sym in analysis.symbols:

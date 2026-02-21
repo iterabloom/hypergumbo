@@ -63,7 +63,7 @@ from hypergumbo_core.symbol_resolution import NameResolver, ListNameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
-    extract_doc_comment,
+    populate_docstrings_from_tree,
     find_child_by_field,
     iter_tree,
     make_route_stable_id,
@@ -2053,7 +2053,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     stable_id=stable_id,
                     signature=signature,
-                    docstring=extract_doc_comment(node, source),
+
                 )
                 symbols.append(symbol)
 
@@ -2105,7 +2105,6 @@ def _extract_symbols(
                             origin_run_id=run.execution_id,
                             stable_id=stable_id,
                             signature=signature,
-                            docstring=extract_doc_comment(node, source),
                         )
                         symbols.append(symbol)
 
@@ -2141,7 +2140,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
-                    docstring=extract_doc_comment(node, source),
+
                 )
                 symbols.append(symbol)
 
@@ -2164,7 +2163,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    docstring=extract_doc_comment(node, source),
+
                 )
                 symbols.append(symbol)
 
@@ -2187,7 +2186,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    docstring=extract_doc_comment(node, source),
+
                 )
                 symbols.append(symbol)
 
@@ -2214,7 +2213,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    docstring=extract_doc_comment(node, source),
+
                 )
                 symbols.append(symbol)
 
@@ -2277,7 +2276,7 @@ def _extract_symbols(
                     stable_id=stable_id,
                     meta=meta,
                     signature=signature,
-                    docstring=extract_doc_comment(node, source),
+
                 )
                 symbols.append(symbol)
 
@@ -2312,7 +2311,6 @@ def _extract_symbols(
                             origin_run_id=run.execution_id,
                             stable_id=stable_id,
                             signature=signature,
-                            docstring=extract_doc_comment(node, source),
                         )
                         symbols.append(symbol)
                     break  # Only handle one function_declaration per export
@@ -2806,6 +2804,7 @@ def _extract_symbols_and_edges(
     For cross-file resolution, use the two-pass approach in analyze_javascript.
     """
     symbols = _extract_symbols(tree, source, file_path, lang, run)
+    populate_docstrings_from_tree(tree.root_node, source, symbols)
 
     # Build local symbol registry
     global_symbols: dict[str, Symbol] = {}
@@ -2885,6 +2884,7 @@ def _analyze_svelte_file(
         line_offset = block.start_line - 1
 
         symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset)
+        populate_docstrings_from_tree(tree.root_node, source_bytes, symbols)
 
         # Build local symbol registry for this block
         local_symbols: dict[str, Symbol] = {}
@@ -2945,6 +2945,7 @@ def _analyze_vue_file(
         line_offset = block.start_line - 1
 
         symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset)
+        populate_docstrings_from_tree(tree.root_node, source_bytes, symbols)
 
         # Build local symbol registry for this block
         local_symbols: dict[str, Symbol] = {}
@@ -3041,6 +3042,7 @@ def _analyze_javascript_impl(
                 namespace_imports=ns_imports, named_imports=nm_imports
             ))
             symbols = _extract_symbols(tree, source, file_path, lang, run)
+            populate_docstrings_from_tree(tree.root_node, source, symbols)
             all_symbols.extend(symbols)
             files_analyzed += 1
         except (OSError, IOError):
@@ -3073,6 +3075,7 @@ def _analyze_javascript_impl(
                     named_imports=nm_imports
                 ))
                 symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset)
+                populate_docstrings_from_tree(tree.root_node, source_bytes, symbols)
                 all_symbols.extend(symbols)
 
             files_analyzed += 1
@@ -3106,6 +3109,7 @@ def _analyze_javascript_impl(
                     named_imports=nm_imports
                 ))
                 symbols = _extract_symbols(tree, source_bytes, file_path, lang, run, line_offset)
+                populate_docstrings_from_tree(tree.root_node, source_bytes, symbols)
                 all_symbols.extend(symbols)
 
             files_analyzed += 1

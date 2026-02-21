@@ -42,6 +42,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    populate_docstrings_from_tree,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -433,10 +434,12 @@ class SvelteAnalyzer(TreeSitterAnalyzer):
                 content = path.read_bytes()
                 tree = parser.parse(content)
                 current_imports: dict[str, str] = {}
+                before = len(symbols)
                 _extract_svelte_symbols(
                     tree.root_node, path, repo_root, content,
                     symbols, edges, run.execution_id, current_imports,
                 )
+                populate_docstrings_from_tree(tree.root_node, content, symbols[before:])
                 files_analyzed += 1
             except Exception:  # pragma: no cover  # noqa: S112  # nosec B112
                 continue

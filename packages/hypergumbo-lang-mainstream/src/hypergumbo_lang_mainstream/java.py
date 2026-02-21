@@ -73,7 +73,7 @@ from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
-    extract_doc_comment,
+    populate_docstrings_from_tree,
     iter_tree,
     make_symbol_id as _base_make_symbol_id,
     make_typed_stable_id,
@@ -684,7 +684,6 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
-                    docstring=extract_doc_comment(node, source),
                 )
                 symbols.append(symbol)
 
@@ -722,7 +721,6 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
-                    docstring=extract_doc_comment(node, source),
                 )
                 symbols.append(symbol)
 
@@ -747,7 +745,6 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    docstring=extract_doc_comment(node, source),
                 )
                 symbols.append(symbol)
 
@@ -813,7 +810,6 @@ def _extract_symbols(
                     meta=meta,
                     stable_id=stable_id,
                     signature=signature,
-                    docstring=extract_doc_comment(node, source),
                     modifiers=modifiers,
                 )
                 symbols.append(symbol)
@@ -853,7 +849,6 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     stable_id=stable_id,
                     signature=signature,
-                    docstring=extract_doc_comment(node, source),
                     modifiers=modifiers,
                 )
                 symbols.append(symbol)
@@ -1401,6 +1396,7 @@ def _analyze_java_file(
         return [], [], False
 
     symbols = _extract_symbols(tree, source, file_path, run)
+    populate_docstrings_from_tree(tree.root_node, source, symbols)
 
     # Build symbol registries for edge extraction
     global_symbols: dict[str, Symbol] = {}
@@ -1479,6 +1475,7 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
                 path=file_path, tree=tree, source=source, imports=file_imports
             ))
             symbols = _extract_symbols(tree, source, file_path, run)
+            populate_docstrings_from_tree(tree.root_node, source, symbols)
             all_symbols.extend(symbols)
             files_analyzed += 1
         except (OSError, IOError):

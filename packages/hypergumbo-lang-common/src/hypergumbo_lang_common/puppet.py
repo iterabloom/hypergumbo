@@ -40,7 +40,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, populate_docstrings_from_tree
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -100,7 +100,9 @@ class _PuppetExtractor:
             try:
                 content = path.read_bytes()
                 tree = parser.parse(content)
+                before = len(self._symbols)
                 self._extract_symbols(tree.root_node, path)
+                populate_docstrings_from_tree(tree.root_node, content, self._symbols[before:])
                 self._files_analyzed += 1
             except Exception:  # pragma: no cover  # noqa: S112  # nosec B112
                 continue

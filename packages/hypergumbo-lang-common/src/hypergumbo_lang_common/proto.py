@@ -48,6 +48,7 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     make_symbol_id,
     node_text,
+    populate_docstrings_from_tree,
 )
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
@@ -338,6 +339,7 @@ class ProtoAnalyzer(TreeSitterAnalyzer):
 
                 all_symbols.extend(symbols)
                 all_edges.extend(edges)
+                populate_docstrings_from_tree(tree.root_node, source, symbols)
                 files_analyzed += 1
 
             except (OSError, IOError):  # pragma: no cover - defensive

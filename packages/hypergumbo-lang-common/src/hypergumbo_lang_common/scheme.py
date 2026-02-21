@@ -26,6 +26,7 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
     make_symbol_id,
+    populate_docstrings_from_tree,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -319,7 +320,9 @@ class SchemeAnalyzer(TreeSitterAnalyzer):
             try:
                 content = path.read_bytes()
                 tree = parser.parse(content)
+                before = len(symbols)
                 _extract_scheme_symbols(tree.root_node, path, repo_root, symbols, self)
+                populate_docstrings_from_tree(tree.root_node, content, symbols[before:])
             except Exception:  # pragma: no cover
                 pass
 

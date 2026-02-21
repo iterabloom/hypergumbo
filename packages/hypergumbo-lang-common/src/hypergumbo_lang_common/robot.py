@@ -47,6 +47,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    populate_docstrings_from_tree,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -570,7 +571,9 @@ class RobotAnalyzer(TreeSitterAnalyzer):
             try:
                 content = path.read_bytes()
                 tree = parser.parse(content)
+                before = len(extractor._symbols)
                 extractor.extract_symbols(tree.root_node, path)
+                populate_docstrings_from_tree(tree.root_node, content, extractor._symbols[before:])
                 extractor._files_analyzed += 1
             except Exception:  # pragma: no cover  # noqa: S112  # nosec B112
                 continue

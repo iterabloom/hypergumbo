@@ -385,6 +385,31 @@ def extract_doc_comment(
     return None
 
 
+def populate_docstrings_from_tree(
+    root_node: "tree_sitter.Node",
+    source: bytes,
+    symbols: list[Symbol],
+) -> None:
+    """Populate docstrings for symbols by finding their tree-sitter nodes via position.
+
+    For each symbol that lacks a docstring, uses the symbol's span to locate
+    the corresponding tree-sitter node via ``named_descendant_for_point_range``,
+    then extracts the doc comment preceding that node.
+
+    This enables docstring extraction for analyzers that don't populate
+    ``node_for_symbol`` — the span's start position is enough to reverse-lookup
+    the declaration node, since all analyzers set ``start_col`` from
+    ``node.start_point[1]``.
+    """
+    for sym in symbols:
+        if sym.docstring is not None or sym.span is None:
+            continue
+        start = (sym.span.start_line - 1, sym.span.start_col)
+        node = root_node.named_descendant_for_point_range(start, start)
+        if node is not None:
+            sym.docstring = extract_doc_comment(node, source)
+
+
 # ---------------------------------------------------------------------------
 # Signature normalization utilities (ADR-0014 §3)
 # ---------------------------------------------------------------------------
@@ -1552,6 +1577,10 @@ class TreeSitterAnalyzer:
                             sym.shape_id = self.compute_shape_id(ts_node)
                         if sym.docstring is None:
                             sym.docstring = extract_doc_comment(ts_node, source)
+
+            # Fallback: populate docstrings for symbols without node_for_symbol
+            # by finding their tree-sitter nodes via position matching.
+            populate_docstrings_from_tree(tree.root_node, source, analysis.symbols)
 
             # Extract import aliases for Pass 2
             import_aliases = self.get_import_aliases(tree, source)

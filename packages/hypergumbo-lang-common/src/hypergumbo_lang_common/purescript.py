@@ -27,7 +27,7 @@ from typing import Iterator, Optional, ClassVar, TYPE_CHECKING
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id
+from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.registry import register_analyzer
 
 if TYPE_CHECKING:
@@ -165,7 +165,9 @@ class _PureScriptExtractor:
                 content = path.read_bytes()
                 tree = parser.parse(content)
                 self._current_module = None
+                before = len(self.symbols)
                 self._extract_symbols(tree.root_node, path)
+                populate_docstrings_from_tree(tree.root_node, content, self.symbols[before:])
             except Exception:  # pragma: no cover
                 pass
 

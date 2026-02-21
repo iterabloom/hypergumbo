@@ -40,6 +40,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    populate_docstrings_from_tree,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -449,10 +450,12 @@ class ScssAnalyzer(TreeSitterAnalyzer):
             try:
                 content = path.read_bytes()
                 tree = parser.parse(content)
+                before = len(symbols)
                 _extract_scss_symbols(
                     tree.root_node, path, repo_root,
                     symbols, edges, run.execution_id, mixin_definitions,
                 )
+                populate_docstrings_from_tree(tree.root_node, content, symbols[before:])
                 files_analyzed += 1
             except Exception:  # pragma: no cover  # noqa: S112  # nosec B112
                 continue

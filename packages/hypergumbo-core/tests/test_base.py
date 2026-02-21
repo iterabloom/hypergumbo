@@ -31,10 +31,12 @@ from hypergumbo_core.analyze.base import (
     normalize_signature_names_first,
     normalize_signature_php,
     normalize_signature_types_first,
+    populate_docstrings_from_tree,
     split_params_top_level,
     strip_fqn_prefix,
     visibility_from_modifiers,
 )
+from hypergumbo_core.ir import Span, Symbol
 
 if TYPE_CHECKING:
     pass
@@ -933,3 +935,124 @@ class TestExtractDocComment:
         decl = MagicMock(spec=[])  # No attributes
         result = extract_doc_comment(decl, b"")
         assert result is None
+
+
+class TestPopulateDocstringsFromTree:
+    """Tests for populate_docstrings_from_tree position-based docstring lookup."""
+
+    @staticmethod
+    def _make_sym(
+        start_line: int,
+        start_col: int,
+        docstring: str | None = None,
+        span: Span | None = ...,  # type: ignore[assignment]
+    ) -> Symbol:
+        """Create a minimal Symbol for testing."""
+        if span is ...:
+            span = Span(start_line=start_line, start_col=start_col,
+                        end_line=start_line, end_col=start_col + 10)
+        return Symbol(
+            id=f"test:file:{start_line}-{start_line}:func:function",
+            name="func",
+            kind="function",
+            language="test",
+            path="file.py",
+            span=span,
+            origin="test-pass",
+            origin_run_id="run-1",
+            docstring=docstring,
+        )
+
+    def test_basic_extraction(self) -> None:
+        """Populates docstring when a comment precedes the declaration node."""
+        source = b"// Computes the hash.\ndef func() {}"
+        # Comment on line 0, function on line 1 col 0
+        comment_node = _make_comment_node(
+            "// Computes the hash.",
+            node_type="comment",
+            start_byte=0,
+        )
+        comment_node.end_byte = 21
+        comment_node.prev_named_sibling = None
+
+        func_node = MagicMock()
+        func_node.prev_named_sibling = comment_node
+        func_node.start_point = (1, 0)
+        func_node.end_point = (1, 13)
+
+        root = MagicMock()
+        root.named_descendant_for_point_range.return_value = func_node
+
+        sym = self._make_sym(start_line=2, start_col=0)
+        populate_docstrings_from_tree(root, source, [sym])
+        assert sym.docstring == "Computes the hash."
+
+    def test_skips_existing_docstring(self) -> None:
+        """Does not overwrite a symbol that already has a docstring."""
+        root = MagicMock()
+        sym = self._make_sym(start_line=2, start_col=0, docstring="Existing.")
+        populate_docstrings_from_tree(root, b"", [sym])
+        assert sym.docstring == "Existing."
+        root.named_descendant_for_point_range.assert_not_called()
+
+    def test_skips_none_span(self) -> None:
+        """Gracefully skips symbols with span=None."""
+        root = MagicMock()
+        sym = self._make_sym(start_line=1, start_col=0, span=None)
+        populate_docstrings_from_tree(root, b"", [sym])
+        assert sym.docstring is None
+        root.named_descendant_for_point_range.assert_not_called()
+
+    def test_no_comment_returns_none(self) -> None:
+        """Symbol without preceding comment gets no docstring."""
+        func_node = MagicMock()
+        func_node.prev_named_sibling = None
+
+        root = MagicMock()
+        root.named_descendant_for_point_range.return_value = func_node
+
+        sym = self._make_sym(start_line=1, start_col=0)
+        populate_docstrings_from_tree(root, b"def func(): pass", [sym])
+        assert sym.docstring is None
+
+    def test_multiple_symbols(self) -> None:
+        """Multiple symbols: only those with doc comments get docstrings."""
+        source = b"// Documented.\ndef a() {}\ndef b() {}"
+        comment_node = _make_comment_node(
+            "// Documented.",
+            node_type="comment",
+            start_byte=0,
+        )
+        comment_node.end_byte = 14
+        comment_node.prev_named_sibling = None
+
+        node_a = MagicMock()
+        node_a.prev_named_sibling = comment_node
+        node_a.start_point = (1, 0)
+        node_a.end_point = (1, 10)
+
+        node_b = MagicMock()
+        node_b.prev_named_sibling = None
+        node_b.start_point = (2, 0)
+        node_b.end_point = (2, 10)
+
+        root = MagicMock()
+        root.named_descendant_for_point_range.side_effect = (
+            lambda s, e: node_a if s == (0, 0) else node_b
+        )
+
+        sym_a = self._make_sym(start_line=1, start_col=0)
+        sym_b = self._make_sym(start_line=2, start_col=0)
+        sym_b.id = "test:file:2-2:b:function"
+        populate_docstrings_from_tree(root, source, [sym_a, sym_b])
+        assert sym_a.docstring == "Documented."
+        assert sym_b.docstring is None
+
+    def test_node_not_found(self) -> None:
+        """When named_descendant_for_point_range returns None, skips gracefully."""
+        root = MagicMock()
+        root.named_descendant_for_point_range.return_value = None
+
+        sym = self._make_sym(start_line=1, start_col=0)
+        populate_docstrings_from_tree(root, b"some code", [sym])
+        assert sym.docstring is None
