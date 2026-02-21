@@ -54,3 +54,20 @@
   nonce: 565a  # 565a
   set:  # 565a
     description: "Typed tier: sha256({kind}:{normalized_signature}:{visibility}:{containing_module_stable_id}). All three prerequisite blockers resolved: (1) generic type parameter preservation — DONE (WI-murig). (2) visibility modifier extraction — DONE, 11 languages (WI-gifoh, PR #1282). (3) per-language normalize_signature() — DONE, 12 languages (WI-silik, PR #1285). Remaining work: wire typed formula into analyzers with sufficient type extraction (Java, Kotlin, TypeScript, C#, Dart, Go, Python). Phase 2 (untyped tier) should be proven first per ADR-0014. See ADR-0014 §3."  # 565a
+- op: update  # 996f
+  at: '2026-02-20T23:09:30Z'  # 996f
+  by: agent  # 996f
+  actor: jgstern_agent  # 996f
+  clock: 6  # 996f
+  nonce: 996f  # 996f
+  set:  # 996f
+    description: "Typed tier: sha256({kind}:{normalized_signature}:{visibility}:{containing_module_stable_id}). All prerequisites resolved: (1) generic type parameter preservation — DONE (WI-murig). (2) visibility modifier extraction — DONE, 11 languages (WI-gifoh, PR #1282). (3) per-language normalize_signature() — DONE, 12 languages (WI-silik, PR #1285). (4) Phase 2 untyped tier — already implemented (WI-dogir). Remaining: implement compute_typed_stable_id() in base class and wire into 7+ analyzers with sufficient type extraction (Java, Kotlin, TypeScript, C#, Dart, Go, Python). See ADR-0014 §3."  # 996f
+- op: update  # a571
+  at: '2026-02-21T00:04:16Z'  # a571
+  by: agent  # a571
+  actor: jgstern_agent  # a571
+  clock: 7  # a571
+  nonce: a571  # a571
+  set:  # a571
+    status: done  # a571
+    pr_ref: 'PR #1288'  # a571
