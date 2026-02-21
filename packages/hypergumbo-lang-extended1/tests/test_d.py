@@ -50,6 +50,17 @@ class TestFindDFiles:
 
         assert "module.di" in filenames
 
+    def test_skips_gcc_dependency_files(self, temp_repo: Path) -> None:
+        """GCC dependency files (.d) are filtered out by content classification."""
+        (temp_repo / "real.d").write_text("module real;\nvoid main() {}\n")
+        (temp_repo / "gcc_dep.d").write_text("gcc_dep.o: gcc_dep.c gcc_dep.h\n")
+
+        files = list(find_d_files(temp_repo))
+        filenames = {f.name for f in files}
+
+        assert "real.d" in filenames
+        assert "gcc_dep.d" not in filenames
+
 
 class TestDTreeSitterAvailable:
     """Tests for tree-sitter availability check."""
