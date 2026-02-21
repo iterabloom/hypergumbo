@@ -52,6 +52,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`bakeoff-reflect` redesign**: Structured two-phase LLM assessment pipeline for BROAD bakeoff.
 - **DEEP bakeoff reverse-slice seed selection**: Reverse slices now use domain-scored symbols (in-degree weighted by out-degree ratio) instead of raw in-degree. Pure sinks like `die()` (in=1296, out=0), `strbuf_release()` (in=1202, out=1), and `GetEngine()` (in=1087, out=3) are demoted in favor of domain functions like `parse_options` (in=248, out=9) and `start_command` (in=82, out=27) that produce more useful reverse slices. Improved `_TEST_PATH_RE` to cover JVM conventions (Test*.java, *IT.java, src/integration/, src/test/) and Go unittest dirs.
 - **C `cmd_*` CLI command entrypoint detection**: Functions matching `cmd_<name>` in C files are detected as CLI_COMMAND entrypoints via naming convention (confidence 0.80). Covers git, systemd, busybox, and similar C projects that use function pointer dispatch tables to map string names to `cmd_*` handlers.
+- **Application library_export demotion**: When a repo has real semantic entrypoints (HTTP routes, CLI commands, main functions, controllers), library_export entries receive a 90% confidence penalty. Fixes the "forgejo problem" where 7,474 Go uppercase-symbol exports drowned out 772 meaningful HTTP routes. Pure libraries (no semantic entrypoints) keep full library_export confidence.
 
 #### Tracker
 

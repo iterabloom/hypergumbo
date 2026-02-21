@@ -701,6 +701,61 @@ def detect_entrypoints(
         if sym.supply_chain_tier >= 3:
             ep.confidence *= 0.3
 
+    # Application demotion: when real semantic entrypoints exist (routes,
+    # commands, main, controllers), library_export entries are just API
+    # visibility markers, not developer-facing entrypoints.  Heavily demote
+    # them so routes/commands dominate the entrypoint list.
+    #
+    # This fixes the "forgejo problem": 7,474 Go uppercase-symbol exports
+    # drowning out 772 meaningful HTTP routes.  The demotion is language-
+    # agnostic — any app with routes+exports benefits.
+    #
+    # Only semantic entrypoints trigger demotion.  TEST_FUNCTION and
+    # LIBRARY_EXPORT themselves do not count (a library with tests but
+    # no routes should keep its exports at full confidence).
+    _SEMANTIC_KINDS = frozenset({
+        EntrypointKind.HTTP_ROUTE,
+        EntrypointKind.CLI_COMMAND,
+        EntrypointKind.CLI_MAIN,
+        EntrypointKind.MAIN_FUNCTION,
+        EntrypointKind.CONTROLLER,
+        EntrypointKind.DJANGO_VIEW,
+        EntrypointKind.EXPRESS_ROUTE,
+        EntrypointKind.NESTJS_CONTROLLER,
+        EntrypointKind.SPRING_CONTROLLER,
+        EntrypointKind.RAILS_CONTROLLER,
+        EntrypointKind.PHOENIX_CONTROLLER,
+        EntrypointKind.GO_HANDLER,
+        EntrypointKind.LARAVEL_CONTROLLER,
+        EntrypointKind.RUST_HANDLER,
+        EntrypointKind.ASPNET_CONTROLLER,
+        EntrypointKind.SINATRA_ROUTE,
+        EntrypointKind.KTOR_ROUTE,
+        EntrypointKind.VAPOR_ROUTE,
+        EntrypointKind.PLUG_ROUTE,
+        EntrypointKind.HAPI_ROUTE,
+        EntrypointKind.FASTIFY_ROUTE,
+        EntrypointKind.KOA_ROUTE,
+        EntrypointKind.GRAPE_API,
+        EntrypointKind.TORNADO_HANDLER,
+        EntrypointKind.AIOHTTP_VIEW,
+        EntrypointKind.SLIM_ROUTE,
+        EntrypointKind.MICRONAUT_CONTROLLER,
+        EntrypointKind.GRAPHQL_SERVER,
+        EntrypointKind.BACKGROUND_TASK,
+        EntrypointKind.WEBSOCKET_HANDLER,
+        EntrypointKind.EVENT_HANDLER,
+        EntrypointKind.SCHEDULED_TASK,
+        EntrypointKind.ELECTRON_MAIN,
+        EntrypointKind.ANDROID_ACTIVITY,
+        EntrypointKind.ANDROID_APPLICATION,
+    })
+    has_semantic = any(ep.kind in _SEMANTIC_KINDS for ep in unique_entrypoints)
+    if has_semantic:
+        for ep in unique_entrypoints:
+            if ep.kind == EntrypointKind.LIBRARY_EXPORT:
+                ep.confidence *= 0.1  # 90% reduction, same as test penalty
+
     # Language dominance: prefer entrypoints from the dominant language.
     # In a repo that's 95% C and 5% Python, a C main() should rank above
     # a Python script even when the script has higher connectivity.

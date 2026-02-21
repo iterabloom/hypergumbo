@@ -2628,3 +2628,205 @@ class TestLanguageDominanceRanking:
             f"Equal-language entrypoints should have same confidence: "
             f"Go={go_ep.confidence:.3f}, Python={py_ep.confidence:.3f}"
         )
+
+
+class TestApplicationLibraryExportDemotion:
+    """Tests for library_export demotion in application repos.
+
+    When a repo has real semantic entrypoints (HTTP routes, CLI commands,
+    main functions), library_export entries are noise — they represent
+    API visibility (e.g., Go uppercase symbols), not developer-facing
+    entrypoints. These should be heavily demoted so routes/commands
+    dominate the entrypoint list.
+
+    This is the "forgejo problem": 7,474 library_export entrypoints
+    drowning out 772 meaningful HTTP routes.
+    """
+
+    def test_library_export_demoted_when_routes_exist(self) -> None:
+        """library_export confidence is heavily reduced when HTTP routes exist.
+
+        Simulates a Go web application with both routes and uppercase
+        exported functions. The routes should dominate.
+        """
+        route = make_symbol(
+            "ListUsers", path="routers/api/v1/user.go", kind="route",
+            language="go",
+            meta={"route_path": "/api/v1/users", "http_method": "GET"},
+        )
+        export1 = make_symbol(
+            "GetEngine", path="models/engine.go", kind="function",
+            language="go", start_line=10,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        export2 = make_symbol(
+            "Find", path="models/find.go", kind="function",
+            language="go", start_line=20,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        nodes = [route, export1, export2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        route_eps = [e for e in entrypoints if e.kind == EntrypointKind.HTTP_ROUTE]
+        export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+
+        assert len(route_eps) == 1
+        assert len(export_eps) == 2
+
+        # Routes should rank far above exports
+        assert route_eps[0].confidence > 0.85
+        for ep in export_eps:
+            assert ep.confidence < 0.15, (
+                f"library_export {ep.label} has confidence {ep.confidence:.2f}, "
+                f"expected < 0.15 when routes exist"
+            )
+
+    def test_library_export_demoted_when_commands_exist(self) -> None:
+        """library_export demoted when CLI commands exist."""
+        command = make_symbol(
+            "cmd_merge", path="builtin/merge.c", kind="function",
+            language="c", start_line=1,
+            meta={"concepts": [{"concept": "command_by_name"}]},
+        )
+        export = make_symbol(
+            "Parse", path="lib/parse.go", kind="function",
+            language="go", start_line=10,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        nodes = [command, export]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(export_eps) == 1
+        assert export_eps[0].confidence < 0.15
+
+    def test_library_export_demoted_when_main_exists(self) -> None:
+        """library_export demoted when main() function exists."""
+        main_fn = make_symbol(
+            "main", path="cmd/server/main.go", kind="function",
+            language="go", start_line=1,
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        export = make_symbol(
+            "NewServer", path="pkg/server.go", kind="function",
+            language="go", start_line=10,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        nodes = [main_fn, export]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(export_eps) == 1
+        assert export_eps[0].confidence < 0.15
+
+    def test_library_export_not_demoted_in_pure_library(self) -> None:
+        """library_export keeps full confidence when no semantic entries exist.
+
+        A pure library (no routes, no commands, no main) should preserve
+        library_export confidence since that IS the right entrypoint type.
+        """
+        export1 = make_symbol(
+            "NewClient", path="client.go", kind="function",
+            language="go", start_line=1,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        export2 = make_symbol(
+            "Dial", path="transport.go", kind="function",
+            language="go", start_line=10,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        nodes = [export1, export2]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(export_eps) == 2
+        for ep in export_eps:
+            assert ep.confidence >= 0.70, (
+                f"library_export {ep.label} has confidence {ep.confidence:.2f}, "
+                f"expected >= 0.70 in pure library (no demotion)"
+            )
+
+    def test_test_entries_dont_trigger_demotion(self) -> None:
+        """TEST_FUNCTION entrypoints alone should NOT trigger demotion.
+
+        A library with test functions but no routes/commands/main should
+        keep its library_export entries at full confidence.
+        """
+        test_fn = make_symbol(
+            "TestNewClient", path="client_test.go", kind="function",
+            language="go", start_line=1,
+            meta={"concepts": [{"concept": "test_function"}]},
+        )
+        export = make_symbol(
+            "NewClient", path="client.go", kind="function",
+            language="go", start_line=10,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        nodes = [test_fn, export]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(export_eps) == 1
+        assert export_eps[0].confidence >= 0.70
+
+    def test_demotion_not_language_specific(self) -> None:
+        """Demotion applies regardless of language.
+
+        A Python app with Flask routes and library_export entries should
+        also see the demotion.
+        """
+        route = make_symbol(
+            "get_users", path="src/api/routes.py", kind="function",
+            language="python", start_line=1,
+            meta={"concepts": [{"concept": "route", "path": "/users", "method": "GET"}]},
+        )
+        export = make_symbol(
+            "UserModel", path="src/models.py", kind="class",
+            language="python", start_line=10,
+            meta={"concepts": [{"concept": "library_export"}]},
+        )
+        nodes = [route, export]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(export_eps) == 1
+        assert export_eps[0].confidence < 0.15
+
+    def test_forgejo_scale_scenario(self) -> None:
+        """Simulate forgejo: 772 routes + 7474 library_exports.
+
+        Top 20 entrypoints should be all routes (or main), not exports.
+        This is the primary motivation for this feature.
+        """
+        routes = [
+            make_symbol(
+                f"Route{i}", path=f"routers/api/v1/r{i}.go", kind="route",
+                language="go", start_line=i,
+                meta={"route_path": f"/api/v1/r{i}", "http_method": "GET"},
+            )
+            for i in range(50)  # Subset of 772
+        ]
+        exports = [
+            make_symbol(
+                f"Export{i}", path=f"models/m{i}.go", kind="function",
+                language="go", start_line=i + 100,
+                meta={"concepts": [{"concept": "library_export"}]},
+            )
+            for i in range(200)  # Subset of 7474
+        ]
+        nodes = routes + exports
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Top 20 should all be routes
+        top_20 = entrypoints[:20]
+        for ep in top_20:
+            assert ep.kind == EntrypointKind.HTTP_ROUTE, (
+                f"Top 20 should be routes, but found {ep.kind.value}: {ep.label}"
+            )
