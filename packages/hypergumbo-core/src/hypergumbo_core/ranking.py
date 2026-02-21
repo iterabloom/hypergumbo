@@ -364,6 +364,7 @@ def rank_symbols(
     edges: List[Edge],
     first_party_priority: bool = True,
     exclude_test_edges: bool = True,
+    exclude_import_edges: bool = True,
 ) -> List[RankedSymbol]:
     """Rank symbols by importance using centrality and tier weighting.
 
@@ -377,6 +378,9 @@ def rank_symbols(
             first-party code. Default True.
         exclude_test_edges: If True, ignore edges originating from test
             files when computing centrality. Default True.
+        exclude_import_edges: If True, ignore import/imports_module edges
+            when computing centrality. Import edges represent file-level
+            visibility, not actual call relationships. Default True.
 
     Returns:
         List of RankedSymbol objects sorted by importance (highest first).
@@ -392,6 +396,7 @@ def rank_symbols(
     # of the *target* (base class / interface), regardless of whether the
     # *source* lives in a test file.
     _STRUCTURAL_EDGE_TYPES = {"extends", "implements"}
+    _IMPORT_EDGE_TYPES = {"imports", "imports_module"}
     if exclude_test_edges:
         filtered_edges = [
             e for e in edges
@@ -400,6 +405,16 @@ def rank_symbols(
         ]
     else:
         filtered_edges = list(edges)
+
+    # Filter import edges — they represent file-level visibility (file A
+    # imports file B), not actual call relationships.  A symbol being
+    # imported widely doesn't make it architecturally significant;
+    # being *called* from many places does.
+    if exclude_import_edges:
+        filtered_edges = [
+            e for e in filtered_edges
+            if e.edge_type not in _IMPORT_EDGE_TYPES
+        ]
 
     # Compute centrality with hub saturation (threshold=100 dampens
     # infrastructure utilities like error sentinels and loggers).

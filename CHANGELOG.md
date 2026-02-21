@@ -56,6 +56,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **DEEP bakeoff reverse-slice parameters**: Reverse slices now use `--hub-threshold 200 --max-files 500` (vs 50/200 for forward slices). Fixes the hub pruning paradox where intermediate hub nodes trapped reverse traversal within a single layer (e.g., models/) preventing cross-layer discovery into routers/ and services/.
 - **`--exclude-imports` slice flag**: Excludes import/module edges from both traversal and output, producing call-graph-only slices. Reduces edge noise by up to 64% in large codebases where file-level package imports dominate over function-level call edges. Used by default in DEEP bakeoff forward slices.
 - **Test file detection for `t/` and `test-*.c`**: The `t/` directory (C/Perl convention: git, Perl core) and `test-*.c` filename pattern (hyphen-separated) are now recognized as test files. Git's 200+ test helpers in `t/helper/` are now properly classified as test code.
+- **Import edge exclusion from centrality**: `rank_symbols()` now excludes `imports` and `imports_module` edges from centrality computation by default. Import edges represent file-level visibility, not call relationships — being imported widely doesn't make a symbol architecturally significant. Surfaces domain-relevant symbols (Router, QuerySet) over widely-imported utilities (string helpers, type aliases).
 
 #### Tracker
 

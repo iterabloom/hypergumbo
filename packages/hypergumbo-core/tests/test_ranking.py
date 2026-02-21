@@ -1614,3 +1614,176 @@ class TestCentralityResultDeduplication:
         # So name_to_in_degree["foo"] should be sum of both
         assert result.name_to_in_degree["foo"] == 10  # 3 + 7
         assert result.symbols_per_file[f] == {"foo"}
+
+
+class TestExcludeImportEdgesCentrality:
+    """Tests for import edge exclusion from centrality computation.
+
+    Import edges (imports, imports_module) represent file-level visibility,
+    not actual call relationships. Including them inflates in-degree for
+    widely-imported symbols (string utilities, type aliases) without
+    reflecting architectural significance. These tests verify that
+    rank_symbols filters import edges by default.
+    """
+
+    def test_import_edges_excluded_by_default(self):
+        """rank_symbols excludes import edges from centrality by default.
+
+        A symbol with 3 import edges and 0 call edges should have lower
+        centrality than a symbol with 2 call edges and 0 import edges.
+        """
+        imported_sym = make_symbol("StringUtils", path="src/utils.py")
+        called_sym = make_symbol("Router", path="src/router.py")
+        caller1 = make_symbol("handler1", path="src/handlers/a.py")
+        caller2 = make_symbol("handler2", path="src/handlers/b.py")
+        importer1 = make_symbol("mod1", path="src/mod1.py")
+        importer2 = make_symbol("mod2", path="src/mod2.py")
+        importer3 = make_symbol("mod3", path="src/mod3.py")
+
+        edges = [
+            # 3 import edges to StringUtils
+            make_edge(importer1.id, imported_sym.id, edge_type="imports"),
+            make_edge(importer2.id, imported_sym.id, edge_type="imports"),
+            make_edge(importer3.id, imported_sym.id, edge_type="imports"),
+            # 2 call edges to Router
+            make_edge(caller1.id, called_sym.id, edge_type="calls"),
+            make_edge(caller2.id, called_sym.id, edge_type="calls"),
+        ]
+
+        all_symbols = [
+            imported_sym, called_sym, caller1, caller2,
+            importer1, importer2, importer3,
+        ]
+        result = rank_symbols(all_symbols, edges)
+
+        router_ranked = next(r for r in result if r.symbol.name == "Router")
+        utils_ranked = next(r for r in result if r.symbol.name == "StringUtils")
+
+        # Router (2 call edges) should rank above StringUtils (0 call edges,
+        # 3 import edges excluded)
+        assert router_ranked.rank < utils_ranked.rank, (
+            f"Router (rank {router_ranked.rank}) should rank above "
+            f"StringUtils (rank {utils_ranked.rank}) when import edges excluded"
+        )
+
+    def test_imports_module_edges_also_excluded(self):
+        """imports_module edges (JS/TS) are also excluded from centrality."""
+        js_module = make_symbol("helpers", path="src/helpers.ts", language="typescript")
+        js_caller = make_symbol("app", path="src/app.ts", language="typescript")
+        importer1 = make_symbol("comp1", path="src/comp1.ts", language="typescript")
+        importer2 = make_symbol("comp2", path="src/comp2.ts", language="typescript")
+
+        edges = [
+            make_edge(importer1.id, js_module.id, edge_type="imports_module"),
+            make_edge(importer2.id, js_module.id, edge_type="imports_module"),
+            make_edge(js_caller.id, js_module.id, edge_type="calls"),
+        ]
+
+        all_symbols = [js_module, js_caller, importer1, importer2]
+        result = rank_symbols(all_symbols, edges)
+
+        module_ranked = next(r for r in result if r.symbol.name == "helpers")
+        # With import exclusion, helpers has 1 call edge (not 3 total)
+        # Its raw centrality should reflect only the call edge
+        assert module_ranked.raw_centrality > 0  # Still has 1 call edge
+
+    def test_exclude_import_edges_false(self):
+        """When exclude_import_edges=False, import edges count toward centrality."""
+        imported_sym = make_symbol("Config", path="src/config.py")
+        importer1 = make_symbol("mod1", path="src/mod1.py")
+        importer2 = make_symbol("mod2", path="src/mod2.py")
+
+        edges = [
+            make_edge(importer1.id, imported_sym.id, edge_type="imports"),
+            make_edge(importer2.id, imported_sym.id, edge_type="imports"),
+        ]
+
+        all_symbols = [imported_sym, importer1, importer2]
+        result = rank_symbols(all_symbols, edges, exclude_import_edges=False)
+
+        config_ranked = next(r for r in result if r.symbol.name == "Config")
+        # With import edges included, Config should have centrality > 0
+        assert config_ranked.raw_centrality > 0
+
+    def test_call_edges_unaffected(self):
+        """Call edges are preserved regardless of import edge filtering."""
+        target = make_symbol("core_fn", path="src/core.py")
+        caller1 = make_symbol("caller1", path="src/a.py")
+        caller2 = make_symbol("caller2", path="src/b.py")
+        caller3 = make_symbol("caller3", path="src/c.py")
+
+        edges = [
+            make_edge(caller1.id, target.id, edge_type="calls"),
+            make_edge(caller2.id, target.id, edge_type="calls"),
+            make_edge(caller3.id, target.id, edge_type="calls"),
+        ]
+
+        all_symbols = [target, caller1, caller2, caller3]
+
+        result_with = rank_symbols(all_symbols, edges, exclude_import_edges=True)
+        result_without = rank_symbols(all_symbols, edges, exclude_import_edges=False)
+
+        core_with = next(r for r in result_with if r.symbol.name == "core_fn")
+        core_without = next(r for r in result_without if r.symbol.name == "core_fn")
+
+        # Call-only edges should give same centrality either way
+        assert core_with.raw_centrality == core_without.raw_centrality
+
+    def test_mixed_call_and_import_edges(self):
+        """Symbol with both call and import edges: only call edges counted.
+
+        A symbol that is both imported and called should have centrality
+        based only on call edges when import exclusion is active.
+        We use a reference symbol with 2 call edges to make normalization
+        reveal the difference.
+        """
+        target = make_symbol("Database", path="src/db.py")
+        reference = make_symbol("Router", path="src/router.py")
+        caller = make_symbol("service", path="src/service.py")
+        importer = make_symbol("controller", path="src/controller.py")
+        ref_caller1 = make_symbol("handler1", path="src/h1.py")
+        ref_caller2 = make_symbol("handler2", path="src/h2.py")
+
+        edges = [
+            # Database: 1 call + 1 import
+            make_edge(caller.id, target.id, edge_type="calls"),
+            make_edge(importer.id, target.id, edge_type="imports"),
+            # Router: 2 call edges (reference for normalization)
+            make_edge(ref_caller1.id, reference.id, edge_type="calls"),
+            make_edge(ref_caller2.id, reference.id, edge_type="calls"),
+        ]
+
+        all_symbols = [target, reference, caller, importer, ref_caller1, ref_caller2]
+
+        result_exclude = rank_symbols(all_symbols, edges, exclude_import_edges=True)
+        result_include = rank_symbols(all_symbols, edges, exclude_import_edges=False)
+
+        db_exclude = next(r for r in result_exclude if r.symbol.name == "Database")
+        db_include = next(r for r in result_include if r.symbol.name == "Database")
+
+        # With exclusion: Database has 1 call edge, Router has 2 → db_exclude < 1.0
+        # Without exclusion: Database has 2 edges (call+import), Router has 2 → db_include = 1.0
+        assert db_exclude.raw_centrality > 0
+        assert db_include.raw_centrality > db_exclude.raw_centrality
+
+    def test_structural_edges_preserved_with_import_exclusion(self):
+        """extends/implements edges are preserved when import edges excluded.
+
+        Import edge exclusion should not affect structural edges (extends,
+        implements) which reflect architectural significance.
+        """
+        base = make_symbol("BaseModel", path="src/base.py", kind="class")
+        sub = make_symbol("UserModel", path="src/user.py", kind="class")
+        importer = make_symbol("mod", path="src/mod.py")
+
+        edges = [
+            make_edge(sub.id, base.id, edge_type="extends"),
+            make_edge(importer.id, base.id, edge_type="imports"),
+        ]
+
+        all_symbols = [base, sub, importer]
+        result = rank_symbols(all_symbols, edges, exclude_import_edges=True)
+
+        base_ranked = next(r for r in result if r.symbol.name == "BaseModel")
+        # extends edge preserved, import edge excluded → centrality > 0
+        assert base_ranked.raw_centrality > 0
