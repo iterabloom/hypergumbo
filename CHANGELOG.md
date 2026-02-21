@@ -26,6 +26,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Analysis core
 
+- **Docstring extraction (103/105 analyzers)**: Extracts first-line doc comment summaries into `Symbol.docstring` using position-based tree-sitter node lookup. Covers all analyzers except HTML (no code symbols) and JSON (no comment syntax). Mainstream overriders (Go, Java, JS/TS, Kotlin, PHP) harmonized to a single `populate_docstrings_from_tree()` call per file.
 - **Inheritance linker struct support**: Go structs with `base_classes` metadata now produce `implements`/`extends` edges.
 - **Decorator/annotation edge detection**: Decorator applications create edges in Python, TypeScript, Java, C#, and Rust.
 - **Return type tracking**: Variable type inference handles function return type annotations in Python, TypeScript, Java, Kotlin, C#, and Dart (simple, non-generic types).
