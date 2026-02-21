@@ -113,6 +113,43 @@ patterns:
     symbol_kind: "^struct$"
     language: "^go$"
 
+  # === Java/Kotlin: Definition-based (public interfaces, classes, enums) ===
+  # Java libraries expose their public API through public classes and interfaces.
+  # Interfaces define the API contract; public classes are implementations.
+  # Test files are handled by the entrypoint scorer's test-file penalty (90% reduction).
+  # When semantic entrypoints exist (routes, controllers, commands), library
+  # exports are further demoted by 90%.
+
+  # Public interfaces (e.g., Table, Catalog, Schema in Apache Iceberg)
+  - concept: library_export
+    symbol_kind: "^interface$"
+    language: "^java$"
+    modifiers: "^public$"
+
+  # Public classes (e.g., BaseTable, GenericRecord, PartitionSpec)
+  - concept: library_export
+    symbol_kind: "^class$"
+    language: "^java$"
+    modifiers: "^public$"
+
+  # Public enums (e.g., FileFormat, ManifestContent)
+  - concept: library_export
+    symbol_kind: "^enum$"
+    language: "^java$"
+    modifiers: "^public$"
+
+  # Kotlin public interfaces
+  - concept: library_export
+    symbol_kind: "^interface$"
+    language: "^kotlin$"
+    modifiers: "^public$"
+
+  # Kotlin public classes
+  - concept: library_export
+    symbol_kind: "^class$"
+    language: "^kotlin$"
+    modifiers: "^public$"
+
   # === Elixir: Definition-based (modules + public functions) ===
   # Elixir modules (defmodule) are the primary unit of public API.
   # Public functions (def) are the callable API surface.

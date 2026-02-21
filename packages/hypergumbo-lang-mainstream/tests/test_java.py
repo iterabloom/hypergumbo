@@ -1576,6 +1576,105 @@ public class JNIBridge {
         assert "protected" in final_methods[0].modifiers
 
 
+class TestJavaClassInterfaceModifiers:
+    """Tests for visibility modifier extraction on classes and interfaces.
+
+    Java classes and interfaces have access modifiers (public, abstract, etc.)
+    that must be captured in the symbol's modifiers list to support YAML
+    pattern matching (e.g., library export detection for public interfaces).
+    """
+
+    def test_public_class_has_public_modifier(self, tmp_path: Path) -> None:
+        """A public class captures 'public' in its modifiers."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "MyClass.java"
+        java_file.write_text("""
+public class MyClass {
+    public void doSomething() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        cls_sym = next(
+            (s for s in result.symbols if s.kind == "class" and s.name == "MyClass"),
+            None,
+        )
+        assert cls_sym is not None
+        assert cls_sym.modifiers is not None
+        assert "public" in cls_sym.modifiers, (
+            f"Public class should have 'public' modifier, got: {cls_sym.modifiers}"
+        )
+
+    def test_public_interface_has_public_modifier(self, tmp_path: Path) -> None:
+        """A public interface captures 'public' in its modifiers."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "MyInterface.java"
+        java_file.write_text("""
+public interface MyInterface {
+    void doSomething();
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        iface_sym = next(
+            (s for s in result.symbols if s.kind == "interface" and s.name == "MyInterface"),
+            None,
+        )
+        assert iface_sym is not None
+        assert iface_sym.modifiers is not None
+        assert "public" in iface_sym.modifiers, (
+            f"Public interface should have 'public' modifier, got: {iface_sym.modifiers}"
+        )
+
+    def test_abstract_class_has_abstract_modifier(self, tmp_path: Path) -> None:
+        """An abstract class captures 'abstract' in its modifiers."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Base.java"
+        java_file.write_text("""
+public abstract class Base {
+    abstract void process();
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        cls_sym = next(
+            (s for s in result.symbols if s.kind == "class" and s.name == "Base"),
+            None,
+        )
+        assert cls_sym is not None
+        assert cls_sym.modifiers is not None
+        assert "public" in cls_sym.modifiers
+        assert "abstract" in cls_sym.modifiers
+
+    def test_package_private_class_no_public_modifier(self, tmp_path: Path) -> None:
+        """A package-private class does NOT have 'public' in modifiers."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Internal.java"
+        java_file.write_text("""
+class Internal {
+    void doSomething() {}
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        cls_sym = next(
+            (s for s in result.symbols if s.kind == "class" and s.name == "Internal"),
+            None,
+        )
+        assert cls_sym is not None
+        # modifiers may be None or empty list - either way, no "public"
+        if cls_sym.modifiers:
+            assert "public" not in cls_sym.modifiers
+
+
 class TestJavaSignatureExtraction:
     """Tests for Java function signature extraction."""
 

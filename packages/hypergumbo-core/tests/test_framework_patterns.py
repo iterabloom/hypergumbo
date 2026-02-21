@@ -15109,6 +15109,123 @@ class TestLibraryExportPatterns:
         assert len(lib_exports) == 0
 
 
+class TestJavaLibraryExportPatterns:
+    """Tests for Java library export YAML patterns."""
+
+    def test_public_interface_matches_library_export(self) -> None:
+        """Public Java interfaces match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:api/Table.java:10-50:Table:interface",
+            name="Table",
+            kind="interface",
+            language="java",
+            path="api/Table.java",
+            span=Span(10, 50, 0, 200),
+            meta={},
+            modifiers=["public"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1, (
+            f"Public Java interface should match library_export, "
+            f"got: {results}"
+        )
+
+    def test_public_class_matches_library_export(self) -> None:
+        """Public Java classes match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:core/BaseTable.java:10-100:BaseTable:class",
+            name="BaseTable",
+            kind="class",
+            language="java",
+            path="core/BaseTable.java",
+            span=Span(10, 100, 0, 200),
+            meta={},
+            modifiers=["public"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_public_enum_matches_library_export(self) -> None:
+        """Public Java enums match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:api/FileFormat.java:5-20:FileFormat:enum",
+            name="FileFormat",
+            kind="enum",
+            language="java",
+            path="api/FileFormat.java",
+            span=Span(5, 20, 0, 200),
+            meta={},
+            modifiers=["public"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_package_private_class_no_match(self) -> None:
+        """Package-private Java classes do NOT match library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:internal/Helper.java:5-20:Helper:class",
+            name="Helper",
+            kind="class",
+            language="java",
+            path="internal/Helper.java",
+            span=Span(5, 20, 0, 200),
+            meta={},
+            modifiers=[],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 0
+
+    def test_kotlin_public_interface_matches(self) -> None:
+        """Public Kotlin interfaces match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="kotlin:api/Repository.kt:5-30:Repository:interface",
+            name="Repository",
+            kind="interface",
+            language="kotlin",
+            path="api/Repository.kt",
+            span=Span(5, 30, 0, 200),
+            meta={},
+            modifiers=["public"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+
 class TestOpenRestyPhaseHandlerPatterns:
     """Tests for OpenResty/nginx phase handler definition-based patterns.
 

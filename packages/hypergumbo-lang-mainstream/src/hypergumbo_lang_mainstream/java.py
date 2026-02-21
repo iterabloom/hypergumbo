@@ -352,12 +352,13 @@ JAVA_METHOD_MODIFIERS = {
 
 
 def _extract_modifiers(node: "tree_sitter.Node", source: bytes) -> list[str]:
-    """Extract all modifiers from a method/constructor declaration.
+    """Extract all modifiers from a declaration (class, interface, enum, method).
 
-    Returns a list of modifier strings like ["public", "static", "native"].
+    Returns a list of modifier strings like ["public", "static", "abstract"].
 
     Tree-sitter-java uses modifier keywords as node types directly (e.g., "public",
-    "static", "native"), so we can match against the node type.
+    "static", "native"), so we can match against the node type.  Works for class,
+    interface, enum, method, and constructor declarations.
     """
     del source  # unused - modifiers are captured via node types
     modifiers: list[str] = []
@@ -674,6 +675,7 @@ def _extract_symbols(
                     if base_classes:
                         meta["base_classes"] = base_classes
 
+                modifiers = _extract_modifiers(node, source)
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "class"),
                     name=full_name,
@@ -684,6 +686,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+                    modifiers=modifiers,
                 )
                 symbols.append(symbol)
 
@@ -711,6 +714,7 @@ def _extract_symbols(
                     if base_classes:
                         meta["base_classes"] = base_classes
 
+                modifiers = _extract_modifiers(node, source)
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "interface"),
                     name=full_name,
@@ -721,6 +725,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+                    modifiers=modifiers,
                 )
                 symbols.append(symbol)
 
@@ -736,6 +741,7 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
+                modifiers = _extract_modifiers(node, source)
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "enum"),
                     name=full_name,
@@ -745,6 +751,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    modifiers=modifiers,
                 )
                 symbols.append(symbol)
 
