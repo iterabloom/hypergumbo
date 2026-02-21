@@ -147,6 +147,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Dropwizard framework false positive**: `io.dropwizard.metrics:metrics-core` (standalone metrics library) no longer triggers Dropwizard REST framework detection. Detection now requires `dropwizard-core` or `dropwizard-jersey` artifact names.
 - **Chained member access call resolution**: `this.field.method()` / `self.field.method()` call graph extraction in Kotlin, C#, Scala, and Python.
 - **Route path prefix inheritance**: Class-level route annotations now correctly combine with method-level annotations in Spring Boot, JAX-RS, Micronaut, and ASP.NET.
 - **Cross-language containment filtering**: Containment linker now filters by language when matching containers to members. Prefers same-file, then same-language; refuses to cross language boundaries.

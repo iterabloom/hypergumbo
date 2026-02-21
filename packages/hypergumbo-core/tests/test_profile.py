@@ -823,6 +823,40 @@ dependencies {
     assert "spring-boot" in data["profile"]["frameworks"]
 
 
+def test_detects_dropwizard_framework_from_gradle(tmp_path: Path) -> None:
+    """Should detect Dropwizard from dropwizard-core in build.gradle."""
+    (tmp_path / "Main.java").write_text("public class Main {}\n")
+    (tmp_path / "build.gradle").write_text("""dependencies {
+    implementation 'io.dropwizard:dropwizard-core:4.0.0'
+}""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "dropwizard" in data["profile"]["frameworks"]
+
+
+def test_dropwizard_metrics_does_not_trigger_dropwizard(tmp_path: Path) -> None:
+    """Dropwizard Metrics library should not trigger Dropwizard framework detection.
+
+    io.dropwizard.metrics is a standalone metrics library used by many projects
+    (Flink, Kafka, etc.) that has no relation to the Dropwizard REST framework.
+    Projects like Apache Iceberg reference it as a transitive dependency.
+    """
+    (tmp_path / "Main.java").write_text("public class Main {}\n")
+    (tmp_path / "build.gradle").write_text("""dependencies {
+    implementation 'io.dropwizard.metrics:metrics-core:4.2.0'
+    exclude group: 'io.dropwizard.metrics', module: 'metrics-core'
+}""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "dropwizard" not in data["profile"]["frameworks"]
+
+
 def test_detects_kotlin_ktor_framework(tmp_path: Path) -> None:
     """Should detect Ktor framework from build.gradle.kts."""
     (tmp_path / "Main.kt").write_text("fun main() {}\n")

@@ -272,7 +272,7 @@ JAVA_FRAMEWORKS = {
     "spring-boot": ["spring-boot", "org.springframework.boot"],
     "micronaut": ["micronaut", "io.micronaut"],
     "quarkus": ["quarkus", "io.quarkus"],
-    "dropwizard": ["dropwizard", "io.dropwizard"],
+    "dropwizard": ["dropwizard-core", "dropwizard-jersey"],
     "vert.x": ["vertx", "io.vertx"],
     "javalin": ["javalin", "io.javalin"],
     "helidon": ["helidon", "io.helidon"],
