@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import os
 
+from ..paths import is_test_file
+
 # Symbol kinds to exclude from tiered output
 # These have high centrality but don't represent useful code
 EXCLUDED_KINDS = frozenset({
@@ -67,14 +69,19 @@ EXAMPLE_PATH_PATTERNS = (
 def is_test_path(path: str) -> bool:
     """Check if a path looks like a test file.
 
+    Delegates to ``paths.is_test_file()`` for core patterns (t/ directory,
+    test-* prefix, mock/fake files, spec/, fixtures/, testdata/) and adds
+    language-specific patterns not covered there.
+
     Matches common test patterns across many languages:
     - Python: test_*.py, *_test.py, tests.py, tests/, test/
     - JavaScript/TypeScript: *.test.js, *.spec.ts, __tests__/, *.test-d.ts
-    - Ruby: *_spec.rb, test_*.rb
+    - Ruby: *_spec.rb, test_*.rb, spec/
     - Swift: Tests/, *Tests.swift (Xcode convention)
     - Go: *_test.go
     - Java/Kotlin: src/test/, *Test.java, *Test.kt, testFixtures/, intTest/
     - Rust: tests/, *_test.rs
+    - C/Perl: t/, test-*.c
 
     Only matches actual test files, not directories that happen to contain 'test'.
 
@@ -87,17 +94,15 @@ def is_test_path(path: str) -> bool:
     if not path:
         return False
 
+    # Delegate to is_test_file for core patterns: t/ directory, test-* prefix,
+    # mock/fake files, spec/, fixtures/, testdata/, etc.
+    if is_test_file(path):
+        return True
+
     filename = os.path.basename(path)
 
-    # Directory patterns (case-insensitive for Tests/ vs tests/)
-    # Note: Using lowercase comparison to catch both "tests/" and "Tests/"
-    # This also catches Java/Kotlin's src/test/ convention since it contains /test/
+    # Additional directory patterns not in is_test_file
     path_lower = path.lower()
-    if "/test/" in path_lower or "/tests/" in path_lower or "/__tests__/" in path_lower:
-        return True
-    # Handle paths that start with test/ or Tests/
-    if path_lower.startswith("test/") or path_lower.startswith("tests/"):
-        return True
     # Gradle test fixtures and integration test source sets
     if "/testfixtures/" in path_lower or "/inttest/" in path_lower:
         return True
@@ -107,36 +112,16 @@ def is_test_path(path: str) -> bool:
     if "/src/integration/" in path_lower:
         return True
 
-    # File name patterns: test_*.py, test_*.js, etc.
-    if filename.startswith("test_"):
-        return True
-
     # Python single-file test module (tests.py)
     if filename == "tests.py":
-        return True
-
-    # Python/JS/TS suffix patterns (.test.ts, .spec.js, _test.py, etc.)
-    for ext in (".py", ".js", ".ts", ".jsx", ".tsx"):
-        if filename.endswith(f".test{ext}") or filename.endswith(f".spec{ext}"):
-            return True
-        if filename.endswith(f"_test{ext}"):
-            return True
-
-    # Ruby RSpec files: *_spec.rb
-    if filename.endswith("_spec.rb"):
         return True
 
     # TypeScript type test files (.test-d.ts, .test-d.tsx)
     if filename.endswith(".test-d.ts") or filename.endswith(".test-d.tsx"):
         return True
 
-    # Go test files: *_test.go
-    if filename.endswith("_test.go"):
-        return True
-
-    # Rust test files: *_test.rs
-    if filename.endswith("_test.rs"):
-        return True
+    # Go test files: *_test.go (also in is_test_file via _test. pattern)
+    # Rust test files: *_test.rs (also in is_test_file via _test. pattern)
 
     # Swift test files: *Tests.swift (Xcode convention - test class suffix)
     # Match "RouteTests.swift" but not "TestHelpers.swift"

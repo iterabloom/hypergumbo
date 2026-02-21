@@ -988,6 +988,77 @@ class TestIsTestPath:
         assert _is_test_path("types/index.test-d.ts")
         assert _is_test_path("src/types/api.test-d.tsx")
 
+    def test_t_directory_convention(self):
+        """C/Perl t/ test directory convention detected.
+
+        Git, Perl core, and other C/Perl projects use t/ for test suites.
+        t/test-lib-functions.sh and t/helper/test-reach.c should be test files.
+        """
+        assert _is_test_path("t/test-lib-functions.sh")
+        assert _is_test_path("t/helper/test-reach.c")
+        assert _is_test_path("t/t0001-init.sh")
+
+    def test_hyphen_test_prefix(self):
+        """Hyphen-separated test prefix (test-*.c) detected.
+
+        Common in C projects: test-reach.c, test-date.c, test-parse.c.
+        """
+        assert _is_test_path("test-reach.c")
+        assert _is_test_path("src/test-date.c")
+
+    def test_spec_directory(self):
+        """spec/ directory (Ruby RSpec convention) detected."""
+        assert _is_test_path("spec/models/user_spec.rb")
+        assert _is_test_path("spec/controllers/api_controller_spec.rb")
+
+    def test_mock_fake_patterns(self):
+        """Mock and fake file patterns detected."""
+        assert _is_test_path("src/fakes/fake_repo.go")
+        assert _is_test_path("src/mocks/mock_service.py")
+        assert _is_test_path("pkg/transportfakes/fake_client.go")
+
+    def test_test_edge_exclusion_with_t_directory(self):
+        """rank_symbols excludes test edges from t/ directory.
+
+        Symbols in t/ (like test_expect_success) should have their edges
+        excluded from centrality when exclude_test_edges=True.
+        """
+        # test_expect_success in t/test-lib-functions.sh — a test utility
+        test_fn = make_symbol("test_expect_success", path="t/test-lib-functions.sh",
+                              language="bash")
+        # Domain function called by test code and production code
+        domain_fn = make_symbol("run_command", path="src/run-command.c", language="c")
+        # Reference symbol with fixed call edges (for normalization baseline)
+        reference = make_symbol("parse_options", path="src/parse-options.c", language="c")
+        prod_caller1 = make_symbol("cmd_add", path="src/builtin/add.c", language="c")
+        prod_caller2 = make_symbol("cmd_commit", path="src/builtin/commit.c", language="c")
+        prod_caller3 = make_symbol("cmd_push", path="src/builtin/push.c", language="c")
+
+        edges = [
+            # 5 test edges from t/ (should be excluded when exclude_test_edges=True)
+            *[make_edge(test_fn.id, domain_fn.id) for _ in range(5)],
+            # 1 production edge to domain_fn
+            make_edge(prod_caller1.id, domain_fn.id),
+            # 3 production edges to reference (normalization baseline)
+            make_edge(prod_caller1.id, reference.id),
+            make_edge(prod_caller2.id, reference.id),
+            make_edge(prod_caller3.id, reference.id),
+        ]
+
+        all_symbols = [test_fn, domain_fn, reference, prod_caller1, prod_caller2, prod_caller3]
+
+        result_exclude = rank_symbols(all_symbols, edges, exclude_test_edges=True)
+
+        domain_ranked = next(r for r in result_exclude if r.symbol.name == "run_command")
+        ref_ranked = next(r for r in result_exclude if r.symbol.name == "parse_options")
+
+        # With t/ edges excluded, domain_fn has 1 prod edge vs reference's 3.
+        # Without exclusion it would have 6 edges (5 test + 1 prod) and rank higher.
+        assert ref_ranked.rank < domain_ranked.rank, (
+            f"parse_options (3 prod edges, rank {ref_ranked.rank}) should rank above "
+            f"run_command (1 prod edge after t/ exclusion, rank {domain_ranked.rank})"
+        )
+
 
 class TestGetImportanceThreshold:
     """Tests for get_importance_threshold function."""
