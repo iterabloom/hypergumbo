@@ -1394,6 +1394,146 @@ def test_cmd_slice_reverse(tmp_path: Path, capsys) -> None:
     assert "reverse slice" in out
 
 
+def test_cmd_reverse_slice_downweights_test_callers(tmp_path: Path, capsys) -> None:
+    """Reverse slice ranks production callers higher than test callers.
+
+    When --reverse is used, test file callers should be downweighted so
+    production callers rank first in the node_ids list.  This makes reverse
+    slices useful for understanding production call graphs rather than
+    being dominated by test coverage.
+
+    The test builds a graph where the test caller has higher raw centrality
+    (2 incoming edges from test helpers) than the production caller (1 incoming
+    edge from a production helper).  Without test weighting the test caller
+    would rank first; with weighting the production caller wins.
+    """
+    behavior_map = {
+        "schema_version": "0.1.0",
+        "nodes": [
+            {
+                "id": "python:src/core.py:1-5:target_func:function",
+                "name": "target_func",
+                "kind": "function",
+                "language": "python",
+                "path": "src/core.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/api.py:1-5:prod_caller:function",
+                "name": "prod_caller",
+                "kind": "function",
+                "language": "python",
+                "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:src/handler.py:1-5:prod_helper:function",
+                "name": "prod_helper",
+                "kind": "function",
+                "language": "python",
+                "path": "src/handler.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:tests/test_core.py:1-5:test_caller:function",
+                "name": "test_caller",
+                "kind": "function",
+                "language": "python",
+                "path": "tests/test_core.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:tests/test_core.py:6-10:test_helper_a:function",
+                "name": "test_helper_a",
+                "kind": "function",
+                "language": "python",
+                "path": "tests/test_core.py",
+                "span": {"start_line": 6, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "python:tests/test_core.py:11-15:test_helper_b:function",
+                "name": "test_helper_b",
+                "kind": "function",
+                "language": "python",
+                "path": "tests/test_core.py",
+                "span": {"start_line": 11, "end_line": 15, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [
+            {
+                "id": "edge:prod->target",
+                "src": "python:src/api.py:1-5:prod_caller:function",
+                "dst": "python:src/core.py:1-5:target_func:function",
+                "type": "calls",
+                "confidence": 0.85,
+            },
+            {
+                "id": "edge:prod_helper->prod",
+                "src": "python:src/handler.py:1-5:prod_helper:function",
+                "dst": "python:src/api.py:1-5:prod_caller:function",
+                "type": "calls",
+                "confidence": 0.85,
+            },
+            {
+                "id": "edge:test->target",
+                "src": "python:tests/test_core.py:1-5:test_caller:function",
+                "dst": "python:src/core.py:1-5:target_func:function",
+                "type": "calls",
+                "confidence": 0.85,
+            },
+            {
+                "id": "edge:helper_a->test",
+                "src": "python:tests/test_core.py:6-10:test_helper_a:function",
+                "dst": "python:tests/test_core.py:1-5:test_caller:function",
+                "type": "calls",
+                "confidence": 0.85,
+            },
+            {
+                "id": "edge:helper_b->test",
+                "src": "python:tests/test_core.py:11-15:test_helper_b:function",
+                "dst": "python:tests/test_core.py:1-5:test_caller:function",
+                "type": "calls",
+                "confidence": 0.85,
+            },
+        ],
+    }
+    input_file = tmp_path / "results.json"
+    input_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.entry = "target_func"
+    args.out = str(tmp_path / "slice.json")
+    args.input = str(input_file)
+    args.max_hops = 3
+    args.max_files = 20
+    args.min_confidence = 0.0
+    args.exclude_tests = False
+    args.list_entries = False
+    args.reverse = True
+    args.language = None
+
+    result = cmd_slice(args)
+    assert result == 0
+
+    data = json.loads((tmp_path / "slice.json").read_text())
+    node_ids = data["feature"]["node_ids"]
+
+    # Both callers should be in the slice
+    prod_id = "python:src/api.py:1-5:prod_caller:function"
+    test_id = "python:tests/test_core.py:1-5:test_caller:function"
+    assert prod_id in node_ids
+    assert test_id in node_ids
+
+    # Production caller should rank higher (earlier in list) than test caller
+    # Without test weighting, test_caller has higher centrality (2 incoming
+    # edges vs 1 for prod_caller) and would rank first.
+    assert node_ids.index(prod_id) < node_ids.index(test_id), (
+        f"Production caller should rank higher than test caller in reverse slice, "
+        f"got: {node_ids}"
+    )
+
+
 def test_cmd_slice_inline_embeds_full_objects(tmp_path: Path, capsys) -> None:
     """Test slice --inline embeds full node/edge objects instead of just IDs."""
     # Create behavior map with nodes and edges
