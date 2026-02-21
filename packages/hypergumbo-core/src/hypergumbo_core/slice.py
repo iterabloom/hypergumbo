@@ -142,6 +142,10 @@ class SliceQuery:
                        node may have before it is pruned: included in the slice
                        but NOT traversed through. Default 50 prunes only the
                        top ~1% of nodes by degree. None disables pruning.
+        exclude_imports: If True, exclude import edges from both traversal and
+                        output. This produces a call-graph-only slice, removing
+                        file-level package dependencies that can constitute 60%+
+                        of edges in large codebases. Default False.
     """
 
     entrypoint: str
@@ -155,6 +159,7 @@ class SliceQuery:
     max_tier: int | None = None
     language: str | None = None
     hub_threshold: int | None = 50
+    exclude_imports: bool = False
 
     def to_dict(self) -> dict:
         """Serialize query to dict for feature output."""
@@ -173,6 +178,8 @@ class SliceQuery:
             result["language"] = self.language
         if self.hub_threshold is not None:
             result["hub_threshold"] = self.hub_threshold
+        if self.exclude_imports:
+            result["exclude_imports"] = True
         return result
 
 
@@ -380,8 +387,8 @@ def slice_graph(
         queue.append((entry.id, 0))
         visited_nodes.add(entry.id)
         files_seen.add(entry.path)
-        # Add import edges from this file (forward only)
-        if not query.reverse:
+        # Add import edges from this file (forward only, unless imports excluded)
+        if not query.reverse and not query.exclude_imports:
             add_file_imports(entry.path)
 
     # Class expansion: when entry nodes include container types (class,
@@ -409,7 +416,7 @@ def slice_graph(
                 visited_nodes.add(member.id)
                 files_seen.add(member.path)
                 queue.append((member.id, 0))
-                if not query.reverse:
+                if not query.reverse and not query.exclude_imports:
                     add_file_imports(member.path)
 
     # BFS traversal
@@ -450,6 +457,12 @@ def slice_graph(
             # BFS explosion through shared ancestors (e.g., all controllers
             # sharing ApplicationController as a base class).
             if not query.reverse and edge.edge_type in _STRUCTURAL_EDGE_TYPES:
+                continue
+
+            # Skip import edges when exclude_imports is set.
+            # Import edges are file-level package dependencies, not
+            # function-level call relationships.
+            if query.exclude_imports and edge.edge_type in ("imports", "imports_module"):
                 continue
 
             # Get the node at the other end of the edge
@@ -493,8 +506,9 @@ def slice_graph(
             if next_node.id not in visited_nodes:
                 visited_nodes.add(next_node.id)
                 queue.append((next_node.id, hop + 1))
-                # Add import edges from the visited file (forward only)
-                if not query.reverse:
+                # Add import edges from the visited file (forward only,
+                # unless imports excluded)
+                if not query.reverse and not query.exclude_imports:
                     add_file_imports(next_node.path)
 
     return SliceResult(

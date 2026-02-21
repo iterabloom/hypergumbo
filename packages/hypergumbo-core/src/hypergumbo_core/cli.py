@@ -1193,6 +1193,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
     exclude_utility = getattr(args, "exclude_utility", False)
     hub_threshold_raw = getattr(args, "hub_threshold", 50)
     hub_threshold = hub_threshold_raw if hub_threshold_raw else None
+    exclude_imports = getattr(args, "exclude_imports", False)
     query = SliceQuery(
         entrypoint=entry,
         max_hops=args.max_hops,
@@ -1204,6 +1205,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
         max_tier=max_tier,
         language=args.language,
         hub_threshold=hub_threshold,
+        exclude_imports=exclude_imports,
     )
 
     # Perform slice
@@ -3231,6 +3233,14 @@ Auto-discovers cached results from 'hypergumbo run', or specify --input."""
              "(reverse) edges than this threshold are included but not traversed. "
              "Prevents slice explosion through high-degree utility functions "
              "(default: 50). Use --hub-threshold 0 to disable.",
+    )
+    p_slice.add_argument(
+        "--exclude-imports",
+        action="store_true",
+        dest="exclude_imports",
+        help="Exclude import/module edges from both traversal and output. "
+             "Produces a call-graph-only slice, removing file-level package "
+             "dependencies that can constitute 60%%+ of edges in large codebases.",
     )
     p_slice.add_argument(
         "--language",

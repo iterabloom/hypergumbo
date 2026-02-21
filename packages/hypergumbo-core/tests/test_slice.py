@@ -2210,3 +2210,81 @@ class TestForwardSliceContainsEdges:
         assert caller.id in result.node_ids
         # owner_class should be found (contains edge reversed)
         assert owner_class.id in result.node_ids
+
+
+class TestExcludeImports:
+    """Tests for --exclude-imports flag on slice queries.
+
+    Import edges represent file-level package dependencies rather than
+    function-level call relationships. In large Go/Python codebases,
+    import edges can constitute 60%+ of slice output, drowning out the
+    call edges that developers actually need for refactoring analysis.
+    """
+
+    def test_exclude_imports_removes_import_edges(self) -> None:
+        """Import edges are excluded from both traversal and output."""
+        main_fn = make_symbol("main", path="src/main.py")
+        helper = make_symbol("helper", path="src/utils.py", start_line=10)
+        imported = make_symbol("lib", path="lib/core.py", start_line=20)
+
+        call_edge = make_edge(main_fn, helper, "calls")
+        import_edge = make_edge(main_fn, imported, "imports")
+
+        query = SliceQuery(
+            entrypoint="main", max_hops=3, max_files=20,
+            exclude_imports=True,
+        )
+        result = slice_graph([main_fn, helper, imported], [call_edge, import_edge], query)
+
+        # Call edge should be followed
+        assert helper.id in result.node_ids
+        assert call_edge.id in result.edge_ids
+
+        # Import edge should NOT be followed
+        assert imported.id not in result.node_ids
+        assert import_edge.id not in result.edge_ids
+
+    def test_exclude_imports_skips_file_level_imports(self) -> None:
+        """File-level import edges (from file nodes) are also excluded."""
+        func = make_symbol("process", path="src/app.py")
+        dep = make_symbol("dep", path="lib/dep.py", start_line=10)
+        file_node = make_symbol("file", path="src/app.py", kind="file", start_line=1, end_line=1)
+
+        call_edge = make_edge(func, dep, "calls")
+        file_import = make_edge(file_node, dep, "imports")
+
+        query = SliceQuery(
+            entrypoint="process", max_hops=3, max_files=20,
+            exclude_imports=True,
+        )
+        result = slice_graph([func, dep, file_node], [call_edge, file_import], query)
+
+        # dep is reachable via call edge
+        assert dep.id in result.node_ids
+        assert call_edge.id in result.edge_ids
+        # But file import edge should NOT be in output
+        assert file_import.id not in result.edge_ids
+
+    def test_imports_included_by_default(self) -> None:
+        """Default behavior (no exclude_imports) includes imports."""
+        main_fn = make_symbol("main", path="src/main.py")
+        imported = make_symbol("lib", path="lib/core.py", start_line=10)
+        import_edge = make_edge(main_fn, imported, "imports")
+
+        query = SliceQuery(entrypoint="main", max_hops=3, max_files=20)
+        result = slice_graph([main_fn, imported], [import_edge], query)
+
+        # Import should be followed by default
+        assert imported.id in result.node_ids
+
+    def test_exclude_imports_serialized_in_query(self) -> None:
+        """exclude_imports flag appears in query dict."""
+        query = SliceQuery(entrypoint="main", exclude_imports=True)
+        d = query.to_dict()
+        assert d["exclude_imports"] is True
+
+    def test_exclude_imports_not_serialized_when_false(self) -> None:
+        """exclude_imports flag omitted from query dict when False."""
+        query = SliceQuery(entrypoint="main")
+        d = query.to_dict()
+        assert "exclude_imports" not in d

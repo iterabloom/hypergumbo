@@ -873,6 +873,7 @@ def cmd_run(args):
                 "--entry", entry,
                 "--inline",
                 "--exclude-tests",
+                "--exclude-imports",
                 "--max-hops", "10",
                 "--max-files", "200",
                 "--out", os.path.join(repo_out, f"slice.{i}.json"),

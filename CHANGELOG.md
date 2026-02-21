@@ -54,6 +54,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **C `cmd_*` CLI command entrypoint detection**: Functions matching `cmd_<name>` in C files are detected as CLI_COMMAND entrypoints via naming convention (confidence 0.80). Covers git, systemd, busybox, and similar C projects that use function pointer dispatch tables to map string names to `cmd_*` handlers.
 - **Application library_export demotion**: When a repo has real semantic entrypoints (HTTP routes, CLI commands, main functions, controllers), library_export entries receive a 90% confidence penalty. Fixes the "forgejo problem" where 7,474 Go uppercase-symbol exports drowned out 772 meaningful HTTP routes. Pure libraries (no semantic entrypoints) keep full library_export confidence.
 - **DEEP bakeoff reverse-slice parameters**: Reverse slices now use `--hub-threshold 200 --max-files 500` (vs 50/200 for forward slices). Fixes the hub pruning paradox where intermediate hub nodes trapped reverse traversal within a single layer (e.g., models/) preventing cross-layer discovery into routers/ and services/.
+- **`--exclude-imports` slice flag**: Excludes import/module edges from both traversal and output, producing call-graph-only slices. Reduces edge noise by up to 64% in large codebases where file-level package imports dominate over function-level call edges. Used by default in DEEP bakeoff forward slices.
+- **Test file detection for `t/` and `test-*.c`**: The `t/` directory (C/Perl convention: git, Perl core) and `test-*.c` filename pattern (hyphen-separated) are now recognized as test files. Git's 200+ test helpers in `t/helper/` are now properly classified as test code.
 
 #### Tracker
 
