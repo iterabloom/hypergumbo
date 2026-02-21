@@ -687,12 +687,35 @@ def detect_entrypoints(
         if sym.supply_chain_tier >= 3:
             ep.confidence *= 0.3
 
+    # Language dominance: prefer entrypoints from the dominant language.
+    # In a repo that's 95% C and 5% Python, a C main() should rank above
+    # a Python script even when the script has higher connectivity.
+    # Weight = symbol_count / max_language_count, so the dominant language
+    # always gets 1.0 and minority languages get proportionally less.
+    lang_symbol_counts: dict[str, int] = defaultdict(int)
+    for node in nodes:
+        if node.language:
+            lang_symbol_counts[node.language] += 1
+    max_lang_count = max(lang_symbol_counts.values()) if lang_symbol_counts else 1
+
+    def _language_weight(symbol_id: str) -> float:
+        """Language dominance weight: 1.0 for dominant, less for minority."""
+        sym = symbol_lookup.get(symbol_id)
+        if not sym or not sym.language:
+            return 0.0
+        return lang_symbol_counts.get(sym.language, 0) / max_lang_count
+
     # Boost confidence based on connectivity (outgoing edges).
     # Uses one-hop transitive reach: an entrypoint's effective out-degree
     # includes the out-degree of its immediate callees (at 50% weight).
     # This handles the "thin wrapper" pattern: main() → tryMain() (178 edges)
     # gets credit for tryMain's connectivity, outranking utility mains that
     # call many small functions directly.
+    #
+    # The boost is scaled by language dominance: entrypoints from the
+    # dominant language get the full boost, while minority languages get
+    # a reduced boost (minimum 50%). This prevents a Python script with
+    # many outgoing edges from outranking a C main() in a 95% C codebase.
     outgoing_counts: dict[str, int] = defaultdict(int)
     direct_callees: dict[str, list[str]] = defaultdict(list)
     for edge in edges:
@@ -719,16 +742,27 @@ def detect_entrypoints(
             # Logarithmic boost: diminishing returns for very high counts
             # log(1 + 10) / 10 ≈ 0.24, log(1 + 100) / 10 ≈ 0.46
             # Cap at 0.25 to avoid overwhelming the base confidence
-            connectivity_boost = min(0.25, math.log(1 + effective_edges) / 10)
+            raw_boost = min(0.25, math.log(1 + effective_edges) / 10)
+            # Scale by language dominance: dominant language (1.0) gets
+            # full boost, minority language (0.05) gets ~53% of boost.
+            # Formula: 0.5 + 0.5 * weight → range [0.5, 1.0]
+            lang_scale = 0.5 + 0.5 * _language_weight(ep.symbol_id)
+            connectivity_boost = raw_boost * lang_scale
             ep.confidence = min(1.0, ep.confidence + connectivity_boost)
 
     # Sort by confidence (highest first) for better --entry auto behavior.
-    # Use effective out-degree as tiebreaker: when two entrypoints have
-    # the same confidence (e.g., both at 1.0), prefer the one with higher
-    # transitive reach.  This ensures the "real" main in a compiler repo
-    # ranks above a utility main, even when both hit the confidence cap.
+    # Tiebreakers (in order):
+    # 1. Language dominance: prefer entrypoints from the dominant language.
+    #    In a C-heavy repo, C main() ranks above Python script even if
+    #    the Python script has higher connectivity.
+    # 2. Effective out-degree: when two entrypoints from the same language
+    #    tie on confidence, prefer the one with higher transitive reach.
     unique_entrypoints.sort(
-        key=lambda ep: (ep.confidence, _effective_out_degree(ep.symbol_id)),
+        key=lambda ep: (
+            ep.confidence,
+            _language_weight(ep.symbol_id),
+            _effective_out_degree(ep.symbol_id),
+        ),
         reverse=True,
     )
 

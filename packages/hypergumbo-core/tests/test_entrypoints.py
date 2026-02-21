@@ -2403,3 +2403,177 @@ class TestRouteKindEntrypointDetection:
         ep_ids = {ep.symbol_id for ep in route_eps}
         assert sym1.id in ep_ids
         assert sym2.id in ep_ids
+
+
+class TestLanguageDominanceRanking:
+    """Tests for language dominance in entrypoint ranking.
+
+    When multiple languages have entrypoints at similar confidence, the
+    dominant language (by symbol count) should rank higher. This prevents
+    a Python script from outranking a C main() in a 95% C codebase.
+    """
+
+    def test_dominant_language_ranks_first(self) -> None:
+        """C main() should rank above Python main() in C-dominant repo.
+
+        In a repo with 95 C symbols and 5 Python symbols, both languages
+        have a main() function. The Python main has higher connectivity
+        (more outgoing edges), which would normally give it a higher rank.
+        But because C is the dominant language, C main should still rank
+        first.
+
+        This simulates the git repo scenario: 95% C code but Python
+        scripts (git-p4.py) have higher connectivity in a single file,
+        causing them to outrank the C main().
+        """
+        from hypergumbo_core.ir import Edge
+
+        # C main function with modest connectivity (5 edges)
+        c_main = make_symbol(
+            "main", path="src/main.c", language="c",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        # 94 additional C symbols to make C dominant
+        c_symbols = [
+            make_symbol(
+                f"c_func_{i}", path=f"src/lib_{i}.c", language="c",
+                start_line=i * 10,
+            )
+            for i in range(94)
+        ]
+
+        # Python main with HIGHER connectivity (50 edges)
+        # Uses a non-utility path to avoid utility penalty
+        py_main = make_symbol(
+            "main", path="contrib/p4/main.py", language="python",
+            start_line=1,
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        # 4 additional Python symbols (callees get re-called)
+        py_symbols = [
+            make_symbol(
+                f"py_func_{i}", path=f"contrib/p4/util_{i}.py",
+                language="python",
+                start_line=i * 10 + 100,
+            )
+            for i in range(4)
+        ]
+
+        nodes = [c_main] + c_symbols + [py_main] + py_symbols
+
+        # C main calls 5 C functions
+        c_edges = [
+            Edge.create(
+                src=c_main.id, dst=c_symbols[i].id,
+                edge_type="calls", line=i + 1,
+                evidence_type="function_call", confidence=0.85,
+                origin="test", origin_run_id="test",
+            )
+            for i in range(5)
+        ]
+        # Python main calls 50 functions (much higher connectivity)
+        py_edges = [
+            Edge.create(
+                src=py_main.id, dst=py_symbols[i % len(py_symbols)].id,
+                edge_type="calls", line=i + 1,
+                evidence_type="function_call", confidence=0.85,
+                origin="test", origin_run_id="test",
+            )
+            for i in range(50)
+        ]
+
+        entrypoints = detect_entrypoints(nodes, c_edges + py_edges)
+
+        c_ep = next(
+            (ep for ep in entrypoints if ep.symbol_id == c_main.id), None,
+        )
+        py_ep = next(
+            (ep for ep in entrypoints if ep.symbol_id == py_main.id), None,
+        )
+        assert c_ep is not None, "C main should be detected as entrypoint"
+        assert py_ep is not None, "Python main should be detected as entrypoint"
+
+        # C main should rank higher than Python main despite lower
+        # connectivity, because C is the dominant language (95 of 100
+        # symbols).
+        c_rank = entrypoints.index(c_ep)
+        py_rank = entrypoints.index(py_ep)
+        assert c_rank < py_rank, (
+            f"C main (rank {c_rank}, conf {c_ep.confidence:.3f}) should rank "
+            f"above Python main (rank {py_rank}, conf {py_ep.confidence:.3f}) "
+            f"in a C-dominant repo (95% C by symbol count)"
+        )
+
+    def test_equal_languages_no_bias(self) -> None:
+        """In a 50/50 repo, language dominance should not introduce bias.
+
+        When two languages contribute equally, the tiebreaker should fall
+        to connectivity (effective out-degree), not language.
+        """
+        from hypergumbo_core.ir import Edge
+
+        # 50 Go symbols
+        go_main = make_symbol(
+            "main", path="cmd/main.go", language="go",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        go_symbols = [
+            make_symbol(
+                f"go_func_{i}", path=f"pkg/lib_{i}.go", language="go",
+                start_line=i * 10,
+            )
+            for i in range(49)
+        ]
+
+        # 50 Python symbols
+        py_main = make_symbol(
+            "main", path="app/main.py", language="python",
+            start_line=1,
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+        py_symbols = [
+            make_symbol(
+                f"py_func_{i}", path=f"app/util_{i}.py", language="python",
+                start_line=i * 10 + 100,
+            )
+            for i in range(49)
+        ]
+
+        nodes = [go_main] + go_symbols + [py_main] + py_symbols
+
+        # Both mains have the same connectivity (10 edges each)
+        go_edges = [
+            Edge.create(
+                src=go_main.id, dst=go_symbols[i].id,
+                edge_type="calls", line=i + 1,
+                evidence_type="function_call", confidence=0.85,
+                origin="test", origin_run_id="test",
+            )
+            for i in range(10)
+        ]
+        py_edges = [
+            Edge.create(
+                src=py_main.id, dst=py_symbols[i].id,
+                edge_type="calls", line=i + 1,
+                evidence_type="function_call", confidence=0.85,
+                origin="test", origin_run_id="test",
+            )
+            for i in range(10)
+        ]
+
+        entrypoints = detect_entrypoints(nodes, go_edges + py_edges)
+
+        go_ep = next(
+            (ep for ep in entrypoints if ep.symbol_id == go_main.id), None,
+        )
+        py_ep = next(
+            (ep for ep in entrypoints if ep.symbol_id == py_main.id), None,
+        )
+        assert go_ep is not None
+        assert py_ep is not None
+
+        # Both should have the same confidence (language weights are equal)
+        assert go_ep.confidence == pytest.approx(py_ep.confidence, rel=0.01), (
+            f"Equal-language entrypoints should have same confidence: "
+            f"Go={go_ep.confidence:.3f}, Python={py_ep.confidence:.3f}"
+        )
