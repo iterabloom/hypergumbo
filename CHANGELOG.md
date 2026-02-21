@@ -50,6 +50,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **CLI extras management**: Subcommands for optional dependencies: `add-extras`, `remove-extras`, `install-embeddings`, `uninstall-embeddings`, `uninstall-gitleaks`.
 - **Cache management**: `hypergumbo cache-status` and `hypergumbo cache-clear` for managing `~/.cache/hypergumbo/`.
 - **`bakeoff-reflect` redesign**: Structured two-phase LLM assessment pipeline for BROAD bakeoff.
+- **DEEP bakeoff reverse-slice seed selection**: Reverse slices now use high-in-degree non-test symbols instead of entrypoints. For library repos like iceberg (6905/6912 test entrypoints), this selects core API symbols (Schema, Types.get, TableIdentifier.of) instead of test methods that produce trivial 2-node results. Improved `_TEST_PATH_RE` to cover JVM conventions (Test*.java, *IT.java, src/integration/, src/test/) and Go unittest dirs.
 
 #### Tracker
 

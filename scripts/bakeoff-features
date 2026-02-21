@@ -121,7 +121,14 @@ _CODE_NODE_KINDS = frozenset({
 
 # Path segments that indicate test files. Used to filter entrypoints before
 # slicing with --exclude-tests (test-file entries yield empty slices).
-_TEST_PATH_RE = re.compile(r'/(tests?|spec|__tests__|test_|_test\.)')
+# Covers: Python (tests/, test_), JS (__tests__/, spec/, _test.),
+# JVM (Test*.java, *IT.java, *Tests.java, src/test/, src/integration/),
+# Go (unittest/).
+_TEST_PATH_RE = re.compile(
+    r'/(tests?|spec|__tests__|test_|_test\.|integration/|unittest/)'
+    r'|/Test[A-Z][^/]*\.java'
+    r'|/[A-Z]\w*(?:IT|Tests?)\.(?:java|scala|kt)'
+)
 
 # Quality thresholds
 QUALITY_THRESHOLDS = {
@@ -404,6 +411,76 @@ def assess_metric(name: str, value: float) -> tuple:
         return ("FAIL", f"CRITICAL_HIGH_{name.upper()}: {value:.1f}{unit} > {warn_max}{unit}")
 
     return ("GOOD", None)
+
+
+def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
+    """Pick high-in-degree non-test symbols as reverse slice seeds.
+
+    For reverse slices, the question "who calls X?" is most interesting for
+    heavily-called production symbols — the core API surface of a library or
+    application. Auto-detected entrypoints (roots of the call graph) are
+    dominated by test methods in library repos like iceberg (6905/6912 test
+    entries), making them poor reverse-slice seeds.
+
+    This function reads the behavior map JSON, computes in-degree for each
+    symbol, filters out test files, and returns ``count`` entry strings
+    in the format expected by ``hypergumbo slice --entry``.
+
+    Returns empty list if hg.json can't be read or has no edges.
+    """
+    try:
+        with open(hg_json) as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    nodes = data.get("nodes", [])
+    edges = data.get("edges", [])
+    if not edges:
+        return []
+
+    # Compute in-degree per node
+    in_degree: dict = {}
+    for e in edges:
+        dst = e.get("dst") or e.get("target")
+        if dst:
+            in_degree[dst] = in_degree.get(dst, 0) + 1
+
+    # Build node lookup
+    node_map = {n["id"]: n for n in nodes}
+
+    # Candidate kinds: function/method/class — the callable/structural symbols
+    # that are meaningful reverse-slice seeds.
+    seed_kinds = {"function", "method", "class", "constructor", "route"}
+
+    candidates = []
+    for node_id, deg in in_degree.items():
+        node = node_map.get(node_id)
+        if not node:
+            continue
+        kind = node.get("kind", "")
+        if kind not in seed_kinds:
+            continue
+        path = node.get("path", "")
+        if _TEST_PATH_RE.search(path):
+            continue
+        name = node.get("name", "")
+        # Build entry string: lang:path:lines:name:kind
+        lang = node.get("language", "")
+        start = node.get("start_line", "")
+        end = node.get("end_line", "")
+        line_range = f"{start}-{end}" if start and end else str(start)
+        entry = f"{lang}:{path}:{line_range}:{name}:{kind}"
+        candidates.append((deg, entry, name))
+
+    # Sort by in-degree descending, name for stability
+    candidates.sort(key=lambda x: (-x[0], x[2]))
+
+    result = []
+    for deg, entry, name in candidates[:count]:
+        result.append(entry)
+
+    return result
 
 
 # =============================================================================
@@ -788,12 +865,28 @@ def cmd_run(args):
                 f.write(str(rc))
             print("OK" if rc == 0 else f"FAIL({rc})")
 
-        # 4. Reverse slices (top 3 entries)
-        # Do NOT use --exclude-tests/--exclude-utility here.  For library repos,
-        # callers live in tests/examples — excluding them yields empty slices
-        # (e.g., rslice for FastAPI class returned 0 edges).  For application
-        # repos, test callers are still useful for quality assessment.
-        for i, entry in enumerate(entries[:3]):
+        # 4. Reverse slices (top 3 high-in-degree symbols)
+        # Use high-in-degree non-test symbols as reverse-slice seeds. For
+        # library repos, entrypoints are overwhelmingly test methods (e.g.,
+        # iceberg: 6905/6912 test entries), making them poor reverse-slice
+        # seeds that produce trivial 2-node results.  High-in-degree symbols
+        # (Schema, Types.get, Table.refresh) are the core API surface —
+        # "who calls this?" is the interesting question for developers.
+        # Fall back to entrypoints if no high-in-degree seeds found.
+        # Do NOT use --exclude-tests here: for library repos, callers live in
+        # tests/examples — excluding them yields empty slices.
+        rslice_seeds = pick_reverse_slice_seeds(hg_json, count=3)
+        rslice_method = "in_degree"
+        if rslice_seeds:
+            print(f"  reverse-slice seeds: {len(rslice_seeds)} high-in-degree symbols")
+        else:
+            rslice_seeds = entries[:3]
+            rslice_method = "entrypoints"
+            print("  reverse-slice seeds: falling back to entrypoints")
+        # Save seed info for diagnostics
+        with open(os.path.join(repo_out, "rslice_seeds.json"), "w") as f:
+            json.dump({"method": rslice_method, "seeds": rslice_seeds}, f, indent=2)
+        for i, entry in enumerate(rslice_seeds):
             print(f"  reverse-slice[{entry[:30]}]...", end=" ", flush=True)
             rc, stdout, stderr = run_cmd([
                 "hypergumbo", "slice",
