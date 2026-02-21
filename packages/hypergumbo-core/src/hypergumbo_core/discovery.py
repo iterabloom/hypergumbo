@@ -263,6 +263,8 @@ def find_files(
         for path in repo_root.rglob(pattern):
             if max_files is not None and count >= max_files:
                 return
+            if not path.is_file():
+                continue
             if not _is_excluded_classified(path, repo_root, exact, globs):
                 yield path
                 count += 1

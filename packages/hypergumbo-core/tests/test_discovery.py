@@ -169,6 +169,25 @@ def test_find_files_respects_max_files(tmp_path: Path) -> None:
     assert len(results) == 5
 
 
+def test_find_files_skips_directories(tmp_path: Path) -> None:
+    """Directories matching a pattern should not be yielded.
+
+    Path.rglob("*.d") matches both files and directories. Git repos
+    like forgejo have ``hooks/pre-receive.d/`` directories — these
+    should not be counted as D language source files.
+    """
+    # Create a directory ending in .d (like git hook dirs)
+    (tmp_path / "hooks" / "pre-receive.d").mkdir(parents=True)
+    (tmp_path / "hooks" / "post-receive.d").mkdir(parents=True)
+
+    # Create a real .d file
+    (tmp_path / "hello.d").write_text("import std.stdio;")
+
+    results = list(find_files(tmp_path, ["*.d"]))
+    assert len(results) == 1
+    assert results[0].name == "hello.d"
+
+
 # ---------- classify_dot_m_file tests ----------
 
 
