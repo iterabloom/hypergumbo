@@ -2642,6 +2642,143 @@ func main() {
             "Typed receiver call should not be marked as ambiguous"
         )
 
+    def test_chained_call_operand_ambiguous(self, tmp_path: Path) -> None:
+        """getWriter().Close() with 3+ types → unresolved edge.
+
+        When the operand is a call expression (not a simple identifier),
+        the receiver type cannot be inferred. The guard should still fire
+        for method names with 3+ candidates, preventing false-positive
+        edges to arbitrary implementations.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Server struct{}
+type Client struct{}
+type Worker struct{}
+
+func (s *Server) Close() {}
+func (c *Client) Close() {}
+func (w *Worker) Close() {}
+
+func getServer() *Server { return &Server{} }
+
+func cleanup() {
+    getServer().Close()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        cleanup_calls = [e for e in call_edges if "cleanup" in e.src]
+
+        close_calls = [e for e in cleanup_calls if "Close" in e.dst]
+        assert len(close_calls) >= 1, (
+            f"cleanup should have a call edge for Close(), found: {cleanup_calls}"
+        )
+
+        # Should be unresolved — NOT resolved to any specific type
+        for edge in close_calls:
+            assert edge.evidence_type == "ambiguous_method_call", (
+                f"Chained call Close() with 3+ candidates should be "
+                f"ambiguous_method_call, got '{edge.evidence_type}'"
+            )
+            assert "Server.Close" not in edge.dst
+            assert "Client.Close" not in edge.dst
+            assert "Worker.Close" not in edge.dst
+
+    def test_selector_operand_ambiguous(self, tmp_path: Path) -> None:
+        """resp.Body.Close() with 3+ types → unresolved edge.
+
+        When the operand is a nested selector expression (field access),
+        the receiver type cannot be inferred. The guard should still fire.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Server struct{}
+type Client struct{}
+type Worker struct{}
+
+func (s *Server) Close() {}
+func (c *Client) Close() {}
+func (w *Worker) Close() {}
+
+type Response struct {
+    Body Server
+}
+
+func process(resp Response) {
+    resp.Body.Close()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        process_calls = [e for e in call_edges if "process" in e.src]
+
+        close_calls = [e for e in process_calls if "Close" in e.dst]
+        assert len(close_calls) >= 1, (
+            f"process should have a call edge for Close(), found: {process_calls}"
+        )
+
+        # Should be unresolved — NOT resolved to any specific type
+        for edge in close_calls:
+            assert edge.evidence_type == "ambiguous_method_call", (
+                f"Selector operand Close() with 3+ candidates should be "
+                f"ambiguous_method_call, got '{edge.evidence_type}'"
+            )
+            assert "Server.Close" not in edge.dst
+            assert "Client.Close" not in edge.dst
+            assert "Worker.Close" not in edge.dst
+
+    def test_index_operand_ambiguous(self, tmp_path: Path) -> None:
+        """items[0].Close() with 3+ types → unresolved edge.
+
+        When the operand is an index expression, the receiver type
+        cannot be inferred. The guard should still fire.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Server struct{}
+type Client struct{}
+type Worker struct{}
+
+func (s *Server) Close() {}
+func (c *Client) Close() {}
+func (w *Worker) Close() {}
+
+func closeAll(items []interface{}) {
+    items[0].Close()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        close_all_calls = [e for e in call_edges if "closeAll" in e.src]
+
+        close_calls = [e for e in close_all_calls if "Close" in e.dst]
+        assert len(close_calls) >= 1, (
+            f"closeAll should have a call edge for Close(), found: {close_all_calls}"
+        )
+
+        # Should be unresolved — NOT resolved to any specific type
+        for edge in close_calls:
+            assert edge.evidence_type == "ambiguous_method_call", (
+                f"Index operand Close() with 3+ candidates should be "
+                f"ambiguous_method_call, got '{edge.evidence_type}'"
+            )
+
 
 class TestGoEnclosingFunctionAttribution:
     """Tests for correct enclosing function attribution with same-name methods.

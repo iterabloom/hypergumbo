@@ -991,7 +991,7 @@ def _extract_edges_from_file(
     if import_aliases is None:
         import_aliases = {}
     if resolver is None:
-        resolver = ListNameResolver(global_symbols)
+        resolver = ListNameResolver(global_symbols, ambiguity_threshold=3)
 
     try:
         source = file_path.read_bytes()
@@ -1101,26 +1101,31 @@ def _extract_edges_from_file(
                                             origin_run_id=run.execution_id,
                                         ))
                                         callee_name = None  # Already resolved
-                            # Ambiguity guard: when operand type is unknown
-                            # and method name has 3+ candidates, create
-                            # unresolved edge instead of picking arbitrarily
-                            elif (
-                                callee_name
-                                and callee_name in global_symbols
-                                and len(global_symbols[callee_name]) >= 3
-                            ):
-                                dst_id = f"go:external:0-0:{callee_name}:unresolved"
-                                edges.append(Edge.create(
-                                    src=current_function.id,
-                                    dst=dst_id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    evidence_type="ambiguous_method_call",
-                                    confidence=0.50,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                ))
-                                callee_name = None  # Already handled
+                        # Unified ambiguity guard for ALL selector expressions:
+                        # covers simple identifiers (x.Close()), chained calls
+                        # (getWriter().Close()), field access (resp.Body.Close()),
+                        # and index expressions (items[0].Close()).
+                        # When receiver type is unknown and 3+ types define the
+                        # method, produce an unresolved edge instead of picking
+                        # an arbitrary candidate.
+                        if (
+                            callee_name
+                            and import_path_hint is None
+                            and callee_name in global_symbols
+                            and len(global_symbols[callee_name]) >= 3
+                        ):
+                            dst_id = f"go:external:0-0:{callee_name}:unresolved"
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=dst_id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="ambiguous_method_call",
+                                confidence=0.50,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
+                            callee_name = None  # Already handled
 
                     if callee_name:
                         # Check local symbols first — but NOT when the call
