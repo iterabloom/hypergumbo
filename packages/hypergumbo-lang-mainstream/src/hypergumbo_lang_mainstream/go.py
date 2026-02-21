@@ -37,6 +37,9 @@ How It Works
    - Gorilla mux: router.HandleFunc("/path", handler), router.Handle("/path", handler)
    - Gorilla mux builder: router.Path("/path").Methods("GET").Handler(handler)
    - Creates route symbols with stable_id = sha256("route:{method}:{path}")
+   - Group prefix composition: routes inside Group/Route closures get the
+     group path prepended (e.g., Group("/api") > GET("/users") → /api/users).
+     Handles nested groups via AST ancestor walk.
 
 Why This Design
 ---------------
@@ -100,6 +103,10 @@ GORILLA_CHAIN_TERMINATORS = {"Handler", "HandlerFunc"}
 
 # Gorilla mux builder chain path methods: .Path("/x") or .PathPrefix("/x")
 GORILLA_PATH_METHODS = {"Path", "PathPrefix"}
+
+# Route group methods that take a path prefix and a closure.
+# Macaron/Chi/Gin/Echo/Fiber all use Group; Chi also uses Route.
+_GO_GROUP_METHODS = {"Group", "Route"}
 
 
 def find_go_files(repo_root: Path) -> Iterator[Path]:
@@ -1336,6 +1343,53 @@ def _extract_gorilla_chain_route(
     return (route_path, http_method, handler_name)
 
 
+def _get_go_route_prefix(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> str:
+    """Walk up the AST to collect Group/Route prefix strings.
+
+    When a route call like ``r.GET("/users", handler)`` is nested inside
+    ``r.Group("/api/v1", func() { ... })``, this function discovers the
+    Group call and returns ``"/api/v1"``.  For nested groups, prefixes
+    compose: ``Group("/admin") > Group("/users") > GET("/list")`` →
+    ``"/admin/users"``.
+
+    Works for closure-based group patterns used by Macaron (Forgejo/Gitea)
+    and Chi.  Return-value-based groups (Gin/Echo/Fiber ``v1 := r.Group(...)``
+    followed by ``v1.GET(...)``) require variable tracking and are not
+    handled here.
+
+    Returns the composed prefix string (empty if no Group ancestors).
+    """
+    prefixes: list[str] = []
+    current = node.parent
+    while current is not None:
+        if current.type == "func_literal":
+            parent = current.parent
+            if parent is not None and parent.type == "argument_list":
+                grandparent = parent.parent
+                if grandparent is not None and grandparent.type == "call_expression":
+                    func_node = find_child_by_field(grandparent, "function")
+                    if func_node is not None and func_node.type == "selector_expression":
+                        field_node = find_child_by_field(func_node, "field")
+                        if field_node is not None:
+                            method = node_text(field_node, source)
+                            if method in _GO_GROUP_METHODS:
+                                args_node = find_child_by_field(
+                                    grandparent, "arguments",
+                                )
+                                if args_node is not None:
+                                    prefix = _extract_first_string_arg(
+                                        args_node, source,
+                                    )
+                                    if prefix:
+                                        prefixes.append(prefix)
+        current = current.parent
+    prefixes.reverse()
+    return "".join(prefixes)
+
+
 def _extract_go_routes(
     node: "tree_sitter.Node",
     source: bytes,
@@ -1349,6 +1403,7 @@ def _extract_go_routes(
     - Fiber: app.Get("/path", handler) (lowercase methods)
     - Gorilla mux: router.HandleFunc("/path", handler), router.Handle("/path", handler)
     - Gorilla mux builder: router.Path("/path").Methods("GET").Handler(handler)
+    - Group prefix composition: r.Group("/api", func() { r.GET("/users", h) }) → /api/users
 
     Creates symbols with stable_id = HTTP method for route discovery.
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
@@ -1383,6 +1438,8 @@ def _extract_go_routes(
                                         break
 
                             if route_path and handler_name:
+                                prefix = _get_go_route_prefix(n, source)
+                                route_path = prefix + route_path
                                 normalized_method = method_name.upper()
                                 start_line = n.start_point[0] + 1
                                 end_line = n.end_point[0] + 1
@@ -1429,6 +1486,8 @@ def _extract_go_routes(
                                         break
 
                             if route_path and handler_name:
+                                prefix = _get_go_route_prefix(n, source)
+                                route_path = prefix + route_path
                                 start_line = n.start_point[0] + 1
                                 end_line = n.end_point[0] + 1
 
@@ -1465,6 +1524,8 @@ def _extract_go_routes(
                         )
 
                         if route_path and handler_name:
+                            prefix = _get_go_route_prefix(n, source)
+                            route_path = prefix + route_path
                             normalized_method = http_method or "ANY"
                             start_line = n.start_point[0] + 1
                             end_line = n.end_point[0] + 1
@@ -1582,6 +1643,10 @@ def _extract_go_usage_contexts(
         handler_ref = None
         if handler_name and handler_name in symbol_by_name:
             handler_ref = symbol_by_name[handler_name].id
+
+        # Prepend Group/Route prefix if nested in a closure
+        prefix = _get_go_route_prefix(n, source)
+        route_path = prefix + route_path
 
         # Normalize method name to uppercase
         normalized_method = method_name.upper()

@@ -756,6 +756,87 @@ func main() {
         assert len(routes) >= 1
         assert routes[0].name == "handlers.GetAPI"
 
+    def test_group_prefix_composition(self, tmp_path: Path) -> None:
+        """Routes inside Group() closures get the group prefix prepended.
+
+        When routes are nested inside r.Group("/api/v1", func() { ... }),
+        the route path should be /api/v1/users, not just /users.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import "github.com/gin-gonic/gin"
+
+func main() {
+    r := gin.Default()
+    r.Group("/api/v1", func() {
+        r.GET("/users", listUsers)
+        r.POST("/users", createUser)
+    })
+    r.GET("/health", healthCheck)
+}
+
+func listUsers(c *gin.Context) {}
+func createUser(c *gin.Context) {}
+func healthCheck(c *gin.Context) {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_paths = {s.meta["route_path"]: s.name for s in routes if s.meta}
+
+        # Routes inside Group should have prefix
+        assert "/api/v1/users" in route_paths, (
+            f"Route inside Group('/api/v1') should have path /api/v1/users, "
+            f"found: {list(route_paths.keys())}"
+        )
+        # Route outside Group should NOT have prefix
+        assert "/health" in route_paths, (
+            f"Route outside Group should have path /health, "
+            f"found: {list(route_paths.keys())}"
+        )
+
+    def test_nested_group_prefix_composition(self, tmp_path: Path) -> None:
+        """Nested Group() calls compose prefixes correctly.
+
+        r.Group("/admin", func() {
+            r.Group("/users", func() {
+                r.GET("/list", handler)  // → /admin/users/list
+            })
+        })
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import "github.com/gin-gonic/gin"
+
+func main() {
+    r := gin.Default()
+    r.Group("/admin", func() {
+        r.Group("/users", func() {
+            r.GET("/list", listAdminUsers)
+        })
+    })
+}
+
+func listAdminUsers(c *gin.Context) {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_paths = [s.meta["route_path"] for s in routes if s.meta]
+
+        assert "/admin/users/list" in route_paths, (
+            f"Nested Group should compose to /admin/users/list, "
+            f"found: {route_paths}"
+        )
+
 
 class TestGoGorillaMuxRoutes:
     """Tests for Gorilla mux route detection.
