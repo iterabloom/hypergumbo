@@ -1165,6 +1165,31 @@ def _extract_edges_from_file(
                             ))
                             callee_name = None  # Already handled
 
+                        # Go visibility guard: lowercase methods are unexported
+                        # (package-private).  When receiver type is unknown and
+                        # the callee starts with a lowercase letter, global
+                        # resolution would cross package boundaries — producing
+                        # false positives (e.g. recalcRequest.string with 577
+                        # spurious callers).  Emit an unresolved edge instead.
+                        if (
+                            callee_name
+                            and import_path_hint is None
+                            and func_node.type == "selector_expression"
+                            and callee_name[0].islower()
+                        ):
+                            dst_id = f"go:external:0-0:{callee_name}:unresolved"
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=dst_id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="unexported_method_call",
+                                confidence=0.40,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
+                            callee_name = None  # Already handled
+
                     if callee_name:
                         # Check local symbols first — but NOT when the call
                         # is package-qualified (import_path_hint set), because

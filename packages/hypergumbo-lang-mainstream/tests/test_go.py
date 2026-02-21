@@ -2982,6 +2982,116 @@ func (s *Server) Cleanup() {
             )
 
 
+class TestGoPrivateMethodScope:
+    """Tests for Go visibility rules in method resolution.
+
+    In Go, lowercase identifiers are unexported (package-private). When the
+    receiver type is unknown, a lowercase method call like x.string() should
+    NOT resolve to a global symbol in a different file, because the caller
+    might be in a different package. Without receiver type info, the analyzer
+    cannot confirm same-package access, so it should produce an unresolved
+    edge rather than a false-positive call edge.
+    """
+
+    def test_lowercase_method_not_resolved_globally(self, tmp_path: Path) -> None:
+        """x.string() should NOT resolve to recalcRequest.string() across files.
+
+        When only one type defines a lowercase method (e.g., `string`), the
+        ambiguity guard (which requires 3+ candidates) doesn't fire. But
+        lowercase methods are package-private in Go, so resolving them
+        globally without knowing the receiver type produces false positives.
+        The analyzer should produce an unresolved edge instead.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        # File 1: defines a type with a lowercase method
+        pkg_dir = tmp_path / "pkg"
+        pkg_dir.mkdir()
+        (pkg_dir / "types.go").write_text("""package pkg
+
+type recalcRequest struct {
+    value int
+}
+
+func (r *recalcRequest) string() string {
+    return "recalc"
+}
+""")
+        # File 2: calls x.string() without knowing x's type
+        (pkg_dir / "handler.go").write_text("""package pkg
+
+func handleRequest(x interface{}) {
+    x.string()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        handler_calls = [e for e in call_edges if "handleRequest" in e.src]
+
+        string_calls = [e for e in handler_calls if "string" in e.dst]
+        assert len(string_calls) >= 1, (
+            f"handleRequest should have a call edge for string(), "
+            f"found: {handler_calls}"
+        )
+
+        # Should NOT resolve to recalcRequest.string — it's unexported
+        for edge in string_calls:
+            assert "recalcRequest.string" not in edge.dst, (
+                f"Lowercase method x.string() should NOT resolve to "
+                f"recalcRequest.string globally; got dst={edge.dst}"
+            )
+            # Should be unresolved since receiver type is unknown
+            assert "unresolved" in edge.dst, (
+                f"Lowercase method call without receiver type should be "
+                f"unresolved, got dst={edge.dst}"
+            )
+
+    def test_uppercase_method_still_resolves_globally(self, tmp_path: Path) -> None:
+        """x.String() (uppercase) SHOULD still resolve globally.
+
+        Exported (uppercase) methods can be called from any package, so
+        global resolution is valid for them. This tests that the private
+        method guard only affects lowercase callees.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        pkg_dir = tmp_path / "pkg"
+        pkg_dir.mkdir()
+        (pkg_dir / "types.go").write_text("""package pkg
+
+type Formatter struct{}
+
+func (f *Formatter) String() string {
+    return "formatted"
+}
+""")
+        (pkg_dir / "handler.go").write_text("""package pkg
+
+func handleFormat(x interface{}) {
+    x.String()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        handler_calls = [e for e in call_edges if "handleFormat" in e.src]
+
+        string_calls = [e for e in handler_calls if "String" in e.dst]
+        assert len(string_calls) >= 1, (
+            f"handleFormat should have a call edge for String(), "
+            f"found: {handler_calls}"
+        )
+
+        # Uppercase method — should resolve to Formatter.String
+        assert any("Formatter.String" in e.dst for e in string_calls), (
+            f"Uppercase method x.String() should resolve to Formatter.String, "
+            f"found: {[e.dst for e in string_calls]}"
+        )
+
+
 class TestGoEnclosingFunctionAttribution:
     """Tests for correct enclosing function attribution with same-name methods.
 
