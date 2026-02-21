@@ -564,9 +564,22 @@ jobs:
           pip install --upgrade pip
           pip install pytest pytest-cov pytest-xdist
           pip install -e "packages/hypergumbo-tracker[dev,tui]"
+      - name: Check for embedding dependencies
+        run: |
+          if python -c "import onnxruntime; import tokenizers" 2>/dev/null; then
+            echo "ONNX dedup dependencies available"
+            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "ONNX dedup dependencies not installed, using no-embeddings coverage config"
+            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
       - name: Run tests
         id: tests
         run: |
+          COV_CONFIG=""
+          if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
+            COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
+          fi
           # Detect available CPUs from cgroup limits
           if [ -f /sys/fs/cgroup/cpu.max ]; then
             read quota period < /sys/fs/cgroup/cpu.max
@@ -580,7 +593,7 @@ jobs:
           fi
 
           pytest packages/hypergumbo-tracker/tests/ -n "$WORKERS" --tb=short \
-            --cov=packages/hypergumbo-tracker/src --cov-report=term | tee coverage-output.txt
+            --cov=packages/hypergumbo-tracker/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
@@ -611,9 +624,22 @@ jobs:
           pip install --upgrade pip
           pip install pytest pytest-cov pytest-xdist
           pip install -e "packages/hypergumbo-tracker[dev,tui]"
+      - name: Check for embedding dependencies
+        run: |
+          if python -c "import onnxruntime; import tokenizers" 2>/dev/null; then
+            echo "ONNX dedup dependencies available"
+            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "ONNX dedup dependencies not installed, using no-embeddings coverage config"
+            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
       - name: Run tests
         id: tests
         run: |
+          COV_CONFIG=""
+          if [ "$EMBEDDINGS_AVAILABLE" = "false" ]; then
+            COV_CONFIG="--cov-config=.coveragerc.no-embeddings"
+          fi
           if [ -f /sys/fs/cgroup/cpu.max ]; then
             read quota period < /sys/fs/cgroup/cpu.max
             if [ "$quota" != "max" ]; then
@@ -626,7 +652,7 @@ jobs:
           fi
 
           pytest packages/hypergumbo-tracker/tests/ -n "$WORKERS" --tb=short \
-            --cov=packages/hypergumbo-tracker/src --cov-report=term | tee coverage-output.txt
+            --cov=packages/hypergumbo-tracker/src $COV_CONFIG --cov-report=term | tee coverage-output.txt
           COV=$(grep "^TOTAL" coverage-output.txt | awk '{print $NF}' | tr -d '%')
           echo "coverage=${COV:-0}" >> "$GITHUB_OUTPUT"
 
