@@ -307,6 +307,102 @@ def _import_path_to_dir_hint(import_path: str) -> str | None:
     return None
 
 
+def _extract_struct_embeddings(
+    struct_type_node: "tree_sitter.Node",
+    source: bytes,
+) -> list[str]:
+    """Extract embedded type names from a Go struct definition.
+
+    Go struct embedding occurs when a field_declaration has a type but no
+    explicit field name.  The embedded type's methods are promoted to the
+    embedding struct, enabling implicit interface satisfaction.
+
+    Recognised embedding forms::
+
+        type MyStruct struct {
+            BaseStruct            // simple embedding
+            *AnotherStruct        // pointer embedding
+            pkg.ExternalStruct    // qualified embedding
+            *pkg.QualifiedPtr     // qualified pointer embedding
+        }
+
+    Returns a list of embedded type names (unqualified base name only,
+    matching how the inheritance linker resolves names).
+    """
+    embedded: list[str] = []
+    field_list = find_child_by_type(struct_type_node, "field_declaration_list")
+    if field_list is None:  # pragma: no cover — struct_type always has field_declaration_list
+        return embedded
+
+    for field in field_list.children:
+        if field.type != "field_declaration":
+            continue
+
+        # An embedding has no explicit field name — the field_declaration
+        # contains only a type (and optionally a tag).  If there's an
+        # identifier child that is NOT inside a pointer_type/qualified_type,
+        # it's a named field, not an embedding.
+        has_name = find_child_by_field(field, "name") is not None
+        if has_name:
+            continue
+
+        # Extract the embedded type from the type child
+        type_child = find_child_by_field(field, "type")
+        if type_child is None:  # pragma: no cover — embeddings always have a type
+            continue
+
+        embedded_name = _extract_embedding_type_name(type_child, source)
+        if embedded_name:
+            embedded.append(embedded_name)
+
+    return embedded
+
+
+def _extract_embedding_type_name(
+    type_node: "tree_sitter.Node",
+    source: bytes,
+) -> str | None:
+    """Extract the base type name from an embedded struct field type node.
+
+    Handles: type_identifier, pointer_type(→type_identifier),
+    qualified_type(→type_identifier), pointer_type(→qualified_type),
+    and generic_type variants.
+    """
+    if type_node.type == "type_identifier":
+        return node_text(type_node, source)
+
+    if type_node.type == "pointer_type":  # pragma: no cover
+        # *Struct or *pkg.Struct — tree-sitter-go represents pointer
+        # embeddings with '*' as a raw token child of field_declaration,
+        # so the type field points to the inner type directly.  This
+        # branch is defensive for future grammar changes.
+        inner = find_child_by_type(type_node, "type_identifier")
+        if inner:
+            return node_text(inner, source)
+        qual = find_child_by_type(type_node, "qualified_type")
+        if qual:
+            tid = find_child_by_type(qual, "type_identifier")
+            if tid:
+                return node_text(tid, source)
+        return None
+
+    if type_node.type == "qualified_type":
+        # pkg.Struct — use the unqualified name for resolution
+        tid = find_child_by_type(type_node, "type_identifier")
+        if tid:
+            return node_text(tid, source)
+        return None  # pragma: no cover — qualified_type always has type_identifier
+
+    if type_node.type == "generic_type":
+        # Cache[K] — extract the base type name
+        base = find_child_by_type(type_node, "type_identifier")
+        if base:
+            return node_text(base, source)
+        return None  # pragma: no cover — generic_type always has a base type
+
+    return None  # pragma: no cover — unrecognized type node
+
+
 def _detect_interface_assertion(
     var_spec: "tree_sitter.Node",
     source: bytes,
@@ -620,6 +716,13 @@ def _extract_symbols_from_file(
                         else:
                             kind = "type"
 
+                        # Detect struct embedding (base_classes)
+                        embedded_types: list[str] = []
+                        if kind == "struct":
+                            embedded_types = _extract_struct_embeddings(
+                                type_node, source,
+                            )
+
                         symbol = Symbol(
                             id=make_symbol_id("go", str(file_path), start_line, end_line, type_name, kind),
                             name=type_name,
@@ -635,6 +738,7 @@ def _extract_symbols_from_file(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             modifiers=_go_visibility_modifiers(type_name),
+                            meta={"base_classes": embedded_types} if embedded_types else None,
                         )
                         analysis.symbols.append(symbol)
                         analysis.symbol_by_name[type_name] = symbol

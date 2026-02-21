@@ -1952,6 +1952,220 @@ var _ Configurer = &settings.Config{}
         assert "Configurer" in struct_sym.meta["base_classes"]
 
 
+class TestGoStructEmbedding:
+    """Tests for Go struct embedding detection.
+
+    Go struct embedding (anonymous fields) promotes the embedded type's
+    methods to the embedding struct, enabling implicit interface
+    satisfaction.  The Go analyzer should detect embeddings and populate
+    base_classes metadata so the inheritance linker can create
+    extends/implements edges.
+    """
+
+    def test_simple_embedding(self, tmp_path: Path) -> None:
+        """Struct with simple embedding gets base_classes metadata."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""package main
+
+type Base struct {
+    field1 string
+}
+
+type Child struct {
+    Base
+    extra int
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        child = next((s for s in result.symbols if s.name == "Child"), None)
+        assert child is not None
+        assert child.meta is not None
+        assert "base_classes" in child.meta
+        assert "Base" in child.meta["base_classes"]
+
+    def test_pointer_embedding(self, tmp_path: Path) -> None:
+        """Struct with pointer embedding gets base_classes metadata."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""package main
+
+type Logger struct{}
+
+type Service struct {
+    *Logger
+    name string
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        service = next((s for s in result.symbols if s.name == "Service"), None)
+        assert service is not None
+        assert service.meta is not None
+        assert "Logger" in service.meta["base_classes"]
+
+    def test_qualified_embedding(self, tmp_path: Path) -> None:
+        """Struct with qualified embedding (pkg.Type) extracts base name."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""package main
+
+import "sync"
+
+type SafeMap struct {
+    sync.Mutex
+    data map[string]string
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        safe_map = next((s for s in result.symbols if s.name == "SafeMap"), None)
+        assert safe_map is not None
+        assert safe_map.meta is not None
+        assert "Mutex" in safe_map.meta["base_classes"]
+
+    def test_multiple_embeddings(self, tmp_path: Path) -> None:
+        """Struct with multiple embeddings collects all embedded types."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""package main
+
+type Reader struct{}
+type Writer struct{}
+
+type ReadWriter struct {
+    Reader
+    *Writer
+    buffer []byte
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        rw = next((s for s in result.symbols if s.name == "ReadWriter"), None)
+        assert rw is not None
+        assert rw.meta is not None
+        assert "Reader" in rw.meta["base_classes"]
+        assert "Writer" in rw.meta["base_classes"]
+        assert len(rw.meta["base_classes"]) == 2
+
+    def test_embedding_plus_assertion(self, tmp_path: Path) -> None:
+        """Struct with both embedding and interface assertion merges both."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""package main
+
+type Closer interface {
+    Close() error
+}
+
+type BaseConn struct{}
+
+type MyConn struct {
+    BaseConn
+    addr string
+}
+
+var _ Closer = &MyConn{}
+""")
+
+        result = analyze_go(tmp_path)
+
+        conn = next((s for s in result.symbols if s.name == "MyConn"), None)
+        assert conn is not None
+        assert conn.meta is not None
+        # Both embedding and assertion should be in base_classes
+        assert "BaseConn" in conn.meta["base_classes"]
+        assert "Closer" in conn.meta["base_classes"]
+
+    def test_named_field_not_embedding(self, tmp_path: Path) -> None:
+        """Named fields should NOT be treated as embeddings."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""package main
+
+type Config struct {
+    name   string
+    logger Logger
+    count  int
+}
+
+type Logger struct{}
+""")
+
+        result = analyze_go(tmp_path)
+
+        config = next((s for s in result.symbols if s.name == "Config"), None)
+        assert config is not None
+        # Named fields are not embeddings, so no base_classes
+        assert config.meta is None or "base_classes" not in config.meta
+
+    def test_qualified_pointer_embedding(self, tmp_path: Path) -> None:
+        """Struct with *pkg.Type embedding extracts base name."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""package main
+
+import "sync"
+
+type SafeCounter struct {
+    *sync.RWMutex
+    count int
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        sc = next((s for s in result.symbols if s.name == "SafeCounter"), None)
+        assert sc is not None
+        assert sc.meta is not None
+        assert "RWMutex" in sc.meta["base_classes"]
+
+    def test_generic_embedding(self, tmp_path: Path) -> None:
+        """Struct with generic type embedding extracts base name."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""package main
+
+type Cache[K comparable, V any] struct {
+    data map[K]V
+}
+
+type User struct{}
+
+type UserCache struct {
+    Cache[string, User]
+    ttl int
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        uc = next((s for s in result.symbols if s.name == "UserCache"), None)
+        assert uc is not None
+        assert uc.meta is not None
+        assert "Cache" in uc.meta["base_classes"]
+
+    def test_empty_struct_no_embeddings(self, tmp_path: Path) -> None:
+        """Empty struct has no embeddings."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""package main
+
+type Empty struct{}
+""")
+
+        result = analyze_go(tmp_path)
+
+        empty = next((s for s in result.symbols if s.name == "Empty"), None)
+        assert empty is not None
+        assert empty.meta is None or "base_classes" not in empty.meta
+
+
 class TestGoPackageQualifiedCallResolution:
     """Tests for correct resolution of package-qualified calls.
 
