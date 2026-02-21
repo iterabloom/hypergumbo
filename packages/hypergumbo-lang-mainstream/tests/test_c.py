@@ -1101,6 +1101,158 @@ static struct entry table[] = {
         assert len(ref_edges) == 1
 
 
+class TestDispatchTableVariableReferences:
+    """Tests for uses_dispatch_table edges from functions to dispatch variables.
+
+    When a function references a dispatch table variable (e.g., get_builtin
+    accesses the ``commands[]`` array), we need an edge from the function to
+    the dispatch table variable. This completes the call chain:
+    cmd_main -> get_builtin -> commands[] -> cmd_add, cmd_commit, ...
+    """
+
+    def test_function_referencing_dispatch_table(self, tmp_path: Path) -> None:
+        """A function that references a dispatch table variable gets an edge."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        c_file = tmp_path / "dispatch.c"
+        c_file.write_text("""
+int cmd_add(int argc, char **argv) { return 0; }
+int cmd_commit(int argc, char **argv) { return 0; }
+
+struct cmd_struct {
+    const char *name;
+    int (*fn)(int, char **);
+};
+
+static struct cmd_struct commands[] = {
+    { "add", cmd_add },
+    { "commit", cmd_commit },
+};
+
+struct cmd_struct *get_builtin(const char *name) {
+    int i;
+    for (i = 0; i < 2; i++) {
+        if (commands[i].name == name)
+            return &commands[i];
+    }
+    return 0;
+}
+""")
+
+        result = analyze_c(tmp_path)
+
+        # Should have uses_dispatch_table edges from get_builtin to commands
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "uses_dispatch_table"
+        ]
+        assert len(ref_edges) >= 1, (
+            f"Expected uses_dispatch_table edges, got none. "
+            f"All edge types: {[e.edge_type for e in result.edges]}"
+        )
+
+        # get_builtin should be the source of the edge
+        get_builtin_sym = next(
+            (s for s in result.symbols if s.name == "get_builtin"),
+            None,
+        )
+        assert get_builtin_sym is not None
+        assert any(e.src == get_builtin_sym.id for e in ref_edges)
+
+    def test_multiple_functions_reference_same_table(self, tmp_path: Path) -> None:
+        """Multiple functions referencing the same dispatch table each get edges."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        c_file = tmp_path / "dispatch.c"
+        c_file.write_text("""
+int cmd_add(int argc, char **argv) { return 0; }
+
+struct cmd_struct {
+    const char *name;
+    int (*fn)(int, char **);
+};
+
+static struct cmd_struct commands[] = {
+    { "add", cmd_add },
+};
+
+void list_builtins(void) {
+    int i;
+    for (i = 0; i < 1; i++)
+        puts(commands[i].name);
+}
+
+struct cmd_struct *find_builtin(const char *name) {
+    int i;
+    for (i = 0; i < 1; i++)
+        if (commands[i].name == name)
+            return &commands[i];
+    return 0;
+}
+""")
+
+        result = analyze_c(tmp_path)
+
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "uses_dispatch_table"
+        ]
+
+        # Both list_builtins and find_builtin reference commands[]
+        src_names = set()
+        for edge in ref_edges:
+            sym = next(
+                (s for s in result.symbols if s.id == edge.src), None,
+            )
+            if sym:
+                src_names.add(sym.name)
+
+        assert "list_builtins" in src_names, (
+            f"list_builtins not found in dispatch table refs. Sources: {src_names}"
+        )
+        assert "find_builtin" in src_names, (
+            f"find_builtin not found in dispatch table refs. Sources: {src_names}"
+        )
+
+    def test_no_false_refs_from_unrelated_functions(self, tmp_path: Path) -> None:
+        """Functions that don't reference the dispatch table get no edges."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        c_file = tmp_path / "dispatch.c"
+        c_file.write_text("""
+int cmd_add(int argc, char **argv) { return 0; }
+
+struct cmd_struct {
+    const char *name;
+    int (*fn)(int, char **);
+};
+
+static struct cmd_struct commands[] = {
+    { "add", cmd_add },
+};
+
+void unrelated(void) {
+    puts("hello");
+}
+""")
+
+        result = analyze_c(tmp_path)
+
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "uses_dispatch_table"
+        ]
+
+        # unrelated() should NOT have a uses_dispatch_table edge
+        unrelated_sym = next(
+            (s for s in result.symbols if s.name == "unrelated"), None,
+        )
+        assert unrelated_sym is not None
+        assert not any(e.src == unrelated_sym.id for e in ref_edges), (
+            "unrelated() should not reference the dispatch table"
+        )
+
+
 class TestCDuplicateFunctionNameEdges:
     """Tests for edge extraction when multiple files define the same function.
 

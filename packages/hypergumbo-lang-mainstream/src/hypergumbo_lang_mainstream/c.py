@@ -421,10 +421,16 @@ def _extract_edges(
     # Pattern: static struct Foo table[] = { { "name", func_ptr }, ... };
     # Identifiers in initializer lists that resolve to known functions
     # become dispatches_to edges, reducing orphan rate for C codebases.
+    #
+    # After detecting dispatch tables, we also scan function bodies for
+    # references to the dispatch table variable (e.g., get_builtin accessing
+    # commands[]), creating uses_dispatch_table edges to complete the chain:
+    # cmd_main -> get_builtin -> commands[] -> cmd_add, cmd_commit, ...
     _func_symbols = {
         name: sym for name, sym in global_symbols.items()
         if sym.kind == "function"
     }
+    dispatch_tables: dict[str, str] = {}  # variable name -> stable ID
     for node in iter_tree(tree.root_node):
         if node.type != "init_declarator":
             continue
@@ -482,6 +488,54 @@ def _extract_edges(
                 origin_run_id=run.execution_id,
                 evidence_type="dispatch_table_initializer",
             ))
+
+        # Only record tables that actually have function pointer entries
+        if seen_funcs:
+            dispatch_tables[array_name] = array_src_id
+
+    # Scan function bodies for references to discovered dispatch table
+    # variables, creating uses_dispatch_table edges.  This connects
+    # lookup functions (e.g., get_builtin) to the dispatch table variable,
+    # completing the chain from the caller through to the dispatched targets.
+    if dispatch_tables:
+        str_path = str(file_path)
+        for node in iter_tree(tree.root_node):
+            if node.type != "function_definition":
+                continue
+            func_name = _get_function_name(node, source)
+            if func_name is None:
+                continue  # pragma: no cover - defensive (malformed AST)
+            # Resolve the function symbol from local or global tables
+            func_sym = None
+            if local_symbols and func_name in local_symbols:
+                func_sym = local_symbols[func_name]
+            elif func_name in global_symbols:  # pragma: no cover - fallback
+                gs = global_symbols[func_name]
+                if gs.path == str_path:
+                    func_sym = gs
+            if func_sym is None:
+                continue  # pragma: no cover - defensive
+            # Scan function body for dispatch table variable references
+            body = node.child_by_field_name("body")
+            if body is None:
+                continue  # pragma: no cover - defensive
+            seen_tables: set[str] = set()
+            for inner in iter_tree(body):
+                if inner.type != "identifier":
+                    continue
+                name = node_text(inner, source)
+                if name in dispatch_tables and name not in seen_tables:
+                    seen_tables.add(name)
+                    edges.append(Edge.create(
+                        src=func_sym.id,
+                        dst=dispatch_tables[name],
+                        edge_type="uses_dispatch_table",
+                        line=inner.start_point[0] + 1,
+                        confidence=0.85,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        evidence_type="dispatch_table_reference",
+                    ))
 
     return edges
 
