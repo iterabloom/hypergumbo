@@ -1117,3 +1117,62 @@ void test() {
         assert len(inst_edges) >= 1
         assert any("Button" in e.dst for e in inst_edges)
 
+
+class TestCppStructEnumDefinitionOnly:
+    """Tests that only struct/enum definitions (with bodies) produce symbols.
+
+    Same fix as C: references like ``struct stat sb;`` and forward
+    declarations ``struct Foo;`` should not create struct symbols.
+    """
+
+    def test_struct_definition_creates_symbol(self, tmp_path: Path) -> None:
+        """struct Point { ... } → creates struct symbol."""
+        (tmp_path / "types.cpp").write_text("""
+struct Point {
+    int x;
+    int y;
+};
+""")
+        result = analyze_cpp(tmp_path)
+        structs = [s for s in result.symbols if s.kind == "struct"]
+        assert len(structs) == 1
+        assert structs[0].name == "Point"
+
+    def test_struct_reference_does_not_create_symbol(self, tmp_path: Path) -> None:
+        """struct stat sb; → does NOT create struct symbol."""
+        (tmp_path / "main.cpp").write_text("""
+void process() {
+    struct stat sb;
+}
+""")
+        result = analyze_cpp(tmp_path)
+        structs = [s for s in result.symbols if s.kind == "struct"]
+        assert len(structs) == 0, (
+            f"Struct references should not create symbols, "
+            f"found: {[s.name for s in structs]}"
+        )
+
+    def test_enum_definition_creates_symbol(self, tmp_path: Path) -> None:
+        """enum Color { RED, GREEN } → creates enum symbol."""
+        (tmp_path / "types.cpp").write_text("""
+enum Color { RED, GREEN, BLUE };
+""")
+        result = analyze_cpp(tmp_path)
+        enums = [s for s in result.symbols if s.kind == "enum"]
+        assert len(enums) == 1
+        assert enums[0].name == "Color"
+
+    def test_enum_reference_does_not_create_symbol(self, tmp_path: Path) -> None:
+        """enum Color c; → does NOT create enum symbol."""
+        (tmp_path / "main.cpp").write_text("""
+void process() {
+    enum Color c;
+}
+""")
+        result = analyze_cpp(tmp_path)
+        enums = [s for s in result.symbols if s.kind == "enum"]
+        assert len(enums) == 0, (
+            f"Enum references should not create symbols, "
+            f"found: {[s.name for s in enums]}"
+        )
+

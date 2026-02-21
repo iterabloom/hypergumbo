@@ -1166,3 +1166,103 @@ int cmd_main(int argc, const char **argv) {
             f"found: {beta_edges}"
         )
 
+
+class TestCStructEnumDefinitionOnly:
+    """Tests that only struct/enum *definitions* (with bodies) produce symbols.
+
+    In C, ``struct stat sb;`` is a variable declaration that references
+    the struct type — it should NOT produce a struct symbol. Only
+    definitions with bodies (``struct Point { int x; int y; };``) should
+    create symbols.  Without this filter, a repo like git gets ~27K
+    orphan struct symbols from type references in function bodies,
+    inflating the orphan rate from ~25% to ~60%.
+    """
+
+    def test_struct_definition_creates_symbol(self, tmp_path: Path) -> None:
+        """struct Point { int x; int y; } → creates 'Point' struct symbol."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "types.c").write_text("""
+struct Point {
+    int x;
+    int y;
+};
+""")
+        result = analyze_c(tmp_path)
+        structs = [s for s in result.symbols if s.kind == "struct"]
+        assert len(structs) == 1
+        assert structs[0].name == "Point"
+
+    def test_struct_reference_does_not_create_symbol(self, tmp_path: Path) -> None:
+        """struct stat sb; → does NOT create a 'stat' struct symbol."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "main.c").write_text("""
+void process(void) {
+    struct stat sb;
+    struct dirent entry;
+}
+""")
+        result = analyze_c(tmp_path)
+        structs = [s for s in result.symbols if s.kind == "struct"]
+        assert len(structs) == 0, (
+            f"Struct variable declarations should not create symbols, "
+            f"found: {[s.name for s in structs]}"
+        )
+
+    def test_struct_forward_decl_does_not_create_symbol(self, tmp_path: Path) -> None:
+        """struct Point; → does NOT create a 'Point' struct symbol."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "fwd.c").write_text("""
+struct Point;
+""")
+        result = analyze_c(tmp_path)
+        structs = [s for s in result.symbols if s.kind == "struct"]
+        assert len(structs) == 0, (
+            f"Forward declarations should not create struct symbols, "
+            f"found: {[s.name for s in structs]}"
+        )
+
+    def test_typedef_struct_creates_symbol(self, tmp_path: Path) -> None:
+        """typedef struct Color { ... } Color; → creates struct symbol."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "types.c").write_text("""
+typedef struct Color {
+    int r, g, b;
+} Color;
+""")
+        result = analyze_c(tmp_path)
+        structs = [s for s in result.symbols if s.kind == "struct"]
+        assert len(structs) >= 1
+        assert any(s.name == "Color" for s in structs)
+
+    def test_enum_definition_creates_symbol(self, tmp_path: Path) -> None:
+        """enum Color { RED, GREEN, BLUE } → creates enum symbol."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "types.c").write_text("""
+enum Color { RED, GREEN, BLUE };
+""")
+        result = analyze_c(tmp_path)
+        enums = [s for s in result.symbols if s.kind == "enum"]
+        assert len(enums) == 1
+        assert enums[0].name == "Color"
+
+    def test_enum_reference_does_not_create_symbol(self, tmp_path: Path) -> None:
+        """enum Color c; → does NOT create an 'Color' enum symbol."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "main.c").write_text("""
+void process(void) {
+    enum Color c;
+}
+""")
+        result = analyze_c(tmp_path)
+        enums = [s for s in result.symbols if s.kind == "enum"]
+        assert len(enums) == 0, (
+            f"Enum variable declarations should not create symbols, "
+            f"found: {[s.name for s in enums]}"
+        )
+

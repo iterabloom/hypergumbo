@@ -277,9 +277,11 @@ def _extract_symbols_from_tree(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol
 
-        # Struct declaration
+        # Struct definition (with body only — skip references and
+        # forward declarations like ``struct Foo;``)
         elif node.type == "struct_specifier":
-            name_node = _find_child_by_type(node, "type_identifier")
+            has_body = any(c.type == "field_declaration_list" for c in node.children)
+            name_node = _find_child_by_type(node, "type_identifier") if has_body else None
             if name_node:
                 name = _node_text(name_node, source)
                 start_line = node.start_point[0] + 1
@@ -308,9 +310,11 @@ def _extract_symbols_from_tree(
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[name] = symbol
 
-        # Enum declaration
+        # Enum definition (with body only — skip references and
+        # forward declarations)
         elif node.type == "enum_specifier":
-            name_node = _find_child_by_type(node, "type_identifier")
+            has_body = any(c.type == "enumerator_list" for c in node.children)
+            name_node = _find_child_by_type(node, "type_identifier") if has_body else None
             if name_node:
                 name = _node_text(name_node, source)
                 start_line = node.start_point[0] + 1

@@ -260,9 +260,11 @@ def _extract_symbols(
                         )
                         symbols.append(symbol)
 
-        # Struct declarations
+        # Struct definitions (with body only — skip references like
+        # ``struct stat sb;`` and forward declarations ``struct Foo;``)
         elif node.type == "struct_specifier":
-            name = _find_identifier_in_children(node, source)
+            has_body = any(c.type == "field_declaration_list" for c in node.children)
+            name = _find_identifier_in_children(node, source) if has_body else None
             if name:
                 span = Span(
                     start_line=node.start_point[0] + 1,
@@ -282,9 +284,11 @@ def _extract_symbols(
                 )
                 symbols.append(symbol)
 
-        # Enum declarations
+        # Enum definitions (with body only — skip references like
+        # ``enum Color c;`` and forward declarations ``enum Color;``)
         elif node.type == "enum_specifier":
-            name = _find_identifier_in_children(node, source)
+            has_body = any(c.type == "enumerator_list" for c in node.children)
+            name = _find_identifier_in_children(node, source) if has_body else None
             if name:
                 span = Span(
                     start_line=node.start_point[0] + 1,
