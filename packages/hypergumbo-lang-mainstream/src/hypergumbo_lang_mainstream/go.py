@@ -700,6 +700,7 @@ def _extract_go_var_types(
         var c Client              → c has type Client (in enclosing func)
         var p *Client             → p has type Client (in enclosing func)
         func foo(s *Server)       → s has type Server (in foo)
+        func (s *Server) Foo()    → s has type Server (in Server.Foo)
 
     Only the first assignment to a variable within a function wins
     (single-assignment SSA assumption per function scope). Built-in types
@@ -819,6 +820,36 @@ def _extract_go_var_types(
             type_name = _type_identifier_from_node(type_node, source)
             if type_name and type_name not in _GO_BUILTINS:
                 func_vars[var_name] = type_name
+
+        # Pattern 4: Method receiver  func (s *Server) Foo()
+        # The receiver variable (e.g. ``s``) has the receiver type (e.g.
+        # ``Server``), scoped to the method's qualified name (``Server.Foo``).
+        # This enables self-method calls like ``s.Close()`` inside
+        # ``Server.Cleanup()`` to resolve via typed_receiver_call.
+        elif node.type == "method_declaration":
+            receiver_node = find_child_by_field(node, "receiver")
+            name_node = find_child_by_field(node, "name")
+            if receiver_node is None or name_node is None:
+                continue  # pragma: no cover - well-formed Go methods have both
+            method_name = node_text(name_node, source)
+            receiver_type = _extract_receiver_type_from_node(
+                receiver_node, source,
+            )
+            if not receiver_type:
+                continue  # pragma: no cover - well-formed Go receivers have types
+            qualified_name = f"{receiver_type}.{method_name}"
+            # Extract receiver parameter name from the parameter_declaration
+            for child in receiver_node.children:
+                if child.type == "parameter_declaration":
+                    for param_child in child.children:
+                        if param_child.type == "identifier":
+                            var_name = node_text(param_child, source)
+                            func_vars = scoped_var_types.setdefault(
+                                qualified_name, {},
+                            )
+                            func_vars[var_name] = receiver_type
+                            break
+                    break
 
     return scoped_var_types
 

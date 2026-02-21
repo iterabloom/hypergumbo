@@ -2780,6 +2780,54 @@ func closeAll(items []interface{}) {
             )
 
 
+    def test_method_receiver_self_call_resolves(self, tmp_path: Path) -> None:
+        """s.Close() inside func (s *Server) Cleanup() → typed_receiver_call.
+
+        Method receivers should be tracked as typed variables so that
+        self-method calls (calling another method on the same receiver)
+        resolve via typed_receiver_call instead of falling through to
+        the ambiguity guard.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Server struct{}
+type Client struct{}
+type Worker struct{}
+
+func (s *Server) Close() {}
+func (c *Client) Close() {}
+func (w *Worker) Close() {}
+
+func (s *Server) Cleanup() {
+    s.Close()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        cleanup_calls = [e for e in call_edges if "Cleanup" in e.src]
+
+        close_calls = [e for e in cleanup_calls if "Close" in e.dst]
+        assert len(close_calls) >= 1, (
+            f"Cleanup should have a call edge for s.Close(), found: {cleanup_calls}"
+        )
+
+        # Should resolve to Server.Close via typed receiver — NOT ambiguous
+        assert any("Server.Close" in e.dst for e in close_calls), (
+            f"s.Close() in Server.Cleanup should resolve to Server.Close, "
+            f"found: {[e.dst for e in close_calls]}"
+        )
+        for edge in close_calls:
+            assert edge.evidence_type == "typed_receiver_call", (
+                f"Self-method call should use typed_receiver_call, "
+                f"got '{edge.evidence_type}'"
+            )
+
+
 class TestGoEnclosingFunctionAttribution:
     """Tests for correct enclosing function attribution with same-name methods.
 
