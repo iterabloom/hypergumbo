@@ -609,6 +609,7 @@ def _extract_symbols_from_file(
                     modifiers=_extract_modifiers(node),
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[name] = symbol
 
         # Interface declaration
@@ -635,6 +636,7 @@ def _extract_symbols_from_file(
                     modifiers=_extract_modifiers(node),
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[name] = symbol
 
         # Struct declaration
@@ -661,6 +663,7 @@ def _extract_symbols_from_file(
                     modifiers=_extract_modifiers(node),
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[name] = symbol
 
         # Enum declaration
@@ -687,6 +690,7 @@ def _extract_symbols_from_file(
                     modifiers=_extract_modifiers(node),
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[name] = symbol
 
         # Method declaration
@@ -740,6 +744,7 @@ def _extract_symbols_from_file(
                     modifiers=modifiers,
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
 
@@ -782,6 +787,7 @@ def _extract_symbols_from_file(
                     modifiers=modifiers,
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
 
@@ -812,6 +818,7 @@ def _extract_symbols_from_file(
                     modifiers=_extract_modifiers(node),
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
 

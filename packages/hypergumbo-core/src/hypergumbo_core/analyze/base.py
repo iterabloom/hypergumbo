@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import re as _re
 import time
 import warnings
 from dataclasses import dataclass, field
@@ -305,10 +306,88 @@ def visibility_from_modifiers(modifiers: list[str] | None) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Signature normalization utilities (ADR-0014 §3)
+# Doc comment extraction
 # ---------------------------------------------------------------------------
 
-import re as _re
+_DOC_COMMENT_TYPES = frozenset({
+    "comment",
+    "block_comment",
+    "line_comment",
+    "multiline_comment",
+})
+
+# Prefixes to strip from comment text, in order of specificity.
+_COMMENT_STRIP_RE = _re.compile(
+    r"^\s*(?:"
+    r"/\*\*\s*"   # /** (Javadoc/JSDoc/KDoc/PHPDoc opener)
+    r"|\*/\s*"    # */ (block closer)
+    r"|\*\s?"     # * (block continuation line)
+    r"|///\s?"    # /// (Rust/C#/Swift)
+    r"|//!\s?"    # //! (Rust inner doc)
+    r"|//\s?"     # // (Go)
+    r"|#\s?"      # # (Ruby/Python)
+    r")"
+)
+
+# Tag lines to skip (Javadoc @param, @returns, etc.)
+_DOC_TAG_RE = _re.compile(r"^\s*@\w+")
+
+
+def extract_doc_comment(
+    node: "tree_sitter.Node",
+    source: bytes,
+    max_len: int = 80,
+) -> str | None:
+    """Extract first-line summary of the doc comment preceding a declaration node.
+
+    Walks backwards through prev_named_sibling collecting consecutive comment
+    nodes with no blank-line gap.  Cleans comment delimiters and returns the
+    first non-empty content line, truncated to *max_len*.
+
+    Works across languages: handles ``/** */`` (Java/Kotlin/JS/PHP),
+    ``///`` (Rust/C#/Swift), ``//`` (Go), and ``#`` (Ruby) comment styles.
+    """
+    # Collect comment nodes walking backwards from the declaration
+    comment_nodes: list["tree_sitter.Node"] = []
+    prev = getattr(node, "prev_named_sibling", None)
+    while prev is not None and prev.type in _DOC_COMMENT_TYPES:
+        # Stop on blank-line gap (more than 1 line between consecutive nodes)
+        if comment_nodes:
+            last_collected = comment_nodes[-1]
+            if last_collected.start_point[0] - prev.end_point[0] > 1:
+                break
+        comment_nodes.append(prev)
+        prev = prev.prev_named_sibling
+
+    if not comment_nodes:
+        return None
+
+    # Reverse so we process top-to-bottom
+    comment_nodes.reverse()
+
+    # Decode and clean comment text
+    for cnode in comment_nodes:
+        raw = source[cnode.start_byte:cnode.end_byte].decode("utf-8", errors="replace")
+        for raw_line in raw.split("\n"):
+            line = _COMMENT_STRIP_RE.sub("", raw_line)
+            # Strip trailing block-comment closer
+            if line.rstrip().endswith("*/"):
+                line = line.rstrip()[:-2]
+            line = line.strip()
+            # Skip empty lines, closing delimiters, and tag lines
+            if not line or line == "/" or _DOC_TAG_RE.match(line):
+                continue
+            # Found the first content line — truncate and return
+            if len(line) > max_len:
+                return line[: max_len - 1] + "\u2026"
+            return line
+
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Signature normalization utilities (ADR-0014 §3)
+# ---------------------------------------------------------------------------
 
 
 def strip_fqn_prefix(type_name: str) -> str:
@@ -1463,13 +1542,16 @@ class TreeSitterAnalyzer:
                 )
                 analysis.symbols.insert(0, file_sym)
 
-            # Auto-compute shape_id for symbols with associated nodes (ADR-0014 §1)
+            # Auto-compute shape_id and docstring for symbols with nodes (ADR-0014 §1)
             if analysis.node_for_symbol:
                 sym_by_id = {s.id: s for s in analysis.symbols}
                 for sym_id, ts_node in analysis.node_for_symbol.items():
                     sym = sym_by_id.get(sym_id)
-                    if sym is not None and sym.shape_id is None:
-                        sym.shape_id = self.compute_shape_id(ts_node)
+                    if sym is not None:
+                        if sym.shape_id is None:
+                            sym.shape_id = self.compute_shape_id(ts_node)
+                        if sym.docstring is None:
+                            sym.docstring = extract_doc_comment(ts_node, source)
 
             # Extract import aliases for Pass 2
             import_aliases = self.get_import_aliases(tree, source)

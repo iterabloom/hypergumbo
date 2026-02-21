@@ -1646,6 +1646,7 @@ def _extract_symbols_from_file(
                     signature=_extract_ruby_signature(node, source),
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[method_name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
 
@@ -1681,6 +1682,7 @@ def _extract_symbols_from_file(
                     signature=_extract_ruby_signature(node, source),
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[method_name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
 
@@ -1723,6 +1725,7 @@ def _extract_symbols_from_file(
                     meta=meta,
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[class_name] = symbol
 
         # Module definition
@@ -1749,6 +1752,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run_id,
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[module_name] = symbol
 
     # Extract require hints for disambiguation (stored in import_aliases)

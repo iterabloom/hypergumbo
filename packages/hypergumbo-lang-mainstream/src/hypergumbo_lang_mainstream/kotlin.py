@@ -42,6 +42,7 @@ from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    extract_doc_comment,
     find_child_by_type,
     iter_tree,
     make_file_id,
@@ -455,6 +456,7 @@ def _extract_symbols_from_file(
                     origin_run_id=run.execution_id,
                     stable_id=stable_id,
                     signature=signature,
+                    docstring=extract_doc_comment(node, source),
                     modifiers=modifiers,
                 )
                 analysis.symbols.append(symbol)
@@ -498,6 +500,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+                    docstring=extract_doc_comment(node, source),
                     modifiers=_extract_modifiers(node),
                 )
                 analysis.symbols.append(symbol)
@@ -528,6 +531,7 @@ def _extract_symbols_from_file(
                     ),
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    docstring=extract_doc_comment(node, source),
                     modifiers=_extract_modifiers(node),
                 )
                 analysis.symbols.append(symbol)

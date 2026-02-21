@@ -309,6 +309,7 @@ def _extract_symbols_from_file(
                     modifiers=modifiers,
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[func_name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
 
@@ -355,6 +356,7 @@ def _extract_symbols_from_file(
                     modifiers=_extract_modifiers_swift(node),
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[type_name] = symbol
 
         # Standalone protocol declaration (for older grammar versions)
@@ -387,6 +389,7 @@ def _extract_symbols_from_file(
                     modifiers=_extract_modifiers_swift(node),
                 )
                 analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[type_name] = symbol
 
     return analysis

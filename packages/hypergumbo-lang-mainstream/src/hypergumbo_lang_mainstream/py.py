@@ -1453,6 +1453,8 @@ def _extract_file_analysis(
                     _format_annotation(base) for base in node.bases
                 ]
 
+            _ds = ast.get_docstring(node)
+            _ds_line = _ds.split("\n")[0].strip()[:80] if _ds else None
             symbol = Symbol(
                 id=_make_symbol_id(str(py_file), node.lineno, end_line, node.name, "class"),
                 name=node.name,
@@ -1465,6 +1467,7 @@ def _extract_file_analysis(
                 cyclomatic_complexity=_compute_cyclomatic_complexity(node),
                 lines_of_code=_compute_lines_of_code(node),
                 meta=class_meta if class_meta else None,
+                docstring=_ds_line,
                 modifiers=_python_visibility_modifiers(node.name),
             )
             symbols.append(symbol)
@@ -1519,6 +1522,8 @@ def _extract_file_analysis(
                     if params:
                         method_meta["parameters"] = params
 
+                    _mds = ast.get_docstring(item)
+                    _mds_line = _mds.split("\n")[0].strip()[:80] if _mds else None
                     method_symbol = Symbol(
                         id=_make_symbol_id(str(py_file), item.lineno, method_end_line, method_name, "method"),
                         name=method_name,
@@ -1531,6 +1536,7 @@ def _extract_file_analysis(
                         cyclomatic_complexity=_compute_cyclomatic_complexity(item),
                         lines_of_code=_compute_lines_of_code(item),
                         signature=_format_function_signature(item),
+                        docstring=_mds_line,
                         meta=method_meta if method_meta else None,
                         modifiers=_python_visibility_modifiers(method_name),
                     )
@@ -1596,6 +1602,8 @@ def _extract_file_analysis(
                 else:
                     func_stable_id = _compute_stable_id(node)
 
+                _fds = ast.get_docstring(node)
+                _fds_line = _fds.split("\n")[0].strip()[:80] if _fds else None
                 symbol = Symbol(
                     id=_make_symbol_id(str(py_file), node.lineno, end_line, node.name, "function"),
                     name=node.name,
@@ -1609,6 +1617,7 @@ def _extract_file_analysis(
                     cyclomatic_complexity=_compute_cyclomatic_complexity(node),
                     lines_of_code=_compute_lines_of_code(node),
                     signature=func_sig,
+                    docstring=_fds_line,
                     modifiers=func_modifiers,
                 )
                 symbols.append(symbol)

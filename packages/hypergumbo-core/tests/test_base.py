@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    extract_doc_comment,
     find_child_by_field,
     find_child_by_type,
     is_grammar_available,
@@ -759,3 +760,176 @@ class TestFileAnalysis:
 
         assert analysis.symbols == []
         assert analysis.symbol_by_name == {}
+
+
+def _make_comment_node(
+    text: str,
+    node_type: str = "comment",
+    start_line: int = 0,
+    end_line: int | None = None,
+    start_byte: int = 0,
+    prev_named_sibling: object = None,
+) -> MagicMock:
+    """Create a mock tree-sitter comment node."""
+    if end_line is None:
+        end_line = start_line
+    end_byte = start_byte + len(text.encode("utf-8"))
+    node = MagicMock()
+    node.type = node_type
+    node.start_point = (start_line, 0)
+    node.end_point = (end_line, 0)
+    node.start_byte = start_byte
+    node.end_byte = end_byte
+    node.prev_named_sibling = prev_named_sibling
+    return node
+
+
+class TestExtractDocComment:
+    """Tests for extract_doc_comment helper."""
+
+    def test_no_comment(self) -> None:
+        """Returns None when no comment precedes the node."""
+        decl = MagicMock()
+        decl.prev_named_sibling = None
+        assert extract_doc_comment(decl, b"") is None
+
+    def test_non_comment_sibling(self) -> None:
+        """Returns None when preceding sibling is not a comment."""
+        sibling = MagicMock()
+        sibling.type = "function_declaration"
+        decl = MagicMock()
+        decl.prev_named_sibling = sibling
+        assert extract_doc_comment(decl, b"") is None
+
+    def test_block_comment_javadoc(self) -> None:
+        """Extracts from /** Javadoc */ style block comment."""
+        comment_text = b"/** Handles user authentication. */"
+        cnode = _make_comment_node(
+            comment_text.decode(),
+            node_type="block_comment",
+            start_byte=0,
+        )
+        cnode.prev_named_sibling = None
+        decl = MagicMock()
+        decl.prev_named_sibling = cnode
+        result = extract_doc_comment(decl, comment_text)
+        assert result == "Handles user authentication."
+
+    def test_line_comment_rust_triple_slash(self) -> None:
+        """Extracts from /// rustdoc style line comments."""
+        source = b"/// Computes the hash value."
+        cnode = _make_comment_node(
+            source.decode(),
+            node_type="line_comment",
+            start_byte=0,
+        )
+        cnode.prev_named_sibling = None
+        decl = MagicMock()
+        decl.prev_named_sibling = cnode
+        result = extract_doc_comment(decl, source)
+        assert result == "Computes the hash value."
+
+    def test_go_double_slash(self) -> None:
+        """Extracts from // Go doc comments."""
+        source = b"// NewServer creates a new server."
+        cnode = _make_comment_node(
+            source.decode(),
+            node_type="comment",
+            start_byte=0,
+        )
+        cnode.prev_named_sibling = None
+        decl = MagicMock()
+        decl.prev_named_sibling = cnode
+        result = extract_doc_comment(decl, source)
+        assert result == "NewServer creates a new server."
+
+    def test_ruby_hash_comment(self) -> None:
+        """Extracts from # Ruby doc comments."""
+        source = b"# Validates the input data."
+        cnode = _make_comment_node(
+            source.decode(),
+            node_type="comment",
+            start_byte=0,
+        )
+        cnode.prev_named_sibling = None
+        decl = MagicMock()
+        decl.prev_named_sibling = cnode
+        result = extract_doc_comment(decl, source)
+        assert result == "Validates the input data."
+
+    def test_skips_tag_lines(self) -> None:
+        """Skips @param, @returns etc and returns first content line."""
+        source = b"/** @param x the value\n * Process data.\n */"
+        cnode = _make_comment_node(
+            source.decode(),
+            node_type="block_comment",
+            start_byte=0,
+        )
+        cnode.prev_named_sibling = None
+        decl = MagicMock()
+        decl.prev_named_sibling = cnode
+        result = extract_doc_comment(decl, source)
+        assert result == "Process data."
+
+    def test_truncates_long_lines(self) -> None:
+        """Truncates lines longer than max_len."""
+        long_text = "A" * 100
+        source = f"// {long_text}".encode()
+        cnode = _make_comment_node(
+            source.decode(),
+            node_type="comment",
+            start_byte=0,
+        )
+        cnode.prev_named_sibling = None
+        decl = MagicMock()
+        decl.prev_named_sibling = cnode
+        result = extract_doc_comment(decl, source, max_len=80)
+        assert result is not None
+        assert len(result) == 80
+        assert result.endswith("\u2026")
+
+    def test_blank_line_gap_stops_collection(self) -> None:
+        """Stops collecting when there is a blank line gap between comments."""
+        # First comment on line 0, second on line 3 (gap > 1)
+        source = b"// Unrelated comment.\n\n\n// Actual doc."
+        # The "actual doc" node is closer to the declaration
+        actual = _make_comment_node(
+            "// Actual doc.",
+            start_line=3,
+            start_byte=len(b"// Unrelated comment.\n\n\n"),
+        )
+        actual.end_byte = len(source)
+        unrelated = _make_comment_node(
+            "// Unrelated comment.",
+            start_line=0,
+            start_byte=0,
+        )
+        unrelated.end_byte = len(b"// Unrelated comment.")
+        # Link: decl -> actual -> unrelated
+        actual.prev_named_sibling = unrelated
+        unrelated.prev_named_sibling = None
+        decl = MagicMock()
+        decl.prev_named_sibling = actual
+        result = extract_doc_comment(decl, source)
+        # Should get "Actual doc." not "Unrelated comment."
+        assert result == "Actual doc."
+
+    def test_comment_all_tags(self) -> None:
+        """Returns None when comment contains only tag lines."""
+        source = b"/** @param x val\n * @returns nothing\n */"
+        cnode = _make_comment_node(
+            source.decode(),
+            node_type="block_comment",
+            start_byte=0,
+        )
+        cnode.prev_named_sibling = None
+        decl = MagicMock()
+        decl.prev_named_sibling = cnode
+        result = extract_doc_comment(decl, source)
+        assert result is None
+
+    def test_no_prev_named_sibling_attr(self) -> None:
+        """Handles nodes without prev_named_sibling attribute (MockNode)."""
+        decl = MagicMock(spec=[])  # No attributes
+        result = extract_doc_comment(decl, b"")
+        assert result is None

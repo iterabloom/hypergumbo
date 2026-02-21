@@ -26,7 +26,6 @@ effectively while remaining coherent.
 from __future__ import annotations
 
 import os
-import warnings
 from enum import Enum
 from pathlib import Path
 from typing import List, Optional
@@ -3664,68 +3663,6 @@ def _extract_readme_internal_links(
     return resolved
 
 
-def _extract_python_docstrings(
-    repo_root: Path, symbols: list[Symbol], max_len: int = 80
-) -> dict[str, str]:
-    """Extract docstrings for Python symbols.
-
-    Reads Python files and extracts the first line of docstrings for
-    functions and classes. Returns a dict mapping symbol IDs to docstring
-    summaries (truncated to max_len).
-
-    Args:
-        repo_root: Repository root path.
-        symbols: List of symbols to extract docstrings for.
-        max_len: Maximum length of docstring summary (default 80).
-
-    Returns:
-        Dict mapping symbol ID to first-line docstring summary.
-    """
-    import ast
-
-    docstrings: dict[str, str] = {}
-
-    # Group symbols by file for efficient reading
-    symbols_by_file: dict[str, list[Symbol]] = {}
-    for sym in symbols:
-        if sym.language == "python" and sym.kind in ("function", "class", "method"):
-            symbols_by_file.setdefault(sym.path, []).append(sym)
-
-    for file_path, file_symbols in symbols_by_file.items():
-        try:
-            full_path = repo_root / file_path if not Path(file_path).is_absolute() else Path(file_path)
-            if not full_path.exists():
-                continue
-            source = full_path.read_text(encoding="utf-8", errors="replace")
-            # Suppress SyntaxWarning from invalid escape sequences in analyzed code
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category=SyntaxWarning)
-                tree = ast.parse(source)
-        except (SyntaxError, OSError):
-            continue
-
-        # Build a map of (start_line, name) -> docstring
-        node_docstrings: dict[tuple[int, str], str] = {}
-
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                docstring = ast.get_docstring(node)
-                if docstring:
-                    # Take first line only
-                    first_line = docstring.split("\n")[0].strip()
-                    if len(first_line) > max_len:
-                        first_line = first_line[:max_len - 1] + "…"
-                    node_docstrings[(node.lineno, node.name)] = first_line
-
-        # Match symbols to docstrings
-        for sym in file_symbols:
-            key = (sym.span.start_line, sym.name)
-            if key in node_docstrings:
-                docstrings[sym.id] = node_docstrings[key]
-
-    return docstrings
-
-
 # Common programming terms to exclude from domain vocabulary
 _COMMON_TERMS = frozenset({
     # English stopwords
@@ -6015,9 +5952,8 @@ def generate_sketch(
             # This ensures Key Symbols section appears for every analyzable project
             max_symbols = MIN_KEY_SYMBOLS
 
-        # Extract docstrings for Python symbols
-        docstrings = _extract_python_docstrings(repo_root, symbols)
-        # Get signatures from Symbol.signature field (now includes all languages)
+        # Get docstrings and signatures from Symbol fields (all languages)
+        docstrings = {s.id: s.docstring for s in symbols if s.docstring}
         signatures = {s.id: s.signature for s in symbols if s.signature}
 
         # Track selected symbols for stats

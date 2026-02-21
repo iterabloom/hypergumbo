@@ -73,6 +73,7 @@ from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    extract_doc_comment,
     iter_tree,
     make_symbol_id as _base_make_symbol_id,
     make_typed_stable_id,
@@ -683,6 +684,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+                    docstring=extract_doc_comment(node, source),
                 )
                 symbols.append(symbol)
 
@@ -720,6 +722,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+                    docstring=extract_doc_comment(node, source),
                 )
                 symbols.append(symbol)
 
@@ -744,6 +747,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    docstring=extract_doc_comment(node, source),
                 )
                 symbols.append(symbol)
 
@@ -809,6 +813,7 @@ def _extract_symbols(
                     meta=meta,
                     stable_id=stable_id,
                     signature=signature,
+                    docstring=extract_doc_comment(node, source),
                     modifiers=modifiers,
                 )
                 symbols.append(symbol)
@@ -848,6 +853,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     stable_id=stable_id,
                     signature=signature,
+                    docstring=extract_doc_comment(node, source),
                     modifiers=modifiers,
                 )
                 symbols.append(symbol)

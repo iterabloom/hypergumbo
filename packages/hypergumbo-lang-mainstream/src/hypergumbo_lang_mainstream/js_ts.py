@@ -63,6 +63,7 @@ from hypergumbo_core.symbol_resolution import NameResolver, ListNameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
+    extract_doc_comment,
     find_child_by_field,
     iter_tree,
     make_route_stable_id,
@@ -2052,6 +2053,7 @@ def _extract_symbols(
                     origin_run_id=run.execution_id,
                     stable_id=stable_id,
                     signature=signature,
+                    docstring=extract_doc_comment(node, source),
                 )
                 symbols.append(symbol)
 
@@ -2103,6 +2105,7 @@ def _extract_symbols(
                             origin_run_id=run.execution_id,
                             stable_id=stable_id,
                             signature=signature,
+                            docstring=extract_doc_comment(node, source),
                         )
                         symbols.append(symbol)
 
@@ -2138,6 +2141,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+                    docstring=extract_doc_comment(node, source),
                 )
                 symbols.append(symbol)
 
@@ -2160,6 +2164,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    docstring=extract_doc_comment(node, source),
                 )
                 symbols.append(symbol)
 
@@ -2182,6 +2187,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    docstring=extract_doc_comment(node, source),
                 )
                 symbols.append(symbol)
 
@@ -2208,6 +2214,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    docstring=extract_doc_comment(node, source),
                 )
                 symbols.append(symbol)
 
@@ -2270,6 +2277,7 @@ def _extract_symbols(
                     stable_id=stable_id,
                     meta=meta,
                     signature=signature,
+                    docstring=extract_doc_comment(node, source),
                 )
                 symbols.append(symbol)
 
@@ -2304,6 +2312,7 @@ def _extract_symbols(
                             origin_run_id=run.execution_id,
                             stable_id=stable_id,
                             signature=signature,
+                            docstring=extract_doc_comment(node, source),
                         )
                         symbols.append(symbol)
                     break  # Only handle one function_declaration per export
