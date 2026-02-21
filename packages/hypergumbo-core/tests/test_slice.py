@@ -1748,14 +1748,16 @@ class TestReverseSliceClassExpansion:
 
 
 class TestForwardSliceInheritanceEdges:
-    """Forward slices should NOT traverse extends/implements edges.
+    """Forward slices should NOT traverse structural/polymorphic edges.
 
-    These structural IS-A edges cause BFS explosion through shared ancestors.
-    For example, if VoiceController extends ApplicationController, a forward
-    slice from VoiceController should NOT traverse to ApplicationController
-    and then fan out to ALL other controllers that also extend it.
+    These edges cause BFS explosion through shared ancestors, containment,
+    or polymorphic dispatch:
+    - extends/implements: VoiceController → ApplicationController fans out
+      to ALL sibling controllers
+    - contains: reaching a class fans out to ALL member methods
+    - dispatches_to: reaching an interface method fans out to ALL implementations
 
-    Behavioral dependencies are captured by calls/dispatches_to/contains edges.
+    Behavioral dependencies are captured by calls edges only in forward slices.
     """
 
     def test_forward_slice_skips_extends_edge(self) -> None:
@@ -1939,6 +1941,95 @@ class TestForwardSliceInheritanceEdges:
         assert admin_ctrl.id not in result.node_ids
         # Parent's dependency should NOT be reached
         assert auth_svc.id not in result.node_ids
+
+    def test_forward_slice_skips_dispatches_to_edge(self) -> None:
+        """Forward slice should not follow dispatches_to edges.
+
+        dispatches_to edges represent polymorphic dispatch: InterfaceMethod
+        might dispatch to any implementation at runtime.  Following these in
+        a forward slice causes fan-out to ALL sibling implementations of the
+        same interface, inflating the slice.
+
+        Example: slicing from S3FileIO.create should not pull in GCSFileIO.create
+        and ADLSFileIO.create via the shared OutputFile.create interface.
+        """
+        # Implementation method we're slicing from
+        s3_create = make_symbol(
+            "S3FileIO.create", kind="method",
+            path="src/s3.java", start_line=1, end_line=20, language="java",
+        )
+        # Interface method
+        iface_create = make_symbol(
+            "OutputFile.create", kind="method",
+            path="src/output.java", start_line=1, end_line=5, language="java",
+        )
+        # Sibling implementation that should NOT be pulled in
+        gcs_create = make_symbol(
+            "GCSFileIO.create", kind="method",
+            path="src/gcs.java", start_line=1, end_line=20, language="java",
+        )
+        # Direct call dependency that SHOULD be found
+        s3_client = make_symbol(
+            "S3Client.putObject", kind="method",
+            path="src/s3client.java", start_line=1, end_line=10, language="java",
+        )
+
+        edges = [
+            # s3 impl calls s3 client (real dependency)
+            make_edge(s3_create, s3_client, "calls"),
+            # interface dispatches_to both implementations
+            make_edge(iface_create, s3_create, "dispatches_to"),
+            make_edge(iface_create, gcs_create, "dispatches_to"),
+            # s3 impl calls the interface method
+            make_edge(s3_create, iface_create, "calls"),
+        ]
+
+        query = SliceQuery(entrypoint="S3FileIO.create", max_hops=3)
+        result = slice_graph(
+            [s3_create, iface_create, gcs_create, s3_client], edges, query,
+        )
+
+        # Direct call dependency is reachable
+        assert s3_client.id in result.node_ids
+        # Interface method reachable via the calls edge s3_create -> iface_create
+        assert iface_create.id in result.node_ids
+        # Sibling implementation should NOT be reachable (dispatches_to skipped)
+        assert gcs_create.id not in result.node_ids, (
+            "Forward slice should not follow dispatches_to edges to sibling "
+            "implementations — this inflates slices with unrelated code"
+        )
+
+    def test_reverse_slice_still_follows_dispatches_to(self) -> None:
+        """Reverse slice should follow dispatches_to edges.
+
+        dispatches_to goes FROM interface TO implementation.  A reverse slice
+        from an implementation follows the edge backwards and discovers the
+        interface method (useful for understanding which abstraction this
+        implementation serves).
+        """
+        iface_method = make_symbol(
+            "OutputFile.create", kind="method",
+            path="src/output.java", start_line=1, end_line=5, language="java",
+        )
+        impl = make_symbol(
+            "S3FileIO.create", kind="method",
+            path="src/s3.java", start_line=1, end_line=20, language="java",
+        )
+
+        edges = [
+            make_edge(iface_method, impl, "dispatches_to"),
+        ]
+
+        # Reverse slice from implementation finds interface via dispatches_to
+        query = SliceQuery(
+            entrypoint="S3FileIO.create", max_hops=3, reverse=True,
+        )
+        result = slice_graph(
+            [iface_method, impl], edges, query,
+        )
+
+        # Interface method should be found (dispatches_to reversed)
+        assert iface_method.id in result.node_ids
 
 
 class TestForwardSliceContainsEdges:
