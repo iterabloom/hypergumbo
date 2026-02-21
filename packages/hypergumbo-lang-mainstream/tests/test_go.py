@@ -3092,6 +3092,94 @@ func handleFormat(x interface{}) {
         )
 
 
+class TestGoBuiltinTypeConversions:
+    """Tests that Go builtin type conversions don't resolve to user symbols.
+
+    In Go, ``string(x)``, ``int(x)``, ``float64(x)`` etc. are type
+    conversions, not function calls.  Tree-sitter parses them as
+    ``call_expression`` with an ``identifier`` callee.  Without filtering,
+    ``string(result["id"])`` resolves to any user-defined method named
+    ``string`` — e.g. ``recalcRequest.string`` had 577 false-positive
+    callers in forgejo because Go type conversions shadowed method names.
+    """
+
+    def test_string_conversion_not_resolved(self, tmp_path: Path) -> None:
+        """string(x) should NOT resolve to a method named 'string'."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "types.go").write_text("""package main
+
+type recalcRequest struct{}
+
+func (r *recalcRequest) string() string {
+    return "recalc"
+}
+""")
+        (tmp_path / "main.go").write_text("""package main
+
+func process(data []byte) {
+    s := string(data)
+    _ = s
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        process_calls = [e for e in call_edges if "process" in e.src]
+
+        # string(data) is a type conversion, NOT a call to recalcRequest.string
+        for edge in process_calls:
+            assert "recalcRequest.string" not in edge.dst, (
+                f"Go type conversion string() should NOT resolve to "
+                f"recalcRequest.string; got dst={edge.dst}"
+            )
+
+    def test_int_conversion_not_resolved(self, tmp_path: Path) -> None:
+        """int(x) should NOT produce a call edge."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "main.go").write_text("""package main
+
+func convert(f float64) {
+    i := int(f)
+    _ = i
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        convert_calls = [e for e in call_edges if "convert" in e.src]
+
+        # int(f) is a type conversion — should produce no call edges
+        assert len(convert_calls) == 0, (
+            f"Go type conversion int() should not produce call edges, "
+            f"found: {convert_calls}"
+        )
+
+    def test_real_function_call_still_resolves(self, tmp_path: Path) -> None:
+        """User-defined function named 'process' should still resolve."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "main.go").write_text("""package main
+
+func process() {}
+
+func caller() {
+    process()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        caller_calls = [e for e in call_edges if "caller" in e.src]
+
+        assert len(caller_calls) >= 1
+        assert any("process" in e.dst for e in caller_calls)
+
+
 class TestGoEnclosingFunctionAttribution:
     """Tests for correct enclosing function attribution with same-name methods.
 

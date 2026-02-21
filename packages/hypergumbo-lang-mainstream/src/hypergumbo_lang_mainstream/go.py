@@ -108,6 +108,25 @@ GORILLA_PATH_METHODS = {"Path", "PathPrefix"}
 # Macaron/Chi/Gin/Echo/Fiber all use Group; Chi also uses Route.
 _GO_GROUP_METHODS = {"Group", "Route"}
 
+# Go builtin type names.  When used as bare call expressions — e.g.
+# ``string(data)`` or ``int(x)`` — these are type conversions, not
+# function calls.  We skip them during call resolution to avoid
+# false-positive edges (e.g. string() → recalcRequest.string).
+_GO_BUILTIN_TYPES = frozenset({
+    "bool", "byte", "complex64", "complex128",
+    "error", "float32", "float64",
+    "int", "int8", "int16", "int32", "int64",
+    "rune", "string",
+    "uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
+})
+
+# Go builtin functions that should not be resolved to user-defined symbols.
+_GO_BUILTIN_FUNCS = frozenset({
+    "append", "cap", "clear", "close", "complex", "copy",
+    "delete", "imag", "len", "make", "max", "min", "new",
+    "panic", "print", "println", "real", "recover",
+})
+
 
 def find_go_files(repo_root: Path) -> Iterator[Path]:
     """Yield all Go files in the repository."""
@@ -1093,7 +1112,11 @@ def _extract_edges_from_file(
 
                     if func_node.type == "identifier":
                         # Simple call: helper()
-                        callee_name = node_text(func_node, source)
+                        raw_name = node_text(func_node, source)
+                        # Skip Go builtin type conversions (string(x),
+                        # int(x)) and builtin functions (len, cap, make)
+                        if raw_name not in _GO_BUILTIN_TYPES and raw_name not in _GO_BUILTIN_FUNCS:
+                            callee_name = raw_name
                     elif func_node.type == "selector_expression":
                         # Method call: obj.Method() or pkg.Func()
                         operand_node = find_child_by_field(func_node, "operand")
