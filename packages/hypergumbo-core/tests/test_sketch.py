@@ -9,7 +9,6 @@ from hypergumbo_core.sketch import (
     truncate_to_tokens,
     _collect_source_files,
     _format_source_files,
-    _format_all_files,
     _format_additional_files,
     _format_language_stats,
     _run_analysis,
@@ -21,7 +20,6 @@ from hypergumbo_core.sketch import (
     _collect_important_files,
     _extract_python_docstrings,
     _extract_domain_vocabulary,
-    _format_vocabulary,
     _detect_test_summary,
     _format_test_summary,
     _estimate_test_coverage,
@@ -1473,56 +1471,6 @@ class TestFormatSourceFiles:
         assert "`medium.py`" in file_lines[1]
         assert "`low.py`" in file_lines[2]
 
-
-class TestFormatAllFiles:
-    """Tests for all files formatting."""
-
-    def test_lists_all_files(self, tmp_path: Path) -> None:
-        """Lists all non-excluded files."""
-        (tmp_path / "readme.md").write_text("# README")
-        (tmp_path / "main.py").write_text("print('hello')")
-
-        result = _format_all_files(tmp_path)
-
-        assert "## All Files" in result
-        assert "`main.py`" in result
-        assert "`readme.md`" in result
-
-    def test_excludes_hidden_files(self, tmp_path: Path) -> None:
-        """Excludes hidden files."""
-        (tmp_path / ".hidden").write_text("secret")
-        (tmp_path / "visible.txt").write_text("public")
-
-        result = _format_all_files(tmp_path)
-
-        assert ".hidden" not in result
-        assert "`visible.txt`" in result
-
-    def test_excludes_node_modules(self, tmp_path: Path) -> None:
-        """Excludes node_modules directory."""
-        nm = tmp_path / "node_modules"
-        nm.mkdir()
-        (nm / "package.json").write_text("{}")
-        (tmp_path / "index.js").write_text("console.log('hi')")
-
-        result = _format_all_files(tmp_path)
-
-        assert "node_modules" not in result
-        assert "`index.js`" in result
-
-    def test_respects_max_files(self, tmp_path: Path) -> None:
-        """Limits output to max_files."""
-        for i in range(10):
-            (tmp_path / f"file_{i}.txt").write_text(f"content {i}")
-
-        result = _format_all_files(tmp_path, max_files=3)
-
-        assert "... and 7 more files" in result
-
-    def test_empty_dir_returns_empty(self, tmp_path: Path) -> None:
-        """Returns empty string for empty directory."""
-        result = _format_all_files(tmp_path)
-        assert result == ""
 
 
 def _make_test_symbol(
@@ -4977,36 +4925,6 @@ class TestExtractDomainVocabulary:
 
         assert isinstance(terms, list)
 
-
-class TestFormatVocabulary:
-    """Tests for vocabulary formatting."""
-
-    def test_formats_vocabulary_section(self) -> None:
-        """Formats vocabulary as Markdown section."""
-        terms = ["authentication", "payment", "invoice", "customer"]
-
-        result = _format_vocabulary(terms)
-
-        assert "## Domain Vocabulary" in result
-        assert "authentication" in result
-        assert "payment" in result
-        assert "invoice" in result
-        assert "customer" in result
-
-    def test_empty_terms_returns_empty(self) -> None:
-        """Returns empty string for empty terms list."""
-        result = _format_vocabulary([])
-
-        assert result == ""
-
-    def test_formats_as_key_terms(self) -> None:
-        """Formats terms with 'Key terms:' prefix."""
-        terms = ["user", "session", "token"]
-
-        result = _format_vocabulary(terms)
-
-        assert "*Key terms:" in result
-        assert "user, session, token" in result
 
 
 class TestConfigExtraction:

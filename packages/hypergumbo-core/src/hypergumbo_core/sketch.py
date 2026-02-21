@@ -3708,24 +3708,6 @@ def _extract_domain_vocabulary(
     return [word for word, _ in word_counts.most_common(max_terms)]
 
 
-def _format_vocabulary(terms: list[str], exclude_tests: bool = False) -> str:
-    """Format domain vocabulary as a Markdown section.
-
-    Args:
-        terms: List of domain-specific terms.
-        exclude_tests: If True, add [IGNORING TESTS] marker to header.
-
-    Returns:
-        Markdown-formatted vocabulary section.
-    """
-    if not terms:
-        return ""
-
-    lines = [_section_header("Domain Vocabulary", exclude_tests), ""]
-    lines.append(f"*Key terms: {', '.join(terms)}*")
-
-    return "\n".join(lines)
-
 
 # SOURCE_EXTENSIONS is imported from taxonomy module (ADR-0004 Phase 3)
 
@@ -3820,47 +3802,6 @@ def _format_source_files(
 
     return "\n".join(lines)
 
-
-def _format_all_files(
-    repo_root: Path,
-    max_files: int = 200,
-    exclude_tests: bool = False,
-) -> str:
-    """Format all files (non-excluded) as a Markdown section."""
-    # Collect all non-excluded files
-    files: list[Path] = []
-    for f in repo_root.rglob("*"):
-        if f.is_file():
-            # Check exclusions
-            excluded = False
-            for part in f.relative_to(repo_root).parts:
-                for pattern in DEFAULT_EXCLUDES:
-                    if part == pattern or (
-                        "*" in pattern and part.endswith(pattern.lstrip("*"))
-                    ):
-                        excluded = True
-                        break
-                if excluded:
-                    break
-            if not excluded and not any(p.startswith(".") for p in f.parts):
-                files.append(f)
-
-    if not files:
-        return ""
-
-    # Sort by path
-    files.sort(key=lambda p: str(p.relative_to(repo_root)))
-
-    lines = [_section_header("All Files", exclude_tests), ""]
-
-    for f in files[:max_files]:
-        rel_path = f.relative_to(repo_root)
-        lines.append(f"- `{rel_path}`")
-
-    if len(files) > max_files:
-        lines.append(f"- ... and {len(files) - max_files} more files")
-
-    return "\n".join(lines)
 
 
 def _select_additional_files_preselected(
