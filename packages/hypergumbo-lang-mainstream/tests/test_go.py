@@ -2618,12 +2618,12 @@ class TestGoAmbiguousMethodCallGuard:
     """Tests for the ambiguous method call resolution guard.
 
     When a method call ``x.Method()`` cannot be resolved to a specific
-    receiver type and the method name has 3+ definitions across different
+    receiver type and the method name has 2+ definitions across different
     types, the system must NOT produce a resolved call edge (which would
     be a false positive). Instead it should produce an unresolved edge
     with evidence_type="ambiguous_method_call".
 
-    Invariant: Method calls with 3+ ambiguous receiver types must not
+    Invariant: Method calls with 2+ ambiguous receiver types must not
     produce resolved call edges.
     """
 
@@ -2684,11 +2684,13 @@ func cleanup(x interface{}) {
                 f"Should not resolve to Worker.Close, got {edge.dst}"
             )
 
-    def test_two_candidates_still_resolves(self, tmp_path: Path) -> None:
-        """x.Run() with only 2 types → still resolves (guard threshold is 3+).
+    def test_two_candidates_produces_unresolved(self, tmp_path: Path) -> None:
+        """x.Run() with 2 types → unresolved (guard threshold is 2+).
 
-        The ambiguity guard only activates at 3+ candidates. With 2 candidates,
-        the ListNameResolver picks one with 1/sqrt(2) confidence.
+        When 2 types define the same method and receiver type is unknown,
+        the ambiguity guard produces an unresolved edge instead of picking
+        an arbitrary candidate.  This prevents false positives where all
+        .Close()/.Error()/.String() calls route to the same implementation.
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -2711,17 +2713,22 @@ func start(x interface{}) {
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         start_calls = [e for e in call_edges if "start" in e.src]
 
-        # With 2 candidates, should still produce a resolved edge
+        # With 2 candidates, should produce an unresolved edge
         run_calls = [e for e in start_calls if "Run" in e.dst]
         assert len(run_calls) >= 1, (
-            f"start should have call edge for x.Run() even with 2 candidates, "
+            f"start should have call edge for x.Run() with 2 candidates, "
             f"found: {start_calls}"
         )
 
-        # Should NOT be marked as ambiguous_method_call
+        # Should be marked as ambiguous_method_call
         for edge in run_calls:
-            assert edge.evidence_type != "ambiguous_method_call", (
-                "2-candidate method should not trigger ambiguity guard"
+            assert edge.evidence_type == "ambiguous_method_call", (
+                f"2-candidate method should trigger ambiguity guard, "
+                f"got '{edge.evidence_type}'"
+            )
+            assert edge.confidence <= 0.55, (
+                f"Ambiguous method call should have low confidence, "
+                f"got {edge.confidence}"
             )
 
     def test_package_qualified_calls_unaffected(self, tmp_path: Path) -> None:

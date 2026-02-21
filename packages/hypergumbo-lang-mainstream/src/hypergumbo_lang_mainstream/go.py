@@ -1166,14 +1166,17 @@ def _extract_edges_from_file(
                         # covers simple identifiers (x.Close()), chained calls
                         # (getWriter().Close()), field access (resp.Body.Close()),
                         # and index expressions (items[0].Close()).
-                        # When receiver type is unknown and 3+ types define the
+                        # When receiver type is unknown and 2+ types define the
                         # method, produce an unresolved edge instead of picking
-                        # an arbitrary candidate.
+                        # an arbitrary candidate.  Threshold was originally 3 but
+                        # lowered to 2 because 2-candidate collisions (e.g.
+                        # Close(), Error(), String()) cause widespread false
+                        # positives that inflate centrality rankings.
                         if (
                             callee_name
                             and import_path_hint is None
                             and callee_name in global_symbols
-                            and len(global_symbols[callee_name]) >= 3
+                            and len(global_symbols[callee_name]) >= 2
                         ):
                             dst_id = f"go:external:0-0:{callee_name}:unresolved"
                             edges.append(Edge.create(
