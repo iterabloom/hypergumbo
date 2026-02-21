@@ -1330,6 +1330,57 @@ class TestSemanticEntryDetection:
         # Service classes should NOT create any entrypoints
         assert len(entrypoints) == 0
 
+    def test_command_by_name_c_entrypoint(self) -> None:
+        """C functions matching cmd_* are detected as CLI_COMMAND entrypoints.
+
+        This covers the command_by_name naming convention used by git,
+        systemd, busybox, and other C CLI tools where cmd_<name> functions
+        implement subcommands.
+        """
+        sym = Symbol(
+            id="c:builtin/commit.c:1536-1666:cmd_commit:function",
+            name="cmd_commit",
+            kind="function",
+            path="builtin/commit.c",
+            language="c",
+            span=Span(1536, 1666, 0, 0),
+            meta={"concepts": [
+                {"concept": "command_by_name", "framework": "naming-conventions"},
+            ]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        cmd_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        assert len(cmd_eps) == 1
+        assert cmd_eps[0].confidence == 0.80
+        assert "by name" in cmd_eps[0].label
+        assert "cmd_commit" in cmd_eps[0].label
+
+    def test_command_by_name_skipped_if_cli_command_exists(self) -> None:
+        """command_by_name skipped if CLI_COMMAND already detected via framework."""
+        sym = Symbol(
+            id="c:builtin/commit.c:1536-1666:cmd_commit:function",
+            name="cmd_commit",
+            kind="function",
+            path="builtin/commit.c",
+            language="c",
+            span=Span(1536, 1666, 0, 0),
+            meta={"concepts": [
+                {"concept": "command", "framework": "some-cli"},
+                {"concept": "command_by_name", "framework": "naming-conventions"},
+            ]},
+        )
+        nodes = [sym]
+
+        entrypoints = detect_entrypoints(nodes, [])
+
+        # Framework detection wins — only one CLI_COMMAND entry
+        cmd_eps = [e for e in entrypoints if e.kind == EntrypointKind.CLI_COMMAND]
+        assert len(cmd_eps) == 1
+        assert cmd_eps[0].confidence == 0.95  # Framework confidence, not naming
+
     def test_symbol_with_empty_concepts_skipped(self) -> None:
         """Symbols with meta but empty concepts list are skipped."""
         sym = Symbol(

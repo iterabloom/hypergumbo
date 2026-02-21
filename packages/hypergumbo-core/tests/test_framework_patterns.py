@@ -9505,6 +9505,67 @@ class TestNamingConventionsPatterns:
         result = pattern.matches(symbol)
         assert result is None
 
+    def test_command_by_name_matches_c_cmd_function(self) -> None:
+        """Pattern matches C functions starting with cmd_."""
+        pattern = Pattern(
+            concept="command_by_name",
+            symbol_name=r"^cmd_",
+            symbol_kind="^function$",
+            language="^c$",
+        )
+        symbol = Symbol(
+            id="c:builtin/commit.c:1536-1666:cmd_commit:function",
+            name="cmd_commit",
+            kind="function",
+            language="c",
+            path="builtin/commit.c",
+            span=Span(1536, 1666, 0, 0),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is not None
+        assert result["concept"] == "command_by_name"
+
+    def test_command_by_name_rejects_non_c(self) -> None:
+        """Pattern does not match cmd_ functions in other languages."""
+        pattern = Pattern(
+            concept="command_by_name",
+            symbol_name=r"^cmd_",
+            symbol_kind="^function$",
+            language="^c$",
+        )
+        symbol = Symbol(
+            id="go:main.go:1-10:cmd_run:function",
+            name="cmd_run",
+            kind="function",
+            language="go",
+            path="main.go",
+            span=Span(1, 10, 0, 0),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is None
+
+    def test_command_by_name_rejects_non_function(self) -> None:
+        """Pattern does not match cmd_ structs."""
+        pattern = Pattern(
+            concept="command_by_name",
+            symbol_name=r"^cmd_",
+            symbol_kind="^function$",
+            language="^c$",
+        )
+        symbol = Symbol(
+            id="c:cmd.c:1-10:cmd_context:struct",
+            name="cmd_context",
+            kind="struct",
+            language="c",
+            path="cmd.c",
+            span=Span(1, 10, 0, 0),
+            meta={},
+        )
+        result = pattern.matches(symbol)
+        assert result is None
+
     def test_enrich_symbols_with_naming_conventions(self) -> None:
         """enrich_symbols applies naming convention patterns."""
         clear_pattern_cache()

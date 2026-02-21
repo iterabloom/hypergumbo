@@ -495,6 +495,20 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 # them for potential future use. Skip for now.
                 pass
 
+            # C subcommand functions (cmd_<name>) -> CLI_COMMAND
+            # Common in git, systemd, busybox: function pointer dispatch
+            # tables map string names to cmd_* handlers.
+            elif concept_type == "command_by_name":
+                if EntrypointKind.CLI_COMMAND in added_kinds:
+                    continue
+                entrypoints.append(Entrypoint(
+                    symbol_id=sym.id,
+                    kind=EntrypointKind.CLI_COMMAND,
+                    confidence=0.80,  # Naming convention - higher than generic
+                    label=f"CLI command (by name): {sym.name}",
+                ))
+                added_kinds.add(EntrypointKind.CLI_COMMAND)
+
             # Test/benchmark concepts -> TEST_FUNCTION
             # Confidence is moderate (0.80) since test functions are real
             # entry points for test runners. The test-file penalty (0.1x)

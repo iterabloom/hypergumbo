@@ -414,17 +414,21 @@ def assess_metric(name: str, value: float) -> tuple:
 
 
 def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
-    """Pick high-in-degree non-test symbols as reverse slice seeds.
+    """Pick domain-relevant symbols as reverse slice seeds.
 
-    For reverse slices, the question "who calls X?" is most interesting for
-    heavily-called production symbols — the core API surface of a library or
-    application. Auto-detected entrypoints (roots of the call graph) are
-    dominated by test methods in library repos like iceberg (6905/6912 test
-    entries), making them poor reverse-slice seeds.
+    Pure in-degree ranking selects infrastructure sinks (die, strbuf_release,
+    GetEngine) that produce massive, useless reverse slices covering 50-70%
+    of the codebase.  Good seeds are functions with both callers (high in-degree)
+    AND callees (meaningful out-degree) — indicating domain logic rather than
+    utility wrappers.
 
-    This function reads the behavior map JSON, computes in-degree for each
-    symbol, filters out test files, and returns ``count`` entry strings
-    in the format expected by ``hypergumbo slice --entry``.
+    Scoring: ``in_degree * min(1.0, out_degree / 10)``.  This penalises
+    pure sinks (out-degree 0-1) while boosting functions that both receive
+    and make calls.  For example:
+      - die            (in=1296, out=0)  → score = 0    (eliminated)
+      - strbuf_release (in=1202, out=1)  → score = 120  (demoted)
+      - parse_options  (in=248,  out=9)  → score = 223  (promoted)
+      - start_command  (in=82,   out=27) → score = 82   (full weight)
 
     Returns empty list if hg.json can't be read or has no edges.
     """
@@ -439,12 +443,16 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     if not edges:
         return []
 
-    # Compute in-degree per node
+    # Compute in-degree and out-degree per node
     in_degree: dict = {}
+    out_degree: dict = {}
     for e in edges:
+        src = e.get("src") or e.get("source")
         dst = e.get("dst") or e.get("target")
         if dst:
             in_degree[dst] = in_degree.get(dst, 0) + 1
+        if src:
+            out_degree[src] = out_degree.get(src, 0) + 1
 
     # Build node lookup
     node_map = {n["id"]: n for n in nodes}
@@ -453,8 +461,14 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     # that are meaningful reverse-slice seeds.
     seed_kinds = {"function", "method", "class", "constructor", "route"}
 
+    # Out-degree threshold: functions with out-degree >= this value get full
+    # weight.  Below this, score is proportionally reduced.  Value of 10
+    # aggressively filters pure sinks (out=0-1) and utility wrappers (out=2-3)
+    # while accepting functions that make meaningful calls (out>=10).
+    _OUT_THRESHOLD = 10
+
     candidates = []
-    for node_id, deg in in_degree.items():
+    for node_id, in_deg in in_degree.items():
         node = node_map.get(node_id)
         if not node:
             continue
@@ -465,18 +479,21 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
         if _TEST_PATH_RE.search(path):
             continue
         name = node.get("name", "")
-        # Use node ID directly — it's already in the format expected by
-        # hypergumbo slice --entry: lang:path:start-end:name:kind
         entry = node.get("id", "")
         if not entry:
             continue
-        candidates.append((deg, entry, name))
+        out_deg = out_degree.get(node_id, 0)
+        # Score: in_degree weighted by out-degree ratio.
+        # Pure sinks (out=0) get score 0; utility wrappers (out=1)
+        # get 20% of their in-degree; domain functions (out>=5) get full.
+        score = in_deg * min(1.0, out_deg / _OUT_THRESHOLD)
+        candidates.append((score, in_deg, entry, name))
 
-    # Sort by in-degree descending, name for stability
-    candidates.sort(key=lambda x: (-x[0], x[2]))
+    # Sort by score descending, then in-degree descending, name for stability
+    candidates.sort(key=lambda x: (-x[0], -x[1], x[3]))
 
     result = []
-    for deg, entry, name in candidates[:count]:
+    for score, in_deg, entry, name in candidates[:count]:
         result.append(entry)
 
     return result
@@ -875,9 +892,9 @@ def cmd_run(args):
         # Do NOT use --exclude-tests here: for library repos, callers live in
         # tests/examples — excluding them yields empty slices.
         rslice_seeds = pick_reverse_slice_seeds(hg_json, count=3)
-        rslice_method = "in_degree"
+        rslice_method = "domain_score"
         if rslice_seeds:
-            print(f"  reverse-slice seeds: {len(rslice_seeds)} high-in-degree symbols")
+            print(f"  reverse-slice seeds: {len(rslice_seeds)} domain-scored symbols")
         else:
             rslice_seeds = entries[:3]
             rslice_method = "entrypoints"

@@ -50,7 +50,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **CLI extras management**: Subcommands for optional dependencies: `add-extras`, `remove-extras`, `install-embeddings`, `uninstall-embeddings`, `uninstall-gitleaks`.
 - **Cache management**: `hypergumbo cache-status` and `hypergumbo cache-clear` for managing `~/.cache/hypergumbo/`.
 - **`bakeoff-reflect` redesign**: Structured two-phase LLM assessment pipeline for BROAD bakeoff.
-- **DEEP bakeoff reverse-slice seed selection**: Reverse slices now use high-in-degree non-test symbols instead of entrypoints. For library repos like iceberg (6905/6912 test entrypoints), this selects core API symbols (Schema, Types.get, TableIdentifier.of) instead of test methods that produce trivial 2-node results. Improved `_TEST_PATH_RE` to cover JVM conventions (Test*.java, *IT.java, src/integration/, src/test/) and Go unittest dirs.
+- **DEEP bakeoff reverse-slice seed selection**: Reverse slices now use domain-scored symbols (in-degree weighted by out-degree ratio) instead of raw in-degree. Pure sinks like `die()` (in=1296, out=0), `strbuf_release()` (in=1202, out=1), and `GetEngine()` (in=1087, out=3) are demoted in favor of domain functions like `parse_options` (in=248, out=9) and `start_command` (in=82, out=27) that produce more useful reverse slices. Improved `_TEST_PATH_RE` to cover JVM conventions (Test*.java, *IT.java, src/integration/, src/test/) and Go unittest dirs.
+- **C `cmd_*` CLI command entrypoint detection**: Functions matching `cmd_<name>` in C files are detected as CLI_COMMAND entrypoints via naming convention (confidence 0.80). Covers git, systemd, busybox, and similar C projects that use function pointer dispatch tables to map string names to `cmd_*` handlers.
 
 #### Tracker
 
