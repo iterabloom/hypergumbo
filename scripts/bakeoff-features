@@ -465,12 +465,11 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
         if _TEST_PATH_RE.search(path):
             continue
         name = node.get("name", "")
-        # Build entry string: lang:path:lines:name:kind
-        lang = node.get("language", "")
-        start = node.get("start_line", "")
-        end = node.get("end_line", "")
-        line_range = f"{start}-{end}" if start and end else str(start)
-        entry = f"{lang}:{path}:{line_range}:{name}:{kind}"
+        # Use node ID directly — it's already in the format expected by
+        # hypergumbo slice --entry: lang:path:start-end:name:kind
+        entry = node.get("id", "")
+        if not entry:
+            continue
         candidates.append((deg, entry, name))
 
     # Sort by in-degree descending, name for stability
