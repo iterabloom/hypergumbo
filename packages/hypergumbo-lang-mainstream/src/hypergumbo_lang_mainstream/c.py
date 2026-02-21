@@ -338,16 +338,31 @@ def _get_enclosing_function(
     source: bytes,
     file_path: Path,
     global_symbols: dict[str, Symbol],
+    local_symbols: dict[str, Symbol] | None = None,
 ) -> Optional[Symbol]:
-    """Walk up to find the enclosing function definition."""
+    """Walk up to find the enclosing function definition.
+
+    Checks ``local_symbols`` first (file-scoped, always has the current
+    file's definition), then falls back to ``global_symbols`` with a path
+    check.  This is essential for C repos where multiple files define the
+    same function name (e.g. ``cmd_main`` in git's per-binary entry points).
+    Without the local lookup, only the single global-registry winner
+    would produce outgoing edges.
+    """
     current = node.parent
+    str_path = str(file_path)
     while current is not None:
         if current.type == "function_definition":
             name = _get_function_name(current, source)
-            if name and name in global_symbols:
-                func_sym = global_symbols[name]
-                if func_sym.path == str(file_path):
-                    return func_sym
+            if name:
+                # Prefer file-local symbol (always matches current file)
+                if local_symbols and name in local_symbols:
+                    return local_symbols[name]
+                # Fall back to global symbol with path check
+                if name in global_symbols:
+                    func_sym = global_symbols[name]
+                    if func_sym.path == str_path:
+                        return func_sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -359,10 +374,13 @@ def _extract_edges(
     run: AnalysisRun,
     global_symbols: dict[str, Symbol],
     resolver: NameResolver | None = None,
+    local_symbols: dict[str, Symbol] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed C tree (pass 2).
 
     Uses global symbol registry to resolve cross-file references.
+    Uses ``local_symbols`` (file-scoped) to correctly identify the enclosing
+    function even when multiple files define functions with the same name.
     Uses iterative traversal to avoid RecursionError on deeply nested code.
     """
     if resolver is None:  # pragma: no cover - defensive
@@ -373,7 +391,9 @@ def _extract_edges(
     for node in iter_tree(tree.root_node):
         # Function calls: func_name(...)
         if node.type == "call_expression":
-            current_function = _get_enclosing_function(node, source, file_path, global_symbols)
+            current_function = _get_enclosing_function(
+                node, source, file_path, global_symbols, local_symbols,
+            )
             if current_function:
                 # Get the function being called
                 func_node = node.child_by_field_name("function")
@@ -551,7 +571,10 @@ class CAnalyzer(TreeSitterAnalyzer):
         resolver: NameResolver,
     ) -> list[Edge]:
         """Extract call edges from a single C file."""
-        return _extract_edges(tree, source, file_path, run, global_symbols, resolver)
+        return _extract_edges(
+            tree, source, file_path, run, global_symbols, resolver,
+            local_symbols=local_symbols,
+        )
 
     def analyze(
         self,

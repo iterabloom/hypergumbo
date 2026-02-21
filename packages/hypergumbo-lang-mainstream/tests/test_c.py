@@ -1100,3 +1100,69 @@ static struct entry table[] = {
         # handler appears 3 times but should create only 1 dispatch edge
         assert len(ref_edges) == 1
 
+
+class TestCDuplicateFunctionNameEdges:
+    """Tests for edge extraction when multiple files define the same function.
+
+    In C repos like git, many files define ``cmd_main`` (each is a separate
+    program entry point linked into its own binary). The edge extractor must
+    produce call edges for ALL definitions, not just the one that wins the
+    global_symbols registry.
+
+    Invariant: Call edges must be produced for every function definition,
+    regardless of whether another file defines a function with the same name.
+    """
+
+    def test_duplicate_function_names_both_get_edges(self, tmp_path: Path) -> None:
+        """Two files defining cmd_main() both get outgoing call edges.
+
+        When alpha.c and beta.c both define cmd_main() calling helper(),
+        both should have call edges from their respective cmd_main to helper.
+        """
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "common.h").write_text("""
+void helper(void);
+""")
+        (tmp_path / "common.c").write_text("""
+#include "common.h"
+void helper(void) {}
+""")
+        (tmp_path / "alpha.c").write_text("""
+#include "common.h"
+int cmd_main(int argc, const char **argv) {
+    helper();
+    return 0;
+}
+""")
+        (tmp_path / "beta.c").write_text("""
+#include "common.h"
+int cmd_main(int argc, const char **argv) {
+    helper();
+    return 0;
+}
+""")
+
+        result = analyze_c(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        # Both alpha.c and beta.c cmd_main should have edges to helper
+        alpha_edges = [
+            e for e in call_edges
+            if "alpha.c" in e.src and "cmd_main" in e.src
+        ]
+        beta_edges = [
+            e for e in call_edges
+            if "beta.c" in e.src and "cmd_main" in e.src
+        ]
+
+        assert len(alpha_edges) >= 1, (
+            f"alpha.c cmd_main should have call edge to helper(), "
+            f"found: {alpha_edges}"
+        )
+        assert len(beta_edges) >= 1, (
+            f"beta.c cmd_main should have call edge to helper(), "
+            f"found: {beta_edges}"
+        )
+
