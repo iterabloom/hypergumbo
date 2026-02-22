@@ -1,0 +1,20 @@
+- op: create  # 1bd0
+  at: '2026-02-22T04:49:44Z'  # 1bd0
+  by: agent  # 1bd0
+  actor: jgstern_agent  # 1bd0
+  clock: 1  # 1bd0
+  nonce: 1bd0  # 1bd0
+  data:  # 1bd0
+    kind: work_item  # 1bd0
+    title: "Laravel route_handler: add suffix-match fallback"  # 1bd0
+    status: todo_soft  # 1bd0
+    priority: 2  # 1bd0
+    parent: INV-jamad-dakov-pahup-tuliv-sabif-tukid-gosiv-dazab  # 1bd0
+    tags: []  # 1bd0
+    before: []  # 1bd0
+    duplicate_of: []  # 1bd0
+    not_duplicate_of: []  # 1bd0
+    pr_ref:  # 1bd0
+    justification:  # 1bd0
+    description: "Laravel route_handler has no suffix-match fallback (Rails has one). PHP backslash-namespaced FQ names like App\\Http\\Controllers\\UserController won't match the short UserController@index from route DSL. Fix: add suffix scan analogous to Rails _resolve_rails_handler step 4."  # 1bd0
+    fields: {}  # 1bd0

@@ -1,0 +1,22 @@
+- op: create  # 7c52
+  at: '2026-02-22T04:50:12Z'  # 7c52
+  by: agent  # 7c52
+  actor: jgstern_agent  # 7c52
+  clock: 1  # 7c52
+  nonce: 7c52  # 7c52
+  data:  # 7c52
+    kind: invariant  # 7c52
+    title: "Feature Parity Across Language Families"  # 7c52
+    status: todo_hard  # 7c52
+    priority: 2  # 7c52
+    parent:  # 7c52
+    tags: []  # 7c52
+    before: []  # 7c52
+    duplicate_of: []  # 7c52
+    not_duplicate_of: []  # 7c52
+    pr_ref:  # 7c52
+    justification:  # 7c52
+    description: "Structural gap identified by external bakeoff evaluation. Known violations: (1) C has dispatch table detection but C++ does not. (2) Java has annotation extraction (meta.decorators) but Kotlin, Scala, Groovy do not — blocks Spring Boot Kotlin framework detection. (3) Java/Kotlin emit extends/implements edges but Scala/Groovy do not despite extracting meta.base_classes. (4) Java/Kotlin have type inference for param types but Scala/Groovy do not. (5) Java/Kotlin call populate_docstrings but Scala/Groovy/C/C++/Ruby/Elixir/Erlang do not. (6) Erlang OTP behaviour callbacks only emit generic imports edge vs Elixir's function-level callback edges. (7) Ruby missing meta.base_classes entirely."  # 7c52
+    fields:  # 7c52
+      statement: "Features implemented for one language analyzer must be propagated to sibling languages where the same patterns apply"  # 7c52
+      root_cause: "Features are developed for one language and not scope-expanded to closely related languages that share the same AST patterns and programming idioms"  # 7c52

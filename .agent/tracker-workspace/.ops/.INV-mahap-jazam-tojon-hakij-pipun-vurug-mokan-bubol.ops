@@ -1,0 +1,22 @@
+- op: create  # 5fa9
+  at: '2026-02-22T04:50:52Z'  # 5fa9
+  by: agent  # 5fa9
+  actor: jgstern_agent  # 5fa9
+  clock: 1  # 5fa9
+  nonce: 5fa9  # 5fa9
+  data:  # 5fa9
+    kind: invariant  # 5fa9
+    title: "Ranking and Entrypoint Utility Bias"  # 5fa9
+    status: todo_soft  # 5fa9
+    priority: 2  # 5fa9
+    parent:  # 5fa9
+    tags: []  # 5fa9
+    before: []  # 5fa9
+    duplicate_of: []  # 5fa9
+    not_duplicate_of: []  # 5fa9
+    pr_ref:  # 5fa9
+    justification:  # 5fa9
+    description: "External bakeoff evaluation found: (1) DefaultClock.Now (degree 474) dominates vault rankings — hub saturation at 100 only reduces effective_in to 106 for 4.74x over-threshold hubs. (2) STL methods (empty, insert, size) dominate falco rankings. (3) library_export floods entrypoint lists — 3100 entries at 0.075 confidence still appear in --list-entries. (4) No symbol-level utility detection exists (is_utility_file covers paths but not symbol names like Clock, Logger, Metrics). (5) No diversity/category cap on entrypoints. Design limitation, not parameter tuning — needs domain-relevance signal beyond degree counts."  # 5fa9
+    fields:  # 5fa9
+      statement: "Symbol ranking and entrypoint selection must surface domain-relevant symbols over infrastructure utilities"  # 5fa9
+      root_cause: "Ranking formula uses degree counts with hub saturation at 100 but has no symbol-level utility detection. Entrypoint list is unbounded with no count cap or diversity constraint."  # 5fa9

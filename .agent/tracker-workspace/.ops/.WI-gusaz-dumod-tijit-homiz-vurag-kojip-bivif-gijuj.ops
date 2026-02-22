@@ -1,0 +1,20 @@
+- op: create  # 8ce0
+  at: '2026-02-22T04:50:40Z'  # 8ce0
+  by: agent  # 8ce0
+  actor: jgstern_agent  # 8ce0
+  clock: 1  # 8ce0
+  nonce: 8ce0  # 8ce0
+  data:  # 8ce0
+    kind: work_item  # 8ce0
+    title: "Scala/Groovy/C/C++/Ruby/Elixir/Erlang: populate_docstrings"  # 8ce0
+    status: todo_soft  # 8ce0
+    priority: 3  # 8ce0
+    parent: INV-kobad-kopil-dagan-nusan-fazag-vumig-ridut-rokih  # 8ce0
+    tags: []  # 8ce0
+    before: []  # 8ce0
+    duplicate_of: []  # 8ce0
+    not_duplicate_of: []  # 8ce0
+    pr_ref:  # 8ce0
+    justification:  # 8ce0
+    description: "populate_docstrings_from_tree is called by Java, Kotlin, Go, JS/TS, Python but not by Scala, Groovy, C, C++, Ruby, Elixir, or Erlang. Scaladoc, Groovydoc, Doxygen, rdoc, ExDoc, and EDoc comments are all silently ignored. Affects sketch quality and LLM context richness."  # 8ce0
+    fields: {}  # 8ce0

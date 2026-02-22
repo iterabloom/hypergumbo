@@ -1,0 +1,22 @@
+- op: create  # b81f
+  at: '2026-02-22T04:49:20Z'  # b81f
+  by: agent  # b81f
+  actor: jgstern_agent  # b81f
+  clock: 1  # b81f
+  nonce: b81f  # b81f
+  data:  # b81f
+    kind: invariant  # b81f
+    title: "Linker DSL Name Resolution"  # b81f
+    status: todo_hard  # b81f
+    priority: 1  # b81f
+    parent:  # b81f
+    tags: []  # b81f
+    before: []  # b81f
+    duplicate_of: []  # b81f
+    not_duplicate_of: []  # b81f
+    pr_ref:  # b81f
+    justification:  # b81f
+    description: "Cross-cutting invariant. DSL references (router configs, GenServer targets, ORM model names) frequently use aliased or short names. Known violations: (1) OTP linker — direct dict lookup, no suffix fallback, HIGH severity. (2) Phoenix route_handler — suffix scan fails on alias...as: patterns, MEDIUM. (3) Laravel route_handler — no suffix-match fallback unlike Rails, MEDIUM. (4) Django route_handler — only 2-level fallback, LOW. Structural pattern: any linker resolving string references needs at minimum exact match, suffix match, and alias-aware resolution. Rails route_handler 5-tier cascade is the gold standard."  # b81f
+    fields:  # b81f
+      statement: "Linkers that resolve references from DSL syntax must handle aliased/short names that don't match fully-qualified symbol names in the graph"  # b81f
+      root_cause: "Multiple linkers use direct dict lookup or insufficient fallback when DSL references use module aliases or namespace shortcuts"  # b81f

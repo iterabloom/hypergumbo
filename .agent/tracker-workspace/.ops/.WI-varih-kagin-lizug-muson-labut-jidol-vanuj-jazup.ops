@@ -1,0 +1,20 @@
+- op: create  # 1f6c
+  at: '2026-02-22T04:49:32Z'  # 1f6c
+  by: agent  # 1f6c
+  actor: jgstern_agent  # 1f6c
+  clock: 1  # 1f6c
+  nonce: 1f6c  # 1f6c
+  data:  # 1f6c
+    kind: work_item  # 1f6c
+    title: "OTP linker: resolve Elixir aliases for GenServer targets"  # 1f6c
+    status: todo_hard  # 1f6c
+    priority: 1  # 1f6c
+    parent: INV-jamad-dakov-pahup-tuliv-sabif-tukid-gosiv-dazab  # 1f6c
+    tags: []  # 1f6c
+    before: []  # 1f6c
+    duplicate_of: []  # 1f6c
+    not_duplicate_of: []  # 1f6c
+    pr_ref:  # 1f6c
+    justification:  # 1f6c
+    description: "GenServer.call(UserCache, :ping) where UserCache is an Elixir alias produces zero otp_call/otp_cast edges. otp.py does direct dict lookup on handler_index with no suffix fallback. Fix: add suffix-match fallback (like Phoenix route_handler has) or resolve aliases using the Elixir analyzer's _extract_alias_hints output. HIGH severity — nearly every real Elixir codebase uses module aliases for cross-module GenServer calls."  # 1f6c
+    fields: {}  # 1f6c

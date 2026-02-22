@@ -1,0 +1,20 @@
+- op: create  # 083c
+  at: '2026-02-22T04:50:40Z'  # 083c
+  by: agent  # 083c
+  actor: jgstern_agent  # 083c
+  clock: 1  # 083c
+  nonce: 083c  # 083c
+  data:  # 083c
+    kind: work_item  # 083c
+    title: "Erlang: emit function-level OTP behaviour callback edges"  # 083c
+    status: todo_soft  # 083c
+    priority: 3  # 083c
+    parent: INV-kobad-kopil-dagan-nusan-fazag-vumig-ridut-rokih  # 083c
+    tags: []  # 083c
+    before: []  # 083c
+    duplicate_of: []  # 083c
+    not_duplicate_of: []  # 083c
+    pr_ref:  # 083c
+    justification:  # 083c
+    description: "Erlang -behaviour(gen_server). only emits a generic imports edge to the behaviour module. Elixir creates function-level callback edges (handle_call, handle_cast, init, etc.) that reveal the OTP contract. Fix: when -behaviour(X). is present and callback functions (init/1, handle_call/3, etc.) are defined, emit callback_for edges from those functions to the behaviour, analogous to Elixir's BEHAVIOUR_CALLBACKS mapping."  # 083c
+    fields: {}  # 083c

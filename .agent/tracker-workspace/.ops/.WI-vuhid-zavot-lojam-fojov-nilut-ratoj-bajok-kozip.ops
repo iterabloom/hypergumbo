@@ -28,3 +28,11 @@
     status: done  # 10aa
     pr_ref: 'PR #1271'  # 10aa
     description: "PHP ambiguity guard wired via ListNameResolver ambiguity_threshold=3. Method calls with 3+ candidate classes return unresolved instead of arbitrary pick."  # 10aa
+- op: update  # 3c45
+  at: '2026-02-22T04:47:43Z'  # 3c45
+  by: agent  # 3c45
+  actor: jgstern_agent  # 3c45
+  clock: 3  # 3c45
+  nonce: 3c45  # 3c45
+  set:  # 3c45
+    parent: INV-lohap-jubir-vojon-kotag-noval-juguf-daris-hiviv  # 3c45

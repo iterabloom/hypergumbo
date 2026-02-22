@@ -1,0 +1,20 @@
+- op: create  # ba5d
+  at: '2026-02-22T04:50:26Z'  # ba5d
+  by: agent  # ba5d
+  actor: jgstern_agent  # ba5d
+  clock: 1  # ba5d
+  nonce: ba5d  # ba5d
+  data:  # ba5d
+    kind: work_item  # ba5d
+    title: "Kotlin: extract annotations into meta.decorators"  # ba5d
+    status: todo_hard  # ba5d
+    priority: 1  # ba5d
+    parent: INV-kobad-kopil-dagan-nusan-fazag-vumig-ridut-rokih  # ba5d
+    tags: []  # ba5d
+    before: []  # ba5d
+    duplicate_of: []  # ba5d
+    not_duplicate_of: []  # ba5d
+    pr_ref:  # ba5d
+    justification:  # ba5d
+    description: "Java extracts full annotation metadata into meta.decorators (name, args, kwargs), enabling YAML framework pattern enrichment for Spring @GetMapping, JPA @Entity, etc. Kotlin has no annotation extraction at all. This blocks Spring Boot Kotlin framework detection. Also affects Scala and Groovy. Fix: add annotation extraction to kotlin.py, scala.py, groovy.py analogous to Java's implementation."  # ba5d
+    fields: {}  # ba5d
