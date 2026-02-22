@@ -9,7 +9,9 @@ alternating between OS users.
 1. Both users exist: `jgstern`, `jgstern_agent`
 2. Shared group exists: `project-dev`
 3. Both users are members: `groups jgstern_agent` and `groups jgstern` should both show `project-dev`
-4. `hypergumbo-tracker` is on PATH for both users (e.g. via the project virtualenv)
+4. Agent's home directory is traversable: `jgstern` must be able to traverse
+   into `/home/jgstern_agent/` (this is also required for the real tracker)
+5. `hypergumbo-tracker` is on PATH for both users (e.g. via the project virtualenv)
 
 If the group doesn't exist:
 ```bash
@@ -17,6 +19,13 @@ sudo groupadd project-dev
 sudo usermod -aG project-dev jgstern
 sudo usermod -aG project-dev jgstern_agent
 # Users must log out and back in for group membership to take effect
+```
+
+If the agent's home directory is not traversable (mode 700):
+```bash
+# The human needs execute permission to traverse into the agent's home dir.
+# This is required for the real two-user tracker model, not just the test.
+sudo chmod o+x /home/jgstern_agent
 ```
 
 ## Execution sequence
@@ -102,13 +111,16 @@ Final verification and teardown:
 | Permission denied on .ops files | Missing group membership | `sudo usermod -aG project-dev <user>`, re-login |
 | "dubious ownership" git error | Cross-user repo access | Script 2 adds safe.directory automatically |
 | "state.json not found" | Wrong path or script 1 didn't run | Pass the exact path printed by script 1 |
+| Permission denied accessing workdir | Home dir is mode 700 | `sudo chmod o+x /home/jgstern_agent` (required for real tracker too) |
 | setgid check fails | OS doesn't support setgid on dirs | Expected on some filesystems; non-fatal |
-| Permissions pass in /tmp but fail in ~ | /tmp is often tmpfs; different mount options | Use `--workdir ~/...` to test on the real filesystem |
+| Permissions pass in /tmp but fail elsewhere | /tmp is often tmpfs; different mount options | Use `--workdir /var/tmp/...` to test on the real filesystem |
 
 ## Options and environment variables
 
 - `--workdir DIR` (script 1 only): Parent directory for test files. Defaults to
-  `/tmp`. Use a path under `$HOME` to test on the same filesystem as real
+  `/tmp`. Use `~/tracker-permission-test` to test on the same filesystem as real
   tracker data — `/tmp` is often tmpfs, which may have different mount options
-  (e.g. `nosuid` silently ignores setgid).
+  (e.g. `nosuid` silently ignores setgid). The agent's home directory must be
+  traversable by the human user (`chmod o+x`); script 1 checks this and fails
+  early if not.
 - `TRACKER_CMD`: Override the tracker command (default: `hypergumbo-tracker`)

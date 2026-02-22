@@ -52,6 +52,45 @@ assert_stderr_contains() {
     fi
 }
 
+_check_path_accessible() {
+    # Verify every directory component has other-execute or project-dev
+    # group-execute, so the human user can traverse the path.
+    local target="$1"
+    local current=""
+    local old_IFS="$IFS"
+    IFS="/"
+    for part in $target; do
+        IFS="$old_IFS"
+        [ -z "$part" ] && continue
+        current="$current/$part"
+        [ ! -d "$current" ] && return 0
+
+        local perms
+        perms=$(stat -c '%A' "$current" 2>/dev/null) || return 0
+        local other_x="${perms:9:1}"
+        # 'x' or 't' (sticky+execute) count as traversable
+        if [ "$other_x" = "x" ] || [ "$other_x" = "t" ]; then
+            continue
+        fi
+        local group_x="${perms:6:1}"
+        local grp
+        grp=$(stat -c '%G' "$current" 2>/dev/null)
+        # 'x' or 's' (setgid+execute) count as group-traversable
+        if [ "$grp" = "project-dev" ] && { [ "$group_x" = "x" ] || [ "$group_x" = "s" ]; }; then
+            continue
+        fi
+        _log "ERROR: '$current' is not traversable by the human user."
+        _log "  Every parent directory must allow execute for 'other' (o+x) or"
+        _log "  the project-dev group (g+x) so jgstern can reach the test files."
+        _log "  This is also required for the real two-user tracker model."
+        _log "  Fix:  sudo chmod o+x '$current'"
+        IFS="$old_IFS"
+        return 1
+    done
+    IFS="$old_IFS"
+    return 0
+}
+
 WORKDIR=""
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -61,8 +100,10 @@ while [ $# -gt 0 ]; do
             echo ""
             echo "Options:"
             echo "  --workdir DIR  Parent directory for test files (default: /tmp)."
-            echo "                 Use a home-directory path to test on the same"
-            echo "                 filesystem as real tracker data."
+            echo "                 Use ~/tracker-permission-test to test on the same"
+            echo "                 filesystem as real tracker data (/tmp is often tmpfs)."
+            echo "                 Requires that the home directory is traversable by"
+            echo "                 the human user (chmod o+x)."
             exit 0
             ;;
         --workdir)
@@ -96,15 +137,25 @@ fi
 # ---------------------------------------------------------------------------
 
 if [ -n "$WORKDIR" ]; then
+    # Check that the workdir path is traversable BEFORE creating anything
+    _check_path_accessible "$WORKDIR" || exit 1
     mkdir -p "$WORKDIR"
+    chgrp project-dev "$WORKDIR" 2>/dev/null || true
+    chmod 2775 "$WORKDIR" 2>/dev/null || true
     TMPDIR=$(mktemp -d "$WORKDIR/tracker-permission-test-XXXX")
 else
     TMPDIR=$(mktemp -d /tmp/tracker-permission-test-XXXX)
 fi
+
+# Make temp dir group-accessible so both users can reach state.json and repo
+chgrp project-dev "$TMPDIR" 2>/dev/null || true
+chmod 2775 "$TMPDIR" 2>/dev/null || true
 _log "Temp dir: $TMPDIR"
 
 REPO="$TMPDIR/repo"
 mkdir -p "$REPO"
+chgrp project-dev "$REPO" 2>/dev/null || true
+chmod 2775 "$REPO" 2>/dev/null || true
 cd "$REPO"
 
 # Init git repo
@@ -117,10 +168,13 @@ mkdir -p "$TRACKER_ROOT/tracker/.ops"
 mkdir -p "$TRACKER_ROOT/tracker-workspace/.ops"
 mkdir -p "$TRACKER_ROOT/tracker-workspace/stealth"
 
+# Set group ownership on all tracker dirs so both users can read/write
+chgrp -R project-dev "$TRACKER_ROOT" 2>/dev/null || true
+chmod 2775 "$TRACKER_ROOT" \
+    "$TRACKER_ROOT/tracker" \
+    "$TRACKER_ROOT/tracker-workspace" 2>/dev/null || true
+
 # Set group and setgid on .ops dirs
-chgrp project-dev "$TRACKER_ROOT/tracker/.ops" \
-    "$TRACKER_ROOT/tracker-workspace/.ops" \
-    "$TRACKER_ROOT/tracker-workspace/stealth" 2>/dev/null || true
 chmod g+ws "$TRACKER_ROOT/tracker/.ops" \
     "$TRACKER_ROOT/tracker-workspace/.ops" \
     "$TRACKER_ROOT/tracker-workspace/stealth" 2>/dev/null || true
@@ -169,6 +223,10 @@ YAML
 # Initial commit so git works
 git add -A
 git commit -q -m "init" --no-gpg-sign
+
+# Make .git group-accessible for cross-user git operations
+chgrp -R project-dev "$REPO/.git" 2>/dev/null || true
+chmod -R g+rwX "$REPO/.git" 2>/dev/null || true
 
 COMMON="--tracker-root $TRACKER_ROOT --no-auto-sync --json"
 
