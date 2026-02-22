@@ -1271,6 +1271,28 @@ def _extract_edges_from_file(
                                             origin_run_id=run.execution_id,
                                         ))
                                         callee_name = None  # Already resolved
+                        # Chained call: pkg.Func(args).Method()
+                        # e.g. json.NewEncoder(w).Encode(data) — propagate
+                        # the import path from the inner call's package prefix
+                        # so .Encode() doesn't falsely resolve to a local
+                        # method with the same name.
+                        elif operand_node and operand_node.type == "call_expression":
+                            inner_func = find_child_by_field(
+                                operand_node, "function",
+                            )
+                            if inner_func and inner_func.type == "selector_expression":
+                                inner_operand = find_child_by_field(
+                                    inner_func, "operand",
+                                )
+                                if (
+                                    inner_operand
+                                    and inner_operand.type == "identifier"
+                                    and node_text(inner_operand, source)
+                                    in import_aliases
+                                ):
+                                    import_path_hint = import_aliases[
+                                        node_text(inner_operand, source)
+                                    ]
                         # Unified ambiguity guard for ALL selector expressions:
                         # covers simple identifiers (x.Close()), chained calls
                         # (getWriter().Close()), field access (resp.Body.Close()),

@@ -627,6 +627,22 @@ class ListNameResolver:
             return LookupResult(symbol=None)
 
         if len(candidates) == 1:
+            # When a path_hint is provided, the caller has evidence that the
+            # call targets a specific import package.  If the sole candidate
+            # doesn't match the hint, the candidate is a different symbol
+            # that happens to share the name (e.g. local MarshalEncoder.Encode
+            # vs encoding/json Encode).  Return not-found so the caller can
+            # create an unresolved edge.
+            if path_hint:
+                path_parts = path_hint.rstrip("/").split("/")
+                matched = False
+                for i in range(len(path_parts) - 1, -1, -1):
+                    suffix = "/".join(path_parts[i:])
+                    if suffix in candidates[0].path:
+                        matched = True
+                        break
+                if not matched:
+                    return LookupResult(symbol=None)
             return LookupResult(
                 symbol=candidates[0],
                 confidence=self.CONFIDENCE_EXACT,

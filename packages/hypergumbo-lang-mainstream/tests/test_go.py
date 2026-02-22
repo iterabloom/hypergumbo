@@ -3295,6 +3295,65 @@ func closeAll(items []interface{}) {
             )
 
 
+    def test_chained_call_import_prefix_no_false_resolution(self, tmp_path: Path) -> None:
+        """json.NewEncoder(w).Encode(v) must NOT resolve to local Encode method.
+
+        When a chained call's inner call has an import prefix (e.g.
+        ``json.NewEncoder(w)``), the outer method call (``.Encode(v)``)
+        should inherit the import path hint.  Without this, a local
+        method named ``Encode`` (e.g. ``MarshalEncoder.Encode``) would
+        be the sole candidate in global symbols and get falsely resolved
+        at confidence 0.80.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import "encoding/json"
+
+type MarshalEncoder struct{}
+
+func (m *MarshalEncoder) Encode(v interface{}) error { return nil }
+
+func NewMarshalEncoder() *MarshalEncoder { return &MarshalEncoder{} }
+
+func writeJSON(w *json.Encoder, data interface{}) {
+    json.NewEncoder(w).Encode(data)
+}
+
+func marshalLocal(m *MarshalEncoder, data interface{}) {
+    m.Encode(data)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        write_json_calls = [e for e in call_edges if "writeJSON" in e.src]
+
+        # Check that writeJSON's .Encode() does NOT falsely resolve to
+        # MarshalEncoder.Encode — only look at non-unresolved edges
+        resolved_encode_calls = [
+            e for e in write_json_calls
+            if "Encode" in e.dst and ":unresolved" not in e.dst
+        ]
+        # writeJSON's Encode call must NOT resolve to MarshalEncoder.Encode
+        for edge in resolved_encode_calls:
+            assert "MarshalEncoder" not in edge.dst, (
+                f"json.NewEncoder(w).Encode(data) must NOT resolve to "
+                f"MarshalEncoder.Encode, got dst={edge.dst}"
+            )
+
+        # marshalLocal's m.Encode(data) should still resolve correctly
+        # via typed_receiver_call since m's type is known
+        marshal_calls = [e for e in call_edges if "marshalLocal" in e.src]
+        marshal_encode = [e for e in marshal_calls if "Encode" in e.dst]
+        assert any("MarshalEncoder.Encode" in e.dst for e in marshal_encode), (
+            f"m.Encode(data) with typed receiver should resolve to "
+            f"MarshalEncoder.Encode, found: {[e.dst for e in marshal_encode]}"
+        )
+
     def test_method_receiver_self_call_resolves(self, tmp_path: Path) -> None:
         """s.Close() inside func (s *Server) Cleanup() → typed_receiver_call.
 

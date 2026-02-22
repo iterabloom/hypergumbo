@@ -638,6 +638,34 @@ class TestListNameResolverExactMatch:
         assert result.confidence == 1.0
         assert len(result.candidates) == 1
 
+    def test_single_candidate_with_matching_path_hint(self) -> None:
+        """Single candidate whose path matches hint is returned normally."""
+        sym = make_symbol("Encode", "/encoding/json/stream.go", "json")
+        registry = {"Encode": [sym]}
+        resolver = ListNameResolver(registry)
+
+        result = resolver.lookup("Encode", path_hint="encoding/json")
+
+        assert result.found is True
+        assert result.symbol is sym
+        assert result.confidence == 1.0
+
+    def test_single_candidate_with_non_matching_path_hint(self) -> None:
+        """Single candidate whose path doesn't match hint returns not-found.
+
+        Prevents false edges like json.NewEncoder(w).Encode(data) resolving
+        to a local MarshalEncoder.Encode method when the path_hint says the
+        call targets encoding/json.
+        """
+        sym = make_symbol("Encode", "/myapp/marshal.go", "myapp")
+        registry = {"Encode": [sym]}
+        resolver = ListNameResolver(registry)
+
+        result = resolver.lookup("Encode", path_hint="encoding/json")
+
+        assert result.found is False
+        assert result.symbol is None
+
     def test_not_found_returns_none(self) -> None:
         """No candidates returns None."""
         registry: dict = {}
