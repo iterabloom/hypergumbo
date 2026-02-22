@@ -35,21 +35,22 @@ assert_exit() {
     fi
 }
 
-if [ "${1:-}" = "--help" ]; then
-    echo "Usage: $0 <state.json>"
-    echo "  Run as jgstern_agent. Tests that agent respects human constraints."
-    exit 0
+if [ "${1:-}" = "--help" ] || [ $# -eq 0 ]; then
+    echo "Usage: $0 <path/to/state.json>"
+    echo "  Run as jgstern_agent. Verifies agent attempts to bypass human constraints fail."
+    echo "  The state.json path is printed by 1_agent_setup.sh."
+    [ "${1:-}" = "--help" ] && exit 0 || exit 1
 fi
 
 # ---------------------------------------------------------------------------
 # Load state
 # ---------------------------------------------------------------------------
 
-STATE_FILE="${1:-/tmp/tracker-permission-test-*/state.json}"
-STATE_FILE=$(ls $STATE_FILE 2>/dev/null | head -1)
+STATE_FILE="$1"
 
 if [ ! -f "$STATE_FILE" ]; then
-    _log "ERROR: state.json not found. Run scripts 1 and 2 first."
+    _log "ERROR: state.json not found at: $STATE_FILE"
+    _log "  Run scripts 1 and 2 first."
     exit 1
 fi
 

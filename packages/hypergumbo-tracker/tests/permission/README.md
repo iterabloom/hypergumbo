@@ -25,14 +25,14 @@ sudo usermod -aG project-dev jgstern_agent
 Step  Who             Command
 ────  ──────────────  ──────────────────────────────────────────────────
  1    jgstern_agent   ./1_agent_setup.sh [--workdir DIR]
- 2    jgstern         ./2_human_governance.sh
- 3    jgstern_agent   ./3_agent_constrained.sh
- 4    jgstern         ./4_human_cleanup.sh
+ 2    jgstern         ./2_human_governance.sh <state.json>
+ 3    jgstern_agent   ./3_agent_constrained.sh <state.json>
+ 4    jgstern         ./4_human_cleanup.sh <state.json>
 ```
 
-Each script reads `state.json` from the temp directory created by script 1
-and writes its results back. Script 4 prints the combined report and
-cleans up.
+Script 1 creates the test directory and prints the `state.json` path.
+Scripts 2-4 require that path as a positional argument. Script 4 prints
+the combined report and cleans up.
 
 ### Running
 
@@ -42,21 +42,23 @@ From the **agent's** shell:
 # --workdir places test files on the same filesystem as real tracker data
 # (default is /tmp, which may be tmpfs with different permission semantics).
 ./1_agent_setup.sh --workdir ~/tracker-permission-test
+# Note the state.json path printed at the end, e.g.:
+#   /home/jgstern_agent/tracker-permission-test/tracker-permission-test-EkFb/state.json
 ```
 
 From the **human's** shell:
 ```bash
-./2_human_governance.sh
+./2_human_governance.sh /home/jgstern_agent/tracker-permission-test/tracker-permission-test-EkFb/state.json
 ```
 
 From the **agent's** shell:
 ```bash
-./3_agent_constrained.sh
+./3_agent_constrained.sh /home/jgstern_agent/tracker-permission-test/tracker-permission-test-EkFb/state.json
 ```
 
 From the **human's** shell:
 ```bash
-./4_human_cleanup.sh
+./4_human_cleanup.sh /home/jgstern_agent/tracker-permission-test/tracker-permission-test-EkFb/state.json
 ```
 
 ## What each script tests
@@ -99,7 +101,7 @@ Final verification and teardown:
 | "project-dev group does not exist" | Group not created | `sudo groupadd project-dev` |
 | Permission denied on .ops files | Missing group membership | `sudo usermod -aG project-dev <user>`, re-login |
 | "dubious ownership" git error | Cross-user repo access | Script 2 adds safe.directory automatically |
-| Script 2/4 can't find state.json | Script 1 didn't run or failed | Check the workdir for `tracker-permission-test-*` |
+| "state.json not found" | Wrong path or script 1 didn't run | Pass the exact path printed by script 1 |
 | setgid check fails | OS doesn't support setgid on dirs | Expected on some filesystems; non-fatal |
 | Permissions pass in /tmp but fail in ~ | /tmp is often tmpfs; different mount options | Use `--workdir ~/...` to test on the real filesystem |
 

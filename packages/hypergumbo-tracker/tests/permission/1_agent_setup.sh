@@ -248,7 +248,9 @@ cat > "$TMPDIR/state.json" <<JSON
 JSON
 
 _log "Results: $PASS/$TOTAL passed, $FAIL failed"
-_log "State saved to $TMPDIR/state.json"
+_log ""
+_log "State file (pass to scripts 2-4):"
+_log "  $TMPDIR/state.json"
 
 if [ "$FAIL" -gt 0 ]; then
     exit 1

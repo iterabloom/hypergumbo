@@ -51,22 +51,22 @@ assert_output_contains() {
     fi
 }
 
-if [ "${1:-}" = "--help" ]; then
-    echo "Usage: $0 <state.json>"
+if [ "${1:-}" = "--help" ] || [ $# -eq 0 ]; then
+    echo "Usage: $0 <path/to/state.json>"
     echo "  Run as jgstern. Tests human governance operations."
-    exit 0
+    echo "  The state.json path is printed by 1_agent_setup.sh."
+    [ "${1:-}" = "--help" ] && exit 0 || exit 1
 fi
 
 # ---------------------------------------------------------------------------
 # Load state
 # ---------------------------------------------------------------------------
 
-STATE_FILE="${1:-/tmp/tracker-permission-test-*/state.json}"
-# Expand glob
-STATE_FILE=$(ls $STATE_FILE 2>/dev/null | head -1)
+STATE_FILE="$1"
 
 if [ ! -f "$STATE_FILE" ]; then
-    _log "ERROR: state.json not found. Run 1_agent_setup.sh first."
+    _log "ERROR: state.json not found at: $STATE_FILE"
+    _log "  Run 1_agent_setup.sh first — it prints the path."
     exit 1
 fi
 
