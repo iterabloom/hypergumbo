@@ -26,3 +26,13 @@
   nonce: 41ce  # 41ce
   set:  # 41ce
     priority: 0  # 41ce
+- op: update  # 3c89
+  at: '2026-02-22T05:27:21Z'  # 3c89
+  by: agent  # 3c89
+  actor: jgstern_agent  # 3c89
+  clock: 3  # 3c89
+  nonce: 3c89  # 3c89
+  set:  # 3c89
+    status: done  # 3c89
+    pr_ref: '#1334'  # 3c89
+    justification: "Fixed: _resolve_ref() resolves short prefixes at CLI write time; validate_all() in preflight_check() catches dangling refs before sync push"  # 3c89

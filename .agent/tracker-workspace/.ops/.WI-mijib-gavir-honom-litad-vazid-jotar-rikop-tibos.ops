@@ -1,0 +1,20 @@
+- op: create  # 2d1b
+  at: '2026-02-22T06:33:13Z'  # 2d1b
+  by: agent  # 2d1b
+  actor: jgstern_agent  # 2d1b
+  clock: 1  # 2d1b
+  nonce: 2d1b  # 2d1b
+  data:  # 2d1b
+    kind: work_item  # 2d1b
+    title: "Exclude tracker ops from auto-pr PRs, defer to tracker sync mechanism"  # 2d1b
+    status: todo_soft  # 2d1b
+    priority: 3  # 2d1b
+    parent:  # 2d1b
+    tags: []  # 2d1b
+    before: []  # 2d1b
+    duplicate_of: []  # 2d1b
+    not_duplicate_of: []  # 2d1b
+    pr_ref:  # 2d1b
+    justification:  # 2d1b
+    description: "auto-pr should not include .agent/tracker*/.ops/ paths in its PRs. Tracker data should flow exclusively through the tracker sync mechanism to avoid mixing tracker ops with code changes in the same PR."  # 2d1b
+    fields: {}  # 2d1b

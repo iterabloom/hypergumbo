@@ -1,0 +1,22 @@
+- op: create  # 1402
+  at: '2026-02-22T06:37:39Z'  # 1402
+  by: agent  # 1402
+  actor: jgstern_agent  # 1402
+  clock: 1  # 1402
+  nonce: '1402'  # 1402
+  data:  # 1402
+    kind: invariant  # 1402
+    title: "Invariants should never have status 'done' — need a 'holding'/'enforced' status"  # 1402
+    status: needs_human_review  # 1402
+    priority: 1  # 1402
+    parent:  # 1402
+    tags: []  # 1402
+    before: []  # 1402
+    duplicate_of: []  # 1402
+    not_duplicate_of: []  # 1402
+    pr_ref:  # 1402
+    justification:  # 1402
+    description: "Invariants represent perpetual truths about the system, not tasks to complete. Currently many INV-* and META-* items are marked 'done', which implies they can be forgotten. Need a new status (e.g. 'holding' or 'enforced') for invariants that are currently satisfied. Work items that fix violations get 'done'; the invariant itself stays 'holding'. This is a governance/schema change that requires human decision."  # 1402
+    fields:  # 1402
+      statement: "Invariants represent perpetual system truths and must never be marked done"  # 1402
+      root_cause: "Tracker schema has no holding/enforced status for invariants, so done is used as a catch-all"  # 1402
