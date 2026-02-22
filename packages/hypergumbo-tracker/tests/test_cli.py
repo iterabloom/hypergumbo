@@ -760,6 +760,52 @@ class TestLockUnlock:
 
 
 # ---------------------------------------------------------------------------
+# Delete command
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteCommand:
+    def test_delete_as_human(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                             mock_human_uid: None) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "delete", "WI-test",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        assert "deleted" in capsys.readouterr().out
+
+    def test_delete_as_human_json(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                                  mock_human_uid: None) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--json", "--no-auto-sync",
+                "delete", "WI-test",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = json.loads(capsys.readouterr().out)
+        assert out["ok"] is True
+
+    def test_delete_as_agent_denied(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                                    mock_agent_uid: None) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--no-auto-sync",
+                "delete", "WI-test",
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+
+    def test_delete_in_mutation_commands(self) -> None:
+        assert "delete" in _MUTATION_COMMANDS
+
+
+# ---------------------------------------------------------------------------
 # Tier movement commands
 # ---------------------------------------------------------------------------
 

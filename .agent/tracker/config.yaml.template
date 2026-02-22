@@ -57,6 +57,7 @@ statuses:
   - needs_human_review
   - done
   - wont_do
+  - deleted
 stop_hook:
   blocking_statuses:
     - todo_hard
@@ -64,6 +65,9 @@ stop_hook:
   resolved_statuses:
     - done
     - wont_do
+    - deleted
+  human_only_statuses:
+    - deleted
 well_known_tags:
   - developer_experience
   - bakeoff_infrastructure

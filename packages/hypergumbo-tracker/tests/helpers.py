@@ -38,11 +38,14 @@ TRACKER_TEST_STATUSES: list[str] = [
     "needs_human_review",
     "done",
     "wont_do",
+    "deleted",
 ]
 
 TRACKER_TEST_BLOCKING_STATUSES: list[str] = ["todo_hard", "todo_soft"]
 
-TRACKER_TEST_RESOLVED_STATUSES: list[str] = ["done", "wont_do"]
+TRACKER_TEST_RESOLVED_STATUSES: list[str] = ["done", "wont_do", "deleted"]
+
+TRACKER_TEST_HUMAN_ONLY_STATUSES: list[str] = ["deleted"]
 
 TRACKER_TEST_KINDS: dict[str, KindConfig] = {
     "invariant": KindConfig(
@@ -89,6 +92,7 @@ def make_test_config(**overrides: Any) -> TrackerConfig:
         "statuses": TRACKER_TEST_STATUSES,
         "blocking_statuses": TRACKER_TEST_BLOCKING_STATUSES,
         "resolved_statuses": TRACKER_TEST_RESOLVED_STATUSES,
+        "human_only_statuses": TRACKER_TEST_HUMAN_ONLY_STATUSES,
         "agent_usernames": ["*_agent"],
         "lamport_branches": ["dev", "main"],
     }
@@ -131,6 +135,7 @@ def make_test_config_dict(**overrides: Any) -> dict[str, Any]:
         "stop_hook": {
             "blocking_statuses": list(TRACKER_TEST_BLOCKING_STATUSES),
             "resolved_statuses": list(TRACKER_TEST_RESOLVED_STATUSES),
+            "human_only_statuses": list(TRACKER_TEST_HUMAN_ONLY_STATUSES),
         },
         "actor_resolution": {"agent_usernames": ["*_agent"]},
         "lamport_branches": ["dev", "main"],

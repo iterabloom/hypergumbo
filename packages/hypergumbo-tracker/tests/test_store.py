@@ -2641,3 +2641,105 @@ class TestUnreadHumanMessages:
         item = self._make_item([h1, a1, h2, a2])
         assert has_unread_human_messages(item) is False
         assert unread_human_messages(item) == []
+
+
+# ---------------------------------------------------------------------------
+# Human-only statuses
+# ---------------------------------------------------------------------------
+
+
+class TestHumanOnlyStatuses:
+    """Tests for the human_only_statuses enforcement in Store."""
+
+    def test_agent_cannot_update_to_deleted(
+        self, ops_dir: Path, mock_agent_uid: None
+    ) -> None:
+        """Agent trying to update status to 'deleted' raises HumanAuthorityError."""
+        config = _make_config()
+        store = Store(ops_dir, config=config)
+        item_id = store.add(kind="work_item", title="Deletable item")
+        with pytest.raises(HumanAuthorityError, match="requires human authority"):
+            store.update(item_id, set_fields={"status": "deleted"})
+
+    def test_human_can_update_to_deleted(
+        self, ops_dir: Path, mock_human_uid: None
+    ) -> None:
+        """Human can update status to 'deleted'."""
+        config = _make_config()
+        store = Store(ops_dir, config=config)
+        item_id = store.add(kind="work_item", title="Deletable item")
+        store.update(item_id, set_fields={"status": "deleted"})
+        item = store.get(item_id)
+        assert item.status == "deleted"
+
+    def test_agent_cannot_create_with_deleted_status(
+        self, ops_dir: Path, mock_agent_uid: None
+    ) -> None:
+        """Agent trying to add an item with deleted status raises HumanAuthorityError."""
+        config = _make_config()
+        store = Store(ops_dir, config=config)
+        with pytest.raises(HumanAuthorityError, match="requires human authority"):
+            store.add(kind="work_item", title="Born deleted", status="deleted")
+
+    def test_human_can_create_with_deleted_status(
+        self, ops_dir: Path, mock_human_uid: None
+    ) -> None:
+        """Human can add an item with deleted status."""
+        config = _make_config()
+        store = Store(ops_dir, config=config)
+        item_id = store.add(kind="work_item", title="Born deleted", status="deleted")
+        item = store.get(item_id)
+        assert item.status == "deleted"
+
+    def test_deleted_items_not_in_ready(
+        self, ops_dir: Path, mock_human_uid: None
+    ) -> None:
+        """Deleted items don't appear in ready() output."""
+        config = _make_config()
+        store = Store(ops_dir, config=config)
+        item_id = store.add(kind="work_item", title="Will be deleted")
+        store.update(item_id, set_fields={"status": "deleted"})
+        ready = store.ready()
+        assert all(i.id != item_id for i in ready)
+
+    def test_deleted_satisfies_before_blocking(
+        self, ops_dir: Path, mock_human_uid: None
+    ) -> None:
+        """Deleted items count as resolved for before-link soft-blocking."""
+        config = _make_config()
+        store = Store(ops_dir, config=config)
+        # Create blocker and blocked items
+        blocker_id = store.add(kind="work_item", title="Blocker item for test")
+        blocked_id = store.add(kind="work_item", title="Blocked item for test")
+        # X.before = [Y] means "X blocks Y" (finish X before Y).
+        store.update(blocker_id, add_fields={"before": [blocked_id]})
+        # blocked_id should not be ready because blocker is unresolved
+        ready_ids = {i.id for i in store.ready()}
+        assert blocked_id not in ready_ids
+        # Now delete blocker — it becomes resolved
+        store.update(blocker_id, set_fields={"status": "deleted"})
+        ready_ids = {i.id for i in store.ready()}
+        assert blocked_id in ready_ids
+
+    def test_agent_can_update_non_restricted_status(
+        self, ops_dir: Path, mock_agent_uid: None
+    ) -> None:
+        """Agent can still update to non-human-only statuses like 'done'."""
+        config = _make_config()
+        store = Store(ops_dir, config=config)
+        item_id = store.add(kind="work_item", title="Normal item")
+        store.update(item_id, set_fields={"status": "done"})
+        item = store.get(item_id)
+        assert item.status == "done"
+
+    def test_no_human_only_statuses_allows_all(
+        self, ops_dir: Path, mock_agent_uid: None
+    ) -> None:
+        """When human_only_statuses is empty, agent can set any status."""
+        config = _make_config(human_only_statuses=[])
+        store = Store(ops_dir, config=config)
+        item_id = store.add(kind="work_item", title="No restrictions")
+        # 'deleted' is still a valid status, just not restricted
+        store.update(item_id, set_fields={"status": "deleted"})
+        item = store.get(item_id)
+        assert item.status == "deleted"

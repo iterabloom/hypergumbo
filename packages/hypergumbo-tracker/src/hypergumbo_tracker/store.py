@@ -877,6 +877,13 @@ class Store:
             status = self._config.blocking_statuses[0] if self._config.blocking_statuses else "todo_hard"
 
         by, actor = resolve_actor(self._config.agent_usernames)
+
+        # Check human-only statuses
+        if by == "agent" and status in self._config.human_only_statuses:
+            raise HumanAuthorityError(
+                f"Status '{status}' requires human authority."
+            )
+
         nonce = _make_nonce()
         now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -990,6 +997,14 @@ class Store:
             raise ItemNotFoundError(f"Item not found: {item_id}")
 
         by, actor = resolve_actor(self._config.agent_usernames)
+
+        # Check human-only statuses
+        if by == "agent" and set_fields:
+            new_status = set_fields.get("status")
+            if new_status and new_status in self._config.human_only_statuses:
+                raise HumanAuthorityError(
+                    f"Status '{new_status}' requires human authority."
+                )
 
         # Check locked fields
         if by == "agent":

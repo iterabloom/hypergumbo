@@ -415,10 +415,11 @@ class TestConfigLoading:
         assert cfg.kinds["invariant"].prefix == "INV"
         assert cfg.statuses == [
             "todo_hard", "todo_soft", "in_progress",
-            "needs_human_review", "done", "wont_do",
+            "needs_human_review", "done", "wont_do", "deleted",
         ]
         assert cfg.blocking_statuses == ["todo_hard", "todo_soft"]
-        assert cfg.resolved_statuses == ["done", "wont_do"]
+        assert cfg.resolved_statuses == ["done", "wont_do", "deleted"]
+        assert cfg.human_only_statuses == ["deleted"]
         assert cfg.agent_usernames == ["*_agent"]
         assert cfg.lamport_branches == ["dev", "main"]
 
@@ -442,8 +443,10 @@ class TestConfigLoading:
         assert "work_item" in cfg.kinds
         assert cfg.statuses == [
             "todo_hard", "todo_soft", "in_progress",
-            "needs_human_review", "done", "wont_do",
+            "needs_human_review", "done", "wont_do", "deleted",
         ]
+        assert cfg.human_only_statuses == ["deleted"]
+        assert "deleted" in cfg.resolved_statuses
 
     def test_config_yaml_takes_priority_over_template(self, tmp_path: Path) -> None:
         (tmp_path / "config.yaml.template").write_text(textwrap.dedent("""\
@@ -593,6 +596,36 @@ class TestConfigValidation:
         raw["stop_hook"]["scope"] = "workspace"
         cfg = _parse_config_dict(raw)
         assert cfg.scope == "workspace"
+
+    def test_human_only_statuses_parsed(self) -> None:
+        raw = self._minimal_config()
+        raw["statuses"] = ["todo_hard", "done", "deleted"]
+        raw["stop_hook"]["human_only_statuses"] = ["deleted"]
+        raw["stop_hook"]["resolved_statuses"] = ["done", "deleted"]
+        cfg = _parse_config_dict(raw)
+        assert cfg.human_only_statuses == ["deleted"]
+
+    def test_human_only_statuses_defaults_empty(self) -> None:
+        cfg = _parse_config_dict(self._minimal_config())
+        assert cfg.human_only_statuses == []
+
+    def test_human_only_statuses_unknown_reference(self) -> None:
+        raw = self._minimal_config()
+        raw["stop_hook"]["human_only_statuses"] = ["nonexistent"]
+        with pytest.raises(ConfigValidationError, match="unknown status 'nonexistent'"):
+            _parse_config_dict(raw)
+
+    def test_human_only_statuses_blocking_overlap(self) -> None:
+        raw = self._minimal_config()
+        raw["stop_hook"]["human_only_statuses"] = ["todo_hard"]
+        with pytest.raises(ConfigValidationError, match="human_only_statuses and blocking_statuses overlap"):
+            _parse_config_dict(raw)
+
+    def test_human_only_statuses_not_list(self) -> None:
+        raw = self._minimal_config()
+        raw["stop_hook"]["human_only_statuses"] = "deleted"
+        with pytest.raises(ConfigValidationError, match="must be a list"):
+            _parse_config_dict(raw)
 
 
 # ---------------------------------------------------------------------------

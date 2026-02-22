@@ -446,6 +446,7 @@ class TrackerConfig:
     statuses: list[str]
     blocking_statuses: list[str]
     resolved_statuses: list[str]
+    human_only_statuses: list[str] = field(default_factory=list)
     well_known_tags: list[str] = field(default_factory=list)
     agent_usernames: list[str] = field(default_factory=lambda: ["*_agent"])
     scope: str = "all"
@@ -532,6 +533,24 @@ def _parse_config_dict(raw: dict[str, Any]) -> TrackerConfig:
             f"blocking_statuses and resolved_statuses overlap: {overlap}"
         )
 
+    # Parse human_only_statuses
+    human_only = stop_hook.get("human_only_statuses", [])
+    if not isinstance(human_only, list):
+        raise ConfigValidationError(
+            "'stop_hook.human_only_statuses' must be a list"
+        )
+    for s in human_only:
+        if s not in status_set:
+            raise ConfigValidationError(
+                f"human_only_statuses references unknown status '{s}'"
+            )
+    human_only_blocking_overlap = set(human_only) & set(blocking)
+    if human_only_blocking_overlap:
+        raise ConfigValidationError(
+            f"human_only_statuses and blocking_statuses overlap: "
+            f"{human_only_blocking_overlap}"
+        )
+
     # Parse actor resolution
     actor_res = raw.get("actor_resolution", {})
     agent_usernames = actor_res.get("agent_usernames", ["*_agent"])
@@ -562,6 +581,7 @@ def _parse_config_dict(raw: dict[str, Any]) -> TrackerConfig:
         statuses=statuses,
         blocking_statuses=blocking,
         resolved_statuses=resolved,
+        human_only_statuses=human_only,
         well_known_tags=well_known_tags,
         agent_usernames=agent_usernames,
         scope=scope,
@@ -592,10 +612,12 @@ _DEFAULT_CONFIG_RAW: dict[str, Any] = {
         "needs_human_review",
         "done",
         "wont_do",
+        "deleted",
     ],
     "stop_hook": {
         "blocking_statuses": ["todo_hard", "todo_soft"],
-        "resolved_statuses": ["done", "wont_do"],
+        "resolved_statuses": ["done", "wont_do", "deleted"],
+        "human_only_statuses": ["deleted"],
     },
     "well_known_tags": [],
     "actor_resolution": {"agent_usernames": ["*_agent"]},

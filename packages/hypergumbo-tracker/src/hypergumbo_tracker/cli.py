@@ -74,7 +74,7 @@ EXIT_INTERNAL_ERROR = 2
 _MUTATION_COMMANDS: frozenset[str] = frozenset({
     "add", "update", "discuss", "lock", "unlock",
     "promote", "demote", "stealth", "unstealth",
-    "reconcile-reset", "fork-setup", "tui",
+    "delete", "reconcile-reset", "fork-setup", "tui",
 })
 
 
@@ -491,6 +491,16 @@ def _cmd_unstealth(args: argparse.Namespace, ts: TrackerSet) -> int:
         print(json.dumps({"ok": True}))
     else:
         print("unstealthed")
+    return EXIT_SUCCESS
+
+
+def _cmd_delete(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Handle 'delete' subcommand — set item status to deleted (human only)."""
+    ts.update(args.item_id, set_fields={"status": "deleted"})
+    if args.json:
+        print(json.dumps({"ok": True}))
+    else:
+        print("deleted")
     return EXIT_SUCCESS
 
 
@@ -1065,6 +1075,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p_unstealth = sub.add_parser("unstealth", help="Unstealth: stealth → workspace (human only)")
     p_unstealth.add_argument("item_id", help="Item ID or prefix")
 
+    # --- delete ---
+    p_delete = sub.add_parser("delete", help="Delete an item (human only)")
+    p_delete.add_argument("item_id", help="Item ID or prefix")
+
     # --- validate ---
     p_validate = sub.add_parser("validate", help="Validate tracker data")
     p_validate.add_argument("files", nargs="*", help="Specific files to validate")
@@ -1349,6 +1363,7 @@ def main(argv: list[str] | None = None) -> None:
         "demote": _cmd_demote,
         "stealth": _cmd_stealth,
         "unstealth": _cmd_unstealth,
+        "delete": _cmd_delete,
         "validate": _cmd_validate,
         "count-todos": _cmd_count_todos,
         "hash-todos": _cmd_hash_todos,
