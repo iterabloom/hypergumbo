@@ -751,6 +751,7 @@ _FRAMEWORK_ALIASES: dict[str, str] = {
     "beego": "go-web",
     "iris": "go-web",
     "prometheus-common": "go-web",  # github.com/prometheus/common/route (chi-like)
+    "xorm": "go-web",  # xorm.io/xorm (Go ORM used by Forgejo/Gitea)
     # Rust web frameworks -> rust-web.yaml
     "actix-web": "rust-web",
     "axum": "rust-web",

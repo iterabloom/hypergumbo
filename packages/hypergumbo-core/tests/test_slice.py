@@ -2288,3 +2288,92 @@ class TestExcludeImports:
         query = SliceQuery(entrypoint="main")
         d = query.to_dict()
         assert "exclude_imports" not in d
+
+
+class TestSliceNodeDepths:
+    """Tests for node_depths tracking in slice results."""
+
+    def test_entry_nodes_depth_zero(self) -> None:
+        """Entry nodes should have depth 0."""
+        entry = make_symbol("main")
+        callee = make_symbol("helper", start_line=10)
+        edge = make_edge(entry, callee)
+
+        query = SliceQuery(entrypoint="main", max_hops=3)
+        result = slice_graph([entry, callee], [edge], query)
+
+        assert result.node_depths[entry.id] == 0
+
+    def test_direct_callees_depth_one(self) -> None:
+        """Direct callees should have depth 1."""
+        entry = make_symbol("main")
+        callee = make_symbol("helper", start_line=10)
+        edge = make_edge(entry, callee)
+
+        query = SliceQuery(entrypoint="main", max_hops=3)
+        result = slice_graph([entry, callee], [edge], query)
+
+        assert result.node_depths[callee.id] == 1
+
+    def test_chain_depths_increment(self) -> None:
+        """Depths should increment along a call chain: 0 -> 1 -> 2."""
+        a = make_symbol("a")
+        b = make_symbol("b", start_line=10)
+        c = make_symbol("c", start_line=20)
+        edges = [make_edge(a, b), make_edge(b, c)]
+
+        query = SliceQuery(entrypoint="a", max_hops=3)
+        result = slice_graph([a, b, c], edges, query)
+
+        assert result.node_depths[a.id] == 0
+        assert result.node_depths[b.id] == 1
+        assert result.node_depths[c.id] == 2
+
+    def test_node_depths_in_to_dict(self) -> None:
+        """node_depths should appear in to_dict() output when non-empty."""
+        entry = make_symbol("main")
+        callee = make_symbol("helper", start_line=10)
+        edge = make_edge(entry, callee)
+
+        query = SliceQuery(entrypoint="main", max_hops=3)
+        result = slice_graph([entry, callee], [edge], query)
+        d = result.to_dict()
+
+        assert "node_depths" in d
+        assert d["node_depths"][entry.id] == 0
+        assert d["node_depths"][callee.id] == 1
+
+    def test_node_depths_omitted_when_empty(self) -> None:
+        """node_depths should be omitted from to_dict() when empty (no matches)."""
+        query = SliceQuery(entrypoint="nonexistent", max_hops=3)
+        result = slice_graph([], [], query)
+        d = result.to_dict()
+
+        assert "node_depths" not in d
+
+    def test_reverse_slice_tracks_depths(self) -> None:
+        """Reverse slicing should also track node depths."""
+        callee = make_symbol("target")
+        caller = make_symbol("caller", start_line=10)
+        edge = make_edge(caller, callee)
+
+        query = SliceQuery(entrypoint="target", max_hops=3, reverse=True)
+        result = slice_graph([callee, caller], [edge], query)
+
+        assert result.node_depths[callee.id] == 0
+        assert result.node_depths[caller.id] == 1
+
+    def test_class_expansion_members_depth_zero(self) -> None:
+        """Class-expanded member methods should have depth 0."""
+        cls = make_symbol("MyClass", kind="class")
+        method = make_symbol("MyClass.do_thing", kind="method", start_line=10)
+        callee = make_symbol("helper", start_line=20)
+        contains_edge = make_edge(cls, method, edge_type="contains")
+        call_edge = make_edge(method, callee)
+
+        query = SliceQuery(entrypoint="MyClass", max_hops=3)
+        result = slice_graph([cls, method, callee], [contains_edge, call_edge], query)
+
+        assert result.node_depths[cls.id] == 0
+        assert result.node_depths[method.id] == 0
+        assert result.node_depths[callee.id] == 1

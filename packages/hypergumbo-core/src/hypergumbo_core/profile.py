@@ -252,6 +252,8 @@ GO_FRAMEWORKS = {
     "iris": ["github.com/kataras/iris"],
     # Prometheus common router (chi-like API) - used by prometheus, alertmanager, etc.
     "prometheus-common": ["github.com/prometheus/common"],
+    # ORM
+    "xorm": ["xorm.io/xorm"],
     # CLI
     "cli-go": ["github.com/spf13/cobra", "github.com/urfave/cli", "github.com/alecthomas/kong"],
 }

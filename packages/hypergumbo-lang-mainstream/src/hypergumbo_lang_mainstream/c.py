@@ -257,6 +257,7 @@ def _extract_symbols(
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
                             signature=signature,
+                            modifiers=["declaration"],
                         )
                         symbols.append(symbol)
 

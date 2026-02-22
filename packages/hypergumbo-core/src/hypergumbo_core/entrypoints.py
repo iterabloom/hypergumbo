@@ -665,6 +665,33 @@ def detect_entrypoints(
             seen_ids.add(ep.symbol_id)
             unique_entrypoints.append(ep)
 
+    # Deduplicate declaration vs definition entrypoints (C forward declarations).
+    # Functions like cmd_add appear twice: once from builtin.h (declaration) and
+    # once from builtin/add.c (definition). They have different symbol_ids so the
+    # above dedup doesn't catch them. When both exist for the same symbol name,
+    # keep only the definition (non-declaration).
+    symbol_lookup_for_dedup: dict[str, Symbol] = {node.id: node for node in nodes}
+    name_groups: dict[str, list[Entrypoint]] = defaultdict(list)
+    for ep in unique_entrypoints:
+        sym = symbol_lookup_for_dedup.get(ep.symbol_id)
+        if sym:
+            name_groups[sym.name].append(ep)
+    deduped_entrypoints: List[Entrypoint] = []
+    for _name, eps in name_groups.items():
+        if len(eps) > 1:
+            # Prefer non-declaration symbols over declarations
+            non_decl = [
+                ep for ep in eps
+                if "declaration" not in (
+                    symbol_lookup_for_dedup.get(ep.symbol_id).modifiers
+                    if symbol_lookup_for_dedup.get(ep.symbol_id) else []
+                )
+            ]
+            deduped_entrypoints.extend(non_decl if non_decl else eps)
+        else:
+            deduped_entrypoints.extend(eps)
+    unique_entrypoints = deduped_entrypoints
+
     # Connectivity-based fallback: when no concept-based entrypoints found,
     # select the most-connected callable symbols as pseudo-entrypoints.
     # This ensures --entry auto never hard-fails, even for repos with no

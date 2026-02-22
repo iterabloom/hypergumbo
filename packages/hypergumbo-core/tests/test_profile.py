@@ -718,6 +718,25 @@ require (
     assert "fiber" in data["profile"]["frameworks"]
 
 
+def test_detects_go_xorm_framework(tmp_path: Path) -> None:
+    """Should detect XORM ORM framework from go.mod."""
+    (tmp_path / "main.go").write_text("package main\n")
+    (tmp_path / "go.mod").write_text("""module code.gitea.io/gitea
+
+go 1.21
+
+require (
+    xorm.io/xorm v1.3.4
+)
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "xorm" in data["profile"]["frameworks"]
+
+
 # PHP framework detection tests
 
 

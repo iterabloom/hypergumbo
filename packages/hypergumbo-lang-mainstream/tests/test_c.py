@@ -1418,3 +1418,35 @@ void process(void) {
             f"found: {[s.name for s in enums]}"
         )
 
+
+class TestCDeclarationModifier:
+    """Tests for declaration modifier on forward declarations."""
+
+    def test_declaration_gets_modifier(self, tmp_path: Path) -> None:
+        """Function declarations (prototypes) get modifiers=['declaration']."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        header = tmp_path / "builtin.h"
+        header.write_text("int cmd_add(int argc, const char **argv);\n")
+
+        result = analyze_c(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        assert "declaration" in funcs[0].modifiers
+
+    def test_definition_does_not_get_declaration_modifier(self, tmp_path: Path) -> None:
+        """Function definitions do NOT get the 'declaration' modifier."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        source = tmp_path / "add.c"
+        source.write_text("""
+int cmd_add(int argc, const char **argv) {
+    return 0;
+}
+""")
+
+        result = analyze_c(tmp_path)
+        funcs = [s for s in result.symbols if s.kind == "function"]
+        assert len(funcs) == 1
+        assert "declaration" not in funcs[0].modifiers
+

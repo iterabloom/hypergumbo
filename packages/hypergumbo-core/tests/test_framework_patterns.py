@@ -5301,6 +5301,59 @@ class TestGoWebPatterns:
         assert results[0]["concept"] == "web_service"
         assert results[0]["matched_base_class"] == "restful.WebService"
 
+    def test_xorm_alias_resolves_to_go_web(self) -> None:
+        """XORM framework alias resolves to go-web pattern file."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("xorm")
+        assert pattern_def is not None
+        assert pattern_def.id == "go-web"
+
+    def test_xorm_engine_find_matches_repository_pattern(self) -> None:
+        """XORM e.Find(...) matches repository pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("xorm")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:models/user.go:1:GetUsers:function",
+            name="GetUsers",
+            kind="function",
+            language="go",
+            path="models/user.go",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "e.Find", "args": ["&users"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert any(r["concept"] == "repository" for r in results)
+
+    def test_xorm_session_insert_matches_repository_pattern(self) -> None:
+        """XORM sess.Insert(...) matches repository pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("xorm")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:models/user.go:1:CreateUser:function",
+            name="CreateUser",
+            kind="function",
+            language="go",
+            path="models/user.go",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "sess.Insert", "args": ["&user"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert any(r["concept"] == "repository" for r in results)
+
 
 class TestRustWebPatterns:
     """Tests for Rust web framework patterns (Actix-web, Rocket, Axum)."""

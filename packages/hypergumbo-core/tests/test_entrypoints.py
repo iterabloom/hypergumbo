@@ -2861,3 +2861,46 @@ class TestApplicationLibraryExportDemotion:
             assert ep.kind == EntrypointKind.HTTP_ROUTE, (
                 f"Top 20 should be routes, but found {ep.kind.value}: {ep.label}"
             )
+
+
+class TestDeclarationDedup:
+    """Tests for deduplication of declaration vs definition entrypoints."""
+
+    def test_declaration_deduped_when_definition_exists(self) -> None:
+        """When both declaration and definition exist for same name, keep definition."""
+        # Declaration from header (e.g., builtin.h)
+        decl = make_symbol(
+            "cmd_add", path="builtin.h", kind="function",
+            language="c", start_line=5,
+            meta={"concepts": [{"concept": "command_by_name"}]},
+        )
+        # Manually set modifiers since make_symbol doesn't support it
+        decl.modifiers = ["declaration"]
+
+        # Definition from source (e.g., builtin/add.c)
+        defn = make_symbol(
+            "cmd_add", path="builtin/add.c", kind="function",
+            language="c", start_line=10,
+            meta={"concepts": [{"concept": "command_by_name"}]},
+        )
+
+        entrypoints = detect_entrypoints([decl, defn], [])
+
+        # Should only have one entrypoint for cmd_add (the definition)
+        cmd_add_eps = [ep for ep in entrypoints if "cmd_add" in ep.label]
+        assert len(cmd_add_eps) == 1
+        assert cmd_add_eps[0].symbol_id == defn.id
+
+    def test_declaration_kept_when_no_definition(self) -> None:
+        """When only a declaration exists (no definition), keep it."""
+        decl = make_symbol(
+            "cmd_add", path="builtin.h", kind="function",
+            language="c", start_line=5,
+            meta={"concepts": [{"concept": "command_by_name"}]},
+        )
+        decl.modifiers = ["declaration"]
+
+        entrypoints = detect_entrypoints([decl], [])
+
+        cmd_add_eps = [ep for ep in entrypoints if "cmd_add" in ep.label]
+        assert len(cmd_add_eps) == 1
