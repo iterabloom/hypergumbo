@@ -23,3 +23,11 @@
       fix: "Added `_resolve_django_handler()` function that resolves view_name to handler symbols: Simple names: `view_name=\"list_users\"` → function CBV: `view_name=\"UserListView\"` → class Module-qualified: `view_name=\"accounts.views.list_accounts\"` → last segment"  # d13e
       regression_tests:  # d13e
       - tests/test_route_handler_linker.py::TestDjangoViewNameLinking  # d13e
+- op: update  # ee85
+  at: '2026-02-22T04:46:17Z'  # ee85
+  by: agent  # ee85
+  actor: jgstern_agent  # ee85
+  clock: 2  # ee85
+  nonce: ee85  # ee85
+  set:  # ee85
+    parent: INV-nimik  # ee85

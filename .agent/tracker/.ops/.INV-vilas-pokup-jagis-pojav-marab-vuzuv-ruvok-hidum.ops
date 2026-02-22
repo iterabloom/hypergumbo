@@ -24,3 +24,11 @@
       regression_tests:  # 8b85
       - tests/test_ruby.py::TestRubyInheritanceEdges  # 8b85
       - tests/test_kotlin.py::TestKotlinInheritanceEdges  # 8b85
+- op: update  # 4871
+  at: '2026-02-22T04:46:17Z'  # 4871
+  by: agent  # 4871
+  actor: jgstern_agent  # 4871
+  clock: 2  # 4871
+  nonce: '4871'  # 4871
+  set:  # 4871
+    parent: INV-vusog  # 4871

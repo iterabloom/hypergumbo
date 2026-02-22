@@ -25,3 +25,11 @@
       - tests/test_ruby.py::TestRailsUsageContext::test_rails_resource_singular  # cba5
       - tests/test_ruby.py::TestRailsRouteSymbols::test_route_symbols_for_resources_macro  # cba5
       - tests/test_ruby.py::TestRailsRouteSymbols::test_route_symbols_for_resource_singular  # cba5
+- op: update  # 0fb5
+  at: '2026-02-22T04:46:17Z'  # 0fb5
+  by: agent  # 0fb5
+  actor: jgstern_agent  # 0fb5
+  clock: 2  # 0fb5
+  nonce: 0fb5  # 0fb5
+  set:  # 0fb5
+    parent: INV-nimik  # 0fb5
