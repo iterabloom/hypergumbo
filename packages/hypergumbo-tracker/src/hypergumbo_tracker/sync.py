@@ -36,6 +36,8 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from hypergumbo_tracker.validation import validate_all
+
 
 # ---------------------------------------------------------------------------
 # Data types
@@ -605,6 +607,19 @@ def preflight_check(repo_root: Path) -> PreflightResult:
             git_dir=git_dir,
             original_branch=original_branch,
             changed_files=[],
+        )
+
+    # 5a. Pre-sync validation — catch dangling refs, cycles, etc.
+    #     before data leaves the local machine.
+    tracker_root = repo_root / ".agent"
+    val_result = validate_all(tracker_root)
+    if not val_result.ok:
+        summary = "; ".join(val_result.errors[:5])
+        if len(val_result.errors) > 5:
+            summary += f" (and {len(val_result.errors) - 5} more)"
+        return PreflightResult(
+            ok=False,
+            error=f"tracker validation failed: {summary}",
         )
 
     # 6. Credentials

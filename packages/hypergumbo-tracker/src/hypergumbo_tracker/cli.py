@@ -289,6 +289,24 @@ def _cmd_log(args: argparse.Namespace, ts: TrackerSet) -> int:
     return EXIT_SUCCESS
 
 
+def _resolve_ref(ts: TrackerSet, raw: str, field_name: str) -> str:
+    """Resolve a short ID prefix to its full proquint ID.
+
+    Used for --parent, --before, --add-duplicate-of, etc. to ensure
+    that references stored in ops files are always full IDs, not
+    short prefixes that would fail cross-file validation.
+    """
+    try:
+        full_id, _store, _tier = ts._resolve_id(raw)
+        return full_id
+    except (ItemNotFoundError, AmbiguousPrefixError) as exc:
+        print(
+            f"error: cannot resolve {field_name} '{raw}': {exc}",
+            file=sys.stderr,
+        )
+        raise
+
+
 def _cmd_add(args: argparse.Namespace, ts: TrackerSet) -> int:
     """Handle 'add' subcommand."""
     tier = Tier(args.tier) if args.tier else Tier.WORKSPACE
@@ -299,11 +317,11 @@ def _cmd_add(args: argparse.Namespace, ts: TrackerSet) -> int:
     if args.priority is not None:
         kwargs["priority"] = args.priority
     if args.parent:
-        kwargs["parent"] = args.parent
+        kwargs["parent"] = _resolve_ref(ts, args.parent, "--parent")
     if args.tag:
         kwargs["tags"] = args.tag
     if args.before:
-        kwargs["before"] = args.before
+        kwargs["before"] = [_resolve_ref(ts, b, "--before") for b in args.before]
     if args.description:
         kwargs["description"] = args.description
     if args.pr_ref:
@@ -343,7 +361,7 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
     if args.title:
         set_fields["title"] = args.title
     if args.parent:
-        set_fields["parent"] = args.parent
+        set_fields["parent"] = _resolve_ref(ts, args.parent, "--parent")
     if args.pr_ref:
         set_fields["pr_ref"] = args.pr_ref
     if args.justification:
@@ -356,15 +374,23 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
     if args.remove_tag:
         remove_fields["tags"] = args.remove_tag
     if args.add_before:
-        add_fields["before"] = args.add_before
+        add_fields["before"] = [
+            _resolve_ref(ts, b, "--add-before") for b in args.add_before
+        ]
     if args.remove_before:
         remove_fields["before"] = args.remove_before
     if args.add_duplicate_of:
-        add_fields["duplicate_of"] = args.add_duplicate_of
+        add_fields["duplicate_of"] = [
+            _resolve_ref(ts, d, "--add-duplicate-of")
+            for d in args.add_duplicate_of
+        ]
     if args.remove_duplicate_of:
         remove_fields["duplicate_of"] = args.remove_duplicate_of
     if args.add_not_duplicate_of:
-        add_fields["not_duplicate_of"] = args.add_not_duplicate_of
+        add_fields["not_duplicate_of"] = [
+            _resolve_ref(ts, d, "--add-not-duplicate-of")
+            for d in args.add_not_duplicate_of
+        ]
     if args.remove_not_duplicate_of:
         remove_fields["not_duplicate_of"] = args.remove_not_duplicate_of
 

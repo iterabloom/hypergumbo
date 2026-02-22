@@ -527,16 +527,48 @@ class TestWriteCommands:
     def test_add_with_before_and_more(self, tmp_path: Path, capsys: pytest.CaptureFixture,
                                       mock_agent_uid: None) -> None:
         tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "WI-before-target", title="Before target")
+        _add_item(ops_dir, "WI-parent-target", title="Parent target")
         with pytest.raises(SystemExit) as exc:
             main([
                 "--tracker-root", str(tracker_root),
                 "add", "--kind", "work_item", "--title", "Test",
-                "--before", "WI-xxx",
+                "--before", "WI-before-target",
                 "--pr-ref", "#123",
                 "--justification", "needed",
-                "--parent", "WI-parent",
+                "--parent", "WI-parent-target",
             ])
         assert exc.value.code == EXIT_SUCCESS
+
+    def test_add_parent_resolves_prefix(self, tmp_path: Path,
+                                        capsys: pytest.CaptureFixture,
+                                        mock_agent_uid: None) -> None:
+        """--parent with a short prefix resolves to the full proquint ID."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        full_id = "WI-abcde-fghij-klmno-pqrst-uvwxy-zabcd-efghi-jklmn"
+        _add_item(ops_dir, full_id, title="Parent item")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "add", "--kind", "work_item", "--title", "Child",
+                "--parent", "WI-abcde",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+
+    def test_add_parent_nonexistent_fails(self, tmp_path: Path,
+                                          capsys: pytest.CaptureFixture,
+                                          mock_agent_uid: None) -> None:
+        """--parent referencing a nonexistent item fails at CLI time."""
+        tracker_root = _setup_tracker(tmp_path)
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "add", "--kind", "work_item", "--title", "Child",
+                "--parent", "WI-nonexistent",
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
 
     def test_update(self, tmp_path: Path, capsys: pytest.CaptureFixture,
                     mock_agent_uid: None) -> None:
@@ -603,21 +635,26 @@ class TestWriteCommands:
     def test_update_with_all_options(self, tmp_path: Path, capsys: pytest.CaptureFixture,
                                      mock_agent_uid: None) -> None:
         tracker_root = _setup_tracker(tmp_path)
-        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "WI-test")
+        _add_item(ops_dir, "WI-parent-ref", title="Parent ref")
+        _add_item(ops_dir, "WI-before-ref", title="Before ref")
+        _add_item(ops_dir, "WI-dup-ref", title="Dup ref")
+        _add_item(ops_dir, "WI-nodup-ref", title="Nodup ref")
         with pytest.raises(SystemExit) as exc:
             main([
                 "--tracker-root", str(tracker_root),
                 "update", "WI-test",
                 "--title", "New Title",
                 "--priority", "0",
-                "--parent", "WI-parent",
+                "--parent", "WI-parent-ref",
                 "--pr-ref", "#456",
                 "--justification", "reason",
                 "--description", "new desc",
-                "--add-before", "WI-before",
+                "--add-before", "WI-before-ref",
                 "--remove-tag", "old",
-                "--add-duplicate-of", "WI-dup",
-                "--add-not-duplicate-of", "WI-nodup",
+                "--add-duplicate-of", "WI-dup-ref",
+                "--add-not-duplicate-of", "WI-nodup-ref",
             ])
         assert exc.value.code == EXIT_SUCCESS
 

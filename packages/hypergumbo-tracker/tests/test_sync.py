@@ -1312,6 +1312,128 @@ class TestPreflightCheck:
         assert result.ok
         assert result.forgejo_token == "envtok"
 
+    @patch("hypergumbo_tracker.sync.validate_all")
+    @patch("hypergumbo_tracker.sync._git")
+    @patch("hypergumbo_tracker.sync._load_env")
+    @patch("hypergumbo_tracker.sync._detect_api_base")
+    def test_validation_failure_blocks_sync(
+        self,
+        mock_api_base: MagicMock,
+        mock_env: MagicMock,
+        mock_git: MagicMock,
+        mock_validate: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Pre-sync validation catches dangling refs before push."""
+        from hypergumbo_tracker.validation import ValidationResult
+
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        # Set up tracker directory so validate_all has a target
+        tracker_root = tmp_path / ".agent"
+        (tracker_root / "tracker" / ".ops").mkdir(parents=True)
+        (tracker_root / "tracker-workspace" / ".ops").mkdir(parents=True)
+
+        mock_env.return_value = {"FORGEJO_TOKEN": "tok"}
+        mock_api_base.return_value = "https://codeberg.org/api/v1/repos/o/r"
+        mock_git.side_effect = [
+            _make_completed_process(stdout=str(git_dir)),  # rev-parse
+            _make_completed_process(stdout="dev\n"),  # branch
+            _make_completed_process(stdout=""),  # diff --cached
+            _make_completed_process(
+                stdout=" M .agent/tracker/.ops/.WI-test.ops\n"
+            ),  # status — dirty files exist
+        ]
+        bad_result = ValidationResult()
+        bad_result.errors.append(
+            "WI-test: dangling parent reference 'INV-short'"
+        )
+        mock_validate.return_value = bad_result
+
+        result = preflight_check(tmp_path)
+        assert not result.ok
+        assert "tracker validation failed" in result.error
+        assert "dangling parent" in result.error
+
+    @patch("hypergumbo_tracker.sync.validate_all")
+    @patch("hypergumbo_tracker.sync._git")
+    @patch("hypergumbo_tracker.sync._load_env")
+    @patch("hypergumbo_tracker.sync._detect_api_base")
+    def test_validation_many_errors_truncated(
+        self,
+        mock_api_base: MagicMock,
+        mock_env: MagicMock,
+        mock_git: MagicMock,
+        mock_validate: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """When >5 validation errors, message shows truncation count."""
+        from hypergumbo_tracker.validation import ValidationResult
+
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        tracker_root = tmp_path / ".agent"
+        (tracker_root / "tracker" / ".ops").mkdir(parents=True)
+        (tracker_root / "tracker-workspace" / ".ops").mkdir(parents=True)
+
+        mock_env.return_value = {"FORGEJO_TOKEN": "tok"}
+        mock_api_base.return_value = "https://codeberg.org/api/v1/repos/o/r"
+        mock_git.side_effect = [
+            _make_completed_process(stdout=str(git_dir)),
+            _make_completed_process(stdout="dev\n"),
+            _make_completed_process(stdout=""),
+            _make_completed_process(
+                stdout=" M .agent/tracker/.ops/.WI-test.ops\n"
+            ),
+        ]
+        bad_result = ValidationResult()
+        for i in range(7):
+            bad_result.errors.append(f"error-{i}: some problem")
+        mock_validate.return_value = bad_result
+
+        result = preflight_check(tmp_path)
+        assert not result.ok
+        assert "(and 2 more)" in result.error
+
+    @patch("hypergumbo_tracker.sync.validate_all")
+    @patch("hypergumbo_tracker.sync._git")
+    @patch("hypergumbo_tracker.sync._load_env")
+    @patch("hypergumbo_tracker.sync._detect_api_base")
+    def test_validation_pass_proceeds(
+        self,
+        mock_api_base: MagicMock,
+        mock_env: MagicMock,
+        mock_git: MagicMock,
+        mock_validate: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Pre-sync validation passing allows sync to proceed."""
+        from hypergumbo_tracker.validation import ValidationResult
+
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        tracker_root = tmp_path / ".agent"
+        (tracker_root / "tracker" / ".ops").mkdir(parents=True)
+        (tracker_root / "tracker-workspace" / ".ops").mkdir(parents=True)
+
+        mock_env.return_value = {"FORGEJO_TOKEN": "tok"}
+        mock_api_base.return_value = "https://codeberg.org/api/v1/repos/o/r"
+        mock_git.side_effect = [
+            _make_completed_process(stdout=str(git_dir)),  # rev-parse
+            _make_completed_process(stdout="dev\n"),  # branch
+            _make_completed_process(stdout=""),  # diff --cached
+            _make_completed_process(
+                stdout=" M .agent/tracker/.ops/.WI-test.ops\n"
+            ),  # status — dirty files
+            _make_completed_process(stdout="User\n"),  # user.name
+            _make_completed_process(stdout="u@e.com\n"),  # user.email
+            _make_completed_process(stdout="https://cb.org/o/r.git\n"),
+        ]
+        mock_validate.return_value = ValidationResult()  # no errors
+
+        result = preflight_check(tmp_path)
+        assert result.ok
+
 
 # ---------------------------------------------------------------------------
 # TestDoSync
