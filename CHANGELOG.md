@@ -26,6 +26,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Analysis core
 
+- **Slice node depth tracking**: `SliceResult.node_depths` records BFS hop distance for each node (0 for entries, 1 for direct callees, etc.), enabling LLMs to distinguish 1-hop vs 8-hop dependencies in slice output.
+- **C forward declaration entrypoint dedup**: Functions appearing as both declaration (`.h`) and definition (`.c`) no longer produce duplicate entrypoints. Declarations get `modifiers=["declaration"]`; entrypoint detection prefers definitions when both exist.
 - **Docstring extraction (103/105 analyzers)**: Extracts first-line doc comment summaries into `Symbol.docstring` using position-based tree-sitter node lookup. Covers all analyzers except HTML (no code symbols) and JSON (no comment syntax). Mainstream overriders (Go, Java, JS/TS, Kotlin, PHP) harmonized to a single `populate_docstrings_from_tree()` call per file.
 - **Inheritance linker struct support**: Go structs with `base_classes` metadata now produce `implements`/`extends` edges.
 - **Decorator/annotation edge detection**: Decorator applications create edges in Python, TypeScript, Java, C#, and Rust.
@@ -47,6 +49,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Django & Flask framework patterns**: Django template tags/filters and signal receivers; Flask Jinja2 customizations, Blinker signals, and Flask-RESTful support.
 - **Test classification**: Test directories/files classified as tier 2; test functions registered as entrypoints with 90% penalty to avoid dominating `--entry auto`.
 - **Kafka Connect framework patterns**: SinkTask, SourceTask, SinkConnector, and SourceConnector base class patterns detected as controller entrypoints. Framework detection from `connect-api` in Maven/Gradle builds. Enables entrypoint detection for streaming data connectors (e.g., Apache Iceberg's IcebergSinkTask, Debezium connectors).
+- **XORM framework detection**: XORM ORM (used by Forgejo/Gitea) detected via `xorm.io/xorm` in `go.mod`. Engine operation patterns (`Get`, `Find`, `Insert`, `Update`, `Delete`, etc.) matched as repository concepts.
 
 #### CLI & developer tooling
 
