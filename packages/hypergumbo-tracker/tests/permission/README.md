@@ -24,7 +24,7 @@ sudo usermod -aG project-dev jgstern_agent
 ```
 Step  Who             Command
 ────  ──────────────  ──────────────────────────────────────────────────
- 1    jgstern_agent   ./1_agent_setup.sh
+ 1    jgstern_agent   ./1_agent_setup.sh [--workdir DIR]
  2    jgstern         ./2_human_governance.sh
  3    jgstern_agent   ./3_agent_constrained.sh
  4    jgstern         ./4_human_cleanup.sh
@@ -34,32 +34,29 @@ Each script reads `state.json` from the temp directory created by script 1
 and writes its results back. Script 4 prints the combined report and
 cleans up.
 
-### Running as the other user
+### Running
 
-From the human's shell:
+From the **agent's** shell:
 ```bash
-# Run script 1 as agent
-sudo -u jgstern_agent ./1_agent_setup.sh
-
-# Run script 2 as yourself (human)
-./2_human_governance.sh
-
-# Run script 3 as agent
-sudo -u jgstern_agent ./3_agent_constrained.sh
-
-# Run script 4 as yourself (human)
-./4_human_cleanup.sh
+# Run script 1 as the agent.
+# --workdir places test files on the same filesystem as real tracker data
+# (default is /tmp, which may be tmpfs with different permission semantics).
+./1_agent_setup.sh --workdir ~/tracker-permission-test
 ```
 
-Or from the agent's shell:
+From the **human's** shell:
 ```bash
-# Run script 1 as yourself (agent)
-./1_agent_setup.sh
+./2_human_governance.sh
+```
 
-# Ask the human to run scripts 2 and 4, or use sudo if available:
-sudo -u jgstern ./2_human_governance.sh
+From the **agent's** shell:
+```bash
 ./3_agent_constrained.sh
-sudo -u jgstern ./4_human_cleanup.sh
+```
+
+From the **human's** shell:
+```bash
+./4_human_cleanup.sh
 ```
 
 ## What each script tests
@@ -102,9 +99,14 @@ Final verification and teardown:
 | "project-dev group does not exist" | Group not created | `sudo groupadd project-dev` |
 | Permission denied on .ops files | Missing group membership | `sudo usermod -aG project-dev <user>`, re-login |
 | "dubious ownership" git error | Cross-user repo access | Script 2 adds safe.directory automatically |
-| Script 2/4 can't find state.json | Script 1 didn't run or failed | Check /tmp/tracker-permission-test-* exists |
+| Script 2/4 can't find state.json | Script 1 didn't run or failed | Check the workdir for `tracker-permission-test-*` |
 | setgid check fails | OS doesn't support setgid on dirs | Expected on some filesystems; non-fatal |
+| Permissions pass in /tmp but fail in ~ | /tmp is often tmpfs; different mount options | Use `--workdir ~/...` to test on the real filesystem |
 
-## Environment variables
+## Options and environment variables
 
+- `--workdir DIR` (script 1 only): Parent directory for test files. Defaults to
+  `/tmp`. Use a path under `$HOME` to test on the same filesystem as real
+  tracker data — `/tmp` is often tmpfs, which may have different mount options
+  (e.g. `nosuid` silently ignores setgid).
 - `TRACKER_CMD`: Override the tracker command (default: `hypergumbo-tracker`)

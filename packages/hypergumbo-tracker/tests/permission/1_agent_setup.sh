@@ -52,11 +52,28 @@ assert_stderr_contains() {
     fi
 }
 
-if [ "${1:-}" = "--help" ]; then
-    echo "Usage: $0"
-    echo "  Run as jgstern_agent. Creates temp repo and tests agent capabilities."
-    exit 0
-fi
+WORKDIR=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --help)
+            echo "Usage: $0 [--workdir DIR]"
+            echo "  Run as jgstern_agent. Creates temp repo and tests agent capabilities."
+            echo ""
+            echo "Options:"
+            echo "  --workdir DIR  Parent directory for test files (default: /tmp)."
+            echo "                 Use a home-directory path to test on the same"
+            echo "                 filesystem as real tracker data."
+            exit 0
+            ;;
+        --workdir)
+            WORKDIR="$2"; shift 2
+            ;;
+        *)
+            _log "ERROR: unknown argument: $1"
+            exit 1
+            ;;
+    esac
+done
 
 # ---------------------------------------------------------------------------
 # Pre-flight
@@ -78,7 +95,12 @@ fi
 # Create temp directory with correct group
 # ---------------------------------------------------------------------------
 
-TMPDIR=$(mktemp -d /tmp/tracker-permission-test-XXXX)
+if [ -n "$WORKDIR" ]; then
+    mkdir -p "$WORKDIR"
+    TMPDIR=$(mktemp -d "$WORKDIR/tracker-permission-test-XXXX")
+else
+    TMPDIR=$(mktemp -d /tmp/tracker-permission-test-XXXX)
+fi
 _log "Temp dir: $TMPDIR"
 
 REPO="$TMPDIR/repo"
