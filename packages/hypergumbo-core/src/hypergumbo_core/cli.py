@@ -4107,7 +4107,11 @@ def run_behavior_map(
 
     # Rank symbols by importance (centrality + tier weighting) for output ordering
     show_progress("Ranking symbols", 65)
-    ranked = rank_symbols(all_symbols, all_edges, first_party_priority=True)
+    ranked = rank_symbols(
+        all_symbols, all_edges,
+        first_party_priority=True,
+        min_edge_confidence=0.5,
+    )
     ranked_symbols = [r.symbol for r in ranked]
     del ranked  # Free RankedSymbol wrappers
 

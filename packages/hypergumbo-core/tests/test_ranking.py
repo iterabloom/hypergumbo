@@ -51,7 +51,12 @@ def make_symbol(
     return sym
 
 
-def make_edge(src_id: str, dst_id: str, edge_type: str = "calls") -> Edge:
+def make_edge(
+    src_id: str,
+    dst_id: str,
+    edge_type: str = "calls",
+    confidence: float = 0.9,
+) -> Edge:
     """Helper to create test edges."""
     return Edge(
         id=f"edge:{src_id}->{dst_id}",
@@ -59,7 +64,7 @@ def make_edge(src_id: str, dst_id: str, edge_type: str = "calls") -> Edge:
         dst=dst_id,
         edge_type=edge_type,
         line=1,
-        confidence=0.9,
+        confidence=confidence,
     )
 
 
@@ -1998,4 +2003,149 @@ class TestApplyUtilitySymbolWeights:
         assert router_ranked.rank < logger_ranked.rank, (
             f"Router (rank {router_ranked.rank}) should outrank "
             f"Logger (rank {logger_ranked.rank}) due to utility dampening"
+        )
+
+
+class TestMinEdgeConfidence:
+    """Tests for min_edge_confidence filtering in rank_symbols.
+
+    Low-confidence edges (ast_method_inferred, confidence <0.5) inflate
+    in-degree for common method names like .Lock(), .get(), .setValue().
+    DirLocker.Lock gets 255 false in-degree when only 2 production call
+    sites exist because every .Lock() call globally is attributed to it.
+    Filtering edges below a confidence threshold before computing
+    centrality addresses this.
+    """
+
+    def test_low_confidence_edges_excluded(self):
+        """Edges below min_edge_confidence are excluded from centrality."""
+        target = make_symbol("Lock", path="src/locker.go", language="go")
+        real_caller = make_symbol("OpenDB", path="src/db.go", language="go")
+        false_caller = make_symbol("DoWork", path="src/work.go", language="go")
+        # Third symbol with 2 high-confidence edges (to set the scale)
+        popular = make_symbol("Query", path="src/query.go", language="go")
+
+        edges = [
+            # Real call to Lock with high confidence
+            make_edge(real_caller.id, target.id, confidence=0.9),
+            # False positive from method name collision
+            make_edge(false_caller.id, target.id, confidence=0.35),
+            # Two high-confidence calls to Query (sets normalization scale)
+            make_edge(real_caller.id, popular.id, confidence=0.9),
+            make_edge(false_caller.id, popular.id, confidence=0.8),
+        ]
+
+        # With confidence filter, Lock has 1 edge vs Query has 2
+        result = rank_symbols(
+            [target, real_caller, false_caller, popular],
+            edges,
+            min_edge_confidence=0.5,
+        )
+        target_ranked = next(r for r in result if r.symbol.name == "Lock")
+        popular_ranked = next(r for r in result if r.symbol.name == "Query")
+        # Lock should rank below Query because the false edge was filtered
+        assert target_ranked.rank > popular_ranked.rank
+
+    def test_high_confidence_edges_preserved(self):
+        """Edges at or above min_edge_confidence are preserved."""
+        target = make_symbol("Handler", path="src/handler.go", language="go")
+        c1 = make_symbol("Route1", path="src/routes.go", language="go")
+        c2 = make_symbol("Route2", path="src/routes.go", language="go")
+
+        edges = [
+            make_edge(c1.id, target.id, confidence=0.8),
+            make_edge(c2.id, target.id, confidence=0.5),
+        ]
+
+        result = rank_symbols(
+            [target, c1, c2],
+            edges,
+            min_edge_confidence=0.5,
+        )
+        target_ranked = next(r for r in result if r.symbol.name == "Handler")
+        # Both edges should count — confidence >= threshold
+        assert target_ranked.raw_centrality > 0
+
+    def test_default_no_confidence_filter(self):
+        """Default behavior (no filter) preserves all edges."""
+        target = make_symbol("get", path="src/cache.go", language="go")
+        c1 = make_symbol("Fetch", path="src/fetch.go", language="go")
+
+        edges = [
+            make_edge(c1.id, target.id, confidence=0.1),
+        ]
+
+        # Default: no confidence filter
+        result = rank_symbols([target, c1], edges)
+        target_ranked = next(r for r in result if r.symbol.name == "get")
+        assert target_ranked.raw_centrality > 0
+
+    def test_confidence_filter_changes_ranking(self):
+        """Filtering low-confidence edges reorders symbols correctly.
+
+        Real scenario: DirLocker.Lock has 2 real calls (confidence 0.9)
+        plus 253 inferred .Lock() calls (confidence 0.35). Without filter,
+        Lock dominates. With filter, a domain function with 3 real callers
+        wins.
+        """
+        lock = make_symbol("Lock", path="src/locker.go", language="go")
+        domain = make_symbol("Scrape", path="src/scrape.go", language="go")
+        # 3 real callers for domain function
+        d1 = make_symbol("d1", path="src/a.go", language="go")
+        d2 = make_symbol("d2", path="src/b.go", language="go")
+        d3 = make_symbol("d3", path="src/c.go", language="go")
+        # 2 real callers + 5 false positives for Lock
+        real1 = make_symbol("r1", path="src/d.go", language="go")
+        real2 = make_symbol("r2", path="src/e.go", language="go")
+        false1 = make_symbol("f1", path="src/f.go", language="go")
+        false2 = make_symbol("f2", path="src/g.go", language="go")
+        false3 = make_symbol("f3", path="src/h.go", language="go")
+        false4 = make_symbol("f4", path="src/i.go", language="go")
+        false5 = make_symbol("f5", path="src/j.go", language="go")
+
+        edges = [
+            # Domain function: 3 real calls
+            make_edge(d1.id, domain.id, confidence=0.9),
+            make_edge(d2.id, domain.id, confidence=0.85),
+            make_edge(d3.id, domain.id, confidence=0.9),
+            # Lock: 2 real + 5 false
+            make_edge(real1.id, lock.id, confidence=0.9),
+            make_edge(real2.id, lock.id, confidence=0.85),
+            make_edge(false1.id, lock.id, confidence=0.35),
+            make_edge(false2.id, lock.id, confidence=0.35),
+            make_edge(false3.id, lock.id, confidence=0.35),
+            make_edge(false4.id, lock.id, confidence=0.35),
+            make_edge(false5.id, lock.id, confidence=0.35),
+        ]
+
+        all_syms = [
+            lock, domain, d1, d2, d3, real1, real2,
+            false1, false2, false3, false4, false5,
+        ]
+
+        # Without filter: Lock has 7 edges, domain has 3 → Lock ranks higher
+        result_no_filter = rank_symbols(all_syms, edges)
+        lock_rank_no = next(
+            r for r in result_no_filter if r.symbol.name == "Lock"
+        ).rank
+        domain_rank_no = next(
+            r for r in result_no_filter if r.symbol.name == "Scrape"
+        ).rank
+        assert lock_rank_no < domain_rank_no, (
+            "Without filter, Lock should rank higher (more edges)"
+        )
+
+        # With filter: Lock has 2 real edges, domain has 3 → domain ranks higher
+        result_filtered = rank_symbols(
+            all_syms, edges, min_edge_confidence=0.5
+        )
+        lock_rank_f = next(
+            r for r in result_filtered if r.symbol.name == "Lock"
+        ).rank
+        domain_rank_f = next(
+            r for r in result_filtered if r.symbol.name == "Scrape"
+        ).rank
+        assert domain_rank_f < lock_rank_f, (
+            f"With confidence filter, Scrape (rank {domain_rank_f}) "
+            f"should outrank Lock (rank {lock_rank_f})"
         )

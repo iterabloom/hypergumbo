@@ -125,7 +125,8 @@ _CODE_NODE_KINDS = frozenset({
 # JVM (Test*.java, *IT.java, *Tests.java, src/test/, src/integration/),
 # Go (unittest/), C/Perl (t/, test-*.c).
 _TEST_PATH_RE = re.compile(
-    r'/(tests?|t|spec|__tests__|test_|test-|_test\.|integration/|unittest/)'
+    r'/(tests?|t|spec|__tests__|test_|test-|integration/|unittest/)'
+    r'|_test\.'                                     # Go: *_test.go
     r'|/Test[A-Z][^/]*\.java'
     r'|/[A-Z]\w*(?:IT|Tests?)\.(?:java|scala|kt)'
 )

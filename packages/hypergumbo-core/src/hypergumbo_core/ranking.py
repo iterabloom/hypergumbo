@@ -35,6 +35,13 @@ Ranking uses multiple signals combined:
    dominated rankings because hub saturation at 100 only reduced effective_in
    to ~106.
 
+5. **Edge Confidence Filtering**: Low-confidence edges (e.g., inferred
+   method calls with confidence <0.5) are excluded from centrality
+   computation. This prevents method name collisions from inflating
+   in-degree: DirLocker.Lock gets 255 false in-degree from unrelated
+   .Lock() calls, MemoryCache.get gets 228 from unrelated .get() calls.
+   Filtering at confidence 0.5 eliminates these artifacts.
+
 Why These Heuristics
 --------------------
 - **Centrality** captures structural importance: core abstractions and
@@ -451,6 +458,7 @@ def rank_symbols(
     first_party_priority: bool = True,
     exclude_test_edges: bool = True,
     exclude_import_edges: bool = True,
+    min_edge_confidence: float = 0.0,
 ) -> List[RankedSymbol]:
     """Rank symbols by importance using centrality and tier weighting.
 
@@ -467,6 +475,12 @@ def rank_symbols(
         exclude_import_edges: If True, ignore import/imports_module edges
             when computing centrality. Import edges represent file-level
             visibility, not actual call relationships. Default True.
+        min_edge_confidence: Minimum edge confidence to include in
+            centrality computation. Edges below this threshold are
+            excluded. Default 0.0 (include all). Set to 0.5 to exclude
+            low-confidence inferred edges (ast_method_inferred) that
+            inflate in-degree for common method names like .Lock(),
+            .get(), .setValue().
 
     Returns:
         List of RankedSymbol objects sorted by importance (highest first).
@@ -500,6 +514,17 @@ def rank_symbols(
         filtered_edges = [
             e for e in filtered_edges
             if e.edge_type not in _IMPORT_EDGE_TYPES
+        ]
+
+    # Filter low-confidence edges — inferred method edges
+    # (ast_method_inferred, confidence <0.5) inflate in-degree for
+    # common method names like .Lock(), .get(), .setValue().
+    # DirLocker.Lock gets 255 false in-degree when only 2 production
+    # call sites exist.
+    if min_edge_confidence > 0:
+        filtered_edges = [
+            e for e in filtered_edges
+            if e.confidence >= min_edge_confidence
         ]
 
     # Compute centrality with hub saturation (threshold=100 dampens
