@@ -18,3 +18,12 @@
     justification:  # 083c
     description: "Erlang -behaviour(gen_server). only emits a generic imports edge to the behaviour module. Elixir creates function-level callback edges (handle_call, handle_cast, init, etc.) that reveal the OTP contract. Fix: when -behaviour(X). is present and callback functions (init/1, handle_call/3, etc.) are defined, emit callback_for edges from those functions to the behaviour, analogous to Elixir's BEHAVIOUR_CALLBACKS mapping."  # 083c
     fields: {}  # 083c
+- op: update  # 7dae
+  at: '2026-02-23T12:38:37Z'  # 7dae
+  by: agent  # 7dae
+  actor: jgstern_agent  # 7dae
+  clock: 2  # 7dae
+  nonce: 7dae  # 7dae
+  set:  # 7dae
+    status: done  # 7dae
+    pr_ref: '1370'  # 7dae
