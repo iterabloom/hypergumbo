@@ -6,6 +6,7 @@ This analyzer uses tree-sitter to parse Kotlin files and extract:
 - Object declarations (object)
 - Interface declarations (interface)
 - Method declarations (inside classes/objects)
+- Annotations on classes, methods, and objects (meta.decorators)
 - Function call relationships
 - Import statements
 
@@ -116,6 +117,143 @@ def _extract_modifiers(node: "tree_sitter.Node") -> list[str]:
                         if kw.type in KOTLIN_MODIFIER_KEYWORDS:
                             modifiers.append(kw.type)
     return modifiers
+
+
+def _kotlin_value_to_python(
+    node: "tree_sitter.Node", source: bytes,
+) -> str | int | float | bool | list | None:
+    """Convert a Kotlin tree-sitter AST value node to a Python representation.
+
+    Handles strings, numbers, booleans, identifiers, and arrays.
+    Mirrors Java's ``_java_value_to_python`` for consistency.
+    """
+    if node.type == "string_literal":
+        # Extract content from between quotes
+        for child in node.children:
+            if child.type == "string_content":
+                return node_text(child, source)
+        # Fallback: strip quotes (string_content always present in tree-sitter-kotlin)
+        return node_text(node, source).strip('"')  # pragma: no cover - defensive
+    elif node.type == "number_literal":
+        # tree-sitter-kotlin uses "number_literal" for integers and hex
+        text = node_text(node, source)
+        try:
+            if text.startswith(("0x", "0X")):
+                return int(text, 16)
+            return int(text.rstrip("lL"))
+        except ValueError:  # pragma: no cover - defensive
+            return text
+    elif node.type == "float_literal":
+        # tree-sitter-kotlin uses "float_literal" for decimal floats
+        text = node_text(node, source)
+        try:
+            return float(text.rstrip("fFdD"))
+        except ValueError:  # pragma: no cover - defensive
+            return text
+    elif node.type == "identifier":
+        # tree-sitter-kotlin parses true/false as identifiers
+        text = node_text(node, source)
+        if text == "true":
+            return True
+        elif text == "false":
+            return False
+        return text
+    elif node.type == "navigation_expression":
+        # Handle qualified references like Enum.VALUE
+        return node_text(node, source)
+    elif node.type == "collection_literal":  # pragma: no cover - rare in annotation values
+        # Handle array literals: [value1, value2]
+        result: list[object] = []
+        for child in node.children:
+            if child.type not in ("[", "]", ","):
+                result.append(_kotlin_value_to_python(child, source))
+        return result
+    # Fallback: return text representation
+    return node_text(node, source)  # pragma: no cover - defensive
+
+
+def _extract_annotation_info(
+    annotation_node: "tree_sitter.Node", source: bytes,
+) -> dict[str, object]:
+    """Extract full annotation information from a Kotlin annotation AST node.
+
+    Kotlin annotations have two forms in tree-sitter:
+    1. Simple: ``annotation → @ + user_type`` (e.g., ``@Entity``)
+    2. With args: ``annotation → @ + constructor_invocation → user_type + value_arguments``
+
+    Returns a dict with:
+    - name: annotation name (e.g., "Entity", "Table")
+    - args: list of positional arguments
+    - kwargs: dict of keyword arguments (name=value pairs)
+    """
+    name = ""
+    args: list[object] = []
+    kwargs: dict[str, object] = {}
+
+    for child in annotation_node.children:
+        if child.type == "user_type":
+            # Simple annotation: @Entity
+            name = node_text(child, source)
+        elif child.type == "constructor_invocation":
+            # Annotation with arguments: @Table(name = "users")
+            for ci_child in child.children:
+                if ci_child.type == "user_type":
+                    name = node_text(ci_child, source)
+                elif ci_child.type == "value_arguments":
+                    for va_child in ci_child.children:
+                        if va_child.type != "value_argument":
+                            continue
+                        # Check if this is a named or positional argument.
+                        # Named args have: identifier = value
+                        # Positional args have: value only
+                        # We track the = sign to distinguish name from value
+                        # since both can be "identifier" nodes.
+                        has_eq = any(p.type == "=" for p in va_child.children)
+                        arg_name: str | None = None
+                        arg_value: object = None
+                        found_eq = False
+                        for part in va_child.children:
+                            if part.type == "=" and has_eq:
+                                found_eq = True
+                            elif has_eq and not found_eq and part.type == "identifier":
+                                # Before =: this is the parameter name
+                                arg_name = node_text(part, source)
+                            elif has_eq and found_eq:
+                                # After =: this is the value
+                                arg_value = _kotlin_value_to_python(part, source)
+                            else:
+                                # No = sign: positional argument
+                                arg_value = _kotlin_value_to_python(part, source)
+                        if has_eq and arg_name is not None:
+                            kwargs[arg_name] = arg_value
+                        elif arg_value is not None:
+                            args.append(arg_value)
+
+    return {"name": name, "args": args, "kwargs": kwargs}
+
+
+def _extract_annotations(
+    node: "tree_sitter.Node", source: bytes,
+) -> list[dict[str, object]]:
+    """Extract all annotations from a Kotlin declaration node.
+
+    Annotations appear inside the ``modifiers`` container alongside
+    visibility/inheritance modifiers. Each annotation is an ``annotation``
+    node type.
+
+    Returns list of annotation info dicts: [{"name": str, "args": list, "kwargs": dict}]
+    """
+    decorators: list[dict[str, object]] = []
+
+    for child in node.children:
+        if child.type == "modifiers":
+            for mod_child in child.children:
+                if mod_child.type == "annotation":
+                    dec_info = _extract_annotation_info(mod_child, source)
+                    if dec_info["name"]:
+                        decorators.append(dec_info)
+
+    return decorators
 
 
 def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -440,6 +578,12 @@ def _extract_symbols_from_file(
                     kind, norm_sig, visibility_from_modifiers(modifiers),
                 ) if norm_sig else None
 
+                # Extract annotations (decorators)
+                annotations = _extract_annotations(node, source)
+                func_meta: dict[str, object] | None = None
+                if annotations:
+                    func_meta = {"decorators": annotations}
+
                 symbol = Symbol(
                     id=make_symbol_id("kotlin", str(file_path), start_line, end_line, full_name, kind),
                     name=full_name,
@@ -457,6 +601,7 @@ def _extract_symbols_from_file(
                     stable_id=stable_id,
                     signature=signature,
                     modifiers=modifiers,
+                    meta=func_meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -483,6 +628,13 @@ def _extract_symbols_from_file(
                 base_classes = _extract_delegation_specifiers(node, source)
                 if base_classes:
                     meta = {"base_classes": base_classes}
+
+                # Extract annotations (decorators)
+                annotations = _extract_annotations(node, source)
+                if annotations:
+                    if meta is None:
+                        meta = {}
+                    meta["decorators"] = annotations
 
                 symbol = Symbol(
                     id=make_symbol_id("kotlin", str(file_path), start_line, end_line, type_name, kind),
@@ -515,6 +667,12 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
 
+                # Extract annotations (decorators)
+                obj_annotations = _extract_annotations(node, source)
+                obj_meta: dict[str, object] | None = None
+                if obj_annotations:
+                    obj_meta = {"decorators": obj_annotations}
+
                 symbol = Symbol(
                     id=make_symbol_id("kotlin", str(file_path), start_line, end_line, object_name, "object"),
                     name=object_name,
@@ -530,6 +688,7 @@ def _extract_symbols_from_file(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     modifiers=_extract_modifiers(node),
+                    meta=obj_meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[object_name] = symbol
@@ -1022,6 +1181,77 @@ def _extract_inheritance_edges(
     return edges
 
 
+def _extract_annotation_edges(
+    symbols: list[Symbol],
+    global_symbols: dict[str, Symbol],
+    run: AnalysisRun,
+) -> list[Edge]:
+    """Extract decorated_by edges from annotation metadata.
+
+    For each symbol with decorators metadata, creates decorated_by edges to
+    annotation types that exist in the analyzed codebase. External annotations
+    (e.g., Spring's @Service, JPA's @Entity) get lower-confidence unresolved
+    edges that still surface the annotation pattern in the graph.
+
+    Args:
+        symbols: All extracted symbols
+        global_symbols: Map of name -> Symbol for annotation lookup
+        run: Current analysis run for provenance
+
+    Returns:
+        List of decorated_by edges for annotation relationships
+    """
+    edges: list[Edge] = []
+
+    for sym in symbols:
+        if sym.meta is None:
+            continue
+
+        decorators = sym.meta.get("decorators")
+        if not decorators or not isinstance(decorators, list):
+            continue
+
+        for decorator in decorators:
+            if not isinstance(decorator, dict):  # pragma: no cover
+                continue
+
+            dec_name = decorator.get("name")
+            if not dec_name or not isinstance(dec_name, str):  # pragma: no cover
+                continue
+
+            annotation_sym = global_symbols.get(dec_name)
+            line = sym.span.start_line if sym.span else 0
+
+            if annotation_sym:
+                edge = Edge.create(
+                    src=sym.id,
+                    dst=annotation_sym.id,
+                    edge_type="decorated_by",
+                    line=line,
+                    confidence=0.95,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ast_annotation",
+                )
+                edges.append(edge)
+            else:
+                # Unresolved edge for external annotations (e.g., @Service, @Entity)
+                dst_id = f"kotlin:unresolved:0-0:{dec_name}:unresolved"
+                edge = Edge.create(
+                    src=sym.id,
+                    dst=dst_id,
+                    edge_type="decorated_by",
+                    line=line,
+                    confidence=0.50,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ast_annotation_unresolved",
+                )
+                edges.append(edge)
+
+    return edges
+
+
 class KotlinAnalyzer(TreeSitterAnalyzer):
     """Kotlin analyzer using tree-sitter-kotlin grammar."""
 
@@ -1124,6 +1354,10 @@ class KotlinAnalyzer(TreeSitterAnalyzer):
             all_symbols, class_by_name, interface_by_name, sym_file_imports, run
         )
         all_edges.extend(inheritance_edges)
+
+        # Extract annotation edges (decorators → decorated_by edges)
+        annotation_edges = _extract_annotation_edges(all_symbols, global_symbols, run)
+        all_edges.extend(annotation_edges)
 
         return AnalysisResult(
             symbols=all_symbols,

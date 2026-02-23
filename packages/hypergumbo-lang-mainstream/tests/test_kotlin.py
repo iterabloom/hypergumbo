@@ -1715,3 +1715,327 @@ class TestNormalizeKotlinSignature:
     def test_none(self) -> None:
         from hypergumbo_lang_mainstream.kotlin import normalize_kotlin_signature
         assert normalize_kotlin_signature(None) is None
+
+
+class TestKotlinAnnotations:
+    """Tests for Kotlin annotation extraction into meta.decorators.
+
+    Kotlin annotations (e.g., @Entity, @GetMapping("/users")) are extracted
+    into Symbol.meta["decorators"] as a list of dicts with name, args, kwargs.
+    The analyzer also creates decorated_by edges to annotation symbols.
+    """
+
+    def test_simple_class_annotation(self, tmp_path: Path) -> None:
+        """Simple annotation on class creates decorators metadata."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Model.kt").write_text('''
+@Entity
+class User {
+}
+''')
+        result = analyze_kotlin(tmp_path)
+        user = next(s for s in result.symbols if s.name == "User")
+        assert user.meta is not None
+        assert "decorators" in user.meta
+        decorators = user.meta["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Entity"
+        assert decorators[0]["args"] == []
+        assert decorators[0]["kwargs"] == {}
+
+    def test_annotation_with_named_arg(self, tmp_path: Path) -> None:
+        """Annotation with named argument extracts kwargs."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Model.kt").write_text('''
+@Table(name = "users")
+class User {
+}
+''')
+        result = analyze_kotlin(tmp_path)
+        user = next(s for s in result.symbols if s.name == "User")
+        decorators = user.meta["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Table"
+        assert decorators[0]["kwargs"] == {"name": "users"}
+
+    def test_annotation_with_positional_arg(self, tmp_path: Path) -> None:
+        """Annotation with positional argument extracts args."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Controller.kt").write_text('''
+class UserController {
+    @GetMapping("/users")
+    fun listUsers() {}
+}
+''')
+        result = analyze_kotlin(tmp_path)
+        method = next(s for s in result.symbols if s.name == "UserController.listUsers")
+        assert method.meta is not None
+        decorators = method.meta["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "GetMapping"
+        assert decorators[0]["args"] == ["/users"]
+
+    def test_multiple_annotations(self, tmp_path: Path) -> None:
+        """Multiple annotations on a single class are all extracted."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Model.kt").write_text('''
+@Entity
+@Table(name = "products")
+class Product {
+}
+''')
+        result = analyze_kotlin(tmp_path)
+        product = next(s for s in result.symbols if s.name == "Product")
+        decorators = product.meta["decorators"]
+        assert len(decorators) == 2
+        names = [d["name"] for d in decorators]
+        assert "Entity" in names
+        assert "Table" in names
+
+    def test_method_annotation(self, tmp_path: Path) -> None:
+        """Annotations on methods are extracted."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Service.kt").write_text('''
+class UserService {
+    @Deprecated("Use findById instead")
+    fun getUser() {}
+}
+''')
+        result = analyze_kotlin(tmp_path)
+        method = next(s for s in result.symbols if s.name == "UserService.getUser")
+        decorators = method.meta["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Deprecated"
+        assert decorators[0]["args"] == ["Use findById instead"]
+
+    def test_boolean_annotation_value(self, tmp_path: Path) -> None:
+        """Boolean annotation values are extracted as Python booleans."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Model.kt").write_text('''
+@JsonIgnoreProperties(ignoreUnknown = true)
+class Response {
+}
+''')
+        result = analyze_kotlin(tmp_path)
+        resp = next(s for s in result.symbols if s.name == "Response")
+        decorators = resp.meta["decorators"]
+        assert decorators[0]["kwargs"]["ignoreUnknown"] is True
+
+    def test_integer_annotation_value(self, tmp_path: Path) -> None:
+        """Integer annotation values are extracted as Python ints."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Config.kt").write_text('''
+@Retry(maxAttempts = 3)
+fun callService() {}
+''')
+        result = analyze_kotlin(tmp_path)
+        func = next(s for s in result.symbols if s.name == "callService")
+        decorators = func.meta["decorators"]
+        assert decorators[0]["kwargs"]["maxAttempts"] == 3
+
+    def test_object_annotation(self, tmp_path: Path) -> None:
+        """Annotations on Kotlin objects are extracted."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Config.kt").write_text('''
+@Singleton
+object AppConfig {
+}
+''')
+        result = analyze_kotlin(tmp_path)
+        obj = next(s for s in result.symbols if s.name == "AppConfig")
+        assert obj.meta is not None
+        decorators = obj.meta["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Singleton"
+
+    def test_false_boolean_annotation_value(self, tmp_path: Path) -> None:
+        """Boolean false annotation value is extracted correctly."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Model.kt").write_text('''
+@JsonProperty(required = false)
+class Config {
+}
+''')
+        result = analyze_kotlin(tmp_path)
+        cfg = next(s for s in result.symbols if s.name == "Config")
+        decorators = cfg.meta["decorators"]
+        assert decorators[0]["kwargs"]["required"] is False
+
+    def test_float_annotation_value(self, tmp_path: Path) -> None:
+        """Float annotation value is extracted as Python float."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Config.kt").write_text('''
+@Threshold(value = 0.95)
+fun check() {}
+''')
+        result = analyze_kotlin(tmp_path)
+        func = next(s for s in result.symbols if s.name == "check")
+        decorators = func.meta["decorators"]
+        assert decorators[0]["kwargs"]["value"] == 0.95
+
+    def test_hex_integer_annotation_value(self, tmp_path: Path) -> None:
+        """Hex integer annotation value is extracted as Python int."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Config.kt").write_text('''
+@Color(value = 0xFF00FF)
+class Theme {
+}
+''')
+        result = analyze_kotlin(tmp_path)
+        theme = next(s for s in result.symbols if s.name == "Theme")
+        decorators = theme.meta["decorators"]
+        assert decorators[0]["kwargs"]["value"] == 0xFF00FF
+
+    def test_navigation_expression_annotation_value(self, tmp_path: Path) -> None:
+        """Qualified reference (Enum.VALUE) in annotation is extracted."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Config.kt").write_text('''
+@Target(AnnotationTarget.CLASS)
+class MyAnnotation {
+}
+''')
+        result = analyze_kotlin(tmp_path)
+        ann = next(s for s in result.symbols if s.name == "MyAnnotation")
+        decorators = ann.meta["decorators"]
+        assert decorators[0]["name"] == "Target"
+        assert decorators[0]["args"] == ["AnnotationTarget.CLASS"]
+
+    def test_plain_identifier_annotation_value(self, tmp_path: Path) -> None:
+        """Plain identifier (enum constant) in annotation is extracted as string."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Config.kt").write_text('''
+@Target(CLASS)
+class MyAnnotation {
+}
+''')
+        result = analyze_kotlin(tmp_path)
+        ann = next(s for s in result.symbols if s.name == "MyAnnotation")
+        decorators = ann.meta["decorators"]
+        assert decorators[0]["name"] == "Target"
+        assert decorators[0]["args"] == ["CLASS"]
+
+    def test_multiple_positional_args(self, tmp_path: Path) -> None:
+        """Multiple positional arguments are all extracted."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Config.kt").write_text('''
+@Suppress("unused", "unchecked")
+class MyClass {
+}
+''')
+        result = analyze_kotlin(tmp_path)
+        cls = next(s for s in result.symbols if s.name == "MyClass")
+        decorators = cls.meta["decorators"]
+        assert decorators[0]["name"] == "Suppress"
+        assert decorators[0]["args"] == ["unused", "unchecked"]
+
+    def test_no_annotations_no_decorators_key(self, tmp_path: Path) -> None:
+        """Symbols without annotations have no decorators in meta."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Plain.kt").write_text('''
+fun plainFunction() {}
+''')
+        result = analyze_kotlin(tmp_path)
+        func = next(s for s in result.symbols if s.name == "plainFunction")
+        # meta should be None (no decorators, no base_classes)
+        assert func.meta is None or "decorators" not in func.meta
+
+    def test_class_with_annotations_and_base_classes(self, tmp_path: Path) -> None:
+        """Class with both annotations and base classes has both in meta."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Model.kt").write_text('''
+interface Serializable
+
+@Entity
+class User : Serializable {
+}
+''')
+        result = analyze_kotlin(tmp_path)
+        user = next(s for s in result.symbols if s.name == "User")
+        assert user.meta is not None
+        assert "decorators" in user.meta
+        assert "base_classes" in user.meta
+        assert user.meta["decorators"][0]["name"] == "Entity"
+        assert "Serializable" in user.meta["base_classes"]
+
+
+class TestKotlinAnnotationEdges:
+    """Tests for decorated_by edge creation from annotations."""
+
+    def test_resolved_annotation_edge(self, tmp_path: Path) -> None:
+        """Annotation referencing a local annotation class creates resolved edge."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Annotations.kt").write_text('''
+annotation class MyAnnotation
+
+@MyAnnotation
+class MyService {
+}
+''')
+        result = analyze_kotlin(tmp_path)
+        service = next(s for s in result.symbols if s.name == "MyService")
+        anno_cls = next(s for s in result.symbols if s.name == "MyAnnotation")
+
+        decorated_edges = [
+            e for e in result.edges
+            if e.edge_type == "decorated_by" and e.src == service.id
+        ]
+        assert len(decorated_edges) == 1
+        assert decorated_edges[0].dst == anno_cls.id
+        assert decorated_edges[0].confidence == 0.95
+
+    def test_unresolved_annotation_edge(self, tmp_path: Path) -> None:
+        """Annotation referencing external class creates unresolved edge."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Service.kt").write_text('''
+@Service
+class UserService {
+}
+''')
+        result = analyze_kotlin(tmp_path)
+        service = next(s for s in result.symbols if s.name == "UserService")
+
+        decorated_edges = [
+            e for e in result.edges
+            if e.edge_type == "decorated_by" and e.src == service.id
+        ]
+        assert len(decorated_edges) == 1
+        assert "unresolved" in decorated_edges[0].dst
+        assert decorated_edges[0].confidence == 0.50
+
+    def test_method_annotation_edge(self, tmp_path: Path) -> None:
+        """Method annotations also produce decorated_by edges."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Controller.kt").write_text('''
+class Controller {
+    @GetMapping("/api")
+    fun handleRequest() {}
+}
+''')
+        result = analyze_kotlin(tmp_path)
+        method = next(s for s in result.symbols if s.name == "Controller.handleRequest")
+
+        decorated_edges = [
+            e for e in result.edges
+            if e.edge_type == "decorated_by" and e.src == method.id
+        ]
+        assert len(decorated_edges) == 1
+        assert "unresolved" in decorated_edges[0].dst
