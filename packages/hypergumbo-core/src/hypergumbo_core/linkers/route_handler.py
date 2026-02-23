@@ -193,7 +193,17 @@ def _resolve_laravel_handler(
         if controller in sym_class or sym_class.endswith(controller):
             return sym
 
-    return None  # pragma: no cover - defensive: no match found
+    # Suffix match for PHP backslash-namespaced controllers.
+    # Routes use short names (UserController@index) but symbols may be FQ
+    # (App\Http\Controllers\UserController.index). Match on \Controller.action
+    # suffix to handle namespace resolution.
+    backslash_suffix = f"\\{controller}.{action}"
+    dot_suffix_only = f".{controller}.{action}"
+    for name, sym in symbol_by_name.items():
+        if name.endswith(backslash_suffix) or name.endswith(dot_suffix_only):
+            return sym
+
+    return None
 
 
 def _resolve_phoenix_handler(

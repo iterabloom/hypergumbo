@@ -1460,3 +1460,114 @@ class TestGoRouteHandlerLinking:
         result = link_routes_to_handlers([route], [])
 
         assert len(result.edges) == 0
+
+
+class TestLaravelSuffixMatchFallback:
+    """Tests for Laravel controller@action suffix-match resolution.
+
+    PHP uses backslash-namespaced FQ names (App\\Http\\Controllers\\UserController)
+    but routes reference short names (UserController@index). The suffix-match
+    fallback allows resolution when the symbol table contains FQ names.
+    """
+
+    def test_backslash_namespace_suffix_match(self) -> None:
+        """Laravel route with short name matches FQ backslash-namespaced symbol."""
+        route = Symbol(
+            id="php:/routes/web.php:5-5:GET /users:route",
+            name="GET /users",
+            kind="route",
+            language="php",
+            path="/routes/web.php",
+            span=Span(start_line=5, end_line=5, start_col=0, end_col=50),
+            meta={
+                "http_method": "GET",
+                "route_path": "/users",
+                "controller_action": "UserController@index",
+            },
+            origin="php-v1",
+            origin_run_id="test-run",
+        )
+
+        handler = Symbol(
+            id="php:/app/Http/Controllers/UserController.php:10-20:App\\Http\\Controllers\\UserController.index:method",
+            name="App\\Http\\Controllers\\UserController.index",
+            kind="method",
+            language="php",
+            path="/app/Http/Controllers/UserController.php",
+            span=Span(start_line=10, end_line=20, start_col=2, end_col=5),
+            origin="php-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == handler.id
+
+    def test_dot_separator_suffix_match(self) -> None:
+        """Laravel route matches when symbol uses dot separator."""
+        route = Symbol(
+            id="php:/routes/api.php:3-3:POST /orders:route",
+            name="POST /orders",
+            kind="route",
+            language="php",
+            path="/routes/api.php",
+            span=Span(start_line=3, end_line=3, start_col=0, end_col=50),
+            meta={
+                "http_method": "POST",
+                "route_path": "/orders",
+                "controller_action": "OrderController@store",
+            },
+            origin="php-v1",
+            origin_run_id="test-run",
+        )
+
+        handler = Symbol(
+            id="php:/app/Http/Controllers/OrderController.php:15-25:Api\\OrderController.store:method",
+            name="Api\\OrderController.store",
+            kind="method",
+            language="php",
+            path="/app/Http/Controllers/OrderController.php",
+            span=Span(start_line=15, end_line=25, start_col=2, end_col=5),
+            origin="php-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == handler.id
+
+    def test_no_false_suffix_match(self) -> None:
+        """Suffix match doesn't match partial controller names."""
+        route = Symbol(
+            id="php:/routes/web.php:5-5:GET /users:route",
+            name="GET /users",
+            kind="route",
+            language="php",
+            path="/routes/web.php",
+            span=Span(start_line=5, end_line=5, start_col=0, end_col=50),
+            meta={
+                "http_method": "GET",
+                "route_path": "/users",
+                "controller_action": "UserController@index",
+            },
+            origin="php-v1",
+            origin_run_id="test-run",
+        )
+
+        # "AdminUserController.index" should NOT match "UserController@index"
+        handler = Symbol(
+            id="php:/app/Http/Controllers/AdminUserController.php:10-20:AdminUserController.index:method",
+            name="AdminUserController.index",
+            kind="method",
+            language="php",
+            path="/app/Http/Controllers/AdminUserController.php",
+            span=Span(start_line=10, end_line=20, start_col=2, end_col=5),
+            origin="php-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+
+        assert len(result.edges) == 0
