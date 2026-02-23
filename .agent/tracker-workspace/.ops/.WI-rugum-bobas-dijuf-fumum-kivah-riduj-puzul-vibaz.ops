@@ -18,3 +18,12 @@
     justification:  # 5903
     description: "Scala and Groovy analyzers extract meta.base_classes but emit no extends/implements edges. Java and Kotlin do emit these edges. The inheritance linker (linkers/inheritance.py) can create edges from meta.base_classes but only if the analyzer also registers them. Fix: add _extract_inheritance_edges to scala.py and groovy.py. Violates META-sulor (Metadata Must Become Graph Structure)."  # 5903
     fields: {}  # 5903
+- op: update  # 4be2
+  at: '2026-02-23T10:53:03Z'  # 4be2
+  by: agent  # 4be2
+  actor: jgstern_agent  # 4be2
+  clock: 2  # 4be2
+  nonce: 4be2  # 4be2
+  set:  # 4be2
+    status: done  # 4be2
+    pr_ref: '1364'  # 4be2

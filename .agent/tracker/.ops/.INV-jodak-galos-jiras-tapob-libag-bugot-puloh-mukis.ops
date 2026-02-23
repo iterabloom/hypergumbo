@@ -75,3 +75,11 @@
   set:  # 99fa
     fields:  # 99fa
       statement: "Extends edges must resolve to the correct target when multiple classes share the same name. Same-file definitions take priority over cross-file matches."  # 99fa
+- op: update  # 99cf
+  at: '2026-02-23T10:23:46Z'  # 99cf
+  by: human  # 99cf
+  actor: jgstern  # 99cf
+  clock: 6  # 99cf
+  nonce: 99cf  # 99cf
+  set:  # 99cf
+    status: deleted  # 99cf
