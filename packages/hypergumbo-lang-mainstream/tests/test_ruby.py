@@ -4401,3 +4401,86 @@ class TestRubyMethodReferences:
             if e.edge_type == "references" and "run" in e.src
         ]
         assert len(ref_edges) == 0
+
+
+class TestRubyHashFunctionReferences:
+    """Tests for function references in Ruby hash literal fields.
+
+    Hash literals like {on_success: my_callback} contain method references
+    that should produce edges. Common in Ruby callback patterns.
+    """
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        pytest.importorskip("tree_sitter")
+        pytest.importorskip("tree_sitter_ruby")
+
+    def test_hash_literal_method_ref_same_file(self, tmp_path: Path) -> None:
+        """Hash property with bare identifier creates a references edge."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "app.rb").write_text(
+            "class App\n"
+            "  def handle_success\n"
+            "    true\n"
+            "  end\n"
+            "\n"
+            "  def setup\n"
+            "    {on_success: handle_success}\n"
+            "  end\n"
+            "end\n"
+        )
+        result = analyze_ruby(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "hash_field_reference"]
+        assert len(ref_edges) == 1
+        assert "handle_success" in ref_edges[0].dst
+        assert "setup" in ref_edges[0].src
+
+    def test_hash_literal_method_ref_cross_file(self, tmp_path: Path) -> None:
+        """Hash function reference resolves across files."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "handler.rb").write_text(
+            "class Handler\n"
+            "  def process_data\n"
+            "    true\n"
+            "  end\n"
+            "end\n"
+        )
+        (tmp_path / "config.rb").write_text(
+            "class Config\n"
+            "  def create\n"
+            "    {callback: process_data}\n"
+            "  end\n"
+            "end\n"
+        )
+        result = analyze_ruby(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "hash_field_reference"]
+        assert len(ref_edges) == 1
+        assert "process_data" in ref_edges[0].dst
+
+    def test_hash_non_method_not_matched(self, tmp_path: Path) -> None:
+        """Hash property with non-method identifier creates no edge."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "app.rb").write_text(
+            "class App\n"
+            "  SOME_CONST = 42\n"
+            "\n"
+            "  def setup\n"
+            "    {value: SOME_CONST}\n"
+            "  end\n"
+            "end\n"
+        )
+        result = analyze_ruby(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "hash_field_reference"]
+        assert len(ref_edges) == 0

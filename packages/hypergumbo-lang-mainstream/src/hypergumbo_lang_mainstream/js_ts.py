@@ -2788,6 +2788,69 @@ def _extract_edges(
                             var_types[var_name] = class_name
                             break
 
+        # Object literal function references: {onClick: handleClick}
+        # AST: pair → property_identifier : identifier
+        # When the value is a bare identifier that resolves to a function,
+        # create a references edge. Common in React, Express config, etc.
+        elif node.type == "pair":
+            value_node = None
+            seen_colon = False
+            for pair_child in node.children:
+                if pair_child.type == ":":
+                    seen_colon = True
+                elif seen_colon and pair_child.type == "identifier":
+                    value_node = pair_child
+                    break
+
+            if value_node is not None:
+                ref_name = _node_text(value_node, source)
+                target = global_symbols.get(ref_name)
+                if target is None:  # pragma: no cover - defensive resolver fallback
+                    lookup_result = resolver.lookup(ref_name)
+                    if lookup_result.found and lookup_result.symbol is not None:
+                        target = lookup_result.symbol
+                if target is not None and target.kind in ("function", "method"):
+                    current_function = _get_enclosing_function(
+                        node, source, file_path, global_symbols,
+                        symbol_by_position, line_offset,
+                    )
+                    if current_function is not None and target.id != current_function.id:
+                        edges.append(Edge.create(
+                            src=current_function.id,
+                            dst=target.id,
+                            edge_type="references",
+                            line=node.start_point[0] + 1 + line_offset,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="object_field_reference",
+                            confidence=0.80,
+                        ))
+
+        # Shorthand property: {handleClick} — equivalent to {handleClick: handleClick}
+        elif node.type == "shorthand_property_identifier":
+            ref_name = _node_text(node, source)
+            target = global_symbols.get(ref_name)
+            if target is None:  # pragma: no cover - defensive resolver fallback
+                lookup_result = resolver.lookup(ref_name)
+                if lookup_result.found and lookup_result.symbol is not None:
+                    target = lookup_result.symbol
+            if target is not None and target.kind in ("function", "method"):
+                current_function = _get_enclosing_function(
+                    node, source, file_path, global_symbols,
+                    symbol_by_position, line_offset,
+                )
+                if current_function is not None and target.id != current_function.id:
+                    edges.append(Edge.create(
+                        src=current_function.id,
+                        dst=target.id,
+                        edge_type="references",
+                        line=node.start_point[0] + 1 + line_offset,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        evidence_type="object_field_reference",
+                        confidence=0.80,
+                    ))
+
     return edges
 
 

@@ -5594,6 +5594,137 @@ function execute(obj: any) {
         )
 
 
+class TestObjectLiteralFunctionReferences:
+    """Tests for function references in object literal fields.
+
+    Object literals like {onClick: handleClick, onSubmit: processForm}
+    contain function references that should produce edges. This is
+    common in React, Express config, event emitter patterns, etc.
+    """
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_tree_sitter(self) -> None:
+        pytest.importorskip("tree_sitter")
+        pytest.importorskip("tree_sitter_javascript")
+
+    def test_object_literal_function_ref_same_file(self, tmp_path: Path) -> None:
+        """Object property with bare identifier creates a references edge."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function handleClick() {
+    return true;
+}
+
+function setup() {
+    const config = {
+        onClick: handleClick,
+    };
+    return config;
+}
+"""
+        (tmp_path / "app.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "object_field_reference"]
+        assert len(ref_edges) == 1
+        assert "handleClick" in ref_edges[0].dst
+        assert "setup" in ref_edges[0].src
+        assert ref_edges[0].confidence == pytest.approx(0.80, rel=0.01)
+
+    def test_object_literal_func_ref_cross_file(self, tmp_path: Path) -> None:
+        """Object property function reference resolves across files."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "handler.js").write_text("""
+function processForm(data) {
+    return data;
+}
+""")
+        (tmp_path / "config.js").write_text("""
+function createConfig() {
+    return {
+        onSubmit: processForm,
+    };
+}
+""")
+        result = analyze_javascript(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "object_field_reference"]
+        assert len(ref_edges) == 1
+        assert "processForm" in ref_edges[0].dst
+
+    def test_object_literal_non_function_not_matched(self, tmp_path: Path) -> None:
+        """Object property with non-function identifier creates no edge."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+const STATUS_ACTIVE = "active";
+
+function setup() {
+    return {
+        status: STATUS_ACTIVE,
+    };
+}
+"""
+        (tmp_path / "app.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "object_field_reference"]
+        assert len(ref_edges) == 0
+
+    def test_shorthand_property_function_ref(self, tmp_path: Path) -> None:
+        """Shorthand property {handleClick} creates a references edge."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function handleClick() {
+    return true;
+}
+
+function setup() {
+    return { handleClick };
+}
+"""
+        (tmp_path / "app.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "object_field_reference"]
+        assert len(ref_edges) == 1
+        assert "handleClick" in ref_edges[0].dst
+
+    def test_multiple_function_refs_in_object(self, tmp_path: Path) -> None:
+        """Multiple function references in one object produce multiple edges."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function onStart() {}
+function onStop() {}
+
+function createEvents() {
+    return {
+        start: onStart,
+        stop: onStop,
+    };
+}
+"""
+        (tmp_path / "events.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "object_field_reference"]
+        assert len(ref_edges) == 2
+
+
 class TestNormalizeJstsSignature:
     """Tests for JS/TS signature normalization (ADR-0014 §3)."""
 
