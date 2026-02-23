@@ -146,7 +146,7 @@ assert_exit "human lock invariant status" 0 \
 CONFIG_PATH="$TRACKER_ROOT/tracker/config.yaml"
 if [ -f "$CONFIG_PATH" ]; then
     cp "$CONFIG_PATH" "$CONFIG_PATH.tmp"
-    rm "$CONFIG_PATH"
+    rm -f "$CONFIG_PATH"
     mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
     chmod 644 "$CONFIG_PATH"
 fi

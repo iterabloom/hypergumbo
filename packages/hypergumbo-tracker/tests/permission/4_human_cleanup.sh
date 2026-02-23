@@ -83,7 +83,7 @@ assert_exit "human update invariant done" 0 \
 
 # 3. Verify count-todos = 0
 set +e
-count_output=$($TRACKER_CMD $COMMON count-todos 2>&1)
+count_output=$($TRACKER_CMD $COMMON count-todos 2>/dev/null)
 count=$(echo "$count_output" | python3 -c "import sys,json; print(json.load(sys.stdin)['count'])")
 set -e
 TOTAL=$((TOTAL + 1))
