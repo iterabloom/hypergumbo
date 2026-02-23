@@ -567,3 +567,125 @@ class TestInheritanceLinker:
         edge_types = {(e.dst, e.edge_type) for e in result.edges}
         assert ("sym:Reader", "implements") in edge_types
         assert ("sym:Closer", "implements") in edge_types
+
+    def test_class_extends_trait_creates_implements_edge(self) -> None:
+        """Scala/Groovy class extending a trait creates implements edge."""
+        trait = Symbol(
+            id="sym:Logging",
+            name="Logging",
+            kind="trait",
+            language="scala",
+            path="/Logging.scala",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="scala-v1",
+            origin_run_id="test-run",
+            meta=None,
+        )
+        cls = Symbol(
+            id="sym:UserService",
+            name="UserService",
+            kind="class",
+            language="scala",
+            path="/UserService.scala",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+            origin="scala-v1",
+            origin_run_id="test-run",
+            meta={"base_classes": ["Logging"]},
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[trait, cls],
+            edges=[],
+        )
+        result = link_inheritance(ctx)
+
+        assert len(result.edges) == 1
+        assert result.edges[0].src == "sym:UserService"
+        assert result.edges[0].dst == "sym:Logging"
+        assert result.edges[0].edge_type == "implements"
+
+    def test_trait_extends_trait(self) -> None:
+        """Trait extending another trait creates implements edge."""
+        base_trait = Symbol(
+            id="sym:Serializable",
+            name="Serializable",
+            kind="trait",
+            language="scala",
+            path="/traits.scala",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="scala-v1",
+            origin_run_id="test-run",
+            meta=None,
+        )
+        child_trait = Symbol(
+            id="sym:JsonSerializable",
+            name="JsonSerializable",
+            kind="trait",
+            language="scala",
+            path="/traits.scala",
+            span=Span(start_line=5, end_line=10, start_col=0, end_col=0),
+            origin="scala-v1",
+            origin_run_id="test-run",
+            meta={"base_classes": ["Serializable"]},
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[base_trait, child_trait],
+            edges=[],
+        )
+        result = link_inheritance(ctx)
+
+        assert len(result.edges) == 1
+        assert result.edges[0].src == "sym:JsonSerializable"
+        assert result.edges[0].dst == "sym:Serializable"
+        assert result.edges[0].edge_type == "implements"
+
+    def test_class_extends_class_and_trait(self) -> None:
+        """Class with both class and trait base_classes gets both edge types."""
+        base_class = Symbol(
+            id="sym:BaseService",
+            name="BaseService",
+            kind="class",
+            language="scala",
+            path="/base.scala",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=0),
+            origin="scala-v1",
+            origin_run_id="test-run",
+            meta=None,
+        )
+        trait = Symbol(
+            id="sym:Logging",
+            name="Logging",
+            kind="trait",
+            language="scala",
+            path="/logging.scala",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=0),
+            origin="scala-v1",
+            origin_run_id="test-run",
+            meta=None,
+        )
+        cls = Symbol(
+            id="sym:UserService",
+            name="UserService",
+            kind="class",
+            language="scala",
+            path="/user.scala",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=0),
+            origin="scala-v1",
+            origin_run_id="test-run",
+            meta={"base_classes": ["BaseService", "Logging"]},
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[base_class, trait, cls],
+            edges=[],
+        )
+        result = link_inheritance(ctx)
+
+        assert len(result.edges) == 2
+        edge_map = {e.dst: e.edge_type for e in result.edges}
+        assert edge_map["sym:BaseService"] == "extends"
+        assert edge_map["sym:Logging"] == "implements"

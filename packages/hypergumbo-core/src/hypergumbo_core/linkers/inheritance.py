@@ -55,7 +55,9 @@ def _build_symbol_maps(
             if sym.name not in class_by_name:
                 class_by_name[sym.name] = []
             class_by_name[sym.name].append(sym)
-        elif sym.kind == "interface":
+        elif sym.kind in ("interface", "trait"):
+            # Traits (Scala, Groovy, Rust) are semantically like interfaces
+            # with default implementations — index alongside interfaces.
             if sym.name not in interface_by_name:
                 interface_by_name[sym.name] = []
             interface_by_name[sym.name].append(sym)
@@ -144,7 +146,7 @@ def _create_inheritance_edges(
     edges: list[Edge] = []
 
     for sym in symbols:
-        if sym.kind not in ("class", "interface", "struct"):
+        if sym.kind not in ("class", "interface", "struct", "trait"):
             continue
 
         base_classes = sym.meta.get("base_classes", []) if sym.meta else []
