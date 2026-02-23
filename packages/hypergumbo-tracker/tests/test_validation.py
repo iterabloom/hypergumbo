@@ -374,7 +374,8 @@ class TestValueValidation:
         result = validate_ops_file(path, _make_config())
         assert any("unknown status 'bad_status'" in e for e in result.errors)
 
-    def test_update_disallowed_status_for_kind(self, tmp_path: Path) -> None:
+    def test_compiled_status_disallowed_for_kind(self, tmp_path: Path) -> None:
+        """Compiled status check catches items whose final status is disallowed."""
         ops_dir = tmp_path / ".ops"
         ops_dir.mkdir()
         path = _write_ops(ops_dir, "INV-id", """\
@@ -403,6 +404,38 @@ class TestValueValidation:
         """)
         result = validate_ops_file(path, _make_config())
         assert any("not allowed for kind" in e for e in result.errors)
+
+    def test_historical_ops_with_now_disallowed_status_ok(self, tmp_path: Path) -> None:
+        """Historical ops with old statuses are fine if compiled state is valid."""
+        ops_dir = tmp_path / ".ops"
+        ops_dir.mkdir()
+        path = _write_ops(ops_dir, "INV-id", """\
+            - op: create
+              at: "2026-01-01T00:00:00Z"
+              by: agent
+              actor: test_agent
+              clock: 1
+              nonce: a1b2
+              data:
+                kind: invariant
+                title: "Test Invariant"
+                status: todo_hard
+                priority: 2
+                fields:
+                  statement: "test"
+                  root_cause: "test"
+            - op: update
+              at: "2026-01-01T00:01:00Z"
+              by: agent
+              actor: test_agent
+              clock: 2
+              nonce: b2c3
+              set:
+                status: holding
+        """)
+        result = validate_ops_file(path, _make_config())
+        kind_errors = [e for e in result.errors if "not allowed for kind" in e]
+        assert kind_errors == [], f"Historical ops should not cause errors: {kind_errors}"
 
     def test_update_invalid_priority(self, tmp_path: Path) -> None:
         ops_dir = tmp_path / ".ops"

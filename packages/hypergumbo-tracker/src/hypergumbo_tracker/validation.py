@@ -268,7 +268,7 @@ def validate_ops_file(
 
         # Value validation for update ops
         if op_type == "update":
-            _validate_update_values(fname, i, op_dict, config, result, item_kind=item_kind)
+            _validate_update_values(fname, i, op_dict, config, result)
 
         # Timestamp validation
         at = op_dict.get("at")
@@ -284,6 +284,24 @@ def validate_ops_file(
 
     # Canonical field order (ADR-0013 §4.4)
     _validate_canonical_field_order(fname, ops, result)
+
+    # Per-kind allowed_statuses: check compiled state, not individual ops.
+    # Historical ops may have used statuses that were valid at the time but
+    # are now restricted.  Only the final compiled status matters.
+    if item_kind is not None and item_kind in config.kinds:
+        kind_config = config.kinds[item_kind]
+        if kind_config.allowed_statuses is not None:
+            item_id = filepath.stem.lstrip(".")
+            try:
+                compiled = compile_ops(ops, item_id)
+                if compiled.status not in kind_config.allowed_statuses:
+                    result.errors.append(
+                        f"{fname}: compiled status {compiled.status!r} not "
+                        f"allowed for kind {item_kind!r}. "
+                        f"Allowed: {kind_config.allowed_statuses}"
+                    )
+            except Exception:  # pragma: no cover
+                pass  # Compilation errors are caught elsewhere
 
     return result
 
@@ -317,15 +335,6 @@ def _validate_create_values(
             f"Valid: {config.statuses}"
         )
 
-    # Per-kind allowed_statuses validation
-    if status is not None and kind is not None and kind in config.kinds:
-        kind_config = config.kinds[kind]
-        if kind_config.allowed_statuses is not None and status not in kind_config.allowed_statuses:
-            result.errors.append(
-                f"{fname}: op {idx}: status {status!r} not allowed for kind "
-                f"{kind!r}. Allowed: {kind_config.allowed_statuses}"
-            )
-
     # Priority validation
     priority = data.get("priority")
     if priority is not None:
@@ -353,8 +362,6 @@ def _validate_update_values(
     op_dict: dict[str, Any],
     config: TrackerConfig,
     result: ValidationResult,
-    *,
-    item_kind: str | None = None,
 ) -> None:
     """Validate values in an update op."""
     set_dict = op_dict.get("set", {})
@@ -368,15 +375,6 @@ def _validate_update_values(
             f"{fname}: op {idx}: unknown status {status!r}. "
             f"Valid: {config.statuses}"
         )
-
-    # Per-kind allowed_statuses validation
-    if status is not None and item_kind is not None and item_kind in config.kinds:
-        kind_config = config.kinds[item_kind]
-        if kind_config.allowed_statuses is not None and status not in kind_config.allowed_statuses:
-            result.errors.append(
-                f"{fname}: op {idx}: status {status!r} not allowed for kind "
-                f"{item_kind!r}. Allowed: {kind_config.allowed_statuses}"
-            )
 
     # Priority validation
     priority = set_dict.get("priority")
