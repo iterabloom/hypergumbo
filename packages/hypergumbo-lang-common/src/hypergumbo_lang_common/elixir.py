@@ -299,6 +299,7 @@ def _extract_phoenix_routes(
     symbol_by_name: dict[str, Symbol],
     run_id: str,
     pass_id: str,
+    alias_hints: dict[str, str] | None = None,
 ) -> tuple[list[UsageContext], list[Symbol]]:
     """Extract UsageContext records AND Symbol objects for Phoenix router DSL calls.
 
@@ -380,6 +381,10 @@ def _extract_phoenix_routes(
 
         if not route_path:  # pragma: no cover
             continue
+
+        # Resolve controller alias to fully-qualified module name
+        if controller and alias_hints and controller in alias_hints:
+            controller = alias_hints[controller]
 
         # Build metadata
         normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
@@ -1050,9 +1055,11 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
     ) -> list[UsageContext]:
         """Extract Phoenix route usage contexts and stash route symbols."""
         run_id = getattr(self, "_current_run_id", "")
+        alias_hints = _extract_alias_hints(tree, source)
         usage_contexts, route_symbols = _extract_phoenix_routes(
             tree.root_node, source, file_path, symbol_by_name,
             run_id, self.pass_id,
+            alias_hints=alias_hints,
         )
         # Stash route symbols to be added in post_process
         self._pending_route_symbols.extend(route_symbols)

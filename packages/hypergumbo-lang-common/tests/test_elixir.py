@@ -1553,3 +1553,107 @@ end
             assert clause_sym.id in edge_dsts, (
                 f"Missing callback edge to init clause at line {clause_sym.span.start_line}"
             )
+
+
+class TestPhoenixRouteAliasResolution:
+    """Tests for Phoenix route alias resolution.
+
+    When a router file uses ``alias MyAppWeb.UserController, as: UserCtrl``,
+    route metadata should store the fully-qualified module name
+    ``MyAppWeb.UserController`` instead of the alias ``UserCtrl``.
+    This enables the route-handler linker to find the actual handler symbols.
+    """
+
+    def test_alias_as_resolved_in_route_metadata(self, tmp_path: Path) -> None:
+        """Route controller stores resolved FQ name when alias...as: is used."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "router.ex").write_text('''
+defmodule MyAppWeb.Router do
+  alias MyAppWeb.UserController, as: UserCtrl
+
+  get "/users", UserCtrl, :index
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 1
+
+        route = route_symbols[0]
+        assert route.meta["controller"] == "MyAppWeb.UserController"
+        assert route.meta["action"] == "index"
+
+    def test_standard_alias_resolved_in_route_metadata(self, tmp_path: Path) -> None:
+        """Route controller stores resolved FQ name for standard alias (no as:)."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "router.ex").write_text('''
+defmodule MyAppWeb.Router do
+  alias MyAppWeb.Controllers.UserController
+
+  get "/users", UserController, :index
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 1
+
+        route = route_symbols[0]
+        assert route.meta["controller"] == "MyAppWeb.Controllers.UserController"
+        assert route.meta["action"] == "index"
+
+    def test_alias_resolved_in_resources_route(self, tmp_path: Path) -> None:
+        """Alias resolution works for resources macro too."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "router.ex").write_text('''
+defmodule MyAppWeb.Router do
+  alias MyAppWeb.PostController, as: PC
+
+  resources "/posts", PC
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        # resources creates 7 RESTful routes
+        assert len(route_symbols) == 7
+
+        for route in route_symbols:
+            assert route.meta["controller"] == "MyAppWeb.PostController"
+
+    def test_alias_resolved_in_usage_context(self, tmp_path: Path) -> None:
+        """UsageContext metadata also stores resolved controller name."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "router.ex").write_text('''
+defmodule MyAppWeb.Router do
+  alias MyAppWeb.SessionController, as: SessCtrl
+
+  post "/login", SessCtrl, :create
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        post_ctx = next(
+            (c for c in result.usage_contexts if c.context_name == "post"), None
+        )
+        assert post_ctx is not None
+        assert post_ctx.metadata["controller"] == "MyAppWeb.SessionController"
+
+    def test_no_alias_keeps_raw_controller_name(self, tmp_path: Path) -> None:
+        """When no alias is present, controller name is stored as-is."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "router.ex").write_text('''
+defmodule MyAppWeb.Router do
+  get "/users", UserController, :index
+end
+''')
+        result = analyze_elixir(tmp_path)
+
+        route_symbols = [s for s in result.symbols if s.kind == "route"]
+        assert len(route_symbols) == 1
+        assert route_symbols[0].meta["controller"] == "UserController"
