@@ -18,3 +18,12 @@
     justification:  # 2d1b
     description: "auto-pr should not include .agent/tracker*/.ops/ paths in its PRs. Tracker data should flow exclusively through the tracker sync mechanism to avoid mixing tracker ops with code changes in the same PR."  # 2d1b
     fields: {}  # 2d1b
+- op: update  # bb36
+  at: '2026-02-23T13:10:31Z'  # bb36
+  by: agent  # bb36
+  actor: jgstern_agent  # bb36
+  clock: 2  # bb36
+  nonce: bb36  # bb36
+  set:  # bb36
+    status: needs_human_review  # bb36
+    justification: "auto-pr is a governance file; changes require human approval per AGENTS.md"  # bb36
