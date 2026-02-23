@@ -46,3 +46,11 @@
   set:  # 8521
     status: needs_human_review  # 8521
     justification: "Holding audit: branch coverage was intentionally removed (2026-02-07 resolution). This invariant is no longer maintained. Recommend deletion."  # 8521
+- op: update  # 3dcc
+  at: '2026-02-23T10:12:35Z'  # 3dcc
+  by: human  # 3dcc
+  actor: jgstern  # 3dcc
+  clock: 5  # 3dcc
+  nonce: 3dcc  # 3dcc
+  set:  # 3dcc
+    status: deleted  # 3dcc
