@@ -20,3 +20,11 @@
     fields:  # 40f7
       statement: "Function references that appear outside direct call expressions (struct fields, object literal values, variable assignments, array elements) must produce edges to the referenced function"  # 40f7
       root_cause: "All analyzers only walk call_expression AST nodes for edge extraction. Struct literal fields, object/dict values, array elements, and variable assignments containing function references are not traversed."  # 40f7
+- op: update  # 95a8
+  at: '2026-02-23T07:07:24Z'  # 95a8
+  by: agent  # 95a8
+  actor: jgstern_agent  # 95a8
+  clock: 2  # 95a8
+  nonce: 95a8  # 95a8
+  set:  # 95a8
+    status: violated  # 95a8

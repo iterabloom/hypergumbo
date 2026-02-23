@@ -25,3 +25,11 @@
       regression_tests:  # be68
       - test_js_ts.py::TestCallbackCallAttribution  # be68
       - test_kotlin.py::TestKotlinLambdaCallAttribution  # be68
+- op: update  # 0d0d
+  at: '2026-02-23T07:07:20Z'  # 0d0d
+  by: agent  # 0d0d
+  actor: jgstern_agent  # 0d0d
+  clock: 2  # 0d0d
+  nonce: 0d0d  # 0d0d
+  set:  # 0d0d
+    status: holding  # 0d0d

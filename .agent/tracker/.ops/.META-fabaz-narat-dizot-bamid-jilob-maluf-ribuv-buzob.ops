@@ -27,3 +27,11 @@
   nonce: cc39  # cc39
   set:  # cc39
     description: "Graph elements must have valid, unique identifiers for reliable lookup.\n\nINV-005 fixed edge ID uniqueness. Symbol IDs appear stable across runs.\n\nChecked: edge ID uniqueness (INV-005), route stable_id collisions (INV-popop, fixed across 6 analyzers), stable_id scheme v2 with containing_module_stable_id (WI-jagus).\n\nNot checked: symbol ID stability across tree-sitter grammar version upgrades, edge ID stability when analyzer order changes, stable_id collision rates for large monorepos (>10K symbols).\n\nUnified by:\nINV-005 (edge IDs must be unique)\n\nImplication: ID generation must include all disambiguating information (source, target, type, AND location)."  # cc39
+- op: update  # 2899
+  at: '2026-02-23T07:07:23Z'  # 2899
+  by: agent  # 2899
+  actor: jgstern_agent  # 2899
+  clock: 3  # 2899
+  nonce: '2899'  # 2899
+  set:  # 2899
+    status: holding  # 2899

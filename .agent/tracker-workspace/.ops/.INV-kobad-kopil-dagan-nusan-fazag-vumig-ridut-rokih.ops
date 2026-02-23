@@ -20,3 +20,11 @@
     fields:  # 7c52
       statement: "Features implemented for one language analyzer must be propagated to sibling languages where the same patterns apply"  # 7c52
       root_cause: "Features are developed for one language and not scope-expanded to closely related languages that share the same AST patterns and programming idioms"  # 7c52
+- op: update  # f633
+  at: '2026-02-23T07:07:24Z'  # f633
+  by: agent  # f633
+  actor: jgstern_agent  # f633
+  clock: 2  # f633
+  nonce: f633  # f633
+  set:  # f633
+    status: violated  # f633

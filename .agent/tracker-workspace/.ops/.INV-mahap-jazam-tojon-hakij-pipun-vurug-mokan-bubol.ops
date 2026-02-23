@@ -20,3 +20,11 @@
     fields:  # 5fa9
       statement: "Symbol ranking and entrypoint selection must surface domain-relevant symbols over infrastructure utilities"  # 5fa9
       root_cause: "Ranking formula uses degree counts with hub saturation at 100 but has no symbol-level utility detection. Entrypoint list is unbounded with no count cap or diversity constraint."  # 5fa9
+- op: update  # c850
+  at: '2026-02-23T07:07:25Z'  # c850
+  by: agent  # c850
+  actor: jgstern_agent  # c850
+  clock: 2  # c850
+  nonce: c850  # c850
+  set:  # c850
+    status: violated  # c850

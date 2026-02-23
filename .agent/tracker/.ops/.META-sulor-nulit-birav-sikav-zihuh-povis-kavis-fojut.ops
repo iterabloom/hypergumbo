@@ -28,3 +28,11 @@
   set:  # 4261
     status: todo_hard  # 4261
     description: "Semantic relationships expressed in metadata must become traversable graph structure.\n\nPreviously marked done based on base_classes → extends edges across 14 languages. However, external bakeoff evaluation (Feb 2026) revealed violations:\n\nREOPENED — known violations:\n- Scala: extracts meta.base_classes but emits no extends/implements edges from the analyzer\n- Groovy: extracts meta.base_classes but emits no extends/implements edges from the analyzer\n- Phoenix routes: route metadata (controller + action) stored but routes_to edges not emitted for aliased controller names (the common case in Elixir)\n- OTP linker: GenServer.call/cast target module stored but not resolved when module name is an Elixir alias (direct dict lookup, no suffix fallback)\n- Go cobra: RunE function reference in struct literal field (cobra.Command{RunE: myFunc}) produces no edge — metadata-as-struct-field is a variant of metadata-not-becoming-graph-structure\n\nUnified by:\nINV-004 (route metadata → handler edges)\nINV-008 (base_classes → extends edges for Python/JS/TS)\nINV-009 (base_classes → extends edges for Ruby/Kotlin)\nINV-010 (Django view_name → routes_to edges)\n\nImplication: When an analyzer stores relationship information in metadata (view_name, controller_action, base_classes, etc.), there must be a corresponding linker or enrichment phase that converts that metadata into edges. Metadata alone is not traversable. This invariant is violated for Scala, Groovy, Phoenix aliases, OTP aliases, and Go struct literal function references."  # 4261
+- op: update  # afc6
+  at: '2026-02-23T07:07:23Z'  # afc6
+  by: agent  # afc6
+  actor: jgstern_agent  # afc6
+  clock: 3  # afc6
+  nonce: afc6  # afc6
+  set:  # afc6
+    status: violated  # afc6

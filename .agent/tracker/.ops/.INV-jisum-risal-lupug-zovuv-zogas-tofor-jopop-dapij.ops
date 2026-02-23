@@ -23,3 +23,11 @@
       fix: "Enhanced `ListNameResolver.lookup()` to: 1. Try progressively shorter suffixes of the import path (e.g., \"zzz_correct/genproto\", \"genproto\") 2. Return when exactly one candidate matches a suffix 3. Sort candidates deterministically (by path) when falling back to ambiguous resolution"  # aeb7
       regression_tests:  # aeb7
       - tests/test_go.py::TestGoImportPathResolution::test_resolves_call_to_correct_file_by_import_path  # aeb7
+- op: update  # c254
+  at: '2026-02-23T07:07:21Z'  # c254
+  by: agent  # c254
+  actor: jgstern_agent  # c254
+  clock: 2  # c254
+  nonce: c254  # c254
+  set:  # c254
+    status: holding  # c254

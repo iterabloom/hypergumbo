@@ -28,3 +28,11 @@
   set:  # 2cde
     status: todo_hard  # 2cde
     description: "Symbols that exist in source code must be extracted for analysis.\n\nPreviously marked done based on checking across 25+ repos. However, external bakeoff evaluation (Feb 2026) revealed classes of callable code that produce zero edges:\n\nREOPENED — known violations:\n- Function references in struct/object literal fields: ALL 8 major analyzers (Go, Python, JS/TS, Java, Ruby, Rust, C, C++) miss function references in struct/object/dict/hash literal field values. E.g., cobra.Command{RunE: myFunc} produces no edge. This is a universal gap.\n- Function references in variable assignments: var f = myFunc (without calling it) produces no edge in any analyzer.\n- C++ dispatch tables: C has dispatch table detection (dispatches_to edges for function pointers in static array initializers) but C++ does not, despite using identical patterns.\n- Indirect call patterns: Falco's action-object registration and iteration (vector of function pointers) produces zero incoming edges for indirectly-called functions.\n\nWhat IS working:\n- Lambda/closure call attribution: audited for Go, Java, Rust, C#, Kotlin, Scala — all correct\n- Direct call extraction: healthy across all languages\n- Go function reference arguments: _extract_function_reference_edges handles call arguments (0.70 confidence)\n- C static array dispatch tables: dispatches_to edges work for C\n- Decorator/annotation references: Python, JS/TS, Rust all handle these\n\nUnified by:\nINV-001 (call edges must have caller symbols — implies callers are extracted)\nINV-003 (nested decorated functions must be extracted)\n\nImplication: \"If code can be called, it must be extractable\" is violated for indirect call patterns (function pointers, struct field callbacks, dispatch tables) across most languages. The extraction gap is structural: analyzers only walk call_expression AST nodes, not composite_literal, keyed_element, or assignment nodes that contain function references."  # 2cde
+- op: update  # 01dc
+  at: '2026-02-23T07:07:23Z'  # 01dc
+  by: agent  # 01dc
+  actor: jgstern_agent  # 01dc
+  clock: 3  # 01dc
+  nonce: 01dc  # 01dc
+  set:  # 01dc
+    status: violated  # 01dc

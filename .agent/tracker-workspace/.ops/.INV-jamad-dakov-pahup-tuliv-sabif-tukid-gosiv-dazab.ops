@@ -20,3 +20,11 @@
     fields:  # b81f
       statement: "Linkers that resolve references from DSL syntax must handle aliased/short names that don't match fully-qualified symbol names in the graph"  # b81f
       root_cause: "Multiple linkers use direct dict lookup or insufficient fallback when DSL references use module aliases or namespace shortcuts"  # b81f
+- op: update  # 3d8a
+  at: '2026-02-23T07:07:24Z'  # 3d8a
+  by: agent  # 3d8a
+  actor: jgstern_agent  # 3d8a
+  clock: 2  # 3d8a
+  nonce: 3d8a  # 3d8a
+  set:  # 3d8a
+    status: violated  # 3d8a

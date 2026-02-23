@@ -30,3 +30,11 @@
       - test_js_ts.py::TestVariableTypeInference::test_disambiguate_single_candidate_returns_none  # 92d5
       - test_js_ts.py::TestVariableTypeInference::test_disambiguate_no_match_returns_none  # 92d5
       - test_js_ts.py::TestVariableTypeInference::test_enclosing_function_found_for_all_duplicate_named_methods  # 92d5
+- op: update  # adca
+  at: '2026-02-23T07:07:20Z'  # adca
+  by: agent  # adca
+  actor: jgstern_agent  # adca
+  clock: 2  # adca
+  nonce: adca  # adca
+  set:  # adca
+    status: holding  # adca

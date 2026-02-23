@@ -26,3 +26,11 @@
       - test_java_annotation_edges.py::TestJavaAnnotationEdges  # 6fe4
       - test_csharp_attribute_edges.py::TestCSharpAttributeEdges  # 6fe4
       - test_rust_attribute_edges.py::TestRustAttributeEdges  # 6fe4
+- op: update  # 3463
+  at: '2026-02-23T07:07:22Z'  # 3463
+  by: agent  # 3463
+  actor: jgstern_agent  # 3463
+  clock: 2  # 3463
+  nonce: '3463'  # 3463
+  set:  # 3463
+    status: holding  # 3463
