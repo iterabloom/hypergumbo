@@ -3725,3 +3725,183 @@ class TestNormalizeGoSignature:
     def test_none(self) -> None:
         from hypergumbo_lang_mainstream.go import normalize_go_signature
         assert normalize_go_signature(None) is None
+
+
+class TestGoStructFieldFunctionReferences:
+    """Tests for function references in struct literal fields.
+
+    Go codebases commonly assign functions to struct fields:
+      cobra.Command{RunE: myFunc}
+      http.ServeMux{Handler: handler}
+
+    These function references should create call edges to enable reverse
+    slicing from the referenced functions.
+    """
+
+    def test_simple_struct_field_ref(self, tmp_path: Path) -> None:
+        """Function identifier in struct literal field creates call edge."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+func runServer() error { return nil }
+
+type Command struct {
+    RunE func() error
+}
+
+func setup() {
+    cmd := Command{RunE: runServer}
+    _ = cmd
+}
+""")
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        setup_calls = [e for e in call_edges if "setup:function" in e.src]
+
+        ref_edges = [e for e in setup_calls if "runServer" in e.dst]
+        assert len(ref_edges) >= 1, (
+            f"setup should have call edge to runServer (struct field reference), "
+            f"found edges: {[e.dst for e in setup_calls]}"
+        )
+        # Verify evidence type
+        assert ref_edges[0].evidence_type == "struct_field_reference"
+        assert 0.5 <= ref_edges[0].confidence <= 0.75
+
+    def test_cross_file_struct_field_ref(self, tmp_path: Path) -> None:
+        """Struct field reference resolves functions from other files."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "handler.go").write_text("""package main
+
+func handleRequest() error { return nil }
+""")
+        (tmp_path / "main.go").write_text("""package main
+
+type Route struct {
+    Handler func() error
+}
+
+func main() {
+    r := Route{Handler: handleRequest}
+    _ = r
+}
+""")
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        main_calls = [e for e in call_edges if "main:function" in e.src]
+
+        ref_edges = [e for e in main_calls if "handleRequest" in e.dst]
+        assert len(ref_edges) >= 1, (
+            f"main should call handleRequest via struct field reference, "
+            f"found: {[e.dst for e in main_calls]}"
+        )
+
+    def test_non_function_value_not_linked(self, tmp_path: Path) -> None:
+        """Non-function identifiers in struct fields don't create false edges."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Config struct {
+    Name string
+    Port int
+}
+
+func setup() {
+    name := "test"
+    cfg := Config{Name: name, Port: 8080}
+    _ = cfg
+}
+""")
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        # setup should NOT have struct_field_reference edges
+        field_refs = [
+            e for e in call_edges
+            if "setup:function" in e.src and e.evidence_type == "struct_field_reference"
+        ]
+        assert len(field_refs) == 0, (
+            f"Non-function values should not create struct_field_reference edges, "
+            f"found: {field_refs}"
+        )
+
+    def test_selector_expression_field_ref(self, tmp_path: Path) -> None:
+        """Selector expression in struct field (obj.Method) creates edge.
+
+        Pattern: Route{Handler: handlers.GetAPI} where GetAPI is resolved
+        via the method name using the global resolver.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "handlers.go").write_text("""package main
+
+type Handlers struct{}
+
+func (h Handlers) GetAPI() error { return nil }
+""")
+        (tmp_path / "main.go").write_text("""package main
+
+type Route struct {
+    Handler func() error
+}
+
+func main() {
+    h := Handlers{}
+    r := Route{Handler: h.GetAPI}
+    _ = r
+}
+""")
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        main_calls = [e for e in call_edges if "main:function" in e.src]
+
+        ref_edges = [
+            e for e in main_calls
+            if "GetAPI" in e.dst and e.evidence_type == "struct_field_reference"
+        ]
+        assert len(ref_edges) >= 1, (
+            f"main should call GetAPI via struct field selector reference, "
+            f"found: {[(e.dst, e.evidence_type) for e in main_calls]}"
+        )
+
+    def test_multiple_function_fields(self, tmp_path: Path) -> None:
+        """Multiple function references in one struct literal each create edges."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+func onStart() error { return nil }
+func onStop() error { return nil }
+
+type Lifecycle struct {
+    Start func() error
+    Stop  func() error
+}
+
+func setup() {
+    lc := Lifecycle{Start: onStart, Stop: onStop}
+    _ = lc
+}
+""")
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        setup_refs = [
+            e for e in call_edges
+            if "setup:function" in e.src and e.evidence_type == "struct_field_reference"
+        ]
+        dst_names = {e.dst for e in setup_refs}
+        assert any("onStart" in d for d in dst_names), (
+            f"setup should reference onStart, found: {dst_names}"
+        )
+        assert any("onStop" in d for d in dst_names), (
+            f"setup should reference onStop, found: {dst_names}"
+        )

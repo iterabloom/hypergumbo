@@ -6,6 +6,7 @@ This analyzer uses tree-sitter to parse Go files and extract:
 - Struct declarations (type X struct)
 - Interface declarations (type X interface)
 - Function call relationships
+- Function references in struct literal fields (cobra, http dispatch)
 - Import relationships (import statements)
 - Web framework routes (Gin, Echo, Fiber, Gorilla mux)
 
@@ -1411,6 +1412,71 @@ def _extract_edges_from_file(
                         local_symbols, global_symbols, resolver,
                         node.start_point[0] + 1, edges, run,
                     )
+
+        # Detect function references in struct literal fields
+        # e.g., cobra.Command{RunE: myFunc}, http.ServeMux{Handler: h}
+        # AST: keyed_element -> literal_element (key) : literal_element (value)
+        # The value's child may be an identifier or selector_expression.
+        elif node.type == "keyed_element":
+            current_function = _get_enclosing_function(node, source, local_symbols)
+            if current_function is not None:
+                # Get the value part: the last literal_element child
+                lit_elems = [c for c in node.children if c.type == "literal_element"]
+                if len(lit_elems) >= 2:
+                    value_elem = lit_elems[-1]
+                    # Unwrap literal_element to find the actual expression
+                    value_node = value_elem.children[0] if value_elem.children else value_elem
+                    if value_node.type == "identifier":
+                        ref_name = node_text(value_node, source)
+                        if ref_name in local_symbols:
+                            sym = local_symbols[ref_name]
+                            if sym.kind in ("function", "method") and sym.id != current_function.id:
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=sym.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="struct_field_reference",
+                                    confidence=0.70,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                ))
+                        else:
+                            lookup_result = resolver.lookup(ref_name)
+                            if (
+                                lookup_result.found
+                                and lookup_result.symbol.kind in ("function", "method")
+                            ):
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=lookup_result.symbol.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="struct_field_reference",
+                                    confidence=0.70 * lookup_result.confidence,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                ))
+                    elif value_node.type == "selector_expression":
+                        # pkg.Handler or obj.Method as field value
+                        sel_field = find_child_by_field(value_node, "field")
+                        if sel_field:
+                            ref_name = node_text(sel_field, source)
+                            lookup_result = resolver.lookup(ref_name)
+                            if (
+                                lookup_result.found
+                                and lookup_result.symbol.kind in ("function", "method")
+                            ):
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=lookup_result.symbol.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="struct_field_reference",
+                                    confidence=0.70 * lookup_result.confidence,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                ))
 
     return edges
 
