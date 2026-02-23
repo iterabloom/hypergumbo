@@ -36,3 +36,12 @@
   nonce: 01dc  # 01dc
   set:  # 01dc
     status: violated  # 01dc
+- op: update  # 30d5
+  at: '2026-02-23T17:05:41Z'  # 30d5
+  by: agent  # 30d5
+  actor: jgstern_agent  # 30d5
+  clock: 4  # 30d5
+  nonce: 30d5  # 30d5
+  set:  # 30d5
+    status: holding  # 30d5
+    pr_ref: '1383'  # 30d5

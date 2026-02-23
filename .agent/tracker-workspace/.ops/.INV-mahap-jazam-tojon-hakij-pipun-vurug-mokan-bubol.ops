@@ -28,3 +28,12 @@
   nonce: c850  # c850
   set:  # c850
     status: violated  # c850
+- op: update  # fa3b
+  at: '2026-02-23T16:36:29Z'  # fa3b
+  by: agent  # fa3b
+  actor: jgstern_agent  # fa3b
+  clock: 3  # fa3b
+  nonce: fa3b  # fa3b
+  set:  # fa3b
+    status: holding  # fa3b
+    pr_ref: '1382'  # fa3b
