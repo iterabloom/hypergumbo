@@ -2376,11 +2376,17 @@ def cmd_remove_extras(args: argparse.Namespace) -> int:
 def cmd_symbols(args: argparse.Namespace) -> int:
     """Display symbol catalog with connectivity information.
 
-    Shows a table of symbols sorted by bidirectional centrality: connectors
-    (symbols with both incoming and outgoing edges) rank above pure sinks
-    (high in-degree but low out-degree, like exception classes).  Uses the
-    formula ``in_degree * (1 + ln(1 + out_degree))`` which is the same
-    scoring as ``ranking.compute_centrality()``.
+    Shows a table of symbols sorted by bidirectional centrality with sink
+    dampening.  Connectors (symbols with both incoming and outgoing edges)
+    rank above pure sinks (high in-degree but low out-degree, like error
+    sentinels and no-op stubs).
+
+    Base formula: ``in_degree * (1 + ln(1 + out_degree))``, same as
+    ``ranking.compute_centrality()``.  Additionally, symbols with very low
+    out/in ratio get their effective in-degree reduced by a sink dampening
+    factor (0.3 for pure sinks, rising to 1.0 at out/in >= 0.33).  This
+    prevents trivial stubs with 100+ in-degree from dominating rankings
+    over genuine architectural hubs.
 
     Uses Rich for auto-adjusting column widths and proper text wrapping.
     """
@@ -2471,10 +2477,25 @@ def cmd_symbols(args: argparse.Namespace) -> int:
 
         symbol_rows.append((name, kind, ind, outd, degree, path))
 
-    # Sort by bidirectional centrality: in_degree * (1 + ln(1 + out_degree))
-    # This rewards connectors (both in and out edges) over pure sinks
-    # (high in-degree but zero out-degree like exception classes)
-    symbol_rows.sort(key=lambda r: (-(r[2] * (1 + math.log(1 + r[3]))), r[0]))
+    # Sort by bidirectional centrality with sink dampening.
+    # Base formula: in_degree * (1 + ln(1 + out_degree))
+    # Sink dampening: symbols with very low out/in ratio (pure sinks like
+    # noopMetric.Inc, Timer.Duration, errDuplicate*) get their effective
+    # in-degree reduced.  This prevents trivial stubs with 100+ in-degree
+    # from outranking genuine architectural connectors (evaluator.eval,
+    # API.rules) that have balanced in/out edges.
+    #
+    # Factor ranges from 0.3 (pure sink, out/in=0) to 1.0 (ratio >= 0.33).
+    # Only applied when in-degree > 5 to avoid dampening leaf nodes.
+    def _sink_dampened_score(ind: int, outd: int) -> float:
+        if ind > 5:
+            out_ratio = min(outd / ind, 1.0)
+            sink_factor = min(0.3 + 0.7 * out_ratio * 3, 1.0)
+        else:
+            sink_factor = 1.0
+        return ind * sink_factor * (1 + math.log(1 + outd))
+
+    symbol_rows.sort(key=lambda r: (-_sink_dampened_score(r[2], r[3]), r[0]))
 
     # Apply --max-per-file limit if specified
     max_per_file = getattr(args, "max_per_file", None)

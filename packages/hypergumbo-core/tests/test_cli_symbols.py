@@ -1171,6 +1171,122 @@ def test_cmd_symbols_excludes_excluded_kinds(tmp_path: Path, capsys) -> None:
     assert "utils" not in out
 
 
+def test_cmd_symbols_extreme_sink_dampened(tmp_path: Path, capsys) -> None:
+    """Extreme pure sinks (in=100, out=0) rank below architectural connectors.
+
+    Regression test for DEEP bakeoff cohort 15-16 finding: noopMetric.Inc
+    (in=109, out=0, degree=109) and Timer.Duration (in=98, out=1, degree=99)
+    dominate the top-5 symbols despite being trivial stubs, while genuine
+    architectural hubs like evaluator.eval (in=10, out=78, degree=88) are
+    buried.  The raw formula ``in * (1 + ln(1 + out))`` doesn't sufficiently
+    penalize pure sinks when their in-degree is 10x higher.
+
+    Sink dampening: symbols with out_degree/in_degree < 0.1 (near-pure sinks)
+    get their effective in-degree reduced, so connectors with balanced in/out
+    edges float to the top.
+
+    Without dampening:
+      noopStub:  100 * (1 + ln(1)) = 100.0
+      connector:  10 * (1 + ln(71)) = 52.6
+    → noopStub wins.
+
+    With sink dampening (factor ~0.3 for ratio=0):
+      noopStub:  100 * 0.3 * 1.0 = 30.0
+      connector: 10 * 1.0 * 5.26 = 52.6
+    → connector wins.
+    """
+    sink_node = {
+        "id": "go:src/noop.go:1-5:noopStub.Inc:method",
+        "name": "noopStub.Inc",
+        "kind": "method",
+        "language": "go",
+        "path": "src/noop.go",
+        "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 5},
+    }
+    connector_node = {
+        "id": "go:src/engine.go:1-200:evaluator.eval:method",
+        "name": "evaluator.eval",
+        "kind": "method",
+        "language": "go",
+        "path": "src/engine.go",
+        "span": {"start_line": 1, "end_line": 200, "start_col": 0, "end_col": 5},
+    }
+
+    # Create 100 callers for the sink and 70 callees + 10 callers for connector
+    nodes = [sink_node, connector_node]
+    edges = []
+    eid = 1
+
+    # 100 callers → noopStub.Inc (pure sink: in=100, out=0)
+    for i in range(100):
+        caller_id = f"go:src/caller{i}.go:1-5:caller{i}:function"
+        nodes.append({
+            "id": caller_id, "name": f"caller{i}", "kind": "function",
+            "language": "go", "path": f"src/caller{i}.go",
+            "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 5},
+        })
+        edges.append({
+            "id": f"edge:{eid}", "src": caller_id,
+            "dst": sink_node["id"], "type": "calls", "confidence": 0.9,
+        })
+        eid += 1
+
+    # 10 callers → evaluator.eval (connector: in=10)
+    for i in range(10):
+        caller_id = f"go:src/caller{i}.go:1-5:caller{i}:function"
+        edges.append({
+            "id": f"edge:{eid}", "src": caller_id,
+            "dst": connector_node["id"], "type": "calls", "confidence": 0.9,
+        })
+        eid += 1
+
+    # evaluator.eval → 70 callees (connector: out=70)
+    for i in range(70):
+        callee_id = f"go:src/callee{i}.go:1-5:callee{i}:function"
+        nodes.append({
+            "id": callee_id, "name": f"callee{i}", "kind": "function",
+            "language": "go", "path": f"src/callee{i}.go",
+            "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 5},
+        })
+        edges.append({
+            "id": f"edge:{eid}", "src": connector_node["id"],
+            "dst": callee_id, "type": "calls", "confidence": 0.9,
+        })
+        eid += 1
+
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": nodes,
+        "edges": edges,
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 5
+    args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
+
+    result = cmd_symbols(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    eval_pos = out.find("evaluator.eval")
+    noop_pos = out.find("noopStub.Inc")
+    assert eval_pos != -1, f"evaluator.eval not found in output: {out}"
+    assert noop_pos != -1, f"noopStub.Inc not found in output: {out}"
+    assert eval_pos < noop_pos, (
+        f"evaluator.eval (connector, in=10 out=70) should rank above "
+        f"noopStub.Inc (pure sink, in=100 out=0) with sink dampening, "
+        f"but found eval at {eval_pos}, noop at {noop_pos}"
+    )
+
+
 def test_main_with_symbols(tmp_path: Path, capsys) -> None:
     """Main with symbols command."""
     behavior_map = {
