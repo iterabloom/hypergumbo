@@ -1710,6 +1710,29 @@ def _extract_edges(
 
     edges: list[Edge] = []
 
+    def _emit_function_ref(name_node: ast.Name, caller: Symbol) -> None:
+        """Emit a 'references' edge if *name_node* resolves to a function/method.
+
+        Used for function references in non-call contexts: call arguments,
+        dict values, variable assignments, and collection literals.
+        """
+        name = name_node.id
+        symbol = local_symbols.get(name)
+        if not symbol and name in imports:
+            mod_name, original_name = imports[name]
+            symbol = _lookup_symbol_by_module(
+                global_symbols, mod_name, original_name, resolver=resolver
+            )
+        if symbol and symbol.kind in ("function", "method"):
+            edges.append(Edge.create(
+                src=caller.id,
+                dst=symbol.id,
+                edge_type="references",
+                line=name_node.lineno,
+                confidence=0.80,
+                evidence_type="function_reference",
+            ))
+
     # Helper to extract edges from a code block (function body, module level, etc.)
     def process_code_block(
         block_nodes: list[ast.AST],
@@ -1747,12 +1770,35 @@ def _extract_edges(
                                 if ret_class:
                                     var_types[target.id] = ret_class
 
+            # Function reference in assignment RHS: callback = my_func
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name):
+                _emit_function_ref(node.value, caller_symbol)
+
             # Process calls
             if isinstance(node, ast.Call):
                 _process_call(
                     node, caller_symbol, local_symbols, imports, global_symbols,
                     module_imports, var_types, edges, resolver
                 )
+                # Function references in call arguments: map(transform, items)
+                for arg in node.args:
+                    if isinstance(arg, ast.Name):
+                        _emit_function_ref(arg, caller_symbol)
+                for kw in node.keywords:
+                    if isinstance(kw.value, ast.Name):
+                        _emit_function_ref(kw.value, caller_symbol)
+
+            # Function references in dict values: {"GET": handle_get}
+            if isinstance(node, ast.Dict):
+                for val in node.values:
+                    if isinstance(val, ast.Name):
+                        _emit_function_ref(val, caller_symbol)
+
+            # Function references in list/tuple: [func_a, func_b]
+            if isinstance(node, (ast.List, ast.Tuple)):
+                for elt in node.elts:
+                    if isinstance(elt, ast.Name):
+                        _emit_function_ref(elt, caller_symbol)
 
             # Recurse into child nodes (but not into nested function defs)
             for child in ast.iter_child_nodes(node):

@@ -4511,3 +4511,120 @@ class TestNormalizePythonSignature:
     def test_none(self) -> None:
         from hypergumbo_lang_mainstream.py import normalize_python_signature
         assert normalize_python_signature(None) is None
+
+
+class TestPythonFunctionReferences:
+    """Tests for function references in non-call contexts (INV-dinur).
+
+    Python code often passes functions as values — arguments, dict values,
+    and assignment RHS.  These should produce "references" edges.
+    """
+
+    def test_function_passed_as_argument(self, tmp_path: Path) -> None:
+        """map(transform, items) should create a references edge to transform."""
+        (tmp_path / "app.py").write_text(
+            "def transform(x):\n"
+            "    return x * 2\n"
+            "\n"
+            "def run():\n"
+            "    items = [1, 2, 3]\n"
+            "    result = list(map(transform, items))\n"
+        )
+        out = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+        data = json.loads(out.read_text())
+
+        ref_edges = [
+            e for e in data["edges"]
+            if e["type"] == "references" and "run" in e["src"] and "transform" in e["dst"]
+        ]
+        assert len(ref_edges) == 1, f"Expected 1 references edge, got {ref_edges}"
+        assert ref_edges[0]["meta"]["evidence_type"] == "function_reference"
+
+    def test_function_as_dict_value(self, tmp_path: Path) -> None:
+        """handlers = {'GET': handle_get} should create a references edge."""
+        (tmp_path / "app.py").write_text(
+            "def handle_get():\n"
+            "    return 'ok'\n"
+            "\n"
+            "def setup():\n"
+            "    handlers = {'GET': handle_get}\n"
+        )
+        out = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+        data = json.loads(out.read_text())
+
+        ref_edges = [
+            e for e in data["edges"]
+            if e["type"] == "references" and "setup" in e["src"] and "handle_get" in e["dst"]
+        ]
+        assert len(ref_edges) == 1, f"Expected 1 references edge, got {ref_edges}"
+        assert ref_edges[0]["meta"]["evidence_type"] == "function_reference"
+
+    def test_function_assigned_to_variable(self, tmp_path: Path) -> None:
+        """callback = my_func should create a references edge."""
+        (tmp_path / "app.py").write_text(
+            "def my_func():\n"
+            "    pass\n"
+            "\n"
+            "def register():\n"
+            "    callback = my_func\n"
+        )
+        out = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+        data = json.loads(out.read_text())
+
+        ref_edges = [
+            e for e in data["edges"]
+            if e["type"] == "references" and "register" in e["src"] and "my_func" in e["dst"]
+        ]
+        assert len(ref_edges) == 1, f"Expected 1 references edge, got {ref_edges}"
+        assert ref_edges[0]["meta"]["evidence_type"] == "function_reference"
+
+    def test_class_reference_not_emitted(self, tmp_path: Path) -> None:
+        """Class names in non-call contexts should NOT produce references edges.
+
+        Only function/method references are interesting here — class references
+        are typically type annotations or container names, not first-class values.
+        """
+        (tmp_path / "app.py").write_text(
+            "class MyClass:\n"
+            "    pass\n"
+            "\n"
+            "def register():\n"
+            "    cls = MyClass\n"
+        )
+        out = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+        data = json.loads(out.read_text())
+
+        ref_edges = [
+            e for e in data["edges"]
+            if e["type"] == "references" and "register" in e["src"] and "MyClass" in e["dst"]
+        ]
+        assert len(ref_edges) == 0, f"Class references should not emit edges: {ref_edges}"
+
+    def test_cross_file_function_reference(self, tmp_path: Path) -> None:
+        """Function references across files should resolve via imports."""
+        (tmp_path / "handlers.py").write_text(
+            "def handle_request():\n"
+            "    return 'ok'\n"
+        )
+        (tmp_path / "router.py").write_text(
+            "from handlers import handle_request\n"
+            "\n"
+            "def setup_routes():\n"
+            "    routes = {'GET': handle_request}\n"
+        )
+        out = tmp_path / "out.json"
+        run_behavior_map(repo_root=tmp_path, out_path=out, include_sketch_precomputed=False)
+        data = json.loads(out.read_text())
+
+        ref_edges = [
+            e for e in data["edges"]
+            if e["type"] == "references"
+            and "setup_routes" in e["src"]
+            and "handle_request" in e["dst"]
+        ]
+        assert len(ref_edges) == 1, f"Expected cross-file reference edge: {ref_edges}"
+        assert "handlers.py" in ref_edges[0]["dst"]
