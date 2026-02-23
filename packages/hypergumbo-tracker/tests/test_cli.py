@@ -893,6 +893,57 @@ class TestFreezeUnfreeze:
             ])
         assert exc.value.code == EXIT_USER_ERROR
 
+    def test_repair_drift(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_human_uid: None,
+    ) -> None:
+        """Human repair-drift via CLI → exit 0."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "WI-test")
+        # Freeze
+        with pytest.raises(SystemExit):
+            main(["--tracker-root", str(tracker_root), "freeze", "WI-test"])
+        capsys.readouterr()
+        # Tamper .ops directly
+        ops_file = ops_dir / ".WI-test.ops"
+        with open(ops_file, "a") as f:
+            f.write("# tampered\n")
+        # Repair
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "repair-drift", "WI-test",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        assert "drift repaired" in capsys.readouterr().out
+
+    def test_repair_drift_json(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_human_uid: None,
+    ) -> None:
+        """JSON mode → {"ok": true}."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "WI-test")
+        # Freeze
+        with pytest.raises(SystemExit):
+            main(["--tracker-root", str(tracker_root), "freeze", "WI-test"])
+        capsys.readouterr()
+        # Tamper .ops directly
+        ops_file = ops_dir / ".WI-test.ops"
+        with open(ops_file, "a") as f:
+            f.write("# tampered\n")
+        # Repair with JSON
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "repair-drift", "WI-test",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = json.loads(capsys.readouterr().out)
+        assert out["ok"] is True
+
 
 # ---------------------------------------------------------------------------
 # Delete command

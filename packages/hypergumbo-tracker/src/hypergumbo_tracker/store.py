@@ -1302,7 +1302,7 @@ class Store:
 
         import shutil
         shutil.copy2(item_path, fp)
-        os.chmod(fp, 0o644)
+        os.chmod(fp, 0o444)
 
     def unfreeze(self, item_id: str) -> None:
         """Remove the freeze sentinel file. Human-authority only.
@@ -1345,6 +1345,29 @@ class Store:
         if not ip.exists():
             return None
         return ip.read_bytes() != fp.read_bytes()
+
+    def repair_drift(self, item_id: str) -> None:
+        """Restore the .ops file from the .frozen sentinel.
+
+        The sentinel is authoritative — repair means reverting the ops
+        file to the approved frozen state. Human-authority only.
+
+        Raises:
+            HumanAuthorityError: If called by an agent.
+            ValueError: If item is not frozen.
+        """
+        item_id = self._resolve_id(item_id)
+        fp = self.frozen_path(item_id)
+        if not fp.exists():
+            raise ValueError(f"Item {item_id} is not frozen")
+
+        by, actor = resolve_actor(self._config.agent_usernames)
+        if by == "agent":
+            raise HumanAuthorityError("repair-drift requires human authority")
+
+        import shutil
+        ip = self.item_path(item_id)
+        shutil.copy2(fp, ip)
 
     # -----------------------------------------------------------------------
     # Internal: _append_op
@@ -1420,6 +1443,16 @@ class Store:
                 os.fsync(f.fileno())
             finally:
                 fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+        # Refresh frozen sentinel after successful human write
+        if filepath.exists():
+            item_id = filepath.stem.lstrip(".")
+            sentinel = self.frozen_path(item_id)
+            if sentinel.exists() and op_dict.get("by") == "human":
+                import shutil
+                sentinel.unlink()
+                shutil.copy2(filepath, sentinel)
+                os.chmod(sentinel, 0o444)
 
     # -----------------------------------------------------------------------
     # Internal: cross-branch lock check

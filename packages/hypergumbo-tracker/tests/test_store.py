@@ -1964,12 +1964,14 @@ class TestFreezeUnfreeze:
     def test_drift_check_drifted(
         self, ops_dir: Path, mock_human_uid: None,
     ) -> None:
-        """Freeze, modify .ops as human, drift_check → True."""
+        """Freeze, tamper .ops directly, drift_check → True."""
         store = Store(ops_dir, config=_make_config())
         item_id = store.add(kind="invariant", title="Drift Check")
         store.freeze(item_id)
-        # Modify the ops file (human update after freeze)
-        store.update(item_id, set_fields={"priority": 0})
+        # Tamper the ops file directly (simulating agent bypass)
+        ip = store.item_path(item_id)
+        with open(ip, "a") as f:
+            f.write("# tampered\n")
         assert store.drift_check(item_id) is True
 
     def test_drift_check_no_drift(
@@ -2061,6 +2063,95 @@ class TestFreezeUnfreeze:
         store.item_path(item_id).unlink()
         with patch.object(store, "_resolve_id", return_value=item_id):
             assert store.drift_check(item_id) is None
+
+    def test_repair_drift(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """Freeze, tamper .ops, repair → .ops matches .frozen, drift_check → False."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Repair Drift")
+        store.freeze(item_id)
+        # Tamper the ops file directly
+        ip = store.item_path(item_id)
+        with open(ip, "a") as f:
+            f.write("# tampered\n")
+        assert store.drift_check(item_id) is True
+        store.repair_drift(item_id)
+        assert store.drift_check(item_id) is False
+
+    def test_repair_drift_restores_content(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """Freeze, tamper .ops, repair → compiled item matches pre-tamper state."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Repair Content")
+        store.freeze(item_id)
+        pre_tamper = store.get(item_id)
+        # Tamper the ops file directly
+        ip = store.item_path(item_id)
+        with open(ip, "a") as f:
+            f.write("# tampered\n")
+        store.repair_drift(item_id)
+        post_repair = store.get(item_id)
+        assert post_repair.title == pre_tamper.title
+        assert post_repair.kind == pre_tamper.kind
+
+    def test_repair_drift_agent_denied(
+        self, ops_dir: Path, mock_agent_uid: None,
+    ) -> None:
+        """Agent calls repair_drift → HumanAuthorityError."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Repair Agent Denied")
+        # Manually create sentinel (agent can't call store.freeze)
+        import shutil
+        shutil.copy2(store.item_path(item_id), store.frozen_path(item_id))
+        with pytest.raises(HumanAuthorityError, match="repair-drift"):
+            store.repair_drift(item_id)
+
+    def test_repair_drift_not_frozen(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """repair_drift on unfrozen item → ValueError."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Repair Not Frozen")
+        with pytest.raises(ValueError, match="not frozen"):
+            store.repair_drift(item_id)
+
+    def test_repair_drift_idempotent(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """Freeze, no tamper, repair → still succeeds."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Repair Idempotent")
+        store.freeze(item_id)
+        store.repair_drift(item_id)
+        assert store.drift_check(item_id) is False
+
+    def test_sentinel_mode_0444(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """freeze → sentinel file has mode 0444."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Sentinel Mode")
+        store.freeze(item_id)
+        import stat
+        mode = store.frozen_path(item_id).stat().st_mode & 0o777
+        assert mode == 0o444
+
+    def test_sentinel_auto_refresh_on_human_write(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """Freeze, human update via store → sentinel updated, drift_check → False."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Auto Refresh")
+        store.freeze(item_id)
+        # Human update should auto-refresh sentinel
+        store.update(item_id, set_fields={"priority": 0})
+        assert store.drift_check(item_id) is False
+        # Verify sentinel mode is still 0444
+        import stat
+        mode = store.frozen_path(item_id).stat().st_mode & 0o777
+        assert mode == 0o444
 
 
 # ---------------------------------------------------------------------------

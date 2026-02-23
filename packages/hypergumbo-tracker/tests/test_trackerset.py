@@ -537,8 +537,27 @@ class TestFreezeUnfreeze:
         assert ts.drift_check(item_id) is None  # not frozen
         ts.freeze(item_id)
         assert ts.drift_check(item_id) is False  # no drift
-        ts.update(item_id, set_fields={"priority": 0})
+        # Tamper .ops directly (human updates auto-refresh sentinel)
+        store = ts._tier_stores[Tier.WORKSPACE]
+        ip = store.item_path(item_id)
+        with open(ip, "a") as f:
+            f.write("# tampered\n")
         assert ts.drift_check(item_id) is True  # drifted
+
+    def test_repair_drift(
+        self, tracker_root: Path, mock_human_uid: None,
+    ) -> None:
+        ts = TrackerSet(tracker_root)
+        item_id = ts.add("invariant", "Repair Drift", tier=Tier.WORKSPACE)
+        ts.freeze(item_id)
+        # Tamper .ops directly
+        store = ts._tier_stores[Tier.WORKSPACE]
+        ip = store.item_path(item_id)
+        with open(ip, "a") as f:
+            f.write("# tampered\n")
+        assert ts.drift_check(item_id) is True
+        ts.repair_drift(item_id)
+        assert ts.drift_check(item_id) is False
 
 
 # ---------------------------------------------------------------------------

@@ -349,6 +349,11 @@ class TrackerSet:
         full_id, store, t = self._resolve_id(item_id)
         return store.drift_check(full_id)
 
+    def repair_drift(self, item_id: str) -> None:
+        """Resolve item to its tier, delegate repair_drift to that Store."""
+        full_id, store, t = self._resolve_id(item_id)
+        store.repair_drift(full_id)
+
     # -------------------------------------------------------------------
     # Scope-aware queries
     # -------------------------------------------------------------------

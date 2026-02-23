@@ -1126,6 +1126,7 @@ class TrackerApp(App):
         ("b", "edit_before", "Before"),
         ("l", "toggle_lock", "Lock"),
         ("z", "toggle_freeze", "Freeze"),
+        ("R", "repair_drift", "Repair Drift"),
         ("i", "toggle_full_ids", "Full IDs"),
         ("y", "yank", "Copy"),
     ]
@@ -2094,3 +2095,32 @@ class TrackerApp(App):
             self._reload_after_write(item.id)
         except (HumanAuthorityError, FrozenItemError, ValueError) as e:
             self.notify(str(e), severity="error")
+
+    def action_repair_drift(self) -> None:
+        """Repair drift on the selected frozen item."""
+        item = self._get_selected_item()
+        if not item:
+            self.notify("No item selected", severity="warning")
+            return
+        if not item.frozen:
+            self.notify("Item is not frozen", severity="warning")
+            return
+        drift = self._tracker_set.drift_check(item.id)
+        if not drift:
+            self.notify("No drift detected", severity="information")
+            return
+
+        def _on_confirm(confirmed: bool) -> None:
+            if not confirmed:
+                return
+            try:
+                self._tracker_set.repair_drift(item.id)
+                self.notify(f"Drift repaired: {item.id}")
+                self._reload_after_write(item.id)
+            except (HumanAuthorityError, ValueError) as e:
+                self.notify(str(e), severity="error")
+
+        self.push_screen(
+            ConfirmScreen(f"Revert '{item.title}' to frozen state?"),
+            _on_confirm,
+        )

@@ -3914,6 +3914,106 @@ class TestToggleFreezeKeybinding:
                 await pilot.pause()
 
 
+class TestRepairDriftKeybinding:
+    """Test the 'R' repair-drift keybinding."""
+
+    @pytest.fixture()
+    def tracker_set(self, tmp_path: Path) -> TrackerSet:
+        return _make_tracker_set(tmp_path)
+
+    async def test_repair_drift_not_frozen_warns(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            assert not item.frozen
+            app.action_repair_drift()
+            await pilot.pause()
+
+    async def test_repair_drift_no_drift_warns(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            item.frozen = True
+            with patch.object(tracker_set, "drift_check", return_value=False):
+                app.action_repair_drift()
+                await pilot.pause()
+
+    async def test_repair_drift_confirmed(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            item.frozen = True
+            with patch.object(tracker_set, "drift_check", return_value=True), \
+                 patch.object(tracker_set, "repair_drift") as mock_repair:
+                app.action_repair_drift()
+                await _wait_for_modal(pilot, app)
+                await pilot.click("#yes")
+                await pilot.pause()
+                await pilot.pause()
+                mock_repair.assert_called_once()
+
+    async def test_repair_drift_cancelled(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            item.frozen = True
+            with patch.object(tracker_set, "drift_check", return_value=True), \
+                 patch.object(tracker_set, "repair_drift") as mock_repair:
+                app.action_repair_drift()
+                await _wait_for_modal(pilot, app)
+                await pilot.click("#no")
+                await pilot.pause()
+                mock_repair.assert_not_called()
+
+    async def test_repair_drift_error_on_confirm(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            item.frozen = True
+            with patch.object(tracker_set, "drift_check", return_value=True), \
+                 patch.object(
+                     tracker_set, "repair_drift",
+                     side_effect=HumanAuthorityError("human only"),
+                 ):
+                app.action_repair_drift()
+                await _wait_for_modal(pilot, app)
+                await pilot.click("#yes")
+                await pilot.pause()
+
+    async def test_repair_drift_no_item_warns(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_empty_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            for _ in range(5):
+                await pilot.pause()
+            app.action_repair_drift()
+            await pilot.pause()
+
+
 class TestShowDetailDrift:
     """Test frozen/drift indicators in detail views."""
 

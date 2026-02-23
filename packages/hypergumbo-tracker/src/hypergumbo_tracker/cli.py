@@ -5,10 +5,11 @@ Provides the full argparse CLI for tracker operations and the git textconv
 driver for rendering .ops files as readable text.
 
 Entry points:
-- main(): Primary CLI with ~26 subcommands (add, update, list, show, ready,
-  log, discuss, lock, unlock, promote, demote, stealth, unstealth, validate,
-  count-todos, hash-todos, guidance, check-messages, init, setup, sync,
-  cache-rebuild, reconcile-reset, fork-setup, migrate, tui).
+- main(): Primary CLI with ~27 subcommands (add, update, list, show, ready,
+  log, discuss, lock, unlock, freeze, unfreeze, repair-drift, promote, demote,
+  stealth, unstealth, validate, count-todos, hash-todos, guidance,
+  check-messages, init, setup, sync, cache-rebuild, reconcile-reset,
+  fork-setup, migrate, tui).
 - textconv_main(): Git textconv driver that reads an ops file and outputs
   one-line-per-field compiled state.
 
@@ -74,7 +75,7 @@ EXIT_INTERNAL_ERROR = 2
 
 _MUTATION_COMMANDS: frozenset[str] = frozenset({
     "add", "update", "discuss", "lock", "unlock",
-    "freeze", "unfreeze",
+    "freeze", "unfreeze", "repair-drift",
     "promote", "demote", "stealth", "unstealth",
     "delete", "reconcile-reset", "fork-setup", "tui",
 })
@@ -476,6 +477,16 @@ def _cmd_unfreeze(args: argparse.Namespace, ts: TrackerSet) -> int:
         print(json.dumps({"ok": True}))
     else:
         print("unfrozen")
+    return EXIT_SUCCESS
+
+
+def _cmd_repair_drift(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Handle 'repair-drift' subcommand."""
+    ts.repair_drift(args.item_id)
+    if args.json:
+        print(json.dumps({"ok": True}))
+    else:
+        print("drift repaired")
     return EXIT_SUCCESS
 
 
@@ -1092,6 +1103,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p_unfreeze = sub.add_parser("unfreeze", help="Unfreeze an item (human only)")
     p_unfreeze.add_argument("item_id", help="Item ID or prefix")
 
+    # --- repair-drift ---
+    p_repair_drift = sub.add_parser(
+        "repair-drift", help="Repair drift: restore .ops from .frozen (human only)",
+    )
+    p_repair_drift.add_argument("item_id", help="Item ID or prefix")
+
     # --- promote ---
     p_promote = sub.add_parser("promote", help="Promote: workspace → canonical")
     p_promote.add_argument("item_id", help="Item ID or prefix")
@@ -1394,6 +1411,7 @@ def main(argv: list[str] | None = None) -> None:
         "unlock": _cmd_unlock,
         "freeze": _cmd_freeze,
         "unfreeze": _cmd_unfreeze,
+        "repair-drift": _cmd_repair_drift,
         "promote": _cmd_promote,
         "demote": _cmd_demote,
         "stealth": _cmd_stealth,
