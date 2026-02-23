@@ -846,6 +846,195 @@ end
         assert result.edges[0].meta.get("evidence_type") == "otp_genserver_dispatch"
 
 
+class TestOTPLinkerAliasResolution:
+    """Tests for alias resolution in GenServer targets.
+
+    Elixir modules are commonly aliased (alias MyApp.UserCache → UserCache).
+    GenServer.call(UserCache, :msg) should resolve via suffix matching to
+    MyApp.UserCache.handle_call in the handler index.
+    """
+
+    def test_suffix_match_resolves_alias(self, tmp_path: Path) -> None:
+        """Short alias name resolves to fully-qualified handler module."""
+        from hypergumbo_core.linkers.otp import otp_linker
+
+        lib = tmp_path / "lib"
+        lib.mkdir()
+
+        client_file = lib / "client.ex"
+        client_file.write_text("""
+defmodule MyApp.Client do
+  alias MyApp.UserCache
+
+  def get_user(id) do
+    GenServer.call(UserCache, {:get, id})
+  end
+end
+""")
+
+        server_file = lib / "user_cache.ex"
+        server_file.write_text("""
+defmodule MyApp.UserCache do
+  use GenServer
+
+  def handle_call({:get, id}, _from, state) do
+    {:reply, Map.get(state, id), state}
+  end
+end
+""")
+
+        caller_sym = Symbol(
+            id=f"elixir:{client_file}:5-7:MyApp.Client.get_user:function",
+            name="MyApp.Client.get_user",
+            kind="function",
+            language="elixir",
+            path=str(client_file),
+            span=Span(start_line=5, end_line=7, start_col=0, end_col=0),
+        )
+        handler_sym = Symbol(
+            id=f"elixir:{server_file}:5-7:MyApp.UserCache.handle_call:function",
+            name="MyApp.UserCache.handle_call",
+            kind="function",
+            language="elixir",
+            path=str(server_file),
+            span=Span(start_line=5, end_line=7, start_col=0, end_col=0),
+        )
+        # Include a non-Elixir symbol to exercise the language filter
+        # in _build_handler_index (line 139)
+        python_sym = Symbol(
+            id="python:/test.py:1-1:handler:function",
+            name="handler",
+            kind="function",
+            language="python",
+            path="/test.py",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+        )
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[caller_sym, handler_sym, python_sym],
+            detected_languages={"elixir"},
+        )
+        result = otp_linker(ctx)
+
+        assert len(result.edges) >= 1
+        edge = result.edges[0]
+        assert edge.src == caller_sym.id
+        assert edge.dst == handler_sym.id
+        assert edge.edge_type == "otp_call"
+
+    def test_deeply_nested_alias_resolves(self, tmp_path: Path) -> None:
+        """Deeply nested module name resolves via suffix match."""
+        from hypergumbo_core.linkers.otp import otp_linker
+
+        lib = tmp_path / "lib"
+        lib.mkdir()
+
+        client_file = lib / "worker.ex"
+        client_file.write_text("""
+defmodule MyApp.Workers.Processor do
+  def process(item) do
+    GenServer.cast(Queue, {:enqueue, item})
+  end
+end
+""")
+
+        server_file = lib / "queue.ex"
+        server_file.write_text("""
+defmodule MyApp.Services.Queue do
+  use GenServer
+
+  def handle_cast({:enqueue, item}, state) do
+    {:noreply, [item | state]}
+  end
+end
+""")
+
+        caller_sym = Symbol(
+            id=f"elixir:{client_file}:3-5:MyApp.Workers.Processor.process:function",
+            name="MyApp.Workers.Processor.process",
+            kind="function",
+            language="elixir",
+            path=str(client_file),
+            span=Span(start_line=3, end_line=5, start_col=0, end_col=0),
+        )
+        handler_sym = Symbol(
+            id=f"elixir:{server_file}:5-7:MyApp.Services.Queue.handle_cast:function",
+            name="MyApp.Services.Queue.handle_cast",
+            kind="function",
+            language="elixir",
+            path=str(server_file),
+            span=Span(start_line=5, end_line=7, start_col=0, end_col=0),
+        )
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[caller_sym, handler_sym],
+            detected_languages={"elixir"},
+        )
+        result = otp_linker(ctx)
+
+        assert len(result.edges) >= 1
+        assert result.edges[0].dst == handler_sym.id
+        assert result.edges[0].edge_type == "otp_cast"
+
+    def test_no_match_when_module_unresolvable(self, tmp_path: Path) -> None:
+        """When no exact or suffix match exists, no edge is created."""
+        from hypergumbo_core.linkers.otp import otp_linker
+
+        lib = tmp_path / "lib"
+        lib.mkdir()
+
+        client_file = lib / "caller.ex"
+        client_file.write_text("""
+defmodule MyApp.Caller do
+  def ping() do
+    GenServer.call(UnknownModule, :ping)
+  end
+end
+""")
+
+        # Include a handler so the handler_index is non-empty
+        server_file = lib / "other_server.ex"
+        server_file.write_text("""
+defmodule MyApp.OtherServer do
+  use GenServer
+  def handle_call(:other, _from, state), do: {:reply, :ok, state}
+end
+""")
+
+        caller_sym = Symbol(
+            id=f"elixir:{client_file}:3-5:MyApp.Caller.ping:function",
+            name="MyApp.Caller.ping",
+            kind="function",
+            language="elixir",
+            path=str(client_file),
+            span=Span(start_line=3, end_line=5, start_col=0, end_col=0),
+        )
+        handler_sym = Symbol(
+            id=f"elixir:{server_file}:4-4:MyApp.OtherServer.handle_call:function",
+            name="MyApp.OtherServer.handle_call",
+            kind="function",
+            language="elixir",
+            path=str(server_file),
+            span=Span(start_line=4, end_line=4, start_col=0, end_col=0),
+        )
+
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[caller_sym, handler_sym],
+            detected_languages={"elixir"},
+        )
+        result = otp_linker(ctx)
+
+        # UnknownModule has no matching handler in index
+        unresolved_edges = [
+            e for e in result.edges
+            if "MyApp.Caller.ping" in e.src and "UnknownModule" in str(e.meta)
+        ]
+        assert len(unresolved_edges) == 0
+
+
 class TestOTPLinkerRegistered:
     """Tests for linker registry integration."""
 

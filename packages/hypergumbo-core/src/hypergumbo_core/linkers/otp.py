@@ -17,6 +17,10 @@ Matching Strategies
    GenServer.call(MyApp.Server, :msg) → look up MyApp.Server.handle_call
    in the symbol table. Lower confidence since the target could be aliased.
 
+3. Alias resolution (suffix-match fallback):
+   GenServer.call(UserCache, :msg) where UserCache is an alias for
+   MyApp.UserCache → suffix-match finds MyApp.UserCache in the handler index.
+
 How It Works
 ------------
 1. Index existing handler symbols (*.handle_call, *.handle_cast) by module name
@@ -147,6 +151,35 @@ def _build_handler_index(
     return index
 
 
+def _resolve_handler_module(
+    target: str,
+    handler_index: dict[str, dict[str, list[Symbol]]],
+) -> str | None:
+    """Resolve a target module name to a handler_index key.
+
+    Handles Elixir alias patterns where GenServer.call(UserCache, :msg) uses
+    the short alias name ``UserCache`` but the handler_index key is the
+    fully-qualified ``MyApp.UserCache``.
+
+    Resolution cascade:
+    1. Exact match: target is already a key in handler_index
+    2. Suffix match: a key ends with ``.{target}`` (handles standard aliases)
+
+    Returns the resolved module key, or None if no match found.
+    """
+    # 1. Exact match
+    if target in handler_index:
+        return target
+
+    # 2. Suffix match: alias MyApp.UserCache → UserCache resolves to MyApp.UserCache
+    suffix = f".{target}"
+    for module_key in handler_index:
+        if module_key.endswith(suffix):
+            return module_key
+
+    return None
+
+
 @register_linker(
     "otp",
     priority=40,
@@ -224,9 +257,12 @@ def otp_linker(ctx: LinkerContext) -> LinkerResult:
                     target_modules.append(caller_module)
                 confidence = 0.85
 
-            # Create edges to matching handlers
+            # Create edges to matching handlers, resolving aliases
             for module in target_modules:
-                handlers = handler_index.get(module, {}).get(handler_suffix, [])
+                resolved = _resolve_handler_module(module, handler_index)
+                if resolved is None:
+                    continue
+                handlers = handler_index[resolved].get(handler_suffix, [])
                 for handler in handlers:
                     pair = (enclosing.id, handler.id)
                     if pair in seen_pairs:
