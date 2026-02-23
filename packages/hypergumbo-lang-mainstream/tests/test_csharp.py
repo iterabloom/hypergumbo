@@ -1850,3 +1850,116 @@ class TestNormalizeCSharpSignature:
     def test_none(self) -> None:
         from hypergumbo_lang_mainstream.csharp import normalize_csharp_signature
         assert normalize_csharp_signature(None) is None
+
+
+class TestCSharpMethodGroupReferences:
+    """Tests for C# method group references (INV-dinur).
+
+    Method groups (e.g., ``items.ForEach(Process)``) are function references
+    passed as arguments or assigned to delegates without calling them.
+    """
+
+    def test_method_group_as_argument(self, tmp_path: Path) -> None:
+        """Method group passed as argument creates references edge."""
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        (tmp_path / "App.cs").write_text(
+            "class App {\n"
+            "    static void Process(int x) { }\n"
+            "    static void Run() {\n"
+            "        var items = new List<int>();\n"
+            "        items.ForEach(Process);\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_csharp(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "Run" in e.src and "Process" in e.dst
+        ]
+        assert len(ref_edges) == 1
+        assert ref_edges[0].evidence_type == "method_group"
+
+    def test_method_group_assignment(self, tmp_path: Path) -> None:
+        """Method group assigned to variable creates references edge."""
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        (tmp_path / "App.cs").write_text(
+            "using System;\n"
+            "class App {\n"
+            "    static void Handle(string s) { }\n"
+            "    static void Run() {\n"
+            "        Action<string> handler = Handle;\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_csharp(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "Run" in e.src and "Handle" in e.dst
+        ]
+        assert len(ref_edges) == 1
+        assert ref_edges[0].evidence_type == "method_group"
+
+    def test_method_group_argument_cross_file(self, tmp_path: Path) -> None:
+        """Method group in argument resolves cross-file via resolver."""
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        (tmp_path / "Processor.cs").write_text(
+            "class Processor {\n"
+            "    static void Transform(int x) { }\n"
+            "}\n"
+        )
+        (tmp_path / "App.cs").write_text(
+            "class App {\n"
+            "    static void Run() {\n"
+            "        var items = new List<int>();\n"
+            "        items.ForEach(Transform);\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_csharp(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "Run" in e.src and "Transform" in e.dst
+        ]
+        assert len(ref_edges) == 1
+
+    def test_method_group_assignment_cross_file(self, tmp_path: Path) -> None:
+        """Method group assignment resolves cross-file via resolver."""
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        (tmp_path / "Handlers.cs").write_text(
+            "class Handlers {\n"
+            "    static void OnClick(object sender) { }\n"
+            "}\n"
+        )
+        (tmp_path / "App.cs").write_text(
+            "class App {\n"
+            "    static void Setup() {\n"
+            "        Action<object> handler = OnClick;\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_csharp(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "Setup" in e.src and "OnClick" in e.dst
+        ]
+        assert len(ref_edges) == 1
+
+    def test_no_reference_for_non_method_identifier(self, tmp_path: Path) -> None:
+        """Variable name in argument should not create references edge."""
+        from hypergumbo_lang_mainstream.csharp import analyze_csharp
+
+        (tmp_path / "App.cs").write_text(
+            "class App {\n"
+            "    static void Run() {\n"
+            "        var x = 42;\n"
+            "        Console.WriteLine(x);\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_csharp(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        assert len(ref_edges) == 0

@@ -1134,6 +1134,68 @@ def _extract_edges_from_file(
                             var_name = node_text(var_name_node, source)
                             var_types[var_name] = type_name
 
+        # Method group references: bare identifier in argument or assignment
+        # that resolves to a function/method symbol.
+        # Pattern 1: argument containing only an identifier — items.ForEach(Process)
+        elif node.type == "argument":
+            id_node = find_child_by_type(node, "identifier")
+            if id_node and len(node.named_children) == 1:
+                ref_name = node_text(id_node, source)
+                target = local_symbols.get(ref_name)
+                if target is None and resolver is not None:
+                    lookup = resolver.lookup(ref_name)
+                    if lookup.found and lookup.symbol is not None:
+                        target = lookup.symbol
+                if target is not None and target.kind in ("function", "method"):
+                    current_function = _get_enclosing_method(
+                        node, source, local_symbols,
+                    )
+                    if current_function is not None and target.id != current_function.id:
+                        edges.append(Edge.create(
+                            src=current_function.id,
+                            dst=target.id,
+                            edge_type="references",
+                            line=node.start_point[0] + 1,
+                            evidence_type="method_group",
+                            confidence=0.80,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                        ))
+
+        # Pattern 2: variable_declarator with RHS identifier — Action handler = Handle
+        elif node.type == "variable_declarator":
+            children = node.children
+            eq_idx = next(
+                (i for i, c in enumerate(children) if c.type == "="), -1,
+            )
+            if eq_idx >= 0 and eq_idx + 1 < len(children):
+                rhs = children[eq_idx + 1]
+                if rhs.type == "identifier":
+                    ref_name = node_text(rhs, source)
+                    target = local_symbols.get(ref_name)
+                    if target is None and resolver is not None:
+                        lookup = resolver.lookup(ref_name)
+                        if lookup.found and lookup.symbol is not None:
+                            target = lookup.symbol
+                    if target is not None and target.kind in ("function", "method"):
+                        current_function = _get_enclosing_method(
+                            node, source, local_symbols,
+                        )
+                        if (
+                            current_function is not None
+                            and target.id != current_function.id
+                        ):
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=target.id,
+                                edge_type="references",
+                                line=node.start_point[0] + 1,
+                                evidence_type="method_group",
+                                confidence=0.80,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
+
     return edges
 
 
