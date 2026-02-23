@@ -95,6 +95,12 @@ scripts/tracker promote <ITEM-ID>
 
 This moves the item from workspace to canonical. Include the promoted item in a separate PR.
 
+**Two-user permissions:** If your deployment uses separate OS users for human
+and agent (see the
+[tracker README setup](packages/hypergumbo-tracker/README.md#2-create-an-agent-user-optional)),
+run `htrac setup` to diagnose permission issues and verify with the
+[Permission Test Playbook](packages/hypergumbo-tracker/tests/permission/README.md).
+
 ### Maintainers: The Automated Way (Recommended)
 We provide a script that handles pushing, waiting for CI, and merging automatically.
 

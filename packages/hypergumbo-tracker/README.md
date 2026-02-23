@@ -96,6 +96,14 @@ You now have:
 - **`htrac tui`** — interactive terminal UI for humans
 - **`htrac setup`** — re-runnable setup wizard
 
+## Permission testing
+
+For two-user setups, verify the permission boundary end-to-end with the
+[Permission Test Playbook](tests/permission/README.md). The playbook
+exercises human-only operations (lock, stealth, delete), agent restrictions,
+and filesystem permission checks. If tests fail, re-run `htrac setup` (see
+[Run the wizard](#3-run-the-wizard) above) and follow its fix instructions.
+
 ## Agent usage
 
 These commands are run **as the agent user** (e.g. `myproject_agent`). The

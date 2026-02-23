@@ -11,13 +11,13 @@ is idempotent: running it twice with no changes between runs produces all
 "ok" results.
 
 The check sequence covers three areas:
-1. **Core infrastructure** (checks 1-14): directory structure, git plumbing,
-   config validation, ownership, group permissions, textconv driver,
-   data integrity.
-2. **Agentic infrastructure** (checks 15-20): wrapper scripts, agent
+1. **Core infrastructure** (checks 1-15): directory structure, git plumbing,
+   config validation, ownership, home traversability, group permissions,
+   textconv driver, data integrity.
+2. **Agentic infrastructure** (checks 16-21): wrapper scripts, agent
    instructions, hook integration, autonomous mode consistency, reflection
    state validity. Read-only / advisory only.
-3. **Sync prerequisites** (check 21): remote origin, FORGEJO_TOKEN,
+3. **Sync prerequisites** (check 22): remote origin, FORGEJO_TOKEN,
    git identity — advisory check for ``htrac sync`` workflow.
 
 Entry point: ``run_setup(root, repo_root)`` returns a list of CheckResult.
@@ -179,6 +179,22 @@ TRACKER_CONCEPTS: dict[str, dict[str, Any]] = {
 }
 
 
+def _detect_shared_group(root: Path) -> int | None:
+    """Detect a shared group on tracker directories or their parent.
+
+    Checks the tracker root and its parent for a non-primary group.
+    Returns the gid if a non-primary group is found, else None.
+    This is used by directory creation and other checks to determine
+    whether the two-user setup is active.
+    """
+    current_primary_gid = pwd.getpwuid(os.getuid()).pw_gid
+    for candidate in [root, root.parent]:
+        if candidate.exists():
+            if candidate.stat().st_gid != current_primary_gid:
+                return candidate.stat().st_gid
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Individual checks
 # ---------------------------------------------------------------------------
@@ -235,6 +251,8 @@ def _check_directory_structure(root: Path) -> CheckResult:
         root / "tracker-workspace" / "stealth",
     ]
 
+    shared_gid = _detect_shared_group(root)
+
     created: list[str] = []
     existed: list[str] = []
     for d in dirs:
@@ -242,6 +260,12 @@ def _check_directory_structure(root: Path) -> CheckResult:
             existed.append(str(d))
         else:
             d.mkdir(parents=True, exist_ok=True)
+            if shared_gid is not None:
+                try:
+                    os.chown(d, -1, shared_gid)
+                    os.chmod(d, 0o2775)  # noqa: S103  # nosec B103 — intentional: setgid + group-write for two-user setup
+                except OSError:
+                    pass  # _check_group_permissions will catch this
             created.append(str(d))
 
     if created:
@@ -608,15 +632,31 @@ def _check_config_ownership(root: Path) -> CheckResult:
                 os.chown(p, current_uid, -1)
                 fixed.append(str(p))
             except OSError:
-                return CheckResult(
-                    name="config_ownership",
-                    status="warn",
-                    message="Cannot fix config.yaml ownership (permission denied)",
-                    details=[
-                        "Run with sudo to fix:",
-                        f"  sudo chown {username} {' '.join(str(p) for p in existing)}",
-                    ],
-                )
+                # chown failed — try copy-delete-rename fallback.
+                # A copy creates a new file owned by the current user.
+                # Deleting the original works in group-writable dirs
+                # without sticky bit.
+                tmp_path = p.with_suffix(".yaml.tmp")
+                try:
+                    shutil.copy2(p, tmp_path)
+                    p.unlink()
+                    tmp_path.rename(p)
+                    p.chmod(0o644)
+                    fixed.append(str(p))
+                except OSError:
+                    try:
+                        tmp_path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+                    return CheckResult(
+                        name="config_ownership",
+                        status="warn",
+                        message="Cannot fix config.yaml ownership (permission denied)",
+                        details=[
+                            "Run with sudo to fix:",
+                            f"  sudo chown {username} {' '.join(str(p) for p in existing)}",
+                        ],
+                    )
     if fixed:
         return CheckResult(
             name="config_ownership",
@@ -630,10 +670,103 @@ def _check_config_ownership(root: Path) -> CheckResult:
     )
 
 
+def _check_home_traversable(
+    root: Path, repo_root: Path | None = None
+) -> CheckResult:
+    """Check #11: Verify home directory is traversable for two-user setups.
+
+    When the repo lives under the current user's home directory and a
+    two-user setup is active, the other user needs at least execute
+    permission on the home directory to traverse into the repo.
+
+    Only active when ``_detect_shared_group`` returns a non-None gid,
+    indicating a two-user setup is intended.
+    """
+    import stat
+
+    if repo_root is None:
+        return CheckResult(
+            name="home_traversable",
+            status="ok",
+            message="Home traversal check skipped (no git repo)",
+        )
+
+    shared_gid = _detect_shared_group(root)
+    if shared_gid is None:
+        return CheckResult(
+            name="home_traversable",
+            status="ok",
+            message="Home traversal check skipped (single-user setup)",
+        )
+
+    home = Path.home()
+    try:
+        resolved_repo = repo_root.resolve()
+        resolved_home = home.resolve()
+    except OSError:
+        return CheckResult(
+            name="home_traversable",
+            status="ok",
+            message="Home traversal check skipped (path resolution failed)",
+        )
+
+    if not str(resolved_repo).startswith(str(resolved_home) + "/"):
+        return CheckResult(
+            name="home_traversable",
+            status="ok",
+            message="Repo is not under home directory",
+        )
+
+    # Repo is under home — check traversal permissions
+    try:
+        home_stat = home.stat()
+    except OSError:
+        return CheckResult(
+            name="home_traversable",
+            status="ok",
+            message="Home traversal check skipped (cannot stat home)",
+        )
+    mode = home_stat.st_mode
+
+    # Check world-execute first (anyone can traverse)
+    if mode & stat.S_IXOTH:
+        return CheckResult(
+            name="home_traversable",
+            status="ok",
+            message="Home directory is world-traversable",
+        )
+
+    # Check group-execute with matching group
+    if (mode & stat.S_IXGRP) and home_stat.st_gid == shared_gid:
+        return CheckResult(
+            name="home_traversable",
+            status="ok",
+            message="Home directory is group-traversable",
+        )
+
+    # Not traversable — figure out group name for the warning
+    try:
+        group_name = grp.getgrgid(shared_gid).gr_name
+        group_hint = f" (group '{group_name}')"
+    except KeyError:
+        group_hint = f" (gid {shared_gid})"
+
+    return CheckResult(
+        name="home_traversable",
+        status="warn",
+        message=f"Home directory blocks other-user traversal{group_hint}",
+        details=[
+            f"Repo is under {home} which is not traversable by the",
+            "other user. The other user cannot reach the repo.",
+            f"Fix: sudo chmod o+x {home}",
+        ],
+    )
+
+
 def _check_group_permissions(
     root: Path, repo_root: Path | None = None
 ) -> CheckResult:
-    """Check #11: Verify two-user group setup on writable directories.
+    """Check #12: Verify/fix two-user group setup on writable directories.
 
     Checks whether tracker-workspace (which holds tui_preferences.json),
     .ops, stealth, and .git/ directories have a shared group with
@@ -642,8 +775,9 @@ def _check_group_permissions(
     of which require write access to .git/refs/heads/, .git/objects/,
     and .git/logs/.
 
-    This is read-only — it reports problems but does not fix them, since
-    group/permission changes require sudo.
+    When directories are owned by the current user, auto-fixes group,
+    group-write, and setgid permissions. Falls back to sudo advisory
+    for directories owned by other users.
 
     If directories are owned by the user's primary group (not a shared
     group), the two-user setup is not active and the check passes with
@@ -677,7 +811,8 @@ def _check_group_permissions(
     current_user = pwd.getpwuid(current_uid).pw_name
     current_primary_gid = pwd.getpwuid(current_uid).pw_gid
 
-    problems: list[str] = []
+    auto_fixed: list[str] = []
+    needs_sudo: list[str] = []
     shared_group_detected = False
     detected_group: str | None = None
 
@@ -697,7 +832,7 @@ def _check_group_permissions(
             group_name = grp.getgrgid(dir_gid).gr_name
             detected_group = group_name
         except KeyError:
-            problems.append(f"{d}: owned by unknown gid {dir_gid}")
+            needs_sudo.append(f"{d}: owned by unknown gid {dir_gid}")
             continue
 
         # Check current user is in the group
@@ -708,20 +843,41 @@ def _check_group_permissions(
                 current_user in group_members or current_primary_gid == dir_gid
             )
             if not user_in_group:
-                problems.append(
+                needs_sudo.append(
                     f"{d}: user '{current_user}' is not in group '{group_name}'"
                 )
+                continue
         except KeyError:
             pass
 
-        # Check group-write permission
+        # Check and auto-fix group-write and setgid
         mode = st.st_mode
-        if not (mode & stat.S_IWGRP):
-            problems.append(f"{d}: missing group-write permission")
+        missing_write = not (mode & stat.S_IWGRP)
+        missing_setgid = not (mode & stat.S_ISGID)
 
-        # Check setgid bit (ensures new files inherit the group)
-        if not (mode & stat.S_ISGID):
-            problems.append(f"{d}: missing setgid bit")
+        if not missing_write and not missing_setgid:
+            continue
+
+        # Can we auto-fix? Only if we own the directory.
+        if st.st_uid == current_uid:
+            new_mode = mode
+            if missing_write:
+                new_mode |= stat.S_IWGRP
+            if missing_setgid:
+                new_mode |= stat.S_ISGID
+            try:
+                os.chmod(d, new_mode)
+                auto_fixed.append(str(d))
+            except OSError:
+                if missing_write:
+                    needs_sudo.append(f"{d}: missing group-write permission")
+                if missing_setgid:
+                    needs_sudo.append(f"{d}: missing setgid bit")
+        else:
+            if missing_write:
+                needs_sudo.append(f"{d}: missing group-write permission")
+            if missing_setgid:
+                needs_sudo.append(f"{d}: missing setgid bit")
 
     if not shared_group_detected:
         return CheckResult(
@@ -730,10 +886,15 @@ def _check_group_permissions(
             message="Single-user setup (no shared group on .ops directories)",
         )
 
-    if problems:
+    if needs_sudo:
         grp_label = detected_group or "GROUP"
         fix_lines = [
-            *problems,
+            *needs_sudo,
+        ]
+        if auto_fixed:
+            fix_lines.append("")
+            fix_lines.append(f"Auto-fixed {len(auto_fixed)} director{'y' if len(auto_fixed) == 1 else 'ies'}")
+        fix_lines.extend([
             "",
             "Fix with (as a user with sudo):",
             f"  sudo chgrp -R {grp_label}"
@@ -742,7 +903,7 @@ def _check_group_permissions(
             " .agent/tracker-workspace"
             " .agent/tracker-workspace/.ops"
             " .agent/tracker-workspace/stealth",
-        ]
+        ])
         if repo_root is not None and (repo_root / ".git").is_dir():
             fix_lines.extend([
                 f"  sudo chgrp -R {grp_label} .git/",
@@ -752,8 +913,15 @@ def _check_group_permissions(
         return CheckResult(
             name="group_permissions",
             status="error",
-            message=f"Two-user group setup has {len(problems)} problem{'s' if len(problems) != 1 else ''}",
+            message=f"Two-user group setup has {len(needs_sudo)} problem{'s' if len(needs_sudo) != 1 else ''}",
             details=fix_lines,
+        )
+
+    if auto_fixed:
+        return CheckResult(
+            name="group_permissions",
+            status="fixed",
+            message=f"Auto-fixed group permissions on {len(auto_fixed)} director{'y' if len(auto_fixed) == 1 else 'ies'}",
         )
 
     return CheckResult(
@@ -1374,7 +1542,7 @@ def _check_reflection_state(repo_root: Path | None) -> CheckResult:
 def _check_sync_prerequisites(
     root: Path, repo_root: Path | None
 ) -> CheckResult:
-    """Check #21: Verify prerequisites for ``htrac sync``.
+    """Check #22: Verify prerequisites for ``htrac sync``.
 
     Advisory check (status is ``ok`` or ``warn``, never ``error``) since
     sync is an optional workflow.  Verifies:
@@ -1495,19 +1663,20 @@ def run_setup(root: Path, repo_root: Path | None = None) -> list[CheckResult]:
     results.append(_check_config_drift(root))              # 8
     results.append(_check_actor_resolution(root))          # 9
     results.append(_check_config_ownership(root))          # 10
-    results.append(_check_group_permissions(root, repo_root))  # 11
-    results.append(_check_ops_writable(root))              # 12
-    results.append(_check_textconv(root, repo_root))       # 13
-    results.append(_check_existing_data(root))             # 14
+    results.append(_check_home_traversable(root, repo_root))  # 11
+    results.append(_check_group_permissions(root, repo_root))  # 12
+    results.append(_check_ops_writable(root))              # 13
+    results.append(_check_textconv(root, repo_root))       # 14
+    results.append(_check_existing_data(root))             # 15
 
     # Part 2: Agentic infrastructure
-    results.append(_check_tracker_wrapper(repo_root))      # 15
-    results.append(_check_agents_md(repo_root))            # 16
-    results.append(_check_stop_hook(repo_root))            # 17
-    results.append(_check_precommit_hook(repo_root))       # 18
-    results.append(_check_autonomous_mode(repo_root))      # 19
-    results.append(_check_reflection_state(repo_root))     # 20
-    results.append(_check_sync_prerequisites(root, repo_root))  # 21
+    results.append(_check_tracker_wrapper(repo_root))      # 16
+    results.append(_check_agents_md(repo_root))            # 17
+    results.append(_check_stop_hook(repo_root))            # 18
+    results.append(_check_precommit_hook(repo_root))       # 19
+    results.append(_check_autonomous_mode(repo_root))      # 20
+    results.append(_check_reflection_state(repo_root))     # 21
+    results.append(_check_sync_prerequisites(root, repo_root))  # 22
 
     return results
 

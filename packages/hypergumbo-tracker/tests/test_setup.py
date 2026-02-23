@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 """Tests for hypergumbo_tracker.setup — idempotent setup wizard.
 
-Covers all 20 checks in all reachable states (ok, fixed, warn, error),
+Covers all 22 checks in all reachable states (ok, fixed, warn, error),
 the top-level run_setup() orchestration, and CLI integration via _cmd_setup.
 """
 
@@ -37,12 +37,14 @@ from hypergumbo_tracker.setup import (
     _check_gitattributes,
     _check_gitignore,
     _check_group_permissions,
+    _check_home_traversable,
     _check_ops_writable,
     _check_precommit_hook,
     _check_reflection_state,
     _check_stop_hook,
     _check_textconv,
     _check_tracker_wrapper,
+    _detect_shared_group,
     _ensure_safe_directory,
     format_results,
     generate_human_shim,
@@ -88,6 +90,84 @@ def _write_config(root: Path, raw: dict[str, Any] | None = None) -> None:
         raw = make_test_config_dict()
     (root / "tracker").mkdir(parents=True, exist_ok=True)
     (root / "tracker" / "config.yaml").write_text(yaml.dump(raw))
+
+
+# ---------------------------------------------------------------------------
+# _detect_shared_group helper
+# ---------------------------------------------------------------------------
+
+
+class TestDetectSharedGroup:
+    """Tests for _detect_shared_group helper."""
+
+    def test_primary_group_returns_none(self, tmp_path: Path) -> None:
+        """Dirs owned by primary group → no shared group detected."""
+        root = _make_full_agent_dir(tmp_path)
+        result = _detect_shared_group(root)
+        assert result is None
+
+    def test_root_has_shared_gid(self, tmp_path: Path) -> None:
+        """Root dir has a non-primary gid → returns that gid."""
+        root = _make_full_agent_dir(tmp_path)
+        current_gid = os.stat(root).st_gid
+        fake_gid = current_gid + 1
+
+        fake_stat = MagicMock()
+        fake_stat.st_gid = fake_gid
+
+        with (
+            patch.object(Path, "stat", return_value=fake_stat),
+            patch(
+                "hypergumbo_tracker.setup.pwd.getpwuid",
+                return_value=MagicMock(pw_gid=current_gid),
+            ),
+        ):
+            result = _detect_shared_group(root)
+        assert result == fake_gid
+
+    def test_parent_has_shared_gid_when_root_absent(self, tmp_path: Path) -> None:
+        """Root doesn't exist, parent has shared gid → returns parent gid."""
+        root = tmp_path / "nonexistent" / ".agent"
+        parent = root.parent
+        parent.mkdir(parents=True)
+        current_gid = os.stat(parent).st_gid
+        fake_gid = current_gid + 1
+
+        original_stat = Path.stat
+        original_exists = Path.exists
+
+        def mock_stat(self, *a, **kw):
+            if self == parent:
+                m = MagicMock()
+                m.st_gid = fake_gid
+                return m
+            return original_stat(self, *a, **kw)
+
+        def mock_exists(self, *a, **kw):
+            if self == root:
+                return False
+            return original_exists(self, *a, **kw)
+
+        with (
+            patch.object(Path, "stat", mock_stat),
+            patch.object(Path, "exists", mock_exists),
+            patch(
+                "hypergumbo_tracker.setup.pwd.getpwuid",
+                return_value=MagicMock(pw_gid=current_gid),
+            ),
+        ):
+            result = _detect_shared_group(root)
+        assert result == fake_gid
+
+    def test_neither_exists_returns_none(self, tmp_path: Path) -> None:
+        """Neither root nor parent exists → None."""
+        root = tmp_path / "nonexistent" / "also_nonexistent" / ".agent"
+        with patch(
+            "hypergumbo_tracker.setup.pwd.getpwuid",
+            return_value=MagicMock(pw_gid=os.stat(tmp_path).st_gid),
+        ):
+            result = _detect_shared_group(root)
+        assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +236,71 @@ class TestCheckDirectoryStructure:
         result = _check_directory_structure(root)
         assert result.status == "fixed"
         assert "Created" in result.message
+
+    def test_shared_group_applied_on_create(self, tmp_path: Path) -> None:
+        """When _detect_shared_group returns a gid, newly created dirs get it."""
+        root = tmp_path / ".agent"
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch("hypergumbo_tracker.setup.os.chown") as mock_chown,
+            patch("hypergumbo_tracker.setup.os.chmod") as mock_chmod,
+        ):
+            result = _check_directory_structure(root)
+        assert result.status == "fixed"
+        # chown and chmod called for each newly created dir
+        assert mock_chown.call_count > 0
+        assert mock_chmod.call_count > 0
+        # Check that setgid + group-write mode was used
+        for call in mock_chmod.call_args_list:
+            assert call[0][1] == 0o2775
+
+    def test_no_shared_group_no_chown(self, tmp_path: Path) -> None:
+        """No shared group → no chown/chmod calls."""
+        root = tmp_path / ".agent"
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=None
+            ),
+            patch("hypergumbo_tracker.setup.os.chown") as mock_chown,
+            patch("hypergumbo_tracker.setup.os.chmod") as mock_chmod,
+        ):
+            result = _check_directory_structure(root)
+        assert result.status == "fixed"
+        mock_chown.assert_not_called()
+        mock_chmod.assert_not_called()
+
+    def test_chown_failure_silent(self, tmp_path: Path) -> None:
+        """OSError on chown is silently ignored."""
+        root = tmp_path / ".agent"
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch(
+                "hypergumbo_tracker.setup.os.chown",
+                side_effect=OSError("permission denied"),
+            ),
+        ):
+            result = _check_directory_structure(root)
+        # Still reports fixed (directories were created)
+        assert result.status == "fixed"
+
+    def test_existing_dirs_not_modified(self, tmp_path: Path) -> None:
+        """Existing directories are not chown/chmod'd."""
+        root = _make_full_agent_dir(tmp_path)
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch("hypergumbo_tracker.setup.os.chown") as mock_chown,
+            patch("hypergumbo_tracker.setup.os.chmod") as mock_chmod,
+        ):
+            result = _check_directory_structure(root)
+        assert result.status == "ok"
+        mock_chown.assert_not_called()
+        mock_chmod.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -656,7 +801,41 @@ class TestCheckConfigOwnership:
         # Should still work with default patterns
         assert result.status == "warn"
 
-    def test_human_chown_fails(self, tmp_path: Path) -> None:
+    def test_human_chown_fails_copy_delete_succeeds(self, tmp_path: Path) -> None:
+        """chown fails but copy-delete-rename fallback succeeds."""
+        root = _make_full_agent_dir(tmp_path)
+        config = root / "tracker" / "config.yaml"
+        config.write_text("statuses: []")
+        real_uid = os.getuid()
+        fake_uid = real_uid + 1
+
+        original_stat = Path.stat
+
+        def stat_wrong_owner(self, *a, **kw):
+            st = original_stat(self, *a, **kw)
+            if self.name == "config.yaml":
+                mock_st = MagicMock()
+                mock_st.st_uid = fake_uid
+                return mock_st
+            return st
+
+        with (
+            patch(
+                "hypergumbo_tracker.setup.resolve_actor",
+                return_value=("human", "jgstern"),
+            ),
+            patch.object(Path, "stat", stat_wrong_owner),
+            patch(
+                "hypergumbo_tracker.setup.os.chown",
+                side_effect=OSError("permission denied"),
+            ),
+        ):
+            result = _check_config_ownership(root)
+        assert result.status == "fixed"
+        assert config.exists()
+
+    def test_human_chown_fails_unlink_fails(self, tmp_path: Path) -> None:
+        """chown fails, copy succeeds but unlink fails (sticky bit) → sudo advisory."""
         root = self._make_with_config(tmp_path)
         config = root / "tracker" / "config.yaml"
         real_stat = config.stat()
@@ -672,6 +851,40 @@ class TestCheckConfigOwnership:
                 "hypergumbo_tracker.setup.os.chown",
                 side_effect=OSError("permission denied"),
             ),
+            patch(
+                "hypergumbo_tracker.setup.shutil.copy2",
+            ),
+            patch.object(
+                Path,
+                "unlink",
+                side_effect=OSError("sticky bit"),
+            ),
+        ):
+            result = _check_config_ownership(root)
+        assert result.status == "warn"
+        assert "sudo" in result.details[1]
+
+    def test_human_chown_fails_copy_fails(self, tmp_path: Path) -> None:
+        """chown fails and copy also fails → sudo advisory."""
+        root = self._make_with_config(tmp_path)
+        config = root / "tracker" / "config.yaml"
+        real_stat = config.stat()
+        fake_stat = MagicMock()
+        fake_stat.st_uid = real_stat.st_uid + 1
+        with (
+            patch(
+                "hypergumbo_tracker.setup.resolve_actor",
+                return_value=("human", "jgstern"),
+            ),
+            patch.object(Path, "stat", return_value=fake_stat),
+            patch(
+                "hypergumbo_tracker.setup.os.chown",
+                side_effect=OSError("permission denied"),
+            ),
+            patch(
+                "hypergumbo_tracker.setup.shutil.copy2",
+                side_effect=OSError("cannot copy"),
+            ),
         ):
             result = _check_config_ownership(root)
         assert result.status == "warn"
@@ -679,7 +892,219 @@ class TestCheckConfigOwnership:
 
 
 # ---------------------------------------------------------------------------
-# Check #11: Group permissions
+# Check #11: Home traversable
+# ---------------------------------------------------------------------------
+
+
+class TestCheckHomeTraversable:
+    """Tests for _check_home_traversable (check #11)."""
+
+    def test_no_repo(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        result = _check_home_traversable(root, repo_root=None)
+        assert result.status == "ok"
+        assert "skipped" in result.message
+
+    def test_single_user_skip(self, tmp_path: Path) -> None:
+        """No shared group → skip."""
+        root = _make_full_agent_dir(tmp_path)
+        with patch(
+            "hypergumbo_tracker.setup._detect_shared_group", return_value=None
+        ):
+            result = _check_home_traversable(root, repo_root=tmp_path)
+        assert result.status == "ok"
+        assert "single-user" in result.message.lower()
+
+    def test_repo_not_under_home(self, tmp_path: Path) -> None:
+        """Repo is outside home dir → ok."""
+        root = _make_full_agent_dir(tmp_path)
+        fake_home = Path("/some/other/home")
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch("hypergumbo_tracker.setup.Path.home", return_value=fake_home),
+        ):
+            result = _check_home_traversable(root, repo_root=tmp_path)
+        assert result.status == "ok"
+        assert "not under home" in result.message.lower()
+
+    def test_world_traversable_ok(self, tmp_path: Path) -> None:
+        """Home with o+x is world-traversable."""
+        import stat
+
+        root = _make_full_agent_dir(tmp_path)
+        fake_home_stat = MagicMock()
+        fake_home_stat.st_mode = stat.S_IRWXU | stat.S_IXOTH
+        fake_home_stat.st_gid = 1000
+
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch(
+                "hypergumbo_tracker.setup.Path.home",
+                return_value=tmp_path,
+            ),
+            patch.object(Path, "stat", return_value=fake_home_stat),
+        ):
+            result = _check_home_traversable(root, repo_root=tmp_path / "repo")
+        assert result.status == "ok"
+        assert "world-traversable" in result.message
+
+    def test_group_traversable_ok(self, tmp_path: Path) -> None:
+        """Home with g+x and matching group → ok."""
+        import stat
+
+        root = _make_full_agent_dir(tmp_path)
+        shared_gid = 9999
+        fake_home_stat = MagicMock()
+        fake_home_stat.st_mode = stat.S_IRWXU | stat.S_IXGRP
+        fake_home_stat.st_gid = shared_gid
+
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group",
+                return_value=shared_gid,
+            ),
+            patch(
+                "hypergumbo_tracker.setup.Path.home",
+                return_value=tmp_path,
+            ),
+            patch.object(Path, "stat", return_value=fake_home_stat),
+        ):
+            result = _check_home_traversable(root, repo_root=tmp_path / "repo")
+        assert result.status == "ok"
+        assert "group-traversable" in result.message
+
+    def test_not_traversable_warns(self, tmp_path: Path) -> None:
+        """Home is mode 700 → warns with fix command."""
+        import stat
+
+        root = _make_full_agent_dir(tmp_path)
+        fake_home_stat = MagicMock()
+        fake_home_stat.st_mode = stat.S_IRWXU  # 700 — no group or other access
+        fake_home_stat.st_gid = 1000
+
+        fake_grp = MagicMock()
+        fake_grp.gr_name = "project-dev"
+
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch(
+                "hypergumbo_tracker.setup.Path.home",
+                return_value=tmp_path,
+            ),
+            patch.object(Path, "stat", return_value=fake_home_stat),
+            patch(
+                "hypergumbo_tracker.setup.grp.getgrgid", return_value=fake_grp
+            ),
+        ):
+            result = _check_home_traversable(root, repo_root=tmp_path / "repo")
+        assert result.status == "warn"
+        assert "project-dev" in result.message
+        assert f"sudo chmod o+x {tmp_path}" in str(result.details)
+
+    def test_wrong_group_with_gx_still_warns(self, tmp_path: Path) -> None:
+        """Home has g+x but group doesn't match shared group → warns."""
+        import stat
+
+        root = _make_full_agent_dir(tmp_path)
+        fake_home_stat = MagicMock()
+        fake_home_stat.st_mode = stat.S_IRWXU | stat.S_IXGRP  # g+x but wrong group
+        fake_home_stat.st_gid = 1000  # Different from shared group 9999
+
+        fake_grp = MagicMock()
+        fake_grp.gr_name = "project-dev"
+
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch(
+                "hypergumbo_tracker.setup.Path.home",
+                return_value=tmp_path,
+            ),
+            patch.object(Path, "stat", return_value=fake_home_stat),
+            patch(
+                "hypergumbo_tracker.setup.grp.getgrgid", return_value=fake_grp
+            ),
+        ):
+            result = _check_home_traversable(root, repo_root=tmp_path / "repo")
+        assert result.status == "warn"
+
+    def test_path_resolution_fails(self, tmp_path: Path) -> None:
+        """OSError on path resolution → skipped."""
+        root = _make_full_agent_dir(tmp_path)
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch.object(Path, "resolve", side_effect=OSError("broken")),
+        ):
+            result = _check_home_traversable(root, repo_root=tmp_path)
+        assert result.status == "ok"
+        assert "resolution failed" in result.message
+
+    def test_stat_home_fails(self, tmp_path: Path) -> None:
+        """OSError on stat(home) → skipped."""
+        import stat as stat_mod
+
+        root = _make_full_agent_dir(tmp_path)
+
+        original_stat = Path.stat
+
+        def stat_fails_on_home(self, *a, **kw):
+            if self == tmp_path:
+                raise OSError("cannot stat")
+            return original_stat(self, *a, **kw)
+
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch(
+                "hypergumbo_tracker.setup.Path.home",
+                return_value=tmp_path,
+            ),
+            patch.object(Path, "stat", stat_fails_on_home),
+        ):
+            result = _check_home_traversable(root, repo_root=tmp_path / "repo")
+        assert result.status == "ok"
+        assert "cannot stat" in result.message
+
+    def test_unknown_group_in_warning(self, tmp_path: Path) -> None:
+        """Unknown gid in warning shows gid number instead of name."""
+        import stat
+
+        root = _make_full_agent_dir(tmp_path)
+        fake_home_stat = MagicMock()
+        fake_home_stat.st_mode = stat.S_IRWXU  # 700
+        fake_home_stat.st_gid = 1000
+
+        with (
+            patch(
+                "hypergumbo_tracker.setup._detect_shared_group", return_value=9999
+            ),
+            patch(
+                "hypergumbo_tracker.setup.Path.home",
+                return_value=tmp_path,
+            ),
+            patch.object(Path, "stat", return_value=fake_home_stat),
+            patch(
+                "hypergumbo_tracker.setup.grp.getgrgid",
+                side_effect=KeyError("unknown gid"),
+            ),
+        ):
+            result = _check_home_traversable(root, repo_root=tmp_path / "repo")
+        assert result.status == "warn"
+        assert "gid 9999" in result.message
+
+
+# ---------------------------------------------------------------------------
+# Check #12: Group permissions
 # ---------------------------------------------------------------------------
 
 
@@ -739,8 +1164,8 @@ class TestCheckGroupPermissions:
         assert result.status == "ok"
         assert "correct" in result.message
 
-    def test_missing_group_write(self, tmp_path: Path) -> None:
-        """Shared group without group-write is an error."""
+    def test_missing_group_write_owned_auto_fixed(self, tmp_path: Path) -> None:
+        """Shared group without group-write, dir owned by us → auto-fixed."""
         import stat
 
         root = _make_full_agent_dir(tmp_path)
@@ -766,12 +1191,11 @@ class TestCheckGroupPermissions:
                     pw_gid=current_gid,
                 ),
             ),
+            patch("hypergumbo_tracker.setup.os.chmod") as mock_chmod,
         ):
             result = _check_group_permissions(root)
-        assert result.status == "error"
-        assert "group-write" in str(result.details)
-        # Fix command uses actual group name, not placeholder
-        assert "sudo chgrp -R project-dev" in str(result.details)
+        assert result.status == "fixed"
+        assert mock_chmod.call_count > 0
 
     def test_user_not_in_group(self, tmp_path: Path) -> None:
         """User not in the shared group is an error."""
@@ -914,7 +1338,7 @@ class TestCheckGroupPermissions:
         bad_stat.st_mode = (
             stat.S_IFDIR | stat.S_IRWXU | stat.S_IRGRP  # No group write
         )
-        bad_stat.st_uid = os.getuid()
+        bad_stat.st_uid = os.getuid() + 1  # Not owned by us → can't auto-fix
 
         original_stat = Path.stat
 
@@ -947,6 +1371,190 @@ class TestCheckGroupPermissions:
         assert "sudo chgrp -R project-dev .git/" in str(result.details)
         assert "sudo chmod -R g+w .git/" in str(result.details)
         assert "sudo find .git/ -type d -exec chmod g+s" in str(result.details)
+
+    def test_owned_dir_auto_fixed(self, tmp_path: Path) -> None:
+        """Dir owned by current user with wrong perms → auto-fixed."""
+        import stat
+
+        root = _make_full_agent_dir(tmp_path)
+        current_gid = os.stat(root / "tracker" / ".ops").st_gid
+        fake_gid = current_gid + 1
+        current_uid = os.getuid()
+
+        fake_stat = MagicMock()
+        fake_stat.st_gid = fake_gid
+        fake_stat.st_mode = stat.S_IRWXU | stat.S_IRGRP  # Missing g+w and setgid
+        fake_stat.st_uid = current_uid  # We own the dir
+
+        fake_grp = MagicMock()
+        fake_grp.gr_name = "project-dev"
+        fake_grp.gr_mem = [os.environ.get("USER", "testuser")]
+
+        with (
+            patch.object(Path, "stat", return_value=fake_stat),
+            patch("hypergumbo_tracker.setup.grp.getgrgid", return_value=fake_grp),
+            patch(
+                "hypergumbo_tracker.setup.pwd.getpwuid",
+                return_value=MagicMock(
+                    pw_name=os.environ.get("USER", "testuser"),
+                    pw_gid=current_gid,
+                ),
+            ),
+            patch("hypergumbo_tracker.setup.os.chmod") as mock_chmod,
+        ):
+            result = _check_group_permissions(root)
+        assert result.status == "fixed"
+        assert "Auto-fixed" in result.message
+        assert mock_chmod.call_count > 0
+
+    def test_not_owned_stays_advisory(self, tmp_path: Path) -> None:
+        """Dir NOT owned by current user → still advisory."""
+        import stat
+
+        root = _make_full_agent_dir(tmp_path)
+        current_gid = os.stat(root / "tracker" / ".ops").st_gid
+        fake_gid = current_gid + 1
+        current_uid = os.getuid()
+
+        fake_stat = MagicMock()
+        fake_stat.st_gid = fake_gid
+        fake_stat.st_mode = stat.S_IRWXU | stat.S_IRGRP  # Missing g+w
+        fake_stat.st_uid = current_uid + 1  # Someone else owns it
+
+        fake_grp = MagicMock()
+        fake_grp.gr_name = "project-dev"
+        fake_grp.gr_mem = [os.environ.get("USER", "testuser")]
+
+        with (
+            patch.object(Path, "stat", return_value=fake_stat),
+            patch("hypergumbo_tracker.setup.grp.getgrgid", return_value=fake_grp),
+            patch(
+                "hypergumbo_tracker.setup.pwd.getpwuid",
+                return_value=MagicMock(
+                    pw_name=os.environ.get("USER", "testuser"),
+                    pw_gid=current_gid,
+                ),
+            ),
+        ):
+            result = _check_group_permissions(root)
+        assert result.status == "error"
+        assert "sudo" in str(result.details)
+
+    def test_mixed_owned_and_unowned(self, tmp_path: Path) -> None:
+        """Mix of owned and unowned dirs → error with auto-fixed details."""
+        import stat
+
+        root = _make_full_agent_dir(tmp_path)
+        current_gid = os.stat(root / "tracker" / ".ops").st_gid
+        fake_gid = current_gid + 1
+        current_uid = os.getuid()
+
+        owned_dirs = {
+            str(root / "tracker" / ".ops"),
+            str(root / "tracker-workspace"),
+        }
+
+        def selective_stat(self, *args, **kwargs):
+            m = MagicMock()
+            m.st_gid = fake_gid
+            m.st_mode = stat.S_IRWXU | stat.S_IRGRP  # Missing g+w and setgid
+            if str(self) in owned_dirs:
+                m.st_uid = current_uid
+            else:
+                m.st_uid = current_uid + 1
+            return m
+
+        fake_grp = MagicMock()
+        fake_grp.gr_name = "project-dev"
+        fake_grp.gr_mem = [os.environ.get("USER", "testuser")]
+
+        with (
+            patch.object(Path, "stat", selective_stat),
+            patch("hypergumbo_tracker.setup.grp.getgrgid", return_value=fake_grp),
+            patch(
+                "hypergumbo_tracker.setup.pwd.getpwuid",
+                return_value=MagicMock(
+                    pw_name=os.environ.get("USER", "testuser"),
+                    pw_gid=current_gid,
+                ),
+            ),
+            patch("hypergumbo_tracker.setup.os.chmod"),
+        ):
+            result = _check_group_permissions(root)
+        # Still error because some dirs need sudo
+        assert result.status == "error"
+        # But mentions auto-fixed dirs
+        assert "Auto-fixed" in str(result.details)
+
+    def test_chmod_fails_falls_back(self, tmp_path: Path) -> None:
+        """chmod fails on owned dir → falls back to sudo advisory."""
+        import stat
+
+        root = _make_full_agent_dir(tmp_path)
+        current_gid = os.stat(root / "tracker" / ".ops").st_gid
+        fake_gid = current_gid + 1
+        current_uid = os.getuid()
+
+        fake_stat = MagicMock()
+        fake_stat.st_gid = fake_gid
+        fake_stat.st_mode = stat.S_IRWXU | stat.S_IRGRP  # Missing g+w
+        fake_stat.st_uid = current_uid
+
+        fake_grp = MagicMock()
+        fake_grp.gr_name = "project-dev"
+        fake_grp.gr_mem = [os.environ.get("USER", "testuser")]
+
+        with (
+            patch.object(Path, "stat", return_value=fake_stat),
+            patch("hypergumbo_tracker.setup.grp.getgrgid", return_value=fake_grp),
+            patch(
+                "hypergumbo_tracker.setup.pwd.getpwuid",
+                return_value=MagicMock(
+                    pw_name=os.environ.get("USER", "testuser"),
+                    pw_gid=current_gid,
+                ),
+            ),
+            patch(
+                "hypergumbo_tracker.setup.os.chmod",
+                side_effect=OSError("not allowed"),
+            ),
+        ):
+            result = _check_group_permissions(root)
+        assert result.status == "error"
+        assert "sudo" in str(result.details)
+
+    def test_user_not_in_group_always_sudo(self, tmp_path: Path) -> None:
+        """User not in group → always requires sudo (usermod), never auto-fixable."""
+        import stat
+
+        root = _make_full_agent_dir(tmp_path)
+        current_gid = os.stat(root / "tracker" / ".ops").st_gid
+        fake_gid = current_gid + 1
+        current_uid = os.getuid()
+
+        fake_stat = MagicMock()
+        fake_stat.st_gid = fake_gid
+        fake_stat.st_mode = stat.S_IRWXU | stat.S_IRWXG | stat.S_ISGID
+        fake_stat.st_uid = current_uid  # We own it
+
+        fake_grp = MagicMock()
+        fake_grp.gr_name = "project-dev"
+        fake_grp.gr_mem = ["someone_else"]  # Current user not in group
+
+        with (
+            patch.object(Path, "stat", return_value=fake_stat),
+            patch("hypergumbo_tracker.setup.grp.getgrgid", return_value=fake_grp),
+            patch(
+                "hypergumbo_tracker.setup.pwd.getpwuid",
+                return_value=MagicMock(
+                    pw_name="testuser",
+                    pw_gid=current_gid,
+                ),
+            ),
+        ):
+            result = _check_group_permissions(root)
+        assert result.status == "error"
+        assert "not in group" in str(result.details)
 
     def test_git_dirs_skipped_without_repo_root(self, tmp_path: Path) -> None:
         """Without repo_root, .git/ dirs are not checked."""
@@ -1820,8 +2428,8 @@ class TestRunSetup:
             "hypergumbo_tracker.setup.resolve_actor", return_value=("human", "alice")
         ):
             results = run_setup(root)
-        # Should have one result per check (21 total, including sync prerequisites)
-        assert len(results) == 21
+        # Should have one result per check (22 total, including sync prerequisites)
+        assert len(results) == 22
         # Directory structure should be fixed
         dir_result = next(r for r in results if r.name == "directory_structure")
         assert dir_result.status == "fixed"
