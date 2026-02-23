@@ -1000,6 +1000,35 @@ func deleteAlert(w http.ResponseWriter, r *http.Request) {}
         )
 
 
+    def test_non_path_strings_not_detected_as_routes(self, tmp_path: Path) -> None:
+        """Kubernetes API calls with resource names should NOT be routes.
+
+        Calls like ``client.Get(ctx, "my-app", opts)`` have a string
+        argument (``"my-app"``) but it's a resource name, not a route
+        path.  Route paths must start with ``/`` to distinguish them
+        from arbitrary string arguments.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+func getResources() {
+    client.Get(ctx, "my-app", opts)
+    client.Delete(ctx, "pod-name", opts)
+    svc.Post("event-data", handler)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 0, (
+            f"Non-path string arguments should NOT produce routes, "
+            f"got: {[(s.name, s.meta.get('route_path')) for s in routes if s.meta]}"
+        )
+
+
 class TestGoGorillaMuxRoutes:
     """Tests for Gorilla mux route detection.
 

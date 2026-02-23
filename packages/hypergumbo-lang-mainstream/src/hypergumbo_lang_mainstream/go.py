@@ -1851,7 +1851,10 @@ def _extract_go_routes(
                             route_path = _extract_first_string_arg(args_node, source)
                             handler_name = None
 
-                            if route_path:
+                            # Route paths must start with "/" to distinguish
+                            # from non-route method calls with string args
+                            # (e.g., K8s client.Get(ctx, "my-app", opts)).
+                            if route_path and route_path.startswith("/"):
                                 # Pick the LAST non-string argument as handler.
                                 # Go frameworks pass middleware before the handler:
                                 # r.GET("/path", mw1, mw2, handler)
@@ -1909,7 +1912,7 @@ def _extract_go_routes(
                             route_path = _extract_first_string_arg(args_node, source)
                             handler_name = None
 
-                            if route_path:
+                            if route_path and route_path.startswith("/"):
                                 # Last non-string arg is handler (same
                                 # middleware convention as HTTP methods).
                                 for arg in reversed(args_node.children):
