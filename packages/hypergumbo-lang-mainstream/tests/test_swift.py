@@ -736,3 +736,100 @@ class TestNormalizeSwiftSignature:
     def test_none(self) -> None:
         from hypergumbo_lang_mainstream.swift import normalize_swift_signature
         assert normalize_swift_signature(None) is None
+
+
+class TestSwiftFunctionReferences:
+    """Tests for Swift function references in non-call contexts (INV-dinur).
+
+    Swift allows passing functions by name as arguments (e.g., ``map(process)``)
+    or assigning them to variables (``let handler = process``).
+    """
+
+    def test_function_reference_as_argument(self, tmp_path: Path) -> None:
+        """Function passed as argument to higher-order function."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "App.swift").write_text(
+            "class App {\n"
+            "    func process(_ x: Int) -> Int { return x * 2 }\n"
+            "    func run() {\n"
+            "        [1, 2, 3].map(process)\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "run" in e.src and "process" in e.dst
+        ]
+        assert len(ref_edges) == 1
+        assert ref_edges[0].evidence_type == "function_reference"
+
+    def test_function_reference_assignment(self, tmp_path: Path) -> None:
+        """Function assigned to a variable."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "App.swift").write_text(
+            "func transform(_ x: Int) -> Int { return x + 1 }\n"
+            "func setup() {\n"
+            "    let handler = transform\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "setup" in e.src and "transform" in e.dst
+        ]
+        assert len(ref_edges) == 1
+        assert ref_edges[0].evidence_type == "function_reference"
+
+    def test_function_reference_cross_file(self, tmp_path: Path) -> None:
+        """Function reference resolves cross-file via resolver."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Utils.swift").write_text(
+            "func transform(_ x: Int) -> Int { return x + 1 }\n"
+        )
+        (tmp_path / "App.swift").write_text(
+            "func run() {\n"
+            "    let handler = transform\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "run" in e.src and "transform" in e.dst
+        ]
+        assert len(ref_edges) == 1
+
+    def test_function_reference_argument_cross_file(self, tmp_path: Path) -> None:
+        """Function reference as argument resolves cross-file."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "Utils.swift").write_text(
+            "func double(_ x: Int) -> Int { return x * 2 }\n"
+        )
+        (tmp_path / "App.swift").write_text(
+            "func run() {\n"
+            "    [1, 2].map(double)\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "run" in e.src and "double" in e.dst
+        ]
+        assert len(ref_edges) == 1
+
+    def test_no_reference_for_non_function(self, tmp_path: Path) -> None:
+        """Identifier that doesn't resolve to a function creates no edge."""
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "App.swift").write_text(
+            "func run() {\n"
+            "    let x = unknown\n"
+            "}\n"
+        )
+        result = analyze_swift(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        assert len(ref_edges) == 0

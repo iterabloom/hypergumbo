@@ -464,6 +464,68 @@ def _extract_edges_from_file(
                                 origin_run_id=run_id,
                             ))
 
+        # Function references in non-call contexts (INV-dinur).
+        # Pattern 1: value_argument with bare simple_identifier — map(process)
+        elif node.type == "value_argument":
+            id_node = find_child_by_type(node, "simple_identifier")
+            if id_node and len(node.named_children) == 1:
+                ref_name = node_text(id_node, source)
+                target = local_symbols.get(ref_name)
+                if target is None:
+                    lookup = resolver.lookup(ref_name)
+                    if lookup.found and lookup.symbol is not None:
+                        target = lookup.symbol
+                if target is not None and target.kind in ("function", "method"):
+                    current_function = _get_enclosing_function(
+                        node, source, local_symbols,
+                    )
+                    if current_function is not None and target.id != current_function.id:
+                        edges.append(Edge.create(
+                            src=current_function.id,
+                            dst=target.id,
+                            edge_type="references",
+                            line=node.start_point[0] + 1,
+                            evidence_type="function_reference",
+                            confidence=0.80,
+                            origin=PASS_ID,
+                            origin_run_id=run_id,
+                        ))
+
+        # Pattern 2: property_declaration with RHS simple_identifier after =
+        # let handler = transform
+        elif node.type == "property_declaration":
+            children = node.children
+            eq_idx = next(
+                (i for i, c in enumerate(children) if c.type == "="), -1,
+            )
+            if eq_idx >= 0 and eq_idx + 1 < len(children):
+                rhs = children[eq_idx + 1]
+                if rhs.type == "simple_identifier":
+                    ref_name = node_text(rhs, source)
+                    target = local_symbols.get(ref_name)
+                    if target is None:
+                        lookup = resolver.lookup(ref_name)
+                        if lookup.found and lookup.symbol is not None:
+                            target = lookup.symbol
+                    if target is not None and target.kind in ("function", "method"):
+                        current_function = _get_enclosing_function(
+                            node, source, local_symbols,
+                        )
+                        if (
+                            current_function is not None
+                            and target.id != current_function.id
+                        ):
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=target.id,
+                                edge_type="references",
+                                line=node.start_point[0] + 1,
+                                evidence_type="function_reference",
+                                confidence=0.80,
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                            ))
+
     return edges
 
 
