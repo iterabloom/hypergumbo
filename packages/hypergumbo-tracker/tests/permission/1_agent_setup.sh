@@ -304,6 +304,8 @@ cat > "$TMPDIR/state.json" <<JSON
     "script1_total": $TOTAL
 }
 JSON
+# Both users write to state.json; default umask (022) makes it owner-writable only
+chmod g+w "$TMPDIR/state.json"
 
 _log "Results: $PASS/$TOTAL passed, $FAIL failed"
 _log ""
