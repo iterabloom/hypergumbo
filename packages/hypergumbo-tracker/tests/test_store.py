@@ -2145,6 +2145,61 @@ class TestFreezeUnfreeze:
         # Verify we can still append (the real-world failure case)
         store.update(item_id, set_fields={"priority": 0})
 
+    def test_repair_drift_cleanup_on_rename_error(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """repair_drift cleans up temp file if rename fails (fd already closed)."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Repair Rename Error")
+        store.freeze(item_id)
+        ip = store.item_path(item_id)
+        with open(ip, "a") as f:
+            f.write("# tampered\n")
+        with patch("os.rename", side_effect=OSError("mock rename failure")):
+            with pytest.raises(OSError, match="mock rename failure"):
+                store.repair_drift(item_id)
+        import glob as globmod
+        temps = globmod.glob(str(ip.parent / ".repair-*"))
+        assert temps == [], f"Temp files not cleaned up: {temps}"
+
+    def test_repair_drift_cleanup_on_early_error(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """repair_drift cleans up temp file if fchmod fails (fd still open)."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Repair Early Error")
+        store.freeze(item_id)
+        ip = store.item_path(item_id)
+        with open(ip, "a") as f:
+            f.write("# tampered\n")
+        with patch("os.fchmod", side_effect=OSError("mock fchmod failure")):
+            with pytest.raises(OSError, match="mock fchmod failure"):
+                store.repair_drift(item_id)
+        import glob as globmod
+        temps = globmod.glob(str(ip.parent / ".repair-*"))
+        assert temps == [], f"Temp files not cleaned up: {temps}"
+
+    def test_repair_drift_when_ops_readonly(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """repair_drift succeeds even when .ops is read-only (cross-user case)."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Repair Readonly Ops")
+        store.freeze(item_id)
+        ip = store.item_path(item_id)
+        # Make .ops read-only (simulates file owned by different user)
+        os.chmod(ip, 0o444)
+        try:
+            store.repair_drift(item_id)
+            assert store.drift_check(item_id) is False
+            # Verify .ops is now writable (0o664 from repair)
+            import stat
+            mode = ip.stat().st_mode & 0o777
+            assert mode == 0o664
+        finally:
+            # Ensure cleanup can remove the file
+            os.chmod(ip, 0o644)
+
     def test_sentinel_mode_0444(
         self, ops_dir: Path, mock_human_uid: None,
     ) -> None:

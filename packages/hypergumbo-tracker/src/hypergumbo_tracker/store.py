@@ -1365,11 +1365,27 @@ class Store:
         if by == "agent":
             raise HumanAuthorityError("repair-drift requires human authority")
 
-        import shutil
+        import stat
+        import tempfile
         ip = self.item_path(item_id)
-        # Use copyfile (content-only) — copy2 would propagate the sentinel's
-        # 0444 mode onto the .ops file, making it unwritable for future ops.
-        shutil.copyfile(fp, ip)
+        # Write to temp file then rename — avoids needing write permission on
+        # the .ops file itself (which may be owned by a different user in a
+        # two-user setup). rename() only needs write permission on the directory.
+        fd, tmp = tempfile.mkstemp(dir=ip.parent, prefix=".repair-")
+        closed = False
+        try:
+            with open(fp, "rb") as src:
+                os.write(fd, src.read())
+            os.fchmod(fd, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP
+                      | stat.S_IWGRP | stat.S_IROTH)  # 0o664
+            os.close(fd)
+            closed = True
+            os.rename(tmp, ip)
+        except BaseException:
+            if not closed:
+                os.close(fd)
+            Path(tmp).unlink(missing_ok=True)
+            raise
 
     # -----------------------------------------------------------------------
     # Internal: _append_op
