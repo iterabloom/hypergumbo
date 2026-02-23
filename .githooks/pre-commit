@@ -60,13 +60,13 @@ if [ -d "packages/hypergumbo-core" ]; then
 else
     RUFF_PATHS="src/ tests/"
 fi
-if ruff check $RUFF_PATHS --quiet 2>/dev/null; then
+if ruff check --no-cache $RUFF_PATHS --quiet 2>/dev/null; then
     echo -e "${GREEN}✓${NC}"
 else
     echo -e "${RED}✗${NC}"
     echo ""
     echo -e "${RED}Ruff found issues:${NC}"
-    ruff check $RUFF_PATHS
+    ruff check --no-cache $RUFF_PATHS
     exit 1
 fi
 

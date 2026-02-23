@@ -59,4 +59,4 @@
   clock: 6  # c2d1
   nonce: c2d1  # c2d1
   set:  # c2d1
-    title: "Invariants should never have status 'done' — need a 'holding'/'enforced' status!!"  # c2d1
+    title: "Invariants should never have status 'done' — need a 'holding'/'enforced' status!"  # c2d1
