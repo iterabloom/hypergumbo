@@ -54,3 +54,19 @@
   nonce: '9422'  # 9422
   set:  # 9422
     description: "Structural gap: features for one language not propagated to siblings. Fixed: (1) C++ dispatch tables — already present. (5) Docstrings for Scala/Groovy/C/C++/Ruby/Elixir/Erlang — PR #1371. (7) Ruby base_classes — already implemented. Remaining: (2) Kotlin/Scala/Groovy missing annotation extraction (meta.decorators) — blocks Spring Boot Kotlin detection. (3) Scala/Groovy missing extends/implements edges despite extracting base_classes. (4) Scala/Groovy missing param type inference. (6) Erlang OTP behaviour callbacks generic vs Elixir function-level."  # 9422
+- op: update  # 87c9
+  at: '2026-02-23T14:43:42Z'  # 87c9
+  by: agent  # 87c9
+  actor: jgstern_agent  # 87c9
+  clock: 6  # 87c9
+  nonce: 87c9  # 87c9
+  set:  # 87c9
+    description: "Structural gap: features for one language not propagated to siblings. Fixed: (1) C++ dispatch tables — already present. (2) Annotation extraction for Scala/Groovy — PR #1376. (5) Docstrings for Scala/Groovy/C/C++/Ruby/Elixir/Erlang — PR #1371. (7) Ruby base_classes — already implemented. Remaining: (3) Scala/Groovy missing extends/implements edges despite extracting base_classes. (4) Scala/Groovy missing param type inference. (6) Erlang OTP behaviour callbacks generic vs Elixir function-level."  # 87c9
+- op: update  # d458
+  at: '2026-02-23T14:46:54Z'  # d458
+  by: agent  # d458
+  actor: jgstern_agent  # d458
+  clock: 7  # d458
+  nonce: d458  # d458
+  set:  # d458
+    description: "Structural gap: features for one language not propagated to siblings. Fixed: (1) C++ dispatch tables — already present. (2) Annotation extraction for Scala/Groovy — PR #1376. (3) Scala/Groovy extends/implements edges — already handled by inheritance linker (register_linker priority=15), verified by tests in test_scala.py and test_groovy.py. (5) Docstrings for Scala/Groovy/C/C++/Ruby/Elixir/Erlang — PR #1371. (7) Ruby base_classes — already implemented. Remaining: (4) Scala/Groovy missing param type inference. (6) Erlang OTP behaviour callbacks generic vs Elixir function-level."  # d458

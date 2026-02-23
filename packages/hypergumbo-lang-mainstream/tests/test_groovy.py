@@ -1160,3 +1160,93 @@ class TestGroovyAnnotations:
         assert cls.meta is not None
         assert "decorators" in cls.meta
         assert "base_classes" in cls.meta
+
+
+class TestGroovyParamTypeInference:
+    """Tests for Groovy parameter type inference (INV-kobad item 4).
+
+    When a method declares typed parameters (e.g. ``void process(Client client)``),
+    calls like ``client.send()`` should resolve to ``Client.send`` even when
+    multiple classes define ``send``.
+    """
+
+    def test_param_type_disambiguates_method_call(self, tmp_path: Path) -> None:
+        """Type info from parameter resolves ambiguous method name."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "App.groovy").write_text(
+            "class Client {\n"
+            "    def send() { }\n"
+            "}\n"
+            "\n"
+            "class Server {\n"
+            "    def send() { }\n"
+            "}\n"
+            "\n"
+            "class Service {\n"
+            "    def process(Client client) {\n"
+            "        client.send()\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "process" in e.src and "send" in e.dst
+        ]
+        assert len(call_edges) == 1
+        # Should resolve to Client.send, not Server.send
+        assert "Client" in call_edges[0].dst
+
+    def test_param_type_resolves_cross_file(self, tmp_path: Path) -> None:
+        """Type info resolves method call across files via resolver."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "Client.groovy").write_text(
+            "class Client {\n"
+            "    def send() { }\n"
+            "}\n"
+        )
+        (tmp_path / "Service.groovy").write_text(
+            "class Service {\n"
+            "    def process(Client client) {\n"
+            "        client.send()\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "process" in e.src and "send" in e.dst
+        ]
+        assert len(call_edges) == 1
+        assert "Client" in call_edges[0].dst
+
+    def test_constructor_type_disambiguates_method_call(self, tmp_path: Path) -> None:
+        """Type info from constructor assignment resolves ambiguous method name."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "App.groovy").write_text(
+            "class UserRepository {\n"
+            "    def findAll() { }\n"
+            "}\n"
+            "\n"
+            "class OrderRepository {\n"
+            "    def findAll() { }\n"
+            "}\n"
+            "\n"
+            "class Main {\n"
+            "    def run() {\n"
+            "        def repo = new UserRepository()\n"
+            "        repo.findAll()\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "run" in e.src and "findAll" in e.dst
+        ]
+        assert len(call_edges) == 1
+        # Should resolve to UserRepository.findAll, not OrderRepository.findAll
+        assert "UserRepository" in call_edges[0].dst

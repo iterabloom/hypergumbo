@@ -519,6 +519,35 @@ def _extract_symbols_from_file(
     return analysis
 
 
+def _extract_param_types_scala(
+    node: "tree_sitter.Node", source: bytes,
+) -> dict[str, str]:
+    """Extract parameter name → type mapping from a Scala function definition.
+
+    Enables type inference for method calls on typed parameters, e.g.:
+        def process(client: Client) = { client.send() }
+    resolves client.send() → Client.send.
+
+    Scala parameters use ``parameter`` nodes inside ``parameters`` with
+    identifier (name) then type_identifier (type).
+    """
+    param_types: dict[str, str] = {}
+    for child in node.children:
+        if child.type == "parameters":
+            for subchild in child.children:
+                if subchild.type == "parameter":
+                    param_name = None
+                    param_type = None
+                    for pc in subchild.children:
+                        if pc.type == "identifier" and param_name is None:
+                            param_name = node_text(pc, source)
+                        elif pc.type == "type_identifier" and param_type is None:
+                            param_type = node_text(pc, source)
+                    if param_name and param_type:
+                        param_types[param_name] = param_type
+    return param_types
+
+
 def _extract_edges_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -529,9 +558,14 @@ def _extract_edges_from_file(
     resolver: "NameResolver",
     import_aliases: dict[str, str],
 ) -> list[Edge]:
-    """Extract call and import edges from a file."""
+    """Extract call and import edges from a file.
+
+    Tracks variable types from function parameters and constructor assignments
+    (``val x = new Foo()``) to disambiguate method calls like ``x.bar()``.
+    """
     edges: list[Edge] = []
     file_id = make_file_id("scala", str(file_path))
+    var_types: dict[str, str] = {}
 
     for node in iter_tree(tree.root_node):
         if node.type == "import_declaration":
@@ -549,15 +583,34 @@ def _extract_edges_from_file(
                     origin_run_id=run_id,
                 ))
 
+        # Track param types from function definitions
+        elif node.type in ("function_definition", "function_declaration"):
+            param_types = _extract_param_types_scala(node, source)
+            for pname, ptype in param_types.items():
+                var_types[pname] = ptype
+
+        # Track constructor assignments: val repo = new UserRepository()
+        elif node.type == "val_definition":
+            var_node = find_child_by_type(node, "identifier")
+            inst_node = find_child_by_type(node, "instance_expression")
+            if var_node and inst_node:
+                type_node = find_child_by_type(inst_node, "type_identifier")
+                if type_node:
+                    var_types[node_text(var_node, source)] = node_text(
+                        type_node, source,
+                    )
+
         elif node.type == "call_expression":
             current_function = _get_enclosing_function(node, source, local_symbols)
             if current_function is not None:
                 callee_node = find_child_by_type(node, "identifier")
+                receiver_name = None
                 if not callee_node:
                     field_node = find_child_by_type(node, "field_expression")
                     if field_node:
                         ids = [c for c in field_node.children if c.type == "identifier"]
                         if len(ids) >= 2:
+                            receiver_name = node_text(ids[0], source)
                             callee_node = ids[-1]
                         elif ids:  # pragma: no cover - defensive
                             callee_node = ids[0]
@@ -565,7 +618,33 @@ def _extract_edges_from_file(
                 if callee_node:
                     callee_name = node_text(callee_node, source)
 
-                    if callee_name in local_symbols:
+                    # Type-qualified resolution: receiver.method() → Type.method
+                    edge_added = False
+                    if receiver_name and receiver_name in var_types:
+                        type_name = var_types[receiver_name]
+                        qualified = f"{type_name}.{callee_name}"
+                        target = local_symbols.get(qualified)
+                        if target is None:
+                            lookup = resolver.lookup(
+                                qualified,
+                                path_hint=import_aliases.get(type_name),
+                            )
+                            if lookup.found and lookup.symbol is not None:
+                                target = lookup.symbol
+                        if target is not None:
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=target.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="function_call",
+                                confidence=0.85,
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                            ))
+                            edge_added = True
+
+                    if not edge_added and callee_name in local_symbols:
                         callee = local_symbols[callee_name]
                         edges.append(Edge.create(
                             src=current_function.id,
@@ -577,7 +656,7 @@ def _extract_edges_from_file(
                             origin=PASS_ID,
                             origin_run_id=run_id,
                         ))
-                    else:
+                    elif not edge_added:
                         path_hint = import_aliases.get(callee_name)
                         lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
                         if lookup_result.found and lookup_result.symbol is not None:

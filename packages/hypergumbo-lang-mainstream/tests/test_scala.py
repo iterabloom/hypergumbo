@@ -1063,6 +1063,96 @@ class TestScalaAnnotations:
         assert "base_classes" in cls.meta
 
 
+class TestScalaParamTypeInference:
+    """Tests for Scala parameter type inference (INV-kobad item 4).
+
+    When a function declares typed parameters (e.g. ``def process(client: Client)``),
+    calls like ``client.send()`` should resolve to ``Client.send`` even when
+    multiple classes define ``send``.
+    """
+
+    def test_param_type_disambiguates_method_call(self, tmp_path: Path) -> None:
+        """Type info from parameter resolves ambiguous method name."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "App.scala").write_text(
+            "class Client {\n"
+            "  def send(): Unit = {}\n"
+            "}\n"
+            "\n"
+            "class Server {\n"
+            "  def send(): Unit = {}\n"
+            "}\n"
+            "\n"
+            "object Service {\n"
+            "  def process(client: Client): Unit = {\n"
+            "    client.send()\n"
+            "  }\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "process" in e.src and "send" in e.dst
+        ]
+        assert len(call_edges) == 1
+        # Should resolve to Client.send, not Server.send
+        assert "Client" in call_edges[0].dst
+
+    def test_param_type_resolves_cross_file(self, tmp_path: Path) -> None:
+        """Type info resolves method call across files via resolver."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "Client.scala").write_text(
+            "class Client {\n"
+            "  def send(): Unit = {}\n"
+            "}\n"
+        )
+        (tmp_path / "Service.scala").write_text(
+            "object Service {\n"
+            "  def process(client: Client): Unit = {\n"
+            "    client.send()\n"
+            "  }\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "process" in e.src and "send" in e.dst
+        ]
+        assert len(call_edges) == 1
+        assert "Client" in call_edges[0].dst
+
+    def test_constructor_type_disambiguates_method_call(self, tmp_path: Path) -> None:
+        """Type info from val assignment resolves ambiguous method name."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "App.scala").write_text(
+            "class UserRepository {\n"
+            "  def findAll(): Unit = {}\n"
+            "}\n"
+            "\n"
+            "class OrderRepository {\n"
+            "  def findAll(): Unit = {}\n"
+            "}\n"
+            "\n"
+            "object Main {\n"
+            "  def run(): Unit = {\n"
+            "    val repo = new UserRepository()\n"
+            "    repo.findAll()\n"
+            "  }\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "run" in e.src and "findAll" in e.dst
+        ]
+        assert len(call_edges) == 1
+        # Should resolve to UserRepository.findAll, not OrderRepository.findAll
+        assert "UserRepository" in call_edges[0].dst
+
+
 class TestScalaFunctionReferences:
     """Tests for Scala eta-expansion function references (INV-dinur).
 

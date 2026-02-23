@@ -644,10 +644,32 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
 
         edges: list[Edge] = []
         file_id = make_file_id("groovy", str(file_path))
+        var_types: dict[str, str] = {}
 
         for node in iter_tree(tree.root_node):
+            # Track param types: formal_parameter → type_identifier + identifier
+            if node.type == "formal_parameter":
+                type_node = find_child_by_type(node, "type_identifier")
+                name_node = find_child_by_type(node, "identifier")
+                if type_node and name_node:
+                    ptype = node_text(type_node, source)
+                    pname = node_text(name_node, source)
+                    if ptype != "def":  # 'def' is parsed as type_identifier
+                        var_types[pname] = ptype
+
+            # Track constructor assignments: def repo = new UserRepository()
+            elif node.type == "variable_declarator":
+                var_node = find_child_by_type(node, "identifier")
+                ctor_node = find_child_by_type(node, "object_creation_expression")
+                if var_node and ctor_node:
+                    type_node = find_child_by_type(ctor_node, "type_identifier")
+                    if type_node:
+                        var_types[node_text(var_node, source)] = node_text(
+                            type_node, source,
+                        )
+
             # Detect import statements
-            if node.type == "import_declaration":
+            elif node.type == "import_declaration":
                 # Get the scoped identifier being imported
                 id_node = find_child_by_type(node, "scoped_identifier")
                 if not id_node:  # pragma: no cover - grammar fallback
@@ -701,39 +723,66 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         if receiver and receiver in import_aliases:
                             path_hint = import_aliases[receiver]
 
-                        # AMB-METHOD guard: when 3+ classes define the same
-                        # method name, suppress the edge to avoid false positives.
-                        amb_check = method_resolver.lookup(callee_name)
-                        if not amb_check.found and amb_check.candidates:
-                            continue  # 3+ method candidates, suppress
-
-                        # Check local symbols first
-                        if callee_name in local_symbols:
-                            callee = local_symbols[callee_name]
-                            edges.append(Edge.create(
-                                src=current_function.id,
-                                dst=callee.id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                evidence_type="function_call",
-                                confidence=0.85,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                            ))
-                        # Check global symbols via resolver
-                        else:
-                            lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
-                            if lookup_result.found and lookup_result.symbol is not None:
+                        # Type-qualified resolution: receiver.method() → Type.method
+                        edge_added = False
+                        if receiver and receiver in var_types:
+                            type_name = var_types[receiver]
+                            qualified = f"{type_name}.{callee_name}"
+                            target = local_symbols.get(qualified)
+                            if target is None:
+                                lookup = resolver.lookup(
+                                    qualified,
+                                    path_hint=import_aliases.get(type_name),
+                                )
+                                if lookup.found and lookup.symbol is not None:
+                                    target = lookup.symbol
+                            if target is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
-                                    dst=lookup_result.symbol.id,
+                                    dst=target.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="function_call",
-                                    confidence=0.80 * lookup_result.confidence,
+                                    confidence=0.85,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                 ))
+                                edge_added = True
+
+                        if not edge_added:
+                            # AMB-METHOD guard: when 3+ classes define the same
+                            # method name, suppress the edge to avoid false positives.
+                            amb_check = method_resolver.lookup(callee_name)
+                            if not amb_check.found and amb_check.candidates:
+                                continue  # 3+ method candidates, suppress
+
+                            # Check local symbols first
+                            if callee_name in local_symbols:
+                                callee = local_symbols[callee_name]
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=callee.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="function_call",
+                                    confidence=0.85,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                ))
+                            # Check global symbols via resolver
+                            else:
+                                lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
+                                if lookup_result.found and lookup_result.symbol is not None:
+                                    edges.append(Edge.create(
+                                        src=current_function.id,
+                                        dst=lookup_result.symbol.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1,
+                                        evidence_type="function_call",
+                                        confidence=0.80 * lookup_result.confidence,
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                    ))
 
         return edges
 
