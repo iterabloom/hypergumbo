@@ -728,6 +728,10 @@ def _cmd_init(args: argparse.Namespace) -> int:
         import shutil
         shutil.copy2(template_path, config_path)
 
+    # Enforce read-only on config.yaml (governance boundary)
+    from hypergumbo_tracker.setup import config_lock
+    config_lock(config_path)
+
     if args.json:
         print(json.dumps({"root": str(root)}))
     else:
@@ -743,6 +747,20 @@ def _cmd_setup(args: argparse.Namespace) -> int:
         results_to_json,
         run_setup,
     )
+
+    # Dispatch to configure subcommand
+    if getattr(args, "setup_action", None) == "configure":
+        from hypergumbo_tracker.configure import run_configure
+
+        if args.setup_root:
+            root = Path(args.setup_root)
+        else:
+            try:
+                root = _find_tracker_root()
+            except SystemExit:
+                root = Path.cwd() / ".agent"
+
+        return run_configure(root)
 
     if args.setup_root:
         root = Path(args.setup_root)
@@ -846,8 +864,11 @@ def _cmd_fork_setup(args: argparse.Namespace, ts: TrackerSet) -> int:
         config_data["stop_hook"] = {}
     config_data["stop_hook"]["scope"] = "workspace"
 
+    from hypergumbo_tracker.setup import config_lock, config_unlock
+    config_unlock(config_path)
     with open(config_path, "w") as f:
         yaml.dump(config_data, f, default_flow_style=False)
+    config_lock(config_path)
 
     if args.json:
         print(json.dumps({"ok": True, "scope": "workspace"}))
@@ -1166,6 +1187,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # --- setup ---
     p_setup = sub.add_parser("setup", help="Idempotent setup wizard (diagnose + fix)")
+    p_setup.add_argument("setup_action", nargs="?", default=None,
+                         choices=["configure"],
+                         help="'configure' for interactive config editor")
     p_setup.add_argument("--root", dest="setup_root",
                          help="Path to .agent/ directory (default: auto-detect or cwd/.agent)")
 

@@ -28,6 +28,7 @@ from hypergumbo_tracker.setup import (
     _check_autonomous_mode,
     _check_config_drift,
     _check_config_ownership,
+    _check_config_permissions,
     _check_config_template,
     _check_config_validation,
     _check_config_yaml,
@@ -46,6 +47,8 @@ from hypergumbo_tracker.setup import (
     _check_tracker_wrapper,
     _detect_shared_group,
     _ensure_safe_directory,
+    config_lock,
+    config_unlock,
     format_results,
     generate_human_shim,
     results_to_json,
@@ -889,6 +892,119 @@ class TestCheckConfigOwnership:
             result = _check_config_ownership(root)
         assert result.status == "warn"
         assert "sudo" in result.details[1]
+
+
+# ---------------------------------------------------------------------------
+# Check #10b: Config permissions (0444)
+# ---------------------------------------------------------------------------
+
+
+class TestCheckConfigPermissions:
+    """Tests for _check_config_permissions (check #10b)."""
+
+    def test_no_config(self, tmp_path: Path) -> None:
+        root = tmp_path / ".agent"
+        root.mkdir()
+        result = _check_config_permissions(root)
+        assert result.status == "ok"
+        assert "skipped" in result.message
+
+    def test_already_0444(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        config = root / "tracker" / "config.yaml"
+        config.write_text("statuses: []")
+        config.chmod(0o444)
+        result = _check_config_permissions(root)
+        assert result.status == "ok"
+        assert "read-only" in result.message
+
+    def test_human_fixes_permissions(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        config = root / "tracker" / "config.yaml"
+        config.write_text("statuses: []")
+        config.chmod(0o644)
+        with patch(
+            "hypergumbo_tracker.setup.resolve_actor",
+            return_value=("human", "jgstern"),
+        ):
+            result = _check_config_permissions(root)
+        assert result.status == "fixed"
+        assert config.stat().st_mode & 0o777 == 0o444
+
+    def test_agent_warns(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        config = root / "tracker" / "config.yaml"
+        config.write_text("statuses: []")
+        config.chmod(0o644)
+        with patch(
+            "hypergumbo_tracker.setup.resolve_actor",
+            return_value=("agent", "test_agent"),
+        ):
+            result = _check_config_permissions(root)
+        assert result.status == "warn"
+        assert "chmod 444" in "\n".join(result.details)
+
+    def test_invalid_yaml_config(self, tmp_path: Path) -> None:
+        """Invalid YAML still gets checked for permissions."""
+        root = _make_full_agent_dir(tmp_path)
+        config = root / "tracker" / "config.yaml"
+        config.write_text(": bad yaml {{{")
+        config.chmod(0o644)
+        with patch(
+            "hypergumbo_tracker.setup.resolve_actor",
+            return_value=("human", "jgstern"),
+        ):
+            result = _check_config_permissions(root)
+        assert result.status == "fixed"
+
+    def test_workspace_config_included(self, tmp_path: Path) -> None:
+        """Both tracker and workspace config.yaml are checked."""
+        root = _make_full_agent_dir(tmp_path)
+        config1 = root / "tracker" / "config.yaml"
+        config2 = root / "tracker-workspace" / "config.yaml"
+        config1.write_text("statuses: []")
+        config2.write_text("statuses: []")
+        config1.chmod(0o644)
+        config2.chmod(0o644)
+        with patch(
+            "hypergumbo_tracker.setup.resolve_actor",
+            return_value=("human", "jgstern"),
+        ):
+            result = _check_config_permissions(root)
+        assert result.status == "fixed"
+        assert config1.stat().st_mode & 0o777 == 0o444
+        assert config2.stat().st_mode & 0o777 == 0o444
+
+
+# ---------------------------------------------------------------------------
+# config_lock / config_unlock helpers
+# ---------------------------------------------------------------------------
+
+
+class TestConfigLockUnlock:
+    """Tests for config_lock and config_unlock helpers."""
+
+    def test_lock_sets_0444(self, tmp_path: Path) -> None:
+        f = tmp_path / "config.yaml"
+        f.write_text("data")
+        f.chmod(0o644)
+        config_lock(f)
+        assert f.stat().st_mode & 0o777 == 0o444
+
+    def test_unlock_sets_0644(self, tmp_path: Path) -> None:
+        f = tmp_path / "config.yaml"
+        f.write_text("data")
+        f.chmod(0o444)
+        config_unlock(f)
+        assert f.stat().st_mode & 0o777 == 0o644
+
+    def test_lock_nonexistent_noop(self, tmp_path: Path) -> None:
+        f = tmp_path / "nonexistent.yaml"
+        config_lock(f)  # Should not raise
+
+    def test_unlock_nonexistent_noop(self, tmp_path: Path) -> None:
+        f = tmp_path / "nonexistent.yaml"
+        config_unlock(f)  # Should not raise
 
 
 # ---------------------------------------------------------------------------
@@ -2428,8 +2544,8 @@ class TestRunSetup:
             "hypergumbo_tracker.setup.resolve_actor", return_value=("human", "alice")
         ):
             results = run_setup(root)
-        # Should have one result per check (22 total, including sync prerequisites)
-        assert len(results) == 22
+        # Should have one result per check (23 total, including sync prerequisites)
+        assert len(results) == 23
         # Directory structure should be fixed
         dir_result = next(r for r in results if r.name == "directory_structure")
         assert dir_result.status == "fixed"
@@ -2437,6 +2553,8 @@ class TestRunSetup:
     def test_idempotent(self, tmp_path: Path) -> None:
         root = _make_full_agent_dir(tmp_path)
         _write_config(root)
+        # Set config to 0444 so permissions check passes
+        (root / "tracker" / "config.yaml").chmod(0o444)
         _write_config_template(root)
 
         # Add all gitattributes and gitignore

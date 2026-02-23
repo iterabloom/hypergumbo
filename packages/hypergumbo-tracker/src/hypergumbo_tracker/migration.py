@@ -232,7 +232,10 @@ def write_config_template(tracker_dir: Path) -> None:
     config.yaml.template is the tracked (shared) config.
     config.yaml is created with the same content for immediate use.
     Neither file is overwritten if it already exists.
+    config.yaml is set read-only (0444) to enforce the governance boundary.
     """
+    from hypergumbo_tracker.setup import config_lock
+
     template_path = tracker_dir / "config.yaml.template"
     config_path = tracker_dir / "config.yaml"
 
@@ -241,6 +244,7 @@ def write_config_template(tracker_dir: Path) -> None:
 
     if not config_path.exists():
         config_path.write_text(_CONFIG_TEMPLATE)
+        config_lock(config_path)
 
 
 # ---------------------------------------------------------------------------

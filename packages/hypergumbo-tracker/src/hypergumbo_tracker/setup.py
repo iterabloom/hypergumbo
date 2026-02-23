@@ -49,6 +49,23 @@ from hypergumbo_tracker.store import _find_git_dir
 from hypergumbo_tracker.validation import ValidationResult, validate_all
 
 
+# ---------------------------------------------------------------------------
+# Config file permission helpers
+# ---------------------------------------------------------------------------
+
+
+def config_unlock(path: Path) -> None:
+    """Temporarily make config.yaml writable (for human writes)."""
+    if path.exists():
+        path.chmod(0o644)
+
+
+def config_lock(path: Path) -> None:
+    """Set config.yaml read-only (0444)."""
+    if path.exists():
+        path.chmod(0o444)
+
+
 @dataclass
 class CheckResult:
     """Result of a single setup check.
@@ -384,6 +401,7 @@ def _check_config_yaml(root: Path) -> CheckResult:
     if not config_path.exists():
         if template_path.exists():
             shutil.copy2(template_path, config_path)
+            config_lock(config_path)
             return CheckResult(
                 name="config_yaml",
                 status="fixed",
@@ -411,6 +429,7 @@ def _check_config_yaml(root: Path) -> CheckResult:
         config_path.rename(old_path)
         if template_path.exists():
             shutil.copy2(template_path, config_path)
+            config_lock(config_path)
             return CheckResult(
                 name="config_yaml",
                 status="fixed",
@@ -641,7 +660,7 @@ def _check_config_ownership(root: Path) -> CheckResult:
                     shutil.copy2(p, tmp_path)
                     p.unlink()
                     tmp_path.rename(p)
-                    p.chmod(0o644)
+                    config_lock(p)
                     fixed.append(str(p))
                 except OSError:
                     try:
@@ -667,6 +686,81 @@ def _check_config_ownership(root: Path) -> CheckResult:
         name="config_ownership",
         status="ok",
         message="config.yaml owned by human user",
+    )
+
+
+def _check_config_permissions(root: Path) -> CheckResult:
+    """Check #10b: Verify config.yaml is read-only (0444).
+
+    Config files control governance (statuses, kinds, stop hook behavior).
+    They should be 0444 so agents cannot modify governance settings.
+
+    If the current user is human and mode isn't 0444, auto-fix.
+    If agent, warn with instructions.
+    """
+    config_paths = [
+        root / "tracker" / "config.yaml",
+        root / "tracker-workspace" / "config.yaml",
+    ]
+    existing = [p for p in config_paths if p.exists()]
+    if not existing:
+        return CheckResult(
+            name="config_permissions",
+            status="ok",
+            message="Config permissions check skipped (no config.yaml yet)",
+        )
+
+    agent_patterns = ["*_agent"]
+    config_path = root / "tracker" / "config.yaml"
+    if config_path.exists():
+        try:
+            with open(config_path) as f:
+                raw = yaml.safe_load(f) or {}
+            actor_res = raw.get("actor_resolution", {})
+            if isinstance(actor_res, dict):
+                patterns = actor_res.get("agent_usernames")
+                if isinstance(patterns, list) and patterns:
+                    agent_patterns = patterns
+        except yaml.YAMLError:
+            pass
+
+    by, username = resolve_actor(agent_patterns)
+
+    wrong_mode: list[Path] = []
+    for p in existing:
+        mode = p.stat().st_mode & 0o777
+        if mode != 0o444:
+            wrong_mode.append(p)
+
+    if not wrong_mode:
+        return CheckResult(
+            name="config_permissions",
+            status="ok",
+            message="config.yaml is read-only (0444)",
+        )
+
+    if by == "agent":
+        return CheckResult(
+            name="config_permissions",
+            status="warn",
+            message="config.yaml is not read-only (0444)",
+            details=[
+                "Config controls governance settings and should be read-only.",
+                "As the human user, run:",
+                *(f"  chmod 444 {p}" for p in wrong_mode),
+            ],
+        )
+
+    # Human — auto-fix
+    fixed: list[str] = []
+    for p in wrong_mode:
+        config_lock(p)
+        fixed.append(str(p))
+
+    return CheckResult(
+        name="config_permissions",
+        status="fixed",
+        message=f"config.yaml permissions — fixed {len(fixed)} file{'s' if len(fixed) != 1 else ''}",
     )
 
 
@@ -1663,6 +1757,7 @@ def run_setup(root: Path, repo_root: Path | None = None) -> list[CheckResult]:
     results.append(_check_config_drift(root))              # 8
     results.append(_check_actor_resolution(root))          # 9
     results.append(_check_config_ownership(root))          # 10
+    results.append(_check_config_permissions(root))        # 10b
     results.append(_check_home_traversable(root, repo_root))  # 11
     results.append(_check_group_permissions(root, repo_root))  # 12
     results.append(_check_ops_writable(root))              # 13
