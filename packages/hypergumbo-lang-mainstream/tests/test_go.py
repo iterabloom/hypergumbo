@@ -910,6 +910,52 @@ func listAdminUsers(c *gin.Context) {}
             f"found: {route_paths}"
         )
 
+    def test_unwraps_handler_through_wrapper_call(self, tmp_path: Path) -> None:
+        """r.Post("/read", api.ready(api.remoteRead)) → handler is api.remoteRead.
+
+        When a route handler argument is a call_expression wrapping a function
+        reference (e.g., middleware wrapper), the inner handler should be
+        extracted as the route's handler_name, not the wrapper function.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import "github.com/gin-gonic/gin"
+
+type API struct{}
+
+func (api *API) ready(f gin.HandlerFunc) gin.HandlerFunc { return f }
+func (api *API) remoteRead(c *gin.Context) {}
+func (api *API) remoteWrite(c *gin.Context) {}
+
+func main() {
+    r := gin.Default()
+    api := &API{}
+    r.POST("/read", api.ready(api.remoteRead))
+    r.POST("/write", api.ready(api.remoteWrite))
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        handler_names = {
+            s.meta["route_path"]: s.meta.get("handler_name", s.name)
+            for s in routes if s.meta
+        }
+
+        # The handler should be api.remoteRead, not api.ready
+        assert handler_names.get("/read") == "api.remoteRead", (
+            f"POST /read handler should be api.remoteRead (unwrapped), "
+            f"got: {handler_names.get('/read')}"
+        )
+        assert handler_names.get("/write") == "api.remoteWrite", (
+            f"POST /write handler should be api.remoteWrite (unwrapped), "
+            f"got: {handler_names.get('/write')}"
+        )
+
 
 class TestGoGorillaMuxRoutes:
     """Tests for Gorilla mux route detection.

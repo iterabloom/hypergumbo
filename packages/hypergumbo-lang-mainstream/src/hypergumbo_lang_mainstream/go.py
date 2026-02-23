@@ -1568,7 +1568,14 @@ def _extract_handler_name(
     Handles three cases:
     - identifier: ``listUsers`` -> ``"listUsers"``
     - selector_expression: ``handlers.GetAPI`` -> ``"handlers.GetAPI"``
-    - call_expression: ``httpapi.NewHandler(env)`` -> ``"httpapi.NewHandler"``
+    - call_expression: ``api.ready(api.remoteRead)`` -> ``"api.remoteRead"``
+      Unwraps one level of wrapper calls: when a route handler argument is
+      a call wrapping a function reference (identifier or selector_expression),
+      extracts the inner handler.  This handles the common Go pattern of
+      middleware wrappers: ``r.Post("/read", api.ready(api.remoteRead))``
+      correctly attributes the route to ``api.remoteRead``, not ``api.ready``.
+      Falls back to the function name for constructors like
+      ``httpapi.NewHandler(env)`` where the argument is not a handler.
 
     Returns None if the node type is not recognized.
     """
@@ -1577,6 +1584,18 @@ def _extract_handler_name(
     elif node.type == "selector_expression":
         return node_text(node, source)
     elif node.type == "call_expression":
+        # Check if any argument is a selector_expression (e.g.,
+        # api.remoteRead).  This indicates a middleware wrapper pattern:
+        # api.ready(api.remoteRead) → extract api.remoteRead.
+        # Only selector_expressions qualify — plain identifiers like
+        # ``env`` in ``httpapi.NewHandler(env)`` are likely config args,
+        # not handler references.
+        args_node = find_child_by_field(node, "arguments")
+        if args_node:
+            for arg in args_node.children:
+                if arg.type == "selector_expression":
+                    return node_text(arg, source)
+        # Fallback: use the function name (constructor pattern)
         func_node = find_child_by_field(node, "function")
         if func_node:
             return node_text(func_node, source)
