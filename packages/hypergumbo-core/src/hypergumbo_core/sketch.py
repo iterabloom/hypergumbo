@@ -38,6 +38,8 @@ from .datamodels import detect_datamodels, DataModel
 from .ranking import (
     compute_centrality,
     apply_tier_weights,
+    apply_utility_symbol_weights,
+    apply_trivial_sink_weights,
     compute_file_scores,
     _is_test_path,
     compute_transitive_test_coverage,
@@ -5250,6 +5252,14 @@ def _format_symbols(
         centrality = apply_tier_weights(raw_centrality, key_symbols)
     else:
         centrality = raw_centrality
+
+    # De-weight utility symbols (loggers, clocks, STL accessors)
+    centrality = apply_utility_symbol_weights(centrality, key_symbols)
+
+    # De-weight trivial sinks (short-bodied pure sinks like accessors/stubs)
+    centrality = apply_trivial_sink_weights(
+        centrality, key_symbols, production_edges,
+    )
 
     # Sort by weighted centrality (most called first), then by name for stability
     key_symbols.sort(key=lambda s: (-centrality.get(s.id, 0), s.name))

@@ -3296,6 +3296,93 @@ class TestFormatSymbols:
         assert "2 omitted" in result  # Short format for third+ item
 
 
+    def test_trivial_sinks_dampened_in_symbols(self) -> None:
+        """Trivial sinks (short body, near-zero out-degree) should rank
+        below connectors with similar or lower in-degree.
+
+        This tests that _format_symbols applies trivial sink dampening
+        (from ranking.apply_trivial_sink_weights) so that one-line
+        accessors like Timer.Duration don't dominate the sketch output.
+        """
+        repo_root = Path("/fake/repo")
+
+        # Trivial sink: 3-line body, 0 out-degree, 80 callers
+        sink = Symbol(
+            id="go:util/timer.go:1-3:method:Duration",
+            name="Duration", kind="method", language="go",
+            path="/fake/repo/util/timer.go",
+            span=Span(1, 0, 3, 0),
+        )
+        sink.supply_chain_tier = 1
+        sink.supply_chain_reason = "tier_1"
+        sink.lines_of_code = 3
+
+        # Connector: 50-line body, has outgoing edges, 20 callers
+        connector = Symbol(
+            id="go:engine/eval.go:1-50:method:eval",
+            name="eval", kind="method", language="go",
+            path="/fake/repo/engine/eval.go",
+            span=Span(1, 0, 50, 0),
+        )
+        connector.supply_chain_tier = 1
+        connector.supply_chain_reason = "tier_1"
+        connector.lines_of_code = 50
+
+        # Caller symbols
+        callers = []
+        for i in range(80):
+            c = Symbol(
+                id=f"go:pkg/c{i}.go:1-10:function:caller_{i}",
+                name=f"caller_{i}", kind="function", language="go",
+                path=f"/fake/repo/pkg/c{i}.go",
+                span=Span(1, 0, 10, 0),
+            )
+            c.supply_chain_tier = 1
+            c.supply_chain_reason = "tier_1"
+            callers.append(c)
+
+        # Callees for the connector
+        callees = []
+        for i in range(10):
+            d = Symbol(
+                id=f"go:pkg/d{i}.go:1-10:function:callee_{i}",
+                name=f"callee_{i}", kind="function", language="go",
+                path=f"/fake/repo/pkg/d{i}.go",
+                span=Span(1, 0, 10, 0),
+            )
+            d.supply_chain_tier = 1
+            d.supply_chain_reason = "tier_1"
+            callees.append(d)
+
+        all_syms = [sink, connector] + callers + callees
+
+        # 80 edges into sink (0 out), 20 edges into connector + 10 out
+        edges = [
+            Edge.create(src=c.id, dst=sink.id, edge_type="calls", line=1, confidence=0.9)
+            for c in callers
+        ]
+        edges += [
+            Edge.create(src=c.id, dst=connector.id, edge_type="calls", line=1, confidence=0.9)
+            for c in callers[:20]
+        ]
+        edges += [
+            Edge.create(src=connector.id, dst=d.id, edge_type="calls", line=1, confidence=0.9)
+            for d in callees
+        ]
+
+        result = _format_symbols(all_syms, edges, repo_root)
+
+        # The connector (eval) should appear before the sink (Duration)
+        eval_pos = result.find("`eval`")
+        duration_pos = result.find("`Duration`")
+        assert eval_pos != -1, "eval should appear in symbols"
+        assert duration_pos != -1, "Duration should appear in symbols"
+        assert eval_pos < duration_pos, (
+            f"eval (pos {eval_pos}) should appear before Duration "
+            f"(pos {duration_pos}) in symbol output"
+        )
+
+
 class TestGenerateSketchWithBudget:
     """Tests for budget-based sketch expansion."""
 
