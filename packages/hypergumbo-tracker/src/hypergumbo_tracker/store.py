@@ -123,6 +123,25 @@ _DOUBLE_QUOTED_FIELDS = frozenset({
 # Set-valued fields on items (accumulated via add/remove, not LWW)
 _SET_VALUED_FIELDS = frozenset({"tags", "before", "duplicate_of", "not_duplicate_of"})
 
+# Fields that can be locked or updated. Derived from CompiledItem attributes
+# that are settable via update/discuss/lock ops. Excludes system-managed
+# fields (id, kind, created_at, updated_at, tier, cross_tier_conflict, simhash).
+_LOCKABLE_FIELDS = frozenset({
+    "title", "status", "priority", "parent",
+    "tags", "before", "duplicate_of", "not_duplicate_of",
+    "pr_ref", "justification", "description",
+    "fields", "discussion",
+})
+
+# Fields that can appear in update set/add/remove dicts.
+# discussion is lockable but not updatable (modified via discuss(), not update()).
+_UPDATABLE_FIELDS = frozenset({
+    "title", "status", "priority", "parent",
+    "tags", "before", "duplicate_of", "not_duplicate_of",
+    "pr_ref", "justification", "description",
+    "fields",
+})
+
 # Daily discussion rate limit: 200,000 tokens per item
 _DISCUSSION_DAILY_TOKEN_LIMIT = 200_000
 
@@ -576,11 +595,11 @@ def compile_ops(ops: list[dict[str, Any]], item_id: str = "") -> CompiledItem:
 
         elif op_type == "lock":
             for field_name in op_dict.get("lock", []):
-                item.locked_fields.add(field_name)
+                item.locked_fields.add(field_name.lower())
 
         elif op_type == "unlock":
             for field_name in op_dict.get("unlock", []):
-                item.locked_fields.discard(field_name)
+                item.locked_fields.discard(field_name.lower())
 
         # promote, demote, stealth, unstealth, reconcile: audit-only, no state change
 
@@ -1006,6 +1025,21 @@ class Store:
                     f"Status '{new_status}' requires human authority."
                 )
 
+        # Validate field names
+        all_dicts = [
+            (set_fields, "set"),
+            (add_fields, "add"),
+            (remove_fields, "remove"),
+        ]
+        for field_dict, label in all_dicts:
+            if field_dict:
+                for key in field_dict:
+                    if key not in _UPDATABLE_FIELDS:
+                        raise ValueError(
+                            f"Unknown field '{key}' in {label}. "
+                            f"Valid fields: {', '.join(sorted(_UPDATABLE_FIELDS))}"
+                        )
+
         # Check locked fields
         if by == "agent":
             ops = _parse_ops_file(item_path)
@@ -1013,6 +1047,10 @@ class Store:
             all_fields_touched: set[str] = set()
             if set_fields:
                 all_fields_touched.update(set_fields.keys())
+                if "fields" in set_fields and isinstance(set_fields["fields"], dict):
+                    all_fields_touched.update(
+                        f"fields.{k}" for k in set_fields["fields"]
+                    )
             if add_fields:
                 all_fields_touched.update(add_fields.keys())
             if remove_fields:
@@ -1167,6 +1205,14 @@ class Store:
         if by == "agent":
             raise HumanAuthorityError("lock requires human authority")
 
+        for f in field_names:
+            normalized = f.lower()
+            if normalized not in _LOCKABLE_FIELDS and not normalized.startswith("fields."):
+                raise ValueError(
+                    f"Unknown field '{f}'. Lockable fields: "
+                    f"{', '.join(sorted(_LOCKABLE_FIELDS))}, fields.<custom>"
+                )
+
         op_dict: dict[str, Any] = {
             "op": "lock",
             "at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -1174,7 +1220,7 @@ class Store:
             "actor": actor,
             "clock": 0,
             "nonce": _make_nonce(),
-            "lock": field_names,
+            "lock": [f.lower() for f in field_names],
         }
         self._append_op(item_path, op_dict)
 
@@ -1195,6 +1241,14 @@ class Store:
         if by == "agent":
             raise HumanAuthorityError("unlock requires human authority")
 
+        for f in field_names:
+            normalized = f.lower()
+            if normalized not in _LOCKABLE_FIELDS and not normalized.startswith("fields."):
+                raise ValueError(
+                    f"Unknown field '{f}'. Lockable fields: "
+                    f"{', '.join(sorted(_LOCKABLE_FIELDS))}, fields.<custom>"
+                )
+
         op_dict: dict[str, Any] = {
             "op": "unlock",
             "at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -1202,7 +1256,7 @@ class Store:
             "actor": actor,
             "clock": 0,
             "nonce": _make_nonce(),
-            "unlock": field_names,
+            "unlock": [f.lower() for f in field_names],
         }
         self._append_op(item_path, op_dict)
 

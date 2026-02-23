@@ -80,25 +80,29 @@ Creates the temp repo and tracker structure, then tests:
 
 ### 2_human_governance.sh (jgstern)
 
-Exercises human-authority operations:
+Exercises human-authority operations (13 tests):
 - Human can: lock status, discuss, discuss --clear, lock/unlock discussion,
   stealth/unstealth, delete
 - Verifies deleted item excluded from `ready`
 - Locks invariant status (sets up constraint for script 3)
+- Locks invariant title with mixed case (case-insensitive normalization)
+- Validates that locking a nonexistent field fails
 - Fixes config.yaml ownership to human-only
 
 ### 3_agent_constrained.sh (jgstern_agent)
 
-Verifies that agent attempts to bypass human constraints fail:
+Verifies that agent attempts to bypass human constraints fail (10 tests):
 - Agent update of locked status field fails with LockedFieldError
 - Agent can still update non-locked fields (priority) and discuss
+- Agent update of locked title (case-insensitive) fails with LockedFieldError
 - Filesystem checks: config.yaml not writable by agent, .ops dirs have
   project-dev group, setgid bit set
 
 ### 4_human_cleanup.sh (jgstern)
 
-Final verification and teardown:
-- Human unlocks invariant, sets it to done
+Final verification and teardown (4 tests):
+- Human unlocks title (was locked with mixed case)
+- Human unlocks invariant status, sets it to done
 - Verifies count-todos = 0
 - Prints combined pass/fail report across all 4 scripts
 - Removes temp directory and git safe.directory entry

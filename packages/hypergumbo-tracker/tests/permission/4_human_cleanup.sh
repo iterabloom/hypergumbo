@@ -73,15 +73,19 @@ COMMON="--tracker-root $TRACKER_ROOT --no-auto-sync --json"
 
 _log "--- Final human actions ---"
 
-# 1. Human unlocks invariant status
+# 1. Unlock title (was locked with mixed case "Title" in script 2)
+assert_exit "human unlock title" 0 \
+    $TRACKER_CMD $COMMON unlock "$INV_ID" title
+
+# 2. Human unlocks invariant status
 assert_exit "human unlock invariant status" 0 \
     $TRACKER_CMD $COMMON unlock "$INV_ID" status
 
-# 2. Human updates invariant to done
+# 3. Human updates invariant to done
 assert_exit "human update invariant done" 0 \
     $TRACKER_CMD $COMMON update "$INV_ID" --status done
 
-# 3. Verify count-todos = 0
+# 4. Verify count-todos = 0
 set +e
 count_output=$($TRACKER_CMD $COMMON count-todos 2>/dev/null)
 count=$(echo "$count_output" | python3 -c "import sys,json; print(json.load(sys.stdin)['count'])")

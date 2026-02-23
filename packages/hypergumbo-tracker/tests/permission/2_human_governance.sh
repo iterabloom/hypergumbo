@@ -140,7 +140,15 @@ fi
 assert_exit "human lock invariant status" 0 \
     $TRACKER_CMD $COMMON lock "$INV_ID" status
 
-# 11. Fix config.yaml ownership: make it human-owned, not agent-writable.
+# 11. Lock title with mixed case (should normalize to lowercase)
+assert_exit "human lock Title (case-insensitive)" 0 \
+    $TRACKER_CMD $COMMON lock "$INV_ID" Title
+
+# 12. Human tries to lock a field that doesn't exist (validation error)
+assert_exit "human lock nonexistent field" 1 \
+    $TRACKER_CMD $COMMON lock "$INV_ID" nonexistent_field
+
+# 13. Fix config.yaml ownership: make it human-owned, not agent-writable.
 #     Can't chown without sudo, so replace the file: copy (human-owned) →
 #     delete original (dir is group-writable, no sticky bit) → rename.
 CONFIG_PATH="$TRACKER_ROOT/tracker/config.yaml"

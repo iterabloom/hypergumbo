@@ -83,13 +83,18 @@ assert_exit "agent update unlocked field" 0 \
 assert_exit "agent discuss unlocked" 0 \
     $TRACKER_CMD $COMMON discuss "$INV_ID" "Agent follow-up"
 
+# 4. Agent tries to update locked title (case-insensitive enforcement:
+#    locked as "Title" in script 2, update uses lowercase "title")
+assert_exit "agent update locked title (case-insensitive)" 1 \
+    $TRACKER_CMD $COMMON update "$INV_ID" --title "Should fail"
+
 # ---------------------------------------------------------------------------
 # Tests: Filesystem permission checks
 # ---------------------------------------------------------------------------
 
 _log "--- Filesystem permissions ---"
 
-# 4. Config.yaml is not writable by agent
+# 5. Config.yaml is not writable by agent
 CONFIG_PATH="$TRACKER_ROOT/tracker/config.yaml"
 TOTAL=$((TOTAL + 1))
 if [ ! -w "$CONFIG_PATH" ]; then
@@ -100,7 +105,7 @@ else
     _log "FAIL: config.yaml IS writable by agent (expected read-only)"
 fi
 
-# 5. .ops dirs have correct group (project-dev)
+# 6. .ops dirs have correct group (project-dev)
 _check_group() {
     local dir="$1" label="$2"
     TOTAL=$((TOTAL + 1))
@@ -119,7 +124,7 @@ _check_group "$TRACKER_ROOT/tracker/.ops" "tracker/.ops"
 _check_group "$TRACKER_ROOT/tracker-workspace/.ops" "tracker-workspace/.ops"
 _check_group "$TRACKER_ROOT/tracker-workspace/stealth" "stealth"
 
-# 6. Verify setgid bit on .ops dirs
+# 7. Verify setgid bit on .ops dirs
 _check_setgid() {
     local dir="$1" label="$2"
     TOTAL=$((TOTAL + 1))

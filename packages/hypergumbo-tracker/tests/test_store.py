@@ -23,7 +23,9 @@ from hypergumbo_tracker.models import (
     KindConfig,
 )
 from hypergumbo_tracker.store import (
+    _LOCKABLE_FIELDS,
     _SIMHASH_THRESHOLD,
+    _UPDATABLE_FIELDS,
     AmbiguousPrefixError,
     CorruptFileError,
     CycleError,
@@ -1709,6 +1711,145 @@ class TestAgentEnforcement:
         store = Store(ops_dir, config=_make_config())
         with pytest.raises(ItemNotFoundError):
             store.discuss("INV-nonexistent-id-that-does-not-exist-at-all", message="hi")
+
+    # -- Case-insensitive lock tests --
+
+    def test_update_locked_field_case_insensitive(
+        self, ops_dir: Path, mock_agent_uid: None
+    ) -> None:
+        """Lock with mixed-case 'Title' blocks update of lowercase 'title'."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Case Lock Test")
+
+        # Write lock op with mixed-case field name (human authority)
+        import datetime
+        lock_op = {
+            "op": "lock",
+            "at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "by": "human", "actor": "jgstern",
+            "clock": 99, "nonce": "case1",
+            "lock": ["Title"],  # mixed case
+        }
+        serialized = _serialize_op(lock_op)
+        with open(ops_dir / f".{item_id}.ops", "a") as f:
+            f.write(serialized)
+
+        with pytest.raises(LockedFieldError, match="title"):
+            store.update(item_id, set_fields={"title": "new title"})
+
+    def test_unlock_case_insensitive(
+        self, ops_dir: Path, mock_agent_uid: None
+    ) -> None:
+        """Unlock with lowercase 'status' removes lock set with uppercase 'Status'."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Unlock Case Test")
+
+        import datetime
+        now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        lock_op = {
+            "op": "lock", "at": now,
+            "by": "human", "actor": "jgstern",
+            "clock": 99, "nonce": "case2",
+            "lock": ["Status"],  # mixed case
+        }
+        unlock_op = {
+            "op": "unlock", "at": now,
+            "by": "human", "actor": "jgstern",
+            "clock": 100, "nonce": "case3",
+            "unlock": ["status"],  # lowercase
+        }
+        item_path = ops_dir / f".{item_id}.ops"
+        with open(item_path, "a") as f:
+            f.write(_serialize_op(lock_op))
+            f.write(_serialize_op(unlock_op))
+
+        # Agent update should succeed — lock was removed
+        store.update(item_id, set_fields={"status": "done"})
+
+    def test_compile_ops_normalizes_lock_case(self, ops_dir: Path) -> None:
+        """compile_ops normalizes lock field names to lowercase."""
+        ops = [
+            {
+                "op": "create", "kind": "invariant", "title": "Norm Test",
+                "at": "2026-02-22T00:00:00Z", "by": "human", "actor": "jgstern",
+                "clock": 1, "nonce": "n1",
+            },
+            {
+                "op": "lock", "at": "2026-02-22T00:01:00Z",
+                "by": "human", "actor": "jgstern",
+                "clock": 2, "nonce": "n2",
+                "lock": ["Title", "STATUS"],
+            },
+        ]
+        compiled = compile_ops(ops, "INV-test")
+        assert compiled.locked_fields == {"title", "status"}
+
+    def test_update_locked_custom_field(
+        self, ops_dir: Path, mock_agent_uid: None
+    ) -> None:
+        """Locking 'fields.foo' blocks agent update with --field foo=bar."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Custom Lock Test")
+
+        import datetime
+        lock_op = {
+            "op": "lock", "at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "by": "human", "actor": "jgstern",
+            "clock": 99, "nonce": "cf1",
+            "lock": ["fields.foo"],
+        }
+        with open(ops_dir / f".{item_id}.ops", "a") as f:
+            f.write(_serialize_op(lock_op))
+
+        with pytest.raises(LockedFieldError, match=r"fields\.foo"):
+            store.update(item_id, set_fields={"fields": {"foo": "bar"}})
+
+    # -- Field name validation tests --
+
+    def test_lock_unknown_field_raises(
+        self, ops_dir: Path, mock_human_uid: None
+    ) -> None:
+        """Locking an unknown field raises ValueError."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Bad Lock Test")
+
+        with pytest.raises(ValueError, match="Unknown field 'nonexistent'"):
+            store.lock(item_id, ["nonexistent"])
+
+    def test_unlock_unknown_field_raises(
+        self, ops_dir: Path, mock_human_uid: None
+    ) -> None:
+        """Unlocking an unknown field raises ValueError."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Bad Unlock Test")
+
+        with pytest.raises(ValueError, match="Unknown field 'nonexistent'"):
+            store.unlock(item_id, ["nonexistent"])
+
+    def test_lock_custom_field_prefix_accepted(
+        self, ops_dir: Path, mock_human_uid: None
+    ) -> None:
+        """Locking 'fields.root_cause' succeeds (custom field prefix)."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Custom Field Lock")
+
+        # Should not raise
+        store.lock(item_id, ["fields.root_cause"])
+
+        # Verify it was persisted
+        ops = _parse_ops_file(ops_dir / f".{item_id}.ops")
+        compiled = compile_ops(ops, item_id)
+        assert "fields.root_cause" in compiled.locked_fields
+
+    def test_update_unknown_field_raises(
+        self, ops_dir: Path, mock_human_uid: None
+    ) -> None:
+        """Updating with an unknown field raises ValueError."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Bad Update Test")
+
+        with pytest.raises(ValueError, match="Unknown field 'bogus' in set"):
+            store.update(item_id, set_fields={"bogus": "x"})
 
 
 # ---------------------------------------------------------------------------
