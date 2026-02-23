@@ -2630,6 +2630,23 @@ class TestIsTestPath:
         assert _is_test_path("/src/parser_test.rs") is True
         assert _is_test_path("lib_test.rs") is True
 
+    def test_testing_directory(self) -> None:
+        """Detects testing/ directory (Go convention for test helpers).
+
+        Harbor uses src/testing/ for test infrastructure (Suite struct).
+        ArgoCD uses gitops-engine/pkg/utils/testing/ for test helpers.
+        """
+        assert _is_test_path("/project/src/testing/suite.go") is True
+        assert _is_test_path("pkg/utils/testing/helpers.go") is True
+        # But not a file that merely contains 'testing' in name
+        assert _is_test_path("/src/testing_utils.go") is False
+
+    def test_testutil_directory(self) -> None:
+        """Detects testutil/ and testhelper/ directories."""
+        assert _is_test_path("/project/testutil/helpers.go") is True
+        assert _is_test_path("pkg/testhelper/mock_server.go") is True
+        assert _is_test_path("/project/testhelpers/setup.go") is True
+
 
 class TestComputeCentrality:
     """Tests for graph centrality computation."""

@@ -231,8 +231,10 @@ def is_test_file(path: str) -> bool:
     path_parts = normalized.split("/")
     test_dirs = {
         "tests", "test", "t", "spec", "__tests__",  # Test directories
+        "testing",  # Go convention (e.g., harbor src/testing/, argo-cd utils/testing/)
         "fakes", "mocks", "testfakes", "testmocks",  # Mock directories
-        "fixtures", "testdata", "testutils",  # Test support directories
+        "fixtures", "testdata", "testutils", "testutil",  # Test support directories
+        "testhelper", "testhelpers",  # Test helper directories
     }
     # Also match compound names like "transportfakes" that end with "fakes"/"mocks"
     for part in path_parts:

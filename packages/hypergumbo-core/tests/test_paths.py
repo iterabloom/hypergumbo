@@ -232,6 +232,21 @@ class TestIsTestFile:
         assert is_test_file("spec/support.rb") is True
         assert is_test_file("__tests__/main.js") is True
 
+    def test_testing_directory(self) -> None:
+        """Files in testing/ directories are test files (Go convention)."""
+        assert is_test_file("src/testing/suite.go") is True
+        assert is_test_file("pkg/utils/testing/helpers.go") is True
+
+    def test_testutil_directory(self) -> None:
+        """Files in testutil/ directories are test files."""
+        assert is_test_file("testutil/helpers.go") is True
+        assert is_test_file("pkg/testutil/mock.go") is True
+
+    def test_testhelper_directories(self) -> None:
+        """Files in testhelper/testhelpers directories are test files."""
+        assert is_test_file("testhelper/setup.py") is True
+        assert is_test_file("testhelpers/factory.rb") is True
+
     def test_not_test_file(self) -> None:
         """Regular files are not test files."""
         assert is_test_file("main.py") is False
