@@ -57,6 +57,7 @@ TMPDIR="$(dirname "$STATE_FILE")"
 REPO=$(python3 -c "import json; print(json.load(open('$STATE_FILE'))['repo'])")
 TRACKER_ROOT=$(python3 -c "import json; print(json.load(open('$STATE_FILE'))['tracker_root'])")
 INV_ID=$(python3 -c "import json; print(json.load(open('$STATE_FILE'))['inv_id'])")
+FREEZE_ID=$(python3 -c "import json; print(json.load(open('$STATE_FILE'))['freeze_id'])")
 
 _log "Repo: $REPO"
 _log "Invariant: $INV_ID"
@@ -73,19 +74,23 @@ COMMON="--tracker-root $TRACKER_ROOT --no-auto-sync --json"
 
 _log "--- Final human actions ---"
 
-# 1. Unlock title (was locked with mixed case "Title" in script 2)
+# 1. Unfreeze the freeze-target item (was frozen in script 2)
+assert_exit "human unfreeze item" 0 \
+    $TRACKER_CMD $COMMON unfreeze "$FREEZE_ID"
+
+# 2. Unlock title (was locked with mixed case "Title" in script 2)
 assert_exit "human unlock title" 0 \
     $TRACKER_CMD $COMMON unlock "$INV_ID" title
 
-# 2. Human unlocks invariant status
+# 3. Human unlocks invariant status
 assert_exit "human unlock invariant status" 0 \
     $TRACKER_CMD $COMMON unlock "$INV_ID" status
 
-# 3. Human updates invariant to done
+# 4. Human updates invariant to done
 assert_exit "human update invariant done" 0 \
     $TRACKER_CMD $COMMON update "$INV_ID" --status done
 
-# 4. Verify count-todos = 0
+# 5. Verify count-todos = 0
 set +e
 count_output=$($TRACKER_CMD $COMMON count-todos 2>/dev/null)
 count=$(echo "$count_output" | python3 -c "import sys,json; print(json.load(sys.stdin)['count'])")

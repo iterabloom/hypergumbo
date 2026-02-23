@@ -30,6 +30,7 @@ from hypergumbo_tracker.store import (
     CorruptFileError,
     CycleError,
     DiscussionRateLimitError,
+    FrozenItemError,
     HumanAuthorityError,
     ItemExistsError,
     ItemNotFoundError,
@@ -1850,6 +1851,216 @@ class TestAgentEnforcement:
 
         with pytest.raises(ValueError, match="Unknown field 'bogus' in set"):
             store.update(item_id, set_fields={"bogus": "x"})
+
+
+# ---------------------------------------------------------------------------
+# Coverage: whole-item freeze
+# ---------------------------------------------------------------------------
+
+
+class TestFreezeUnfreeze:
+    """Tests for freeze/unfreeze sentinel file mechanism."""
+
+    def test_freeze_agent_denied(self, ops_dir: Path, mock_agent_uid: None) -> None:
+        """Agent attempts store.freeze() → HumanAuthorityError."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Freeze Agent Denied")
+        with pytest.raises(HumanAuthorityError, match="freeze"):
+            store.freeze(item_id)
+
+    def test_unfreeze_agent_denied(self, ops_dir: Path, mock_agent_uid: None) -> None:
+        """Agent attempts store.unfreeze() → HumanAuthorityError."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Unfreeze Agent Denied")
+        # Create sentinel manually to test unfreeze denial
+        import shutil
+        shutil.copy2(store.item_path(item_id), store.frozen_path(item_id))
+        with pytest.raises(HumanAuthorityError, match="unfreeze"):
+            store.unfreeze(item_id)
+
+    def test_freeze_creates_sentinel(self, ops_dir: Path, mock_human_uid: None) -> None:
+        """Human freeze creates .frozen file."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Freeze Sentinel")
+        assert not store.frozen_path(item_id).exists()
+        store.freeze(item_id)
+        assert store.frozen_path(item_id).exists()
+        assert store.is_frozen(item_id)
+
+    def test_freeze_blocks_agent_update(
+        self, ops_dir: Path, mock_agent_uid: None,
+    ) -> None:
+        """Frozen item, agent update → FrozenItemError."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Freeze Block Update")
+        # Manually create sentinel (agent can't call store.freeze)
+        import shutil
+        shutil.copy2(store.item_path(item_id), store.frozen_path(item_id))
+
+        with pytest.raises(FrozenItemError, match="frozen"):
+            store.update(item_id, set_fields={"priority": 0})
+
+    def test_freeze_blocks_agent_discuss(
+        self, ops_dir: Path, mock_agent_uid: None,
+    ) -> None:
+        """Frozen item, agent discuss → FrozenItemError."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Freeze Block Discuss")
+        # Manually create sentinel (agent can't call store.freeze)
+        import shutil
+        shutil.copy2(store.item_path(item_id), store.frozen_path(item_id))
+
+        with pytest.raises(FrozenItemError, match="frozen"):
+            store.discuss(item_id, message="Should fail")
+
+    def test_freeze_allows_human_update(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """Frozen item, human update → succeeds."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Freeze Human Update")
+        store.freeze(item_id)
+        # Human should be able to update frozen items
+        store.update(item_id, set_fields={"priority": 0})
+        item = store.get(item_id)
+        assert item.priority == 0
+
+    def test_unfreeze_allows_agent_update(
+        self, ops_dir: Path, mock_agent_uid: None,
+    ) -> None:
+        """Create sentinel then remove it, agent update → succeeds."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Unfreeze Agent Update")
+        # Manually create then remove sentinel to simulate freeze/unfreeze
+        import shutil
+        fp = store.frozen_path(item_id)
+        shutil.copy2(store.item_path(item_id), fp)
+        assert fp.exists()
+        fp.unlink()
+
+        store.update(item_id, set_fields={"priority": 0})
+        item = store.get(item_id)
+        assert item.priority == 0
+
+    def test_freeze_already_frozen_raises(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """Freeze an already-frozen item → ValueError."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Already Frozen")
+        store.freeze(item_id)
+        with pytest.raises(ValueError, match="already frozen"):
+            store.freeze(item_id)
+
+    def test_unfreeze_not_frozen_raises(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """Unfreeze a non-frozen item → ValueError."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Not Frozen")
+        with pytest.raises(ValueError, match="not frozen"):
+            store.unfreeze(item_id)
+
+    def test_drift_check_drifted(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """Freeze, modify .ops as human, drift_check → True."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Drift Check")
+        store.freeze(item_id)
+        # Modify the ops file (human update after freeze)
+        store.update(item_id, set_fields={"priority": 0})
+        assert store.drift_check(item_id) is True
+
+    def test_drift_check_no_drift(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """Freeze, no changes, drift_check → False."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="No Drift")
+        store.freeze(item_id)
+        assert store.drift_check(item_id) is False
+
+    def test_drift_check_not_frozen(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """drift_check on unfrozen item → None."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Not Frozen Drift")
+        assert store.drift_check(item_id) is None
+
+    def test_frozen_flag_in_compiled_item(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """Compiled item has frozen=True when sentinel exists."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Frozen Flag")
+        assert store.get(item_id).frozen is False
+        store.freeze(item_id)
+        assert store.get(item_id).frozen is True
+
+    def test_frozen_in_list_items(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """list_items() sets frozen=True on frozen items."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Frozen List")
+        store.freeze(item_id)
+        items = store.list_items()
+        frozen_items = [i for i in items if i.id == item_id]
+        assert len(frozen_items) == 1
+        assert frozen_items[0].frozen is True
+
+    def test_freeze_nonexistent_item(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """Freeze nonexistent item → ItemNotFoundError."""
+        store = Store(ops_dir, config=_make_config())
+        with pytest.raises(ItemNotFoundError):
+            store.freeze("INV-nonexistent-id-that-does-not-exist-at-all")
+
+    def test_unfreeze_nonexistent_item(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """Unfreeze nonexistent item → ItemNotFoundError."""
+        store = Store(ops_dir, config=_make_config())
+        with pytest.raises(ItemNotFoundError):
+            store.unfreeze("INV-nonexistent-id-that-does-not-exist-at-all")
+
+    def test_freeze_ops_deleted_after_resolve(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """Race: ops file vanishes between _resolve_id and exists check."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Race Freeze")
+        # Delete the ops file so freeze's item_path.exists() fails
+        store.item_path(item_id).unlink()
+        with patch.object(store, "_resolve_id", return_value=item_id):
+            with pytest.raises(ItemNotFoundError, match="not found"):
+                store.freeze(item_id)
+
+    def test_unfreeze_ops_deleted_after_resolve(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """Race: ops file vanishes between _resolve_id and exists check."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Race Unfreeze")
+        store.item_path(item_id).unlink()
+        with patch.object(store, "_resolve_id", return_value=item_id):
+            with pytest.raises(ItemNotFoundError, match="not found"):
+                store.unfreeze(item_id)
+
+    def test_drift_check_ops_deleted(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """drift_check with frozen sentinel but ops file deleted → None."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Drift Race")
+        store.freeze(item_id)
+        # Delete the ops file, frozen sentinel remains
+        store.item_path(item_id).unlink()
+        with patch.object(store, "_resolve_id", return_value=item_id):
+            assert store.drift_check(item_id) is None
 
 
 # ---------------------------------------------------------------------------

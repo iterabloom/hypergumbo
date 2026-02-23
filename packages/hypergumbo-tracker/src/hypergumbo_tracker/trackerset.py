@@ -329,6 +329,26 @@ class TrackerSet:
         store.unlock(full_id, field_names)
         self._cache_upsert_item(t, store, full_id)
 
+    def freeze(self, item_id: str) -> None:
+        """Resolve item to its tier, delegate freeze to that Store."""
+        full_id, store, t = self._resolve_id(item_id)
+        store.freeze(full_id)
+
+    def unfreeze(self, item_id: str) -> None:
+        """Resolve item to its tier, delegate unfreeze to that Store."""
+        full_id, store, t = self._resolve_id(item_id)
+        store.unfreeze(full_id)
+
+    def is_frozen(self, item_id: str) -> bool:
+        """Check if an item is frozen."""
+        full_id, store, t = self._resolve_id(item_id)
+        return store.is_frozen(full_id)
+
+    def drift_check(self, item_id: str) -> bool | None:
+        """Check freeze drift for an item."""
+        full_id, store, t = self._resolve_id(item_id)
+        return store.drift_check(full_id)
+
     # -------------------------------------------------------------------
     # Scope-aware queries
     # -------------------------------------------------------------------

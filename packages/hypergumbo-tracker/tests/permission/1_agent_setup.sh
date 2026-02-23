@@ -259,6 +259,15 @@ _log "  invariant ID: $INV_ID"
 assert_exit "agent discuss" 0 \
     $TRACKER_CMD $COMMON discuss "$WI_ID" "Agent comment"
 
+# 3b. Agent creates second work_item for freeze testing
+assert_exit "agent add freeze target" 0 \
+    $TRACKER_CMD $COMMON add --kind work_item --title "Freeze target"
+FREEZE_ID=$(
+    $TRACKER_CMD $COMMON list --kind work_item 2>/dev/null \
+    | python3 -c "import sys,json; items=json.load(sys.stdin); print([i['id'] for i in items if i['title']=='Freeze target'][0])"
+)
+_log "  freeze target ID: $FREEZE_ID"
+
 # ---------------------------------------------------------------------------
 # Tests: Agent-denied operations
 # ---------------------------------------------------------------------------
@@ -289,6 +298,14 @@ assert_stderr_contains "agent unstealth denied" "human authority\|cannot move" \
 assert_exit "agent delete denied" 1 \
     $TRACKER_CMD $COMMON delete "$WI_ID"
 
+# 10. Agent tries freeze (fails — human authority)
+assert_exit "agent freeze denied" 1 \
+    $TRACKER_CMD $COMMON freeze "$WI_ID"
+
+# 11. Agent tries unfreeze (fails — human authority)
+assert_exit "agent unfreeze denied" 1 \
+    $TRACKER_CMD $COMMON unfreeze "$WI_ID"
+
 # ---------------------------------------------------------------------------
 # Save state for next script
 # ---------------------------------------------------------------------------
@@ -299,6 +316,7 @@ cat > "$TMPDIR/state.json" <<JSON
     "tracker_root": "$TRACKER_ROOT",
     "wi_id": "$WI_ID",
     "inv_id": "$INV_ID",
+    "freeze_id": "$FREEZE_ID",
     "script1_pass": $PASS,
     "script1_fail": $FAIL,
     "script1_total": $TOTAL

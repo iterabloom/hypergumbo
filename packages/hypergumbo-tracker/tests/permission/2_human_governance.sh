@@ -75,10 +75,12 @@ REPO=$(python3 -c "import json; print(json.load(open('$STATE_FILE'))['repo'])")
 TRACKER_ROOT=$(python3 -c "import json; print(json.load(open('$STATE_FILE'))['tracker_root'])")
 WI_ID=$(python3 -c "import json; print(json.load(open('$STATE_FILE'))['wi_id'])")
 INV_ID=$(python3 -c "import json; print(json.load(open('$STATE_FILE'))['inv_id'])")
+FREEZE_ID=$(python3 -c "import json; print(json.load(open('$STATE_FILE'))['freeze_id'])")
 
 _log "Repo: $REPO"
 _log "Work item: $WI_ID"
 _log "Invariant: $INV_ID"
+_log "Freeze target: $FREEZE_ID"
 
 # Set safe.directory for cross-user access
 git config --global --add safe.directory "$REPO" 2>/dev/null || true
@@ -148,7 +150,11 @@ assert_exit "human lock Title (case-insensitive)" 0 \
 assert_exit "human lock nonexistent field" 1 \
     $TRACKER_CMD $COMMON lock "$INV_ID" nonexistent_field
 
-# 13. Fix config.yaml ownership: make it human-owned, not agent-writable.
+# 13. Human freezes the freeze-target item (for script 3 to test agent-blocked writes)
+assert_exit "human freeze item" 0 \
+    $TRACKER_CMD $COMMON freeze "$FREEZE_ID"
+
+# 14. Fix config.yaml ownership: make it human-owned, not agent-writable.
 #     Can't chown without sudo, so replace the file: copy (human-owned) →
 #     delete original (dir is group-writable, no sticky bit) → rename.
 CONFIG_PATH="$TRACKER_ROOT/tracker/config.yaml"

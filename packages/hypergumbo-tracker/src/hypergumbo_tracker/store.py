@@ -98,6 +98,10 @@ class DiscussionRateLimitError(Exception):
     """Raised when discussion rate limit is exceeded for an item."""
 
 
+class FrozenItemError(Exception):
+    """Raised when an agent attempts to write to a frozen item."""
+
+
 class CycleError(Exception):
     """Raised when before links would create a cycle."""
 
@@ -837,6 +841,14 @@ class Store:
         """Get the filesystem path for an item's ops file."""
         return self._ops_dir / f".{item_id}.ops"
 
+    def frozen_path(self, item_id: str) -> Path:
+        """Get the path for an item's freeze sentinel file."""
+        return self._ops_dir / f".{item_id}.frozen"
+
+    def is_frozen(self, item_id: str) -> bool:
+        """Check if an item has a freeze sentinel file."""
+        return self.frozen_path(item_id).exists()
+
     def item_ids(self) -> list[str]:
         """Return all item IDs in this store."""
         return [self._id_from_filename(p) for p in self._list_item_files()]
@@ -1261,6 +1273,80 @@ class Store:
         self._append_op(item_path, op_dict)
 
     # -----------------------------------------------------------------------
+    # CRUD: freeze() / unfreeze()
+    # -----------------------------------------------------------------------
+
+    def freeze(self, item_id: str) -> None:
+        """Freeze an item by creating a sentinel file. Human-authority only.
+
+        Copies the .ops file to .frozen. The sentinel blocks agent writes
+        in _append_op(). The human can still modify the item.
+
+        Raises:
+            HumanAuthorityError: If called by an agent.
+            ItemNotFoundError: If item doesn't exist.
+            ValueError: If item is already frozen.
+        """
+        item_id = self._resolve_id(item_id)
+        item_path = self.item_path(item_id)
+        if not item_path.exists():
+            raise ItemNotFoundError(f"Item not found: {item_id}")
+
+        by, actor = resolve_actor(self._config.agent_usernames)
+        if by == "agent":
+            raise HumanAuthorityError("freeze requires human authority")
+
+        fp = self.frozen_path(item_id)
+        if fp.exists():
+            raise ValueError(f"Item {item_id} is already frozen")
+
+        import shutil
+        shutil.copy2(item_path, fp)
+        os.chmod(fp, 0o644)
+
+    def unfreeze(self, item_id: str) -> None:
+        """Remove the freeze sentinel file. Human-authority only.
+
+        Raises:
+            HumanAuthorityError: If called by an agent.
+            ItemNotFoundError: If item doesn't exist.
+            ValueError: If item is not frozen.
+        """
+        item_id = self._resolve_id(item_id)
+        item_path = self.item_path(item_id)
+        if not item_path.exists():
+            raise ItemNotFoundError(f"Item not found: {item_id}")
+
+        by, actor = resolve_actor(self._config.agent_usernames)
+        if by == "agent":
+            raise HumanAuthorityError("unfreeze requires human authority")
+
+        fp = self.frozen_path(item_id)
+        if not fp.exists():
+            raise ValueError(f"Item {item_id} is not frozen")
+
+        fp.unlink()
+
+    # -----------------------------------------------------------------------
+    # Freeze drift detection
+    # -----------------------------------------------------------------------
+
+    def drift_check(self, item_id: str) -> bool | None:
+        """Compare .ops against .frozen sentinel for drift detection.
+
+        Returns True if the item has been modified since freeze, False if
+        identical, or None if the item is not frozen.
+        """
+        item_id = self._resolve_id(item_id)
+        fp = self.frozen_path(item_id)
+        if not fp.exists():
+            return None
+        ip = self.item_path(item_id)
+        if not ip.exists():
+            return None
+        return ip.read_bytes() != fp.read_bytes()
+
+    # -----------------------------------------------------------------------
     # Internal: _append_op
     # -----------------------------------------------------------------------
 
@@ -1287,6 +1373,18 @@ class Store:
                         f"{filepath.name}: item is uncompilable (frozen). "
                         f"A human must inspect the ops file before further writes."
                     ) from None
+
+        # Check freeze sentinel — block agent writes to frozen items
+        if filepath.exists():
+            item_id = filepath.stem.lstrip(".")
+            sentinel = self.frozen_path(item_id)
+            if sentinel.exists():
+                by = op_dict.get("by", "")
+                if by == "agent":
+                    raise FrozenItemError(
+                        f"Item {item_id} is frozen. "
+                        f"Ask the human to unfreeze it."
+                    )
 
         # Open with explicit mode (0o664 = rw-rw-r--) so both human and
         # agent users can append in a two-user setup.  Plain open("a")
@@ -1672,7 +1770,9 @@ class Store:
         if not item_path.exists():
             raise ItemNotFoundError(f"Item not found: {item_id}")
         ops = _parse_ops_file(item_path)
-        return compile_ops(ops, item_id)
+        item = compile_ops(ops, item_id)
+        item.frozen = self.is_frozen(item_id)
+        return item
 
     def _compile_all(self) -> list[CompiledItem]:
         """Compile all items in the store."""
@@ -1682,6 +1782,7 @@ class Store:
             try:
                 ops = _parse_ops_file(path)
                 item = compile_ops(ops, item_id)
+                item.frozen = self.is_frozen(item_id)
                 items.append(item)
             except CorruptFileError:
                 continue
@@ -1702,11 +1803,13 @@ class Store:
             try:
                 cached_item = cache.get_compiled(item_id)
                 if cached_item is not None:
+                    cached_item.frozen = self.is_frozen(item_id)
                     items.append(cached_item)
                     continue
                 # Cache miss — parse, compile, upsert
                 ops = _parse_ops_file(path)
                 item = compile_ops(ops, item_id)
+                item.frozen = self.is_frozen(item_id)
                 stat = path.stat()
                 cache.upsert(item_id, item, stat.st_mtime, stat.st_size)
                 items.append(item)

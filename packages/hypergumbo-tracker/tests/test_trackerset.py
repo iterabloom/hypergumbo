@@ -513,6 +513,35 @@ class TestStealthUnstealth:
 
 
 # ---------------------------------------------------------------------------
+# Freeze / unfreeze
+# ---------------------------------------------------------------------------
+
+
+class TestFreezeUnfreeze:
+    def test_is_frozen(
+        self, tracker_root: Path, mock_human_uid: None,
+    ) -> None:
+        ts = TrackerSet(tracker_root)
+        item_id = ts.add("invariant", "Freeze Check", tier=Tier.WORKSPACE)
+        assert ts.is_frozen(item_id) is False
+        ts.freeze(item_id)
+        assert ts.is_frozen(item_id) is True
+        ts.unfreeze(item_id)
+        assert ts.is_frozen(item_id) is False
+
+    def test_drift_check(
+        self, tracker_root: Path, mock_human_uid: None,
+    ) -> None:
+        ts = TrackerSet(tracker_root)
+        item_id = ts.add("invariant", "Drift Check", tier=Tier.WORKSPACE)
+        assert ts.drift_check(item_id) is None  # not frozen
+        ts.freeze(item_id)
+        assert ts.drift_check(item_id) is False  # no drift
+        ts.update(item_id, set_fields={"priority": 0})
+        assert ts.drift_check(item_id) is True  # drifted
+
+
+# ---------------------------------------------------------------------------
 # Reconciliation
 # ---------------------------------------------------------------------------
 

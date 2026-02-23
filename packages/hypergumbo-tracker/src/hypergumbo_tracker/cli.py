@@ -43,6 +43,7 @@ from hypergumbo_tracker.models import (
 from hypergumbo_tracker.store import (
     AmbiguousPrefixError,
     CorruptFileError,
+    FrozenItemError,
     HumanAuthorityError,
     ItemExistsError,
     ItemNotFoundError,
@@ -73,6 +74,7 @@ EXIT_INTERNAL_ERROR = 2
 
 _MUTATION_COMMANDS: frozenset[str] = frozenset({
     "add", "update", "discuss", "lock", "unlock",
+    "freeze", "unfreeze",
     "promote", "demote", "stealth", "unstealth",
     "delete", "reconcile-reset", "fork-setup", "tui",
 })
@@ -186,6 +188,8 @@ def _format_item_full(item: CompiledItem) -> str:
     tier_str = item.tier.value if item.tier else "unknown"
     lines.append(f"  tier: {tier_str}  created: {item.created_at}  "
                  f"updated: {item.updated_at}")
+    if item.frozen:
+        lines.append("  *** FROZEN ***")
     if item.cross_tier_conflict:
         lines.append("  *** CROSS-TIER CONFLICT ***")
     return "\n".join(lines)
@@ -214,6 +218,7 @@ def _item_to_dict(item: CompiledItem) -> dict[str, Any]:
              "message": d.message, "is_summary": d.is_summary}
             for d in item.discussion
         ],
+        "frozen": item.frozen,
         "tier": item.tier.value if item.tier else None,
         "created_at": item.created_at,
         "updated_at": item.updated_at,
@@ -451,6 +456,26 @@ def _cmd_unlock(args: argparse.Namespace, ts: TrackerSet) -> int:
         print(json.dumps({"ok": True}))
     else:
         print("unlocked")
+    return EXIT_SUCCESS
+
+
+def _cmd_freeze(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Handle 'freeze' subcommand."""
+    ts.freeze(args.item_id)
+    if args.json:
+        print(json.dumps({"ok": True}))
+    else:
+        print("frozen")
+    return EXIT_SUCCESS
+
+
+def _cmd_unfreeze(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Handle 'unfreeze' subcommand."""
+    ts.unfreeze(args.item_id)
+    if args.json:
+        print(json.dumps({"ok": True}))
+    else:
+        print("unfrozen")
     return EXIT_SUCCESS
 
 
@@ -1059,6 +1084,14 @@ def _build_parser() -> argparse.ArgumentParser:
     p_unlock.add_argument("item_id", help="Item ID or prefix")
     p_unlock.add_argument("fields", nargs="+", help="Field names to unlock")
 
+    # --- freeze ---
+    p_freeze = sub.add_parser("freeze", help="Freeze an item (human only)")
+    p_freeze.add_argument("item_id", help="Item ID or prefix")
+
+    # --- unfreeze ---
+    p_unfreeze = sub.add_parser("unfreeze", help="Unfreeze an item (human only)")
+    p_unfreeze.add_argument("item_id", help="Item ID or prefix")
+
     # --- promote ---
     p_promote = sub.add_parser("promote", help="Promote: workspace → canonical")
     p_promote.add_argument("item_id", help="Item ID or prefix")
@@ -1359,6 +1392,8 @@ def main(argv: list[str] | None = None) -> None:
         "discuss": _cmd_discuss,
         "lock": _cmd_lock,
         "unlock": _cmd_unlock,
+        "freeze": _cmd_freeze,
+        "unfreeze": _cmd_unfreeze,
         "promote": _cmd_promote,
         "demote": _cmd_demote,
         "stealth": _cmd_stealth,
@@ -1385,7 +1420,9 @@ def main(argv: list[str] | None = None) -> None:
     except (ItemNotFoundError, AmbiguousPrefixError, ItemExistsError) as e:
         print(f"error: {e}", file=sys.stderr)
         raise SystemExit(EXIT_USER_ERROR) from e
-    except (HumanAuthorityError, LockedFieldError, TierMovementError) as e:
+    except (
+        HumanAuthorityError, LockedFieldError, FrozenItemError, TierMovementError,
+    ) as e:
         print(f"error: {e}", file=sys.stderr)
         raise SystemExit(EXIT_USER_ERROR) from e
     except CorruptFileError as e:

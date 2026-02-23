@@ -73,6 +73,7 @@ from textual.widgets import (
 from hypergumbo_tracker.models import CompiledItem, FieldSchema, Tier
 from hypergumbo_tracker.store import (
     DiscussionRateLimitError,
+    FrozenItemError,
     HumanAuthorityError,
     ItemNotFoundError,
     LockedFieldError,
@@ -400,6 +401,8 @@ def _format_detail_lines(
     Discussion badge ``[20+ msgs]`` appears when entry count >= 20 (D9).
     """
     lines: list[str] = []
+    if item.frozen:
+        lines.append("[bold cyan]*** FROZEN ***[/bold cyan]")
     lines.append(f"{_label('Title:')} {item.title}")
     lines.append(f"{_label('ID:')} {item.id}")
 
@@ -1122,6 +1125,7 @@ class TrackerApp(App):
         ("p", "set_parent", "Parent"),
         ("b", "edit_before", "Before"),
         ("l", "toggle_lock", "Lock"),
+        ("z", "toggle_freeze", "Freeze"),
         ("i", "toggle_full_ids", "Full IDs"),
         ("y", "yank", "Copy"),
     ]
@@ -1417,7 +1421,8 @@ class TrackerApp(App):
             ]
             if show_status:
                 row.append(item.status)
-            row.append(item.title)
+            title_text = f"\U0001f9ca {item.title}" if item.frozen else item.title
+            row.append(title_text)
 
             if is_wide:
                 row.append("\u26a0" if item.cross_tier_conflict else "")
@@ -1459,7 +1464,8 @@ class TrackerApp(App):
                 tier_char = (
                     _TIER_INDICATOR.get(child.tier, "?") if child.tier else "?"
                 )
-                label = f"[{tier_char}] {child.title}"
+                title_text = f"\U0001f9ca {child.title}" if child.frozen else child.title
+                label = f"[{tier_char}] {title_text}"
                 node = parent_node.add(label, data=child.id)  # type: ignore[union-attr]
                 _add_children(node, child.id)
 
@@ -1497,6 +1503,10 @@ class TrackerApp(App):
         """Populate the compact detail view with item information."""
         fields_schema = self._get_fields_schema(item)
         lines = _format_detail_lines(item, fields_schema=fields_schema)
+        if item.frozen:
+            drift = self._tracker_set.drift_check(item.id)
+            if drift:
+                lines[0] = "[bold yellow]*** FROZEN (DRIFTED) ***[/bold yellow]"
         content = self.query_one("#detail-content", Static)
         content.update("\n".join(lines))
 
@@ -1517,6 +1527,10 @@ class TrackerApp(App):
         lines = _format_detail_lines(
             item, tier=self._layout_tier, fields_schema=fields_schema,
         )
+        if item.frozen:
+            drift = self._tracker_set.drift_check(item.id)
+            if drift:
+                lines[0] = "[bold yellow]*** FROZEN (DRIFTED) ***[/bold yellow]"
         content = self.query_one("#std-detail-content", Static)
         content.update("\n".join(lines))
         if self._layout_tier == "wide":
@@ -2062,4 +2076,21 @@ class TrackerApp(App):
             self.notify(f"Lock state updated for {item_id}")
             self._reload_after_write(item_id)
         except (HumanAuthorityError, ItemNotFoundError) as e:
+            self.notify(str(e), severity="error")
+
+    def action_toggle_freeze(self) -> None:
+        """Toggle freeze/unfreeze on the selected item."""
+        item = self._get_selected_item()
+        if not item:
+            self.notify("No item selected", severity="warning")
+            return
+        try:
+            if item.frozen:
+                self._tracker_set.unfreeze(item.id)
+                self.notify(f"Unfrozen: {item.id}")
+            else:
+                self._tracker_set.freeze(item.id)
+                self.notify(f"Frozen: {item.id}")
+            self._reload_after_write(item.id)
+        except (HumanAuthorityError, FrozenItemError, ValueError) as e:
             self.notify(str(e), severity="error")

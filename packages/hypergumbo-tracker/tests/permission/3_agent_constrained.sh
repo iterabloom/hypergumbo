@@ -58,9 +58,11 @@ TMPDIR="$(dirname "$STATE_FILE")"
 REPO=$(python3 -c "import json; print(json.load(open('$STATE_FILE'))['repo'])")
 TRACKER_ROOT=$(python3 -c "import json; print(json.load(open('$STATE_FILE'))['tracker_root'])")
 INV_ID=$(python3 -c "import json; print(json.load(open('$STATE_FILE'))['inv_id'])")
+FREEZE_ID=$(python3 -c "import json; print(json.load(open('$STATE_FILE'))['freeze_id'])")
 
 _log "Repo: $REPO"
 _log "Invariant: $INV_ID"
+_log "Freeze target: $FREEZE_ID"
 
 cd "$REPO"
 COMMON="--tracker-root $TRACKER_ROOT --no-auto-sync --json"
@@ -89,12 +91,26 @@ assert_exit "agent update locked title (case-insensitive)" 1 \
     $TRACKER_CMD $COMMON update "$INV_ID" --title "Should fail"
 
 # ---------------------------------------------------------------------------
+# Tests: Agent blocked by freeze
+# ---------------------------------------------------------------------------
+
+_log "--- Agent blocked by freeze ---"
+
+# 5. Agent tries to update frozen item (fails: FrozenItemError)
+assert_exit "agent update frozen item" 1 \
+    $TRACKER_CMD $COMMON update "$FREEZE_ID" --priority 0
+
+# 6. Agent tries to discuss frozen item (fails: FrozenItemError)
+assert_exit "agent discuss frozen item" 1 \
+    $TRACKER_CMD $COMMON discuss "$FREEZE_ID" "Should fail"
+
+# ---------------------------------------------------------------------------
 # Tests: Filesystem permission checks
 # ---------------------------------------------------------------------------
 
 _log "--- Filesystem permissions ---"
 
-# 5. Config.yaml is not writable by agent
+# 7. Config.yaml is not writable by agent
 CONFIG_PATH="$TRACKER_ROOT/tracker/config.yaml"
 TOTAL=$((TOTAL + 1))
 if [ ! -w "$CONFIG_PATH" ]; then
@@ -105,7 +121,7 @@ else
     _log "FAIL: config.yaml IS writable by agent (expected read-only)"
 fi
 
-# 6. .ops dirs have correct group (project-dev)
+# 8. .ops dirs have correct group (project-dev)
 _check_group() {
     local dir="$1" label="$2"
     TOTAL=$((TOTAL + 1))
@@ -124,7 +140,7 @@ _check_group "$TRACKER_ROOT/tracker/.ops" "tracker/.ops"
 _check_group "$TRACKER_ROOT/tracker-workspace/.ops" "tracker-workspace/.ops"
 _check_group "$TRACKER_ROOT/tracker-workspace/stealth" "stealth"
 
-# 7. Verify setgid bit on .ops dirs
+# 9. Verify setgid bit on .ops dirs
 _check_setgid() {
     local dir="$1" label="$2"
     TOTAL=$((TOTAL + 1))

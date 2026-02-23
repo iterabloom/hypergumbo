@@ -38,6 +38,7 @@ from textual.app import App
 
 from hypergumbo_tracker.store import (
     DiscussionRateLimitError,
+    FrozenItemError,
     HumanAuthorityError,
     ItemNotFoundError,
     LockedFieldError,
@@ -530,6 +531,21 @@ class TestFormatDetailLines:
         desc_part = text.split("Description:\n", 1)[-1]
         assert "Para one line one\nPara one line two" in desc_part
         assert "Para one line two\n\nPara two line one" in desc_part
+
+    def test_frozen_banner(self) -> None:
+        """Frozen item shows FROZEN banner."""
+        item = CompiledItem(
+            id="INV-frozen",
+            kind="invariant",
+            title="Frozen Item",
+            status="todo_hard",
+            priority=1,
+            tier=Tier.CANONICAL,
+            frozen=True,
+        )
+        lines = _format_detail_lines(item)
+        text = _strip_markup("\n".join(lines))
+        assert "FROZEN" in text
 
 
 # ---------------------------------------------------------------------------
@@ -3822,6 +3838,140 @@ class TestOnToggleLockCallbackBranches:
                 app._on_toggle_lock("FAKE", None)
                 await pilot.pause()
                 ml.assert_not_called()
+
+
+class TestToggleFreezeKeybinding:
+    """Test the 'z' freeze/unfreeze keybinding."""
+
+    @pytest.fixture()
+    def tracker_set(self, tmp_path: Path) -> TrackerSet:
+        return _make_tracker_set(tmp_path)
+
+    async def test_freeze_no_item_warns(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_empty_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            for _ in range(5):
+                await pilot.pause()
+            await pilot.press("z")
+            await pilot.pause()
+
+    async def test_freeze_calls_freeze(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(tracker_set, "freeze") as mock_freeze:
+                app.action_toggle_freeze()
+                await pilot.pause()
+                mock_freeze.assert_called_once()
+
+    async def test_unfreeze_calls_unfreeze(self, tracker_set: TrackerSet) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            item.frozen = True
+            with patch.object(tracker_set, "unfreeze") as mock_unfreeze:
+                app.action_toggle_freeze()
+                await pilot.pause()
+                mock_unfreeze.assert_called_once()
+
+    async def test_freeze_human_authority_error(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(
+                tracker_set, "freeze",
+                side_effect=HumanAuthorityError("human only"),
+            ):
+                app.action_toggle_freeze()
+                await pilot.pause()
+
+    async def test_freeze_value_error(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(
+                tracker_set, "freeze",
+                side_effect=ValueError("already frozen"),
+            ):
+                app.action_toggle_freeze()
+                await pilot.pause()
+
+
+class TestShowDetailDrift:
+    """Test frozen/drift indicators in detail views."""
+
+    async def test_compact_detail_frozen_drift(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(50, 18)) as pilot:
+            await _wait_for_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            item.frozen = True
+            with patch.object(ts, "drift_check", return_value=True):
+                app._show_detail(item)
+                await pilot.pause()
+
+    async def test_compact_detail_frozen_no_drift(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(50, 18)) as pilot:
+            await _wait_for_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            item.frozen = True
+            with patch.object(ts, "drift_check", return_value=False):
+                app._show_detail(item)
+                await pilot.pause()
+
+    async def test_std_detail_frozen_drift(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            item.frozen = True
+            with patch.object(ts, "drift_check", return_value=True):
+                app._show_std_detail(item.id)
+                await pilot.pause()
+
+    async def test_std_detail_frozen_no_drift(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            item.frozen = True
+            with patch.object(ts, "drift_check", return_value=False):
+                app._show_std_detail(item.id)
+                await pilot.pause()
 
 
 class TestOnNewItemCallbackBranches:

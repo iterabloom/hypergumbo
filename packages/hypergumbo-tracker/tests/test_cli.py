@@ -760,6 +760,141 @@ class TestLockUnlock:
 
 
 # ---------------------------------------------------------------------------
+# Freeze/unfreeze commands
+# ---------------------------------------------------------------------------
+
+
+class TestFreezeUnfreeze:
+    def test_freeze(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                    mock_human_uid: None) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "freeze", "WI-test",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        assert "frozen" in capsys.readouterr().out
+
+    def test_freeze_json(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                         mock_human_uid: None) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "freeze", "WI-test",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = json.loads(capsys.readouterr().out)
+        assert out["ok"] is True
+
+    def test_freeze_agent_denied(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                                 mock_agent_uid: None) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "freeze", "WI-test",
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+
+    def test_unfreeze(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                      mock_human_uid: None) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "WI-test")
+        # Freeze first
+        with pytest.raises(SystemExit):
+            main(["--tracker-root", str(tracker_root), "freeze", "WI-test"])
+        capsys.readouterr()  # clear capture
+        # Then unfreeze
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "unfreeze", "WI-test",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        assert "unfrozen" in capsys.readouterr().out
+
+    def test_unfreeze_json(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                           mock_human_uid: None) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "WI-test")
+        # Freeze first
+        with pytest.raises(SystemExit):
+            main(["--tracker-root", str(tracker_root), "freeze", "WI-test"])
+        capsys.readouterr()
+        # Then unfreeze with JSON
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "unfreeze", "WI-test",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = json.loads(capsys.readouterr().out)
+        assert out["ok"] is True
+
+    def test_frozen_item_show(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                              mock_human_uid: None) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        # Freeze
+        with pytest.raises(SystemExit):
+            main(["--tracker-root", str(tracker_root), "freeze", "WI-test"])
+        capsys.readouterr()
+        # Show
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "show", "WI-test",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        assert "FROZEN" in capsys.readouterr().out
+
+    def test_frozen_item_show_json(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                                   mock_human_uid: None) -> None:
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        # Freeze
+        with pytest.raises(SystemExit):
+            main(["--tracker-root", str(tracker_root), "freeze", "WI-test"])
+        capsys.readouterr()
+        # Show JSON
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "show", "WI-test",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = json.loads(capsys.readouterr().out)
+        assert out["frozen"] is True
+
+    def test_frozen_item_agent_update_blocked(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Agent update on frozen item → FrozenItemError → exit 1."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item(ops_dir, "WI-test")
+        # Manually create sentinel (agent can't call freeze)
+        import shutil
+        ops_file = ops_dir / ".WI-test.ops"
+        frozen_file = ops_dir / ".WI-test.frozen"
+        shutil.copy2(ops_file, frozen_file)
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test", "--priority", "0",
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+
+
+# ---------------------------------------------------------------------------
 # Delete command
 # ---------------------------------------------------------------------------
 
