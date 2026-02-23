@@ -2408,6 +2408,12 @@ def cmd_symbols(args: argparse.Namespace) -> int:
     # Check exclude_tests flag before computing degrees
     exclude_tests = getattr(args, "exclude_tests", False)
 
+    # Minimum edge confidence for degree computation.
+    # Low-confidence inferred edges (ast_method_inferred, <0.5) inflate
+    # in-degree for common method names like .Lock(), .get(), .setValue().
+    # Same threshold as rank_symbols() in cmd_slice.
+    _MIN_EDGE_CONFIDENCE = 0.5
+
     # Compute in-degree and out-degree for each node
     # When exclude_tests is set, skip edges where src or dst is a test path
     in_degree: dict[str, int] = {n["id"]: 0 for n in nodes}
@@ -2416,6 +2422,11 @@ def cmd_symbols(args: argparse.Namespace) -> int:
     for edge in edges:
         src = edge.get("src", "")
         dst = edge.get("dst", "")
+
+        # Filter low-confidence edges to prevent method name collision
+        # artifacts (DirLocker.Lock 255 false in-degree, etc.)
+        if edge.get("confidence", 1.0) < _MIN_EDGE_CONFIDENCE:
+            continue
 
         # If excluding tests, skip edges involving test files.
         # Structural edges (extends, implements) are always preserved

@@ -919,6 +919,155 @@ def test_cmd_symbols_exclude_tests_affects_degree_counts(tmp_path: Path, capsys)
             break
 
 
+def test_cmd_symbols_filters_low_confidence_edges(tmp_path: Path, capsys) -> None:
+    """Low-confidence inferred edges are excluded from degree computation.
+
+    Simulates the DirLocker.Lock scenario: a method has 5 low-confidence
+    inferred edges (0.3) from unrelated .Lock() calls plus 1 real high-confidence
+    edge (0.9). Without filtering, Lock appears with in-degree 6.
+    With confidence filtering (default 0.5), Lock should show in-degree 1.
+    """
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": "go:src/locker.go:1-10:DirLocker.Lock:method",
+                "name": "DirLocker.Lock",
+                "kind": "method",
+                "language": "go",
+                "path": "src/locker.go",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "go:src/db.go:1-10:DB.Open:method",
+                "name": "DB.Open",
+                "kind": "method",
+                "language": "go",
+                "path": "src/db.go",
+                "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "go:src/a.go:1-5:funcA:function",
+                "name": "funcA",
+                "kind": "function",
+                "language": "go",
+                "path": "src/a.go",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "go:src/b.go:1-5:funcB:function",
+                "name": "funcB",
+                "kind": "function",
+                "language": "go",
+                "path": "src/b.go",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "go:src/c.go:1-5:funcC:function",
+                "name": "funcC",
+                "kind": "function",
+                "language": "go",
+                "path": "src/c.go",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "go:src/d.go:1-5:funcD:function",
+                "name": "funcD",
+                "kind": "function",
+                "language": "go",
+                "path": "src/d.go",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": "go:src/e.go:1-5:funcE:function",
+                "name": "funcE",
+                "kind": "function",
+                "language": "go",
+                "path": "src/e.go",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [
+            # 1 real call to DirLocker.Lock (high confidence)
+            {
+                "id": "edge:real",
+                "src": "go:src/db.go:1-10:DB.Open:method",
+                "dst": "go:src/locker.go:1-10:DirLocker.Lock:method",
+                "type": "calls",
+                "confidence": 0.9,
+            },
+            # 5 false-positive inferred edges from unrelated .Lock() calls
+            {
+                "id": "edge:false1",
+                "src": "go:src/a.go:1-5:funcA:function",
+                "dst": "go:src/locker.go:1-10:DirLocker.Lock:method",
+                "type": "calls",
+                "confidence": 0.3,
+            },
+            {
+                "id": "edge:false2",
+                "src": "go:src/b.go:1-5:funcB:function",
+                "dst": "go:src/locker.go:1-10:DirLocker.Lock:method",
+                "type": "calls",
+                "confidence": 0.3,
+            },
+            {
+                "id": "edge:false3",
+                "src": "go:src/c.go:1-5:funcC:function",
+                "dst": "go:src/locker.go:1-10:DirLocker.Lock:method",
+                "type": "calls",
+                "confidence": 0.3,
+            },
+            {
+                "id": "edge:false4",
+                "src": "go:src/d.go:1-5:funcD:function",
+                "dst": "go:src/locker.go:1-10:DirLocker.Lock:method",
+                "type": "calls",
+                "confidence": 0.3,
+            },
+            {
+                "id": "edge:false5",
+                "src": "go:src/e.go:1-5:funcE:function",
+                "dst": "go:src/locker.go:1-10:DirLocker.Lock:method",
+                "type": "calls",
+                "confidence": 0.3,
+            },
+        ],
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 200
+    args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
+
+    cmd_symbols(args)
+    out, _ = capsys.readouterr()
+
+    # DirLocker.Lock should have in-degree=1 (only the real 0.9 edge)
+    # Low-confidence edges (0.3) should be filtered out
+    for line in out.split("\n"):
+        if "DirLocker.Lock" in line:
+            parts = line.split()
+            if "method" in parts:
+                idx = parts.index("method")
+                in_deg = parts[idx + 1] if idx + 1 < len(parts) else None
+                assert in_deg == "1", (
+                    f"DirLocker.Lock should have in-degree 1 after confidence "
+                    f"filtering, got: {line}"
+                )
+            break
+    else:
+        # DirLocker.Lock should appear in the output
+        raise AssertionError(f"DirLocker.Lock not found in output: {out}")
+
+
 def test_cmd_symbols_excludes_excluded_kinds(tmp_path: Path, capsys) -> None:
     """Symbols command filters out EXCLUDED_KINDS (CSS variables, etc.)."""
     behavior_map = {
