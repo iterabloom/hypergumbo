@@ -419,11 +419,15 @@ class KindConfig:
     description: Human-readable description of the kind.
     fields_schema: Optional dict of field_name → FieldSchema. If None or empty,
       the kind's fields dict accepts arbitrary keys with no validation.
+    allowed_statuses: Optional list of statuses valid for this kind. If None,
+      all global statuses are valid. Used to restrict invariant-kind items to
+      perpetual-truth statuses (holding, violated, needs_human_review, deleted).
     """
 
     prefix: str
     description: str = ""
     fields_schema: dict[str, FieldSchema] | None = None
+    allowed_statuses: list[str] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -492,10 +496,16 @@ def _parse_config_dict(raw: dict[str, Any]) -> TrackerConfig:
             raise ConfigValidationError(
                 f"Kind '{kind_name}' must be a dict, got {type(kind_spec).__name__}"
             )
+        raw_allowed = kind_spec.get("allowed_statuses")
+        if raw_allowed is not None and not isinstance(raw_allowed, list):
+            raise ConfigValidationError(
+                f"Kind '{kind_name}': allowed_statuses must be a list"
+            )
         kinds[kind_name] = KindConfig(
             prefix=kind_spec.get("prefix", kind_name.upper()[:3]),
             description=kind_spec.get("description", ""),
             fields_schema=_parse_fields_schema(kind_spec.get("fields_schema")),
+            allowed_statuses=raw_allowed,
         )
 
     # Parse statuses
@@ -551,6 +561,16 @@ def _parse_config_dict(raw: dict[str, Any]) -> TrackerConfig:
             f"human_only_statuses and blocking_statuses overlap: "
             f"{human_only_blocking_overlap}"
         )
+
+    # Validate per-kind allowed_statuses
+    for kind_name, kind_config in kinds.items():
+        if kind_config.allowed_statuses is not None:
+            for s in kind_config.allowed_statuses:
+                if s not in status_set:
+                    raise ConfigValidationError(
+                        f"Kind '{kind_name}': allowed_statuses references "
+                        f"unknown status '{s}'"
+                    )
 
     # Parse actor resolution
     actor_res = raw.get("actor_resolution", {})

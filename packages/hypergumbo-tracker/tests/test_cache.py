@@ -102,7 +102,7 @@ class TestCacheConstructor:
         cache.upsert(
             "test-id",
             CompiledItem(
-                id="test-id", kind="invariant", title="Test",
+                id="test-id", kind="work_item", title="Test",
                 status="todo_hard", created_at="2026-01-01T00:00:00Z",
                 updated_at="2026-01-01T00:00:00Z",
             ),
@@ -180,7 +180,7 @@ class TestGetCompiled:
         self, tmp_path: Path, mock_agent_uid: None
     ) -> None:
         store, cache, _ = _make_store_and_cache(tmp_path)
-        item_id = store.add(kind="invariant", title="Stale")
+        item_id = store.add(kind="work_item", title="Stale")
         source_path = store.item_path(item_id)
         stat = source_path.stat()
         ops = _parse_ops_file(source_path)
@@ -294,7 +294,7 @@ class TestUpsert:
         store, cache, _ = _make_store_and_cache(tmp_path)
         item = CompiledItem(
             id="INV-test-123",
-            kind="invariant",
+            kind="work_item",
             title="Upsert Test",
             status="todo_hard",
             priority=1,
@@ -325,7 +325,7 @@ class TestUpsert:
         assert len(result) == 1
         r = result[0]
         assert r.id == "INV-test-123"
-        assert r.kind == "invariant"
+        assert r.kind == "work_item"
         assert r.title == "Upsert Test"
         assert r.status == "todo_hard"
         assert r.priority == 1
@@ -354,7 +354,7 @@ class TestUpsert:
         store, cache, _ = _make_store_and_cache(tmp_path)
         item = CompiledItem(
             id="INV-test",
-            kind="invariant", title="Original",
+            kind="work_item", title="Original",
             status="todo_hard",
             created_at="2026-01-01T00:00:00Z",
             updated_at="2026-01-01T00:00:00Z",
@@ -380,7 +380,7 @@ class TestUpsert:
 
         item = CompiledItem(
             id="INV-corrupt",
-            kind="invariant", title="Corrupt Upsert",
+            kind="work_item", title="Corrupt Upsert",
             status="todo_hard",
             created_at="2026-01-01T00:00:00Z",
             updated_at="2026-01-01T00:00:00Z",
@@ -403,7 +403,7 @@ class TestDelete:
         store, cache, _ = _make_store_and_cache(tmp_path)
         item = CompiledItem(
             id="INV-del",
-            kind="invariant", title="Delete Me",
+            kind="work_item", title="Delete Me",
             status="todo_hard",
             created_at="2026-01-01T00:00:00Z",
             updated_at="2026-01-01T00:00:00Z",
@@ -442,7 +442,7 @@ class TestInvalidateStale:
         self, tmp_path: Path, mock_agent_uid: None
     ) -> None:
         store, cache, _ = _make_store_and_cache(tmp_path)
-        item_id = store.add(kind="invariant", title="Invalidate Test")
+        item_id = store.add(kind="work_item", title="Invalidate Test")
         cache.rebuild()
 
         # Modify source
@@ -502,7 +502,7 @@ class TestQueryBlocking:
         self, tmp_path: Path, mock_agent_uid: None
     ) -> None:
         store, cache, _ = _make_store_and_cache(tmp_path)
-        id1 = store.add(kind="invariant", title="Hard", status="todo_hard")
+        id1 = store.add(kind="work_item", title="Hard", status="todo_hard")
         id2 = store.add(kind="work_item", title="Done", status="done",
                         not_duplicate_of=[id1])
         cache.rebuild()
@@ -591,7 +591,7 @@ class TestSerializationRoundTrip:
         store, cache, _ = _make_store_and_cache(tmp_path)
         item = CompiledItem(
             id="INV-disc",
-            kind="invariant", title="Discussion",
+            kind="work_item", title="Discussion",
             status="todo_hard",
             discussion=[
                 DiscussionEntry(
@@ -621,7 +621,7 @@ class TestSerializationRoundTrip:
         store, cache, _ = _make_store_and_cache(tmp_path)
         item = CompiledItem(
             id="INV-empty",
-            kind="invariant", title="Empty Lists",
+            kind="work_item", title="Empty Lists",
             status="todo_hard",
             tags=[], before=[], duplicate_of=[], not_duplicate_of=[],
             fields={}, locked_fields=set(), discussion=[],
@@ -645,7 +645,7 @@ class TestSerializationRoundTrip:
         store, cache, _ = _make_store_and_cache(tmp_path)
         item = CompiledItem(
             id="INV-none",
-            kind="invariant", title="None Fields",
+            kind="work_item", title="None Fields",
             status="todo_hard",
             parent=None, pr_ref=None, justification=None,
             simhash=None,
@@ -743,7 +743,7 @@ class TestDiscussionOnlyFastPath:
     ) -> None:
         """Appending an update op after discuss triggers full reparse."""
         store, cache, _ = _make_store_and_cache(tmp_path)
-        item_id = store.add(kind="invariant", title="Non Discuss")
+        item_id = store.add(kind="work_item", title="Non Discuss")
         cache.rebuild()
 
         # Append discuss then update

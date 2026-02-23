@@ -189,8 +189,8 @@ class TestForkWorkflow:
         with patch("hypergumbo_tracker.store.resolve_actor",
                    return_value=("agent", "test_agent")):
             item_id = ts.workspace.add(
-                kind="invariant",
-                title="Local invariant",
+                kind="work_item",
+                title="Local work item",
                 status="todo_soft",
             )
 

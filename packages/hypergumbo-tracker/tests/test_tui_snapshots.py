@@ -79,12 +79,12 @@ def _make_tracker_set(tmp_path: Path) -> TrackerSet:
     import hypergumbo_tracker.store as store_mod
 
     with patch.object(store_mod.datetime, "datetime", _FrozenDatetime):
-        ts.add(kind="invariant", title="Symbol IDs must be stable",
+        ts.add(kind="work_item", title="Symbol IDs must be stable",
                status="todo_hard", priority=1, tags=["quality"],
                description="Symbol IDs change between runs.")
         ts.add(kind="work_item", title="Add caching layer",
                status="in_progress", priority=2)
-        ts.add(kind="invariant", title="Routes must have methods",
+        ts.add(kind="work_item", title="Routes must have methods",
                status="done", priority=0,
                fields={"statement": "Routes need methods",
                         "root_cause": "Missing validation"})

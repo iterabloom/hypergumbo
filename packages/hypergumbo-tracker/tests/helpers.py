@@ -36,16 +36,22 @@ TRACKER_TEST_STATUSES: list[str] = [
     "todo_soft",
     "in_progress",
     "needs_human_review",
+    "holding",
+    "violated",
     "done",
     "wont_do",
     "deleted",
 ]
 
-TRACKER_TEST_BLOCKING_STATUSES: list[str] = ["todo_hard", "todo_soft"]
+TRACKER_TEST_BLOCKING_STATUSES: list[str] = ["todo_hard", "todo_soft", "violated"]
 
-TRACKER_TEST_RESOLVED_STATUSES: list[str] = ["done", "wont_do", "deleted"]
+TRACKER_TEST_RESOLVED_STATUSES: list[str] = ["done", "wont_do", "deleted", "holding"]
 
 TRACKER_TEST_HUMAN_ONLY_STATUSES: list[str] = ["deleted"]
+
+TRACKER_TEST_INVARIANT_ALLOWED_STATUSES: list[str] = [
+    "holding", "violated", "needs_human_review", "deleted",
+]
 
 TRACKER_TEST_KINDS: dict[str, KindConfig] = {
     "invariant": KindConfig(
@@ -58,6 +64,7 @@ TRACKER_TEST_KINDS: dict[str, KindConfig] = {
             "regression_tests": FieldSchema(type="list"),
             "verified": FieldSchema(type="boolean"),
         },
+        allowed_statuses=["holding", "violated", "needs_human_review", "deleted"],
     ),
     "meta_invariant": KindConfig(
         prefix="META",
@@ -68,6 +75,7 @@ TRACKER_TEST_KINDS: dict[str, KindConfig] = {
             "languages_remaining": FieldSchema(type="list"),
             "progress_pct": FieldSchema(type="integer", min=0, max=100),
         },
+        allowed_statuses=["holding", "violated", "needs_human_review", "deleted"],
     ),
     "work_item": KindConfig(prefix="WI", description="Work item"),
 }
@@ -111,6 +119,7 @@ def make_test_config_dict(**overrides: Any) -> dict[str, Any]:
             "invariant": {
                 "prefix": "INV",
                 "description": "Test invariant",
+                "allowed_statuses": list(TRACKER_TEST_INVARIANT_ALLOWED_STATUSES),
                 "fields_schema": {
                     "statement": {"type": "text", "required": True},
                     "root_cause": {"type": "text", "required": True},
@@ -122,6 +131,7 @@ def make_test_config_dict(**overrides: Any) -> dict[str, Any]:
             "meta_invariant": {
                 "prefix": "META",
                 "description": "A meta-invariant tracking cross-language coverage",
+                "allowed_statuses": list(TRACKER_TEST_INVARIANT_ALLOWED_STATUSES),
                 "fields_schema": {
                     "statement": {"type": "text", "required": True},
                     "languages_done": {"type": "list"},

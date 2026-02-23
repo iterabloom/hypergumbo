@@ -45,7 +45,7 @@ def config_yaml(tmp_path: Path) -> Path:
 def sample_create_data() -> dict[str, Any]:
     """Return sample data dict for a create op."""
     return {
-        "kind": "invariant",
+        "kind": "work_item",
         "title": "Symbol IDs must be stable across runs",
         "status": "todo_hard",
         "priority": 1,

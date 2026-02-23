@@ -514,16 +514,27 @@ class TestStoreAdd:
 
     def test_add_default_status(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Default Status")
+        item_id = store.add(kind="work_item", title="Default Status")
         item = store.get(item_id)
         assert item.status == "todo_hard"  # First blocking status
+
+    def test_add_default_status_invariant(self, ops_dir: Path, mock_agent_uid: None) -> None:
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Default Status Invariant")
+        item = store.get(item_id)
+        assert item.status == "violated"  # First blocking status in allowed_statuses
+
+    def test_add_disallowed_status_for_kind(self, ops_dir: Path, mock_agent_uid: None) -> None:
+        store = Store(ops_dir, config=_make_config())
+        with pytest.raises(ValueError, match="not allowed for kind 'invariant'"):
+            store.add(kind="invariant", title="Bad Status", status="done")
 
     def test_add_with_all_fields(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
         item_id = store.add(
             kind="invariant",
             title="Full Item",
-            status="todo_soft",
+            status="violated",
             priority=1,
             tags=["analysis_quality"],
             before=["INV-other"],
@@ -533,7 +544,7 @@ class TestStoreAdd:
             justification="because",
         )
         item = store.get(item_id)
-        assert item.status == "todo_soft"
+        assert item.status == "violated"
         assert item.priority == 1
         assert "analysis_quality" in item.tags
         assert "INV-other" in item.before
@@ -549,9 +560,15 @@ class TestStoreAdd:
 
 
 class TestStoreUpdate:
+    def test_update_disallowed_status_for_kind(self, ops_dir: Path, mock_agent_uid: None) -> None:
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Invariant Item")
+        with pytest.raises(ValueError, match="not allowed for kind 'invariant'"):
+            store.update(item_id, set_fields={"status": "done"})
+
     def test_update_appends_op(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Update Test")
+        item_id = store.add(kind="work_item", title="Update Test")
         store.update(item_id, set_fields={"status": "done"})
 
         item = store.get(item_id)
@@ -938,8 +955,8 @@ class TestReadyAndList:
 
     def test_list_items_filter_status(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        store.add(kind="invariant", title="Open Item", status="todo_hard")
-        store.add(kind="invariant", title="Done Item", status="done")
+        store.add(kind="work_item", title="Open Item", status="todo_hard")
+        store.add(kind="work_item", title="Done Item", status="done")
         items = store.list_items(status="done")
         assert len(items) == 1
         assert items[0].title == "Done Item"
@@ -962,9 +979,9 @@ class TestReadyAndList:
 
     def test_list_items_sorted_by_priority(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        store.add(kind="invariant", title="P3", priority=3)
-        store.add(kind="invariant", title="P1", priority=1)
-        store.add(kind="invariant", title="P2", priority=2)
+        store.add(kind="work_item", title="P3", priority=3)
+        store.add(kind="work_item", title="P1", priority=1)
+        store.add(kind="work_item", title="P2", priority=2)
         items = store.list_items()
         assert items[0].priority == 1
         assert items[1].priority == 2
@@ -972,9 +989,9 @@ class TestReadyAndList:
 
     def test_ready_only_blocking_statuses(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        store.add(kind="invariant", title="Blocking", status="todo_hard")
-        store.add(kind="invariant", title="Done", status="done")
-        store.add(kind="invariant", title="In Progress", status="in_progress")
+        store.add(kind="work_item", title="Blocking", status="todo_hard")
+        store.add(kind="work_item", title="Done", status="done")
+        store.add(kind="work_item", title="In Progress", status="in_progress")
         ready = store.ready()
         assert len(ready) == 1
         assert ready[0].title == "Blocking"
@@ -983,8 +1000,8 @@ class TestReadyAndList:
         self, ops_dir: Path, mock_agent_uid: None
     ) -> None:
         store = Store(ops_dir, config=_make_config())
-        blocker_id = store.add(kind="invariant", title="Blocker", status="todo_hard")
-        blocked_id = store.add(kind="invariant", title="Blocked", status="todo_hard")
+        blocker_id = store.add(kind="work_item", title="Blocker", status="todo_hard")
+        blocked_id = store.add(kind="work_item", title="Blocked", status="todo_hard")
 
         # blocker.before = [blocked_id] means "finish Blocker before Blocked"
         # So Blocked is blocked by Blocker
@@ -1000,16 +1017,16 @@ class TestReadyAndList:
     def test_ready_excludes_duplicates(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
         store.add(
-            kind="invariant", title="Duplicate", status="todo_hard",
-            duplicate_of=["INV-other"],
+            kind="work_item", title="Duplicate", status="todo_hard",
+            duplicate_of=["WI-other"],
         )
         ready = store.ready()
         assert len(ready) == 0
 
     def test_ready_sorted_by_priority(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        store.add(kind="invariant", title="P2", status="todo_hard", priority=2)
-        store.add(kind="invariant", title="P0", status="todo_hard", priority=0)
+        store.add(kind="work_item", title="P2", status="todo_hard", priority=2)
+        store.add(kind="work_item", title="P0", status="todo_hard", priority=0)
         ready = store.ready()
         assert ready[0].priority == 0
 
@@ -1196,8 +1213,8 @@ class TestReadyBeforeSemantics:
 
     def test_blocker_ready_blocked_not(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        blocker_id = store.add(kind="invariant", title="Blocker", status="todo_hard")
-        blocked_id = store.add(kind="invariant", title="Blocked", status="todo_hard")
+        blocker_id = store.add(kind="work_item", title="Blocker", status="todo_hard")
+        blocked_id = store.add(kind="work_item", title="Blocked", status="todo_hard")
 
         # blocker.before = [blocked_id] → blocker blocks blocked_id
         store.update(blocker_id, add_fields={"before": [blocked_id]})
@@ -1212,8 +1229,8 @@ class TestReadyBeforeSemantics:
 
     def test_resolved_blocker_unblocks(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        blocker_id = store.add(kind="invariant", title="Blocker", status="todo_hard")
-        blocked_id = store.add(kind="invariant", title="Blocked", status="todo_hard")
+        blocker_id = store.add(kind="work_item", title="Blocker", status="todo_hard")
+        blocked_id = store.add(kind="work_item", title="Blocked", status="todo_hard")
 
         store.update(blocker_id, add_fields={"before": [blocked_id]})
         # Resolve the blocker
@@ -1600,7 +1617,7 @@ class TestAgentEnforcement:
     def test_update_locked_field_agent(self, ops_dir: Path, mock_agent_uid: None) -> None:
         """Agent update on locked field raises LockedFieldError (lines 928-952)."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Locked Item")
+        item_id = store.add(kind="work_item", title="Locked Item")
 
         # Manually write a lock op to the file (human authority)
         import datetime
@@ -1743,7 +1760,7 @@ class TestAgentEnforcement:
     ) -> None:
         """Unlock with lowercase 'status' removes lock set with uppercase 'Status'."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Unlock Case Test")
+        item_id = store.add(kind="work_item", title="Unlock Case Test")
 
         import datetime
         now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -2395,8 +2412,8 @@ class TestReadyFilters:
     def test_duplicate_excluded(self, ops_dir: Path, mock_agent_uid: None) -> None:
         """Items with duplicate_of are excluded from ready (line 1437)."""
         store = Store(ops_dir, config=_make_config())
-        id1 = store.add(kind="invariant", title="Original", status="todo_hard")
-        id2 = store.add(kind="invariant", title="Duplicate", status="todo_hard",
+        id1 = store.add(kind="work_item", title="Original", status="todo_hard")
+        id2 = store.add(kind="work_item", title="Duplicate", status="todo_hard",
                         duplicate_of=[id1])
         ready = store.ready()
         ready_ids = {r.id for r in ready}
@@ -2406,7 +2423,7 @@ class TestReadyFilters:
     def test_cross_tier_conflict_excluded(self, ops_dir: Path, mock_agent_uid: None) -> None:
         """Items with cross_tier_conflict are excluded from ready (line 1437)."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Conflicted", status="todo_hard")
+        item_id = store.add(kind="work_item", title="Conflicted", status="todo_hard")
 
         # Manually set cross_tier_conflict on compiled item
         # We need to write it into the ops file in a way that compile sees it
@@ -2419,7 +2436,7 @@ class TestReadyFilters:
     def test_resolved_item_not_ready(self, ops_dir: Path, mock_agent_uid: None) -> None:
         """Items in resolved_statuses are excluded from ready."""
         store = Store(ops_dir, config=_make_config())
-        store.add(kind="invariant", title="Done", status="done")
+        store.add(kind="work_item", title="Done", status="done")
         ready = store.ready()
         assert len(ready) == 0
 
@@ -2751,7 +2768,7 @@ class TestReadyCrossTierConflict:
     ) -> None:
         """Items with cross_tier_conflict=True are excluded from ready (line 1437)."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Conflicted", status="todo_hard")
+        item_id = store.add(kind="work_item", title="Conflicted", status="todo_hard")
 
         # Patch _compile_all to return the item with cross_tier_conflict=True
         real_items = store._compile_all()
@@ -2798,7 +2815,7 @@ class TestCompileAllCached:
         from hypergumbo_tracker.models import Tier
 
         store = Store(ops_dir, config=_make_config())
-        id1 = store.add(kind="invariant", title="Cached A")
+        id1 = store.add(kind="work_item", title="Cached A")
         id2 = store.add(kind="work_item", title="Cached B", not_duplicate_of=[id1])
 
         db_path = ops_dir.parent / "test.cache.db"
@@ -2819,7 +2836,7 @@ class TestCompileAllCached:
         from hypergumbo_tracker.models import Tier
 
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Cache Hit Test")
+        item_id = store.add(kind="work_item", title="Cache Hit Test")
 
         db_path = ops_dir.parent / "test.cache.db"
         cache = Cache(store, db_path, Tier.WORKSPACE)
@@ -2848,7 +2865,7 @@ class TestCompileAllCached:
         from hypergumbo_tracker.models import Tier
 
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Will Modify")
+        item_id = store.add(kind="work_item", title="Will Modify")
 
         db_path = ops_dir.parent / "test.cache.db"
         cache = Cache(store, db_path, Tier.WORKSPACE)
@@ -2874,13 +2891,13 @@ class TestCompileAllCached:
         from hypergumbo_tracker.models import Tier
 
         store = Store(ops_dir, config=_make_config())
-        store.add(kind="invariant", title="Good Item")
+        store.add(kind="work_item", title="Good Item")
 
         db_path = ops_dir.parent / "test.cache.db"
         cache = Cache(store, db_path, Tier.WORKSPACE)
 
         # Write a corrupt file
-        (ops_dir / ".INV-corrupt-cached.ops").write_text("{{bad yaml")
+        (ops_dir / ".WI-corrupt-cached.ops").write_text("{{bad yaml")
 
         items = store._compile_all_cached(cache)
         assert len(items) == 1
@@ -2895,7 +2912,7 @@ class TestCompileAllCached:
         from hypergumbo_tracker.models import Tier
 
         store = Store(ops_dir, config=_make_config())
-        store.add(kind="invariant", title="Listed via Cache")
+        store.add(kind="work_item", title="Listed via Cache")
 
         db_path = ops_dir.parent / "test.cache.db"
         cache = Cache(store, db_path, Tier.WORKSPACE)
@@ -2913,7 +2930,7 @@ class TestCompileAllCached:
         from hypergumbo_tracker.models import Tier
 
         store = Store(ops_dir, config=_make_config())
-        store.add(kind="invariant", title="Ready via Cache", status="todo_hard")
+        store.add(kind="work_item", title="Ready via Cache", status="todo_hard")
 
         db_path = ops_dir.parent / "test.cache.db"
         cache = Cache(store, db_path, Tier.WORKSPACE)
@@ -2967,7 +2984,7 @@ class TestPreWriteValidation:
               set:
                 status: done
         """))
-        with pytest.raises(CorruptFileError, match="uncompilable"):
+        with pytest.raises(CorruptFileError, match="no create op"):
             store.update(item_id, set_fields={"status": "done"})
 
     def test_new_ops_file_has_group_write(

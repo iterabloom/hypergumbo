@@ -235,6 +235,15 @@ def validate_ops_file(
             f"{fname}: first op must be 'create', got {first_op.get('op')!r}"
         )
 
+    # Extract kind from first create op for per-kind validation of updates
+    item_kind: str | None = None
+    for op_dict in ops:
+        if op_dict.get("op") == "create":
+            data = op_dict.get("data", {})
+            if isinstance(data, dict):
+                item_kind = data.get("kind")
+            break
+
     # Check required fields and op types
     for i, op_dict in enumerate(ops):
         op_type = op_dict.get("op")
@@ -259,7 +268,7 @@ def validate_ops_file(
 
         # Value validation for update ops
         if op_type == "update":
-            _validate_update_values(fname, i, op_dict, config, result)
+            _validate_update_values(fname, i, op_dict, config, result, item_kind=item_kind)
 
         # Timestamp validation
         at = op_dict.get("at")
@@ -308,6 +317,15 @@ def _validate_create_values(
             f"Valid: {config.statuses}"
         )
 
+    # Per-kind allowed_statuses validation
+    if status is not None and kind is not None and kind in config.kinds:
+        kind_config = config.kinds[kind]
+        if kind_config.allowed_statuses is not None and status not in kind_config.allowed_statuses:
+            result.errors.append(
+                f"{fname}: op {idx}: status {status!r} not allowed for kind "
+                f"{kind!r}. Allowed: {kind_config.allowed_statuses}"
+            )
+
     # Priority validation
     priority = data.get("priority")
     if priority is not None:
@@ -335,6 +353,8 @@ def _validate_update_values(
     op_dict: dict[str, Any],
     config: TrackerConfig,
     result: ValidationResult,
+    *,
+    item_kind: str | None = None,
 ) -> None:
     """Validate values in an update op."""
     set_dict = op_dict.get("set", {})
@@ -348,6 +368,15 @@ def _validate_update_values(
             f"{fname}: op {idx}: unknown status {status!r}. "
             f"Valid: {config.statuses}"
         )
+
+    # Per-kind allowed_statuses validation
+    if status is not None and item_kind is not None and item_kind in config.kinds:
+        kind_config = config.kinds[item_kind]
+        if kind_config.allowed_statuses is not None and status not in kind_config.allowed_statuses:
+            result.errors.append(
+                f"{fname}: op {idx}: status {status!r} not allowed for kind "
+                f"{item_kind!r}. Allowed: {kind_config.allowed_statuses}"
+            )
 
     # Priority validation
     priority = set_dict.get("priority")

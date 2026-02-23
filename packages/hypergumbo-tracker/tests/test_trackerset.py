@@ -161,7 +161,7 @@ class TestListItems:
     def test_filter_by_status(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        id1 = tracker_set.add("invariant", "Hard", tier=Tier.WORKSPACE,
+        id1 = tracker_set.add("work_item", "Hard", tier=Tier.WORKSPACE,
                               status="todo_hard")
         id2 = tracker_set.add("work_item", "Soft", tier=Tier.WORKSPACE,
                               status="todo_soft", not_duplicate_of=[id1])
@@ -232,7 +232,7 @@ class TestReady:
     ) -> None:
         """Once blocker is resolved, target becomes ready."""
         id_y = tracker_set.add("work_item", "Target", tier=Tier.WORKSPACE)
-        id_x = tracker_set.add("invariant", "Blocker", tier=Tier.CANONICAL,
+        id_x = tracker_set.add("work_item", "Blocker", tier=Tier.CANONICAL,
                                before=[id_y], not_duplicate_of=[id_y])
         # Resolve the blocker
         tracker_set.update(id_x, set_fields={"status": "done"})
@@ -321,7 +321,7 @@ class TestWriteRouting:
     def test_update_routes_to_correct_tier(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        item_id = tracker_set.add("invariant", "Update Me", tier=Tier.CANONICAL)
+        item_id = tracker_set.add("work_item", "Update Me", tier=Tier.CANONICAL)
         tracker_set.update(item_id, set_fields={"status": "in_progress"})
         item = tracker_set.get(item_id)
         assert item.status == "in_progress"
@@ -394,7 +394,7 @@ class TestCountTodos:
     def test_resolved_not_counted(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        item_id = tracker_set.add("invariant", "Done Item", tier=Tier.WORKSPACE,
+        item_id = tracker_set.add("work_item", "Done Item", tier=Tier.WORKSPACE,
                                   status="done")
         assert tracker_set.count_todos() == 0
 
@@ -447,7 +447,7 @@ class TestPromoteDemote:
     def test_promote_preserves_ops(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        item_id = tracker_set.add("invariant", "Ops Preserved", tier=Tier.WORKSPACE)
+        item_id = tracker_set.add("work_item", "Ops Preserved", tier=Tier.WORKSPACE)
         tracker_set.update(item_id, set_fields={"status": "in_progress"})
         tracker_set.promote(item_id)
         item = tracker_set.get(item_id)
@@ -766,7 +766,7 @@ class TestCacheHooks:
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
         """Operations work without cache (no-op cache hooks)."""
-        item_id = tracker_set.add("invariant", "No Cache")
+        item_id = tracker_set.add("work_item", "No Cache")
         tracker_set.update(item_id, set_fields={"status": "in_progress"})
         assert tracker_set.get(item_id).status == "in_progress"
 
@@ -784,7 +784,7 @@ class TestCacheHooks:
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
         """Update triggers cache upsert."""
-        item_id = tracker_set.add("invariant", "Cache Update")
+        item_id = tracker_set.add("work_item", "Cache Update")
         mock_cache = MagicMock()
         tracker_set.set_caches({Tier.WORKSPACE: mock_cache})
         tracker_set.update(item_id, set_fields={"status": "done"})
@@ -1001,7 +1001,7 @@ class TestTrackerSetCacheIntegration:
         cache_dir = tmp_path / "cache"
         cache_dir.mkdir()
         ts = self._make_cached_tracker_set(tracker_root, cache_dir)
-        item_id = ts.add("invariant", "Cache Update", tier=Tier.WORKSPACE)
+        item_id = ts.add("work_item", "Cache Update", tier=Tier.WORKSPACE)
         ts.update(item_id, set_fields={"status": "done"})
         cached = ts._caches[Tier.WORKSPACE].get_all()
         item = next(i for i in cached if i.id == item_id)

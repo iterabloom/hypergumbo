@@ -109,12 +109,12 @@ def _make_tracker_set(tmp_path: Path) -> TrackerSet:
 
     ts = TrackerSet(root, config=config)
 
-    ts.add(kind="invariant", title="Symbol IDs must be stable",
+    ts.add(kind="work_item", title="Symbol IDs must be stable",
            status="todo_hard", priority=1, tags=["quality"],
            description="Symbol IDs change between runs.")
     ts.add(kind="work_item", title="Add caching layer",
            status="in_progress", priority=2)
-    ts.add(kind="invariant", title="Routes must have methods",
+    ts.add(kind="work_item", title="Routes must have methods",
            status="done", priority=0,
            fields={"statement": "Routes need methods", "root_cause": "Missing validation"})
 
@@ -387,7 +387,7 @@ class TestFormatDetailLines:
 
         item = CompiledItem(
             id="INV-babab-dabab",
-            kind="invariant",
+            kind="work_item",
             title="Symbol IDs must be stable",
             status="todo_hard",
             priority=1,
@@ -457,7 +457,7 @@ class TestFormatDetailLines:
         """Wide tier should show timestamps, locked fields, and conflict."""
         item = CompiledItem(
             id="INV-wide",
-            kind="invariant",
+            kind="work_item",
             title="Wide detail test",
             status="todo_hard",
             priority=1,
@@ -484,7 +484,7 @@ class TestFormatDetailLines:
 
         item = CompiledItem(
             id="INV-disc",
-            kind="invariant",
+            kind="work_item",
             title="Has discussion",
             status="todo_hard",
             discussion=[
@@ -536,7 +536,7 @@ class TestFormatDetailLines:
         """Frozen item shows FROZEN banner."""
         item = CompiledItem(
             id="INV-frozen",
-            kind="invariant",
+            kind="work_item",
             title="Frozen Item",
             status="todo_hard",
             priority=1,
@@ -591,7 +591,7 @@ class TestLabelMarkup:
 
         item = CompiledItem(
             id="INV-esc",
-            kind="invariant",
+            kind="work_item",
             title="Escape test",
             status="todo_hard",
             discussion=[
@@ -615,7 +615,7 @@ class TestLabelMarkup:
 
         item = CompiledItem(
             id="INV-actesc",
-            kind="invariant",
+            kind="work_item",
             title="Activity escape test",
             status="todo_hard",
             discussion=[
@@ -706,7 +706,7 @@ class TestFormatActivityLines:
 
         item = CompiledItem(
             id="INV-abc",
-            kind="invariant",
+            kind="work_item",
             title="Test",
             status="todo_hard",
             discussion=[
@@ -749,7 +749,7 @@ class TestFormatActivityLines:
         ]
         item = CompiledItem(
             id="INV-xyz",
-            kind="invariant",
+            kind="work_item",
             title="Many entries",
             status="todo_hard",
             discussion=entries,
@@ -952,7 +952,7 @@ class TestShowDetailDirect:
         ts = _make_tracker_set(tmp_path)
         # Add an item with all fields populated
         item_id = ts.add(
-            kind="invariant",
+            kind="work_item",
             title="Full detail item",
             status="in_progress",
             priority=1,
@@ -1012,7 +1012,7 @@ class TestShowDetailDirect:
         ts = _make_tracker_set(tmp_path)
         item = CompiledItem(
             id="TEST-xyz",
-            kind="invariant",
+            kind="work_item",
             title="No tier item",
             status="done",
         )
@@ -1457,8 +1457,8 @@ class TestFilteredItems:
             await _wait_for_std_table(pilot, app)
             app._filter_text = "work_item"
             result = app._filtered_items()
-            assert len(result) == 1
-            assert result[0].kind == "work_item"
+            assert len(result) == 3
+            assert all(r.kind == "work_item" for r in result)
 
 
 # ---------------------------------------------------------------------------
@@ -2062,7 +2062,7 @@ class TestWideLayout:
 
         ts = _make_tracker_set(tmp_path)
         item_id = ts.add(
-            kind="invariant",
+            kind="work_item",
             title="Suppression check item",
             status="todo_hard",
             priority=1,
@@ -2470,7 +2470,7 @@ class TestEditItemScreenUnit:
     def _make_item(self) -> CompiledItem:
         return CompiledItem(
             id="INV-test",
-            kind="invariant",
+            kind="work_item",
             title="Original Title",
             status="todo_hard",
             priority=1,
@@ -2506,6 +2506,27 @@ class TestEditItemScreenUnit:
             await pilot.pause()
             assert app._result is not None
             assert app._result["set_fields"]["status"] == "in_progress"
+
+    async def test_statuses_filtered_by_kinds_config(self) -> None:
+        from hypergumbo_tracker.models import KindConfig
+
+        item = CompiledItem(
+            id="INV-test",
+            kind="invariant",
+            title="Test Invariant",
+            status="violated",
+            priority=1,
+            tier=Tier.CANONICAL,
+            tags=[],
+            description="",
+        )
+        kc = KindConfig(prefix="INV", allowed_statuses=["holding", "violated"])
+        screen = EditItemScreen(
+            item,
+            ["todo_hard", "in_progress", "done", "holding", "violated"],
+            kinds_config={"invariant": kc},
+        )
+        assert screen._statuses == ["holding", "violated"]
 
     async def test_submit_no_changes_returns_none(self) -> None:
         item = self._make_item()
@@ -4166,7 +4187,7 @@ class TestSchemaAwareRendering:
 
         item = CompiledItem(
             id="INV-abc",
-            kind="invariant",
+            kind="work_item",
             title="Schema test",
             status="todo_hard",
             fields={
@@ -4213,7 +4234,7 @@ class TestSchemaAwareRendering:
 
         item = CompiledItem(
             id="INV-xyz",
-            kind="invariant",
+            kind="work_item",
             title="No desc",
             status="todo_hard",
             fields={"statement": "must be true"},
@@ -4232,7 +4253,7 @@ class TestSchemaAwareRendering:
 
         item = CompiledItem(
             id="INV-unk",
-            kind="invariant",
+            kind="work_item",
             title="All unknown",
             status="todo_hard",
             fields={"custom1": "val1"},
@@ -4307,7 +4328,7 @@ class TestPerFieldLockIcons:
         """Locked status field shows [locked] indicator."""
         item = CompiledItem(
             id="INV-lock",
-            kind="invariant",
+            kind="work_item",
             title="Lock test",
             status="todo_hard",
             locked_fields={"status"},
@@ -4321,7 +4342,7 @@ class TestPerFieldLockIcons:
         """Locked priority field shows [locked] indicator."""
         item = CompiledItem(
             id="INV-lock2",
-            kind="invariant",
+            kind="work_item",
             title="Lock test 2",
             status="todo_hard",
             locked_fields={"priority"},
@@ -4335,7 +4356,7 @@ class TestPerFieldLockIcons:
         """Locked description field shows [locked] indicator."""
         item = CompiledItem(
             id="INV-lock3",
-            kind="invariant",
+            kind="work_item",
             title="Lock desc test",
             status="todo_hard",
             description="Some text",
@@ -4351,7 +4372,7 @@ class TestPerFieldLockIcons:
 
         item = CompiledItem(
             id="INV-lock4",
-            kind="invariant",
+            kind="work_item",
             title="Lock disc test",
             status="todo_hard",
             locked_fields={"discussion"},
@@ -4372,7 +4393,7 @@ class TestPerFieldLockIcons:
 
         item = CompiledItem(
             id="INV-lock5",
-            kind="invariant",
+            kind="work_item",
             title="Lock schema test",
             status="todo_hard",
             fields={"statement": "must hold", "root_cause": "bug"},
@@ -4410,7 +4431,7 @@ class TestDiscussionBadge:
         ]
         item = CompiledItem(
             id="INV-few",
-            kind="invariant",
+            kind="work_item",
             title="Few messages",
             status="todo_hard",
             discussion=entries,
@@ -4433,7 +4454,7 @@ class TestDiscussionBadge:
         ]
         item = CompiledItem(
             id="INV-many",
-            kind="invariant",
+            kind="work_item",
             title="Many messages",
             status="todo_hard",
             discussion=entries,
@@ -4455,7 +4476,7 @@ class TestDiscussionBadge:
         ]
         item = CompiledItem(
             id="INV-act",
-            kind="invariant",
+            kind="work_item",
             title="Activity badge",
             status="todo_hard",
             discussion=entries,
@@ -4476,7 +4497,7 @@ class TestDiscussionBadge:
         ]
         item = CompiledItem(
             id="INV-noact",
-            kind="invariant",
+            kind="work_item",
             title="No badge activity",
             status="todo_hard",
             discussion=entries,
@@ -4769,9 +4790,9 @@ class TestApplyCustomOrder:
 
     def _make_items(self) -> list[CompiledItem]:
         return [
-            CompiledItem(id="A", kind="invariant", title="Alpha", status="todo_hard"),
+            CompiledItem(id="A", kind="work_item", title="Alpha", status="todo_hard"),
             CompiledItem(id="B", kind="work_item", title="Bravo", status="done"),
-            CompiledItem(id="C", kind="invariant", title="Charlie", status="in_progress"),
+            CompiledItem(id="C", kind="work_item", title="Charlie", status="in_progress"),
         ]
 
     def test_full_order(self) -> None:
@@ -4893,11 +4914,11 @@ def _make_tracker_set_with_resolved(tmp_path: Path) -> TrackerSet:
 
     ts = TrackerSet(root, config=config)
 
-    ts.add(kind="invariant", title="Active item 1",
+    ts.add(kind="work_item", title="Active item 1",
            status="todo_hard", priority=1)
     ts.add(kind="work_item", title="In progress item",
            status="in_progress", priority=2)
-    ts.add(kind="invariant", title="Done item",
+    ts.add(kind="work_item", title="Done item",
            status="done", priority=0)
     ts.add(kind="work_item", title="Wont do item",
            status="wont_do", priority=3)

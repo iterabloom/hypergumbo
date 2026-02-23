@@ -654,6 +654,8 @@ class NewItemScreen(ModalScreen[dict[str, Any] | None]):
     """Modal for creating a new tracker item.
 
     Presents fields for kind, title, status, priority, tier, and description.
+    When a kind with ``allowed_statuses`` is selected, the status dropdown
+    is filtered to only show those statuses.
     Returns a dict suitable for ``TrackerSet.add(**result)`` or None if
     cancelled.
     """
@@ -664,14 +666,30 @@ class NewItemScreen(ModalScreen[dict[str, Any] | None]):
 
     DEFAULT_CSS = _modal_css("NewItemScreen")
 
-    def __init__(self, kinds: list[str], statuses: list[str]) -> None:
+    def __init__(
+        self,
+        kinds: list[str],
+        statuses: list[str],
+        kinds_config: dict[str, Any] | None = None,
+    ) -> None:
         super().__init__()
         self._kinds = kinds
         self._statuses = statuses
+        self._kinds_config = kinds_config or {}
+
+    def _statuses_for_kind(self, kind: str) -> list[str]:
+        """Return statuses allowed for the given kind, or all statuses."""
+        kc = self._kinds_config.get(kind)
+        if kc is not None and kc.allowed_statuses is not None:
+            return kc.allowed_statuses
+        return self._statuses
 
     def compose(self) -> ComposeResult:
         kind_options: list[tuple[str, str]] = [(k, k) for k in self._kinds]
-        status_options: list[tuple[str, str]] = [(s, s) for s in self._statuses]
+        # Initial status options based on first kind
+        initial_kind = self._kinds[0] if self._kinds else ""
+        initial_statuses = self._statuses_for_kind(initial_kind)
+        status_options: list[tuple[str, str]] = [(s, s) for s in initial_statuses]
         tier_options: list[tuple[str, str]] = [
             ("workspace", "workspace"),
             ("canonical", "canonical"),
@@ -700,6 +718,16 @@ class NewItemScreen(ModalScreen[dict[str, Any] | None]):
             with Horizontal(classes="modal-buttons"):
                 yield Button("Create", variant="primary", id="submit")
                 yield Button("Cancel", id="cancel")
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        """When kind changes, update status dropdown to allowed statuses."""
+        if event.select.id != "kind-select":
+            return
+        kind = str(event.value)
+        new_statuses = self._statuses_for_kind(kind)
+        status_select = self.query_one("#status-select", Select)
+        new_options = [(s, s) for s in new_statuses]
+        status_select.set_options(new_options)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "submit":
@@ -742,9 +770,11 @@ class NewItemScreen(ModalScreen[dict[str, Any] | None]):
 class EditItemScreen(ModalScreen[dict[str, Any] | None]):
     """Modal for editing an existing tracker item.
 
-    Pre-populated with the item's current values. Returns a dict with
-    ``set_fields``, ``add_fields``, and ``remove_fields`` keys suitable
-    for ``TrackerSet.update()``, or None if cancelled or nothing changed.
+    Pre-populated with the item's current values. When the item's kind has
+    ``allowed_statuses``, the status dropdown is filtered to only those.
+    Returns a dict with ``set_fields``, ``add_fields``, and ``remove_fields``
+    keys suitable for ``TrackerSet.update()``, or None if cancelled or
+    nothing changed.
     """
 
     BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
@@ -753,10 +783,20 @@ class EditItemScreen(ModalScreen[dict[str, Any] | None]):
 
     DEFAULT_CSS = _modal_css("EditItemScreen")
 
-    def __init__(self, item: CompiledItem, statuses: list[str]) -> None:
+    def __init__(
+        self,
+        item: CompiledItem,
+        statuses: list[str],
+        kinds_config: dict[str, Any] | None = None,
+    ) -> None:
         super().__init__()
         self._item = item
-        self._statuses = statuses
+        # Filter statuses by kind's allowed_statuses if applicable
+        kc = (kinds_config or {}).get(item.kind)
+        if kc is not None and kc.allowed_statuses is not None:
+            self._statuses = kc.allowed_statuses
+        else:
+            self._statuses = statuses
 
     def compose(self) -> ComposeResult:
         status_options: list[tuple[str, str]] = [
@@ -1946,7 +1986,7 @@ class TrackerApp(App):
         kinds = list(config.kinds.keys())
         statuses = list(config.statuses)
         self.push_screen(
-            NewItemScreen(kinds, statuses),
+            NewItemScreen(kinds, statuses, kinds_config=config.kinds),
             callback=self._on_new_item,
         )
 
@@ -1967,9 +2007,10 @@ class TrackerApp(App):
         if not item:
             self.notify("No item selected", severity="warning")
             return
-        statuses = list(self._tracker_set.config.statuses)
+        config = self._tracker_set.config
+        statuses = list(config.statuses)
         self.push_screen(
-            EditItemScreen(item, statuses),
+            EditItemScreen(item, statuses, kinds_config=config.kinds),
             callback=partial(self._on_edit_item, item.id),
         )
 

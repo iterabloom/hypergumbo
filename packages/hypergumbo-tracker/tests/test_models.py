@@ -415,10 +415,11 @@ class TestConfigLoading:
         assert cfg.kinds["invariant"].prefix == "INV"
         assert cfg.statuses == [
             "todo_hard", "todo_soft", "in_progress",
-            "needs_human_review", "done", "wont_do", "deleted",
+            "needs_human_review", "holding", "violated",
+            "done", "wont_do", "deleted",
         ]
-        assert cfg.blocking_statuses == ["todo_hard", "todo_soft"]
-        assert cfg.resolved_statuses == ["done", "wont_do", "deleted"]
+        assert cfg.blocking_statuses == ["todo_hard", "todo_soft", "violated"]
+        assert cfg.resolved_statuses == ["done", "wont_do", "deleted", "holding"]
         assert cfg.human_only_statuses == ["deleted"]
         assert cfg.agent_usernames == ["*_agent"]
         assert cfg.lamport_branches == ["dev", "main"]
@@ -596,6 +597,18 @@ class TestConfigValidation:
         raw["stop_hook"]["scope"] = "workspace"
         cfg = _parse_config_dict(raw)
         assert cfg.scope == "workspace"
+
+    def test_allowed_statuses_not_list(self) -> None:
+        raw = self._minimal_config()
+        raw["kinds"] = {"wi": {"prefix": "WI", "allowed_statuses": "bad"}}
+        with pytest.raises(ConfigValidationError, match="allowed_statuses must be a list"):
+            _parse_config_dict(raw)
+
+    def test_allowed_statuses_unknown_status(self) -> None:
+        raw = self._minimal_config()
+        raw["kinds"] = {"wi": {"prefix": "WI", "allowed_statuses": ["nonexistent"]}}
+        with pytest.raises(ConfigValidationError, match="allowed_statuses references unknown status 'nonexistent'"):
+            _parse_config_dict(raw)
 
     def test_human_only_statuses_parsed(self) -> None:
         raw = self._minimal_config()

@@ -905,7 +905,27 @@ class Store:
 
         kind_config = self._config.kinds[kind]
         if status is None:
-            status = self._config.blocking_statuses[0] if self._config.blocking_statuses else "todo_hard"
+            # Pick default: first blocking status that's in allowed_statuses
+            # (so invariants don't default to todo_hard)
+            if kind_config.allowed_statuses is not None:
+                status = next(
+                    (s for s in self._config.blocking_statuses
+                     if s in kind_config.allowed_statuses),
+                    kind_config.allowed_statuses[0],
+                )
+            else:
+                status = (
+                    self._config.blocking_statuses[0]
+                    if self._config.blocking_statuses
+                    else "todo_hard"
+                )
+
+        # Check per-kind allowed_statuses
+        if kind_config.allowed_statuses is not None and status not in kind_config.allowed_statuses:
+            raise ValueError(
+                f"Status '{status}' is not allowed for kind '{kind}'. "
+                f"Allowed: {kind_config.allowed_statuses}"
+            )
 
         by, actor = resolve_actor(self._config.agent_usernames)
 
@@ -1036,6 +1056,20 @@ class Store:
                 raise HumanAuthorityError(
                     f"Status '{new_status}' requires human authority."
                 )
+
+        # Check per-kind allowed_statuses
+        if set_fields and "status" in set_fields:
+            ops = _parse_ops_file(item_path)
+            compiled = compile_ops(ops, item_id)
+            kind_config = self._config.kinds.get(compiled.kind)
+            if kind_config and kind_config.allowed_statuses is not None:
+                new_status = set_fields["status"]
+                if new_status not in kind_config.allowed_statuses:
+                    raise ValueError(
+                        f"Status '{new_status}' is not allowed for kind "
+                        f"'{compiled.kind}'. "
+                        f"Allowed: {kind_config.allowed_statuses}"
+                    )
 
         # Validate field names
         all_dicts = [
