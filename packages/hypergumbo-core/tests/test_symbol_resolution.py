@@ -892,3 +892,32 @@ class TestListNameResolverAmbiguityThreshold:
         assert result.found is True, (
             "Single candidate should always resolve regardless of threshold"
         )
+
+    def test_path_hint_narrowing_avoids_threshold(self) -> None:
+        """When path hint narrows 3 → 2 candidates, threshold=3 is avoided.
+
+        Three candidates for "Err":
+          - /repo/pkg/log/handler.go  (standalone Err)
+          - /repo/pkg/log/handler.go  (Handler.Err, stored by short name)
+          - /repo/pkg/parser/lexer.go (Lexer.Err)
+
+        Path hint "pkg/log" matches 2/3 candidates (both in pkg/log/).
+        Without narrowing, the threshold fires (3 >= 3 → unresolved).
+        With narrowing, the filtered set is 2 < 3 → resolves.
+        """
+        syms = [
+            make_symbol("Err", "/repo/pkg/log/handler.go", "go"),
+            make_symbol("Handler.Err", "/repo/pkg/log/handler.go", "go"),
+            make_symbol("Lexer.Err", "/repo/pkg/parser/lexer.go", "go"),
+        ]
+        # Store all under short name "Err" (as Go analyzer does)
+        resolver = ListNameResolver({"Err": syms}, ambiguity_threshold=3)
+        result = resolver.lookup("Err", path_hint="pkg/log")
+        assert result.found is True, (
+            "Path hint 'pkg/log' should narrow from 3 to 2 candidates, "
+            "avoiding threshold=3"
+        )
+        # Should pick one of the two pkg/log symbols
+        assert "log" in result.symbol.path, (
+            f"Should resolve to a symbol in pkg/log, got {result.symbol.path}"
+        )

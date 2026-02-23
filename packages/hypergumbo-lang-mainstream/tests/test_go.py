@@ -1606,6 +1606,75 @@ class TestImportPathToDirHint:
         assert result is None
 
 
+class TestGoModulePathHelpers:
+    """Tests for _read_go_module_path and _strip_module_prefix."""
+
+    def test_read_go_module_path(self, tmp_path: Path) -> None:
+        """Reads module path from go.mod."""
+        from hypergumbo_lang_mainstream.go import _read_go_module_path
+
+        (tmp_path / "go.mod").write_text(
+            "module github.com/example/myproject\n\ngo 1.21\n"
+        )
+        assert _read_go_module_path(tmp_path) == "github.com/example/myproject"
+
+    def test_read_go_module_path_missing(self, tmp_path: Path) -> None:
+        """Returns None when go.mod doesn't exist."""
+        from hypergumbo_lang_mainstream.go import _read_go_module_path
+
+        assert _read_go_module_path(tmp_path) is None
+
+    def test_read_go_module_path_no_module_line(self, tmp_path: Path) -> None:
+        """Returns None when go.mod exists but has no module declaration."""
+        from hypergumbo_lang_mainstream.go import _read_go_module_path
+
+        (tmp_path / "go.mod").write_text("go 1.21\n")
+        assert _read_go_module_path(tmp_path) is None
+
+    def test_read_go_module_path_os_error(self, tmp_path: Path) -> None:
+        """Returns None when go.mod can't be read."""
+        from hypergumbo_lang_mainstream.go import _read_go_module_path
+
+        go_mod = tmp_path / "go.mod"
+        go_mod.write_text("module foo\n")
+        go_mod.chmod(0o000)
+        try:
+            result = _read_go_module_path(tmp_path)
+            assert result is None
+        finally:
+            go_mod.chmod(0o644)
+
+    def test_strip_module_prefix_local(self) -> None:
+        """Strips module prefix from local import paths."""
+        from hypergumbo_lang_mainstream.go import _strip_module_prefix
+
+        result = _strip_module_prefix(
+            "github.com/example/trivy/pkg/log",
+            "github.com/example/trivy",
+        )
+        assert result == "pkg/log"
+
+    def test_strip_module_prefix_exact_match(self) -> None:
+        """Returns empty string when import equals module path."""
+        from hypergumbo_lang_mainstream.go import _strip_module_prefix
+
+        result = _strip_module_prefix(
+            "github.com/example/trivy",
+            "github.com/example/trivy",
+        )
+        assert result == ""
+
+    def test_strip_module_prefix_external(self) -> None:
+        """Returns unchanged path for external imports."""
+        from hypergumbo_lang_mainstream.go import _strip_module_prefix
+
+        result = _strip_module_prefix(
+            "github.com/stretchr/testify/assert",
+            "github.com/example/trivy",
+        )
+        assert result == "github.com/stretchr/testify/assert"
+
+
 class TestGoImportPathResolution:
     """Tests for import path disambiguation (Bug #1 from bakeoff report)."""
 
@@ -4131,4 +4200,172 @@ func setup() {
         )
         assert any("onStop" in d for d in dst_names), (
             f"setup should reference onStop, found: {dst_names}"
+        )
+
+
+class TestGoModulePathResolution:
+    """Tests for go.mod-aware cross-package import resolution.
+
+    Go repos import their own packages using the full module path from
+    go.mod (e.g., ``import "github.com/aquasecurity/trivy/pkg/commands"``).
+    The resolver must strip the module path prefix to match against local
+    file paths (``pkg/commands/root.go``).  Without this, repos like trivy
+    and harbor produce 50-80% unresolved edges.
+    """
+
+    def test_cross_package_call_resolves_with_go_mod(self, tmp_path: Path) -> None:
+        """Cross-package call using full module path resolves correctly.
+
+        Simulates the trivy pattern:
+          go.mod:  module github.com/example/myproject
+          cmd/main.go: import "github.com/example/myproject/pkg/commands"
+          cmd/main.go: commands.Execute()
+          pkg/commands/root.go: func Execute() { ... }
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        # go.mod at repo root
+        (tmp_path / "go.mod").write_text(
+            "module github.com/example/myproject\n\ngo 1.21\n"
+        )
+
+        # Package with the target function
+        pkg_dir = tmp_path / "pkg" / "commands"
+        pkg_dir.mkdir(parents=True)
+        (pkg_dir / "root.go").write_text("""package commands
+
+func Execute() error {
+    return nil
+}
+""")
+
+        # Main file imports via full module path
+        cmd_dir = tmp_path / "cmd"
+        cmd_dir.mkdir(parents=True)
+        (cmd_dir / "main.go").write_text("""package main
+
+import "github.com/example/myproject/pkg/commands"
+
+func main() {
+    commands.Execute()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        # Find the Execute symbol
+        execute_sym = next(
+            (s for s in result.symbols if s.name == "Execute"), None
+        )
+        assert execute_sym is not None, "Should find Execute symbol"
+
+        # Find call edges from main
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "main:function" in e.src
+        ]
+        assert len(call_edges) >= 1, (
+            f"main should call Execute, got edges: "
+            f"{[(e.src, e.dst) for e in result.edges if e.edge_type == 'calls']}"
+        )
+
+        # The call should resolve to the actual Execute symbol, not unresolved
+        resolved = [e for e in call_edges if execute_sym.id == e.dst]
+        assert len(resolved) >= 1, (
+            f"Call from main to Execute should resolve to {execute_sym.id}, "
+            f"got targets: {[e.dst for e in call_edges]}"
+        )
+
+    def test_ambiguous_names_disambiguated_by_go_mod(self, tmp_path: Path) -> None:
+        """go.mod prefix stripping enables disambiguation of common names.
+
+        A package ``pkg/log`` contains both a standalone function ``Err()``
+        and a method ``Handler.Err()``.  A second package ``pkg/parser``
+        defines ``Parser.Err()``.  The global symbol registry has 3
+        candidates for ``"Err"`` (short-name storage).
+
+        Without go.mod stripping, the suffix matching for import path
+        ``github.com/example/myproject/pkg/log`` fails: the short
+        suffix ``"log"`` matches 2 candidates (both in pkg/log/), and
+        longer suffixes hit domain components (``example``,
+        ``github.com``) absent from file paths → 0 matches → the loop
+        exhausts and the ambiguity_threshold (3) fires.
+
+        With go.mod stripping, the path hint becomes ``pkg/log`` and
+        the suffix ``"log"`` matches exactly 2 candidates — both in
+        the correct package.  Since the ambiguity is intra-package,
+        the best candidate is chosen with scaled confidence.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        (tmp_path / "go.mod").write_text(
+            "module github.com/example/myproject\n\ngo 1.21\n"
+        )
+
+        # pkg/log: standalone function Err + method Handler.Err
+        log_dir = tmp_path / "pkg" / "log"
+        log_dir.mkdir(parents=True)
+        (log_dir / "handler.go").write_text("""package log
+
+type Handler struct{}
+
+func (h *Handler) Err() error {
+    return nil
+}
+
+func Err() error {
+    return nil
+}
+""")
+
+        # pkg/parser: Parser.Err method (third candidate for "Err")
+        parser_dir = tmp_path / "pkg" / "parser"
+        parser_dir.mkdir(parents=True)
+        (parser_dir / "parser.go").write_text("""package parser
+
+type Parser struct{}
+
+func (p *Parser) Err() error {
+    return nil
+}
+""")
+
+        # Main imports log via full module path, calls log.Err()
+        (tmp_path / "main.go").write_text("""package main
+
+import "github.com/example/myproject/pkg/log"
+
+func main() {
+    log.Err()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        # Find the standalone Err function in pkg/log
+        log_err = next(
+            (s for s in result.symbols
+             if s.name == "Err" and "log" in s.path),
+            None,
+        )
+        assert log_err is not None, "Should find standalone Err in pkg/log"
+
+        # Find call edges from main
+        call_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls" and "main:function" in e.src
+        ]
+
+        # The call should NOT be unresolved — it should resolve to one of
+        # the log package symbols (Err or Handler.Err, both acceptable)
+        unresolved = [e for e in call_edges if "unresolved" in e.dst]
+        assert len(unresolved) == 0, (
+            f"log.Err() should NOT be unresolved, got: {[e.dst for e in unresolved]}"
+        )
+
+        # Should have a resolved call edge
+        resolved = [e for e in call_edges if "log" in e.dst and "Err" in e.dst]
+        assert len(resolved) >= 1, (
+            f"main() -> log.Err() should resolve to a symbol in pkg/log, "
+            f"got targets: {[e.dst for e in call_edges]}"
         )

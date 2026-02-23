@@ -17,7 +17,11 @@ How It Works
 ------------
 1. Check if tree-sitter-go is available
 2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
+3. Read go.mod to extract the module path (e.g.,
+   ``github.com/aquasecurity/trivy``).  Strip this prefix from import
+   paths before passing to the resolver so that suffix matching operates
+   on repo-relative paths (``pkg/log``) instead of full module paths.
+4. Two-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry
    - Pass 2: Extract variable-type bindings, detect calls, imports, and routes
 5. Receiver-type disambiguation:
@@ -363,6 +367,48 @@ def _import_path_to_dir_hint(import_path: str) -> str | None:
         return "/" + "/".join(parts[-2:])
 
     return None
+
+
+def _read_go_module_path(repo_root: Path) -> str | None:
+    """Read the module path from go.mod at the repo root.
+
+    Go modules declare their module path in ``go.mod`` (e.g.,
+    ``module github.com/aquasecurity/trivy``).  This path is the
+    prefix used in all internal import statements.  Stripping this
+    prefix from import paths yields repo-relative directory paths
+    that the suffix-matching resolver can match against file paths.
+
+    Returns the module path string, or None if go.mod is absent or
+    doesn't contain a module declaration.
+    """
+    go_mod = repo_root / "go.mod"
+    if not go_mod.exists():
+        return None
+    try:
+        content = go_mod.read_text(errors="replace")
+    except OSError:
+        return None
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("module "):
+            return stripped.split(None, 1)[1].strip()
+    return None
+
+
+def _strip_module_prefix(import_path: str, module_path: str) -> str:
+    """Strip the Go module path prefix from an import path.
+
+    Given ``import_path="github.com/example/trivy/pkg/log"`` and
+    ``module_path="github.com/example/trivy"``, returns ``"pkg/log"``.
+
+    If the import_path doesn't start with the module_path, returns
+    the original import_path unchanged (it's an external dependency).
+    """
+    if import_path.startswith(module_path + "/"):
+        return import_path[len(module_path) + 1:]
+    if import_path == module_path:
+        return ""
+    return import_path
 
 
 def _extract_struct_embeddings(
@@ -1204,6 +1250,7 @@ def _extract_edges_from_file(
     run: AnalysisRun,
     import_aliases: dict[str, str] | None = None,
     resolver: ListNameResolver | None = None,
+    module_path: str | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -1211,6 +1258,11 @@ def _extract_edges_from_file(
     Uses import_aliases to disambiguate when multiple files define the same symbol.
     Tracks variable types from assignments and parameters to disambiguate
     method calls when multiple types define the same method name.
+
+    When ``module_path`` is provided (from go.mod), import path hints are
+    transformed by stripping the module prefix so that suffix matching in
+    the resolver operates on repo-relative paths (e.g., ``pkg/log``)
+    instead of full module paths (e.g., ``github.com/example/trivy/pkg/log``).
     """
     if import_aliases is None:
         import_aliases = {}
@@ -1276,6 +1328,7 @@ def _extract_edges_from_file(
                 if func_node:
                     callee_name = None
                     import_path_hint = None
+                    full_import_path = None
 
                     if func_node.type == "identifier":
                         # Simple call: helper()
@@ -1294,7 +1347,13 @@ def _extract_edges_from_file(
                         if operand_node and operand_node.type == "identifier":
                             alias = node_text(operand_node, source)
                             if alias in import_aliases:
-                                import_path_hint = import_aliases[alias]
+                                full_import_path = import_aliases[alias]
+                                if module_path:
+                                    import_path_hint = _strip_module_prefix(
+                                        full_import_path, module_path,
+                                    )
+                                else:
+                                    import_path_hint = full_import_path
                             # Check if operand has an inferred type for
                             # receiver-type method disambiguation
                             elif alias in var_types:
@@ -1470,10 +1529,11 @@ def _extract_edges_from_file(
                             # This enables linkers to potentially match across languages
                             elif func_node.type == "selector_expression":
                                 # For s.Method() where Method is external, create unresolved edge
-                                # Use the import path if available to make the ID more specific
-                                if import_path_hint:
+                                # Use the FULL import path (not stripped) to keep the ID meaningful
+                                unresolved_path = full_import_path if full_import_path else import_path_hint
+                                if unresolved_path:
                                     # e.g., go:google.golang.org/grpc:0-0:RegisterService:unresolved
-                                    dst_id = f"go:{import_path_hint}:0-0:{callee_name}:unresolved"
+                                    dst_id = f"go:{unresolved_path}:0-0:{callee_name}:unresolved"
                                 else:
                                     # Fallback: use "external" as the path
                                     dst_id = f"go:external:0-0:{callee_name}:unresolved"
@@ -2198,6 +2258,12 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
             skip_reason=f"Failed to load Go parser: {e}",
         )
 
+    # Read go.mod for module path — used to strip module prefix from
+    # import paths so that the ListNameResolver's suffix matching
+    # operates on repo-relative paths (e.g., "pkg/log" instead of
+    # "github.com/aquasecurity/trivy/pkg/log").
+    go_module_path = _read_go_module_path(repo_root)
+
     # Pass 1: Extract all symbols
     file_analyses: dict[Path, FileAnalysis] = {}
     files_skipped = 0
@@ -2238,7 +2304,7 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
 
         edges = _extract_edges_from_file(
             go_file, parser, analysis.symbol_by_name, global_symbols, run,
-            analysis.import_aliases,
+            analysis.import_aliases, module_path=go_module_path,
         )
         all_edges.extend(edges)
 

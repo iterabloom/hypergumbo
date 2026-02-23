@@ -649,7 +649,11 @@ class ListNameResolver:
                 candidates=candidates,
             )
 
-        # Multiple candidates - try to disambiguate with path hint
+        # Multiple candidates - try to disambiguate with path hint.
+        # Track the best (smallest) narrowed candidate set: even if no
+        # suffix yields a unique match, narrowing from 10 → 2 candidates
+        # is useful — it means only 2 symbols are in the matching package.
+        narrowed = candidates
         if path_hint:
             # Try progressively shorter suffixes of the path hint to find unique match
             # e.g., for "github.com/example/src/zzz_correct/genproto", try:
@@ -670,13 +674,17 @@ class ListNameResolver:
                         match_type="path_hint",
                         candidates=candidates,
                     )
+                if 1 < len(matching) < len(narrowed):
+                    narrowed = matching
 
-        # Ambiguity guard: when candidate count meets or exceeds the threshold,
-        # return unresolved instead of picking an arbitrary candidate.
-        # This prevents false-positive call edges for common method names.
+        # Ambiguity guard: when the NARROWED candidate count meets or
+        # exceeds the threshold, return unresolved instead of picking an
+        # arbitrary candidate.  Using narrowed (not original candidates)
+        # means that suffix matching that filtered e.g. 10 → 2 candidates
+        # avoids the threshold.
         if (
             self.ambiguity_threshold is not None
-            and len(candidates) >= self.ambiguity_threshold
+            and len(narrowed) >= self.ambiguity_threshold
         ):
             return LookupResult(
                 symbol=None,
@@ -687,10 +695,10 @@ class ListNameResolver:
         # Ambiguous — scale confidence by 1/sqrt(N) so that common interface
         # methods (Close, String, Name) with dozens of implementations get
         # proportionally lower confidence than a two-way ambiguity.
-        sorted_candidates = sorted(candidates, key=lambda s: s.path)
-        scaled_confidence = 1.0 / (len(candidates) ** 0.5)
+        sorted_narrowed = sorted(narrowed, key=lambda s: s.path)
+        scaled_confidence = 1.0 / (len(narrowed) ** 0.5)
         return LookupResult(
-            symbol=sorted_candidates[0],
+            symbol=sorted_narrowed[0],
             confidence=scaled_confidence,
             match_type="ambiguous",
             candidates=candidates,
