@@ -38,3 +38,11 @@
   nonce: adca  # adca
   set:  # adca
     status: holding  # adca
+- op: update  # a360
+  at: '2026-02-23T08:59:04Z'  # a360
+  by: agent  # a360
+  actor: jgstern_agent  # a360
+  clock: 3  # a360
+  nonce: a360  # a360
+  set:  # a360
+    parent: INV-dinod-dafut-dobid-mudip-rasik-favus-vosun-subag  # a360
