@@ -994,7 +994,7 @@ def test_cmd_slice_list_entries_exclude_tests(tmp_path: Path, capsys) -> None:
                 "language": "python",
                 "path": "tests/test_main.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
-                "meta": {"concepts": [{"concept": "route", "method": "GET", "path": "/test"}]},
+                "meta": {"concepts": [{"concept": "main_function"}]},
             },
             {
                 "id": "python:src/api.py:1-5:get_user:function",
@@ -1006,13 +1006,24 @@ def test_cmd_slice_list_entries_exclude_tests(tmp_path: Path, capsys) -> None:
                 "meta": {"concepts": [{"concept": "route", "method": "GET", "path": "/user"}]},
             },
         ],
-        "edges": [],
+        "edges": [
+            {
+                "id": "edge:test-calls-main",
+                "src": "python:tests/test_main.py:1-5:test_main:function",
+                "dst": "python:src/main.py:1-5:main:function",
+                "type": "calls",
+                "confidence": 0.9,
+                "meta": {"evidence_type": "ast_call_direct"},
+            },
+        ],
     }
     input_file = tmp_path / "results.json"
     input_file.write_text(json.dumps(behavior_map))
 
-    # First test WITHOUT --exclude-tests: test_main in test file is filtered
-    # by confidence threshold (0.95 * 0.1 = 0.095 < 0.10). Only get_user survives.
+    # First test WITHOUT --exclude-tests: test_main with main_function concept
+    # has confidence 0.80 * 0.1 (test penalty) = 0.08, but the connectivity
+    # boost from one outgoing edge pushes it above MIN_ENTRYPOINT_CONFIDENCE
+    # (0.10). Both get_user and test_main should appear.
     args = FakeArgs()
     args.path = str(tmp_path)
     args.entry = "auto"
@@ -1032,11 +1043,10 @@ def test_cmd_slice_list_entries_exclude_tests(tmp_path: Path, capsys) -> None:
     out, _ = capsys.readouterr()
     # Non-test route should be present
     assert "get_user" in out or "api.py" in out
-    # Test route filtered by confidence threshold, not by --exclude-tests
-    assert "test_main" not in out
+    # Test main_function passes confidence threshold (0.10 >= 0.10)
+    assert "test_main" in out
 
-    # With --exclude-tests: same result (confidence already filtered test entry),
-    # but the flag is reported in output
+    # With --exclude-tests: test_main is filtered by the exclude-tests flag
     args.exclude_tests = True
 
     result = cmd_slice(args)
