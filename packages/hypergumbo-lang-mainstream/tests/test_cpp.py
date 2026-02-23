@@ -1489,3 +1489,83 @@ class TestCppDocstrings:
         assert func is not None
         assert func.docstring is None
 
+
+class TestCppFunctionPointerReferences:
+    """Tests for &function pointer references in C++ (INV-dinur)."""
+
+    def test_address_of_function(self, tmp_path: Path) -> None:
+        """&process should create a references edge."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "main.cpp").write_text(
+            "void process(int x) {}\n"
+            "\n"
+            "void run() {\n"
+            "    auto fp = &process;\n"
+            "}\n"
+        )
+        result = analyze_cpp(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "run" in e.src and "process" in e.dst
+        ]
+        assert len(ref_edges) == 1
+        assert ref_edges[0].evidence_type == "function_pointer"
+
+    def test_qualified_function_pointer(self, tmp_path: Path) -> None:
+        """&Class::method should create a references edge."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "main.cpp").write_text(
+            "class App {\n"
+            "public:\n"
+            "    static void handler(int x) {}\n"
+            "};\n"
+            "\n"
+            "void run() {\n"
+            "    auto fp = &App::handler;\n"
+            "}\n"
+        )
+        result = analyze_cpp(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "run" in e.src and "handler" in e.dst
+        ]
+        assert len(ref_edges) == 1
+
+    def test_cross_file_function_pointer(self, tmp_path: Path) -> None:
+        """&func referencing a function in another file."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "utils.cpp").write_text(
+            "void helper() {}\n"
+        )
+        (tmp_path / "main.cpp").write_text(
+            "void helper();\n"
+            "void run() {\n"
+            "    auto fp = &helper;\n"
+            "}\n"
+        )
+        result = analyze_cpp(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "run" in e.src and "helper" in e.dst
+        ]
+        assert len(ref_edges) >= 1
+
+    def test_no_reference_for_unknown_function(self, tmp_path: Path) -> None:
+        """&unknown should not create a references edge."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "main.cpp").write_text(
+            "void run() {\n"
+            "    auto fp = &unknown_func;\n"
+            "}\n"
+        )
+        result = analyze_cpp(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "run" in e.src
+        ]
+        assert len(ref_edges) == 0
+

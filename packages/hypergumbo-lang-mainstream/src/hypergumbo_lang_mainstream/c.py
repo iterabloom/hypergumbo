@@ -419,6 +419,37 @@ def _extract_edges(
                         )
                         edges.append(edge)
 
+        # Explicit function pointer: &process
+        elif node.type == "pointer_expression":
+            children = node.children
+            if children and node_text(children[0], source) == "&":
+                ident = next(
+                    (c for c in node.children if c.type == "identifier"), None,
+                )
+                if ident:
+                    ref_name = node_text(ident, source)
+                    current_function = _get_enclosing_function(
+                        node, source, file_path, global_symbols, local_symbols,
+                    )
+                    if current_function:
+                        lookup_result = resolver.lookup(ref_name)
+                        if (
+                            lookup_result.found
+                            and lookup_result.symbol is not None
+                            and lookup_result.symbol.kind == "function"
+                            and lookup_result.symbol.id != current_function.id
+                        ):
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=lookup_result.symbol.id,
+                                edge_type="references",
+                                line=node.start_point[0] + 1,
+                                confidence=0.85 * lookup_result.confidence,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="function_pointer",
+                            ))
+
     # Dispatch table detection: function pointers in static array initializers.
     # Pattern: static struct Foo table[] = { { "name", func_ptr }, ... };
     # Identifiers in initializer lists that resolve to known functions

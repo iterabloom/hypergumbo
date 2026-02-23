@@ -1494,3 +1494,42 @@ class TestCDocstrings:
         assert func is not None
         assert func.docstring is None
 
+
+class TestCFunctionPointerReferences:
+    """Tests for &function pointer references in C (INV-dinur)."""
+
+    def test_address_of_function(self, tmp_path: Path) -> None:
+        """&process should create a references edge."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "main.c").write_text(
+            "void process(int x) {}\n"
+            "\n"
+            "void run() {\n"
+            "    void (*fp)(int) = &process;\n"
+            "}\n"
+        )
+        result = analyze_c(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "run" in e.src and "process" in e.dst
+        ]
+        assert len(ref_edges) == 1
+        assert ref_edges[0].evidence_type == "function_pointer"
+
+    def test_no_reference_for_unknown_function(self, tmp_path: Path) -> None:
+        """&unknown should not create a references edge."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "main.c").write_text(
+            "void run() {\n"
+            "    void (*fp)(int) = &unknown_func;\n"
+            "}\n"
+        )
+        result = analyze_c(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "run" in e.src
+        ]
+        assert len(ref_edges) == 0
+

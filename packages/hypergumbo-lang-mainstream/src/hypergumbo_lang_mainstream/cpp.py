@@ -725,6 +725,44 @@ def _extract_edges_from_tree(
                             origin_run_id=run.execution_id,
                         ))
 
+        # Explicit function pointer: &process or &Class::method
+        elif node.type == "pointer_expression":
+            if current_function is not None:
+                children = node.children
+                # Must start with '&' (address-of, not dereference '*')
+                if children and _node_text(children[0], source) == "&":
+                    ref_name = None
+                    ident = _find_child_by_type(node, "identifier")
+                    if ident:
+                        ref_name = _node_text(ident, source)
+                    else:
+                        qual = _find_child_by_type(node, "qualified_identifier")
+                        if qual:
+                            inner = _find_child_by_type(qual, "identifier")
+                            if inner:
+                                ref_name = _node_text(inner, source)
+                    if ref_name:
+                        target = local_symbols.get(ref_name)
+                        if target is None:
+                            lk = resolver.lookup(ref_name)
+                            if lk.found and lk.symbol is not None:
+                                target = lk.symbol
+                        if (
+                            target is not None
+                            and target.kind in ("function", "method")
+                            and target.id != current_function.id
+                        ):
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=target.id,
+                                edge_type="references",
+                                line=node.start_point[0] + 1,
+                                evidence_type="function_pointer",
+                                confidence=0.85,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
+
         # Add children to stack with updated context
         for child in reversed(node.children):
             stack.append((child, new_function))
