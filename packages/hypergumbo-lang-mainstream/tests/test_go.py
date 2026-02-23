@@ -1637,12 +1637,9 @@ class TestGoModulePathHelpers:
 
         go_mod = tmp_path / "go.mod"
         go_mod.write_text("module foo\n")
-        go_mod.chmod(0o000)
-        try:
+        with patch.object(Path, "read_text", side_effect=OSError("mocked")):
             result = _read_go_module_path(tmp_path)
-            assert result is None
-        finally:
-            go_mod.chmod(0o644)
+        assert result is None
 
     def test_strip_module_prefix_local(self) -> None:
         """Strips module prefix from local import paths."""
