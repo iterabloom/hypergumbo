@@ -471,3 +471,140 @@ class TestIsErlangTreeSitterAvailable:
             return_value=False,
         ):
             assert is_erlang_tree_sitter_available() is False
+
+
+class TestErlangBehaviourCallbacks:
+    """Tests for OTP behaviour callback edge creation.
+
+    When a module declares -behaviour(gen_server), the OTP framework invokes
+    callback functions like init/1, handle_call/3, etc. The analyzer creates
+    invokes_callback edges from the module to each implemented callback,
+    making the OTP contract visible in the graph.
+    """
+
+    def test_gen_server_callbacks_detected(self, tmp_path: Path) -> None:
+        """gen_server callbacks get invokes_callback edges."""
+        make_erl_file(
+            tmp_path,
+            "my_server.erl",
+            """
+-module(my_server).
+-behaviour(gen_server).
+
+-export([init/1, handle_call/3, handle_cast/2]).
+
+init([]) ->
+    {ok, #{}}.
+
+handle_call(Request, _From, State) ->
+    {reply, ok, State}.
+
+handle_cast(_Msg, State) ->
+    {noreply, State}.
+""",
+        )
+        result = analyze_erlang(tmp_path)
+        assert not result.skipped
+
+        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        assert len(callback_edges) == 3
+
+        callback_dsts = {e.dst for e in callback_edges}
+        func_syms = {s.id: s for s in result.symbols if s.kind == "function"}
+        callback_names = {func_syms[dst].name for dst in callback_dsts if dst in func_syms}
+        assert "init/1" in callback_names
+        assert "handle_call/3" in callback_names
+        assert "handle_cast/2" in callback_names
+
+        # All edges should come from the module symbol
+        module_sym = next(s for s in result.symbols if s.kind == "module")
+        for e in callback_edges:
+            assert e.src == module_sym.id
+            assert e.confidence == 0.90
+
+    def test_supervisor_init_callback(self, tmp_path: Path) -> None:
+        """supervisor behaviour creates callback edge for init/1."""
+        make_erl_file(
+            tmp_path,
+            "my_sup.erl",
+            """
+-module(my_sup).
+-behaviour(supervisor).
+
+-export([init/1]).
+
+init([]) ->
+    {ok, {{one_for_one, 5, 10}, []}}.
+""",
+        )
+        result = analyze_erlang(tmp_path)
+
+        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        assert len(callback_edges) == 1
+        func_syms = {s.id: s for s in result.symbols if s.kind == "function"}
+        assert func_syms[callback_edges[0].dst].name == "init/1"
+
+    def test_unimplemented_callbacks_skipped(self, tmp_path: Path) -> None:
+        """Only implemented callbacks get edges; missing ones are skipped."""
+        make_erl_file(
+            tmp_path,
+            "partial_server.erl",
+            """
+-module(partial_server).
+-behaviour(gen_server).
+
+-export([init/1]).
+
+init([]) ->
+    {ok, #{}}.
+""",
+        )
+        result = analyze_erlang(tmp_path)
+
+        # Only init/1 is implemented, others are not
+        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        assert len(callback_edges) == 1
+
+    def test_unknown_behaviour_no_callbacks(self, tmp_path: Path) -> None:
+        """Unknown behaviour names don't produce callback edges."""
+        make_erl_file(
+            tmp_path,
+            "custom.erl",
+            """
+-module(custom).
+-behaviour(my_custom_behaviour).
+
+-export([init/1]).
+
+init([]) ->
+    ok.
+""",
+        )
+        result = analyze_erlang(tmp_path)
+
+        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+        assert len(callback_edges) == 0
+
+    def test_imports_edge_still_created(self, tmp_path: Path) -> None:
+        """Behaviour import edge coexists with callback edges."""
+        make_erl_file(
+            tmp_path,
+            "both.erl",
+            """
+-module(both).
+-behaviour(gen_server).
+
+-export([init/1]).
+
+init([]) ->
+    {ok, #{}}.
+""",
+        )
+        result = analyze_erlang(tmp_path)
+
+        import_edges = [e for e in result.edges if e.edge_type == "imports"]
+        callback_edges = [e for e in result.edges if e.edge_type == "invokes_callback"]
+
+        # Both import and callback edges should exist
+        assert any("gen_server" in e.dst for e in import_edges)
+        assert len(callback_edges) == 1

@@ -5,7 +5,7 @@ This analyzer uses tree-sitter to parse Erlang files and extract:
 - Function definitions (fun_decl)
 - Record definitions (-record)
 - Macro definitions (-define)
-- Behaviour implementations (-behaviour)
+- Behaviour implementations (-behaviour) with callback edges
 - Type specifications (-spec, -type)
 - Function call relationships
 - Import statements (-import)
@@ -65,6 +65,28 @@ if TYPE_CHECKING:
     import tree_sitter
 
 PASS_ID = make_pass_id("erlang")
+
+# OTP behaviour callback mappings.
+# When a module declares -behaviour(gen_server), these callbacks may be
+# implemented. The OTP framework invokes them at runtime; without edges
+# they appear as disconnected orphans in the call graph.
+# Keys are behaviour names (atoms), values are lists of callback function names.
+OTP_BEHAVIOUR_CALLBACKS: dict[str, list[str]] = {
+    "gen_server": [
+        "init", "handle_call", "handle_cast", "handle_info",
+        "terminate", "code_change", "handle_continue",
+    ],
+    "supervisor": ["init"],
+    "gen_statem": [
+        "init", "callback_mode", "handle_event",
+        "terminate", "code_change",
+    ],
+    "gen_event": [
+        "init", "handle_event", "handle_call", "handle_info",
+        "terminate", "code_change",
+    ],
+    "application": ["start", "stop"],
+}
 
 
 def find_erlang_files(repo_root: Path) -> Iterator[Path]:
@@ -460,6 +482,85 @@ def _extract_edges_from_file(
                                 confidence=confidence,
                             )
                             edges.append(edge)
+
+    # Behaviour callback edges: -behaviour(gen_server) → invokes_callback → init/1, etc.
+    callback_edges = _extract_behaviour_callback_edges(
+        tree, source, file_symbols, run_id,
+    )
+    edges.extend(callback_edges)
+
+    return edges
+
+
+def _extract_behaviour_callback_edges(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    file_symbols: list[Symbol],
+    run_id: str,
+) -> list[Edge]:
+    """Extract invokes_callback edges from OTP behaviour declarations.
+
+    When a module declares -behaviour(gen_server), the OTP framework invokes
+    specific callback functions (init, handle_call, handle_cast, ...). Without
+    these edges, callback functions appear as disconnected orphans in the graph.
+
+    For each -behaviour(X) attribute, looks up OTP_BEHAVIOUR_CALLBACKS[X] and
+    creates invokes_callback edges from the module symbol to each implemented
+    callback function.
+    """
+    edges: list[Edge] = []
+
+    # Find module symbol (source of callback edges)
+    module_sym = None
+    for s in file_symbols:
+        if s.kind == "module":
+            module_sym = s
+            break
+
+    if module_sym is None:
+        return edges
+
+    # Build lookup: base_name → symbol (for matching callback names).
+    # Deduplicate by symbol ID since file_symbols may contain the same symbol
+    # under both its full name (init/1) and base name (init) keys.
+    seen_ids: set[str] = set()
+    func_by_base_name: dict[str, list[Symbol]] = {}
+    for s in file_symbols:
+        if s.kind == "function" and s.meta and s.id not in seen_ids:
+            seen_ids.add(s.id)
+            base = s.meta.get("base_name")
+            if base:
+                func_by_base_name.setdefault(base, []).append(s)
+
+    # Scan for -behaviour(X) attributes
+    for node in iter_tree(tree.root_node):
+        if node.type != "behaviour_attribute":
+            continue
+
+        atom = find_child_by_type(node, "atom")
+        if not atom:  # pragma: no cover - behaviour_attribute always has atom
+            continue
+
+        behaviour_name = node_text(atom, source)
+        expected_callbacks = OTP_BEHAVIOUR_CALLBACKS.get(behaviour_name)
+        if not expected_callbacks:
+            continue
+
+        # Create edges for each implemented callback
+        for callback_name in expected_callbacks:
+            matching = func_by_base_name.get(callback_name, [])
+            for func_sym in matching:
+                edge = Edge.create(
+                    src=module_sym.id,
+                    dst=func_sym.id,
+                    edge_type="invokes_callback",
+                    line=func_sym.span.start_line if func_sym.span else 0,
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                    evidence_type="behaviour_callback",
+                    confidence=0.90,
+                )
+                edges.append(edge)
 
     return edges
 
