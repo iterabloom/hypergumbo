@@ -1425,6 +1425,35 @@ class Store:
     # Internal: _append_op
     # -----------------------------------------------------------------------
 
+    @staticmethod
+    def _take_ownership_via_tmp(filepath: Path, mode: int) -> None:
+        """Atomic copy-via-/tmp to take ownership of an ops file.
+
+        In a two-user setup, the other user may own the file with 0o644.
+        Copy to /tmp (always writable), delete original (only needs dir
+        write permission — ensured by setup's setgid+g+w), move copy back.
+        The new file is owned by the current user with the requested mode.
+        """
+        import shutil
+        import tempfile
+
+        fd, tmp_str = tempfile.mkstemp(suffix=".ops", prefix="htrac_")
+        tmp = Path(tmp_str)
+        closed = False
+        try:
+            with open(filepath, "rb") as src:
+                os.write(fd, src.read())
+            os.fchmod(fd, mode)
+            os.close(fd)
+            closed = True
+            filepath.unlink()
+            shutil.move(str(tmp), str(filepath))
+        except BaseException:
+            if not closed:
+                os.close(fd)
+            tmp.unlink(missing_ok=True)
+            raise
+
     def _append_op(self, filepath: Path, op_dict: dict[str, Any]) -> None:
         """Append an op to a file with flock and Lamport clock.
 
@@ -1471,7 +1500,11 @@ class Store:
         mode = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH
         old_umask = os.umask(0)
         try:
-            fd = os.open(filepath, flags, mode)
+            try:
+                fd = os.open(filepath, flags, mode)
+            except PermissionError:
+                self._take_ownership_via_tmp(filepath, mode)
+                fd = os.open(filepath, flags, mode)
         finally:
             os.umask(old_umask)
         with os.fdopen(fd, "a") as f:

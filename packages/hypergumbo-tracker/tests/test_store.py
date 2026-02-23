@@ -9,6 +9,7 @@ Lamport clock computation.
 from __future__ import annotations
 
 import os
+import shutil
 import textwrap
 from pathlib import Path
 from typing import Any
@@ -3276,3 +3277,116 @@ class TestHumanOnlyStatuses:
         store.update(item_id, set_fields={"status": "deleted"})
         item = store.get(item_id)
         assert item.status == "deleted"
+
+
+# ---------------------------------------------------------------------------
+# Cross-user PermissionError fallback (_take_ownership_via_tmp)
+# ---------------------------------------------------------------------------
+
+
+class TestTakeOwnershipFallback:
+    """Tests for the PermissionError fallback in _append_op."""
+
+    def test_append_op_fallback_on_permission_error(
+        self, ops_dir: Path
+    ) -> None:
+        """When os.open raises PermissionError, _take_ownership_via_tmp is
+        called and the op is appended successfully."""
+        config = _make_config()
+        store = Store(ops_dir, config=config)
+        item_id = store.add(kind="work_item", title="Owned by other user")
+
+        # Make the first os.open call raise PermissionError (simulating a
+        # file owned by another user with 0o644), then let the retry succeed.
+        real_os_open = os.open
+        call_count = 0
+
+        def patched_os_open(path: Any, flags: int, mode: int = 0o777) -> int:
+            nonlocal call_count
+            # Only intercept the first O_APPEND open on .ops files
+            if (flags & os.O_APPEND) and str(path).endswith(".ops"):
+                call_count += 1
+                if call_count == 1:
+                    raise PermissionError(13, "Permission denied", str(path))
+            return real_os_open(path, flags, mode)
+
+        with patch("os.open", side_effect=patched_os_open):
+            store.update(item_id, set_fields={"status": "done"})
+
+        item = store.get(item_id)
+        assert item.status == "done"
+        # Verify we hit the fallback path (first call raised, retry succeeded)
+        assert call_count == 2
+
+    def test_take_ownership_preserves_content(self, tmp_path: Path) -> None:
+        """_take_ownership_via_tmp preserves file content and sets mode."""
+        import stat
+
+        ops_file = tmp_path / "test.ops"
+        original_content = b"--- existing op data\n"
+        ops_file.write_bytes(original_content)
+        os.chmod(ops_file, 0o644)
+
+        target_mode = (
+            stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP
+            | stat.S_IWGRP | stat.S_IROTH
+        )
+        Store._take_ownership_via_tmp(ops_file, target_mode)
+
+        assert ops_file.read_bytes() == original_content
+        actual_mode = os.stat(ops_file).st_mode & 0o777
+        assert actual_mode == 0o664
+
+    def test_take_ownership_cleans_up_on_error_after_close(
+        self, tmp_path: Path
+    ) -> None:
+        """Tempfile is cleaned up when failure occurs after fd is closed."""
+        import stat
+
+        ops_file = tmp_path / "test.ops"
+        ops_file.write_bytes(b"data\n")
+
+        target_mode = (
+            stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP
+            | stat.S_IWGRP | stat.S_IROTH
+        )
+
+        # Fail on shutil.move (after os.close + unlink) — closed=True path
+        with patch.object(shutil, "move", side_effect=OSError("disk full")):
+            with pytest.raises(OSError, match="disk full"):
+                Store._take_ownership_via_tmp(ops_file, target_mode)
+
+        # The tempfile in /tmp should be cleaned up
+        import glob
+        import time
+        leftover = glob.glob("/tmp/htrac_*.ops")
+        now = time.time()
+        recent = [f for f in leftover if now - os.path.getmtime(f) < 5]
+        assert len(recent) == 0, f"Tempfile not cleaned up: {recent}"
+
+    def test_take_ownership_cleans_up_on_early_error(
+        self, tmp_path: Path
+    ) -> None:
+        """Tempfile is cleaned up when failure occurs before fd is closed."""
+        import stat
+
+        ops_file = tmp_path / "test.ops"
+        ops_file.write_bytes(b"data\n")
+
+        target_mode = (
+            stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP
+            | stat.S_IWGRP | stat.S_IROTH
+        )
+
+        # Fail on os.fchmod (before os.close) — closed=False path
+        with patch("os.fchmod", side_effect=OSError("fchmod failed")):
+            with pytest.raises(OSError, match="fchmod failed"):
+                Store._take_ownership_via_tmp(ops_file, target_mode)
+
+        # The tempfile in /tmp should be cleaned up
+        import glob
+        import time
+        leftover = glob.glob("/tmp/htrac_*.ops")
+        now = time.time()
+        recent = [f for f in leftover if now - os.path.getmtime(f) < 5]
+        assert len(recent) == 0, f"Tempfile not cleaned up: {recent}"
