@@ -29,9 +29,17 @@ How It Works
      multiple types define the same method name
 6. Ambiguous method call guard:
    - When a method call ``x.Method()`` has no inferred receiver type and the
-     method name has 3+ candidates in global symbols, creates an unresolved
+     method name has 2+ candidates in global symbols, creates an unresolved
      edge with ``evidence_type="ambiguous_method_call"`` instead of picking
      an arbitrary candidate (which would produce a false-positive call edge)
+7. Stdlib interface method guard:
+   - When a method call ``x.Lock()`` has no inferred receiver type and the
+     method name matches a well-known Go stdlib interface method (Lock, Close,
+     Read, Write, String, Error, etc.), creates an unresolved edge with
+     ``evidence_type="stdlib_method_call"`` even if only 1 candidate exists
+     in the repo. This prevents ``sync.Mutex.Lock()`` calls from resolving
+     to ``DirLocker.Lock`` (the only repo candidate), which would give
+     DirLocker.Lock 255+ false in-degree edges.
 4. Route detection:
    - Gin/Echo: r.GET("/path", handler), e.POST("/path", handler)
    - Fiber: app.Get("/path", handler) (lowercase methods)
@@ -81,6 +89,48 @@ if TYPE_CHECKING:
     import tree_sitter
 
 PASS_ID = make_pass_id("go")
+
+# Well-known Go standard library interface methods.
+# When a method call ``x.Lock()`` has no inferred receiver type and
+# the method name is in this set, the call is treated as ambiguous even
+# if only 1 candidate exists in the repo. Without this guard,
+# ``DirLocker.Lock`` (the only repo-defined Lock method) absorbs 255+
+# false in-degree edges from unrelated ``sync.Mutex.Lock()`` calls,
+# making it falsely rank #1 in centrality.
+#
+# This set covers the most common interface methods from:
+# - sync: Locker (Lock, Unlock)
+# - io: Reader (Read), Writer (Write), Closer (Close), Seeker (Seek)
+# - fmt: Stringer (String)
+# - error: Error
+# - sort: Interface (Len, Less, Swap)
+# - context: Context (Deadline, Done, Err, Value)
+# - encoding: Marshaler (MarshalJSON, MarshalText, etc.)
+# - net/http: Handler (ServeHTTP), ResponseWriter (Header, WriteHeader)
+_GO_STDLIB_INTERFACE_METHODS: frozenset[str] = frozenset({
+    # sync.Locker
+    "Lock", "Unlock", "RLock", "RUnlock",
+    # io interfaces
+    "Read", "Write", "Close", "Seek", "ReadAt", "WriteAt",
+    "ReadFrom", "WriteTo", "ReadByte", "WriteByte",
+    # fmt.Stringer / error
+    "String", "Error",
+    # sort.Interface
+    "Len", "Less", "Swap",
+    # encoding
+    "MarshalJSON", "UnmarshalJSON", "MarshalText", "UnmarshalText",
+    "MarshalBinary", "UnmarshalBinary",
+    # net/http
+    "ServeHTTP", "Header", "WriteHeader",
+    # context.Context
+    "Deadline", "Done", "Err", "Value",
+    # hash.Hash
+    "Sum", "Reset", "BlockSize",
+    # database/sql
+    "Scan", "Next", "Prepare", "Exec", "Query", "QueryRow",
+    # encoding
+    "Encode", "Decode",
+})
 
 # Go web framework HTTP method names
 # Gin/Echo use uppercase: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
@@ -1343,6 +1393,34 @@ def _extract_edges_from_file(
                                 line=node.start_point[0] + 1,
                                 evidence_type="unexported_method_call",
                                 confidence=0.40,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
+                            callee_name = None  # Already handled
+
+                        # Go stdlib interface method guard: When receiver type
+                        # is unknown and the method name matches a well-known
+                        # stdlib interface method (Lock, Close, Read, Write,
+                        # String, Error, etc.), treat it as ambiguous even with
+                        # only 1 repo candidate.  Most .Lock() calls are
+                        # sync.Mutex.Lock(), not DirLocker.Lock — without this
+                        # guard, DirLocker.Lock absorbs 255+ false in-degree
+                        # edges.  Only applies to selector expressions (method
+                        # calls), not package-qualified calls.
+                        if (
+                            callee_name
+                            and import_path_hint is None
+                            and func_node.type == "selector_expression"
+                            and callee_name in _GO_STDLIB_INTERFACE_METHODS
+                        ):
+                            dst_id = f"go:external:0-0:{callee_name}:unresolved"
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=dst_id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="stdlib_method_call",
+                                confidence=0.45,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                             ))

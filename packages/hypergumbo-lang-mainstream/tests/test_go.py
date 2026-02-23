@@ -3402,6 +3402,143 @@ func (s *Server) Cleanup() {
             )
 
 
+class TestGoStdlibMethodGuard:
+    """Tests for Go stdlib interface method collision guard.
+
+    When a method call ``x.Lock()`` has no inferred receiver type and the
+    method name matches a well-known Go stdlib interface method (Lock, Unlock,
+    Close, Read, Write, Error, String, etc.), the call should be marked as
+    ambiguous even when only 1 candidate exists in the repo.
+
+    Rationale: In a real codebase, ``x.Lock()`` is overwhelmingly likely to be
+    ``sync.Mutex.Lock()`` (stdlib, not in the repo's AST), not ``DirLocker.Lock``
+    (the only repo candidate). Without this guard, ``DirLocker.Lock`` gets 255+
+    false in-degree edges from unrelated ``.Lock()`` calls.
+    """
+
+    def test_stdlib_method_single_candidate_produces_unresolved(
+        self, tmp_path: Path,
+    ) -> None:
+        """x.Lock() with only 1 Lock method → unresolved (stdlib collision).
+
+        Even though DirLocker.Lock is the only candidate, x.Lock() should NOT
+        resolve to it because Lock is a well-known sync.Locker interface method.
+        Most .Lock() calls in Go are sync.Mutex.Lock(), not DirLocker.Lock.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import "sync"
+
+type DirLocker struct {
+    mu sync.Mutex
+}
+
+func (d *DirLocker) Lock() error {
+    d.mu.Lock()
+    return nil
+}
+
+func doWork(mu *sync.Mutex) {
+    mu.Lock()
+    defer mu.Unlock()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        do_work_calls = [e for e in call_edges if "doWork" in e.src]
+
+        lock_calls = [e for e in do_work_calls if "Lock" in e.dst]
+        assert len(lock_calls) >= 1, (
+            f"doWork should have a call edge for mu.Lock(), found: {do_work_calls}"
+        )
+
+        # mu.Lock() should NOT resolve to DirLocker.Lock
+        for edge in lock_calls:
+            assert "DirLocker.Lock" not in edge.dst, (
+                f"mu.Lock() should NOT resolve to DirLocker.Lock, got {edge.dst}"
+            )
+            assert edge.evidence_type == "stdlib_method_call", (
+                f"stdlib method collision should have evidence_type='stdlib_method_call', "
+                f"got '{edge.evidence_type}'"
+            )
+            assert edge.confidence <= 0.50, (
+                f"stdlib method collision should have low confidence, "
+                f"got {edge.confidence}"
+            )
+
+    def test_typed_receiver_bypasses_stdlib_guard(self, tmp_path: Path) -> None:
+        """d.Lock() where d has type DirLocker → resolves normally.
+
+        The stdlib guard should NOT fire when the receiver type is known.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type DirLocker struct{}
+
+func (d *DirLocker) Lock() error { return nil }
+
+func main() {
+    d := &DirLocker{}
+    d.Lock()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        main_calls = [e for e in call_edges if "main:function" in e.src]
+
+        lock_calls = [e for e in main_calls if "Lock" in e.dst]
+        assert len(lock_calls) >= 1
+        # Should resolve to DirLocker.Lock via typed_receiver_call
+        assert any("DirLocker.Lock" in e.dst for e in lock_calls), (
+            f"d.Lock() with known type should resolve to DirLocker.Lock, "
+            f"found: {[e.dst for e in lock_calls]}"
+        )
+
+    def test_non_stdlib_method_not_guarded(self, tmp_path: Path) -> None:
+        """x.Analyze() with only 1 candidate → resolves normally.
+
+        Analyze is not a well-known stdlib interface method, so a single
+        candidate should resolve normally (no guard).
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Parser struct{}
+
+func (p *Parser) Analyze() {}
+
+func run(x interface{}) {
+    x.Analyze()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        run_calls = [e for e in call_edges if ":run:" in e.src]
+
+        analyze_calls = [e for e in run_calls if "Analyze" in e.dst]
+        # Non-stdlib method with 1 candidate should resolve
+        assert len(analyze_calls) >= 1
+        for edge in analyze_calls:
+            assert edge.evidence_type != "stdlib_method_call", (
+                f"Non-stdlib method should not trigger stdlib guard, "
+                f"got '{edge.evidence_type}'"
+            )
+
+
 class TestGoPrivateMethodScope:
     """Tests for Go visibility rules in method resolution.
 
@@ -3469,11 +3606,12 @@ func handleRequest(x interface{}) {
             )
 
     def test_uppercase_method_still_resolves_globally(self, tmp_path: Path) -> None:
-        """x.String() (uppercase) SHOULD still resolve globally.
+        """x.Format() (uppercase, non-stdlib) SHOULD still resolve globally.
 
         Exported (uppercase) methods can be called from any package, so
         global resolution is valid for them. This tests that the private
-        method guard only affects lowercase callees.
+        method guard only affects lowercase callees.  Uses 'Format' which
+        is not in the stdlib interface method set (unlike 'String').
         """
         from hypergumbo_lang_mainstream.go import analyze_go
 
@@ -3483,14 +3621,14 @@ func handleRequest(x interface{}) {
 
 type Formatter struct{}
 
-func (f *Formatter) String() string {
+func (f *Formatter) Format() string {
     return "formatted"
 }
 """)
         (pkg_dir / "handler.go").write_text("""package pkg
 
 func handleFormat(x interface{}) {
-    x.String()
+    x.Format()
 }
 """)
 
@@ -3499,16 +3637,16 @@ func handleFormat(x interface{}) {
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
         handler_calls = [e for e in call_edges if "handleFormat" in e.src]
 
-        string_calls = [e for e in handler_calls if "String" in e.dst]
-        assert len(string_calls) >= 1, (
-            f"handleFormat should have a call edge for String(), "
+        format_calls = [e for e in handler_calls if "Format" in e.dst]
+        assert len(format_calls) >= 1, (
+            f"handleFormat should have a call edge for Format(), "
             f"found: {handler_calls}"
         )
 
-        # Uppercase method — should resolve to Formatter.String
-        assert any("Formatter.String" in e.dst for e in string_calls), (
-            f"Uppercase method x.String() should resolve to Formatter.String, "
-            f"found: {[e.dst for e in string_calls]}"
+        # Uppercase non-stdlib method — should resolve to Formatter.Format
+        assert any("Formatter.Format" in e.dst for e in format_calls), (
+            f"Uppercase method x.Format() should resolve to Formatter.Format, "
+            f"found: {[e.dst for e in format_calls]}"
         )
 
 
