@@ -28,3 +28,11 @@
   nonce: 95a8  # 95a8
   set:  # 95a8
     status: violated  # 95a8
+- op: update  # 6db0
+  at: '2026-02-23T14:21:07Z'  # 6db0
+  by: agent  # 6db0
+  actor: jgstern_agent  # 6db0
+  clock: 3  # 6db0
+  nonce: 6db0  # 6db0
+  set:  # 6db0
+    description: "Function references in non-call contexts. Fixed: Java method_reference (PR #1372), Kotlin callable_reference (PR #1372), Go struct_field_reference (PR #1365), Python dict/variable/argument/list references (PR #1373), Ruby method(:name) (PR #1374), Scala eta-expansion (PR #1374), C &function pointer (PR #1375), C++ &function/&Class::method pointer (PR #1375). Remaining: Groovy .& (grammar gap in tree-sitter-groovy, produces ERROR nodes), C#/Swift method references (not yet investigated)."  # 6db0

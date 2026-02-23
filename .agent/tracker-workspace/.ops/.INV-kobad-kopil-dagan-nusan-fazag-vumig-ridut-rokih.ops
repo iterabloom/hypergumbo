@@ -46,3 +46,11 @@
   set: {}  # e7c1
   add:  # e7c1
     before: [INV-vusog-kimig-vasin-gomot-sahud-ponul-nilov-novuv]  # e7c1
+- op: update  # 9422
+  at: '2026-02-23T14:21:49Z'  # 9422
+  by: agent  # 9422
+  actor: jgstern_agent  # 9422
+  clock: 5  # 9422
+  nonce: '9422'  # 9422
+  set:  # 9422
+    description: "Structural gap: features for one language not propagated to siblings. Fixed: (1) C++ dispatch tables — already present. (5) Docstrings for Scala/Groovy/C/C++/Ruby/Elixir/Erlang — PR #1371. (7) Ruby base_classes — already implemented. Remaining: (2) Kotlin/Scala/Groovy missing annotation extraction (meta.decorators) — blocks Spring Boot Kotlin detection. (3) Scala/Groovy missing extends/implements edges despite extracting base_classes. (4) Scala/Groovy missing param type inference. (6) Erlang OTP behaviour callbacks generic vs Elixir function-level."  # 9422

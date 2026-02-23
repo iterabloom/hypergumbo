@@ -145,6 +145,63 @@ def _extract_import_hints(
     return hints
 
 
+def _extract_annotation_info(
+    annotation_node: "tree_sitter.Node", source: bytes,
+) -> dict[str, object]:
+    """Extract annotation name, args, and kwargs from a Scala annotation node.
+
+    Scala annotations have two forms:
+    1. Simple: ``annotation → @ + type_identifier`` (e.g., ``@Inject``)
+    2. With args: ``annotation → @ + type_identifier + arguments`` (e.g., ``@deprecated("old", "2.0")``)
+    """
+    name = ""
+    args: list[object] = []
+    kwargs: dict[str, object] = {}
+
+    for child in annotation_node.children:
+        if child.type == "type_identifier":
+            name = node_text(child, source)
+        elif child.type == "arguments":
+            for arg_child in child.children:
+                if arg_child.type == "string":
+                    # Scala string node text includes quotes: strip them
+                    raw = node_text(arg_child, source)
+                    args.append(raw.strip('"'))
+                elif arg_child.type == "identifier":
+                    args.append(node_text(arg_child, source))
+                elif arg_child.type == "assignment_expression":
+                    # key = value (e.g., @Table(name = "users"))
+                    parts = [c for c in arg_child.children if c.type != "="]
+                    if len(parts) >= 2:
+                        key = node_text(parts[0], source)
+                        val_node = parts[1]
+                        val = (
+                            node_text(val_node, source).strip('"')
+                            if val_node.type == "string"
+                            else node_text(val_node, source)
+                        )
+                        kwargs[key] = val
+
+    return {"name": name, "args": args, "kwargs": kwargs}
+
+
+def _extract_annotations_scala(
+    node: "tree_sitter.Node", source: bytes,
+) -> list[dict[str, object]]:
+    """Extract annotations from a Scala declaration node.
+
+    In Scala, annotations are direct children of the declaration, not
+    wrapped in a ``modifiers`` node (unlike Java/Kotlin/Groovy).
+    """
+    decorators: list[dict[str, object]] = []
+    for child in node.children:
+        if child.type == "annotation":
+            dec_info = _extract_annotation_info(child, source)
+            if dec_info["name"]:
+                decorators.append(dec_info)
+    return decorators
+
+
 def _get_enclosing_type(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Walk up the tree to find the enclosing class/object/trait name."""
     current = node.parent
@@ -290,6 +347,8 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
                 signature = _extract_scala_signature(node, source)
                 modifiers = _extract_modifiers_scala(node)
+                annotations = _extract_annotations_scala(node, source)
+                meta = {"decorators": annotations} if annotations else None
 
                 # Typed stable_id (ADR-0014 §3)
                 norm_sig = normalize_scala_signature(signature)
@@ -314,6 +373,7 @@ def _extract_symbols_from_file(
                     stable_id=stable_id,
                     signature=signature,
                     modifiers=modifiers,
+                    meta=meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -333,6 +393,8 @@ def _extract_symbols_from_file(
                 end_line = node.end_point[0] + 1
                 signature = _extract_scala_signature(node, source)
                 modifiers = _extract_modifiers_scala(node)
+                annotations = _extract_annotations_scala(node, source)
+                meta = {"decorators": annotations} if annotations else None
 
                 # Typed stable_id (ADR-0014 §3)
                 norm_sig = normalize_scala_signature(signature)
@@ -357,6 +419,7 @@ def _extract_symbols_from_file(
                     stable_id=stable_id,
                     signature=signature,
                     modifiers=modifiers,
+                    meta=meta,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -369,7 +432,14 @@ def _extract_symbols_from_file(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 base_classes = _extract_extends_clause(node, source)
-                meta = {"base_classes": base_classes} if base_classes else None
+                annotations = _extract_annotations_scala(node, source)
+                meta: dict[str, object] | None = {}
+                if base_classes:
+                    meta["base_classes"] = base_classes
+                if annotations:
+                    meta["decorators"] = annotations
+                if not meta:
+                    meta = None
 
                 symbol = Symbol(
                     id=make_symbol_id("scala", str(file_path), start_line, end_line, type_name, "class"),

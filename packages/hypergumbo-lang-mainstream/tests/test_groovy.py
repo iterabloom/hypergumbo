@@ -1036,3 +1036,127 @@ class TestGroovyDocstrings:
         method = next((s for s in result.symbols if "run" in s.name), None)
         assert method is not None
         assert method.docstring is None
+
+
+class TestGroovyAnnotations:
+    """Tests for Groovy annotation extraction (INV-kobad)."""
+
+    def test_class_annotation(self, tmp_path: Path) -> None:
+        """Class with @Service annotation should have meta.decorators."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "App.groovy").write_text(
+            "@Service\n"
+            "class UserService {\n"
+            "    def getUsers() { [] }\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "UserService"), None)
+        assert cls is not None
+        assert cls.meta is not None
+        assert "decorators" in cls.meta
+        decorators = cls.meta["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Service"
+
+    def test_method_annotation(self, tmp_path: Path) -> None:
+        """Method with @Deprecated annotation should have meta.decorators."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "App.groovy").write_text(
+            "class App {\n"
+            "    @Deprecated\n"
+            "    def oldMethod() { }\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        method = next((s for s in result.symbols if "oldMethod" in s.name), None)
+        assert method is not None
+        assert method.meta is not None
+        decorators = method.meta["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Deprecated"
+
+    def test_annotation_with_string_args(self, tmp_path: Path) -> None:
+        """Annotation with string argument should capture args."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "App.groovy").write_text(
+            "class App {\n"
+            '    @RequestMapping("/api")\n'
+            "    def handle() { }\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        method = next((s for s in result.symbols if "handle" in s.name), None)
+        assert method is not None
+        assert method.meta is not None
+        decorators = method.meta["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "RequestMapping"
+        assert "/api" in decorators[0]["args"]
+
+    def test_annotation_with_named_args(self, tmp_path: Path) -> None:
+        """Annotation with named arguments should capture kwargs."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "App.groovy").write_text(
+            '@Table(name = "users")\n'
+            "class User {\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "User"), None)
+        assert cls is not None
+        decorators = cls.meta["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Table"
+        assert decorators[0]["kwargs"]["name"] == "users"
+
+    def test_annotation_with_non_string_named_arg(self, tmp_path: Path) -> None:
+        """Annotation with non-string named arg (e.g. integer) should capture raw text."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "App.groovy").write_text(
+            '@Timeout(value = 30)\n'
+            "class Worker {\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "Worker"), None)
+        assert cls is not None
+        decorators = cls.meta["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Timeout"
+        assert decorators[0]["kwargs"]["value"] == "30"
+
+    def test_no_annotation_no_decorators(self, tmp_path: Path) -> None:
+        """Class without annotations should not have decorators in meta."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "App.groovy").write_text(
+            "class Plain {\n"
+            "    def run() { }\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "Plain"), None)
+        assert cls is not None
+        assert cls.meta is None or "decorators" not in (cls.meta or {})
+
+    def test_class_with_annotation_and_base_class(self, tmp_path: Path) -> None:
+        """Class with both annotation and extends should have both in meta."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "App.groovy").write_text(
+            "@Service\n"
+            "class AdminService extends BaseService {\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "AdminService"), None)
+        assert cls is not None
+        assert cls.meta is not None
+        assert "decorators" in cls.meta
+        assert "base_classes" in cls.meta

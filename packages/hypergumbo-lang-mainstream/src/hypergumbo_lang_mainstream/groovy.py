@@ -147,6 +147,64 @@ def _extract_base_classes_groovy(node: "tree_sitter.Node", source: bytes) -> lis
     return base_classes
 
 
+def _extract_annotations_groovy(
+    node: "tree_sitter.Node", source: bytes,
+) -> list[dict[str, object]]:
+    """Extract annotations from a Groovy declaration node.
+
+    Groovy wraps annotations in a ``modifiers`` node, using
+    ``marker_annotation`` for no-arg annotations and ``annotation``
+    for parameterized ones.
+    """
+    decorators: list[dict[str, object]] = []
+    for child in node.children:
+        if child.type == "modifiers":
+            for mod_child in child.children:
+                if mod_child.type in ("marker_annotation", "annotation"):
+                    name = ""
+                    args: list[object] = []
+                    kwargs: dict[str, object] = {}
+                    for part in mod_child.children:
+                        if part.type == "identifier":
+                            name = node_text(part, source)
+                        elif part.type == "annotation_argument_list":
+                            for arg in part.children:
+                                if arg.type == "string_literal":
+                                    # Groovy string_literal uses
+                                    # string_fragment (not string_content)
+                                    frag = find_child_by_type(
+                                        arg, "string_fragment",
+                                    )
+                                    if frag:
+                                        args.append(node_text(frag, source))
+                                    else:  # pragma: no cover — defensive
+                                        args.append(node_text(arg, source))
+                                elif arg.type == "element_value_pair":
+                                    parts = [
+                                        c for c in arg.children if c.type != "="
+                                    ]
+                                    if len(parts) >= 2:
+                                        key = node_text(parts[0], source)
+                                        val_node = parts[1]
+                                        if val_node.type == "string_literal":
+                                            frag = find_child_by_type(
+                                                val_node, "string_fragment",
+                                            )
+                                            val = (
+                                                node_text(frag, source)
+                                                if frag
+                                                else node_text(val_node, source)
+                                            )
+                                        else:
+                                            val = node_text(val_node, source)
+                                        kwargs[key] = val
+                    if name:
+                        decorators.append(
+                            {"name": name, "args": args, "kwargs": kwargs}
+                        )
+    return decorators
+
+
 def _find_child_by_field(node: "tree_sitter.Node", field_name: str) -> Optional["tree_sitter.Node"]:  # pragma: no cover
     """Find child by field name."""
     return node.child_by_field_name(field_name)
@@ -323,7 +381,14 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
 
                     # Extract base classes and interfaces
                     base_classes = _extract_base_classes_groovy(node, source)
-                    meta = {"base_classes": base_classes} if base_classes else None
+                    annotations = _extract_annotations_groovy(node, source)
+                    meta: dict[str, object] | None = {}
+                    if base_classes:
+                        meta["base_classes"] = base_classes
+                    if annotations:
+                        meta["decorators"] = annotations
+                    if not meta:
+                        meta = None
 
                     symbol = Symbol(
                         id=make_symbol_id("groovy", str(file_path), start_line, end_line, class_name, "class"),
@@ -447,6 +512,10 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                     end_line = node.end_point[0] + 1
                     signature = _extract_groovy_signature(node, source)
                     modifiers = _extract_modifiers_groovy(node)
+                    annotations = _extract_annotations_groovy(node, source)
+                    method_meta = (
+                        {"decorators": annotations} if annotations else None
+                    )
 
                     # Typed stable_id (ADR-0014 §3)
                     norm_sig = normalize_groovy_signature(signature)
@@ -471,6 +540,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
                         stable_id=stable_id,
                         signature=signature,
                         modifiers=modifiers,
+                        meta=method_meta,
                     )
                     analysis.symbols.append(symbol)
                     analysis.symbol_by_name[method_name] = symbol

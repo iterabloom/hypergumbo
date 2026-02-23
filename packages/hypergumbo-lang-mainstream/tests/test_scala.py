@@ -955,6 +955,114 @@ class TestScalaDocstrings:
         assert method.docstring is None
 
 
+class TestScalaAnnotations:
+    """Tests for Scala annotation extraction (INV-kobad)."""
+
+    def test_class_annotation(self, tmp_path: Path) -> None:
+        """Class with @Entity annotation should have meta.decorators."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "Model.scala").write_text(
+            "import javax.persistence.Entity\n"
+            "\n"
+            "@Entity\n"
+            "class User {\n"
+            "  def name(): String = \"\"\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "User"), None)
+        assert cls is not None
+        assert cls.meta is not None
+        assert "decorators" in cls.meta
+        decorators = cls.meta["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Entity"
+
+    def test_method_annotation_with_args(self, tmp_path: Path) -> None:
+        """Method with @deprecated("old", "2.0") should capture arguments."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "App.scala").write_text(
+            "object App {\n"
+            '  @deprecated("use getAll", "2.0")\n'
+            "  def getUsers(): Unit = {}\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        method = next((s for s in result.symbols if "getUsers" in s.name), None)
+        assert method is not None
+        assert method.meta is not None
+        decorators = method.meta["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "deprecated"
+        assert "use getAll" in decorators[0]["args"]
+        assert "2.0" in decorators[0]["args"]
+
+    def test_annotation_with_named_args(self, tmp_path: Path) -> None:
+        """Annotation with named arguments should capture kwargs."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "Model.scala").write_text(
+            '@Table(name = "users")\n'
+            "class User {\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "User"), None)
+        assert cls is not None
+        decorators = cls.meta["decorators"]
+        assert len(decorators) == 1
+        assert decorators[0]["name"] == "Table"
+        assert decorators[0]["kwargs"]["name"] == "users"
+
+    def test_annotation_with_identifier_arg(self, tmp_path: Path) -> None:
+        """Annotation with identifier argument should capture it."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "Model.scala").write_text(
+            "@Scope(SINGLETON)\n"
+            "class Service {\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "Service"), None)
+        assert cls is not None
+        decorators = cls.meta["decorators"]
+        assert len(decorators) == 1
+        assert "SINGLETON" in decorators[0]["args"]
+
+    def test_no_annotation_no_decorators(self, tmp_path: Path) -> None:
+        """Class without annotations should not have decorators in meta."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "App.scala").write_text(
+            "class Plain {\n"
+            "  def run(): Unit = {}\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "Plain"), None)
+        assert cls is not None
+        assert cls.meta is None or "decorators" not in (cls.meta or {})
+
+    def test_class_with_annotation_and_base_class(self, tmp_path: Path) -> None:
+        """Class with both annotation and extends should have both in meta."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "Model.scala").write_text(
+            "@Entity\n"
+            "class Admin extends User {\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "Admin"), None)
+        assert cls is not None
+        assert cls.meta is not None
+        assert "decorators" in cls.meta
+        assert "base_classes" in cls.meta
+
+
 class TestScalaFunctionReferences:
     """Tests for Scala eta-expansion function references (INV-dinur).
 
