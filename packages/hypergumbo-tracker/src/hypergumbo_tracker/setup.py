@@ -33,6 +33,7 @@ import os
 import pwd
 import re
 import shutil
+import tempfile
 import subprocess  # nosec B404
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -59,14 +60,20 @@ def _config_chmod_fallback(path: Path, mode: int) -> None:
 
     When the current user doesn't own config.yaml (e.g. human user vs agent
     user), path.chmod() raises PermissionError. This fallback copies the file
-    to a tmp, deletes the original (allowed by directory write permission),
-    renames the tmp (now owned by the current user), and chmods it.
+    to a tempfile in /tmp (always writable), deletes the original (allowed by
+    directory write permission), moves the tmp back, and chmods it.
     """
-    tmp = path.with_suffix(".yaml.tmp")
-    shutil.copy2(path, tmp)
-    path.unlink()
-    tmp.rename(path)
-    path.chmod(mode)
+    fd, tmp_str = tempfile.mkstemp(suffix=".yaml", prefix="htrac_config_")
+    tmp = Path(tmp_str)
+    try:
+        os.close(fd)
+        shutil.copy2(path, tmp)
+        path.unlink()
+        shutil.move(str(tmp), str(path))
+        path.chmod(mode)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def config_unlock(path: Path) -> None:
