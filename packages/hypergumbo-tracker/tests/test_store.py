@@ -2127,6 +2127,24 @@ class TestFreezeUnfreeze:
         store.repair_drift(item_id)
         assert store.drift_check(item_id) is False
 
+    def test_repair_drift_preserves_ops_writable(
+        self, ops_dir: Path, mock_human_uid: None,
+    ) -> None:
+        """repair_drift must not propagate sentinel's 0444 mode onto .ops."""
+        store = Store(ops_dir, config=_make_config())
+        item_id = store.add(kind="invariant", title="Repair Writable")
+        store.freeze(item_id)
+        ip = store.item_path(item_id)
+        with open(ip, "a") as f:
+            f.write("# tampered\n")
+        store.repair_drift(item_id)
+        # .ops must still be writable by owner
+        import stat
+        mode = ip.stat().st_mode
+        assert mode & stat.S_IWUSR, ".ops should remain owner-writable after repair"
+        # Verify we can still append (the real-world failure case)
+        store.update(item_id, set_fields={"priority": 0})
+
     def test_sentinel_mode_0444(
         self, ops_dir: Path, mock_human_uid: None,
     ) -> None:

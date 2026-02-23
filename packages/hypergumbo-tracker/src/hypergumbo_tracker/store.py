@@ -1367,7 +1367,9 @@ class Store:
 
         import shutil
         ip = self.item_path(item_id)
-        shutil.copy2(fp, ip)
+        # Use copyfile (content-only) — copy2 would propagate the sentinel's
+        # 0444 mode onto the .ops file, making it unwritable for future ops.
+        shutil.copyfile(fp, ip)
 
     # -----------------------------------------------------------------------
     # Internal: _append_op
@@ -1451,7 +1453,7 @@ class Store:
             if sentinel.exists() and op_dict.get("by") == "human":
                 import shutil
                 sentinel.unlink()
-                shutil.copy2(filepath, sentinel)
+                shutil.copyfile(filepath, sentinel)
                 os.chmod(sentinel, 0o444)
 
     # -----------------------------------------------------------------------
