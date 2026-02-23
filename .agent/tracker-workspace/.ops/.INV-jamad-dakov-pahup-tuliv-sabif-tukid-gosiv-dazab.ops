@@ -45,3 +45,11 @@
   nonce: c0b6  # c0b6
   set:  # c0b6
     description: "Cross-cutting invariant. DSL references (router configs, GenServer targets, ORM model names) frequently use aliased or short names. Fixed violations: (1) OTP linker alias resolution — PR #1366. (2) Phoenix route_handler alias...as: patterns — PR #1367. (3) Laravel route_handler suffix-match — PR #1369. Remaining: (4) Django route_handler only 2-level fallback, LOW. Rails route_handler 5-tier cascade is the gold standard."  # c0b6
+- op: update  # d326
+  at: '2026-02-23T15:37:59Z'  # d326
+  by: agent  # d326
+  actor: jgstern_agent  # d326
+  clock: 5  # d326
+  nonce: d326  # d326
+  set:  # d326
+    status: holding  # d326

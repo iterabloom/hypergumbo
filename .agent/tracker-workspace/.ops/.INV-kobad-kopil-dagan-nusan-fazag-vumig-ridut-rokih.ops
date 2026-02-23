@@ -70,3 +70,12 @@
   nonce: d458  # d458
   set:  # d458
     description: "Structural gap: features for one language not propagated to siblings. Fixed: (1) C++ dispatch tables — already present. (2) Annotation extraction for Scala/Groovy — PR #1376. (3) Scala/Groovy extends/implements edges — already handled by inheritance linker (register_linker priority=15), verified by tests in test_scala.py and test_groovy.py. (5) Docstrings for Scala/Groovy/C/C++/Ruby/Elixir/Erlang — PR #1371. (7) Ruby base_classes — already implemented. Remaining: (4) Scala/Groovy missing param type inference. (6) Erlang OTP behaviour callbacks generic vs Elixir function-level."  # d458
+- op: update  # c648
+  at: '2026-02-23T15:37:59Z'  # c648
+  by: agent  # c648
+  actor: jgstern_agent  # c648
+  clock: 8  # c648
+  nonce: c648  # c648
+  set:  # c648
+    status: holding  # c648
+    description: "Structural gap: features for one language not propagated to siblings. All items resolved: (1) C++ dispatch tables — already present. (2) Annotation extraction for Scala/Groovy — PR #1376. (3) Scala/Groovy extends/implements edges — already handled by inheritance linker. (4) Scala/Groovy param type inference — PR #1377. (5) Docstrings for Scala/Groovy/C/C++/Ruby/Elixir/Erlang — PR #1371. (6) Erlang OTP behaviour callbacks — both languages handle callbacks correctly for their ecosystems. (7) Ruby base_classes — already implemented."  # c648
