@@ -18,3 +18,11 @@
     justification:  # c2aa
     description: "Ruby class Foo < Bar superclass is not stored in meta.base_classes, so the centralized inheritance linker cannot create extends edges for Ruby. Ruby analyzer creates call edges to parent class but not the metadata the inheritance linker needs. Fix: store superclass in meta.base_classes during symbol extraction."  # c2aa
     fields: {}  # c2aa
+- op: update  # a279
+  at: '2026-02-23T12:16:02Z'  # a279
+  by: agent  # a279
+  actor: jgstern_agent  # a279
+  clock: 2  # a279
+  nonce: a279  # a279
+  set:  # a279
+    status: done  # a279
