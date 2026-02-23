@@ -140,11 +140,15 @@ fi
 assert_exit "human lock invariant status" 0 \
     $TRACKER_CMD $COMMON lock "$INV_ID" status
 
-# 11. Fix config.yaml ownership: make it human-owned, not agent-writable
+# 11. Fix config.yaml ownership: make it human-owned, not agent-writable.
+#     Can't chown without sudo, so replace the file: copy (human-owned) →
+#     delete original (dir is group-writable, no sticky bit) → rename.
 CONFIG_PATH="$TRACKER_ROOT/tracker/config.yaml"
 if [ -f "$CONFIG_PATH" ]; then
-    chown "$(whoami)" "$CONFIG_PATH" 2>/dev/null || true
-    chmod 644 "$CONFIG_PATH" 2>/dev/null || true
+    cp "$CONFIG_PATH" "$CONFIG_PATH.tmp"
+    rm "$CONFIG_PATH"
+    mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
+    chmod 644 "$CONFIG_PATH"
 fi
 
 # ---------------------------------------------------------------------------
