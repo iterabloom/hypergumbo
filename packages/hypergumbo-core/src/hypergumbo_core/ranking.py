@@ -35,7 +35,15 @@ Ranking uses multiple signals combined:
    dominated rankings because hub saturation at 100 only reduced effective_in
    to ~106.
 
-5. **Edge Confidence Filtering**: Low-confidence edges (e.g., inferred
+5. **Trivial Sink Dampening**: Symbols with out_degree <= 1 AND
+   lines_of_code <= 5 get 90% centrality reduction.  These are trivial
+   accessors/stubs that accumulate high in-degree through ubiquitous use
+   but have no architectural significance.  Addresses bakeoff cohorts 16-17
+   findings: Timer.Duration (in=98, LoC=3), noopMetric.Inc (in=109, LoC=1),
+   CheckError (in=195, LoC=3), syncTask.name (in=109, LoC=2) all dominated
+   rankings despite being plumbing.
+
+6. **Edge Confidence Filtering**: Low-confidence edges (e.g., inferred
    method calls with confidence <0.5) are excluded from centrality
    computation. This prevents method name collisions from inflating
    in-degree: DirLocker.Lock gets 255 false in-degree from unrelated
@@ -408,6 +416,72 @@ def apply_utility_symbol_weights(
     return weighted
 
 
+def apply_trivial_sink_weights(
+    centrality: Dict[str, float],
+    symbols: List[Symbol],
+    edges: List[Edge],
+    sink_weight: float = 0.1,
+    max_out_degree: int = 1,
+    max_loc: int = 5,
+) -> Dict[str, float]:
+    """Dampen centrality for trivial sinks — short-bodied symbols with near-zero out-degree.
+
+    Bakeoff cohorts 16-17 showed that trivial accessors/stubs dominate
+    rankings purely through raw in-degree even after hub saturation and
+    bidirectional scoring.  The root cause: when the highest in-degree
+    symbols in a codebase are ALL pure sinks, there are no connectors
+    with enough in-degree to overcome the sink's base score.
+
+    Examples dampened by this function:
+      - Timer.Duration (in=98, out=0, LoC=3) — 1-line accessor
+      - noopMetric.Inc (in=109, out=0, LoC=1) — null object stub
+      - CheckError (in=195, out=1, LoC=3) — error-handling wrapper
+      - syncTask.name (in=109, out=0, LoC=2) — trivial accessor
+
+    Detection criteria (all must hold):
+      1. out_degree <= max_out_degree (default 1)
+      2. lines_of_code <= max_loc (default 5)
+
+    This is conservative: most architectural functions have out_degree > 1
+    OR non-trivial body size.  The conjunction prevents false dampening of
+    genuinely important short leaf functions.
+
+    Args:
+        centrality: Centrality scores to weight.
+        symbols: Symbol list (used for lines_of_code).
+        edges: Edge list (used to compute out-degree).
+        sink_weight: Multiplier for trivial sinks (default 0.1).
+        max_out_degree: Maximum out-degree to qualify as sink (default 1).
+        max_loc: Maximum lines of code to qualify as trivial (default 5).
+
+    Returns:
+        Dictionary mapping symbol ID to dampened centrality score.
+    """
+    # Compute out-degree from edges
+    out_degree: Dict[str, int] = {}
+    for edge in edges:
+        if edge.src:
+            out_degree[edge.src] = out_degree.get(edge.src, 0) + 1
+
+    # Build lines-of-code lookup
+    symbol_loc: Dict[str, int] = {}
+    for s in symbols:
+        loc = s.lines_of_code
+        if loc is None and s.span is not None:
+            loc = s.span.end_line - s.span.start_line + 1
+        symbol_loc[s.id] = loc if loc is not None else 0
+
+    weighted = {}
+    for sid, score in centrality.items():
+        outd = out_degree.get(sid, 0)
+        loc = symbol_loc.get(sid, 0)
+        if outd <= max_out_degree and loc <= max_loc:
+            weighted[sid] = score * sink_weight
+        else:
+            weighted[sid] = score
+    return weighted
+
+
 def group_symbols_by_file(symbols: List[Symbol]) -> Dict[str, List[Symbol]]:
     """Group symbols by their file path.
 
@@ -544,6 +618,11 @@ def rank_symbols(
 
     # De-weight utility symbols (loggers, clocks, STL accessors, etc.)
     weighted_centrality = apply_utility_symbol_weights(weighted_centrality, symbols)
+
+    # De-weight trivial sinks (short-bodied pure sinks like accessors/stubs)
+    weighted_centrality = apply_trivial_sink_weights(
+        weighted_centrality, symbols, filtered_edges,
+    )
 
     # Sort by weighted centrality (highest first), then by name for stability
     sorted_symbols = sorted(

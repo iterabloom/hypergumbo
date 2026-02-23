@@ -2149,3 +2149,197 @@ class TestMinEdgeConfidence:
             f"With confidence filter, Scrape (rank {domain_rank_f}) "
             f"should outrank Lock (rank {lock_rank_f})"
         )
+
+
+class TestTrivialSinkDampening:
+    """Tests that trivial sinks (high in-degree, near-zero out-degree,
+    short body) are dampened in centrality rankings.
+
+    Bakeoff cohorts 16-17 showed that trivial accessors/stubs dominate
+    rankings purely through raw in-degree:
+      - Timer.Duration (in=98, out=0, LoC=3) ranked #1 in Prometheus
+      - noopMetric.Inc (in=109, out=0, LoC=1) ranked #2
+      - CheckError (in=195, out=1, LoC=3) ranked #2 in ArgoCD
+      - syncTask.name (in=109, out=0, LoC=2) ranked #3
+    These are plumbing — not architecture.
+    """
+
+    def _make_short_symbol(
+        self, name: str, path: str, *, loc: int = 3,
+    ) -> Symbol:
+        """Create a symbol with a controlled lines_of_code."""
+        sym = Symbol(
+            id=f"go:{path}:1-{loc}:function:{name}",
+            name=name,
+            kind="function",
+            language="go",
+            path=path,
+            span=Span(
+                start_line=1, end_line=loc, start_col=0, end_col=0,
+            ),
+        )
+        sym.supply_chain_tier = 1
+        sym.supply_chain_reason = "tier_1"
+        sym.lines_of_code = loc
+        return sym
+
+    def test_trivial_sink_ranks_below_connector(self):
+        """A short-bodied pure sink should rank below a connector that
+        has lower in-degree but meaningful out-degree and body size.
+
+        Real-world scenario from Prometheus bakeoff:
+          - Timer.Duration: in=98, out=0, LoC=3 — 1-line accessor
+          - evaluator.eval: in=15, out=30, LoC=200 — core evaluation loop
+        Without dampening, sink score=98 beats connector score≈66.
+        With dampening, sink should be penalized as trivial plumbing.
+        """
+        # Trivial sink: called by many, calls nothing, 3-line body
+        sink = self._make_short_symbol(
+            "Duration", "util/stats/timer.go", loc=3,
+        )
+
+        # Architectural connector: fewer callers but rich outgoing edges
+        connector = self._make_short_symbol(
+            "eval", "promql/engine.go", loc=200,
+        )
+
+        # Other symbols for edges
+        callers = [
+            make_symbol(f"caller_{i}", f"pkg/c{i}.go")
+            for i in range(100)
+        ]
+        callees = [
+            make_symbol(f"callee_{i}", f"pkg/d{i}.go")
+            for i in range(30)
+        ]
+
+        all_syms = [sink, connector] + callers + callees
+
+        # 98 edges into sink, 0 out
+        edges = [make_edge(c.id, sink.id) for c in callers[:98]]
+        # 15 edges into connector, 30 out
+        edges += [make_edge(c.id, connector.id) for c in callers[:15]]
+        edges += [make_edge(connector.id, d.id) for d in callees]
+
+        result = rank_symbols(all_syms, edges)
+
+        sink_rank = next(
+            r for r in result if r.symbol.name == "Duration"
+        ).rank
+        connector_rank = next(
+            r for r in result if r.symbol.name == "eval"
+        ).rank
+
+        assert connector_rank < sink_rank, (
+            f"Connector eval (rank {connector_rank}) should outrank "
+            f"trivial sink Duration (rank {sink_rank})"
+        )
+
+    def test_long_bodied_sink_not_dampened(self):
+        """A sink with a large body should NOT be dampened — it may be a
+        genuinely important leaf function (e.g., a complex validator or
+        formatter).
+        """
+        # Long-bodied sink: high in-degree, 0 out, 100 lines
+        big_sink = self._make_short_symbol(
+            "Validate", "pkg/validator.go", loc=100,
+        )
+        # Short-bodied sink: high in-degree, 0 out, 3 lines
+        trivial_sink = self._make_short_symbol(
+            "Duration", "util/timer.go", loc=3,
+        )
+
+        callers = [
+            make_symbol(f"caller_{i}", f"pkg/c{i}.go")
+            for i in range(60)
+        ]
+        all_syms = [big_sink, trivial_sink] + callers
+
+        # Both get 50 incoming edges
+        edges = [make_edge(c.id, big_sink.id) for c in callers[:50]]
+        edges += [make_edge(c.id, trivial_sink.id) for c in callers[:50]]
+
+        result = rank_symbols(all_syms, edges)
+
+        big_rank = next(
+            r for r in result if r.symbol.name == "Validate"
+        ).rank
+        trivial_rank = next(
+            r for r in result if r.symbol.name == "Duration"
+        ).rank
+
+        assert big_rank < trivial_rank, (
+            f"Long-bodied Validate (rank {big_rank}) should outrank "
+            f"trivial Duration (rank {trivial_rank})"
+        )
+
+    def test_sink_with_moderate_outdegree_not_dampened(self):
+        """A sink with out_degree > 1 should NOT be dampened — it's
+        making meaningful calls, not just a trivial accessor.
+        """
+        # Short body but calls 3 things — not trivial
+        meaningful = self._make_short_symbol(
+            "HandleError", "pkg/handler.go", loc=4,
+        )
+        trivial = self._make_short_symbol(
+            "Name", "pkg/task.go", loc=2,
+        )
+
+        callers = [
+            make_symbol(f"caller_{i}", f"pkg/c{i}.go")
+            for i in range(60)
+        ]
+        callees = [
+            make_symbol(f"callee_{i}", f"pkg/d{i}.go")
+            for i in range(3)
+        ]
+        all_syms = [meaningful, trivial] + callers + callees
+
+        # Both get 50 incoming edges
+        edges = [make_edge(c.id, meaningful.id) for c in callers[:50]]
+        edges += [make_edge(c.id, trivial.id) for c in callers[:50]]
+        # meaningful calls 3 things (out_degree > 1 threshold)
+        edges += [make_edge(meaningful.id, d.id) for d in callees]
+
+        result = rank_symbols(all_syms, edges)
+
+        meaningful_rank = next(
+            r for r in result if r.symbol.name == "HandleError"
+        ).rank
+        trivial_rank = next(
+            r for r in result if r.symbol.name == "Name"
+        ).rank
+
+        assert meaningful_rank < trivial_rank, (
+            f"HandleError (rank {meaningful_rank}) should outrank "
+            f"trivial Name (rank {trivial_rank})"
+        )
+
+    def test_apply_trivial_sink_weights_directly(self):
+        """Unit test for apply_trivial_sink_weights function."""
+        from hypergumbo_core.ranking import apply_trivial_sink_weights
+
+        # Short-body sink
+        sink = self._make_short_symbol("Inc", "metrics.go", loc=1)
+        # Long-body sink
+        big = self._make_short_symbol("Process", "engine.go", loc=50)
+        # Short body, moderate out-degree
+        caller = self._make_short_symbol("Init", "init.go", loc=3)
+
+        symbols = [sink, big, caller]
+        edges = [
+            make_edge("other", sink.id),
+            make_edge("other", big.id),
+            make_edge(caller.id, "target_a"),
+            make_edge(caller.id, "target_b"),
+        ]
+        centrality = {sink.id: 1.0, big.id: 0.8, caller.id: 0.5}
+
+        result = apply_trivial_sink_weights(centrality, symbols, edges)
+
+        # sink: out=0, loc=1 → dampened
+        assert result[sink.id] == pytest.approx(0.1)
+        # big: out=0, loc=50 → NOT dampened (body too long)
+        assert result[big.id] == pytest.approx(0.8)
+        # caller: out=2, loc=3 → NOT dampened (out_degree > 1)
+        assert result[caller.id] == pytest.approx(0.5)
