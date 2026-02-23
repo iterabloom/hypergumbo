@@ -1307,6 +1307,69 @@ def _extract_edges(
                             var_types[var_name] = type_name
                             break
 
+        # Method references: App::transform, this::process, Class::new
+        # Creates a "references" edge from the enclosing method to the
+        # referenced method.  Constructor references (::new) create
+        # "instantiates" edges instead.
+        elif node.type == "method_reference":
+            current_method = _get_enclosing_method(
+                node, source, global_symbols, file_path, symbol_by_position,
+            )
+            if current_method:
+                children = [c for c in node.children if c.is_named]
+                if len(children) >= 2:
+                    class_node = children[0]
+                    method_node = children[1]
+                    class_name = _node_text(class_node, source)
+                    method_name = _node_text(method_node, source)
+                elif len(children) == 1:
+                    # Only class part, method is anonymous (::new)
+                    class_name = _node_text(children[0], source)
+                    method_name = "new"
+                else:  # pragma: no cover
+                    class_name = None
+                    method_name = None
+
+                if class_name and method_name == "new":
+                    # Constructor reference: try to resolve the class
+                    lookup_result = class_resolver.lookup(class_name)
+                    if lookup_result.found and lookup_result.symbol is not None:
+                        edge = Edge.create(
+                            src=current_method.id,
+                            dst=lookup_result.symbol.id,
+                            edge_type="instantiates",
+                            line=node.start_point[0] + 1,
+                            confidence=0.80 * lookup_result.confidence,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="constructor_reference",
+                        )
+                        edges.append(edge)
+
+                elif class_name and method_name:
+                    # Method reference: resolve ClassName.methodName
+                    # Try this::method → look up method in current class
+                    target_name = None
+                    if class_name == "this":
+                        # Resolve in current class scope
+                        target_name = method_name
+                    else:
+                        target_name = f"{class_name}.{method_name}"
+
+                    lookup_result = resolver.lookup(target_name)
+                    if lookup_result.found and lookup_result.symbol is not None:
+                        edge = Edge.create(
+                            src=current_method.id,
+                            dst=lookup_result.symbol.id,
+                            edge_type="references",
+                            line=node.start_point[0] + 1,
+                            confidence=0.80 * lookup_result.confidence,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="method_reference",
+                        )
+                        edges.append(edge)
+
     return edges
 
 

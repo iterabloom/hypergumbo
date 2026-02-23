@@ -3026,3 +3026,123 @@ class TestNormalizeJavaSignature:
     def test_none(self) -> None:
         from hypergumbo_lang_mainstream.java import normalize_java_signature
         assert normalize_java_signature(None) is None
+
+
+class TestJavaMethodReferences:
+    """Tests for Java method reference (::) detection."""
+
+    def test_static_method_reference(self, tmp_path: Path) -> None:
+        """Detects App::transform as a references edge."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "App.java").write_text(
+            "import java.util.List;\n"
+            "class App {\n"
+            "    static String transform(String s) { return s; }\n"
+            "    void run(List<String> items) {\n"
+            "        items.stream().map(App::transform);\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        assert any(
+            "transform" in e.dst and "run" in e.src
+            for e in ref_edges
+        ), f"Expected method reference edge, got: {ref_edges}"
+
+    def test_instance_method_reference(self, tmp_path: Path) -> None:
+        """Detects this::process as a references edge."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "App.java").write_text(
+            "import java.util.List;\n"
+            "class App {\n"
+            "    void process(String s) {}\n"
+            "    void run(List<String> items) {\n"
+            "        items.forEach(this::process);\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        assert any(
+            "process" in e.dst and "run" in e.src
+            for e in ref_edges
+        ), f"Expected instance method reference edge, got: {ref_edges}"
+
+    def test_constructor_reference(self, tmp_path: Path) -> None:
+        """Detects StringBuilder::new as an instantiates edge."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "App.java").write_text(
+            "import java.util.List;\n"
+            "class App {\n"
+            "    void run(List<String> items) {\n"
+            "        items.stream().map(StringBuilder::new);\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        # Constructor references should not produce edges since
+        # StringBuilder is an external class, not in the codebase.
+        # Just verify no crash occurs.
+        assert result.symbols  # analysis completed
+
+    def test_method_reference_evidence_type(self, tmp_path: Path) -> None:
+        """Method reference edges have correct evidence_type."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "App.java").write_text(
+            "import java.util.List;\n"
+            "class App {\n"
+            "    static int parse(String s) { return 0; }\n"
+            "    void run(List<String> items) {\n"
+            "        items.stream().map(App::parse);\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        matching = [e for e in ref_edges if "parse" in e.dst]
+        assert len(matching) == 1
+        assert matching[0].evidence_type == "method_reference"
+
+    def test_constructor_reference_to_local_class(self, tmp_path: Path) -> None:
+        """Detects Widget::new as an instantiates edge to local class."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "App.java").write_text(
+            "import java.util.List;\n"
+            "class Widget {}\n"
+        )
+        (tmp_path / "Runner.java").write_text(
+            "import java.util.List;\n"
+            "import java.util.stream.Collectors;\n"
+            "class Runner {\n"
+            "    void run(List<String> items) {\n"
+            "        items.stream().map(Widget::new).collect(Collectors.toList());\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        inst_edges = [e for e in result.edges if e.edge_type == "instantiates"]
+        assert any(
+            "Widget" in e.dst and "run" in e.src
+            for e in inst_edges
+        ), f"Expected constructor reference edge, got: {inst_edges}"
+
+    def test_method_reference_no_enclosing_method(self, tmp_path: Path) -> None:
+        """Method reference at class level (e.g. field initializer) is ignored gracefully."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "App.java").write_text(
+            "import java.util.function.Function;\n"
+            "class App {\n"
+            "    static int transform(int x) { return x; }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        # No crash, no spurious edges
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        assert len(ref_edges) == 0

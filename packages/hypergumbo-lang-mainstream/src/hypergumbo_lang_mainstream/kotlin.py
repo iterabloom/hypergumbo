@@ -1035,6 +1035,78 @@ def _extract_edges_from_file(
                                             node_text(var_name_node, source)
                                         ] = ret_name
 
+        # Callable references: ::functionName (unqualified)
+        elif node.type == "callable_reference":
+            current_function = _get_enclosing_function(node, source, local_symbols)
+            if current_function is None:  # pragma: no cover
+                continue
+            # Structure: :: identifier
+            ref_name_node = find_child_by_type(node, "identifier")
+            if ref_name_node:
+                ref_name = node_text(ref_name_node, source)
+                # Try enclosing class scope first
+                enclosing_class = _get_enclosing_class(node, source)
+                target_name = (
+                    f"{enclosing_class}.{ref_name}" if enclosing_class else ref_name
+                )
+                lookup_result = resolver.lookup(target_name)
+                if not (lookup_result.found and lookup_result.symbol is not None):
+                    lookup_result = resolver.lookup(ref_name)
+                if lookup_result.found and lookup_result.symbol is not None:
+                    edges.append(Edge.create(
+                        src=current_function.id,
+                        dst=lookup_result.symbol.id,
+                        edge_type="references",
+                        line=node.start_point[0] + 1,
+                        confidence=0.80 * lookup_result.confidence,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        evidence_type="callable_reference",
+                    ))
+
+        # Qualified callable references: App::method or this::method
+        # These appear as navigation_expression with :: separator.
+        elif node.type == "navigation_expression":
+            # Only handle :: references (not normal . navigation)
+            has_double_colon = any(
+                not c.is_named and c.type == "::" for c in node.children
+            )
+            if has_double_colon:
+                current_function = _get_enclosing_function(
+                    node, source, local_symbols,
+                )
+                if current_function is None:  # pragma: no cover
+                    continue
+                named_children = [c for c in node.children if c.is_named]
+                if len(named_children) >= 2:
+                    receiver_node = named_children[0]
+                    method_node = named_children[1]
+                    method_name = node_text(method_node, source)
+
+                    if receiver_node.type == "this_expression":
+                        enclosing_class = _get_enclosing_class(node, source)
+                        target = (
+                            f"{enclosing_class}.{method_name}"
+                            if enclosing_class
+                            else method_name
+                        )
+                    else:
+                        receiver_name = node_text(receiver_node, source)
+                        target = f"{receiver_name}.{method_name}"
+
+                    lookup_result = resolver.lookup(target)
+                    if lookup_result.found and lookup_result.symbol is not None:
+                        edges.append(Edge.create(
+                            src=current_function.id,
+                            dst=lookup_result.symbol.id,
+                            edge_type="references",
+                            line=node.start_point[0] + 1,
+                            confidence=0.80 * lookup_result.confidence,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type="callable_reference",
+                        ))
+
     return edges
 
 

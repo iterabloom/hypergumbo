@@ -2039,3 +2039,103 @@ class Controller {
         ]
         assert len(decorated_edges) == 1
         assert "unresolved" in decorated_edges[0].dst
+
+
+class TestKotlinCallableReferences:
+    """Tests for Kotlin callable reference (::) detection."""
+
+    def test_simple_callable_reference(self, tmp_path: Path) -> None:
+        """Detects ::transform as a references edge."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "App.kt").write_text(
+            "class App {\n"
+            "    fun transform(s: String): String = s.uppercase()\n"
+            "    fun run(items: List<String>) {\n"
+            "        items.map(::transform)\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_kotlin(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        assert any(
+            "transform" in e.dst and "run" in e.src
+            for e in ref_edges
+        ), f"Expected callable reference edge, got: {ref_edges}"
+
+    def test_qualified_callable_reference(self, tmp_path: Path) -> None:
+        """Detects App::transform as a references edge."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "App.kt").write_text(
+            "class App {\n"
+            "    fun transform(s: String): String = s.uppercase()\n"
+            "    fun run(items: List<String>) {\n"
+            "        items.map(App::transform)\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_kotlin(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        assert any(
+            "transform" in e.dst and "run" in e.src
+            for e in ref_edges
+        ), f"Expected qualified reference edge, got: {ref_edges}"
+
+    def test_this_callable_reference(self, tmp_path: Path) -> None:
+        """Detects this::process as a references edge."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "App.kt").write_text(
+            "class App {\n"
+            "    fun process(s: String) {}\n"
+            "    fun run(items: List<String>) {\n"
+            "        items.forEach(this::process)\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_kotlin(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        assert any(
+            "process" in e.dst and "run" in e.src
+            for e in ref_edges
+        ), f"Expected this:: reference edge, got: {ref_edges}"
+
+    def test_callable_reference_evidence_type(self, tmp_path: Path) -> None:
+        """Callable reference edges have correct evidence_type."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "App.kt").write_text(
+            "class App {\n"
+            "    fun parse(s: String): Int = s.toInt()\n"
+            "    fun run(items: List<String>) {\n"
+            "        items.map(::parse)\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_kotlin(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        matching = [e for e in ref_edges if "parse" in e.dst]
+        assert len(matching) == 1
+        assert matching[0].evidence_type == "callable_reference"
+
+    def test_top_level_callable_reference(self, tmp_path: Path) -> None:
+        """Detects ::topLevel referencing a top-level function from inside a class."""
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Utils.kt").write_text(
+            "fun helper(s: String): String = s.trim()\n"
+        )
+        (tmp_path / "App.kt").write_text(
+            "class App {\n"
+            "    fun run(items: List<String>) {\n"
+            "        items.map(::helper)\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_kotlin(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        assert any(
+            "helper" in e.dst and "run" in e.src
+            for e in ref_edges
+        ), f"Expected top-level callable reference edge, got: {ref_edges}"
