@@ -18,3 +18,12 @@
     justification:  # e96f
     description: "Go analyzer misses function references in composite_literal keyed_element nodes. cobra.Command{RunE: myFunc}, http.ServeMux{Handler: myHandler}, map values. Fix: add composite_literal branch to _extract_edges_from_file that scans keyed_element values for identifiers/selector_expressions resolving to known functions. Create calls edges with evidence_type=struct_field_reference, confidence 0.70. Discovered via vault bakeoff — ServerCommand.Run has zero incoming edges because cobra dispatch is struct-field-mediated."  # e96f
     fields: {}  # e96f
+- op: update  # 35d6
+  at: '2026-02-23T11:58:58Z'  # 35d6
+  by: agent  # 35d6
+  actor: jgstern_agent  # 35d6
+  clock: 2  # 35d6
+  nonce: 35d6  # 35d6
+  set:  # 35d6
+    status: done  # 35d6
+    pr_ref: '1365'  # 35d6

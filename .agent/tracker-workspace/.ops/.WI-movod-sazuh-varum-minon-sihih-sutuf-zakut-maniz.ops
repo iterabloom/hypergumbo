@@ -18,3 +18,11 @@
     justification:  # ba5d
     description: "Java extracts full annotation metadata into meta.decorators (name, args, kwargs), enabling YAML framework pattern enrichment for Spring @GetMapping, JPA @Entity, etc. Kotlin has no annotation extraction at all. This blocks Spring Boot Kotlin framework detection. Also affects Scala and Groovy. Fix: add annotation extraction to kotlin.py, scala.py, groovy.py analogous to Java's implementation."  # ba5d
     fields: {}  # ba5d
+- op: update  # eaec
+  at: '2026-02-23T11:58:37Z'  # eaec
+  by: agent  # eaec
+  actor: jgstern_agent  # eaec
+  clock: 2  # eaec
+  nonce: eaec  # eaec
+  set:  # eaec
+    status: done  # eaec

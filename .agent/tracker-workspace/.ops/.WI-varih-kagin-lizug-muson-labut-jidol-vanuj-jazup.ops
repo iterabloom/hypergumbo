@@ -18,3 +18,21 @@
     justification:  # 1f6c
     description: "GenServer.call(UserCache, :ping) where UserCache is an Elixir alias produces zero otp_call/otp_cast edges. otp.py does direct dict lookup on handler_index with no suffix fallback. Fix: add suffix-match fallback (like Phoenix route_handler has) or resolve aliases using the Elixir analyzer's _extract_alias_hints output. HIGH severity — nearly every real Elixir codebase uses module aliases for cross-module GenServer calls."  # 1f6c
     fields: {}  # 1f6c
+- op: update  # 8d7b
+  at: '2026-02-23T11:58:49Z'  # 8d7b
+  by: agent  # 8d7b
+  actor: jgstern_agent  # 8d7b
+  clock: 2  # 8d7b
+  nonce: 8d7b  # 8d7b
+  set:  # 8d7b
+    status: done  # 8d7b
+    pr_ref: '1366'  # 8d7b
+- op: update  # d81a
+  at: '2026-02-23T11:58:53Z'  # d81a
+  by: agent  # d81a
+  actor: jgstern_agent  # d81a
+  clock: 3  # d81a
+  nonce: d81a  # d81a
+  set:  # d81a
+    status: done  # d81a
+    pr_ref: '1366'  # d81a
