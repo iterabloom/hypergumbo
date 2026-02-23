@@ -20,3 +20,43 @@
     fields:  # 1402
       statement: "Invariants represent perpetual system truths and must never be marked done"  # 1402
       root_cause: "Tracker schema has no holding/enforced status for invariants, so done is used as a catch-all"  # 1402
+- op: update  # 9c0f
+  at: '2026-02-23T02:32:56Z'  # 9c0f
+  by: human  # 9c0f
+  actor: jgstern  # 9c0f
+  clock: 2  # 9c0f
+  nonce: 9c0f  # 9c0f
+  set:  # 9c0f
+    title: "Invariants should never have status 'done' — need a 'holding'/'enforced' status."  # 9c0f
+- op: lock  # 1bdd
+  at: '2026-02-23T02:33:29Z'  # 1bdd
+  by: human  # 1bdd
+  actor: jgstern  # 1bdd
+  clock: 3  # 1bdd
+  nonce: 1bdd  # 1bdd
+  lock:  # 1bdd
+  - Title  # 1bdd
+- op: update  # 7b10
+  at: '2026-02-23T02:34:31Z'  # 7b10
+  by: agent  # 7b10
+  actor: jgstern_agent  # 7b10
+  clock: 4  # 7b10
+  nonce: 7b10  # 7b10
+  set:  # 7b10
+    title: "Trivial title change test"  # 7b10
+- op: update  # 7c07
+  at: '2026-02-23T02:34:39Z'  # 7c07
+  by: agent  # 7c07
+  actor: jgstern_agent  # 7c07
+  clock: 5  # 7c07
+  nonce: 7c07  # 7c07
+  set:  # 7c07
+    title: "Invariants should never have status 'done' — need a 'holding'/'enforced' status."  # 7c07
+- op: update  # c2d1
+  at: '2026-02-23T03:04:41Z'  # c2d1
+  by: human  # c2d1
+  actor: jgstern  # c2d1
+  clock: 6  # c2d1
+  nonce: c2d1  # c2d1
+  set:  # c2d1
+    title: "Invariants should never have status 'done' — need a 'holding'/'enforced' status!"  # c2d1
