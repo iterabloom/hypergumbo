@@ -10,12 +10,14 @@ from hypergumbo_core.ranking import (
     compute_centrality,
     apply_tier_weights,
     apply_test_weights,
+    apply_utility_symbol_weights,
     group_symbols_by_file,
     compute_file_scores,
     rank_symbols,
     rank_files,
     get_importance_threshold,
     _is_test_path,
+    is_utility_symbol,
     TIER_WEIGHTS,
     RankedSymbol,
     RankedFile,
@@ -1858,3 +1860,142 @@ class TestExcludeImportEdgesCentrality:
         base_ranked = next(r for r in result if r.symbol.name == "BaseModel")
         # extends edge preserved, import edge excluded → centrality > 0
         assert base_ranked.raw_centrality > 0
+
+
+class TestIsUtilitySymbol:
+    """Tests for is_utility_symbol function.
+
+    Infrastructure utility symbols (loggers, clocks, metrics, error sentinels)
+    should be detected by name so they can be demoted in rankings. This covers
+    the INV-mahap finding: DefaultClock.Now (in-degree 474) dominates rankings
+    because hub saturation alone is insufficient.
+    """
+
+    def test_logger_names(self):
+        """Common logger symbol names are detected."""
+        assert is_utility_symbol("Logger")
+        assert is_utility_symbol("logger")
+        assert is_utility_symbol("AppLogger")
+        assert is_utility_symbol("getLogger")
+        assert is_utility_symbol("log_message")
+
+    def test_clock_names(self):
+        """Clock/time infrastructure symbols are detected."""
+        assert is_utility_symbol("Clock")
+        assert is_utility_symbol("DefaultClock")
+        assert is_utility_symbol("SystemClock")
+
+    def test_metrics_names(self):
+        """Metrics/telemetry symbols are detected."""
+        assert is_utility_symbol("Metrics")
+        assert is_utility_symbol("MetricsCollector")
+        assert is_utility_symbol("metricsRecorder")
+
+    def test_error_sentinel_names(self):
+        """Error sentinel and exception names are detected."""
+        assert is_utility_symbol("ErrNotFound")
+        assert is_utility_symbol("ErrTimeout")
+        assert is_utility_symbol("errInvalid")
+
+    def test_stl_accessor_names(self):
+        """STL-like accessor methods are detected (empty, size, begin, end)."""
+        assert is_utility_symbol("empty")
+        assert is_utility_symbol("size")
+        assert is_utility_symbol("begin")
+        assert is_utility_symbol("end")
+        assert is_utility_symbol("length")
+
+    def test_toString_hashCode(self):
+        """Common boilerplate methods are detected."""
+        assert is_utility_symbol("toString")
+        assert is_utility_symbol("hashCode")
+        assert is_utility_symbol("equals")
+        assert is_utility_symbol("__repr__")
+        assert is_utility_symbol("__str__")
+        assert is_utility_symbol("__hash__")
+        assert is_utility_symbol("__eq__")
+
+    def test_domain_names_not_matched(self):
+        """Domain-relevant symbol names are NOT detected as utility."""
+        assert not is_utility_symbol("handleRequest")
+        assert not is_utility_symbol("processOrder")
+        assert not is_utility_symbol("UserService")
+        assert not is_utility_symbol("createUser")
+        assert not is_utility_symbol("Router")
+        assert not is_utility_symbol("main")
+        assert not is_utility_symbol("checkout")
+
+
+class TestApplyUtilitySymbolWeights:
+    """Tests for apply_utility_symbol_weights function.
+
+    Utility symbols (loggers, clocks, STL accessors) get their centrality
+    dampened so they don't dominate rankings despite high in-degree.
+    """
+
+    def test_utility_symbol_dampened(self):
+        """Utility symbol centrality is reduced."""
+        logger = make_symbol("Logger", path="src/log.go", language="go")
+        router = make_symbol("Router", path="src/router.go", language="go")
+
+        centrality = {logger.id: 0.9, router.id: 0.7}
+        result = apply_utility_symbol_weights(centrality, [logger, router])
+
+        assert result[logger.id] < centrality[logger.id], (
+            "Logger centrality should be dampened"
+        )
+        assert result[router.id] == centrality[router.id], (
+            "Router centrality should be unchanged"
+        )
+
+    def test_utility_dampening_factor(self):
+        """Utility symbol centrality is reduced by the default factor (0.1)."""
+        clock = make_symbol("DefaultClock", path="src/clock.cs", language="csharp")
+        centrality = {clock.id: 1.0}
+        result = apply_utility_symbol_weights(centrality, [clock])
+        assert result[clock.id] == pytest.approx(0.1)
+
+    def test_non_utility_unchanged(self):
+        """Non-utility symbols are unaffected."""
+        svc = make_symbol("UserService", path="src/service.py")
+        centrality = {svc.id: 0.5}
+        result = apply_utility_symbol_weights(centrality, [svc])
+        assert result[svc.id] == 0.5
+
+    def test_rank_symbols_integrates_utility_weights(self):
+        """rank_symbols should demote utility symbols below domain symbols.
+
+        A Logger with 5 callers should rank below Router with 3 callers
+        because Logger is infrastructure.
+        """
+        logger = make_symbol("Logger", path="src/log.py")
+        router = make_symbol("Router", path="src/router.py")
+        c1 = make_symbol("c1", path="src/a.py")
+        c2 = make_symbol("c2", path="src/b.py")
+        c3 = make_symbol("c3", path="src/c.py")
+        c4 = make_symbol("c4", path="src/d.py")
+        c5 = make_symbol("c5", path="src/e.py")
+
+        edges = [
+            # Logger has 5 callers
+            make_edge(c1.id, logger.id),
+            make_edge(c2.id, logger.id),
+            make_edge(c3.id, logger.id),
+            make_edge(c4.id, logger.id),
+            make_edge(c5.id, logger.id),
+            # Router has 3 callers
+            make_edge(c1.id, router.id),
+            make_edge(c2.id, router.id),
+            make_edge(c3.id, router.id),
+        ]
+
+        all_syms = [logger, router, c1, c2, c3, c4, c5]
+        result = rank_symbols(all_syms, edges)
+
+        logger_ranked = next(r for r in result if r.symbol.name == "Logger")
+        router_ranked = next(r for r in result if r.symbol.name == "Router")
+
+        assert router_ranked.rank < logger_ranked.rank, (
+            f"Router (rank {router_ranked.rank}) should outrank "
+            f"Logger (rank {logger_ranked.rank}) due to utility dampening"
+        )

@@ -1886,13 +1886,12 @@ class TestEntrypointRankingPenalties:
     """
 
     def test_aggressive_test_demotion_prevents_flooding(self) -> None:
-        """Test entrypoints must be aggressively deprioritized to prevent flooding.
+        """Test entrypoints in test files are filtered out entirely.
 
         In repos like DMD where 98% of main() functions are in test files,
-        a modest penalty (e.g. 50%) leaves test entrypoints at 0.40 confidence
-        — high enough to dominate auto-slicing selections.  The penalty must
-        push test entrypoints well below production ones so that auto-entry
-        selection picks production code by default.
+        the 90% test penalty (0.80 * 0.1 = 0.08) pushes them below the
+        MIN_ENTRYPOINT_CONFIDENCE threshold (0.10), so they are excluded
+        from results. Only production mains survive.
         """
         # 3 production mains
         prod_mains = [
@@ -1918,31 +1917,21 @@ class TestEntrypointRankingPenalties:
 
         entrypoints = detect_entrypoints(nodes, [])
 
-        # All should be detected
-        assert len(entrypoints) == 53
+        # Only production mains survive (test mains at 0.08 are filtered)
+        assert len(entrypoints) == 3
 
-        prod_eps = [ep for ep in entrypoints if "src/" in ep.symbol_id]
-        test_eps = [ep for ep in entrypoints if "tests/" in ep.symbol_id]
-
-        # Production entrypoints should be at base confidence
-        for ep in prod_eps:
+        # All surviving entries should be production
+        for ep in entrypoints:
+            assert "src/" in ep.symbol_id
             assert ep.confidence == pytest.approx(0.80, rel=0.01)
 
-        # Test entrypoints must be aggressively demoted: below 0.15
-        # (This fails with a 50% penalty where test eps are 0.40)
-        for ep in test_eps:
-            assert ep.confidence < 0.15, (
-                f"Test entrypoint {ep.symbol_id} has confidence {ep.confidence:.2f}, "
-                f"expected < 0.15 for aggressive demotion"
-            )
-
-        # Top 10 should be all production
-        top_10 = entrypoints[:10]
-        for ep in top_10[:3]:
-            assert "src/" in ep.symbol_id
-
     def test_test_file_penalty(self) -> None:
-        """Entrypoints in test files receive a 90% confidence penalty."""
+        """Entrypoints in test files are filtered out by confidence threshold.
+
+        Test file penalty (90% reduction) pushes main_function from 0.80 to
+        0.08, which is below MIN_ENTRYPOINT_CONFIDENCE (0.10). Only the
+        production main survives.
+        """
         # Production main function
         prod_main = make_symbol(
             "main",
@@ -1960,20 +1949,10 @@ class TestEntrypointRankingPenalties:
 
         entrypoints = detect_entrypoints(nodes, [])
 
-        # Both should be detected
-        assert len(entrypoints) == 2
-
-        # Production main should have higher confidence
-        prod_ep = next(e for e in entrypoints if "src/app.py" in e.symbol_id)
-        test_ep = next(e for e in entrypoints if "tests/test_app.py" in e.symbol_id)
-
-        # Base confidence is 0.80 for main_function
-        # Test file gets 90% penalty: 0.80 * 0.1 = 0.08
-        assert prod_ep.confidence == pytest.approx(0.80, rel=0.01)
-        assert test_ep.confidence == pytest.approx(0.08, rel=0.01)
-
-        # Production should rank first
+        # Test entry filtered (0.80 * 0.1 = 0.08 < 0.10 threshold)
+        assert len(entrypoints) == 1
         assert entrypoints[0].symbol_id == prod_main.id
+        assert entrypoints[0].confidence == pytest.approx(0.80, rel=0.01)
 
     def test_vendor_tier_penalty(self) -> None:
         """Entrypoints in vendor code (tier >= 3) receive a 70% penalty."""
@@ -2014,7 +1993,11 @@ class TestEntrypointRankingPenalties:
         assert entrypoints[0].symbol_id == first_party.id
 
     def test_test_and_vendor_penalties_stack(self) -> None:
-        """Both penalties apply if entrypoint is in test file AND vendor code."""
+        """Stacked penalties filter out vendor test entries entirely.
+
+        Base 0.80 * 0.1 (test) * 0.3 (vendor) = 0.024 — well below
+        MIN_ENTRYPOINT_CONFIDENCE (0.10). Only production entry survives.
+        """
         # First-party production code
         prod = make_symbol(
             "main",
@@ -2034,15 +2017,17 @@ class TestEntrypointRankingPenalties:
 
         entrypoints = detect_entrypoints(nodes, [])
 
-        prod_ep = next(e for e in entrypoints if "src/main.py" in e.symbol_id)
-        vendor_test_ep = next(e for e in entrypoints if "vendor/" in e.symbol_id)
-
-        # Base 0.80 * 0.1 (test penalty) * 0.3 (vendor penalty) = 0.024
-        assert prod_ep.confidence == pytest.approx(0.80, rel=0.01)
-        assert vendor_test_ep.confidence == pytest.approx(0.024, rel=0.01)
+        # Vendor test entry filtered (0.024 < 0.10 threshold)
+        assert len(entrypoints) == 1
+        assert entrypoints[0].symbol_id == prod.id
+        assert entrypoints[0].confidence == pytest.approx(0.80, rel=0.01)
 
     def test_http_route_test_penalty(self) -> None:
-        """HTTP routes in test files also receive test penalty."""
+        """HTTP routes in test files are filtered by confidence threshold.
+
+        Base 0.95 * 0.1 (test penalty) = 0.095 < MIN_ENTRYPOINT_CONFIDENCE (0.10).
+        Only the production route survives.
+        """
         # Production route
         prod_route = make_symbol(
             "get_users",
@@ -2060,16 +2045,10 @@ class TestEntrypointRankingPenalties:
 
         entrypoints = detect_entrypoints(nodes, [])
 
-        prod_ep = next(e for e in entrypoints if "src/api" in e.symbol_id)
-        test_ep = next(e for e in entrypoints if "tests/" in e.symbol_id)
-
-        # Base confidence is 0.95 for HTTP routes
-        # Test file gets 90% penalty: 0.95 * 0.1 = 0.095
-        assert prod_ep.confidence == pytest.approx(0.95, rel=0.01)
-        assert test_ep.confidence == pytest.approx(0.095, rel=0.01)
-
-        # Production route should rank first
+        # Test route filtered (0.095 < 0.10)
+        assert len(entrypoints) == 1
         assert entrypoints[0].symbol_id == prod_route.id
+        assert entrypoints[0].confidence == pytest.approx(0.95, rel=0.01)
 
     def test_derived_artifact_penalty(self) -> None:
         """Entrypoints in derived artifacts (tier 4) also receive vendor penalty."""
@@ -2135,7 +2114,11 @@ class TestEntrypointRankingPenalties:
         assert ep.confidence < 0.50  # But still well below production
 
     def test_ranking_order_respects_penalties(self) -> None:
-        """Final ranking correctly orders by penalized confidence."""
+        """Final ranking correctly orders by penalized confidence.
+
+        test_main (0.80 * 0.1 = 0.08) is below threshold and filtered out.
+        Remaining entries ordered: prod_route (0.95) > vendor_route (0.285).
+        """
         # High-confidence production route
         prod_route = make_symbol(
             "api_handler",
@@ -2143,7 +2126,7 @@ class TestEntrypointRankingPenalties:
             meta={"concepts": [{"concept": "route", "path": "/api", "method": "GET"}]},
             supply_chain_tier=1,
         )
-        # Low-confidence test main
+        # Low-confidence test main (will be filtered)
         test_main = make_symbol(
             "main",
             path="tests/test_main.py",
@@ -2163,14 +2146,11 @@ class TestEntrypointRankingPenalties:
 
         entrypoints = detect_entrypoints(nodes, [])
 
-        # Expected order after penalties:
-        # 1. prod_route: 0.95 (no penalty)
-        # 2. vendor_route: 0.95 * 0.3 = 0.285
-        # 3. test_main: 0.80 * 0.1 = 0.08  (now below vendor)
-        assert len(entrypoints) == 3
+        # test_main filtered (0.08 < 0.10 threshold)
+        # Expected order: prod_route (0.95) > vendor_route (0.285)
+        assert len(entrypoints) == 2
         assert entrypoints[0].symbol_id == prod_route.id
         assert entrypoints[1].symbol_id == vendor_route.id
-        assert entrypoints[2].symbol_id == test_main.id
 
 
 class TestConnectivityFallback:
@@ -2315,9 +2295,13 @@ class TestTestFunctionConceptDetection:
     """Tests for test_function concept -> TEST_FUNCTION entrypoint mapping."""
 
     def test_test_function_concept_creates_entrypoint(self) -> None:
-        """test_function concept produces a TEST_FUNCTION entrypoint."""
+        """test_function concept produces a TEST_FUNCTION entrypoint.
+
+        Uses a non-test path to avoid the test-file penalty filtering.
+        The concept mapping is the focus of this test, not the penalty.
+        """
         sym = make_symbol(
-            "test_user_login", kind="function", path="tests/test_auth.py",
+            "test_user_login", kind="function", path="src/runner.py",
             meta={"concepts": [{"concept": "test_function", "framework": "pytest"}]},
         )
 
@@ -2329,9 +2313,12 @@ class TestTestFunctionConceptDetection:
         assert "test" in test_eps[0].label.lower()
 
     def test_benchmark_function_concept_creates_entrypoint(self) -> None:
-        """benchmark_function concept produces a TEST_FUNCTION entrypoint."""
+        """benchmark_function concept produces a TEST_FUNCTION entrypoint.
+
+        Uses a non-test path to avoid the test-file penalty filtering.
+        """
         sym = make_symbol(
-            "BenchmarkSort", kind="function", path="sort_test.go",
+            "BenchmarkSort", kind="function", path="src/bench.go",
             meta={"concepts": [{"concept": "benchmark_function", "framework": "go-testing"}]},
         )
 
@@ -2342,7 +2329,10 @@ class TestTestFunctionConceptDetection:
         assert "benchmark" in test_eps[0].label.lower()
 
     def test_test_function_penalized_in_test_file(self) -> None:
-        """TEST_FUNCTION entrypoints in test files get the 90% confidence penalty."""
+        """TEST_FUNCTION in test files are filtered by confidence threshold.
+
+        Base 0.80 * 0.1 (test penalty) = 0.08 < MIN_ENTRYPOINT_CONFIDENCE (0.10).
+        """
         sym = make_symbol(
             "test_login", kind="function", path="tests/test_auth.py",
             meta={"concepts": [{"concept": "test_function", "framework": "pytest"}]},
@@ -2350,15 +2340,16 @@ class TestTestFunctionConceptDetection:
 
         entrypoints = detect_entrypoints([sym], [])
 
-        test_eps = [ep for ep in entrypoints if ep.kind == EntrypointKind.TEST_FUNCTION]
-        assert len(test_eps) == 1
-        # Base confidence * 0.1 test penalty
-        assert test_eps[0].confidence < 0.15
+        # Filtered out due to low confidence
+        assert len(entrypoints) == 0
 
     def test_test_function_does_not_duplicate(self) -> None:
-        """Multiple test concepts on same symbol produce only one TEST_FUNCTION."""
+        """Multiple test concepts on same symbol produce only one TEST_FUNCTION.
+
+        Uses a non-test path to avoid the test-file penalty filtering.
+        """
         sym = make_symbol(
-            "test_api", kind="function", path="tests/test_api.py",
+            "test_api", kind="function", path="src/runner.py",
             meta={"concepts": [
                 {"concept": "test_function", "framework": "pytest"},
                 {"concept": "test_function", "framework": "unittest"},
@@ -2675,10 +2666,11 @@ class TestApplicationLibraryExportDemotion:
     """
 
     def test_library_export_demoted_when_routes_exist(self) -> None:
-        """library_export confidence is heavily reduced when HTTP routes exist.
+        """library_export entries are filtered out when HTTP routes exist.
 
-        Simulates a Go web application with both routes and uppercase
-        exported functions. The routes should dominate.
+        With routes present, library_export demotion (90%) reduces confidence
+        from 0.80 to 0.08, which is below MIN_ENTRYPOINT_CONFIDENCE (0.10).
+        Only routes survive.
         """
         route = make_symbol(
             "ListUsers", path="routers/api/v1/user.go", kind="route",
@@ -2703,18 +2695,14 @@ class TestApplicationLibraryExportDemotion:
         export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
 
         assert len(route_eps) == 1
-        assert len(export_eps) == 2
-
-        # Routes should rank far above exports
-        assert route_eps[0].confidence > 0.85
-        for ep in export_eps:
-            assert ep.confidence < 0.15, (
-                f"library_export {ep.label} has confidence {ep.confidence:.2f}, "
-                f"expected < 0.15 when routes exist"
-            )
+        # Exports filtered out (0.80 * 0.1 = 0.08 < 0.10 threshold)
+        assert len(export_eps) == 0
 
     def test_library_export_demoted_when_commands_exist(self) -> None:
-        """library_export demoted when CLI commands exist."""
+        """library_export filtered when CLI commands exist.
+
+        Demotion (90%) drops from 0.80 to 0.08 < threshold.
+        """
         command = make_symbol(
             "cmd_merge", path="builtin/merge.c", kind="function",
             language="c", start_line=1,
@@ -2730,11 +2718,13 @@ class TestApplicationLibraryExportDemotion:
         entrypoints = detect_entrypoints(nodes, [])
 
         export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
-        assert len(export_eps) == 1
-        assert export_eps[0].confidence < 0.15
+        assert len(export_eps) == 0
 
     def test_library_export_demoted_when_main_exists(self) -> None:
-        """library_export demoted when main() function exists."""
+        """library_export filtered when main() function exists.
+
+        Demotion (90%) drops from 0.80 to 0.08 < threshold.
+        """
         main_fn = make_symbol(
             "main", path="cmd/server/main.go", kind="function",
             language="go", start_line=1,
@@ -2750,8 +2740,7 @@ class TestApplicationLibraryExportDemotion:
         entrypoints = detect_entrypoints(nodes, [])
 
         export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
-        assert len(export_eps) == 1
-        assert export_eps[0].confidence < 0.15
+        assert len(export_eps) == 0
 
     def test_library_export_not_demoted_in_pure_library(self) -> None:
         """library_export keeps full confidence when no semantic entries exist.
@@ -2809,7 +2798,7 @@ class TestApplicationLibraryExportDemotion:
         """Demotion applies regardless of language.
 
         A Python app with Flask routes and library_export entries should
-        also see the demotion.
+        also see the demotion. Exports at 0.08 are filtered out.
         """
         route = make_symbol(
             "get_users", path="src/api/routes.py", kind="function",
@@ -2826,8 +2815,7 @@ class TestApplicationLibraryExportDemotion:
         entrypoints = detect_entrypoints(nodes, [])
 
         export_eps = [e for e in entrypoints if e.kind == EntrypointKind.LIBRARY_EXPORT]
-        assert len(export_eps) == 1
-        assert export_eps[0].confidence < 0.15
+        assert len(export_eps) == 0
 
     def test_forgejo_scale_scenario(self) -> None:
         """Simulate forgejo: 772 routes + 7474 library_exports.
@@ -2904,3 +2892,98 @@ class TestDeclarationDedup:
 
         cmd_add_eps = [ep for ep in entrypoints if "cmd_add" in ep.label]
         assert len(cmd_add_eps) == 1
+
+
+class TestEntrypointConfidenceFiltering:
+    """Tests for minimum confidence threshold and count cap.
+
+    detect_entrypoints() should filter out entries below a minimum confidence
+    threshold (0.10) and cap the total number of returned entries. This
+    addresses the INV-mahap finding: 3100 library_export entries at 0.075
+    confidence flooding --list-entries output.
+    """
+
+    def test_low_confidence_entries_filtered(self) -> None:
+        """Entries below 0.10 confidence are excluded from results.
+
+        library_export entries get 90% demotion when semantic entries exist,
+        dropping from 0.80 to 0.08 — below the 0.10 threshold.
+        """
+        # Create a route (semantic) + many library_exports
+        route = make_symbol(
+            "handle_request", path="src/routes.py",
+            meta={"concepts": [{"concept": "route"}]},
+        )
+        exports = []
+        for i in range(100):
+            exports.append(make_symbol(
+                f"export_{i}", path="src/lib.py",
+                start_line=i + 1,
+                meta={"concepts": [{"concept": "library_export"}]},
+            ))
+
+        entrypoints = detect_entrypoints([route] + exports, [])
+
+        # The route should survive (high confidence)
+        route_eps = [ep for ep in entrypoints
+                     if ep.kind == EntrypointKind.HTTP_ROUTE]
+        assert len(route_eps) == 1
+
+        # Library exports should be filtered out (0.80 * 0.1 = 0.08 < 0.10)
+        export_eps = [ep for ep in entrypoints
+                      if ep.kind == EntrypointKind.LIBRARY_EXPORT]
+        assert len(export_eps) == 0, (
+            f"Expected 0 low-confidence exports, got {len(export_eps)}"
+        )
+
+    def test_count_cap_limits_results(self) -> None:
+        """detect_entrypoints returns at most MAX_ENTRYPOINT_COUNT entries.
+
+        Even when many entries pass the confidence threshold, the result
+        is capped to prevent output flooding.
+        """
+        from hypergumbo_core.entrypoints import MAX_ENTRYPOINT_COUNT
+
+        # Create more routes than the cap
+        nodes = []
+        for i in range(MAX_ENTRYPOINT_COUNT + 20):
+            nodes.append(make_symbol(
+                f"route_{i}", path=f"src/routes_{i}.py",
+                start_line=1,
+                meta={"concepts": [{"concept": "route"}]},
+            ))
+
+        entrypoints = detect_entrypoints(nodes, [])
+        assert len(entrypoints) <= MAX_ENTRYPOINT_COUNT
+
+    def test_high_confidence_entries_preserved(self) -> None:
+        """Entries above threshold are preserved."""
+        route = make_symbol(
+            "handle_request", path="src/routes.py",
+            meta={"concepts": [{"concept": "route"}]},
+        )
+        main = make_symbol(
+            "main", path="src/main.py",
+            meta={"concepts": [{"concept": "main_function"}]},
+        )
+
+        entrypoints = detect_entrypoints([route, main], [])
+        assert len(entrypoints) == 2
+
+    def test_no_semantic_entries_exports_preserved(self) -> None:
+        """Without semantic entries, library_exports keep full confidence.
+
+        In a pure library (no routes/commands), exports are the only
+        entrypoints and should NOT be filtered by the confidence threshold.
+        """
+        exports = []
+        for i in range(5):
+            exports.append(make_symbol(
+                f"pub_fn_{i}", path="src/lib.rs",
+                start_line=i + 1, language="rust",
+                meta={"concepts": [{"concept": "library_export"}]},
+            ))
+
+        entrypoints = detect_entrypoints(exports, [])
+        # No demotion happens (no semantic entries), so all at 0.80
+        assert len(entrypoints) == 5

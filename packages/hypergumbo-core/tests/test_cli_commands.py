@@ -1011,7 +1011,8 @@ def test_cmd_slice_list_entries_exclude_tests(tmp_path: Path, capsys) -> None:
     input_file = tmp_path / "results.json"
     input_file.write_text(json.dumps(behavior_map))
 
-    # First test WITHOUT --exclude-tests: should show all entrypoints
+    # First test WITHOUT --exclude-tests: test_main in test file is filtered
+    # by confidence threshold (0.95 * 0.1 = 0.095 < 0.10). Only get_user survives.
     args = FakeArgs()
     args.path = str(tmp_path)
     args.entry = "auto"
@@ -1029,9 +1030,13 @@ def test_cmd_slice_list_entries_exclude_tests(tmp_path: Path, capsys) -> None:
     result = cmd_slice(args)
     assert result == 0
     out, _ = capsys.readouterr()
-    assert "test_main" in out or "tests/test_main" in out
+    # Non-test route should be present
+    assert "get_user" in out or "api.py" in out
+    # Test route filtered by confidence threshold, not by --exclude-tests
+    assert "test_main" not in out
 
-    # Now test WITH --exclude-tests: should NOT show test entrypoints
+    # With --exclude-tests: same result (confidence already filtered test entry),
+    # but the flag is reported in output
     args.exclude_tests = True
 
     result = cmd_slice(args)

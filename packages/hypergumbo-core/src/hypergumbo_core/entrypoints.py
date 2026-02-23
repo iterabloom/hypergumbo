@@ -47,6 +47,14 @@ Connectivity-Based Fallback:
 - At most 5 fallback entrypoints are selected, ranked by out-degree
 - This ensures --entry auto never hard-fails, even for repos with no
   matching YAML patterns (e.g., Rust libraries without pub tracking)
+
+Post-Processing Filters (INV-mahap):
+- Minimum confidence threshold (MIN_ENTRYPOINT_CONFIDENCE = 0.10): entries below
+  this threshold are excluded. This removes noise entries like library_export
+  entries demoted to 0.08 when semantic entries exist, and test-file entries
+  penalized to 0.08.
+- Count cap (MAX_ENTRYPOINT_COUNT = 50): prevents output flooding for repos
+  with hundreds of high-confidence entries (e.g., microservice gateways)
 """
 from __future__ import annotations
 
@@ -58,6 +66,18 @@ from typing import List
 
 from .ir import Symbol, Edge
 from .paths import is_test_file, is_utility_file
+
+# Minimum confidence threshold for entrypoint inclusion.
+# Entries below this threshold are filtered from detect_entrypoints() results.
+# This addresses INV-mahap: library_export entries demoted to 0.08 (below 0.10)
+# should not appear in --list-entries or --entry auto candidate lists.
+MIN_ENTRYPOINT_CONFIDENCE: float = 0.10
+
+# Maximum number of entrypoints returned by detect_entrypoints().
+# Prevents output flooding for repos with many routes/exports.
+# The cap is applied after confidence filtering and sorting by confidence,
+# so the highest-confidence entries are always preserved.
+MAX_ENTRYPOINT_COUNT: int = 50
 
 
 class EntrypointKind(Enum):
@@ -861,5 +881,21 @@ def detect_entrypoints(
         ),
         reverse=True,
     )
+
+    # Filter out entries below minimum confidence threshold.
+    # After all adjustments (test penalty, vendor penalty, library demotion),
+    # entries with very low confidence are noise — e.g., library_export
+    # entries demoted from 0.80 to 0.08 when semantic entries exist.
+    unique_entrypoints = [
+        ep for ep in unique_entrypoints
+        if ep.confidence >= MIN_ENTRYPOINT_CONFIDENCE
+    ]
+
+    # Cap the number of returned entrypoints.
+    # Even with confidence filtering, some repos (e.g., microservice gateways)
+    # have hundreds of high-confidence routes. The cap preserves the top entries
+    # (list is already sorted by confidence descending).
+    if len(unique_entrypoints) > MAX_ENTRYPOINT_COUNT:
+        unique_entrypoints = unique_entrypoints[:MAX_ENTRYPOINT_COUNT]
 
     return unique_entrypoints

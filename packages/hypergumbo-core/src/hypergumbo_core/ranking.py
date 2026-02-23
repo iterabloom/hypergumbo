@@ -27,6 +27,14 @@ Ranking uses multiple signals combined:
    symbol scores, not just the maximum. This rewards files with multiple
    important symbols rather than one outlier.
 
+4. **Utility Symbol Dampening**: Symbols with infrastructure-utility names
+   (Logger, Clock, Metrics, empty, size, toString, __repr__) get 90%
+   centrality reduction. This supplements hub saturation (which only caps
+   in-degree) with name-based detection of symbols that are plumbing, not
+   architecture. Addresses INV-mahap: DefaultClock.Now with in-degree 474
+   dominated rankings because hub saturation at 100 only reduced effective_in
+   to ~106.
+
 Why These Heuristics
 --------------------
 - **Centrality** captures structural importance: core abstractions and
@@ -315,6 +323,84 @@ def apply_noise_weights(
     return weighted
 
 
+# Patterns for detecting infrastructure utility symbols by name.
+# These symbols have high in-degree but low domain relevance — they're
+# plumbing, not architecture.  Matching is case-insensitive.
+#
+# Categories:
+#   - Logging: Logger, getLogger, log_message
+#   - Timing: Clock, DefaultClock, SystemClock
+#   - Metrics: Metrics, MetricsCollector, metricsRecorder
+#   - Error sentinels: ErrNotFound, ErrTimeout (Go convention)
+#   - STL accessors: empty, size, begin, end, length
+#   - Boilerplate: toString, hashCode, equals, __repr__, __str__, __hash__, __eq__
+_UTILITY_SYMBOL_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"(?i)logger$"),          # Logger, AppLogger, getLogger
+    re.compile(r"(?i)^get_?logger$"),    # getLogger, get_logger
+    re.compile(r"(?i)^log_"),            # log_message, log_error
+    re.compile(r"(?i)clock$"),           # Clock, DefaultClock, SystemClock
+    re.compile(r"(?i)^metrics"),         # Metrics, MetricsCollector
+    re.compile(r"(?i)^err[A-Z_]"),       # ErrNotFound, ErrTimeout, err_invalid
+    re.compile(r"^(?:empty|size|begin|end|length|capacity)$"),  # STL accessors
+    re.compile(r"^(?:insert|erase|push_back|pop_back|front|back|clear|swap|reserve|resize|at)$"),
+    re.compile(r"^(?:toString|hashCode|equals|compareTo|clone|finalize)$"),  # Java boilerplate
+    re.compile(r"^__(?:repr|str|hash|eq|ne|lt|le|gt|ge|len|bool|init|del)__$"),  # Python dunder
+]
+
+
+def is_utility_symbol(name: str) -> bool:
+    """Check if a symbol name looks like infrastructure utility.
+
+    Infrastructure symbols (loggers, clocks, metrics, error sentinels, STL
+    accessors, boilerplate methods) are plumbing — high in-degree but low
+    domain relevance. This supplements is_utility_file (path-based) with
+    name-based detection.
+
+    Args:
+        name: Symbol name to check.
+
+    Returns:
+        True if the name matches a known utility pattern.
+    """
+    return any(p.search(name) for p in _UTILITY_SYMBOL_PATTERNS)
+
+
+def apply_utility_symbol_weights(
+    centrality: Dict[str, float],
+    symbols: List[Symbol],
+    utility_weight: float = 0.1,
+) -> Dict[str, float]:
+    """Apply utility symbol weighting to centrality scores.
+
+    Symbols whose names match infrastructure utility patterns (loggers,
+    clocks, metrics, STL accessors) get their centrality reduced by
+    utility_weight. This prevents infrastructure hubs from dominating
+    rankings even after hub saturation dampening.
+
+    This addresses INV-mahap finding: DefaultClock.Now (in-degree 474)
+    dominates vault rankings because hub saturation at 100 only reduces
+    effective_in to ~106, which is still the highest in the codebase.
+    Symbol-level utility detection provides the missing signal.
+
+    Args:
+        centrality: Centrality scores (possibly already tier-weighted).
+        symbols: List of symbols (used to look up names).
+        utility_weight: Multiplier for utility symbol nodes (default 0.1).
+
+    Returns:
+        Dictionary mapping symbol ID to utility-weighted centrality score.
+    """
+    symbol_names = {s.id: s.name for s in symbols}
+    weighted = {}
+    for sid, score in centrality.items():
+        name = symbol_names.get(sid, "")
+        if is_utility_symbol(name):
+            weighted[sid] = score * utility_weight
+        else:
+            weighted[sid] = score
+    return weighted
+
+
 def group_symbols_by_file(symbols: List[Symbol]) -> Dict[str, List[Symbol]]:
     """Group symbols by their file path.
 
@@ -430,6 +516,9 @@ def rank_symbols(
 
     # De-weight noise paths (database migrations, etc.)
     weighted_centrality = apply_noise_weights(weighted_centrality, symbols)
+
+    # De-weight utility symbols (loggers, clocks, STL accessors, etc.)
+    weighted_centrality = apply_utility_symbol_weights(weighted_centrality, symbols)
 
     # Sort by weighted centrality (highest first), then by name for stability
     sorted_symbols = sorted(
