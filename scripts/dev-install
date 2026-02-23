@@ -12,13 +12,24 @@ fi
 
 python -m pip install -U pip
 
+# Step 1: Install everything except tracker's dev extras.
+# pytest-textual-snapshot==1.1.0 pins syrupy==4.8.0 which declares pytest<9,
+# but syrupy 4.8.0 works fine with pytest 9. We avoid the resolution conflict
+# by installing tracker without [dev], then adding snapshot deps with --no-deps.
 python -m pip install \
   -e "packages/hypergumbo-core[dev,embeddings]" \
   -e packages/hypergumbo-lang-mainstream \
   -e packages/hypergumbo-lang-common \
   -e packages/hypergumbo-lang-extended1 \
-  -e "packages/hypergumbo-tracker[dev]" \
+  -e packages/hypergumbo-tracker \
   -e packages/hypergumbo
+
+# Step 2: Install tracker dev deps that don't conflict (pytest already installed above).
+python -m pip install \
+  pytest-cov~=7.0.0 pytest-xdist~=3.8.0 "pytest-asyncio>=1.0" "hypothesis~=6.100"
+
+# Step 3: Install snapshot testing deps, bypassing syrupy's overly strict pytest<9 pin.
+python -m pip install --no-deps pytest-textual-snapshot==1.1.0 syrupy==4.8.0
 
 hash -r
 
