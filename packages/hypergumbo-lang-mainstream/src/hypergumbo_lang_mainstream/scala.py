@@ -522,6 +522,43 @@ def _extract_edges_from_file(
                                 origin_run_id=run_id,
                             ))
 
+        # Scala eta-expansion: ``transform _`` produces a postfix_expression
+        # whose second child is identifier("_").  This is a first-class
+        # reference to the function, not a call.
+        elif node.type == "postfix_expression":
+            children = node.named_children
+            if (
+                len(children) == 2
+                and children[1].type == "identifier"
+                and node_text(children[1], source) == "_"
+                and children[0].type == "identifier"
+            ):
+                ref_name = node_text(children[0], source)
+                current_function = _get_enclosing_function(
+                    node, source, local_symbols,
+                )
+                if current_function is not None:
+                    target = local_symbols.get(ref_name)
+                    if target is None:  # pragma: no cover — cross-file
+                        lookup = resolver.lookup(ref_name)
+                        if lookup.found and lookup.symbol is not None:
+                            target = lookup.symbol
+                    if (
+                        target is not None
+                        and target.kind in ("function", "method")
+                        and target.id != current_function.id
+                    ):
+                        edges.append(Edge.create(
+                            src=current_function.id,
+                            dst=target.id,
+                            edge_type="references",
+                            line=node.start_point[0] + 1,
+                            evidence_type="eta_expansion",
+                            confidence=0.85,
+                            origin=PASS_ID,
+                            origin_run_id=run_id,
+                        ))
+
     return edges
 
 

@@ -2090,6 +2090,52 @@ def _extract_edges_from_file(
                                         origin_run_id=run_id,
                                     ))
 
+                # method(:name) — first-class method reference
+                elif callee_name == "method":
+                    args_node = _find_child_by_field(node, "arguments")
+                    if args_node is not None:
+                        sym_node = find_child_by_type(args_node, "simple_symbol")
+                        if sym_node is not None:
+                            ref_name = node_text(sym_node, source).lstrip(":")
+                            current_method = _get_enclosing_method(
+                                node, source, local_symbols,
+                            )
+                            if current_method is not None:
+                                # Class-qualified lookup: App#transform
+                                enc_class = _enclosing_class_from_method(
+                                    current_method,
+                                )
+                                target = None
+                                if enc_class:
+                                    target = local_symbols.get(
+                                        f"{enc_class}#{ref_name}",
+                                    )
+                                    if target is None:
+                                        target = global_symbols.get(
+                                            f"{enc_class}#{ref_name}",
+                                        )
+                                if target is None:
+                                    target = local_symbols.get(ref_name)
+                                if target is None:
+                                    lookup = resolver.lookup(ref_name)
+                                    if lookup.found and lookup.symbol is not None:
+                                        target = lookup.symbol
+                                if (
+                                    target is not None
+                                    and target.kind in ("function", "method")
+                                    and target.id != current_method.id
+                                ):
+                                    edges.append(Edge.create(
+                                        src=current_method.id,
+                                        dst=target.id,
+                                        edge_type="references",
+                                        line=node.start_point[0] + 1,
+                                        evidence_type="method_reference",
+                                        confidence=0.85,
+                                        origin=PASS_ID,
+                                        origin_run_id=run_id,
+                                    ))
+
                 # Handle regular method calls
                 else:
                     current_method = _get_enclosing_method(node, source, local_symbols)

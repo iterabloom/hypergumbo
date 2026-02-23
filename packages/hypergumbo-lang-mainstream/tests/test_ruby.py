@@ -4306,3 +4306,98 @@ class TestRubyDocstrings:
         method = next((s for s in result.symbols if "run" in s.name), None)
         assert method is not None
         assert method.docstring is None
+
+
+class TestRubyMethodReferences:
+    """Tests for method(:name) references (INV-dinur).
+
+    Ruby's ``method(:name)`` returns a Method object — a first-class
+    reference to the named method.  This should produce "references" edges.
+    """
+
+    def test_method_symbol_reference(self, tmp_path: Path) -> None:
+        """method(:transform) should create a references edge to transform."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "app.rb").write_text(
+            "class App\n"
+            "  def transform(x)\n"
+            "    x * 2\n"
+            "  end\n"
+            "\n"
+            "  def run\n"
+            "    callback = method(:transform)\n"
+            "  end\n"
+            "end\n"
+        )
+        result = analyze_ruby(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "run" in e.src and "transform" in e.dst
+        ]
+        assert len(ref_edges) == 1, f"Expected 1 references edge, got {ref_edges}"
+        assert ref_edges[0].evidence_type == "method_reference"
+
+    def test_method_reference_as_block(self, tmp_path: Path) -> None:
+        """items.map(&method(:process)) should create a references edge."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "app.rb").write_text(
+            "class App\n"
+            "  def process(item)\n"
+            "    item.to_s\n"
+            "  end\n"
+            "\n"
+            "  def run\n"
+            "    items = [1, 2, 3]\n"
+            "    items.map(&method(:process))\n"
+            "  end\n"
+            "end\n"
+        )
+        result = analyze_ruby(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "run" in e.src and "process" in e.dst
+        ]
+        assert len(ref_edges) == 1, f"Expected 1 references edge, got {ref_edges}"
+
+    def test_method_reference_cross_file(self, tmp_path: Path) -> None:
+        """method(:name) referencing a function defined in another file."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "utils.rb").write_text(
+            "def helper\n"
+            "  'helping'\n"
+            "end\n"
+        )
+        (tmp_path / "app.rb").write_text(
+            "class App\n"
+            "  def run\n"
+            "    callback = method(:helper)\n"
+            "  end\n"
+            "end\n"
+        )
+        result = analyze_ruby(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "run" in e.src and "helper" in e.dst
+        ]
+        assert len(ref_edges) == 1
+
+    def test_no_reference_for_unknown_method(self, tmp_path: Path) -> None:
+        """method(:unknown) should NOT create a references edge."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "app.rb").write_text(
+            "class App\n"
+            "  def run\n"
+            "    callback = method(:unknown_method)\n"
+            "  end\n"
+            "end\n"
+        )
+        result = analyze_ruby(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "run" in e.src
+        ]
+        assert len(ref_edges) == 0

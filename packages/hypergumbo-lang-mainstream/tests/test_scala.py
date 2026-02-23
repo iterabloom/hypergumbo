@@ -953,3 +953,46 @@ class TestScalaDocstrings:
         method = next((s for s in result.symbols if "run" in s.name), None)
         assert method is not None
         assert method.docstring is None
+
+
+class TestScalaFunctionReferences:
+    """Tests for Scala eta-expansion function references (INV-dinur).
+
+    ``transform _`` (eta-expansion) converts a method to a function value
+    and should produce a "references" edge.
+    """
+
+    def test_eta_expansion_reference(self, tmp_path: Path) -> None:
+        """``val f = transform _`` should create a references edge."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "App.scala").write_text(
+            "object App {\n"
+            "  def transform(x: Int): Int = x * 2\n"
+            "  def run(): Unit = {\n"
+            "    val f = transform _\n"
+            "  }\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.edge_type == "references" and "run" in e.src and "transform" in e.dst
+        ]
+        assert len(ref_edges) == 1
+        assert ref_edges[0].evidence_type == "eta_expansion"
+
+    def test_no_reference_for_unknown_function(self, tmp_path: Path) -> None:
+        """Eta-expansion of unknown function should not create edge."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "App.scala").write_text(
+            "object App {\n"
+            "  def run(): Unit = {\n"
+            "    val f = unknown _\n"
+            "  }\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        ref_edges = [e for e in result.edges if e.edge_type == "references"]
+        assert len(ref_edges) == 0
