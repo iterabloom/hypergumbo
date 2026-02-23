@@ -608,3 +608,60 @@ init([]) ->
         # Both import and callback edges should exist
         assert any("gen_server" in e.dst for e in import_edges)
         assert len(callback_edges) == 1
+
+
+class TestErlangDocstrings:
+    """Tests for Erlang comment extraction via populate_docstrings_from_tree."""
+
+    def test_percent_comment_on_function(self, tmp_path: Path) -> None:
+        """Extracts %% comment preceding a function."""
+        make_erl_file(
+            tmp_path,
+            "myapp.erl",
+            "-module(myapp).\n"
+            "-export([start/0]).\n"
+            "%% Starts the application.\n"
+            "start() -> ok.\n",
+        )
+        result = analyze_erlang(tmp_path)
+        func = next(
+            (s for s in result.symbols if "start" in s.name and s.kind == "function"),
+            None,
+        )
+        assert func is not None
+        assert func.docstring == "Starts the application."
+
+    def test_percent_comment_on_module(self, tmp_path: Path) -> None:
+        """Extracts %% comment preceding the module attribute."""
+        make_erl_file(
+            tmp_path,
+            "myapp.erl",
+            "%% Main application module.\n"
+            "-module(myapp).\n"
+            "-export([run/0]).\n"
+            "run() -> ok.\n",
+        )
+        result = analyze_erlang(tmp_path)
+        mod = next(
+            (s for s in result.symbols if s.kind == "module"),
+            None,
+        )
+        assert mod is not None
+        assert mod.docstring == "Main application module."
+
+    def test_no_comment_no_docstring(self, tmp_path: Path) -> None:
+        """Function without preceding comment has no docstring."""
+        make_erl_file(
+            tmp_path,
+            "myapp.erl",
+            "-module(myapp).\n"
+            "-export([run/0]).\n"
+            "run() -> ok.\n",
+        )
+        result = analyze_erlang(tmp_path)
+        func = next(
+            (s for s in result.symbols if "run" in s.name and s.kind == "function"),
+            None,
+        )
+        assert func is not None
+        assert func.docstring is None

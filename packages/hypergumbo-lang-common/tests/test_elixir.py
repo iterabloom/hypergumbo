@@ -1657,3 +1657,53 @@ end
         route_symbols = [s for s in result.symbols if s.kind == "route"]
         assert len(route_symbols) == 1
         assert route_symbols[0].meta["controller"] == "UserController"
+
+
+class TestElixirDocstrings:
+    """Tests for Elixir comment extraction via populate_docstrings_from_tree."""
+
+    def test_hash_comment_on_function(self, tmp_path: Path) -> None:
+        """Extracts # comment preceding a function definition."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "app.ex").write_text(
+            "defmodule App do\n"
+            "  # Starts the application.\n"
+            "  def start do\n"
+            "    :ok\n"
+            "  end\n"
+            "end\n"
+        )
+        result = analyze_elixir(tmp_path)
+        func = next((s for s in result.symbols if "start" in s.name), None)
+        assert func is not None
+        assert func.docstring == "Starts the application."
+
+    def test_hash_comment_on_module(self, tmp_path: Path) -> None:
+        """Extracts # comment preceding a module definition."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "app.ex").write_text(
+            "# Main application module.\n"
+            "defmodule App do\n"
+            "  def run, do: :ok\n"
+            "end\n"
+        )
+        result = analyze_elixir(tmp_path)
+        mod = next((s for s in result.symbols if s.name == "App" and s.kind == "module"), None)
+        assert mod is not None
+        assert mod.docstring == "Main application module."
+
+    def test_no_comment_no_docstring(self, tmp_path: Path) -> None:
+        """Function without preceding comment has no docstring."""
+        from hypergumbo_lang_common.elixir import analyze_elixir
+
+        (tmp_path / "app.ex").write_text(
+            "defmodule App do\n"
+            "  def run, do: :ok\n"
+            "end\n"
+        )
+        result = analyze_elixir(tmp_path)
+        func = next((s for s in result.symbols if "run" in s.name), None)
+        assert func is not None
+        assert func.docstring is None

@@ -4256,3 +4256,53 @@ end
         assert len(run_calls) >= 1, (
             "2 candidates should still resolve"
         )
+
+
+class TestRubyDocstrings:
+    """Tests for Ruby comment extraction via populate_docstrings_from_tree."""
+
+    def test_hash_comment_on_method(self, tmp_path: Path) -> None:
+        """Extracts # comment preceding a method."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "app.rb").write_text(
+            "class App\n"
+            "  # Runs the application.\n"
+            "  def run\n"
+            "    puts 'running'\n"
+            "  end\n"
+            "end\n"
+        )
+        result = analyze_ruby(tmp_path)
+        method = next((s for s in result.symbols if "run" in s.name), None)
+        assert method is not None
+        assert method.docstring == "Runs the application."
+
+    def test_hash_comment_on_class(self, tmp_path: Path) -> None:
+        """Extracts # comment preceding a class."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "app.rb").write_text(
+            "# Represents the main application.\n"
+            "class App\n"
+            "end\n"
+        )
+        result = analyze_ruby(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "App"), None)
+        assert cls is not None
+        assert cls.docstring == "Represents the main application."
+
+    def test_no_comment_no_docstring(self, tmp_path: Path) -> None:
+        """Method without preceding comment has no docstring."""
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        (tmp_path / "app.rb").write_text(
+            "class App\n"
+            "  def run\n"
+            "  end\n"
+            "end\n"
+        )
+        result = analyze_ruby(tmp_path)
+        method = next((s for s in result.symbols if "run" in s.name), None)
+        assert method is not None
+        assert method.docstring is None

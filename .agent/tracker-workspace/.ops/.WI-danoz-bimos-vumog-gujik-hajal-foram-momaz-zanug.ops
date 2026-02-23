@@ -18,3 +18,12 @@
     justification:  # 2cc5
     description: "Phoenix route_handler suffix scan fails when router uses custom aliases (alias MyAppWeb.UserController, as: UserCtrl). The Elixir analyzer already parses as: directives via _extract_alias_hints but the output is not fed into route metadata. Fix: pass alias map to _extract_phoenix_routes so controller field stores the resolved FQ name. Also parent of INV-nimik (Route-to-Handler Edge Completeness)."  # 2cc5
     fields: {}  # 2cc5
+- op: update  # 200c
+  at: '2026-02-23T12:41:03Z'  # 200c
+  by: agent  # 200c
+  actor: jgstern_agent  # 200c
+  clock: 2  # 200c
+  nonce: 200c  # 200c
+  set:  # 200c
+    status: done  # 200c
+    pr_ref: 'PR #1367'  # 200c

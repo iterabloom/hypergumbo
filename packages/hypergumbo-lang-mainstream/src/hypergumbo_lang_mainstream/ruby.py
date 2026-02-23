@@ -54,6 +54,7 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     make_symbol_id,
     node_text,
+    populate_docstrings_from_tree,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -2465,6 +2466,7 @@ class RubyAnalyzer(TreeSitterAnalyzer):
             analysis = _extract_symbols_from_file(
                 tree, source, rel_path, run.execution_id,
             )
+            populate_docstrings_from_tree(tree.root_node, source, analysis.symbols)
             if analysis.symbols:
                 file_analyses[rb_file] = analysis
             else:

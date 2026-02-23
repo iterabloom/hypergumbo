@@ -325,7 +325,8 @@ _COMMENT_STRIP_RE = _re.compile(
     r"|///\s?"    # /// (Rust/C#/Swift)
     r"|//!\s?"    # //! (Rust inner doc)
     r"|//\s?"     # // (Go)
-    r"|#\s?"      # # (Ruby/Python)
+    r"|%+\s?"     # % or %% (Erlang)
+    r"|#\s?"      # # (Ruby/Python/Elixir)
     r")"
 )
 
@@ -400,14 +401,45 @@ def populate_docstrings_from_tree(
     ``node_for_symbol`` — the span's start position is enough to reverse-lookup
     the declaration node, since all analyzers set ``start_col`` from
     ``node.start_point[1]``.
+
+    When the lookup returns a container node (e.g. a class body) rather than
+    the declaration itself, drills down through named children that start at
+    the target position until the actual declaration node is found.  This
+    handles languages like Scala, Groovy, Ruby, and Elixir where the tree
+    structure nests declarations inside body nodes.
     """
     for sym in symbols:
         if sym.docstring is not None or sym.span is None:
             continue
         start = (sym.span.start_line - 1, sym.span.start_col)
         node = root_node.named_descendant_for_point_range(start, start)
-        if node is not None:
-            sym.docstring = extract_doc_comment(node, source)
+        if node is None:
+            continue
+        # Drill down: when the lookup returns a container node (e.g.
+        # template_body in Scala) instead of the declaration itself,
+        # find the named child whose start point matches the target.
+        while True:
+            refined = None
+            for child in node.named_children:
+                if child.start_point == start:
+                    refined = child
+                    break
+            if refined is None:
+                break
+            node = refined
+        # Walk up: when drill-down lands on a leaf (e.g. primitive_type
+        # in C/C++), walk up through ancestors on the same line to find
+        # the declaration node whose prev_named_sibling is a comment.
+        candidate = node
+        while candidate is not None:
+            doc = extract_doc_comment(candidate, source)
+            if doc is not None:
+                sym.docstring = doc
+                break
+            parent = candidate.parent
+            if parent is None or parent.start_point[0] != start[0]:
+                break
+            candidate = parent
 
 
 # ---------------------------------------------------------------------------

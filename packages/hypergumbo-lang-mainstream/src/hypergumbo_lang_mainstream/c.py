@@ -47,6 +47,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_symbol_id,
     node_text,
+    populate_docstrings_from_tree,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -690,6 +691,7 @@ class CAnalyzer(TreeSitterAnalyzer):
             analysis = self.extract_symbols_from_file(
                 tree, source, source_file, rel_path, run,
             )
+            populate_docstrings_from_tree(tree.root_node, source, analysis.symbols)
             import_aliases = self.get_import_aliases(tree, source)
             file_analyses[source_file] = (analysis, import_aliases)
             files_analyzed += 1

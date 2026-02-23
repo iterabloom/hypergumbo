@@ -1450,3 +1450,47 @@ int cmd_add(int argc, const char **argv) {
         assert len(funcs) == 1
         assert "declaration" not in funcs[0].modifiers
 
+
+class TestCDocstrings:
+    """Tests for Doxygen comment extraction via populate_docstrings_from_tree."""
+
+    def test_doxygen_block_comment_on_function(self, tmp_path: Path) -> None:
+        """Extracts Doxygen block comment preceding a function."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "main.c").write_text(
+            "/** Computes the factorial. */\n"
+            "int factorial(int n) {\n"
+            "    return n <= 1 ? 1 : n * factorial(n - 1);\n"
+            "}\n"
+        )
+        result = analyze_c(tmp_path)
+        func = next((s for s in result.symbols if s.name == "factorial"), None)
+        assert func is not None
+        assert func.docstring == "Computes the factorial."
+
+    def test_doxygen_line_comment_on_function(self, tmp_path: Path) -> None:
+        """Extracts Doxygen /// line comment preceding a function."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "main.c").write_text(
+            "/// Adds two integers.\n"
+            "int add(int a, int b) { return a + b; }\n"
+        )
+        result = analyze_c(tmp_path)
+        func = next((s for s in result.symbols if s.name == "add"), None)
+        assert func is not None
+        assert func.docstring == "Adds two integers."
+
+    def test_no_comment_no_docstring(self, tmp_path: Path) -> None:
+        """Function without preceding comment has no docstring."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "main.c").write_text(
+            "int main() { return 0; }\n"
+        )
+        result = analyze_c(tmp_path)
+        func = next((s for s in result.symbols if s.name == "main"), None)
+        assert func is not None
+        assert func.docstring is None
+

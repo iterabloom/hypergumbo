@@ -974,3 +974,65 @@ class TestNormalizeGroovySignature:
     def test_none(self) -> None:
         from hypergumbo_lang_mainstream.groovy import normalize_groovy_signature
         assert normalize_groovy_signature(None) is None
+
+
+class TestGroovyDocstrings:
+    """Tests for Groovydoc comment extraction via populate_docstrings_from_tree."""
+
+    def test_groovydoc_block_comment_on_class(self, tmp_path: Path) -> None:
+        """Extracts Groovydoc block comment preceding a class."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "Foo.groovy").write_text(
+            "/** Represents a foo entity. */\n"
+            "class Foo {\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "Foo"), None)
+        assert cls is not None
+        assert cls.docstring == "Represents a foo entity."
+
+    def test_groovydoc_block_comment_on_method(self, tmp_path: Path) -> None:
+        """Extracts Groovydoc block comment preceding a method."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "Foo.groovy").write_text(
+            "class Foo {\n"
+            "  /** Computes the sum. */\n"
+            "  def add(int x, int y) { x + y }\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        method = next((s for s in result.symbols if "add" in s.name), None)
+        assert method is not None
+        assert method.docstring == "Computes the sum."
+
+    def test_line_comment_on_function(self, tmp_path: Path) -> None:
+        """Extracts line comment preceding a function."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "Foo.groovy").write_text(
+            "class Foo {\n"
+            "  // Greets the user.\n"
+            "  def greet() { 'hello' }\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        func = next((s for s in result.symbols if "greet" in s.name), None)
+        assert func is not None
+        assert func.docstring == "Greets the user."
+
+    def test_no_comment_no_docstring(self, tmp_path: Path) -> None:
+        """Symbol without preceding comment has no docstring."""
+        from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+        (tmp_path / "Bar.groovy").write_text(
+            "class Bar {\n"
+            "  def run() { }\n"
+            "}\n"
+        )
+        result = analyze_groovy(tmp_path)
+        method = next((s for s in result.symbols if "run" in s.name), None)
+        assert method is not None
+        assert method.docstring is None

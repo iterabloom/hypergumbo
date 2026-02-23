@@ -1429,3 +1429,63 @@ int unrelated() {
         unrelated_sym = next(s for s in result.symbols if s.name == "unrelated")
         assert not any(e.src == unrelated_sym.id for e in table_edges)
 
+
+class TestCppDocstrings:
+    """Tests for Doxygen comment extraction via populate_docstrings_from_tree."""
+
+    def test_doxygen_block_comment_on_function(self, tmp_path: Path) -> None:
+        """Extracts Doxygen block comment preceding a function."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "main.cpp").write_text(
+            "/** Computes the factorial. */\n"
+            "int factorial(int n) {\n"
+            "    return n <= 1 ? 1 : n * factorial(n - 1);\n"
+            "}\n"
+        )
+        result = analyze_cpp(tmp_path)
+        func = next((s for s in result.symbols if s.name == "factorial"), None)
+        assert func is not None
+        assert func.docstring == "Computes the factorial."
+
+    def test_doxygen_line_comment_on_function(self, tmp_path: Path) -> None:
+        """Extracts Doxygen /// line comment preceding a function."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "main.cpp").write_text(
+            "/// Adds two integers.\n"
+            "int add(int a, int b) { return a + b; }\n"
+        )
+        result = analyze_cpp(tmp_path)
+        func = next((s for s in result.symbols if s.name == "add"), None)
+        assert func is not None
+        assert func.docstring == "Adds two integers."
+
+    def test_doxygen_on_class(self, tmp_path: Path) -> None:
+        """Extracts Doxygen comment preceding a class."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "main.cpp").write_text(
+            "/** Represents a widget. */\n"
+            "class Widget {\n"
+            "public:\n"
+            "    void draw();\n"
+            "};\n"
+        )
+        result = analyze_cpp(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "Widget"), None)
+        assert cls is not None
+        assert cls.docstring == "Represents a widget."
+
+    def test_no_comment_no_docstring(self, tmp_path: Path) -> None:
+        """Function without preceding comment has no docstring."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "main.cpp").write_text(
+            "int main() { return 0; }\n"
+        )
+        result = analyze_cpp(tmp_path)
+        func = next((s for s in result.symbols if s.name == "main"), None)
+        assert func is not None
+        assert func.docstring is None
+

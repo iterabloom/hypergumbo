@@ -891,3 +891,65 @@ class TestNormalizeScalaSignature:
     def test_none(self) -> None:
         from hypergumbo_lang_mainstream.scala import normalize_scala_signature
         assert normalize_scala_signature(None) is None
+
+
+class TestScalaDocstrings:
+    """Tests for Scaladoc comment extraction via populate_docstrings_from_tree."""
+
+    def test_scaladoc_block_comment_on_class(self, tmp_path: Path) -> None:
+        """Extracts Scaladoc block comment preceding a class."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "Foo.scala").write_text(
+            "/** Represents a foo entity. */\n"
+            "class Foo {\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        cls = next((s for s in result.symbols if s.name == "Foo"), None)
+        assert cls is not None
+        assert cls.docstring == "Represents a foo entity."
+
+    def test_scaladoc_block_comment_on_method(self, tmp_path: Path) -> None:
+        """Extracts Scaladoc block comment preceding a method."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "Foo.scala").write_text(
+            "class Foo {\n"
+            "  /** Computes the sum. */\n"
+            "  def add(x: Int, y: Int): Int = x + y\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        method = next((s for s in result.symbols if "add" in s.name), None)
+        assert method is not None
+        assert method.docstring == "Computes the sum."
+
+    def test_line_comment_on_function(self, tmp_path: Path) -> None:
+        """Extracts line comment preceding a function."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "Foo.scala").write_text(
+            "object Foo {\n"
+            "  // Greets the user.\n"
+            "  def greet(): String = \"hello\"\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        func = next((s for s in result.symbols if "greet" in s.name), None)
+        assert func is not None
+        assert func.docstring == "Greets the user."
+
+    def test_no_comment_no_docstring(self, tmp_path: Path) -> None:
+        """Symbol without preceding comment has no docstring."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "Bar.scala").write_text(
+            "class Bar {\n"
+            "  def run(): Unit = {}\n"
+            "}\n"
+        )
+        result = analyze_scala(tmp_path)
+        method = next((s for s in result.symbols if "run" in s.name), None)
+        assert method is not None
+        assert method.docstring is None
