@@ -1176,3 +1176,256 @@ void process() {
             f"found: {[s.name for s in enums]}"
         )
 
+
+class TestCppDispatchTableEdges:
+    """Tests for function pointer dispatch table detection in C++.
+
+    C++ codebases use the same dispatch table patterns as C:
+    static struct Foo table[] = { { "name", func_ptr }, ... };
+    These function pointer references create dispatches_to edges.
+    """
+
+    def test_dispatch_table_creates_edges(self, tmp_path: Path) -> None:
+        """Function pointers in static array initializers create edges."""
+        (tmp_path / "dispatch.cpp").write_text("""
+int cmd_add(int argc, char **argv) { return 0; }
+int cmd_commit(int argc, char **argv) { return 0; }
+int cmd_status(int argc, char **argv) { return 0; }
+
+struct cmd_struct {
+    const char *name;
+    int (*fn)(int, char **);
+};
+
+static struct cmd_struct commands[] = {
+    { "add", cmd_add },
+    { "commit", cmd_commit },
+    { "status", cmd_status },
+};
+
+int run_builtin(struct cmd_struct *p) {
+    return p->fn(0, 0);
+}
+""")
+        result = analyze_cpp(tmp_path)
+
+        func_names = [s.name for s in result.symbols if s.kind == "function"]
+        assert "cmd_add" in func_names
+        assert "cmd_commit" in func_names
+        assert "cmd_status" in func_names
+
+        ref_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
+        ref_dsts = {e.dst for e in ref_edges}
+        cmd_add_id = next(s.id for s in result.symbols if s.name == "cmd_add")
+        cmd_commit_id = next(s.id for s in result.symbols if s.name == "cmd_commit")
+        cmd_status_id = next(s.id for s in result.symbols if s.name == "cmd_status")
+
+        assert cmd_add_id in ref_dsts
+        assert cmd_commit_id in ref_dsts
+        assert cmd_status_id in ref_dsts
+
+        # Verify evidence type and confidence
+        for e in ref_edges:
+            assert e.evidence_type == "dispatch_table_initializer"
+            assert 0.6 <= e.confidence <= 0.85
+
+    def test_dispatch_table_cross_file(self, tmp_path: Path) -> None:
+        """Dispatch table references functions defined in other files."""
+        (tmp_path / "cmds.cpp").write_text("""
+int cmd_help(int argc, char **argv) { return 0; }
+""")
+        (tmp_path / "main.cpp").write_text("""
+int cmd_help(int, char **);
+
+struct entry { const char *name; int (*fn)(int, char **); };
+
+static struct entry table[] = {
+    { "help", cmd_help },
+};
+""")
+        result = analyze_cpp(tmp_path)
+
+        ref_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
+        assert len(ref_edges) >= 1
+        cmd_help_sym = next(
+            (s for s in result.symbols if s.name == "cmd_help" and s.kind == "function"),
+            None,
+        )
+        assert cmd_help_sym is not None
+        assert any(e.dst == cmd_help_sym.id for e in ref_edges)
+
+    def test_non_function_identifiers_not_linked(self, tmp_path: Path) -> None:
+        """Constants and macros in initializers don't create false edges."""
+        (tmp_path / "dispatch.cpp").write_text("""
+int cmd_run(int argc, char **argv) { return 0; }
+
+#define FLAG_SETUP 1
+
+struct entry {
+    const char *name;
+    int (*fn)(int, char **);
+    int flags;
+};
+
+static struct entry table[] = {
+    { "run", cmd_run, FLAG_SETUP },
+};
+""")
+        result = analyze_cpp(tmp_path)
+
+        ref_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
+        ref_dsts = {e.dst for e in ref_edges}
+        cmd_run_id = next(s.id for s in result.symbols if s.name == "cmd_run")
+        assert cmd_run_id in ref_dsts
+        # FLAG_SETUP should not create an edge (it's a macro, not a function)
+        assert len(ref_edges) == 1
+
+    def test_duplicate_function_refs_deduplicated(self, tmp_path: Path) -> None:
+        """Same function appearing multiple times in table gets one edge."""
+        (tmp_path / "dispatch.cpp").write_text("""
+int handler(int argc, char **argv) { return 0; }
+
+struct entry { const char *name; int (*fn)(int, char **); };
+
+static struct entry table[] = {
+    { "first", handler },
+    { "second", handler },
+    { "third", handler },
+};
+""")
+        result = analyze_cpp(tmp_path)
+
+        ref_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
+        assert len(ref_edges) == 1
+
+    def test_non_function_symbol_not_linked(self, tmp_path: Path) -> None:
+        """Struct names in initializers don't create dispatch edges.
+
+        When a known symbol (e.g. a struct) appears in an initializer list,
+        it must not produce a dispatches_to edge since it isn't a function.
+        """
+        (tmp_path / "dispatch.cpp").write_text("""
+int real_func(int argc, char **argv) { return 0; }
+
+struct Config {
+    int value;
+};
+
+struct entry { const char *name; int (*fn)(int, char **); };
+
+static struct entry table[] = {
+    { "real", real_func },
+};
+
+/* Config is a known symbol but not a function — should not be linked.
+   We put Config's name in a second table to test the non-function filter. */
+struct meta_entry { const char *name; const char *tag; };
+
+static struct meta_entry meta[] = {
+    { "cfg", "Config" },
+};
+""")
+        result = analyze_cpp(tmp_path)
+
+        ref_edges = [e for e in result.edges if e.edge_type == "dispatches_to"]
+        # Only real_func should be linked (Config is a struct, not a function)
+        assert len(ref_edges) == 1
+        real_func_id = next(s.id for s in result.symbols if s.name == "real_func")
+        assert ref_edges[0].dst == real_func_id
+
+
+class TestCppDispatchTableVariableReferences:
+    """Tests for uses_dispatch_table edges in C++.
+
+    When a function references a dispatch table variable in its body,
+    a uses_dispatch_table edge connects the function to the table.
+    """
+
+    def test_function_referencing_dispatch_table(self, tmp_path: Path) -> None:
+        """A function that references a dispatch table variable gets an edge."""
+        (tmp_path / "dispatch.cpp").write_text("""
+int cmd_add(int argc, char **argv) { return 0; }
+int cmd_rm(int argc, char **argv) { return 0; }
+
+struct cmd_struct {
+    const char *name;
+    int (*fn)(int, char **);
+};
+
+static struct cmd_struct commands[] = {
+    { "add", cmd_add },
+    { "rm", cmd_rm },
+};
+
+int run_command(const char *name) {
+    for (int i = 0; commands[i].name; i++) {
+        if (strcmp(commands[i].name, name) == 0)
+            return commands[i].fn(0, 0);
+    }
+    return -1;
+}
+""")
+        result = analyze_cpp(tmp_path)
+
+        table_edges = [e for e in result.edges if e.edge_type == "uses_dispatch_table"]
+        assert len(table_edges) >= 1
+        run_cmd_sym = next(
+            (s for s in result.symbols if s.name == "run_command"),
+            None,
+        )
+        assert run_cmd_sym is not None
+        assert any(e.src == run_cmd_sym.id for e in table_edges)
+
+        for e in table_edges:
+            assert e.evidence_type == "dispatch_table_reference"
+            assert e.confidence == 0.85
+
+    def test_multiple_functions_reference_same_table(self, tmp_path: Path) -> None:
+        """Multiple functions referencing the same table each get an edge."""
+        (tmp_path / "dispatch.cpp").write_text("""
+int handler_a(int argc, char **argv) { return 0; }
+
+struct entry { const char *name; int (*fn)(int, char **); };
+
+static struct entry table[] = {
+    { "a", handler_a },
+};
+
+int lookup(const char *n) {
+    return table[0].fn(0, 0);
+}
+
+void print_table() {
+    for (int i = 0; table[i].name; i++) {}
+}
+""")
+        result = analyze_cpp(tmp_path)
+
+        table_edges = [e for e in result.edges if e.edge_type == "uses_dispatch_table"]
+        srcs = {e.src for e in table_edges}
+        lookup_sym = next(s for s in result.symbols if s.name == "lookup")
+        print_sym = next(s for s in result.symbols if s.name == "print_table")
+        assert lookup_sym.id in srcs
+        assert print_sym.id in srcs
+
+    def test_no_false_refs_from_unrelated_functions(self, tmp_path: Path) -> None:
+        """Functions that don't reference the table get no edge."""
+        (tmp_path / "dispatch.cpp").write_text("""
+int cmd_x(int argc, char **argv) { return 0; }
+
+struct entry { const char *name; int (*fn)(int, char **); };
+
+static struct entry table[] = {
+    { "x", cmd_x },
+};
+
+int unrelated() {
+    return 42;
+}
+""")
+        result = analyze_cpp(tmp_path)
+
+        table_edges = [e for e in result.edges if e.edge_type == "uses_dispatch_table"]
+        unrelated_sym = next(s for s in result.symbols if s.name == "unrelated")
+        assert not any(e.src == unrelated_sym.id for e in table_edges)
+

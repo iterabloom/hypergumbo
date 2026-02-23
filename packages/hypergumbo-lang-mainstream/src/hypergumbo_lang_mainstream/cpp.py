@@ -9,6 +9,7 @@ This analyzer uses tree-sitter to parse C++ files and extract:
 - Function call relationships
 - Include directives
 - Object instantiation (new expressions)
+- Dispatch table edges (function pointers in static array initializers)
 
 If tree-sitter with C++ support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -727,6 +728,119 @@ def _extract_edges_from_tree(
         # Add children to stack with updated context
         for child in reversed(node.children):
             stack.append((child, new_function))
+
+    # Dispatch table detection: function pointers in static array initializers.
+    # Pattern: static struct Foo table[] = { { "name", func_ptr }, ... };
+    # Identifiers in initializer lists that resolve to known functions
+    # become dispatches_to edges. Same pattern as C — C++ codebases use
+    # identical dispatch tables (command dispatch, plugin registries, etc.).
+    #
+    # After detecting dispatch tables, scan function bodies for references
+    # to the dispatch table variable, creating uses_dispatch_table edges.
+    dispatch_tables: dict[str, str] = {}  # variable name -> symbol ID
+    for dt_node in iter_tree(tree.root_node):
+        if dt_node.type != "init_declarator":
+            continue
+        # Must be at file scope (inside a declaration, not inside a function body)
+        if not dt_node.parent or dt_node.parent.type != "declaration":
+            continue  # pragma: no cover - defensive
+        array_decl = None
+        init_list = None
+        for child in dt_node.children:
+            if child.type == "array_declarator":
+                array_decl = child
+            elif child.type == "initializer_list":
+                init_list = child
+        if array_decl is None or init_list is None:
+            continue
+
+        # Get the array variable name
+        array_name = None
+        for child in array_decl.children:
+            if child.type == "identifier":
+                array_name = _node_text(child, source)
+                break
+        if not array_name:
+            continue  # pragma: no cover - defensive
+
+        # Build a stable src ID for the dispatch table (array variable)
+        array_line = dt_node.start_point[0] + 1
+        array_src_id = _base_make_symbol_id(
+            "cpp", str(file_path), array_line, array_line, array_name, "variable",
+        )
+
+        # Scan nested initializer lists for identifiers matching functions
+        seen_funcs: set[str] = set()
+        for inner_node in iter_tree(init_list):
+            if inner_node.type != "identifier":
+                continue
+            ident_name = _node_text(inner_node, source)
+            if ident_name in seen_funcs:
+                continue
+            # Only link to known function symbols
+            lookup_result = resolver.lookup(ident_name)
+            if not lookup_result.found or lookup_result.symbol is None:
+                continue
+            if lookup_result.symbol.kind != "function":
+                continue  # pragma: no cover - type names parse as type_identifier
+            seen_funcs.add(ident_name)
+            edges.append(Edge.create(
+                src=array_src_id,
+                dst=lookup_result.symbol.id,
+                edge_type="dispatches_to",
+                line=inner_node.start_point[0] + 1,
+                confidence=0.80 * lookup_result.confidence,
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                evidence_type="dispatch_table_initializer",
+            ))
+
+        # Only record tables that actually have function pointer entries
+        if seen_funcs:
+            dispatch_tables[array_name] = array_src_id
+
+    # Scan function bodies for references to discovered dispatch table
+    # variables, creating uses_dispatch_table edges.
+    if dispatch_tables:
+        str_path = str(file_path)
+        for dt_node in iter_tree(tree.root_node):
+            if dt_node.type != "function_definition":
+                continue
+            fn_result = _extract_function_name(dt_node, source)
+            if fn_result is None:
+                continue  # pragma: no cover - defensive
+            fn_name, _ = fn_result
+            short_fn = fn_name.split("::")[-1] if "::" in fn_name else fn_name
+            # Resolve the function symbol from local or global tables
+            func_sym = None
+            if local_symbols and short_fn in local_symbols:
+                func_sym = local_symbols[short_fn]
+            elif short_fn in global_symbols:  # pragma: no cover - fallback
+                gs = global_symbols[short_fn]
+                if gs.path == str_path:
+                    func_sym = gs
+            if func_sym is None:
+                continue  # pragma: no cover - defensive
+            body = dt_node.child_by_field_name("body")
+            if body is None:
+                continue  # pragma: no cover - defensive
+            seen_tables: set[str] = set()
+            for inner in iter_tree(body):
+                if inner.type != "identifier":
+                    continue
+                name = _node_text(inner, source)
+                if name in dispatch_tables and name not in seen_tables:
+                    seen_tables.add(name)
+                    edges.append(Edge.create(
+                        src=func_sym.id,
+                        dst=dispatch_tables[name],
+                        edge_type="uses_dispatch_table",
+                        line=inner.start_point[0] + 1,
+                        confidence=0.85,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        evidence_type="dispatch_table_reference",
+                    ))
 
     return edges
 
