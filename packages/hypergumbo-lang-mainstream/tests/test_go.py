@@ -957,6 +957,49 @@ func main() {
         )
 
 
+    def test_del_method_detected_as_delete(self, tmp_path: Path) -> None:
+        """r.Del("/path", handler) is detected as DELETE route.
+
+        Chi router uses Del() as a shorthand for Delete(). Without this,
+        DEL /series → api.dropSeries is missing from routes.txt (DEEP
+        bakeoff cohort 16 finding on prometheus).
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import "github.com/go-chi/chi/v5"
+
+func main() {
+    r := chi.NewRouter()
+    r.Del("/series", dropSeries)
+    r.Delete("/alerts", deleteAlert)
+}
+
+func dropSeries(w http.ResponseWriter, r *http.Request) {}
+func deleteAlert(w http.ResponseWriter, r *http.Request) {}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        route_methods = {
+            s.meta["route_path"]: s.meta["http_method"]
+            for s in routes if s.meta
+        }
+
+        # Both Del() and Delete() should normalize to DELETE
+        assert route_methods.get("/series") == "DELETE", (
+            f"r.Del('/series') should produce DELETE route, "
+            f"got: {route_methods.get('/series')}"
+        )
+        assert route_methods.get("/alerts") == "DELETE", (
+            f"r.Delete('/alerts') should produce DELETE route, "
+            f"got: {route_methods.get('/alerts')}"
+        )
+
+
 class TestGoGorillaMuxRoutes:
     """Tests for Gorilla mux route detection.
 

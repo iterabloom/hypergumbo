@@ -144,6 +144,13 @@ _GO_STDLIB_INTERFACE_METHODS: frozenset[str] = frozenset({
 GO_HTTP_METHODS = {
     "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS",
     "Get", "Post", "Put", "Delete", "Patch", "Head", "Options",
+    "Del",  # Chi shorthand for Delete
+}
+
+# Short method aliases that need normalization before .upper().
+# Chi uses r.Del() as shorthand for r.Delete().
+_GO_METHOD_ALIASES: dict[str, str] = {
+    "Del": "DELETE",
 }
 
 # Gorilla mux simple methods: router.HandleFunc("/path", handler)
@@ -1803,7 +1810,9 @@ def _extract_go_routes(
                             if route_path and handler_name:
                                 prefix = _get_go_route_prefix(n, source)
                                 route_path = prefix + route_path
-                                normalized_method = method_name.upper()
+                                normalized_method = _GO_METHOD_ALIASES.get(
+                                    method_name, method_name.upper(),
+                                )
                                 start_line = n.start_point[0] + 1
                                 end_line = n.end_point[0] + 1
 
@@ -2106,8 +2115,10 @@ def _extract_go_usage_contexts(
         prefix = _get_go_route_prefix(n, source)
         route_path = prefix + route_path
 
-        # Normalize method name to uppercase
-        normalized_method = method_name.upper()
+        # Normalize method name (handles aliases like Del → DELETE)
+        normalized_method = _GO_METHOD_ALIASES.get(
+            method_name, method_name.upper(),
+        )
 
         # Build full call name (e.g., "r.GET", "router.Post")
         call_name = f"{receiver_name}.{method_name}" if receiver_name else method_name
