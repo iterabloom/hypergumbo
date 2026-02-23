@@ -54,16 +54,37 @@ from hypergumbo_tracker.validation import ValidationResult, validate_all
 # ---------------------------------------------------------------------------
 
 
+def _config_chmod_fallback(path: Path, mode: int) -> None:
+    """Copy-delete-rename fallback when chmod fails (cross-user).
+
+    When the current user doesn't own config.yaml (e.g. human user vs agent
+    user), path.chmod() raises PermissionError. This fallback copies the file
+    to a tmp, deletes the original (allowed by directory write permission),
+    renames the tmp (now owned by the current user), and chmods it.
+    """
+    tmp = path.with_suffix(".yaml.tmp")
+    shutil.copy2(path, tmp)
+    path.unlink()
+    tmp.rename(path)
+    path.chmod(mode)
+
+
 def config_unlock(path: Path) -> None:
     """Temporarily make config.yaml writable (for human writes)."""
     if path.exists():
-        path.chmod(0o644)
+        try:
+            path.chmod(0o644)
+        except OSError:
+            _config_chmod_fallback(path, 0o644)
 
 
 def config_lock(path: Path) -> None:
     """Set config.yaml read-only (0444)."""
     if path.exists():
-        path.chmod(0o444)
+        try:
+            path.chmod(0o444)
+        except OSError:
+            _config_chmod_fallback(path, 0o444)
 
 
 @dataclass

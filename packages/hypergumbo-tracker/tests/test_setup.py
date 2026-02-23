@@ -1006,6 +1006,44 @@ class TestConfigLockUnlock:
         f = tmp_path / "nonexistent.yaml"
         config_unlock(f)  # Should not raise
 
+    def test_lock_fallback_on_oserror(self, tmp_path: Path) -> None:
+        f = tmp_path / "config.yaml"
+        f.write_text("data")
+        f.chmod(0o644)
+        call_count = 0
+        original_chmod = Path.chmod
+
+        def chmod_side_effect(self_path: Path, mode: int) -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise OSError("cross-user chmod")
+            original_chmod(self_path, mode)
+
+        with patch.object(Path, "chmod", chmod_side_effect):
+            config_lock(f)
+        assert f.stat().st_mode & 0o777 == 0o444
+        assert f.read_text() == "data"
+
+    def test_unlock_fallback_on_oserror(self, tmp_path: Path) -> None:
+        f = tmp_path / "config.yaml"
+        f.write_text("data")
+        f.chmod(0o444)
+        call_count = 0
+        original_chmod = Path.chmod
+
+        def chmod_side_effect(self_path: Path, mode: int) -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise OSError("cross-user chmod")
+            original_chmod(self_path, mode)
+
+        with patch.object(Path, "chmod", chmod_side_effect):
+            config_unlock(f)
+        assert f.stat().st_mode & 0o777 == 0o644
+        assert f.read_text() == "data"
+
 
 # ---------------------------------------------------------------------------
 # Check #11: Home traversable
