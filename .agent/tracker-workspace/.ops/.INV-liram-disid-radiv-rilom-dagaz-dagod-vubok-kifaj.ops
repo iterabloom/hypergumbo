@@ -21,3 +21,11 @@
     fields:  # d3c8
       statement: "The tracker add command must validate required fields from the kind fields_schema at creation time and reject the operation if required fields are missing, rather than creating a malformed ops file that fails validation later."  # d3c8
       root_cause: "The add subcommand does not check the kind fields_schema for required fields before writing the create op. When a meta_invariant is created without --field statement=..., the ops file is written with fields: {} and passes no creation-time validation. The error only surfaces later when tracker validate or auto-sync runs, leaving a malformed item in the workspace that the agent cannot delete (requires human authority). The validation logic exists in _validate_fields_schema() but is only called during post-hoc validation, not during add."  # d3c8
+- op: update  # 3696
+  at: '2026-02-24T06:22:51Z'  # 3696
+  by: human  # 3696
+  actor: jgstern  # 3696
+  clock: 2  # 3696
+  nonce: '3696'  # 3696
+  set:  # 3696
+    status: violated  # 3696

@@ -27,3 +27,11 @@
   set:  # bb36
     status: needs_human_review  # bb36
     justification: "auto-pr is a governance file; changes require human approval per AGENTS.md"  # bb36
+- op: update  # a4fd
+  at: '2026-02-24T06:13:22Z'  # a4fd
+  by: human  # a4fd
+  actor: jgstern  # a4fd
+  clock: 3  # a4fd
+  nonce: a4fd  # a4fd
+  set:  # a4fd
+    status: todo_soft  # a4fd

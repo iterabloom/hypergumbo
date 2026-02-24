@@ -19,3 +19,10 @@
     justification:  # 9a2b
     description: "SOURCE: Process health synthesis recommendation 1. The tracker system (htrac) tracks invariants and work items, but individual improvement_ideas from bakeoff assessment YAMLs are not linked to tracker items. Each assessment generates 3-10 improvement ideas; across 66 assessments that is 200-600 ideas, many recurring. Currently these exist only as free text in YAML files and cohort summaries. Options: (a) Auto-generate tracker items from assessment YAML improvement_ideas, deduplicating against existing items by semantic similarity. (b) Add a tracker_item field to the assessment YAML schema so the assessor or aggregator can reference existing tracker items. (c) Manual triage: after each cohort, review improvement_ideas and create/update tracker items for actionable ones. Option (c) is what happened during this bakeoff but only for a subset of findings."  # 9a2b
     fields: {}  # 9a2b
+- op: discuss  # f625
+  at: '2026-02-24T06:27:48Z'  # f625
+  by: human  # f625
+  actor: jgstern  # f625
+  clock: 2  # f625
+  nonce: f625  # f625
+  message: "I like both (a) and (b). I think these bakeoff items should be stealth-tier, lest the agentic loop get bogged down in CI. Even a 30-second wait seems to bog things down leading to confusion. This means we want to confirm that auto-sync realizes that stealth items are gitignored and they don't get counted in the threshold mechanism."  # f625

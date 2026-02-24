@@ -19,3 +19,11 @@
     justification:  # d2f9
     description: "SOURCE: Process health synthesis 4.2, recommendation 3. Before re-running hypergumbo analysis on a repo, check whether any hypergumbo source code changed since the last run for that repo. The bakeoff-features init idempotency fix (e11a15ea) prevents redundant session initialization but not redundant analysis within a session. Some repo-cohort combinations show identical metrics (iceberg C7 vs C8, forgejo C8 vs C9), each generating ~100MB of artifacts. Implementation: store a hash of relevant hypergumbo source files in each output directory; skip analysis if hash matches; flag skipped repos in the cohort report."  # d2f9
     fields: {}  # d2f9
+- op: update  # 2dee
+  at: '2026-02-24T06:23:26Z'  # 2dee
+  by: human  # 2dee
+  actor: jgstern  # 2dee
+  clock: 2  # 2dee
+  nonce: 2dee  # 2dee
+  set:  # 2dee
+    status: todo_soft  # 2dee
