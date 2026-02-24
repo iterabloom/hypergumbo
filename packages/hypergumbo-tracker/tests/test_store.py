@@ -3390,3 +3390,141 @@ class TestTakeOwnershipFallback:
         now = time.time()
         recent = [f for f in leftover if now - os.path.getmtime(f) < 5]
         assert len(recent) == 0, f"Tempfile not cleaned up: {recent}"
+
+
+# ---------------------------------------------------------------------------
+# Directory permission repair (_ensure_dir_group_writable)
+# ---------------------------------------------------------------------------
+
+
+class TestEnsureDirGroupWritable:
+    """Tests for proactive directory permission repair."""
+
+    def test_repairs_missing_group_write(self, tmp_path: Path) -> None:
+        """When the current user owns a directory missing g+w, repair it."""
+        import stat
+
+        d = tmp_path / ".ops"
+        d.mkdir(mode=0o755)
+        Store._ensure_dir_group_writable(d)
+        st = d.stat()
+        assert st.st_mode & stat.S_IWGRP, "Directory should have group write after repair"
+        assert st.st_mode & stat.S_ISGID, "Directory should have setgid after repair"
+
+    def test_noop_when_already_correct(self, tmp_path: Path) -> None:
+        """No chmod when directory already has g+w and setgid."""
+        d = tmp_path / ".ops"
+        d.mkdir()
+        # Explicitly set the target permissions (mkdir may not honour setgid)
+        os.chmod(d, 0o2775)  # noqa: S103
+        with patch("os.chmod") as mock_chmod:
+            Store._ensure_dir_group_writable(d)
+            mock_chmod.assert_not_called()
+
+    def test_skips_non_owner(self, tmp_path: Path) -> None:
+        """When the current user doesn't own the directory, do nothing."""
+        import stat
+
+        d = tmp_path / ".ops"
+        d.mkdir(mode=0o755)
+        # Pretend we're a different user
+        with patch("os.getuid", return_value=99999):
+            Store._ensure_dir_group_writable(d)
+        # Directory should still lack group write
+        assert not (d.stat().st_mode & stat.S_IWGRP)
+
+    def test_skips_nonexistent_dir(self) -> None:
+        """Does not raise for a non-existent directory."""
+        Store._ensure_dir_group_writable(Path("/nonexistent/path"))
+
+    def test_tolerates_chmod_failure(self, tmp_path: Path) -> None:
+        """Silently continues when os.chmod raises OSError (e.g. read-only fs)."""
+        d = tmp_path / ".ops"
+        d.mkdir(mode=0o755)
+        with patch("os.chmod", side_effect=OSError("read-only filesystem")):
+            # Should not raise
+            Store._ensure_dir_group_writable(d)
+        # Directory mode unchanged (chmod was mocked to fail)
+        assert not (d.stat().st_mode & 0o2000)
+
+    def test_append_op_calls_ensure_dir(self, ops_dir: Path) -> None:
+        """_append_op proactively repairs directory permissions."""
+        config = _make_config()
+        store = Store(ops_dir, config=config)
+        item_id = store.add(kind="work_item", title="Test dir repair")
+
+        with patch.object(
+            Store, "_ensure_dir_group_writable"
+        ) as mock_repair:
+            store.update(item_id, set_fields={"status": "done"})
+            mock_repair.assert_called_once_with(ops_dir)
+
+    def test_add_creates_dir_with_group_write(self, tmp_path: Path) -> None:
+        """add() creates .ops dir with group-write + setgid permissions."""
+        import stat
+
+        ops_dir = tmp_path / "fresh" / ".ops"
+        # ops_dir doesn't exist yet; parent must exist for config loading
+        (tmp_path / "fresh").mkdir()
+        config = _make_config()
+        store = Store(ops_dir, config=config)
+        store.add(kind="work_item", title="First item")
+
+        st = ops_dir.stat()
+        assert st.st_mode & stat.S_IWGRP, "New .ops dir should have group write"
+        assert st.st_mode & stat.S_ISGID, "New .ops dir should have setgid"
+
+
+class TestTakeOwnershipDirRepair:
+    """Tests for directory permission repair within _take_ownership_via_tmp."""
+
+    def test_repairs_dir_before_unlink(self, tmp_path: Path) -> None:
+        """_take_ownership_via_tmp fixes directory permissions before unlink."""
+        import stat
+
+        ops_dir = tmp_path / ".ops"
+        ops_dir.mkdir(mode=0o755)  # Missing g+w
+        ops_file = ops_dir / "test.ops"
+        ops_file.write_bytes(b"data\n")
+        os.chmod(ops_file, 0o644)
+
+        target_mode = (
+            stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP
+            | stat.S_IWGRP | stat.S_IROTH
+        )
+        Store._take_ownership_via_tmp(ops_file, target_mode)
+
+        # File should be replaced with correct mode
+        assert ops_file.read_bytes() == b"data\n"
+        actual_mode = os.stat(ops_file).st_mode & 0o777
+        assert actual_mode == 0o664
+        # Directory should have been repaired
+        dir_st = ops_dir.stat()
+        assert dir_st.st_mode & stat.S_IWGRP
+
+    def test_clear_error_when_dir_not_repairable(self, tmp_path: Path) -> None:
+        """When unlink fails and dir can't be repaired, error is actionable."""
+        import stat
+
+        ops_dir = tmp_path / ".ops"
+        ops_dir.mkdir(mode=0o755)
+        ops_file = ops_dir / "test.ops"
+        ops_file.write_bytes(b"data\n")
+
+        target_mode = (
+            stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP
+            | stat.S_IWGRP | stat.S_IROTH
+        )
+
+        # Simulate: unlink fails only for the ops file (not for tmp cleanup)
+        real_unlink = Path.unlink
+
+        def selective_unlink(self_path: Path, *args: Any, **kwargs: Any) -> None:
+            if self_path.name == "test.ops":
+                raise PermissionError(13, "Permission denied")
+            return real_unlink(self_path, *args, **kwargs)
+
+        with patch("os.getuid", return_value=99999):
+            with patch.object(Path, "unlink", selective_unlink):
+                with pytest.raises(PermissionError, match="group-write"):
+                    Store._take_ownership_via_tmp(ops_file, target_mode)

@@ -1000,7 +1000,15 @@ class Store:
         # setups where agent and human share the ops directory.
         import stat as stat_mod
 
-        self._ops_dir.mkdir(parents=True, exist_ok=True)
+        # Create .ops/ directory with group-write + setgid (2775) for
+        # two-user sharing.  Must clear umask so mkdir honours mode bits.
+        old_umask_dir = os.umask(0)
+        try:
+            self._ops_dir.mkdir(parents=True, exist_ok=True, mode=0o2775)
+        finally:
+            os.umask(old_umask_dir)
+        # Also repair existing dirs that predate this fix
+        self._ensure_dir_group_writable(self._ops_dir)
         wr_flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
         wr_mode = (
             stat_mod.S_IRUSR | stat_mod.S_IWUSR
@@ -1426,6 +1434,32 @@ class Store:
     # -----------------------------------------------------------------------
 
     @staticmethod
+    def _ensure_dir_group_writable(dir_path: Path) -> None:
+        """Ensure the directory has group-write + setgid for two-user sharing.
+
+        Only succeeds when the current user owns the directory.  Silently
+        returns when permissions are already correct, the directory doesn't
+        exist, or we're not the owner (non-owners will hit the PermissionError
+        path instead).
+        """
+        import stat
+
+        try:
+            st = dir_path.stat()
+        except OSError:
+            return
+        needed = stat.S_IWGRP | stat.S_ISGID
+        if (st.st_mode & needed) == needed:
+            return
+        if st.st_uid != os.getuid():
+            return
+        try:
+            target = st.st_mode | stat.S_IWGRP | stat.S_IXGRP | stat.S_ISGID
+            os.chmod(dir_path, target)
+        except OSError:
+            pass
+
+    @staticmethod
     def _take_ownership_via_tmp(filepath: Path, mode: int) -> None:
         """Atomic copy-via-/tmp to take ownership of an ops file.
 
@@ -1433,9 +1467,16 @@ class Store:
         Copy to /tmp (always writable), delete original (only needs dir
         write permission — ensured by setup's setgid+g+w), move copy back.
         The new file is owned by the current user with the requested mode.
+
+        Before unlinking, attempts to repair directory permissions if the
+        current user owns the directory.  If unlink still fails, raises a
+        clear PermissionError explaining the fix.
         """
         import shutil
         import tempfile
+
+        # Proactively repair directory permissions if we own the dir
+        Store._ensure_dir_group_writable(filepath.parent)
 
         fd, tmp_str = tempfile.mkstemp(suffix=".ops", prefix="htrac_")
         tmp = Path(tmp_str)
@@ -1446,7 +1487,19 @@ class Store:
             os.fchmod(fd, mode)
             os.close(fd)
             closed = True
-            filepath.unlink()
+            try:
+                filepath.unlink()
+            except PermissionError:
+                tmp.unlink(missing_ok=True)
+                raise PermissionError(
+                    13,
+                    f"Cannot take ownership of {filepath.name}: the .ops/ "
+                    f"directory lacks group-write permission and is owned by "
+                    f"uid {filepath.parent.stat().st_uid}. The directory owner "
+                    f"must run any tracker command first to trigger automatic "
+                    f"permission repair, or manually run: "
+                    f"chmod g+ws '{filepath.parent}'",
+                ) from None
             shutil.move(str(tmp), str(filepath))
         except BaseException:
             if not closed:
@@ -1465,6 +1518,10 @@ class Store:
 
         The critical section: acquire lock → compute clock → serialize → write → fsync → release.
         """
+        # Proactively repair directory permissions for two-user setups.
+        # If the current user owns the .ops/ dir, this adds g+w + setgid.
+        self._ensure_dir_group_writable(filepath.parent)
+
         # Pre-write validation: refuse to append to uncompilable items
         if filepath.exists():
             existing_ops = _parse_ops_file(filepath)
