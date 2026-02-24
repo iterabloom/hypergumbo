@@ -233,7 +233,7 @@ def is_test_file(path: str) -> bool:
     normalized = normalize_path(path)
     path_parts = normalized.split("/")
     test_dirs = {
-        "tests", "test", "t", "spec", "__tests__",  # Test directories
+        "tests", "test", "t", "__tests__",  # Test directories
         "testing",  # Go convention (e.g., harbor src/testing/, argo-cd utils/testing/)
         "fakes", "mocks", "testfakes", "testmocks",  # Mock directories
         "fixtures", "testdata", "testutils", "testutil",  # Test support directories
@@ -246,4 +246,11 @@ def is_test_file(path: str) -> bool:
             return True
         if part_lower.endswith("fakes") or part_lower.endswith("mocks"):
             return True
+
+    # spec/ only matches as the first path component (Ruby RSpec convention).
+    # Nested spec/ dirs (e.g., airflow/listeners/spec/) are often production
+    # interface definitions, not tests.
+    if path_parts and path_parts[0].lower() == "spec":
+        return True
+
     return False

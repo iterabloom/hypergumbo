@@ -232,6 +232,15 @@ class TestIsTestFile:
         assert is_test_file("spec/support.rb") is True
         assert is_test_file("__tests__/main.js") is True
 
+    def test_spec_only_matches_at_root(self) -> None:
+        """spec/ only matches as first path component, not nested."""
+        # Root-level spec is a test directory (Ruby RSpec convention)
+        assert is_test_file("spec/support.rb") is True
+        assert is_test_file("spec/factories/user.rb") is True
+        # Nested spec is NOT a test directory (e.g., Airflow listeners/spec/)
+        assert is_test_file("airflow/listeners/spec/listener.py") is False
+        assert is_test_file("src/listeners/spec/base.py") is False
+
     def test_testing_directory(self) -> None:
         """Files in testing/ directories are test files (Go convention)."""
         assert is_test_file("src/testing/suite.go") is True

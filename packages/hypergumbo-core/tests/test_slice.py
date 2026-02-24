@@ -839,7 +839,11 @@ class TestIsTestFile:
     def test_spec_patterns(self) -> None:
         """Detect spec patterns."""
         from hypergumbo_core.paths import is_test_file
-        assert is_test_file("src/spec/main.py")
+        # Root-level spec/ is a test directory (Ruby RSpec convention)
+        assert is_test_file("spec/main.py")
+        # Nested spec/ is NOT a test directory (production interface defs)
+        assert not is_test_file("src/spec/main.py")
+        # Filename patterns still work regardless of directory
         assert is_test_file("main_spec.py")
         assert is_test_file("main.spec.js")
 
