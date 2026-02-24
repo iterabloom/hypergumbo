@@ -230,6 +230,170 @@ class TestFastAPIDependencyMatching:
         assert any(c["concept"] == "background_task" for c in concepts)
 
 
+class TestFastAPINamedRouterMatching:
+    """Tests for named router patterns like dag_run_router.get."""
+
+    def test_matches_named_router_get(self) -> None:
+        """Matches @dag_run_router.get("/dag_runs") decorator."""
+        clear_pattern_cache()
+
+        symbol = Symbol(
+            id="test:core_api.py:10:get_dag_runs:function",
+            name="get_dag_runs",
+            kind="function",
+            language="python",
+            path="core_api.py",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "dag_run_router.get", "args": ["/dag_runs"], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([symbol], {"fastapi"})
+
+        assert enriched[0].meta is not None
+        assert "concepts" in enriched[0].meta
+        concepts = enriched[0].meta["concepts"]
+        route_concept = next(c for c in concepts if c["concept"] == "route")
+        assert route_concept["path"] == "/dag_runs"
+        assert route_concept["method"] == "GET"
+
+    def test_matches_named_router_post(self) -> None:
+        """Matches @connections_router.post("/connections") decorator."""
+        clear_pattern_cache()
+
+        symbol = Symbol(
+            id="test:core_api.py:30:create_connection:function",
+            name="create_connection",
+            kind="function",
+            language="python",
+            path="core_api.py",
+            span=Span(30, 40, 0, 0),
+            meta={
+                "decorators": [
+                    {
+                        "name": "connections_router.post",
+                        "args": ["/connections"],
+                        "kwargs": {},
+                    },
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([symbol], {"fastapi"})
+
+        concepts = enriched[0].meta["concepts"]
+        route_concept = next(c for c in concepts if c["concept"] == "route")
+        assert route_concept["path"] == "/connections"
+        assert route_concept["method"] == "POST"
+
+    def test_matches_named_router_route(self) -> None:
+        """Matches @api_router.route("/health") generic route."""
+        clear_pattern_cache()
+
+        symbol = Symbol(
+            id="test:routes.py:5:health_check:function",
+            name="health_check",
+            kind="function",
+            language="python",
+            path="routes.py",
+            span=Span(5, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {
+                        "name": "api_router.route",
+                        "args": ["/health"],
+                        "kwargs": {"methods": ["GET"]},
+                    },
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([symbol], {"fastapi"})
+
+        concepts = enriched[0].meta["concepts"]
+        route_concept = next(c for c in concepts if c["concept"] == "route")
+        assert route_concept["path"] == "/health"
+
+    def test_matches_named_router_middleware(self) -> None:
+        """Matches @custom_router.middleware("http") decorator."""
+        clear_pattern_cache()
+
+        symbol = Symbol(
+            id="test:middleware.py:1:add_timing:function",
+            name="add_timing",
+            kind="function",
+            language="python",
+            path="middleware.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {
+                        "name": "custom_router.middleware",
+                        "args": ["http"],
+                        "kwargs": {},
+                    },
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([symbol], {"fastapi"})
+
+        concepts = enriched[0].meta["concepts"]
+        assert any(c["concept"] == "middleware" for c in concepts)
+
+    def test_matches_named_router_exception_handler(self) -> None:
+        """Matches @v1_router.exception_handler(HTTPException) decorator."""
+        clear_pattern_cache()
+
+        symbol = Symbol(
+            id="test:errors.py:1:handle_http:function",
+            name="handle_http",
+            kind="function",
+            language="python",
+            path="errors.py",
+            span=Span(1, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {
+                        "name": "v1_router.exception_handler",
+                        "args": ["HTTPException"],
+                        "kwargs": {},
+                    },
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([symbol], {"fastapi"})
+
+        concepts = enriched[0].meta["concepts"]
+        assert any(c["concept"] == "error_handler" for c in concepts)
+
+    def test_no_match_for_unrelated_object(self) -> None:
+        """Objects without router/app suffix don't match."""
+        clear_pattern_cache()
+
+        symbol = Symbol(
+            id="test:service.py:10:process:function",
+            name="process",
+            kind="function",
+            language="python",
+            path="service.py",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "handler.get", "args": ["/data"], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([symbol], {"fastapi"})
+
+        assert "concepts" not in enriched[0].meta
+
+
 class TestFastAPINoMatch:
     """Tests that non-FastAPI patterns don't match."""
 

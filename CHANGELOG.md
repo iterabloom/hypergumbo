@@ -52,6 +52,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Test classification**: Test directories/files classified as tier 2; test functions registered as entrypoints with 90% penalty to avoid dominating `--entry auto`.
 - **Kafka Connect framework patterns**: SinkTask, SourceTask, SinkConnector, and SourceConnector base class patterns detected as controller entrypoints. Framework detection from `connect-api` in Maven/Gradle builds. Enables entrypoint detection for streaming data connectors (e.g., Apache Iceberg's IcebergSinkTask, Debezium connectors).
 - **XORM framework detection**: XORM ORM (used by Forgejo/Gitea) detected via `xorm.io/xorm` in `go.mod`. Engine operation patterns (`Get`, `Find`, `Insert`, `Update`, `Delete`, etc.) matched as repository concepts.
+- **FastAPI named router detection**: Named routers (`dag_run_router.get`, `connections_router.post`, `v1_router.delete`, etc.) now match FastAPI route patterns, not just bare `app` or `router` variables. Surfaces ~200 previously invisible routes in projects like Apache Airflow that use `APIRouter` with descriptive variable names. Also applies to middleware, exception_handler, and lifecycle patterns.
 
 #### CLI & developer tooling
 
