@@ -21,3 +21,12 @@
     description: "SOURCE: Process health synthesis §3.5, §3.7, recommendations 4 and 12.\n\nPROBLEM: Both bakeoff pipelines use verdict scales that collapse into a single dominant bucket. BROAD uses GOOD/WARN — 74% of all data points are WARN. DEEP uses USEFUL/PARTIALLY_USEFUL/NOT_USEFUL — 16/16 assessments from cohorts 14, 15, and 18 returned PARTIALLY_USEFUL.\n\nThe middle verdict covers a vast quality range. At the top: postal (accurate slices, one route-prefix bug, ~65/100). At the bottom: kserve (broken routes, auto-generated code dominating centrality, misseeded reverse slices, ~25/100). Both receive the same verdict, making cohort summaries unable to communicate trajectory or severity distribution.\n\nThe verdict system also punishes improvements: tighter, better slices triggered WARN because they fell below the old avg_slice_nodes threshold of 50. The threshold was recalibrated to 20, but the underlying dynamic — binary verdicts hiding continuous improvement — remains.\n\nOPTIONS:\n(a) Add a numeric quality score (0-100) alongside the existing verdict, scored per-task (A/B/C in DEEP) and aggregated.\n(b) Split the middle tier: PARTIALLY_USEFUL_HIGH / PARTIALLY_USEFUL_LOW (or WARN_MINOR / WARN_MAJOR).\n(c) Replace verdicts entirely with a concern-weighted severity score.\n(d) Keep verdicts but add a \"trajectory\" field: IMPROVING / STABLE / REGRESSING based on comparison with prior iteration.\n\nIMPACT: Without graduation, the summary aggregation counts postal and kserve as identical data points, masking whether fixes are actually improving output quality. The agent's decision loop (summary → what to fix next) receives no signal about which repos are close to USEFUL vs. far from it."  # 7164
     fields:  # 7164
       statement: "Bakeoff verdicts must communicate quality trajectory and severity, not just a binary/ternary bucket. A postal (accurate slices, one gap) and a kserve (broken routes, broken centrality, broken seeds) must not receive the same verdict."  # 7164
+- op: update  # cd9d
+  at: '2026-02-24T04:37:42Z'  # cd9d
+  by: agent  # cd9d
+  actor: jgstern_agent  # cd9d
+  clock: 2  # cd9d
+  nonce: cd9d  # cd9d
+  set: {}  # cd9d
+  add:  # cd9d
+    before: [WI-bimab-ravus-lugig-bapus-maval-donoj-huboz-kodoz]  # cd9d

@@ -22,3 +22,12 @@
     fields:  # 220a
       statement: "Logging functions (log, warn, error, debug, info, trace, fatal, errorf) with callers spanning many files must receive centrality dampening proportional to their ubiquity, not rank alongside architectural symbols."  # 220a
       root_cause: "Current dampening heuristics (trivial sink: out_degree<=1 AND LoC<=5, utility file detection) miss logging functions because they have moderate out-degree (calling into underlying loggers) and live in production code paths, not utility directories. XORMLogBridge.Errorf (forgejo rank 2, 389 degree), log (kong rank 2, 136 degree), Base#log (postal rank 7) all escape both heuristics."  # 220a
+- op: update  # 59a8
+  at: '2026-02-24T04:37:42Z'  # 59a8
+  by: agent  # 59a8
+  actor: jgstern_agent  # 59a8
+  clock: 2  # 59a8
+  nonce: 59a8  # 59a8
+  set: {}  # 59a8
+  add:  # 59a8
+    before: [WI-bimab-ravus-lugig-bapus-maval-donoj-huboz-kodoz]  # 59a8
