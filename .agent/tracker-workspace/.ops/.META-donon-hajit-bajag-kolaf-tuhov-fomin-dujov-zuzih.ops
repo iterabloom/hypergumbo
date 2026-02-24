@@ -1,0 +1,23 @@
+- op: create  # 7164
+  at: '2026-02-24T04:27:04Z'  # 7164
+  by: agent  # 7164
+  actor: jgstern_agent  # 7164
+  clock: 1  # 7164
+  nonce: '7164'  # 7164
+  data:  # 7164
+    kind: meta_invariant  # 7164
+    title: "Verdict graduation: replace binary/ternary bakeoff verdicts with numeric quality scores"  # 7164
+    status: needs_human_review  # 7164
+    priority: 2  # 7164
+    parent:  # 7164
+    tags:  # 7164
+    - bakeoff  # 7164
+    - process-health  # 7164
+    before: []  # 7164
+    duplicate_of: []  # 7164
+    not_duplicate_of: []  # 7164
+    pr_ref:  # 7164
+    justification:  # 7164
+    description: "SOURCE: Process health synthesis §3.5, §3.7, recommendations 4 and 12.\n\nPROBLEM: Both bakeoff pipelines use verdict scales that collapse into a single dominant bucket. BROAD uses GOOD/WARN — 74% of all data points are WARN. DEEP uses USEFUL/PARTIALLY_USEFUL/NOT_USEFUL — 16/16 assessments from cohorts 14, 15, and 18 returned PARTIALLY_USEFUL.\n\nThe middle verdict covers a vast quality range. At the top: postal (accurate slices, one route-prefix bug, ~65/100). At the bottom: kserve (broken routes, auto-generated code dominating centrality, misseeded reverse slices, ~25/100). Both receive the same verdict, making cohort summaries unable to communicate trajectory or severity distribution.\n\nThe verdict system also punishes improvements: tighter, better slices triggered WARN because they fell below the old avg_slice_nodes threshold of 50. The threshold was recalibrated to 20, but the underlying dynamic — binary verdicts hiding continuous improvement — remains.\n\nOPTIONS:\n(a) Add a numeric quality score (0-100) alongside the existing verdict, scored per-task (A/B/C in DEEP) and aggregated.\n(b) Split the middle tier: PARTIALLY_USEFUL_HIGH / PARTIALLY_USEFUL_LOW (or WARN_MINOR / WARN_MAJOR).\n(c) Replace verdicts entirely with a concern-weighted severity score.\n(d) Keep verdicts but add a \"trajectory\" field: IMPROVING / STABLE / REGRESSING based on comparison with prior iteration.\n\nIMPACT: Without graduation, the summary aggregation counts postal and kserve as identical data points, masking whether fixes are actually improving output quality. The agent's decision loop (summary → what to fix next) receives no signal about which repos are close to USEFUL vs. far from it."  # 7164
+    fields:  # 7164
+      statement: "Bakeoff verdicts must communicate quality trajectory and severity, not just a binary/ternary bucket. A postal (accurate slices, one gap) and a kserve (broken routes, broken centrality, broken seeds) must not receive the same verdict."  # 7164
