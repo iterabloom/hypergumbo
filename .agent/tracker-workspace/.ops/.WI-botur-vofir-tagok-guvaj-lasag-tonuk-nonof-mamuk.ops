@@ -1,0 +1,21 @@
+- op: create  # d53b
+  at: '2026-02-24T23:28:32Z'  # d53b
+  by: agent  # d53b
+  actor: jgstern_agent  # d53b
+  clock: 1  # d53b
+  nonce: d53b  # d53b
+  data:  # d53b
+    kind: work_item  # d53b
+    title: "Integrated tree+table view with constrained manual ordering"  # d53b
+    status: needs_human_review  # d53b
+    priority: 3  # d53b
+    parent:  # d53b
+    tags:  # d53b
+    - tui  # d53b
+    before: []  # d53b
+    duplicate_of: []  # d53b
+    not_duplicate_of: []  # d53b
+    pr_ref:  # d53b
+    justification:  # d53b
+    description: "Merge tree view and DataTable into a single 'Integrated View' (possibly a third mode alongside flat table and tree toggle). Key design decisions from human discussion:\n\n1. **New view mode, not replacement.** Add an \"Integrated View\" as a third option. If it works well, make it the default.\n\n2. **Constrained manual ordering (</>).** In integrated view:\n   - Child items cannot be positioned above their parent\n   - Children can be reordered among siblings\n   - Moving a parent moves its entire subtree as a unit\n   - One-member families (no parent, no children) are treated as standalone units\n   - A one-member family cannot be positioned between members of another family; it skips the whole family as a unit\n   - Items in multi-member families cannot be moved outside their family via </> — use 'p' hotkey to re-parent first\n\n3. **Filter interaction with parents.** If a filter would hide a parent but its children are visible, show the parent anyway with all row text italicized (never bolded). This preserves hierarchy context.\n\n4. **Ghost rows.** Ghost rows (hidden chain members) stay at table bottom, not inserted at tree position. Simpler to implement and reason about for the # column.\n\n5. **Two competing axes concern.** Flat priority view and hierarchy view serve different purposes. Integrated view prioritizes hierarchy; users who want pure flat ordering use the existing table mode."  # d53b
+    fields: {}  # d53b
