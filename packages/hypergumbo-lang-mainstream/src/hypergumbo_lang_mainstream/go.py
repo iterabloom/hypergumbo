@@ -5,6 +5,7 @@ This analyzer uses tree-sitter to parse Go files and extract:
 - Method declarations (func with receiver)
 - Struct declarations (type X struct)
 - Interface declarations (type X interface)
+- Package-level var aliases (var Name = expr) as variable symbols
 - Function call relationships
 - Function references in struct literal fields (cobra, http dispatch)
 - Import relationships (import statements)
@@ -847,11 +848,57 @@ def _extract_symbols_from_file(
                         analysis.symbols.append(symbol)
                         analysis.symbol_by_name[type_name] = symbol
 
-        # Interface implementation assertion: var _ Interface = &Struct{}
+        # var declarations: interface assertions AND package-level aliases
         elif node.type == "var_declaration":
             for child in node.children:
                 if child.type == "var_spec":
                     _detect_interface_assertion(child, source, impl_assertions)
+
+                    # Extract package-level var aliases as symbols.
+                    # Pattern: var Name = expr (has initializer, not blank _)
+                    # This makes aliases like `var String = slog.String` visible
+                    # to the resolver when other packages call log.String().
+                    vname_node = find_child_by_field(child, "name")
+                    if vname_node is None:  # pragma: no cover
+                        continue
+                    vname = node_text(vname_node, source)
+                    if vname == "_":
+                        continue
+
+                    # Only extract vars with initializers — plain `var x int`
+                    # declarations are not callable aliases.
+                    vvalue_node = find_child_by_field(child, "value")
+                    if vvalue_node is None:
+                        # Check for expression_list children as alternative
+                        # tree-sitter representation
+                        has_init = any(
+                            c.type == "expression_list" for c in child.children
+                        )
+                        if not has_init:
+                            continue
+
+                    start_line = child.start_point[0] + 1
+                    end_line = child.end_point[0] + 1
+                    modifiers = _go_visibility_modifiers(vname)
+
+                    vsymbol = Symbol(
+                        id=make_symbol_id("go", str(file_path), start_line, end_line, vname, "variable"),
+                        name=vname,
+                        kind="variable",
+                        language="go",
+                        path=str(file_path),
+                        span=Span(
+                            start_line=start_line,
+                            end_line=end_line,
+                            start_col=child.start_point[1],
+                            end_col=child.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        modifiers=modifiers,
+                    )
+                    analysis.symbols.append(vsymbol)
+                    analysis.symbol_by_name[vname] = vsymbol
 
     # Populate docstrings from tree-sitter comments in a single pass
     populate_docstrings_from_tree(tree.root_node, source, analysis.symbols)

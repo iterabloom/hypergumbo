@@ -450,6 +450,109 @@ type Handler func(int) error
         assert "MyInt" in type_names or "Handler" in type_names
 
 
+class TestGoVarAliasExtraction:
+    """Tests for extracting Go package-level var aliases as symbols.
+
+    Go packages commonly re-export functions via var aliases:
+      var String = slog.String
+      var Debug = slog.Debug
+    These are callable and should be extracted as symbols so the resolver
+    can find them when other packages call log.String(), log.Debug(), etc.
+    """
+
+    def test_extracts_var_alias(self, tmp_path: Path) -> None:
+        """Package-level var with function value creates a variable symbol."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "log.go"
+        go_file.write_text("""package log
+
+import "log/slog"
+
+var String = slog.String
+var Debug = slog.Debug
+var Err = slog.Any
+""")
+
+        result = analyze_go(tmp_path)
+
+        var_names = [s.name for s in result.symbols if s.kind == "variable"]
+        assert "String" in var_names, (
+            f"Expected 'String' in var symbols, got {var_names}"
+        )
+        assert "Debug" in var_names
+        assert "Err" in var_names
+
+    def test_var_alias_has_correct_kind(self, tmp_path: Path) -> None:
+        """Var alias symbols have kind='variable' and correct metadata."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "log.go"
+        go_file.write_text("""package log
+
+import "log/slog"
+
+var String = slog.String
+""")
+
+        result = analyze_go(tmp_path)
+
+        var_sym = next(
+            (s for s in result.symbols if s.name == "String"),
+            None,
+        )
+        assert var_sym is not None, "String symbol should exist"
+        assert var_sym.kind == "variable"
+        assert var_sym.language == "go"
+        # Exported (capitalized) should have exported modifier
+        assert "exported" in var_sym.modifiers
+
+    def test_skips_interface_assertion_vars(self, tmp_path: Path) -> None:
+        """var _ Interface = &Struct{} should NOT create a variable symbol."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "impl.go"
+        go_file.write_text("""package main
+
+type Reader interface {
+    Read() error
+}
+
+type MyReader struct{}
+
+func (r *MyReader) Read() error { return nil }
+
+var _ Reader = &MyReader{}
+""")
+
+        result = analyze_go(tmp_path)
+
+        var_syms = [s for s in result.symbols if s.kind == "variable"]
+        # The blank identifier _ should NOT create a symbol
+        assert len(var_syms) == 0, (
+            f"Expected no variable symbols for blank identifier, got {[s.name for s in var_syms]}"
+        )
+
+    def test_skips_non_initialized_vars(self, tmp_path: Path) -> None:
+        """var x int (no initializer) should NOT create a symbol —
+        it's a plain variable declaration, not a callable alias."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+var counter int
+var name string
+""")
+
+        result = analyze_go(tmp_path)
+
+        var_syms = [s for s in result.symbols if s.kind == "variable"]
+        assert len(var_syms) == 0, (
+            f"Expected no variable symbols for uninitialized vars, got {[s.name for s in var_syms]}"
+        )
+
+
 class TestGoHelperFunctions:
     """Tests for helper function edge cases."""
 
