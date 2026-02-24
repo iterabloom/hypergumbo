@@ -56,6 +56,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Dev/contrib utility file detection**: `dev/`, `contrib/`, and `hack/` directories are now classified as utility files. Prevents dev tooling scripts (e.g., Airflow's `dev/check_*.py`, `dev/update_*.py`) from dominating centrality rankings and entrypoint lists.
 - **spec/ directory scoping**: `spec/` now only matches as a test directory when at the root level (first path component). Nested `spec/` directories (e.g., Airflow's `listeners/spec/`) are no longer misclassified as test code — they're production interface definitions.
 - **Wrapper function call resolution in decorator args**: Decorator arguments that are function calls with a string literal first argument (e.g., `@app.route(_add_static_prefix("/health"))`) now extract the literal string instead of showing `<complex>`. Resolves ~16 unreadable route paths in mlflow.
+- **Remove `public/` from DEFAULT_EXCLUDES**: Hugo's `public/` generated output directory was excluded by default, but this silently dropped production code in `public/` directories at any depth. Airflow's `routes/public/` (109 API route handlers across 29 files) was completely invisible. Hugo output is typically `.gitignore`d and won't appear in tracked repos anyway.
+- **`devel*` utility directory prefix**: Directories starting with `devel` (e.g., `devel-common/`, `devel-tools/`) are now classified as utility files. Prevents Airflow's `devel-common/` CI tooling (`get_console`: 389 degree, `run_command`: 213 degree) from dominating centrality rankings above production symbols like `TaskInstance`.
 
 #### CLI & developer tooling
 

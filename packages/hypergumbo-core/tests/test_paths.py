@@ -306,6 +306,18 @@ class TestIsUtilityFile:
         assert is_utility_file("contrib/nginx.conf") is True
         assert is_utility_file("hack/update-codegen.sh") is True
 
+    def test_devel_prefixed_directories(self) -> None:
+        """Directories starting with 'devel' are utility files.
+
+        Airflow uses devel-common/ for CI tooling (get_console, run_command).
+        This catches devel/, devel-common/, devel-tools/, etc.
+        """
+        assert is_utility_file("devel-common/src/tool.py") is True
+        assert is_utility_file("devel-common/ci/check_providers.py") is True
+        assert is_utility_file("devel/scripts/run.sh") is True
+        # Should NOT match production paths that happen to contain "devel"
+        assert is_utility_file("src/devel_utils.py") is False
+
     def test_not_utility_file(self) -> None:
         """Regular source files are not utility files."""
         assert is_utility_file("src/main.py") is False

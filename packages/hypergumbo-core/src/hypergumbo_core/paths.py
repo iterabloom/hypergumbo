@@ -146,7 +146,7 @@ def is_utility_file(path: str) -> bool:
     - docs_src/, docs/, documentation/ (documentation source)
     - examples/, example/, samples/ (example code)
     - scripts/, tools/, bin/ (utility scripts)
-    - dev/, contrib/, hack/ (dev tooling / contributor scripts)
+    - dev/, contrib/, hack/, devel*/ (dev tooling / contributor scripts)
     - benchmarks/, benchmark/, bench/ (performance tests)
 
     Args:
@@ -174,7 +174,11 @@ def is_utility_file(path: str) -> bool:
     }
 
     for part in path_parts[:-1]:  # Exclude filename
-        if part.lower() in utility_dirs:
+        lower = part.lower()
+        if lower in utility_dirs:
+            return True
+        # devel-common/, devel-tools/, etc. — CI/dev tooling directories
+        if lower.startswith("devel"):
             return True
 
     return False

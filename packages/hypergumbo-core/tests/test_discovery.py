@@ -72,6 +72,31 @@ def test_find_files_excludes_by_default(tmp_path: Path) -> None:
     assert results[0] == good_file
 
 
+def test_public_directory_not_excluded(tmp_path: Path) -> None:
+    """public/ directories should NOT be excluded by default.
+
+    Hugo uses public/ for generated output, but it's typically gitignored.
+    Excluding it by default causes false positives: Airflow's routes/public/
+    (109 API handlers), Laravel/Symfony public/ (web root), and other
+    frameworks use public/ for production code.
+    """
+    # Nested public/ (e.g., Airflow routes/public/)
+    nested = tmp_path / "routes" / "public" / "dags.py"
+    nested.parent.mkdir(parents=True)
+    nested.write_text("# API route handler")
+    assert is_excluded(nested, tmp_path) is False
+
+    # Root-level public/ (e.g., Laravel web root)
+    root_level = tmp_path / "public" / "index.php"
+    root_level.parent.mkdir(parents=True)
+    root_level.write_text("<?php // web root")
+    assert is_excluded(root_level, tmp_path) is False
+
+    # Verify files are actually found by find_files
+    results = list(find_files(tmp_path, ["*.py"]))
+    assert any("public" in str(p) for p in results)
+
+
 def test_default_excludes_contains_expected_patterns() -> None:
     """DEFAULT_EXCLUDES should contain all expected patterns."""
     expected = [

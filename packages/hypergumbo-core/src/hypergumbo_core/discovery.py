@@ -200,7 +200,10 @@ DEFAULT_EXCLUDES = [
     # Documentation output
     "site",  # mkdocs
     "_site",  # Jekyll
-    "public",  # Hugo (common but may have false positives)
+    # NOTE: Hugo uses public/ for generated output, but it's typically
+    # gitignored.  Excluding "public" caused severe false positives:
+    # Airflow routes/public/ (109 API handlers), Laravel/Symfony public/
+    # (web root), etc.  Removed in v0.5.1.
     # Hypergumbo output artifacts
     ".hypergumbo",
     "hypergumbo.results*.json",  # Matches .json, .4k.json, .16k.json, .64k.json, etc.
