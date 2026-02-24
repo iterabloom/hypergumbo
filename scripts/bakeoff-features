@@ -929,7 +929,7 @@ def cmd_run(args):
             # - max_files 500 (vs 200 forward): a layered app (models+services+routers)
             #   spans many directories.  200 files fills up within a single layer,
             #   preventing cross-layer discovery.
-            rc, stdout, stderr = run_cmd([
+            rslice_base_args = [
                 "hypergumbo", "slice",
                 "--input", hg_json,
                 "--entry", entry,
@@ -938,11 +938,28 @@ def cmd_run(args):
                 "--max-hops", "10",
                 "--max-files", "500",
                 "--hub-threshold", "200",
-                "--out", os.path.join(repo_out, f"rslice.{i}.json"),
-            ])
+            ]
+            # Full reverse slice (includes test callers)
+            rc, stdout, stderr = run_cmd(
+                rslice_base_args + ["--out", os.path.join(repo_out, f"rslice.{i}.json")]
+            )
             with open(os.path.join(repo_out, f"rslice.{i}.exit"), "w") as f:
                 f.write(str(rc))
-            print("OK" if rc == 0 else f"FAIL({rc})")
+            print("OK" if rc == 0 else f"FAIL({rc})", end=" ", flush=True)
+
+            # Production-only reverse slice (excludes test callers).
+            # This is actionable for refactoring: shows only production code
+            # that depends on the seed symbol.
+            print(f"prod...", end=" ", flush=True)
+            rc2, _, _ = run_cmd(
+                rslice_base_args + [
+                    "--exclude-tests",
+                    "--out", os.path.join(repo_out, f"rslice.{i}.prod.json"),
+                ]
+            )
+            with open(os.path.join(repo_out, f"rslice.{i}.prod.exit"), "w") as f:
+                f.write(str(rc2))
+            print("OK" if rc2 == 0 else f"FAIL({rc2})")
 
         # 5. Tier-bounded slices
         # Use --exclude-tests so --entry auto doesn't pick a test main()

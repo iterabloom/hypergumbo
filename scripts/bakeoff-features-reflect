@@ -105,6 +105,8 @@ Examine the artifacts and source code, then evaluate usefulness for these 3 task
 4. Evaluate:
    - Does the forward slice show what code depends on this function?
    - Does the reverse slice (rslice.*.json) show what would need to change?
+   - Does the production-only reverse slice (rslice.*.prod.json) separate
+     production callers from test callers effectively?
    - What's missing that a real refactoring would need?
    - What's included that's not actually relevant?
 
@@ -191,7 +193,10 @@ def get_artifact_list(repo_out_dir: str) -> str:
         "slice.1.json": "Forward slice from second entrypoint",
         "rslice_seeds.json": "Reverse slice seed selection (method and chosen symbols)",
         "rslice.0.json": "Reverse slice (what calls this?) from highest in-degree symbol",
+        "rslice.0.prod.json": "Production-only reverse slice (test files excluded)",
         "rslice.1.json": "Reverse slice from second highest in-degree symbol",
+        "rslice.1.prod.json": "Production-only reverse slice (test files excluded)",
+        "rslice.2.prod.json": "Production-only reverse slice (test files excluded)",
         "slice.tier1.json": "Slice limited to tier-1 (first-party) code",
         "slice.tier2.json": "Slice limited to tier-1 and tier-2 code",
     }
