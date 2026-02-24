@@ -1,0 +1,21 @@
+- op: create  # 38f3
+  at: '2026-02-24T04:32:35Z'  # 38f3
+  by: agent  # 38f3
+  actor: jgstern_agent  # 38f3
+  clock: 1  # 38f3
+  nonce: 38f3  # 38f3
+  data:  # 38f3
+    kind: work_item  # 38f3
+    title: "Compress or discard hg.json after derived artifacts are computed"  # 38f3
+    status: needs_human_review  # 38f3
+    priority: 3  # 38f3
+    parent:  # 38f3
+    tags:  # 38f3
+    - bakeoff  # 38f3
+    before: []  # 38f3
+    duplicate_of: []  # 38f3
+    not_duplicate_of: []  # 38f3
+    pr_ref:  # 38f3
+    justification:  # 38f3
+    description: "SOURCE: Process health synthesis 4.1, recommendation 5. The bakeoff artifacts directory is 7.76 GB total, 85% from hg.json files (avg 78.6 MB each). These are the raw behavior maps from which entries.txt, routes.txt, symbols.txt, slices, and reverse slices are derived. Once derived artifacts exist, the full hg.json is rarely re-read. Options: (a) gzip hg.json after derived artifacts are generated (typical 5-10x compression). (b) Delete hg.json after derivation, keeping only derived artifacts. (c) Store only a truncated version (e.g., symbols + edges without raw AST data). The storage cost compounds across cohorts and iterations — 30 repos across 18 cohorts is ~540 hg.json files."  # 38f3
+    fields: {}  # 38f3
