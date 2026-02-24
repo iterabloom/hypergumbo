@@ -1,0 +1,21 @@
+- op: create  # 9a2b
+  at: '2026-02-24T04:34:52Z'  # 9a2b
+  by: agent  # 9a2b
+  actor: jgstern_agent  # 9a2b
+  clock: 1  # 9a2b
+  nonce: 9a2b  # 9a2b
+  data:  # 9a2b
+    kind: work_item  # 9a2b
+    title: "Link assessment improvement_ideas to tracker items"  # 9a2b
+    status: needs_human_review  # 9a2b
+    priority: 3  # 9a2b
+    parent: META-radiz-rorul-kotav-higot-zodan-hohoj-vafat-puful  # 9a2b
+    tags:  # 9a2b
+    - bakeoff  # 9a2b
+    before: []  # 9a2b
+    duplicate_of: []  # 9a2b
+    not_duplicate_of: []  # 9a2b
+    pr_ref:  # 9a2b
+    justification:  # 9a2b
+    description: "SOURCE: Process health synthesis recommendation 1. The tracker system (htrac) tracks invariants and work items, but individual improvement_ideas from bakeoff assessment YAMLs are not linked to tracker items. Each assessment generates 3-10 improvement ideas; across 66 assessments that is 200-600 ideas, many recurring. Currently these exist only as free text in YAML files and cohort summaries. Options: (a) Auto-generate tracker items from assessment YAML improvement_ideas, deduplicating against existing items by semantic similarity. (b) Add a tracker_item field to the assessment YAML schema so the assessor or aggregator can reference existing tracker items. (c) Manual triage: after each cohort, review improvement_ideas and create/update tracker items for actionable ones. Option (c) is what happened during this bakeoff but only for a subset of findings."  # 9a2b
+    fields: {}  # 9a2b
