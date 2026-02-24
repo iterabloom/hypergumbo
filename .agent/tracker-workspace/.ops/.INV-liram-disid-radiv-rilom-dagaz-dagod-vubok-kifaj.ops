@@ -1,0 +1,23 @@
+- op: create  # d3c8
+  at: '2026-02-24T04:36:12Z'  # d3c8
+  by: agent  # d3c8
+  actor: jgstern_agent  # d3c8
+  clock: 1  # d3c8
+  nonce: d3c8  # d3c8
+  data:  # d3c8
+    kind: invariant  # d3c8
+    title: "Tracker add must reject creation when required fields_schema fields are missing"  # d3c8
+    status: needs_human_review  # d3c8
+    priority: 2  # d3c8
+    parent:  # d3c8
+    tags:  # d3c8
+    - ci-infrastructure  # d3c8
+    before: []  # d3c8
+    duplicate_of: []  # d3c8
+    not_duplicate_of: []  # d3c8
+    pr_ref:  # d3c8
+    justification:  # d3c8
+    description: "SOURCE: Discovered during process health tracker item creation on Feb 23. Two META items (META-donon, META-radiz) were created without the required statement field, passing creation but failing validation. The ops files had to be manually edited to fix the YAML structure. The fix is straightforward: in the add subcommand, after determining the kind, check config.yaml fields_schema for required fields and error if any --field arguments are missing for them. This prevents malformed items from entering the ops log."  # d3c8
+    fields:  # d3c8
+      statement: "The tracker add command must validate required fields from the kind fields_schema at creation time and reject the operation if required fields are missing, rather than creating a malformed ops file that fails validation later."  # d3c8
+      root_cause: "The add subcommand does not check the kind fields_schema for required fields before writing the create op. When a meta_invariant is created without --field statement=..., the ops file is written with fields: {} and passes no creation-time validation. The error only surfaces later when tracker validate or auto-sync runs, leaving a malformed item in the workspace that the agent cannot delete (requires human authority). The validation logic exists in _validate_fields_schema() but is only called during post-hoc validation, not during add."  # d3c8

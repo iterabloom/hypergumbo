@@ -1,0 +1,22 @@
+- op: create  # 58c2
+  at: '2026-02-24T04:35:56Z'  # 58c2
+  by: agent  # 58c2
+  actor: jgstern_agent  # 58c2
+  clock: 1  # 58c2
+  nonce: 58c2  # 58c2
+  data:  # 58c2
+    kind: work_item  # 58c2
+    title: "Phase 3 deep-dive on PARTIALLY_USEFUL repos from cohorts 14-18"  # 58c2
+    status: needs_human_review  # 58c2
+    priority: 3  # 58c2
+    parent:  # 58c2
+    tags:  # 58c2
+    - bakeoff  # 58c2
+    before:  # 58c2
+    - META-donon-hajit-bajag-kolaf-tuhov-fomin-dujov-zuzih  # 58c2
+    duplicate_of: []  # 58c2
+    not_duplicate_of: []  # 58c2
+    pr_ref:  # 58c2
+    justification:  # 58c2
+    description: "SOURCE: Process health synthesis 3.4, recommendation 2. The bakeoff used a two-phase strategy: Phase 1 (intensive iteration, Feb 18-21) and Phase 2 (validation sweep, Feb 23). Phase 2 tested new repos across cohorts 14-18 (devops: argo-cd, harbor, vault, trivy, falco; observability: prometheus, alertmanager, jaeger; web apps: kong, postal, growthbook; ML/data: airflow, mlflow, feast, kserve, superset). All 16 assessed repos received PARTIALLY_USEFUL. Phase 3 should deep-dive on the repos with the worst quality variance — specifically kserve (broken routes, auto-generated code dominating centrality), alertmanager (hub-pruned orchestrator, missing v2 API), and prometheus (Go method-name collision causing 56% false positive reverse slices). These represent the bottom of the PARTIALLY_USEFUL range and have the most room for improvement. Phase 3 should iterate until either reaching USEFUL or identifying structurally hard blockers that cannot be fixed without new infrastructure."  # 58c2
+    fields: {}  # 58c2
