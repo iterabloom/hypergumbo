@@ -70,6 +70,8 @@ from textual.widgets import (
     Tree,
 )
 
+from rich.text import Text as RichText
+
 from hypergumbo_tracker.models import CompiledItem, FieldSchema, Tier
 from hypergumbo_tracker.store import (
     DiscussionRateLimitError,
@@ -381,10 +383,125 @@ def _apply_custom_order(
     return ordered
 
 
+def _build_dep_index(
+    items: list[CompiledItem],
+) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    """Build blockers/dependents maps from item before-links.
+
+    Returns ``(blockers_of, dependents_of)`` where:
+    - ``blockers_of[id]`` = list of IDs that *block* this item
+      (i.e. the item's ``before`` field, filtered to valid IDs)
+    - ``dependents_of[id]`` = list of IDs that this item *blocks*
+      (i.e. items that list this ID in their ``before``)
+
+    Dangling references (IDs not present in *items*) are silently dropped.
+    """
+    valid_ids = {item.id for item in items}
+    blockers_of: dict[str, list[str]] = {}
+    dependents_of: dict[str, list[str]] = {}
+    for item in items:
+        valid_before = [b for b in item.before if b in valid_ids]
+        if valid_before:
+            blockers_of[item.id] = valid_before
+            for b in valid_before:
+                dependents_of.setdefault(b, []).append(item.id)
+    return blockers_of, dependents_of
+
+
+def _compute_chain(
+    item_id: str,
+    blockers_of: dict[str, list[str]],
+    dependents_of: dict[str, list[str]],
+) -> tuple[list[str], list[str], list[str], list[str]]:
+    """Compute the dependency chain around *item_id* via BFS.
+
+    Returns ``(direct_up, trans_up, direct_down, trans_down)`` where:
+    - ``direct_up``: items that directly block *item_id* (depth 1 upward)
+    - ``trans_up``: items that transitively block *item_id* (depth > 1)
+    - ``direct_down``: items directly blocked by *item_id* (depth 1 downward)
+    - ``trans_down``: items transitively blocked by *item_id* (depth > 1)
+
+    Cycle-safe via visited sets.
+    """
+    def _bfs(start: str, graph: dict[str, list[str]]) -> tuple[list[str], list[str]]:
+        direct: list[str] = []
+        transitive: list[str] = []
+        visited: set[str] = {start}
+        queue: list[tuple[str, int]] = [(start, 0)]
+        while queue:
+            current, depth = queue.pop(0)
+            for neighbor in graph.get(current, []):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    if depth == 0:
+                        direct.append(neighbor)
+                    else:
+                        transitive.append(neighbor)
+                    queue.append((neighbor, depth + 1))
+        return direct, transitive
+
+    direct_up, trans_up = _bfs(item_id, blockers_of)
+    direct_down, trans_down = _bfs(item_id, dependents_of)
+    return direct_up, trans_up, direct_down, trans_down
+
+
+def _dep_pill_id(full_id: str) -> str:
+    """Truncate an ID for dep pill display: prefix + first syllable pair.
+
+    ``"INV-babab-dabab-fabab-habab"`` → ``"INV-babab"``
+    ``"WI-dabab"`` → ``"WI-dabab"`` (already short)
+    """
+    parts = full_id.split("-")
+    if len(parts) <= 2:
+        return full_id
+    return f"{parts[0]}-{parts[1]}"
+
+
+def _format_dep_pills(
+    item_id: str,
+    blockers_of: dict[str, list[str]],
+    dependents_of: dict[str, list[str]],
+    max_pills: int = 4,
+) -> str:
+    """Format dependency pills as Rich markup for DataTable display.
+
+    Returns a string like ``← INV-babab  → WI-dabab`` with Rich color markup.
+    Blockers use dark_orange (←), dependents use green (→).
+    If total deps exceed *max_pills*, shows first few + ``+N``.
+    Returns empty string when no deps exist.
+    """
+    blockers = blockers_of.get(item_id, [])
+    deps = dependents_of.get(item_id, [])
+    if not blockers and not deps:
+        return ""
+
+    pills: list[str] = []
+    remaining = max_pills
+
+    for b in blockers:
+        if remaining <= 0:
+            break
+        pills.append(f"[bold dark_orange]← {_dep_pill_id(b)}[/]")
+        remaining -= 1
+
+    for d in deps:
+        if remaining <= 0:
+            break
+        pills.append(f"[bold green]→ {_dep_pill_id(d)}[/]")
+        remaining -= 1
+
+    overflow = len(blockers) + len(deps) - max_pills
+    if overflow > 0:
+        pills.append(f"[dim]+{overflow}[/]")
+
+    return " ".join(pills)
+
+
 def _format_detail_lines(
     item: CompiledItem,
     tier: str = "standard",
     fields_schema: dict[str, FieldSchema] | None = None,
+    dependents_of: dict[str, list[str]] | None = None,
 ) -> list[str]:
     """Format a CompiledItem into lines for detail display.
 
@@ -427,6 +544,12 @@ def _format_detail_lines(
         lines.append(f"{_label('Tags:')} {', '.join(item.tags)}")
     if item.parent:
         lines.append(f"{_label('Parent:')} {item.parent}")
+
+    if item.before:
+        lock_b = " [locked]" if "before" in item.locked_fields else ""
+        lines.append(f"{_label(f'Blocked by{lock_b}:')} {', '.join(item.before)}")
+    if dependents_of and item.id in dependents_of:
+        lines.append(f"{_label('Blocks:')} {', '.join(dependents_of[item.id])}")
 
     lock_desc = " [locked]" if "description" in item.locked_fields else ""
     if item.description:
@@ -1146,6 +1269,13 @@ class TrackerApp(App):
         height: 1;
         dock: bottom;
     }
+
+    #chain-summary-bar {
+        display: none;
+        height: auto;
+        dock: bottom;
+        background: $surface;
+    }
     """
 
     BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
@@ -1207,6 +1337,8 @@ class TrackerApp(App):
         self._show_full_ids: bool = False
         self._hidden_statuses: set[str] = set()
         self._custom_order: list[str] = []
+        self._blockers_of: dict[str, list[str]] = {}
+        self._dependents_of: dict[str, list[str]] = {}
         self._prefs_path = (
             tracker_set._tracker_root / "tracker-workspace" / "tui_preferences.json"
         )
@@ -1238,6 +1370,7 @@ class TrackerApp(App):
                 yield VerticalScroll(
                     Static("", id="activity-content"), id="activity-view"
                 )
+        yield Static("", id="chain-summary-bar")
         yield Static("", id="status-filter-bar")
         yield Footer()
 
@@ -1361,6 +1494,7 @@ class TrackerApp(App):
     def _load_items(self) -> None:
         """Load items from TrackerSet and populate the active table."""
         self._items = self._tracker_set.list_items()
+        self._blockers_of, self._dependents_of = _build_dep_index(self._items)
         if self._layout_tier in ("standard", "wide"):
             self._load_std_table()
             self._load_tree()
@@ -1414,7 +1548,7 @@ class TrackerApp(App):
         is_wide = tier == "wide"
         show_status = is_standard or width >= 55
 
-        table.add_column("#", key="row_num")
+        table.add_column("#", key="row_num", width=4)
         table.add_column("T", key="tier")
         table.add_column("P", key="priority")
 
@@ -1426,6 +1560,10 @@ class TrackerApp(App):
 
         if show_status:
             table.add_column("Status", key="status")
+
+        show_deps = is_standard
+        if show_deps:
+            table.add_column("Deps", key="deps")
 
         table.add_column("Title", key="title")
 
@@ -1454,7 +1592,7 @@ class TrackerApp(App):
                 else _truncate_id(item.id, id_display_len)
             )
 
-            row: list[str] = [
+            row: list[str | RichText] = [
                 str(idx + 1),
                 tier_char,
                 str(item.priority),
@@ -1462,6 +1600,11 @@ class TrackerApp(App):
             ]
             if show_status:
                 row.append(item.status)
+            if show_deps:
+                pills = _format_dep_pills(
+                    item.id, self._blockers_of, self._dependents_of,
+                )
+                row.append(RichText.from_markup(pills) if pills else "")
             title_text = f"\U0001f9ca {item.title}" if item.frozen else item.title
             row.append(title_text)
 
@@ -1543,7 +1686,10 @@ class TrackerApp(App):
     def _show_detail(self, item: CompiledItem) -> None:
         """Populate the compact detail view with item information."""
         fields_schema = self._get_fields_schema(item)
-        lines = _format_detail_lines(item, fields_schema=fields_schema)
+        lines = _format_detail_lines(
+            item, fields_schema=fields_schema,
+            dependents_of=self._dependents_of,
+        )
         if item.frozen:
             drift = self._tracker_set.drift_check(item.id)
             if drift:
@@ -1567,6 +1713,7 @@ class TrackerApp(App):
         fields_schema = self._get_fields_schema(item)
         lines = _format_detail_lines(
             item, tier=self._layout_tier, fields_schema=fields_schema,
+            dependents_of=self._dependents_of,
         )
         if item.frozen:
             drift = self._tracker_set.drift_check(item.id)
@@ -1574,6 +1721,7 @@ class TrackerApp(App):
                 lines[0] = "[bold yellow]*** FROZEN (DRIFTED) ***[/bold yellow]"
         content = self.query_one("#std-detail-content", Static)
         content.update("\n".join(lines))
+        self._update_chain_summary(item_id)
         if self._layout_tier == "wide":
             self._show_activity(item)
 
@@ -1596,6 +1744,120 @@ class TrackerApp(App):
         lines = _format_activity_lines(item)
         content = self.query_one("#activity-content", Static)
         content.update("\n".join(lines))
+
+    def _update_chain_highlight(self, selected_id: str) -> None:
+        """Highlight chain members in the DataTable with colored rows.
+
+        For each row in the standard table, applies color styling to ALL
+        columns based on chain membership:
+        - ``▶`` / blue: selected item
+        - ``↑`` / dark_orange: direct blocker
+        - ``↓`` / green: direct dependent
+        - ``·`` / dim: transitive chain member
+
+        Rows outside the chain are restored to plain text.
+        The ``#`` column gets a directional marker prefix; other columns
+        get the chain color applied to their text content.
+        """
+        if self._layout_tier not in ("standard", "wide"):
+            return
+        table = self.query_one("#std-table", DataTable)
+        if table.row_count == 0:
+            return
+
+        direct_up, trans_up, direct_down, trans_down = _compute_chain(
+            selected_id, self._blockers_of, self._dependents_of,
+        )
+        chain_direct_up = set(direct_up)
+        chain_trans_up = set(trans_up)
+        chain_direct_down = set(direct_down)
+        chain_trans_down = set(trans_down)
+        has_chain = bool(chain_direct_up or chain_direct_down)
+
+        # Determine which columns to colorize (all except deps which has
+        # its own styling)
+        col_keys = [c.key.value for c in table.columns.values()]
+        text_cols = [k for k in col_keys if k not in ("row_num", "deps")]
+
+        for idx, row_key in enumerate(table.rows):
+            rid = str(row_key.value)
+            plain_num = str(idx + 1)
+
+            # Determine style and marker for this row
+            if rid == selected_id and has_chain:
+                style = "bold blue"
+                marker_char = "▶"
+            elif rid in chain_direct_up:
+                style = "bold dark_orange"
+                marker_char = "↑"
+            elif rid in chain_direct_down:
+                style = "bold green"
+                marker_char = "↓"
+            elif rid in chain_trans_up:
+                style = "dim dark_orange"
+                marker_char = "·"
+            elif rid in chain_trans_down:
+                style = "dim green"
+                marker_char = "·"
+            else:
+                style = ""
+                marker_char = ""
+
+            # Update row_num column with marker
+            if style:
+                table.update_cell(
+                    row_key, "row_num",
+                    RichText.from_markup(f"[{style}]{marker_char}{plain_num}[/]"),
+                )
+            else:
+                table.update_cell(row_key, "row_num", plain_num)
+
+            # Update all other text columns with the chain color
+            for col_key in text_cols:
+                cell = table.get_cell(row_key, col_key)
+                plain = cell.plain if hasattr(cell, "plain") else str(cell)
+                if style:
+                    table.update_cell(
+                        row_key, col_key,
+                        RichText.from_markup(f"[{style}]{plain}[/]"),
+                    )
+                else:
+                    table.update_cell(row_key, col_key, plain)
+
+    def _update_chain_summary(self, item_id: str) -> None:
+        """Update the chain summary bar for the given item.
+
+        Shows direct and transitive blockers/dependents with counts.
+        Hides the bar when the item has no dependency relationships.
+        """
+        bar = self.query_one("#chain-summary-bar", Static)
+        if not self._blockers_of and not self._dependents_of:
+            bar.display = False
+            return
+        direct_up, trans_up, direct_down, trans_down = _compute_chain(
+            item_id, self._blockers_of, self._dependents_of,
+        )
+        if not direct_up and not direct_down:
+            bar.display = False
+            return
+        parts: list[str] = [f"[bold blue]▶ {_dep_pill_id(item_id)}[/]"]
+        if direct_up:
+            labels = [f"[bold dark_orange]{_dep_pill_id(x)}[/]" for x in direct_up]
+            parts.append("blocked by " + ", ".join(labels))
+        if trans_up:
+            labels = [f"[dim dark_orange]{_dep_pill_id(x)}[/]" for x in trans_up]
+            parts.append("(via " + ", ".join(labels) + ")")
+        if direct_down:
+            labels = [f"[bold green]{_dep_pill_id(x)}[/]" for x in direct_down]
+            parts.append("blocks " + ", ".join(labels))
+        if trans_down:
+            labels = [f"[dim green]{_dep_pill_id(x)}[/]" for x in trans_down]
+            parts.append("(then " + ", ".join(labels) + ")")
+        total_up = len(direct_up) + len(trans_up)
+        total_down = len(direct_down) + len(trans_down)
+        parts.append(f"({total_up}↑ {total_down}↓)")
+        bar.update("  ".join(parts))
+        bar.display = True
 
     # ------------------------------------------------------------------
     # Event handlers
@@ -1626,6 +1888,7 @@ class TrackerApp(App):
             return
         item_id = str(event.row_key.value)
         self._show_std_detail(item_id)
+        self._update_chain_highlight(item_id)
 
     def on_tree_node_highlighted(self, event: Tree.NodeHighlighted) -> None:
         """Auto-update right panel when tree cursor moves."""
@@ -1842,6 +2105,7 @@ class TrackerApp(App):
         fields_schema = self._get_fields_schema(item)
         lines = _format_detail_lines(
             item, tier=self._layout_tier, fields_schema=fields_schema,
+            dependents_of=self._dependents_of,
         )
         plain_text = Text.from_markup("\n".join(lines)).plain
         self.copy_to_clipboard(plain_text)

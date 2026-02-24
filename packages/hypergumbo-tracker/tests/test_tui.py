@@ -56,9 +56,13 @@ from hypergumbo_tracker.tui import (
     ParentScreen,
     TierMoveScreen,
     _apply_custom_order,
+    _build_dep_index,
     _collapse_double_spacing,
+    _compute_chain,
     _compute_tier,
+    _dep_pill_id,
     _format_activity_lines,
+    _format_dep_pills,
     _format_detail_lines,
     _format_timestamp,
     _label,
@@ -5296,3 +5300,807 @@ class TestPersistence:
                 await pilot.press("q")
                 await pilot.pause()
             # TUI exited without crashing
+
+
+# ---------------------------------------------------------------------------
+# Dependency visualization helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_tracker_set_with_deps(tmp_path: Path) -> TrackerSet:
+    """Create a TrackerSet with before-links for dependency visualization tests.
+
+    Creates items: A, B, C where B depends on A (B.before = [A]),
+    and C depends on B (C.before = [B]), forming a chain A → B → C.
+    """
+    from helpers import make_test_config_dict
+
+    root = tmp_path / ".agent"
+    for d in [
+        root / "tracker" / ".ops",
+        root / "tracker-workspace" / ".ops",
+        root / "tracker-workspace" / "stealth",
+    ]:
+        d.mkdir(parents=True, exist_ok=True)
+
+    config = _make_config()
+    config_path = root / "tracker" / "config.yaml"
+    import yaml
+
+    config_path.write_text(yaml.dump(make_test_config_dict()))
+
+    ts = TrackerSet(root, config=config)
+
+    id_a = ts.add(kind="work_item", title="Foundation work",
+                  status="todo_hard", priority=1)
+    id_b = ts.add(kind="work_item", title="Build on foundation",
+                  status="in_progress", priority=2)
+    id_c = ts.add(kind="work_item", title="Final integration",
+                  status="todo_soft", priority=3)
+
+    # B depends on A, C depends on B
+    ts.update(id_b, add_fields={"before": [id_a]})
+    ts.update(id_c, add_fields={"before": [id_b]})
+
+    return ts
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _build_dep_index
+# ---------------------------------------------------------------------------
+
+
+class TestBuildDepIndex:
+    """Test dependency index construction from before-links."""
+
+    def test_empty_items(self) -> None:
+        """Empty item list produces empty maps."""
+
+        blockers, deps = _build_dep_index([])
+        assert blockers == {}
+        assert deps == {}
+
+    def test_no_before_links(self) -> None:
+        """Items without before-links produce empty maps."""
+
+        items = [
+            CompiledItem(id="WI-aaaaa", kind="work_item",
+                         title="A", status="todo_hard"),
+            CompiledItem(id="WI-bbbbb", kind="work_item",
+                         title="B", status="todo_hard"),
+        ]
+        blockers, deps = _build_dep_index(items)
+        assert blockers == {}
+        assert deps == {}
+
+    def test_single_dependency(self) -> None:
+        """B depends on A: blockers_of[B] = [A], dependents_of[A] = [B]."""
+
+        items = [
+            CompiledItem(id="WI-aaaaa", kind="work_item",
+                         title="A", status="todo_hard"),
+            CompiledItem(id="WI-bbbbb", kind="work_item",
+                         title="B", status="todo_hard",
+                         before=["WI-aaaaa"]),
+        ]
+        blockers, deps = _build_dep_index(items)
+        assert blockers == {"WI-bbbbb": ["WI-aaaaa"]}
+        assert deps == {"WI-aaaaa": ["WI-bbbbb"]}
+
+    def test_dangling_ref_filtered(self) -> None:
+        """Before-links pointing to nonexistent IDs are silently dropped."""
+
+        items = [
+            CompiledItem(id="WI-aaaaa", kind="work_item",
+                         title="A", status="todo_hard",
+                         before=["WI-nonexistent"]),
+        ]
+        blockers, deps = _build_dep_index(items)
+        assert blockers == {}
+        assert deps == {}
+
+    def test_chain_a_b_c(self) -> None:
+        """Chain A → B → C produces correct bidirectional maps."""
+
+        items = [
+            CompiledItem(id="WI-aaaaa", kind="work_item",
+                         title="A", status="todo_hard"),
+            CompiledItem(id="WI-bbbbb", kind="work_item",
+                         title="B", status="todo_hard",
+                         before=["WI-aaaaa"]),
+            CompiledItem(id="WI-ccccc", kind="work_item",
+                         title="C", status="todo_hard",
+                         before=["WI-bbbbb"]),
+        ]
+        blockers, deps = _build_dep_index(items)
+        assert blockers == {
+            "WI-bbbbb": ["WI-aaaaa"],
+            "WI-ccccc": ["WI-bbbbb"],
+        }
+        assert deps == {
+            "WI-aaaaa": ["WI-bbbbb"],
+            "WI-bbbbb": ["WI-ccccc"],
+        }
+
+    def test_multiple_blockers(self) -> None:
+        """C blocked by both A and B."""
+
+        items = [
+            CompiledItem(id="WI-aaaaa", kind="work_item",
+                         title="A", status="todo_hard"),
+            CompiledItem(id="WI-bbbbb", kind="work_item",
+                         title="B", status="todo_hard"),
+            CompiledItem(id="WI-ccccc", kind="work_item",
+                         title="C", status="todo_hard",
+                         before=["WI-aaaaa", "WI-bbbbb"]),
+        ]
+        blockers, deps = _build_dep_index(items)
+        assert blockers["WI-ccccc"] == ["WI-aaaaa", "WI-bbbbb"]
+        assert deps["WI-aaaaa"] == ["WI-ccccc"]
+        assert deps["WI-bbbbb"] == ["WI-ccccc"]
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _compute_chain
+# ---------------------------------------------------------------------------
+
+
+class TestComputeChain:
+    """Test dependency chain BFS computation."""
+
+    def test_no_deps(self) -> None:
+        """Item with no deps returns empty lists."""
+
+        d_up, t_up, d_down, t_down = _compute_chain("A", {}, {})
+        assert d_up == []
+        assert t_up == []
+        assert d_down == []
+        assert t_down == []
+
+    def test_direct_blocker_only(self) -> None:
+        """Single direct blocker, no transitive."""
+
+        blockers = {"B": ["A"]}
+        deps: dict[str, list[str]] = {"A": ["B"]}
+        d_up, t_up, d_down, t_down = _compute_chain("B", blockers, deps)
+        assert d_up == ["A"]
+        assert t_up == []
+        assert d_down == []
+        assert t_down == []
+
+    def test_direct_dependent_only(self) -> None:
+        """Single direct dependent, no transitive."""
+
+        blockers: dict[str, list[str]] = {"B": ["A"]}
+        deps = {"A": ["B"]}
+        d_up, t_up, d_down, t_down = _compute_chain("A", blockers, deps)
+        assert d_up == []
+        assert t_up == []
+        assert d_down == ["B"]
+        assert t_down == []
+
+    def test_chain_a_b_c_from_middle(self) -> None:
+        """Chain A → B → C: from B, A is direct up, C is direct down."""
+
+        blockers = {"B": ["A"], "C": ["B"]}
+        deps = {"A": ["B"], "B": ["C"]}
+        d_up, t_up, d_down, t_down = _compute_chain("B", blockers, deps)
+        assert d_up == ["A"]
+        assert t_up == []
+        assert d_down == ["C"]
+        assert t_down == []
+
+    def test_chain_a_b_c_from_end(self) -> None:
+        """Chain A → B → C: from C, B is direct up, A is transitive up."""
+
+        blockers = {"B": ["A"], "C": ["B"]}
+        deps = {"A": ["B"], "B": ["C"]}
+        d_up, t_up, d_down, t_down = _compute_chain("C", blockers, deps)
+        assert d_up == ["B"]
+        assert t_up == ["A"]
+        assert d_down == []
+        assert t_down == []
+
+    def test_cycle_safe(self) -> None:
+        """Cycles don't cause infinite loops."""
+
+        blockers = {"A": ["B"], "B": ["A"]}
+        deps = {"A": ["B"], "B": ["A"]}
+        d_up, t_up, d_down, t_down = _compute_chain("A", blockers, deps)
+        assert d_up == ["B"]
+        assert d_down == ["B"]
+        # B is already visited, so no transitive results
+        assert t_up == []
+        assert t_down == []
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _format_dep_pills and _dep_pill_id
+# ---------------------------------------------------------------------------
+
+
+class TestDepPillId:
+    """Test ID truncation for dep pill display."""
+
+    def test_short_id_unchanged(self) -> None:
+
+        assert _dep_pill_id("WI-dabab") == "WI-dabab"
+
+    def test_long_id_truncated(self) -> None:
+
+        assert _dep_pill_id("INV-babab-dabab-fabab-habab") == "INV-babab"
+
+    def test_no_dash_unchanged(self) -> None:
+
+        assert _dep_pill_id("SIMPLE") == "SIMPLE"
+
+    def test_prefix_and_one_pair(self) -> None:
+
+        assert _dep_pill_id("META-donon-fasab") == "META-donon"
+
+
+class TestFormatDepPills:
+    """Test dep pill Rich markup formatting."""
+
+    def test_no_deps_empty_string(self) -> None:
+
+        result = _format_dep_pills("A", {}, {})
+        assert result == ""
+
+    def test_single_blocker(self) -> None:
+
+        blockers = {"B": ["WI-aaaaa-bbbbb"]}
+        result = _format_dep_pills("B", blockers, {})
+        plain = _strip_markup(result)
+        assert "← WI-aaaaa" in plain
+
+    def test_single_dependent(self) -> None:
+
+        deps = {"A": ["WI-bbbbb-ccccc"]}
+        result = _format_dep_pills("A", {}, deps)
+        plain = _strip_markup(result)
+        assert "→ WI-bbbbb" in plain
+
+    def test_overflow_indicator(self) -> None:
+        """When total deps exceed max_pills, +N is shown."""
+
+        blockers = {"X": ["A", "B", "C"]}
+        deps = {"X": ["D", "E"]}
+        result = _format_dep_pills("X", blockers, deps, max_pills=3)
+        plain = _strip_markup(result)
+        assert "+2" in plain
+
+    def test_both_blockers_and_deps(self) -> None:
+
+        blockers = {"B": ["A"]}
+        deps = {"B": ["C"]}
+        result = _format_dep_pills("B", blockers, deps)
+        plain = _strip_markup(result)
+        assert "← A" in plain
+        assert "→ C" in plain
+
+    def test_blockers_exhaust_max_pills(self) -> None:
+        """When blockers alone fill max_pills, deps are in overflow."""
+
+        blockers = {"X": ["A", "B", "C"]}
+        deps = {"X": ["D"]}
+        result = _format_dep_pills("X", blockers, deps, max_pills=2)
+        plain = _strip_markup(result)
+        # Only 2 blocker pills shown, D not shown
+        assert "← A" in plain
+        assert "← B" in plain
+        assert "→ D" not in plain
+        assert "+2" in plain
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _format_detail_lines with dependency info
+# ---------------------------------------------------------------------------
+
+
+class TestFormatDetailLinesDeps:
+    """Test that detail panel shows Blocked by and Blocks lines."""
+
+    def test_before_links_shown(self) -> None:
+        """Item with before-links shows 'Blocked by' line."""
+        item = CompiledItem(
+            id="WI-bbbbb", kind="work_item",
+            title="Build", status="todo_hard",
+            tier=Tier.WORKSPACE,
+            before=["WI-aaaaa"],
+        )
+        lines = _format_detail_lines(item)
+        text = _strip_markup("\n".join(lines))
+        assert "Blocked by:" in text
+        assert "WI-aaaaa" in text
+
+    def test_before_locked_shown(self) -> None:
+        """Locked before field shows [locked] indicator."""
+        item = CompiledItem(
+            id="WI-bbbbb", kind="work_item",
+            title="Build", status="todo_hard",
+            tier=Tier.WORKSPACE,
+            before=["WI-aaaaa"],
+            locked_fields={"before"},
+        )
+        lines = _format_detail_lines(item)
+        text = _strip_markup("\n".join(lines))
+        assert "Blocked by [locked]:" in text
+
+    def test_dependents_shown(self) -> None:
+        """When dependents_of is provided, shows 'Blocks' line."""
+        item = CompiledItem(
+            id="WI-aaaaa", kind="work_item",
+            title="Foundation", status="todo_hard",
+            tier=Tier.WORKSPACE,
+        )
+        deps = {"WI-aaaaa": ["WI-bbbbb", "WI-ccccc"]}
+        lines = _format_detail_lines(item, dependents_of=deps)
+        text = _strip_markup("\n".join(lines))
+        assert "Blocks:" in text
+        assert "WI-bbbbb" in text
+        assert "WI-ccccc" in text
+
+    def test_no_deps_no_lines(self) -> None:
+        """Item without deps doesn't show Blocked by or Blocks."""
+        item = CompiledItem(
+            id="WI-aaaaa", kind="work_item",
+            title="Solo", status="todo_hard",
+            tier=Tier.WORKSPACE,
+        )
+        lines = _format_detail_lines(item)
+        text = _strip_markup("\n".join(lines))
+        assert "Blocked by" not in text
+        assert "Blocks:" not in text
+
+    def test_dependents_not_shown_without_param(self) -> None:
+        """Without dependents_of parameter, no Blocks line even if item exists."""
+        item = CompiledItem(
+            id="WI-aaaaa", kind="work_item",
+            title="Solo", status="todo_hard",
+            tier=Tier.WORKSPACE,
+        )
+        lines = _format_detail_lines(item, dependents_of=None)
+        text = _strip_markup("\n".join(lines))
+        assert "Blocks:" not in text
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: Deps column and chain summary bar
+# ---------------------------------------------------------------------------
+
+
+class TestDepsColumnInTable:
+    """Test the Deps column in standard/wide DataTable."""
+
+    async def test_deps_column_present_standard(self, tmp_path: Path) -> None:
+        """Standard table has a Deps column."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_deps(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            column_keys = [c.key.value for c in table.columns.values()]
+            assert "deps" in column_keys
+
+    async def test_deps_column_absent_compact(self, tmp_path: Path) -> None:
+        """Compact table does not have a Deps column."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_deps(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(55, 18)) as pilot:
+            await _wait_for_table(pilot, app)
+            table = app.query_one("#item-table")
+            column_keys = [c.key.value for c in table.columns.values()]
+            assert "deps" not in column_keys
+
+    async def test_dep_pills_in_table_cells(self, tmp_path: Path) -> None:
+        """Items with dependencies show dep pill content in cells."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_deps(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # The dep index should be populated
+            assert len(app._blockers_of) > 0 or len(app._dependents_of) > 0
+
+    async def test_dep_index_wired_in_load(self, tmp_path: Path) -> None:
+        """_load_items populates _blockers_of and _dependents_of."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_deps(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Items: A (no before), B (before=[A]), C (before=[B])
+            items = app._items
+            ids = [i.id for i in items]
+            # B should be in blockers_of
+            b_item = next(i for i in items if i.title == "Build on foundation")
+            assert b_item.id in app._blockers_of
+            # A should be in dependents_of
+            a_item = next(i for i in items if i.title == "Foundation work")
+            assert a_item.id in app._dependents_of
+
+
+class TestChainSummaryBar:
+    """Test the chain summary bar widget."""
+
+    async def test_chain_bar_shown_for_dep_item(self, tmp_path: Path) -> None:
+        """Chain summary bar is visible when a dep item is selected."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_deps(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Navigate to an item that has dependencies
+            items = app._items
+            b_item = next(i for i in items if i.title == "Build on foundation")
+            # Find B's row and select it
+            table = app.query_one("#std-table")
+            for idx, rk in enumerate(table.rows):
+                if str(rk.value) == b_item.id:
+                    table.move_cursor(row=idx)
+                    break
+            await pilot.pause()
+            bar = app.query_one("#chain-summary-bar")
+            assert bar.display is True
+
+    async def test_chain_bar_hidden_for_no_dep_item(
+        self, tmp_path: Path,
+    ) -> None:
+        """Chain summary bar is hidden when item has no deps."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)  # No before-links
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            bar = app.query_one("#chain-summary-bar")
+            assert bar.display is False
+
+    async def test_chain_bar_content_includes_arrows(
+        self, tmp_path: Path,
+    ) -> None:
+        """Chain summary bar includes directional indicators."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_deps(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = app._items
+            b_item = next(i for i in items if i.title == "Build on foundation")
+            table = app.query_one("#std-table")
+            for idx, rk in enumerate(table.rows):
+                if str(rk.value) == b_item.id:
+                    table.move_cursor(row=idx)
+                    break
+            await pilot.pause()
+            bar = app.query_one("#chain-summary-bar")
+            bar_text = _strip_markup(str(bar.content))
+            assert "↑" in bar_text
+            assert "↓" in bar_text
+
+    async def test_chain_bar_hidden_when_item_has_no_direct_deps(
+        self, tmp_path: Path,
+    ) -> None:
+        """Chain bar hides for items with no direct deps even when index exists."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_deps(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = app._items
+            # Foundation work (A) blocks B, and we select a different item
+            # that has no deps. However all items in this set have deps.
+            # So let's navigate to a non-existent position — easier to test
+            # by calling _update_chain_summary directly with a fake ID.
+            app._update_chain_summary("NONEXISTENT-fake")
+            await pilot.pause()
+            bar = app.query_one("#chain-summary-bar")
+            assert bar.display is False
+
+    async def test_chain_bar_shows_transitive_deps(
+        self, tmp_path: Path,
+    ) -> None:
+        """Chain bar shows transitive deps with 'via' for deep chains."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_deps(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = app._items
+            # C depends on B depends on A: select C to get transitive up
+            c_item = next(i for i in items if i.title == "Final integration")
+            table = app.query_one("#std-table")
+            for idx, rk in enumerate(table.rows):
+                if str(rk.value) == c_item.id:
+                    table.move_cursor(row=idx)
+                    break
+            await pilot.pause()
+            bar = app.query_one("#chain-summary-bar")
+            bar_text = _strip_markup(str(bar.content))
+            assert "via" in bar_text
+
+
+class TestDetailPanelDeps:
+    """Test dependency info in the detail panel (integration)."""
+
+    async def test_detail_shows_blocked_by(self, tmp_path: Path) -> None:
+        """Detail panel shows 'Blocked by' for items with before-links."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_deps(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = app._items
+            b_item = next(i for i in items if i.title == "Build on foundation")
+            table = app.query_one("#std-table")
+            for idx, rk in enumerate(table.rows):
+                if str(rk.value) == b_item.id:
+                    table.move_cursor(row=idx)
+                    break
+            await pilot.pause()
+            detail = app.query_one("#std-detail-content")
+            detail_text = str(detail.content)
+            assert "Blocked by" in detail_text
+
+    async def test_detail_shows_blocks(self, tmp_path: Path) -> None:
+        """Detail panel shows 'Blocks' for items that block others."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_deps(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = app._items
+            a_item = next(i for i in items if i.title == "Foundation work")
+            table = app.query_one("#std-table")
+            for idx, rk in enumerate(table.rows):
+                if str(rk.value) == a_item.id:
+                    table.move_cursor(row=idx)
+                    break
+            await pilot.pause()
+            detail = app.query_one("#std-detail-content")
+            detail_text = str(detail.content)
+            assert "Blocks:" in detail_text
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: Chain highlighting
+# ---------------------------------------------------------------------------
+
+
+class TestChainHighlighting:
+    """Test chain highlighting markers in the row_num column."""
+
+    async def test_selected_item_gets_marker(self, tmp_path: Path) -> None:
+        """Selected item in a chain gets ▶ marker in # column."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_deps(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = app._items
+            b_item = next(i for i in items if i.title == "Build on foundation")
+            table = app.query_one("#std-table")
+            for idx, rk in enumerate(table.rows):
+                if str(rk.value) == b_item.id:
+                    table.move_cursor(row=idx)
+                    break
+            await pilot.pause()
+            # Check that the selected row has the ▶ marker
+            for rk in table.rows:
+                if str(rk.value) == b_item.id:
+                    cell = table.get_cell(rk, "row_num")
+                    cell_text = cell.plain if hasattr(cell, "plain") else str(cell)
+                    assert "▶" in cell_text
+                    break
+
+    async def test_blocker_gets_up_arrow(self, tmp_path: Path) -> None:
+        """Blocker of the selected item gets ↑ marker."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_deps(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = app._items
+            b_item = next(i for i in items if i.title == "Build on foundation")
+            a_item = next(i for i in items if i.title == "Foundation work")
+            table = app.query_one("#std-table")
+            # Select B (which is blocked by A)
+            for idx, rk in enumerate(table.rows):
+                if str(rk.value) == b_item.id:
+                    table.move_cursor(row=idx)
+                    break
+            await pilot.pause()
+            # Check that A's row has the ↑ marker
+            for rk in table.rows:
+                if str(rk.value) == a_item.id:
+                    cell = table.get_cell(rk, "row_num")
+                    cell_text = cell.plain if hasattr(cell, "plain") else str(cell)
+                    assert "↑" in cell_text
+                    break
+
+    async def test_dependent_gets_down_arrow(self, tmp_path: Path) -> None:
+        """Dependent of the selected item gets ↓ marker."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_deps(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = app._items
+            b_item = next(i for i in items if i.title == "Build on foundation")
+            c_item = next(i for i in items if i.title == "Final integration")
+            table = app.query_one("#std-table")
+            # Select B (which blocks C)
+            for idx, rk in enumerate(table.rows):
+                if str(rk.value) == b_item.id:
+                    table.move_cursor(row=idx)
+                    break
+            await pilot.pause()
+            # Check that C's row has the ↓ marker
+            for rk in table.rows:
+                if str(rk.value) == c_item.id:
+                    cell = table.get_cell(rk, "row_num")
+                    cell_text = cell.plain if hasattr(cell, "plain") else str(cell)
+                    assert "↓" in cell_text
+                    break
+
+    async def test_transitive_gets_dot_marker(self, tmp_path: Path) -> None:
+        """Transitive chain member gets · marker."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_deps(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = app._items
+            a_item = next(i for i in items if i.title == "Foundation work")
+            c_item = next(i for i in items if i.title == "Final integration")
+            table = app.query_one("#std-table")
+            # Select C (blocked by B, transitively by A)
+            for idx, rk in enumerate(table.rows):
+                if str(rk.value) == c_item.id:
+                    table.move_cursor(row=idx)
+                    break
+            await pilot.pause()
+            # Check A has transitive marker ·
+            for rk in table.rows:
+                if str(rk.value) == a_item.id:
+                    cell = table.get_cell(rk, "row_num")
+                    cell_text = cell.plain if hasattr(cell, "plain") else str(cell)
+                    assert "·" in cell_text
+                    break
+
+    async def test_no_chain_plain_numbers(self, tmp_path: Path) -> None:
+        """When selected item has no deps, all rows show plain numbers."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)  # No before-links
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            for idx, rk in enumerate(table.rows):
+                cell = table.get_cell(rk, "row_num")
+                cell_text = cell.plain if hasattr(cell, "plain") else str(cell)
+                assert cell_text == str(idx + 1)
+
+    async def test_highlight_noop_in_compact(self, tmp_path: Path) -> None:
+        """_update_chain_highlight is a no-op in compact tier."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_deps(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(55, 18)) as pilot:
+            await _wait_for_table(pilot, app)
+            # Should not raise
+            app._update_chain_highlight("anything")
+
+    async def test_highlight_noop_empty_table(self, tmp_path: Path) -> None:
+        """_update_chain_highlight handles empty table gracefully."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_deps(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            table.clear()
+            # Should not raise
+            app._update_chain_highlight("anything")
+
+    async def test_highlight_clears_on_move(self, tmp_path: Path) -> None:
+        """Moving to a non-dep item clears previous chain markers."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_deps(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = app._items
+            b_item = next(i for i in items if i.title == "Build on foundation")
+            a_item = next(i for i in items if i.title == "Foundation work")
+            table = app.query_one("#std-table")
+            # Select B (has chain)
+            for idx, rk in enumerate(table.rows):
+                if str(rk.value) == b_item.id:
+                    table.move_cursor(row=idx)
+                    break
+            await pilot.pause()
+            # Verify A has marker
+            for rk in table.rows:
+                if str(rk.value) == a_item.id:
+                    cell = table.get_cell(rk, "row_num")
+                    cell_text = cell.plain if hasattr(cell, "plain") else str(cell)
+                    assert "↑" in cell_text
+                    break
+            # Now select A (A blocks B but isn't blocked by anything)
+            for idx, rk in enumerate(table.rows):
+                if str(rk.value) == a_item.id:
+                    table.move_cursor(row=idx)
+                    break
+            await pilot.pause()
+            # A should now have ▶, not ↑
+            for rk in table.rows:
+                if str(rk.value) == a_item.id:
+                    cell = table.get_cell(rk, "row_num")
+                    cell_text = cell.plain if hasattr(cell, "plain") else str(cell)
+                    assert "▶" in cell_text
+                    assert "↑" not in cell_text
+                    break
+
+    async def test_all_columns_colorized(self, tmp_path: Path) -> None:
+        """Chain highlighting applies color to all text columns, not just #."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_deps(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = app._items
+            b_item = next(i for i in items if i.title == "Build on foundation")
+            a_item = next(i for i in items if i.title == "Foundation work")
+            table = app.query_one("#std-table")
+            # Select B (blocked by A)
+            for idx, rk in enumerate(table.rows):
+                if str(rk.value) == b_item.id:
+                    table.move_cursor(row=idx)
+                    break
+            await pilot.pause()
+            # A's title cell should be a RichText object (colored)
+            for rk in table.rows:
+                if str(rk.value) == a_item.id:
+                    title_cell = table.get_cell(rk, "title")
+                    assert hasattr(title_cell, "plain"), (
+                        "Title should be RichText for chain members"
+                    )
+                    assert a_item.title in title_cell.plain
+                    break
+
+    async def test_non_chain_rows_plain_text(self, tmp_path: Path) -> None:
+        """Rows not in the chain have plain string text (not RichText)."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)  # No before-links
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            # All title cells should be plain strings (no chain)
+            for rk in table.rows:
+                title_cell = table.get_cell(rk, "title")
+                assert isinstance(title_cell, str)
