@@ -33,17 +33,18 @@ if ! command -v bandit &> /dev/null; then
     exit 1
 fi
 
-# Run tracker validation (fast - only staged files)
+# Run tracker validation (full cross-file: catches cycles, dangling refs, etc.)
 echo -n "  Tracker (schema)... "
 if [ -d ".agent/tracker" ] && command -v scripts/tracker &> /dev/null; then
     STAGED_TRACKER=$(git diff --cached --name-only -- '.agent/tracker/.ops/*.ops' '.agent/tracker-workspace/.ops/*.ops' '.agent/tracker-workspace/stealth/*.ops' 2>/dev/null || true)
     if [ -n "$STAGED_TRACKER" ]; then
-        if scripts/tracker validate $STAGED_TRACKER 2>/dev/null; then
+        if scripts/tracker validate 2>/dev/null; then
             echo -e "${GREEN}✓${NC}"
         else
             echo -e "${RED}✗${NC}"
             echo ""
-            echo -e "${RED}Tracker validation failed. Fix YAML issues before committing.${NC}"
+            scripts/tracker validate 2>&1 | grep -i "error\|cycle\|dangling" || true
+            echo -e "${RED}Tracker validation failed. Fix issues before committing.${NC}"
             exit 1
         fi
     else
