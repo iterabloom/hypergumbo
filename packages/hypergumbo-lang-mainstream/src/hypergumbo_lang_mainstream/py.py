@@ -303,6 +303,17 @@ def _ast_value_to_python(node: ast.expr) -> str | int | float | bool | list | di
         if isinstance(val, (int, float)):
             return -val
         return f"-{val}"  # pragma: no cover - defensive for non-numeric negation
+    elif isinstance(node, ast.Call):
+        # Function call as decorator arg, e.g., _add_static_prefix("/health").
+        # If the first positional argument is a resolvable literal, return it.
+        # This handles wrapper patterns common in Flask/FastAPI where a helper
+        # function wraps a route path string.
+        if node.args:
+            first_arg = _ast_value_to_python(node.args[0])
+            if isinstance(first_arg, str) and first_arg != "<complex>":
+                return first_arg
+        # Fall through to string representation
+        return _format_annotation(node) or "<complex>"  # pragma: no cover
     elif isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub)):
         # Complex number literal like 1+2j or 1-2j
         left = _ast_value_to_python(node.left)

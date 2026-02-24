@@ -761,6 +761,74 @@ def test_flask_route_decorator_metadata(tmp_path: Path) -> None:
     assert decorators[0]["kwargs"] == {"methods": ["GET"]}
 
 
+def test_decorator_with_wrapper_function_call_arg(tmp_path: Path) -> None:
+    """Decorator args that are function calls with string literal args should extract the literal.
+
+    Common pattern: @app.route(_add_static_prefix("/health")) should extract "/health"
+    as the route path, not "<complex>".
+    """
+    py_file = tmp_path / "main.py"
+    py_file.write_text(
+        "from flask import Flask\n"
+        "\n"
+        "app = Flask(__name__)\n"
+        "\n"
+        "def _add_static_prefix(route):\n"
+        "    return route\n"
+        "\n"
+        "@app.route(_add_static_prefix('/health'))\n"
+        "def health():\n"
+        "    return 'OK'\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    functions = [n for n in data["nodes"] if n["kind"] == "function" and n["name"] == "health"]
+    assert len(functions) == 1
+
+    func = functions[0]
+    decorators = func.get("meta", {}).get("decorators", [])
+    assert len(decorators) == 1
+    assert decorators[0]["name"] == "app.route"
+    # Should extract the string literal from the wrapper function call
+    assert decorators[0]["args"] == ["/health"]
+
+
+def test_decorator_with_no_arg_function_call(tmp_path: Path) -> None:
+    """Decorator args that are function calls with no args should not crash."""
+    py_file = tmp_path / "main.py"
+    py_file.write_text(
+        "from flask import Flask\n"
+        "\n"
+        "app = Flask(__name__)\n"
+        "\n"
+        "def get_route():\n"
+        "    return '/dynamic'\n"
+        "\n"
+        "@app.route(get_route())\n"
+        "def handler():\n"
+        "    return 'OK'\n"
+    )
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+
+    functions = [n for n in data["nodes"] if n["kind"] == "function" and n["name"] == "handler"]
+    assert len(functions) == 1
+
+    func = functions[0]
+    decorators = func.get("meta", {}).get("decorators", [])
+    assert len(decorators) == 1
+    assert decorators[0]["name"] == "app.route"
+    # No string literal arg in get_route() call, so falls through to <complex>
+    assert decorators[0]["args"] == ["<complex>"]
+
+
 def test_flask_method_specific_decorator_metadata(tmp_path: Path) -> None:
     """Flask @app.get, @app.post etc. (Flask 2.0+) decorator metadata should be extracted."""
     py_file = tmp_path / "main.py"
