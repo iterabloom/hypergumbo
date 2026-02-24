@@ -1,0 +1,22 @@
+- op: create  # 7884
+  at: '2026-02-24T04:33:27Z'  # 7884
+  by: agent  # 7884
+  actor: jgstern_agent  # 7884
+  clock: 1  # 7884
+  nonce: '7884'  # 7884
+  data:  # 7884
+    kind: work_item  # 7884
+    title: "Address memory scaling for large repos (500MB+)"  # 7884
+    status: needs_human_review  # 7884
+    priority: 2  # 7884
+    parent:  # 7884
+    tags:  # 7884
+    - bakeoff  # 7884
+    - analysis-quality  # 7884
+    before: []  # 7884
+    duplicate_of: []  # 7884
+    not_duplicate_of: []  # 7884
+    pr_ref:  # 7884
+    justification:  # 7884
+    description: "SOURCE: Process health synthesis 3.10, recommendation 13. gitlab (709MB) pushes hypergumbo to ~5.2 GB RSS and ~101 min CPU time. The human reports past OOM failures on large repos. As the bakeoff curriculum moves to Web App Monoliths (cohort 19: gitlab, chatwoot, keycloak, killbill, jenkins), memory failures become a process health risk. Options: (a) Streaming/incremental graph construction to cap peak memory — process files in batches rather than loading the entire graph into memory at once. (b) Per-repo memory limits with graceful degradation — analyze what fits, report what was skipped. (c) Document the effective repo size ceiling for the current infrastructure. (d) Profile memory usage to identify the largest allocations (likely the edge list or symbol table) and optimize those structures."  # 7884
+    fields: {}  # 7884
