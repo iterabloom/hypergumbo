@@ -56,7 +56,7 @@ from typing import Any, ClassVar
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.events import Resize
+from textual.events import Click, Resize
 from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
@@ -64,16 +64,19 @@ from textual.widgets import (
     Footer,
     Header,
     Input,
+    OptionList,
     Rule,
     Select,
     Static,
     Tree,
 )
+from textual.widgets.option_list import Option
 
 from rich.text import Text as RichText
 
 from hypergumbo_tracker.models import CompiledItem, FieldSchema, Tier
 from hypergumbo_tracker.store import (
+    AmbiguousPrefixError,
     DiscussionRateLimitError,
     FrozenItemError,
     HumanAuthorityError,
@@ -305,21 +308,91 @@ def _collapse_double_spacing(text: str) -> str:
     return "\n".join(paragraphs)
 
 
+def _collect_all_tags(
+    items: list[CompiledItem], well_known_tags: list[str],
+) -> list[str]:
+    """Return deduplicated, sorted list of all tags across items and config.
+
+    Merges tags found on items with *well_known_tags* so pre-configured
+    tags always appear in the filter panel even when no item carries them.
+    """
+    tags: set[str] = set()
+    for item in items:
+        tags.update(item.tags)
+    tags.update(well_known_tags)
+    return sorted(tags)
+
+
+def _compute_fav_5(
+    toggle_sessions: list[dict[str, int]],
+    max_sessions: int = 3,
+) -> list[str]:
+    """Compute the "Fav 5" filter entries from recent toggle history.
+
+    Sums toggle counts across the most recent *max_sessions* sessions.
+    Returns the top 5 keys by summed count, ties broken alphabetically.
+    Keys with zero total count are excluded.
+    """
+    recent = toggle_sessions[-max_sessions:] if toggle_sessions else []
+    totals: dict[str, int] = {}
+    for session in recent:
+        for key, count in session.items():
+            totals[key] = totals.get(key, 0) + count
+    # Exclude zeros
+    totals = {k: v for k, v in totals.items() if v > 0}
+    # Sort by count desc, then alphabetically
+    ranked = sorted(totals.keys(), key=lambda k: (-totals[k], k))
+    return ranked[:5]
+
+
+def _format_filter_entry(
+    idx: int, label: str, is_hidden: bool, count: int,
+    is_fav: bool = False,
+) -> str:
+    """Format a single filter panel entry with Rich markup.
+
+    Args:
+        idx: 1-based shortcut number. 0 means no shortcut (entries beyond 9).
+        label: Status or tag name.
+        is_hidden: Whether items matching this filter are currently hidden.
+        count: Number of items matching this label.
+        is_fav: Whether this entry is in the Fav 5.
+
+    Returns Rich markup like ``[1] [X] ★ done (12)`` with dim styling
+    when hidden.
+    """
+    num = f"\\[{idx}]" if idx > 0 else "   "
+    check = "\\[X]" if is_hidden else "\\[ ]"
+    star = " ★" if is_fav else ""
+    text = f"{num} {check}{star} {label} ({count})"
+    if is_hidden:
+        return f"[dim]{text}[/dim]"
+    return text
+
+
+_PREFS_DEFAULTS: dict = {
+    "hidden_statuses": [],
+    "display_order": [],
+    "hidden_tags": [],
+    "toggle_sessions": [],
+    "last_filters": {"hidden_statuses": [], "hidden_tags": []},
+}
+
+_MAX_TOGGLE_SESSIONS = 3
+
+
 def _load_tui_preferences(path: Path) -> dict:
     """Load TUI preferences from disk. Returns defaults on missing/corrupt file.
 
-    Expected format::
+    Supports version 1 (hidden_statuses, display_order only) and version 2
+    (adds hidden_tags, toggle_sessions, last_filters).  Missing v2 keys in a
+    v1 file are filled with defaults.  A legacy ``toggle_counts`` flat dict
+    is migrated to a single-element ``toggle_sessions`` list.
 
-        {
-            "version": 1,
-            "hidden_statuses": ["done", "wont_do"],
-            "display_order": ["INV-bolil-...", "WI-dabab-...", ...]
-        }
-
-    Returns ``{"hidden_statuses": [], "display_order": []}`` when the file
-    is absent, unreadable, or contains invalid JSON.
+    Returns a dict with all v2 keys populated.
     """
-    defaults: dict = {"hidden_statuses": [], "display_order": []}
+    defaults = dict(_PREFS_DEFAULTS)
+    defaults["last_filters"] = dict(_PREFS_DEFAULTS["last_filters"])
     if not path.is_file():
         return defaults
     try:
@@ -330,28 +403,62 @@ def _load_tui_preferences(path: Path) -> dict:
         do = data.get("display_order", [])
         if not isinstance(hs, list) or not isinstance(do, list):
             return defaults
-        return {"hidden_statuses": hs, "display_order": do}
+        result: dict = {
+            "hidden_statuses": hs,
+            "display_order": do,
+            "hidden_tags": data.get("hidden_tags", []),
+            "toggle_sessions": data.get("toggle_sessions", []),
+            "last_filters": data.get(
+                "last_filters",
+                {"hidden_statuses": [], "hidden_tags": []},
+            ),
+        }
+        # Migrate legacy flat toggle_counts → single-element sessions list
+        if not result["toggle_sessions"] and "toggle_counts" in data:
+            tc = data["toggle_counts"]
+            if isinstance(tc, dict) and tc:
+                result["toggle_sessions"] = [tc]
+        return result
     except (json.JSONDecodeError, OSError):
         return defaults
 
 
 def _save_tui_preferences(
-    path: Path, hidden_statuses: set[str], display_order: list[str],
+    path: Path,
+    hidden_statuses: set[str],
+    display_order: list[str],
+    *,
+    hidden_tags: set[str] | None = None,
+    toggle_sessions: list[dict[str, int]] | None = None,
+    last_filters: dict[str, list[str]] | None = None,
 ) -> bool:
-    """Persist TUI preferences to disk.
+    """Persist TUI preferences to disk (v2 schema).
 
-    Writes a JSON file with ``version``, ``hidden_statuses``, and
-    ``display_order`` keys.  Creates parent directories as needed.
+    Writes a JSON file with ``version``, ``hidden_statuses``,
+    ``display_order``, ``hidden_tags``, ``toggle_sessions``, and
+    ``last_filters`` keys.  Creates parent directories as needed.
+
+    ``toggle_sessions`` is capped to the most recent 3 entries.
 
     Returns ``True`` on success, ``False`` if the write failed (e.g.
     permission denied).  Callers should tolerate failure gracefully —
     preferences are best-effort and must never crash the TUI.
     """
-    data = {
-        "version": 1,
+    sessions = list(toggle_sessions) if toggle_sessions else []
+    if len(sessions) > _MAX_TOGGLE_SESSIONS:
+        sessions = sessions[-_MAX_TOGGLE_SESSIONS:]
+    has_v2 = hidden_tags is not None or toggle_sessions is not None or last_filters is not None
+    data: dict[str, Any] = {
+        "version": 2 if has_v2 else 1,
         "hidden_statuses": sorted(hidden_statuses),
         "display_order": list(display_order),
     }
+    if has_v2:
+        data["hidden_tags"] = sorted(hidden_tags) if hidden_tags else []
+        data["toggle_sessions"] = sessions
+        data["last_filters"] = last_filters or {
+            "hidden_statuses": [], "hidden_tags": [],
+        }
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
@@ -462,11 +569,14 @@ def _format_dep_pills(
     blockers_of: dict[str, list[str]],
     dependents_of: dict[str, list[str]],
     max_pills: int = 4,
+    hidden_ids: set[str] | None = None,
 ) -> str:
     """Format dependency pills as Rich markup for DataTable display.
 
     Returns a string like ``← INV-babab  → WI-dabab`` with Rich color markup.
     Blockers use dark_orange (←), dependents use green (→).
+    If a dep ID is in *hidden_ids*, italic weight is used instead of bold
+    to signal that the item is currently filtered out of the table.
     If total deps exceed *max_pills*, shows first few + ``+N``.
     Returns empty string when no deps exist.
     """
@@ -481,13 +591,15 @@ def _format_dep_pills(
     for b in blockers:
         if remaining <= 0:
             break
-        pills.append(f"[bold dark_orange]← {_dep_pill_id(b)}[/]")
+        weight = "italic" if hidden_ids and b in hidden_ids else "bold"
+        pills.append(f"[{weight} dark_orange]← {_dep_pill_id(b)}[/]")
         remaining -= 1
 
     for d in deps:
         if remaining <= 0:
             break
-        pills.append(f"[bold green]→ {_dep_pill_id(d)}[/]")
+        weight = "italic" if hidden_ids and d in hidden_ids else "bold"
+        pills.append(f"[{weight} green]→ {_dep_pill_id(d)}[/]")
         remaining -= 1
 
     overflow = len(blockers) + len(deps) - max_pills
@@ -1114,6 +1226,53 @@ class BeforeScreen(ModalScreen[dict[str, list[str]] | None]):
         self.dismiss(None)
 
 
+class DisambiguateScreen(ModalScreen[str | None]):
+    """Modal for disambiguating a prefix that matches multiple items.
+
+    Displays an ``OptionList`` of candidate items (full ID + title).
+    Selecting an item dismisses with its full ID; Cancel/Escape dismisses
+    with ``None``.
+    """
+
+    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+        ("escape", "cancel", "Cancel"),
+    ]
+
+    DEFAULT_CSS = _modal_css("DisambiguateScreen")
+
+    def __init__(
+        self, prefix: str, candidates: list[tuple[str, str]],
+    ) -> None:
+        super().__init__()
+        self._prefix = prefix
+        self._candidates = candidates
+
+    def compose(self) -> ComposeResult:
+        options = [
+            Option(f"{full_id}  {title}", id=full_id)
+            for full_id, title in self._candidates
+        ]
+        with Vertical(id="modal-dialog"):
+            yield Static(
+                f'Ambiguous prefix: "{self._prefix}"', id="modal-title",
+            )
+            yield Static("Select the intended item:")
+            yield OptionList(*options, id="disambig-list")
+            with Horizontal(classes="modal-buttons"):
+                yield Button("Cancel", id="cancel")
+
+    def on_option_list_option_selected(
+        self, event: OptionList.OptionSelected,
+    ) -> None:
+        self.dismiss(event.option_id)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 class LockScreen(ModalScreen[dict[str, list[str]] | None]):
     """Modal for locking and unlocking item fields.
 
@@ -1276,15 +1435,37 @@ class TrackerApp(App):
         dock: bottom;
         background: $surface;
     }
+
+    #activity-filter-row {
+        display: none;
+        height: 40%;
+        layout: horizontal;
+    }
+
+    #filter-panel-view {
+        display: none;
+        width: 1fr;
+        min-width: 20;
+        overflow-y: auto;
+    }
+
+    #filter-divider {
+        display: none;
+    }
+
+    #std-filter-panel-view {
+        display: none;
+        overflow-y: auto;
+        height: auto;
+        max-height: 50%;
+    }
     """
 
     BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
         ("q", "quit", "Quit"),
         ("escape", "back", "Back"),
         ("t", "toggle_tree", "Tree"),
-        ("f", "toggle_filter", "Filter"),
-        ("c", "toggle_done", "Done"),
-        ("w", "toggle_wont_do", "Wont Do"),
+        ("f", "toggle_filter_panel", "Filters"),
         ("less_than_sign", "move_up", "Move Up"),
         ("greater_than_sign", "move_down", "Move Down"),
         ("d", "discuss", "Discuss"),
@@ -1336,9 +1517,19 @@ class TrackerApp(App):
         self._filter_text: str = ""
         self._show_full_ids: bool = False
         self._hidden_statuses: set[str] = set()
+        self._hidden_tags: set[str] = set()
         self._custom_order: list[str] = []
         self._blockers_of: dict[str, list[str]] = {}
         self._dependents_of: dict[str, list[str]] = {}
+        self._ghost_row_ids: set[str] = set()
+        self._filter_panel_visible: bool = False
+        self._current_session_counts: dict[str, int] = {}
+        self._toggle_sessions: list[dict[str, int]] = []
+        self._last_filters: dict[str, list[str]] = {
+            "hidden_statuses": [], "hidden_tags": [],
+        }
+        self._filter_entries: list[tuple[str, str]] = []  # (type:key, label) ordered
+        self._filter_line_to_entry: dict[int, int] = {}  # line_num → 1-based entry index
         self._prefs_path = (
             tracker_set._tracker_root / "tracker-workspace" / "tui_preferences.json"
         )
@@ -1367,8 +1558,22 @@ class TrackerApp(App):
                     Static("", id="std-detail-content"), id="std-detail-view"
                 )
                 yield Rule(id="activity-divider")
+                # Wide mode: activity + filter side by side
+                with Horizontal(id="activity-filter-row"):
+                    yield VerticalScroll(
+                        Static("", id="activity-content"), id="activity-view"
+                    )
+                    yield Rule(
+                        orientation="vertical", id="filter-divider",
+                    )
+                    yield VerticalScroll(
+                        Static("", id="filter-panel-content"),
+                        id="filter-panel-view",
+                    )
+                # Standard mode: filter panel below detail
                 yield VerticalScroll(
-                    Static("", id="activity-content"), id="activity-view"
+                    Static("", id="std-filter-content"),
+                    id="std-filter-panel-view",
                 )
         yield Static("", id="chain-summary-bar")
         yield Static("", id="status-filter-bar")
@@ -1378,7 +1583,12 @@ class TrackerApp(App):
         """Initialize layout on mount, loading persisted preferences."""
         prefs = _load_tui_preferences(self._prefs_path)
         self._hidden_statuses = set(prefs["hidden_statuses"])
+        self._hidden_tags = set(prefs.get("hidden_tags", []))
         self._custom_order = list(prefs["display_order"])
+        self._toggle_sessions = list(prefs.get("toggle_sessions", []))
+        self._last_filters = prefs.get(
+            "last_filters", {"hidden_statuses": [], "hidden_tags": []},
+        )
         self._refresh_tier()
         self._load_items()
         self._update_status_filter_bar()
@@ -1431,6 +1641,11 @@ class TrackerApp(App):
         msg = self.query_one("#too-small-msg", Static)
         two_pane = self.query_one("#two-pane")
         filter_input = self.query_one("#filter-input", Input)
+        # Filter panel widgets
+        activity_filter_row = self.query_one("#activity-filter-row")
+        filter_panel_view = self.query_one("#filter-panel-view")
+        filter_divider = self.query_one("#filter-divider")
+        std_filter_panel = self.query_one("#std-filter-panel-view")
 
         if self._layout_tier == "too-small":
             w, h = self.size
@@ -1440,6 +1655,8 @@ class TrackerApp(App):
             detail.display = False
             two_pane.display = False
             filter_input.display = False
+            activity_filter_row.display = False
+            std_filter_panel.display = False
             return
 
         msg.display = False
@@ -1451,15 +1668,26 @@ class TrackerApp(App):
             two_pane.display = True
             filter_input.display = self._filter_active and self._layout_width >= 80
 
-            # Activity panel: visible only in wide mode
+            # Activity panel and filter panel in wide mode
             activity_view = self.query_one("#activity-view")
             activity_divider = self.query_one("#activity-divider")
             if self._layout_tier == "wide":
+                activity_filter_row.display = True
                 activity_view.display = True
                 activity_divider.display = True
+                # Wide filter panel: inside the activity-filter-row
+                filter_panel_view.display = self._filter_panel_visible
+                filter_divider.display = self._filter_panel_visible
+                # Standard filter panel hidden in wide mode
+                std_filter_panel.display = False
             else:
+                activity_filter_row.display = False
                 activity_view.display = False
                 activity_divider.display = False
+                filter_panel_view.display = False
+                filter_divider.display = False
+                # Standard mode: filter panel below detail
+                std_filter_panel.display = self._filter_panel_visible
 
             # Tree/table toggle within left panel
             std_table = self.query_one("#std-table", DataTable)
@@ -1478,6 +1706,10 @@ class TrackerApp(App):
             # Compact layout
             two_pane.display = False
             filter_input.display = self._filter_active and self._layout_width >= 80
+            activity_filter_row.display = False
+            std_filter_panel.display = False
+            filter_panel_view.display = False
+            filter_divider.display = False
             if self._in_detail:
                 table.display = False
                 detail.display = True
@@ -1514,6 +1746,12 @@ class TrackerApp(App):
         """
         # 1. Exclude hidden statuses
         base = [i for i in self._items if i.status not in self._hidden_statuses]
+        # 1b. Exclude hidden tags (items with no tags are never hidden)
+        if self._hidden_tags:
+            base = [
+                i for i in base
+                if not any(t in self._hidden_tags for t in i.tags)
+            ]
         # 2. Apply text filter
         if self._filter_text:
             needle = self._filter_text.lower()
@@ -1533,6 +1771,15 @@ class TrackerApp(App):
             base = _apply_custom_order(base, self._custom_order)
         return base
 
+    def _hidden_ids(self) -> set[str]:
+        """Return IDs present in _items but excluded by current filters.
+
+        These are items that exist in the tracker but are hidden by status
+        or tag filters.  Used to render italic dep pills and ghost rows.
+        """
+        visible = {i.id for i in self._filtered_items()}
+        return {i.id for i in self._items} - visible
+
     def _populate_table(self, table: DataTable, width: int, tier: str) -> None:
         """Populate a DataTable with items, adapting columns to width and tier.
 
@@ -1543,6 +1790,7 @@ class TrackerApp(App):
         """
         items = self._filtered_items()
         table.clear(columns=True)
+        hidden = self._hidden_ids()
 
         is_standard = table.id == "std-table"
         is_wide = tier == "wide"
@@ -1603,6 +1851,7 @@ class TrackerApp(App):
             if show_deps:
                 pills = _format_dep_pills(
                     item.id, self._blockers_of, self._dependents_of,
+                    hidden_ids=hidden,
                 )
                 row.append(RichText.from_markup(pills) if pills else "")
             title_text = f"\U0001f9ca {item.title}" if item.frozen else item.title
@@ -1626,6 +1875,7 @@ class TrackerApp(App):
 
     def _load_std_table(self) -> None:
         """Populate the standard/wide DataTable."""
+        self._ghost_row_ids = set()
         table = self.query_one("#std-table", DataTable)
         w, _ = self.size
         self._populate_table(table, w, self._layout_tier)
@@ -1745,6 +1995,95 @@ class TrackerApp(App):
         content = self.query_one("#activity-content", Static)
         content.update("\n".join(lines))
 
+    def _remove_ghost_rows(self) -> None:
+        """Remove italic ghost rows from previous chain selection."""
+        if not self._ghost_row_ids:
+            return
+        table = self.query_one("#std-table", DataTable)
+        for rid in list(self._ghost_row_ids):
+            try:
+                table.remove_row(rid)
+            except Exception:  # pragma: no cover
+                pass  # Row may already be gone
+        self._ghost_row_ids = set()
+
+    def _append_hidden_chain_rows(self, selected_id: str) -> None:
+        """Append hidden dependency chain members as italic rows at table bottom.
+
+        When status/tag filters hide items that are part of the selected
+        item's dependency chain, those items are surfaced as "ghost" rows
+        at the bottom of the table.  Ghost rows are tracked in
+        ``_ghost_row_ids`` so they can be removed when the cursor moves.
+        """
+        table = self.query_one("#std-table", DataTable)
+        hidden = self._hidden_ids()
+        if not hidden:
+            return
+
+        direct_up, trans_up, direct_down, trans_down = _compute_chain(
+            selected_id, self._blockers_of, self._dependents_of,
+        )
+        chain_ids = set(direct_up + trans_up + direct_down + trans_down)
+        hidden_chain = chain_ids & hidden
+
+        if not hidden_chain:
+            return
+
+        self._ghost_row_ids = hidden_chain
+
+        # Determine column layout to match existing rows
+        col_keys = [c.key.value for c in table.columns.values()]
+        is_wide = "conflict" in col_keys
+        show_status = "status" in col_keys
+        show_deps = "deps" in col_keys
+
+        # Compute ID display length to match existing rows
+        visible_items = self._filtered_items()
+        all_ids = [i.id for i in visible_items]
+        if self._show_full_ids:
+            id_display_len = max((len(id_) for id_ in all_ids), default=20)
+        else:
+            id_display_len = _shortest_unique_prefix_len(all_ids)
+            if id_display_len <= 0:  # pragma: no cover
+                id_display_len = 20
+
+        ghost_num = table.row_count + 1
+        for item_id in sorted(hidden_chain):
+            item = next((i for i in self._items if i.id == item_id), None)
+            if not item:  # pragma: no cover
+                continue
+            tier_char = (
+                _TIER_INDICATOR.get(item.tier, "?") if item.tier else "?"
+            )
+            truncated_id = (
+                item.id if self._show_full_ids
+                else _truncate_id(item.id, id_display_len)
+            )
+            row: list[str | RichText] = [
+                str(ghost_num),
+                tier_char,
+                str(item.priority),
+                truncated_id,
+            ]
+            if show_status:
+                row.append(item.status)
+            if show_deps:
+                pills = _format_dep_pills(
+                    item.id, self._blockers_of, self._dependents_of,
+                    hidden_ids=hidden,
+                )
+                row.append(RichText.from_markup(pills) if pills else "")
+            title_text = (
+                f"\U0001f9ca {item.title}" if item.frozen else item.title
+            )
+            row.append(title_text)
+            if is_wide:
+                row.append("\u26a0" if item.cross_tier_conflict else "")
+                row.append(_format_timestamp(item.created_at))
+                row.append(_format_timestamp(item.updated_at))
+            table.add_row(*row, key=item.id)
+            ghost_num += 1
+
     def _update_chain_highlight(self, selected_id: str) -> None:
         """Highlight chain members in the DataTable with colored rows.
 
@@ -1755,15 +2094,23 @@ class TrackerApp(App):
         - ``↓`` / green: direct dependent
         - ``·`` / dim: transitive chain member
 
+        Hidden chain members (filtered out by status/tag toggles) are
+        appended as italic "ghost" rows at the bottom of the table.
+        Ghost rows use italic weight instead of bold for their markers.
+
         Rows outside the chain are restored to plain text.
         The ``#`` column gets a directional marker prefix; other columns
         get the chain color applied to their text content.
         """
         if self._layout_tier not in ("standard", "wide"):
             return
+        # Manage ghost rows: remove old ones, append new ones
+        self._remove_ghost_rows()
         table = self.query_one("#std-table", DataTable)
         if table.row_count == 0:
             return
+
+        self._append_hidden_chain_rows(selected_id)
 
         direct_up, trans_up, direct_down, trans_down = _compute_chain(
             selected_id, self._blockers_of, self._dependents_of,
@@ -1782,22 +2129,23 @@ class TrackerApp(App):
         for idx, row_key in enumerate(table.rows):
             rid = str(row_key.value)
             plain_num = str(idx + 1)
+            is_ghost = rid in self._ghost_row_ids
 
             # Determine style and marker for this row
             if rid == selected_id and has_chain:
                 style = "bold blue"
                 marker_char = "▶"
             elif rid in chain_direct_up:
-                style = "bold dark_orange"
+                style = "italic dark_orange" if is_ghost else "bold dark_orange"
                 marker_char = "↑"
             elif rid in chain_direct_down:
-                style = "bold green"
+                style = "italic green" if is_ghost else "bold green"
                 marker_char = "↓"
             elif rid in chain_trans_up:
-                style = "dim dark_orange"
+                style = "italic dim dark_orange" if is_ghost else "dim dark_orange"
                 marker_char = "·"
             elif rid in chain_trans_down:
-                style = "dim green"
+                style = "italic dim green" if is_ghost else "dim green"
                 marker_char = "·"
             else:
                 style = ""
@@ -1942,20 +2290,24 @@ class TrackerApp(App):
             # Switching back to table — restore selection
             self._restore_selection()
 
-    def action_toggle_filter(self) -> None:
-        """Toggle filter input visibility."""
-        if self._filter_active:
-            self._dismiss_filter()
-        else:
-            if self._layout_width < 80:
-                self.notify(
-                    "Filter requires terminal width \u2265 80",
-                    severity="warning",
-                )
-                return
-            self._filter_active = True
-            self._apply_layout()
-            self.query_one("#filter-input", Input).focus()
+    def action_toggle_filter_panel(self) -> None:
+        """Toggle filter panel visibility.
+
+        In compact mode, shows a notification (filter panel not available).
+        In standard/wide mode, toggles the filter panel and refreshes content.
+        """
+        if self._layout_tier == "compact":
+            self.notify(
+                "Filter panel not available in compact mode",
+                severity="warning",
+            )
+            return
+        if self._layout_tier == "too-small":
+            return
+        self._filter_panel_visible = not self._filter_panel_visible
+        self._apply_layout()
+        if self._filter_panel_visible:
+            self._refresh_filter_panel()
 
     def _dismiss_filter(self) -> None:
         """Hide filter input, clear filter text, hide status, and reload."""
@@ -1972,14 +2324,6 @@ class TrackerApp(App):
         self._show_full_ids = not self._show_full_ids
         self._reload_active_table()
         self._restore_selection()
-
-    def action_toggle_done(self) -> None:
-        """Toggle visibility of items with ``done`` status."""
-        self._toggle_status("done")
-
-    def action_toggle_wont_do(self) -> None:
-        """Toggle visibility of items with ``wont_do`` status."""
-        self._toggle_status("wont_do")
 
     def _toggle_status(self, status: str) -> None:
         """Show or hide items with the given *status*.
@@ -2000,18 +2344,22 @@ class TrackerApp(App):
         """Refresh the status filter bar text.
 
         Shows one ``[status: shown/hidden]`` badge per resolved status
-        defined in the tracker config.  The bar is visible when at least
-        one resolved status exists in the config.
+        defined in the tracker config, plus a tag hidden count when any
+        tags are hidden.  The bar is visible when at least one resolved
+        status exists in the config or tags are hidden.
         """
         bar = self.query_one("#status-filter-bar", Static)
         resolved = self._tracker_set.config.resolved_statuses
-        if not resolved:
+        has_hidden_tags = bool(self._hidden_tags)
+        if not resolved and not has_hidden_tags:
             bar.display = False
             return
         parts: list[str] = []
         for s in resolved:
             state = "hidden" if s in self._hidden_statuses else "shown"
             parts.append(f"[{s}: {state}]")
+        if has_hidden_tags:
+            parts.append(f"[tags hidden: {len(self._hidden_tags)}]")
         bar.update("  ".join(parts))
         bar.display = True
 
@@ -2076,10 +2424,214 @@ class TrackerApp(App):
                 existing.append(it.id)
         self._custom_order = existing
 
+    def _toggle_tag(self, tag: str) -> None:
+        """Show or hide items with the given *tag*.
+
+        Toggles the tag in ``_hidden_tags``, updates the status filter bar,
+        reloads the active table, and tries to restore the cursor.
+        """
+        if tag in self._hidden_tags:
+            self._hidden_tags.discard(tag)
+        else:
+            self._hidden_tags.add(tag)
+        self._update_status_filter_bar()
+        self._reload_active_table()
+        self._restore_selection()
+
+    def _increment_toggle_count(self, key: str) -> None:
+        """Bump toggle count for *key* in the current session."""
+        self._current_session_counts[key] = (
+            self._current_session_counts.get(key, 0) + 1
+        )
+
+    def _clear_all_filters(self) -> None:
+        """Save current filters to _last_filters and clear all."""
+        self._last_filters = {
+            "hidden_statuses": sorted(self._hidden_statuses),
+            "hidden_tags": sorted(self._hidden_tags),
+        }
+        self._hidden_statuses.clear()
+        self._hidden_tags.clear()
+        self._update_status_filter_bar()
+        self._reload_active_table()
+        self._restore_selection()
+        if self._filter_panel_visible:
+            self._refresh_filter_panel()
+
+    def _restore_last_filters(self) -> None:
+        """Restore filters from _last_filters."""
+        self._hidden_statuses = set(
+            self._last_filters.get("hidden_statuses", []),
+        )
+        self._hidden_tags = set(
+            self._last_filters.get("hidden_tags", []),
+        )
+        self._update_status_filter_bar()
+        self._reload_active_table()
+        self._restore_selection()
+        if self._filter_panel_visible:
+            self._refresh_filter_panel()
+
+    def _refresh_filter_panel(self) -> None:
+        """Rebuild filter panel content with statuses, tags, counts, and fav 5.
+
+        Populates both the wide-mode (#filter-panel-content) and standard-mode
+        (#std-filter-content) Static widgets with the same content.
+        """
+        items = self._items
+        statuses = list(self._tracker_set.config.statuses)
+        well_known = self._tracker_set.config.well_known_tags
+        all_tags = _collect_all_tags(items, well_known)
+        fav_5 = _compute_fav_5(
+            self._toggle_sessions + (
+                [self._current_session_counts]
+                if self._current_session_counts else []
+            ),
+        )
+        fav_set = set(fav_5)
+
+        # Count items per status and tag
+        status_counts: dict[str, int] = {}
+        for item in items:
+            status_counts[item.status] = status_counts.get(item.status, 0) + 1
+        tag_counts: dict[str, int] = {}
+        for item in items:
+            for t in item.tags:
+                tag_counts[t] = tag_counts.get(t, 0) + 1
+
+        # Build ordered entry list: fav 5 first, then statuses, then tags
+        self._filter_entries = []
+        self._filter_line_to_entry = {}
+        lines: list[str] = []
+        active_count = len(self._hidden_statuses) + len(self._hidden_tags)
+        lines.append(f"Filters Active: {active_count}")
+        lines.append("")
+
+        idx = 1
+
+        # Favorites section
+        fav_entries: list[tuple[str, str, bool, int]] = []
+        for key in fav_5:
+            if key.startswith("status:"):
+                name = key[7:]
+                is_hidden = name in self._hidden_statuses
+                count = status_counts.get(name, 0)
+            elif key.startswith("tag:"):
+                name = key[4:]
+                is_hidden = name in self._hidden_tags
+                count = tag_counts.get(name, 0)
+            else:
+                continue
+            fav_entries.append((key, name, is_hidden, count))
+
+        if fav_entries:
+            lines.append("── Favorites ──")
+            for key, name, is_hidden, count in fav_entries:
+                entry_idx = idx if idx <= 9 else 0
+                self._filter_line_to_entry[len(lines)] = idx
+                lines.append(
+                    _format_filter_entry(entry_idx, name, is_hidden, count, is_fav=True),
+                )
+                self._filter_entries.append((key, name))
+                idx += 1
+
+        # Statuses section
+        lines.append("── Statuses ──")
+        for s in statuses:
+            key = f"status:{s}"
+            if key in fav_set:
+                continue  # already in favorites
+            is_hidden = s in self._hidden_statuses
+            count = status_counts.get(s, 0)
+            entry_idx = idx if idx <= 9 else 0
+            self._filter_line_to_entry[len(lines)] = idx
+            lines.append(
+                _format_filter_entry(entry_idx, s, is_hidden, count),
+            )
+            self._filter_entries.append((key, s))
+            idx += 1
+
+        # Tags section
+        if all_tags:
+            non_fav_tags = [t for t in all_tags if f"tag:{t}" not in fav_set]
+            if non_fav_tags:
+                lines.append("── Tags ──")
+                for t in non_fav_tags:
+                    key = f"tag:{t}"
+                    is_hidden = t in self._hidden_tags
+                    count = tag_counts.get(t, 0)
+                    entry_idx = idx if idx <= 9 else 0
+                    self._filter_line_to_entry[len(lines)] = idx
+                    lines.append(
+                        _format_filter_entry(entry_idx, t, is_hidden, count),
+                    )
+                    self._filter_entries.append((key, t))
+                    idx += 1
+
+        content = "\n".join(lines)
+        # Update both panel locations
+        try:
+            self.query_one("#filter-panel-content", Static).update(content)
+        except Exception:  # pragma: no cover
+            pass
+        try:
+            self.query_one("#std-filter-content", Static).update(content)
+        except Exception:  # pragma: no cover
+            pass
+
+    def _quick_toggle(self, idx: int) -> None:
+        """Toggle filter entry at 1-based index *idx*.
+
+        Maps the number to the corresponding entry from ``_filter_entries``
+        (fav 5 first, then statuses, then tags) and toggles visibility.
+        """
+        if idx < 1 or idx > len(self._filter_entries):
+            return
+        key, _label_name = self._filter_entries[idx - 1]
+        if key.startswith("status:"):
+            status = key[7:]
+            self._toggle_status(status)
+            self._increment_toggle_count(key)
+        elif key.startswith("tag:"):
+            tag = key[4:]
+            self._toggle_tag(tag)
+            self._increment_toggle_count(key)
+        if self._filter_panel_visible:
+            self._refresh_filter_panel()
+
+    def on_key(self, event: Any) -> None:
+        """Handle digit key quick-toggles when filter panel is visible."""
+        if not self._filter_panel_visible:
+            return
+        key = event.key
+        if key in ("1", "2", "3", "4", "5", "6", "7", "8", "9"):
+            event.prevent_default()
+            self._quick_toggle(int(key))
+
+    def on_click(self, event: Click) -> None:
+        """Toggle filter entry when clicking on a filter panel line."""
+        if not self._filter_panel_visible:
+            return
+        widget = event.widget
+        if not isinstance(widget, Static):
+            return
+        if widget.id not in ("filter-panel-content", "std-filter-content"):
+            return
+        entry_idx = self._filter_line_to_entry.get(event.y)
+        if entry_idx is not None:
+            self._quick_toggle(entry_idx)
+
     async def action_quit(self) -> None:
-        """Save TUI preferences and exit."""
+        """Save TUI preferences (v2) and exit."""
+        # Append current session counts to toggle_sessions
+        sessions = list(self._toggle_sessions)
+        if self._current_session_counts:
+            sessions.append(self._current_session_counts)
         if not _save_tui_preferences(
             self._prefs_path, self._hidden_statuses, self._custom_order,
+            hidden_tags=self._hidden_tags,
+            toggle_sessions=sessions,
+            last_filters=self._last_filters,
         ):
             self.notify("Could not save preferences (permission denied)",
                         severity="warning")
@@ -2307,10 +2859,76 @@ class TrackerApp(App):
             callback=partial(self._on_set_parent, item.id),
         )
 
+    def _resolve_ids(
+        self,
+        raw_ids: list[str],
+        on_resolved: Any,
+        resolved_so_far: list[str] | None = None,
+        remaining: list[str] | None = None,
+    ) -> None:
+        """Resolve raw ID strings (possibly prefixes) to full IDs.
+
+        Unique prefixes auto-resolve via ``TrackerSet._resolve_id``.
+        Ambiguous prefixes push a ``DisambiguateScreen`` for interactive
+        selection.  Calls ``on_resolved(full_ids)`` on success, or
+        ``on_resolved(None)`` on cancel/error.
+
+        Uses a callback chain for disambiguation (no worker required).
+        """
+        if resolved_so_far is None:
+            resolved_so_far = []
+        if remaining is None:
+            remaining = list(raw_ids)
+
+        while remaining:
+            raw = remaining.pop(0)
+            try:
+                full_id, _store, _tier = self._tracker_set._resolve_id(raw)
+                resolved_so_far.append(full_id)
+            except AmbiguousPrefixError as exc:
+                # Push disambiguation screen; continue chain in callback
+                def _on_disambiguate(
+                    chosen: str | None,
+                    _resolved: list[str] = resolved_so_far,
+                    _remaining: list[str] = remaining,
+                    _callback: Any = on_resolved,
+                ) -> None:
+                    if chosen is None:
+                        _callback(None)
+                        return
+                    _resolved.append(chosen)
+                    self._resolve_ids(
+                        [], _callback, _resolved, _remaining,
+                    )
+
+                self.push_screen(
+                    DisambiguateScreen(raw, exc.candidates),
+                    callback=_on_disambiguate,
+                )
+                return
+            except ItemNotFoundError as exc:
+                self.notify(str(exc), severity="error")
+                on_resolved(None)
+                return
+
+        on_resolved(resolved_so_far)
+
     def _on_set_parent(self, item_id: str, parent_id: str | None) -> None:
-        """Handle set-parent modal result."""
+        """Handle set-parent modal result with prefix resolution."""
         if parent_id is None:
             return
+        if parent_id:  # non-empty = set parent (empty = clear)
+            def _finish_set_parent(resolved: list[str] | None) -> None:
+                if resolved is None:
+                    return
+                self._do_set_parent(item_id, resolved[0])
+
+            self._resolve_ids([parent_id], _finish_set_parent)
+            return
+        self._do_set_parent(item_id, parent_id)
+
+    def _do_set_parent(self, item_id: str, parent_id: str) -> None:
+        """Apply the resolved parent ID update."""
         try:
             self._tracker_set.update(
                 item_id,
@@ -2318,7 +2936,9 @@ class TrackerApp(App):
             )
             self.notify(f"Parent set for {item_id}")
             self._reload_after_write(item_id)
-        except (ItemNotFoundError, LockedFieldError) as e:
+        except (
+            ItemNotFoundError, LockedFieldError, AmbiguousPrefixError,
+        ) as e:
             self.notify(str(e), severity="error")
 
     def action_edit_before(self) -> None:
@@ -2335,27 +2955,53 @@ class TrackerApp(App):
     def _on_edit_before(
         self, item_id: str, result: dict[str, list[str]] | None,
     ) -> None:
-        """Handle before-links modal result."""
+        """Handle before-links modal result with prefix resolution."""
         if result is None:
             return
-        try:
-            add_fields = (
-                {"before": result["add"]} if result.get("add") else None
-            )
-            remove_fields = (
-                {"before": result["remove"]}
-                if result.get("remove")
-                else None
-            )
-            self._tracker_set.update(
-                item_id,
-                add_fields=add_fields,
-                remove_fields=remove_fields,
-            )
-            self.notify(f"Before links updated for {item_id}")
-            self._reload_after_write(item_id)
-        except (ItemNotFoundError, LockedFieldError) as e:
-            self.notify(str(e), severity="error")
+        add_ids = result.get("add", [])
+        remove_ids = result.get("remove", [])
+
+        def _finish_before(
+            resolved_add: list[str] | None,
+            resolved_remove: list[str] | None,
+        ) -> None:
+            try:
+                a_fields = {"before": resolved_add} if resolved_add else None
+                r_fields = (
+                    {"before": resolved_remove} if resolved_remove else None
+                )
+                self._tracker_set.update(
+                    item_id,
+                    add_fields=a_fields,
+                    remove_fields=r_fields,
+                )
+                self.notify(f"Before links updated for {item_id}")
+                self._reload_after_write(item_id)
+            except (
+                ItemNotFoundError, LockedFieldError, AmbiguousPrefixError,
+            ) as e:
+                self.notify(str(e), severity="error")
+
+        def _resolve_removes(resolved_add: list[str] | None) -> None:
+            if add_ids and resolved_add is None:
+                return
+            final_add = resolved_add if add_ids else None
+            if remove_ids:
+                self._resolve_ids(
+                    remove_ids,
+                    lambda resolved_rm: (
+                        _finish_before(final_add, resolved_rm)
+                        if resolved_rm is not None
+                        else None
+                    ),
+                )
+            else:
+                _finish_before(final_add, None)
+
+        if add_ids:
+            self._resolve_ids(add_ids, _resolve_removes)
+        else:
+            _resolve_removes(None)
 
     def action_toggle_lock(self) -> None:
         """Open the lock/unlock modal for the selected item."""

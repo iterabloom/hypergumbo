@@ -37,6 +37,7 @@ from hypergumbo_tracker.models import (
 from textual.app import App
 
 from hypergumbo_tracker.store import (
+    AmbiguousPrefixError,
     DiscussionRateLimitError,
     FrozenItemError,
     HumanAuthorityError,
@@ -49,6 +50,7 @@ from rich.text import Text
 from hypergumbo_tracker.tui import (
     BeforeScreen,
     ConfirmScreen,
+    DisambiguateScreen,
     DiscussScreen,
     EditItemScreen,
     LockScreen,
@@ -58,12 +60,15 @@ from hypergumbo_tracker.tui import (
     _apply_custom_order,
     _build_dep_index,
     _collapse_double_spacing,
+    _collect_all_tags,
     _compute_chain,
+    _compute_fav_5,
     _compute_tier,
     _dep_pill_id,
     _format_activity_lines,
     _format_dep_pills,
     _format_detail_lines,
+    _format_filter_entry,
     _format_timestamp,
     _label,
     _load_tui_preferences,
@@ -1316,13 +1321,14 @@ class TestStandardLayout:
             assert app._selected_item_id == selected_before
 
     async def test_filter_shows_input(self, tracker_set: TrackerSet) -> None:
-        """Pressing 'f' should show the filter input."""
+        """Activating text filter should show the filter input."""
         from hypergumbo_tracker.tui import TrackerApp
 
         app = TrackerApp(tracker_set=tracker_set)
         async with app.run_test(size=(80, 24)) as pilot:
             await _wait_for_std_table(pilot, app)
-            await pilot.press("f")
+            app._filter_active = True
+            app._apply_layout()
             await pilot.pause()
             filter_input = app.query_one("#filter-input")
             assert filter_input.display is True
@@ -1337,7 +1343,9 @@ class TestStandardLayout:
             await _wait_for_std_table(pilot, app)
             table = app.query_one("#std-table")
             assert table.row_count == 3
-            await pilot.press("f")
+            app._filter_active = True
+            app._apply_layout()
+            app.query_one("#filter-input").focus()
             await pilot.pause()
             # Type a filter term that matches only some items
             await pilot.press("c", "a", "c", "h")
@@ -1349,13 +1357,15 @@ class TestStandardLayout:
     async def test_filter_dismiss_restores_all(
         self, tracker_set: TrackerSet
     ) -> None:
-        """Pressing 'f' again clears filter, all items back."""
+        """Dismissing filter clears text and restores all items."""
         from hypergumbo_tracker.tui import TrackerApp
 
         app = TrackerApp(tracker_set=tracker_set)
         async with app.run_test(size=(80, 24)) as pilot:
             await _wait_for_std_table(pilot, app)
-            await pilot.press("f")
+            app._filter_active = True
+            app._apply_layout()
+            app.query_one("#filter-input").focus()
             await pilot.pause()
             await pilot.press("c", "a", "c", "h")
             await pilot.pause()
@@ -1463,6 +1473,52 @@ class TestFilteredItems:
             result = app._filtered_items()
             assert len(result) == 3
             assert all(r.kind == "work_item" for r in result)
+
+    async def test_hidden_tags_filter(self, tmp_path: Path) -> None:
+        """Items with hidden tags are excluded from results."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Item "Symbol IDs must be stable" has tag "quality"
+            app._hidden_tags.add("quality")
+            result = app._filtered_items()
+            assert len(result) == 2
+            assert all("quality" not in i.tags for i in result)
+
+    async def test_hidden_tags_no_tags_items_always_shown(
+        self, tmp_path: Path,
+    ) -> None:
+        """Items with no tags are never hidden by tag filters."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Hide a tag that no item has → all items still shown
+            app._hidden_tags.add("nonexistent_tag")
+            result = app._filtered_items()
+            assert len(result) == 3
+
+    async def test_hidden_tags_combined_with_status_filter(
+        self, tmp_path: Path,
+    ) -> None:
+        """Tag and status filters combine (both applied)."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._hidden_statuses.add("done")
+            app._hidden_tags.add("quality")
+            result = app._filtered_items()
+            # "done" item hidden, "quality" item hidden → only caching layer
+            assert len(result) == 1
+            assert result[0].title == "Add caching layer"
 
 
 # ---------------------------------------------------------------------------
@@ -1579,26 +1635,26 @@ class TestDynamicResize:
     async def test_filter_preserved_across_resize(
         self, tracker_set: TrackerSet
     ) -> None:
-        """Filter state should persist across resize."""
+        """Filter panel state should persist across resize."""
         from hypergumbo_tracker.tui import TrackerApp
 
         app = TrackerApp(tracker_set=tracker_set)
         async with app.run_test(size=(80, 24)) as pilot:
             await _wait_for_std_table(pilot, app)
-            # Activate filter
+            # Activate filter panel
             await pilot.press("f")
             await pilot.pause()
-            assert app._filter_active is True
+            assert app._filter_panel_visible is True
 
-            # Resize to compact (width < 80 → filter hidden but state preserved)
+            # Resize to compact (filter panel not available but state preserved)
             await pilot.resize_terminal(50, 18)
             await pilot.pause()
             await pilot.pause()
-            assert app._filter_active is True
+            assert app._filter_panel_visible is True
 
-            # Filter input should be hidden (width < 80) but state preserved
-            filter_input = app.query_one("#filter-input")
-            assert filter_input.display is False
+            # Filter panel should be hidden (compact mode)
+            std_filter = app.query_one("#std-filter-panel-view")
+            assert std_filter.display is False
 
     async def test_standard_to_wide_extra_columns_appear(
         self, tracker_set: TrackerSet
@@ -1781,7 +1837,7 @@ class TestStandardEdgeCases:
             # Should not crash
 
     async def test_filter_in_compact_mode_wide_enough(self, tmp_path: Path) -> None:
-        """Filter should work in compact mode at width >= 80 (but height < 20)."""
+        """Text filter should work in compact mode at width >= 80 (but height < 20)."""
         from hypergumbo_tracker.tui import TrackerApp
 
         ts = _make_tracker_set(tmp_path)
@@ -1789,7 +1845,9 @@ class TestStandardEdgeCases:
         # Width 80 (>= 80 for filter), height 18 (compact tier: < 20)
         async with app.run_test(size=(80, 18)) as pilot:
             await _wait_for_table(pilot, app)
-            await pilot.press("f")
+            # Activate text filter directly (f key now opens filter panel)
+            app._filter_active = True
+            app._apply_layout()
             await pilot.pause()
             assert app._filter_active is True
             filter_input = app.query_one("#filter-input")
@@ -1863,7 +1921,7 @@ class TestStandardEdgeCases:
     async def test_action_back_escape_filter_then_detail(
         self, tmp_path: Path
     ) -> None:
-        """Escape should dismiss filter first, then detail mode."""
+        """Escape should dismiss text filter first, then detail mode."""
         from hypergumbo_tracker.tui import TrackerApp
 
         ts = _make_tracker_set(tmp_path)
@@ -1875,8 +1933,9 @@ class TestStandardEdgeCases:
             await pilot.press("enter")
             await pilot.pause()
             assert app._in_detail is True
-            # Now activate filter
-            await pilot.press("f")
+            # Activate text filter directly
+            app._filter_active = True
+            app._apply_layout()
             await pilot.pause()
             assert app._filter_active is True
             # Escape should dismiss filter first
@@ -1908,8 +1967,8 @@ class TestStandardEdgeCases:
             app.on_data_table_row_highlighted(event)
             # Should be a no-op (tier check returns early)
 
-    async def test_toggle_filter_action_dismisses(self, tmp_path: Path) -> None:
-        """Calling action_toggle_filter when active should dismiss filter."""
+    async def test_toggle_filter_panel_action(self, tmp_path: Path) -> None:
+        """Calling action_toggle_filter_panel toggles panel visibility."""
         from hypergumbo_tracker.tui import TrackerApp
 
         ts = _make_tracker_set(tmp_path)
@@ -1917,14 +1976,13 @@ class TestStandardEdgeCases:
         async with app.run_test(size=(80, 24)) as pilot:
             await _wait_for_std_table(pilot, app)
             # Toggle on
-            app.action_toggle_filter()
+            app.action_toggle_filter_panel()
             await pilot.pause()
-            assert app._filter_active is True
-            # Toggle off by calling action directly
-            # (can't press 'f' because Input widget captures it)
-            app.action_toggle_filter()
+            assert app._filter_panel_visible is True
+            # Toggle off
+            app.action_toggle_filter_panel()
             await pilot.pause()
-            assert not app._filter_active
+            assert not app._filter_panel_visible
 
 
 # ---------------------------------------------------------------------------
@@ -2125,7 +2183,7 @@ class TestWideLayout:
     async def test_wide_filter_narrows_items(
         self, tracker_set: TrackerSet
     ) -> None:
-        """Filter should work at wide size."""
+        """Text filter should work at wide size."""
         from hypergumbo_tracker.tui import TrackerApp
 
         app = TrackerApp(tracker_set=tracker_set)
@@ -2133,7 +2191,10 @@ class TestWideLayout:
             await _wait_for_std_table(pilot, app)
             table = app.query_one("#std-table")
             assert table.row_count == 3
-            await pilot.press("f")
+            # Activate text filter directly
+            app._filter_active = True
+            app._apply_layout()
+            app.query_one("#filter-input").focus()
             await pilot.pause()
             await pilot.press("c", "a", "c", "h")
             await pilot.pause()
@@ -2162,7 +2223,10 @@ class TestFilterStatus:
         app = TrackerApp(tracker_set=tracker_set)
         async with app.run_test(size=(80, 24)) as pilot:
             await _wait_for_std_table(pilot, app)
-            await pilot.press("f")
+            # Activate text filter directly
+            app._filter_active = True
+            app._apply_layout()
+            app.query_one("#filter-input").focus()
             await pilot.pause()
             await pilot.press("c", "a", "c", "h")
             await pilot.pause()
@@ -2180,7 +2244,9 @@ class TestFilterStatus:
         app = TrackerApp(tracker_set=tracker_set)
         async with app.run_test(size=(80, 24)) as pilot:
             await _wait_for_std_table(pilot, app)
-            await pilot.press("f")
+            app._filter_active = True
+            app._apply_layout()
+            app.query_one("#filter-input").focus()
             await pilot.pause()
             await pilot.press("c", "a")
             await pilot.pause()
@@ -3330,7 +3396,11 @@ class TestSetParentKeybinding:
             item = app._get_selected_item()
             assert item is not None
 
-            with patch.object(tracker_set, "update") as mock_update:
+            with patch.object(tracker_set, "update") as mock_update, \
+                 patch.object(
+                     app, "_resolve_ids",
+                     side_effect=_mock_resolve_ids_passthrough,
+                 ):
                 app.action_set_parent()
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#parent-input").value = "PARENT-ID"
@@ -3385,6 +3455,9 @@ class TestSetParentKeybinding:
             with patch.object(
                 tracker_set, "update",
                 side_effect=LockedFieldError("locked"),
+            ), patch.object(
+                app, "_resolve_ids",
+                side_effect=_mock_resolve_ids_passthrough,
             ):
                 app.action_set_parent()
                 await _wait_for_modal(pilot, app)
@@ -3421,7 +3494,11 @@ class TestEditBeforeKeybinding:
             item = app._get_selected_item()
             assert item is not None
 
-            with patch.object(tracker_set, "update") as mock_update:
+            with patch.object(tracker_set, "update") as mock_update, \
+                 patch.object(
+                     app, "_resolve_ids",
+                     side_effect=_mock_resolve_ids_passthrough,
+                 ):
                 app.action_edit_before()
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#add-input").value = "ID-1, ID-2"
@@ -3443,7 +3520,11 @@ class TestEditBeforeKeybinding:
         app = TrackerApp(tracker_set=tracker_set)
         async with app.run_test(size=(80, 24)) as pilot:
             await _wait_for_std_table(pilot, app)
-            with patch.object(tracker_set, "update") as mock_update:
+            with patch.object(tracker_set, "update") as mock_update, \
+                 patch.object(
+                     app, "_resolve_ids",
+                     side_effect=_mock_resolve_ids_passthrough,
+                 ):
                 app.action_edit_before()
                 await _wait_for_modal(pilot, app)
                 app.screen.query_one("#remove-input").value = "OLD-ID"
@@ -3479,6 +3560,9 @@ class TestEditBeforeKeybinding:
             with patch.object(
                 tracker_set, "update",
                 side_effect=ItemNotFoundError("gone"),
+            ), patch.object(
+                app, "_resolve_ids",
+                side_effect=_mock_resolve_ids_passthrough,
             ):
                 app.action_edit_before()
                 await _wait_for_modal(pilot, app)
@@ -3751,6 +3835,24 @@ class TestOnEditItemCallbackBranches:
                 )
 
 
+def _mock_resolve_ids_passthrough(
+    raw_ids: list[str], on_resolved: Any,
+    resolved_so_far: list[str] | None = None,
+    remaining: list[str] | None = None,
+) -> None:
+    """Mock _resolve_ids that immediately passes IDs through."""
+    on_resolved(raw_ids)
+
+
+def _mock_resolve_ids_cancel(
+    raw_ids: list[str], on_resolved: Any,
+    resolved_so_far: list[str] | None = None,
+    remaining: list[str] | None = None,
+) -> None:
+    """Mock _resolve_ids that simulates user cancellation."""
+    on_resolved(None)
+
+
 class TestOnEditBeforeCallbackBranches:
     """Test _on_edit_before callback branches."""
 
@@ -3763,8 +3865,14 @@ class TestOnEditBeforeCallbackBranches:
             await _wait_for_std_table(pilot, app)
             item = app._get_selected_item()
             assert item is not None
-            with patch.object(ts, "update") as mock:
-                app._on_edit_before(item.id, {"add": ["X"], "remove": []})
+            with patch.object(ts, "update") as mock, \
+                 patch.object(
+                     app, "_resolve_ids",
+                     side_effect=_mock_resolve_ids_passthrough,
+                 ):
+                app._on_edit_before(
+                    item.id, {"add": ["X"], "remove": []},
+                )
                 await pilot.pause()
                 mock.assert_called_once_with(
                     item.id,
@@ -3781,8 +3889,14 @@ class TestOnEditBeforeCallbackBranches:
             await _wait_for_std_table(pilot, app)
             item = app._get_selected_item()
             assert item is not None
-            with patch.object(ts, "update") as mock:
-                app._on_edit_before(item.id, {"add": [], "remove": ["Y"]})
+            with patch.object(ts, "update") as mock, \
+                 patch.object(
+                     app, "_resolve_ids",
+                     side_effect=_mock_resolve_ids_passthrough,
+                 ):
+                app._on_edit_before(
+                    item.id, {"add": [], "remove": ["Y"]},
+                )
                 await pilot.pause()
                 mock.assert_called_once_with(
                     item.id,
@@ -3812,9 +3926,68 @@ class TestOnEditBeforeCallbackBranches:
             with patch.object(
                 ts, "update",
                 side_effect=LockedFieldError("locked"),
+            ), patch.object(
+                app, "_resolve_ids",
+                side_effect=_mock_resolve_ids_passthrough,
             ):
-                app._on_edit_before("FAKE", {"add": ["X"], "remove": []})
+                app._on_edit_before(
+                    "FAKE", {"add": ["X"], "remove": []},
+                )
                 await pilot.pause()
+
+    async def test_resolve_ids_cancel_aborts(self, tmp_path: Path) -> None:
+        """When _resolve_ids calls back with None, no update."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(ts, "update") as mock, \
+                 patch.object(
+                     app, "_resolve_ids",
+                     side_effect=_mock_resolve_ids_cancel,
+                 ):
+                app._on_edit_before(
+                    "FAKE", {"add": ["ambig"], "remove": []},
+                )
+                await pilot.pause()
+                mock.assert_not_called()
+
+    async def test_resolve_ids_cancel_on_remove_aborts(
+        self, tmp_path: Path,
+    ) -> None:
+        """When _resolve_ids cancels for remove IDs, no update."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            call_count = 0
+
+            def _resolve_first_pass_second_cancel(
+                raw_ids: list[str], on_resolved: Any,
+                resolved_so_far: list[str] | None = None,
+                remaining: list[str] | None = None,
+            ) -> None:
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    on_resolved(raw_ids)  # add resolves fine
+                else:
+                    on_resolved(None)  # remove cancelled
+
+            with patch.object(ts, "update") as mock, \
+                 patch.object(
+                     app, "_resolve_ids",
+                     side_effect=_resolve_first_pass_second_cancel,
+                 ):
+                app._on_edit_before(
+                    "FAKE", {"add": ["ok"], "remove": ["ambig"]},
+                )
+                await pilot.pause()
+                mock.assert_not_called()
 
 
 class TestOnToggleLockCallbackBranches:
@@ -4172,9 +4345,76 @@ class TestOnSetParentCallbackBranches:
             with patch.object(
                 ts, "update",
                 side_effect=ItemNotFoundError("gone"),
+            ), patch.object(
+                app, "_resolve_ids",
+                side_effect=_mock_resolve_ids_passthrough,
             ):
                 app._on_set_parent("FAKE", "PARENT")
                 await pilot.pause()
+
+    async def test_clear_parent_empty_string(self, tmp_path: Path) -> None:
+        """Empty string clears parent without calling _resolve_ids."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            with patch.object(ts, "update") as mock, \
+                 patch.object(app, "_resolve_ids") as resolve_mock:
+                app._on_set_parent(item.id, "")
+                await pilot.pause()
+                resolve_mock.assert_not_called()
+                mock.assert_called_once_with(
+                    item.id, set_fields={"parent": ""},
+                )
+
+    async def test_resolve_ids_cancel_aborts(self, tmp_path: Path) -> None:
+        """When _resolve_ids calls back with None, no update."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(ts, "update") as mock, \
+                 patch.object(
+                     app, "_resolve_ids",
+                     side_effect=_mock_resolve_ids_cancel,
+                 ):
+                app._on_set_parent("FAKE", "ambig-prefix")
+                await pilot.pause()
+                mock.assert_not_called()
+
+    async def test_resolved_parent_stored(self, tmp_path: Path) -> None:
+        """Prefix is resolved to full ID before storing."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        def _resolve_to_full(
+            raw_ids: list[str], on_resolved: Any,
+            resolved_so_far: list[str] | None = None,
+            remaining: list[str] | None = None,
+        ) -> None:
+            on_resolved(["WI-full-long-id"])
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+            with patch.object(ts, "update") as mock, \
+                 patch.object(
+                     app, "_resolve_ids",
+                     side_effect=_resolve_to_full,
+                 ):
+                app._on_set_parent(item.id, "WI-full")
+                await pilot.pause()
+                mock.assert_called_once_with(
+                    item.id, set_fields={"parent": "WI-full-long-id"},
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -4521,7 +4761,7 @@ class TestFilterWidthGate:
     async def test_filter_blocked_at_narrow_width(
         self, tmp_path: Path,
     ) -> None:
-        """Pressing 'f' at width < 80 should NOT activate filter."""
+        """Pressing 'f' in compact mode should NOT open filter panel."""
         from hypergumbo_tracker.tui import TrackerApp
 
         ts = _make_tracker_set(tmp_path)
@@ -4530,14 +4770,12 @@ class TestFilterWidthGate:
             await _wait_for_table(pilot, app)
             await pilot.press("f")
             await pilot.pause()
-            assert not app._filter_active
-            filter_input = app.query_one("#filter-input")
-            assert filter_input.display is False
+            assert not app._filter_panel_visible
 
     async def test_filter_works_at_80_cols(
         self, tmp_path: Path,
     ) -> None:
-        """Pressing 'f' at width >= 80 should activate filter."""
+        """Pressing 'f' at width >= 80 should show filter panel."""
         from hypergumbo_tracker.tui import TrackerApp
 
         ts = _make_tracker_set(tmp_path)
@@ -4546,9 +4784,9 @@ class TestFilterWidthGate:
             await _wait_for_std_table(pilot, app)
             await pilot.press("f")
             await pilot.pause()
-            assert app._filter_active is True
-            filter_input = app.query_one("#filter-input")
-            assert filter_input.display is True
+            assert app._filter_panel_visible is True
+            panel = app.query_one("#std-filter-panel-view")
+            assert panel.display is True
 
 
 # ---------------------------------------------------------------------------
@@ -4838,21 +5076,29 @@ class TestApplyCustomOrder:
 class TestTuiPreferences:
     """Test TUI preferences persistence pure functions."""
 
+    def _assert_defaults(self, result: dict) -> None:
+        """Assert all v2 default values are present."""
+        assert result["hidden_statuses"] == []
+        assert result["display_order"] == []
+        assert result["hidden_tags"] == []
+        assert result["toggle_sessions"] == []
+        assert result["last_filters"] == {"hidden_statuses": [], "hidden_tags": []}
+
     def test_missing_file_returns_defaults(self, tmp_path: Path) -> None:
         result = _load_tui_preferences(tmp_path / "nonexistent.json")
-        assert result == {"hidden_statuses": [], "display_order": []}
+        self._assert_defaults(result)
 
     def test_corrupt_file_returns_defaults(self, tmp_path: Path) -> None:
         p = tmp_path / "bad.json"
         p.write_text("not json!", encoding="utf-8")
         result = _load_tui_preferences(p)
-        assert result == {"hidden_statuses": [], "display_order": []}
+        self._assert_defaults(result)
 
     def test_non_dict_returns_defaults(self, tmp_path: Path) -> None:
         p = tmp_path / "array.json"
         p.write_text("[1, 2, 3]", encoding="utf-8")
         result = _load_tui_preferences(p)
-        assert result == {"hidden_statuses": [], "display_order": []}
+        self._assert_defaults(result)
 
     def test_invalid_types_returns_defaults(self, tmp_path: Path) -> None:
         """Non-list values for hidden_statuses/display_order → defaults."""
@@ -4860,7 +5106,7 @@ class TestTuiPreferences:
         p = tmp_path / "bad_types.json"
         p.write_text(json.dumps({"hidden_statuses": "not-a-list", "display_order": 42}))
         result = _load_tui_preferences(p)
-        assert result == {"hidden_statuses": [], "display_order": []}
+        self._assert_defaults(result)
 
     def test_valid_file_loads(self, tmp_path: Path) -> None:
         import json
@@ -4883,7 +5129,8 @@ class TestTuiPreferences:
         assert _save_tui_preferences(p, set(), []) is True
         assert p.is_file()
         result = _load_tui_preferences(p)
-        assert result == {"hidden_statuses": [], "display_order": []}
+        assert result["hidden_statuses"] == []
+        assert result["display_order"] == []
 
     def test_save_returns_false_on_permission_error(self, tmp_path: Path) -> None:
         """_save_tui_preferences tolerates write failures gracefully."""
@@ -4891,6 +5138,78 @@ class TestTuiPreferences:
         p = tmp_path / "prefs.json"
         with patch.object(type(p), "write_text", side_effect=PermissionError("denied")):
             assert _save_tui_preferences(p, {"done"}, ["A"]) is False
+
+    def test_v2_roundtrip_with_tags_and_sessions(self, tmp_path: Path) -> None:
+        """V2 fields (hidden_tags, toggle_sessions, last_filters) roundtrip."""
+        import json
+        p = tmp_path / "prefs.json"
+        assert _save_tui_preferences(
+            p, {"done"}, ["A"],
+            hidden_tags={"quality", "perf"},
+            toggle_sessions=[{"status:done": 5, "tag:quality": 3}],
+            last_filters={"hidden_statuses": ["done"], "hidden_tags": ["perf"]},
+        ) is True
+        result = _load_tui_preferences(p)
+        assert set(result["hidden_tags"]) == {"quality", "perf"}
+        assert len(result["toggle_sessions"]) == 1
+        assert result["toggle_sessions"][0]["status:done"] == 5
+        assert result["last_filters"]["hidden_statuses"] == ["done"]
+
+    def test_v1_file_loads_with_v2_defaults(self, tmp_path: Path) -> None:
+        """A v1 file missing v2 keys gets default values for new fields."""
+        import json
+        p = tmp_path / "v1.json"
+        data = {"version": 1, "hidden_statuses": ["done"], "display_order": ["A"]}
+        p.write_text(json.dumps(data), encoding="utf-8")
+        result = _load_tui_preferences(p)
+        assert result["hidden_statuses"] == ["done"]
+        assert result["display_order"] == ["A"]
+        assert result["hidden_tags"] == []
+        assert result["toggle_sessions"] == []
+        assert result["last_filters"] == {"hidden_statuses": [], "hidden_tags": []}
+
+    def test_v2_save_writes_version_2(self, tmp_path: Path) -> None:
+        """Saving with v2 fields writes version 2."""
+        import json
+        p = tmp_path / "prefs.json"
+        _save_tui_preferences(
+            p, set(), [],
+            hidden_tags={"quality"},
+            toggle_sessions=[],
+            last_filters={"hidden_statuses": [], "hidden_tags": []},
+        )
+        data = json.loads(p.read_text(encoding="utf-8"))
+        assert data["version"] == 2
+
+    def test_legacy_toggle_counts_migrated(self, tmp_path: Path) -> None:
+        """A file with flat toggle_counts is migrated to toggle_sessions."""
+        import json
+        p = tmp_path / "legacy.json"
+        data = {
+            "version": 1,
+            "hidden_statuses": [],
+            "display_order": [],
+            "toggle_counts": {"status:done": 5, "tag:quality": 2},
+        }
+        p.write_text(json.dumps(data), encoding="utf-8")
+        result = _load_tui_preferences(p)
+        assert len(result["toggle_sessions"]) == 1
+        assert result["toggle_sessions"][0] == {"status:done": 5, "tag:quality": 2}
+
+    def test_toggle_sessions_cap_at_3(self, tmp_path: Path) -> None:
+        """Only the most recent 3 toggle sessions are kept on save."""
+        import json
+        p = tmp_path / "prefs.json"
+        sessions = [
+            {"a": 1}, {"b": 2}, {"c": 3}, {"d": 4},
+        ]
+        _save_tui_preferences(
+            p, set(), [],
+            toggle_sessions=sessions,
+        )
+        result = _load_tui_preferences(p)
+        assert len(result["toggle_sessions"]) == 3
+        assert result["toggle_sessions"][0] == {"b": 2}
 
 
 # ---------------------------------------------------------------------------
@@ -4931,7 +5250,7 @@ def _make_tracker_set_with_resolved(tmp_path: Path) -> TrackerSet:
 
 
 class TestStatusToggles:
-    """Test the 'c' (toggle done) and 'w' (toggle wont_do) keybindings."""
+    """Test status toggle via _toggle_status (previously c/w keybindings)."""
 
     @pytest.fixture()
     def tracker_set(self, tmp_path: Path) -> TrackerSet:
@@ -4940,7 +5259,7 @@ class TestStatusToggles:
     async def test_toggle_done_hides_done_items(
         self, tracker_set: TrackerSet,
     ) -> None:
-        """Pressing 'c' should hide done items."""
+        """_toggle_status('done') should hide done items."""
         from hypergumbo_tracker.tui import TrackerApp
 
         app = TrackerApp(tracker_set=tracker_set)
@@ -4948,7 +5267,7 @@ class TestStatusToggles:
             await _wait_for_std_table(pilot, app)
             table = app.query_one("#std-table")
             assert table.row_count == 4
-            await pilot.press("c")
+            app._toggle_status("done")
             await pilot.pause()
             assert table.row_count == 3
             assert "done" in app._hidden_statuses
@@ -4956,17 +5275,17 @@ class TestStatusToggles:
     async def test_toggle_done_twice_restores(
         self, tracker_set: TrackerSet,
     ) -> None:
-        """Pressing 'c' twice should show done items again."""
+        """Toggling 'done' twice should show done items again."""
         from hypergumbo_tracker.tui import TrackerApp
 
         app = TrackerApp(tracker_set=tracker_set)
         async with app.run_test(size=(80, 24)) as pilot:
             await _wait_for_std_table(pilot, app)
             table = app.query_one("#std-table")
-            await pilot.press("c")
+            app._toggle_status("done")
             await pilot.pause()
             assert table.row_count == 3
-            await pilot.press("c")
+            app._toggle_status("done")
             await pilot.pause()
             assert table.row_count == 4
             assert "done" not in app._hidden_statuses
@@ -4974,7 +5293,7 @@ class TestStatusToggles:
     async def test_toggle_wont_do_hides(
         self, tracker_set: TrackerSet,
     ) -> None:
-        """Pressing 'w' should hide wont_do items."""
+        """_toggle_status('wont_do') should hide wont_do items."""
         from hypergumbo_tracker.tui import TrackerApp
 
         app = TrackerApp(tracker_set=tracker_set)
@@ -4982,22 +5301,22 @@ class TestStatusToggles:
             await _wait_for_std_table(pilot, app)
             table = app.query_one("#std-table")
             assert table.row_count == 4
-            await pilot.press("w")
+            app._toggle_status("wont_do")
             await pilot.pause()
             assert table.row_count == 3
             assert "wont_do" in app._hidden_statuses
 
     async def test_both_toggles(self, tracker_set: TrackerSet) -> None:
-        """Pressing 'c' and 'w' should hide both done and wont_do."""
+        """Toggling both done and wont_do hides both."""
         from hypergumbo_tracker.tui import TrackerApp
 
         app = TrackerApp(tracker_set=tracker_set)
         async with app.run_test(size=(80, 24)) as pilot:
             await _wait_for_std_table(pilot, app)
             table = app.query_one("#std-table")
-            await pilot.press("c")
+            app._toggle_status("done")
             await pilot.pause()
-            await pilot.press("w")
+            app._toggle_status("wont_do")
             await pilot.pause()
             assert table.row_count == 2
             assert app._hidden_statuses == {"done", "wont_do"}
@@ -5017,7 +5336,7 @@ class TestStatusToggles:
             assert "done: shown" in text
             assert "wont_do: shown" in text
 
-            await pilot.press("c")
+            app._toggle_status("done")
             await pilot.pause()
             text = str(bar.content)
             assert "done: hidden" in text
@@ -5231,7 +5550,7 @@ class TestPersistence:
         app = TrackerApp(tracker_set=ts)
         async with app.run_test(size=(80, 24)) as pilot:
             await _wait_for_std_table(pilot, app)
-            await pilot.press("c")  # hide done
+            app._toggle_status("done")  # hide done
             await pilot.pause()
             assert "done" in app._hidden_statuses
             await pilot.press("q")
@@ -5294,7 +5613,7 @@ class TestPersistence:
         app = TrackerApp(tracker_set=ts)
         async with app.run_test(size=(80, 24)) as pilot:
             await _wait_for_std_table(pilot, app)
-            await pilot.press("c")  # hide done
+            app._toggle_status("done")  # hide done
             await pilot.pause()
             with patch.object(tui_mod, "_save_tui_preferences", return_value=False):
                 await pilot.press("q")
@@ -5591,6 +5910,42 @@ class TestFormatDepPills:
         assert "← B" in plain
         assert "→ D" not in plain
         assert "+2" in plain
+
+    def test_hidden_blocker_uses_italic(self) -> None:
+        """Blocker in hidden_ids gets italic instead of bold markup."""
+
+        blockers = {"B": ["WI-aaaaa"]}
+        result = _format_dep_pills("B", blockers, {}, hidden_ids={"WI-aaaaa"})
+        assert "[italic dark_orange]" in result
+        assert "[bold dark_orange]" not in result
+
+    def test_hidden_dependent_uses_italic(self) -> None:
+        """Dependent in hidden_ids gets italic instead of bold markup."""
+
+        deps = {"A": ["WI-bbbbb"]}
+        result = _format_dep_pills("A", {}, deps, hidden_ids={"WI-bbbbb"})
+        assert "[italic green]" in result
+        assert "[bold green]" not in result
+
+    def test_visible_dep_still_bold_when_hidden_ids_provided(self) -> None:
+        """Deps not in hidden_ids keep bold markup even when param is given."""
+
+        blockers = {"B": ["WI-aaaaa"]}
+        deps = {"B": ["WI-ccccc"]}
+        result = _format_dep_pills(
+            "B", blockers, deps, hidden_ids={"WI-ccccc"},
+        )
+        # WI-aaaaa is visible → bold, WI-ccccc is hidden → italic
+        assert "[bold dark_orange]" in result
+        assert "[italic green]" in result
+
+    def test_hidden_ids_none_same_as_no_hidden(self) -> None:
+        """Passing hidden_ids=None keeps all pills bold (backward compat)."""
+
+        blockers = {"B": ["WI-aaaaa"]}
+        result = _format_dep_pills("B", blockers, {}, hidden_ids=None)
+        assert "[bold dark_orange]" in result
+        assert "[italic" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -6104,3 +6459,1295 @@ class TestChainHighlighting:
             for rk in table.rows:
                 title_cell = table.get_cell(rk, "title")
                 assert isinstance(title_cell, str)
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: ghost rows for hidden chain members
+# ---------------------------------------------------------------------------
+
+
+def _make_tracker_set_with_done_dep(tmp_path: Path) -> TrackerSet:
+    """Create a TrackerSet where A (todo_hard) blocks B (done).
+
+    When "done" status is hidden, B disappears from the table.
+    Selecting A should surface B as a ghost row.
+    """
+    from helpers import make_test_config_dict
+
+    root = tmp_path / ".agent"
+    for d in [
+        root / "tracker" / ".ops",
+        root / "tracker-workspace" / ".ops",
+        root / "tracker-workspace" / "stealth",
+    ]:
+        d.mkdir(parents=True, exist_ok=True)
+
+    config = _make_config()
+    config_path = root / "tracker" / "config.yaml"
+    import yaml
+
+    config_path.write_text(yaml.dump(make_test_config_dict()))
+
+    ts = TrackerSet(root, config=config)
+
+    id_a = ts.add(kind="work_item", title="Active blocker",
+                  status="todo_hard", priority=1)
+    id_b = ts.add(kind="work_item", title="Done dependent",
+                  status="done", priority=2)
+
+    # B depends on A (B.before = [A])
+    ts.update(id_b, add_fields={"before": [id_a]})
+
+    return ts
+
+
+class TestGhostRows:
+    """Test hidden dependency chain members appearing as italic ghost rows."""
+
+    async def test_ghost_row_appears_when_dep_hidden(
+        self, tmp_path: Path,
+    ) -> None:
+        """Selecting A surfaces hidden done-dep B as a ghost row."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_done_dep(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = app._items
+            a_item = next(i for i in items if i.title == "Active blocker")
+            b_item = next(i for i in items if i.title == "Done dependent")
+
+            # Hide "done" status and reload
+            app._hidden_statuses.add("done")
+            app._reload_active_table()
+            await pilot.pause()
+
+            # Explicitly trigger chain highlight for A
+            app._update_chain_highlight(a_item.id)
+
+            table = app.query_one("#std-table")
+            row_ids = [str(rk.value) for rk in table.rows]
+            assert a_item.id in row_ids
+            # B should appear as a ghost row
+            assert b_item.id in row_ids
+            assert b_item.id in app._ghost_row_ids
+
+    async def test_ghost_rows_removed_on_cursor_move(
+        self, tmp_path: Path,
+    ) -> None:
+        """Ghost rows are cleaned up when cursor moves to non-chain item."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_done_dep(tmp_path)
+        # Add a third item with no deps
+        id_c = ts.add(kind="work_item", title="Standalone item",
+                      status="todo_hard", priority=3)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = app._items
+            a_item = next(i for i in items if i.title == "Active blocker")
+            b_item = next(i for i in items if i.title == "Done dependent")
+
+            app._hidden_statuses.add("done")
+            app._reload_active_table()
+            await pilot.pause()
+
+            table = app.query_one("#std-table")
+            # Select A → ghost row for B
+            for idx, rk in enumerate(table.rows):
+                if str(rk.value) == a_item.id:
+                    table.move_cursor(row=idx)
+                    break
+            await pilot.pause()
+            app._update_chain_highlight(a_item.id)
+            assert b_item.id in app._ghost_row_ids
+
+            # Now select standalone item → ghost rows should be removed
+            c_item = next(i for i in items if i.title == "Standalone item")
+            for idx, rk in enumerate(table.rows):
+                if str(rk.value) == c_item.id:
+                    table.move_cursor(row=idx)
+                    break
+            await pilot.pause()
+            app._update_chain_highlight(c_item.id)
+
+            assert app._ghost_row_ids == set()
+            row_ids = [str(rk.value) for rk in table.rows]
+            assert b_item.id not in row_ids
+
+    async def test_no_ghost_rows_when_no_hidden_chain(
+        self, tmp_path: Path,
+    ) -> None:
+        """No ghost rows when all chain members are visible."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_deps(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = app._items
+            b_item = next(i for i in items if i.title == "Build on foundation")
+            table = app.query_one("#std-table")
+            for idx, rk in enumerate(table.rows):
+                if str(rk.value) == b_item.id:
+                    table.move_cursor(row=idx)
+                    break
+            await pilot.pause()
+            app._update_chain_highlight(b_item.id)
+
+            # No hidden items → no ghost rows
+            assert app._ghost_row_ids == set()
+
+    async def test_ghost_rows_cleared_on_reload(
+        self, tmp_path: Path,
+    ) -> None:
+        """Ghost rows are cleared when the table is reloaded."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_done_dep(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = app._items
+            a_item = next(i for i in items if i.title == "Active blocker")
+
+            app._hidden_statuses.add("done")
+            app._reload_active_table()
+            await pilot.pause()
+
+            table = app.query_one("#std-table")
+            for idx, rk in enumerate(table.rows):
+                if str(rk.value) == a_item.id:
+                    table.move_cursor(row=idx)
+                    break
+            await pilot.pause()
+            app._update_chain_highlight(a_item.id)
+            assert len(app._ghost_row_ids) > 0
+
+            # Reload clears ghost rows
+            app._reload_active_table()
+            assert app._ghost_row_ids == set()
+
+    async def test_ghost_row_has_italic_chain_style(
+        self, tmp_path: Path,
+    ) -> None:
+        """Ghost rows get italic styling in their row_num column."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_done_dep(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = app._items
+            a_item = next(i for i in items if i.title == "Active blocker")
+            b_item = next(i for i in items if i.title == "Done dependent")
+
+            app._hidden_statuses.add("done")
+            app._reload_active_table()
+            await pilot.pause()
+
+            table = app.query_one("#std-table")
+            for idx, rk in enumerate(table.rows):
+                if str(rk.value) == a_item.id:
+                    table.move_cursor(row=idx)
+                    break
+            await pilot.pause()
+            app._update_chain_highlight(a_item.id)
+
+            # Ghost row B should have italic style in row_num
+            for rk in table.rows:
+                if str(rk.value) == b_item.id:
+                    cell = table.get_cell(rk, "row_num")
+                    cell_text = cell.plain if hasattr(cell, "plain") else str(cell)
+                    # Ghost row gets a directional marker
+                    assert "↓" in cell_text or "·" in cell_text
+                    break
+
+    async def test_dep_pills_show_italic_for_hidden_deps(
+        self, tmp_path: Path,
+    ) -> None:
+        """Dep pills referencing hidden items use italic markup in table."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_done_dep(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = app._items
+            a_item = next(i for i in items if i.title == "Active blocker")
+            b_item = next(i for i in items if i.title == "Done dependent")
+
+            app._hidden_statuses.add("done")
+            app._reload_active_table()
+            await pilot.pause()
+
+            # Check A's dep pill column — B should be italic since hidden
+            table = app.query_one("#std-table")
+            for rk in table.rows:
+                if str(rk.value) == a_item.id:
+                    cell = table.get_cell(rk, "deps")
+                    # The cell markup should use italic for B's pill
+                    cell_plain = cell.plain if hasattr(cell, "plain") else str(cell)
+                    assert _dep_pill_id(b_item.id) in cell_plain
+                    break
+
+    async def test_ghost_noop_compact(self, tmp_path: Path) -> None:
+        """Ghost row logic is a no-op in compact mode."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_done_dep(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(55, 18)) as pilot:
+            await _wait_for_table(pilot, app)
+            # _update_chain_highlight is a no-op in compact
+            app._update_chain_highlight("anything")
+            assert app._ghost_row_ids == set()
+
+    async def test_hidden_ids_helper(self, tmp_path: Path) -> None:
+        """_hidden_ids returns IDs present in _items but not _filtered_items."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_done_dep(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = app._items
+            b_item = next(i for i in items if i.title == "Done dependent")
+
+            # No hidden statuses → nothing hidden
+            assert app._hidden_ids() == set()
+
+            # Hide "done" → B is hidden
+            app._hidden_statuses.add("done")
+            hidden = app._hidden_ids()
+            assert b_item.id in hidden
+
+    async def test_ghost_row_with_full_ids(self, tmp_path: Path) -> None:
+        """Ghost rows use full IDs when _show_full_ids is True."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_done_dep(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = app._items
+            a_item = next(i for i in items if i.title == "Active blocker")
+            b_item = next(i for i in items if i.title == "Done dependent")
+
+            app._show_full_ids = True
+            app._hidden_statuses.add("done")
+            app._reload_active_table()
+            await pilot.pause()
+            app._update_chain_highlight(a_item.id)
+
+            # Ghost row should exist with full ID
+            table = app.query_one("#std-table")
+            for rk in table.rows:
+                if str(rk.value) == b_item.id:
+                    id_cell = table.get_cell(rk, "id")
+                    id_text = id_cell.plain if hasattr(id_cell, "plain") else str(id_cell)
+                    assert id_text == b_item.id
+                    break
+
+    async def test_ghost_row_in_wide_mode(self, tmp_path: Path) -> None:
+        """Ghost rows include wide-mode columns (conflict, created, updated)."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_done_dep(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(130, 40)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = app._items
+            a_item = next(i for i in items if i.title == "Active blocker")
+            b_item = next(i for i in items if i.title == "Done dependent")
+
+            app._hidden_statuses.add("done")
+            app._reload_active_table()
+            await pilot.pause()
+            app._update_chain_highlight(a_item.id)
+
+            table = app.query_one("#std-table")
+            # Verify wide columns exist
+            col_keys = [c.key.value for c in table.columns.values()]
+            assert "conflict" in col_keys
+            assert "created" in col_keys
+
+            # Ghost row B should be present
+            row_ids = [str(rk.value) for rk in table.rows]
+            assert b_item.id in row_ids
+
+    async def test_ghost_row_single_visible_item(self, tmp_path: Path) -> None:
+        """Ghost rows work when only a single item is visible (edge case).
+
+        When there's only one visible item, _shortest_unique_prefix_len
+        returns 0, triggering the fallback to default id_display_len.
+        """
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_done_dep(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = app._items
+            a_item = next(i for i in items if i.title == "Active blocker")
+            b_item = next(i for i in items if i.title == "Done dependent")
+
+            # Hide "done" → only A visible (single item)
+            app._hidden_statuses.add("done")
+            app._reload_active_table()
+            await pilot.pause()
+
+            # With only 1 visible item, prefix_len is 0 → fallback to 20
+            app._update_chain_highlight(a_item.id)
+
+            table = app.query_one("#std-table")
+            row_ids = [str(rk.value) for rk in table.rows]
+            assert b_item.id in row_ids
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _collect_all_tags
+# ---------------------------------------------------------------------------
+
+
+class TestCollectAllTags:
+    """Test tag collection and deduplication from items."""
+
+    def test_empty_items(self) -> None:
+        """No items → empty list."""
+        assert _collect_all_tags([], []) == []
+
+    def test_deduplicates_and_sorts(self) -> None:
+        """Tags from multiple items are deduplicated and sorted."""
+        items = [
+            CompiledItem(
+                id="WI-a", kind="work_item", title="A",
+                status="todo_hard", tags=["z_tag", "a_tag"],
+            ),
+            CompiledItem(
+                id="WI-b", kind="work_item", title="B",
+                status="todo_hard", tags=["a_tag", "m_tag"],
+            ),
+        ]
+        assert _collect_all_tags(items, []) == ["a_tag", "m_tag", "z_tag"]
+
+    def test_merges_well_known_tags(self) -> None:
+        """Well-known tags appear even when no item has them."""
+        items = [
+            CompiledItem(
+                id="WI-a", kind="work_item", title="A",
+                status="todo_hard", tags=["real"],
+            ),
+        ]
+        result = _collect_all_tags(items, ["phantom", "real"])
+        assert result == ["phantom", "real"]
+
+    def test_items_with_no_tags(self) -> None:
+        """Items without tags contribute nothing; only well_known_tags appear."""
+        items = [
+            CompiledItem(
+                id="WI-a", kind="work_item", title="A", status="done",
+            ),
+        ]
+        assert _collect_all_tags(items, ["only_wk"]) == ["only_wk"]
+
+    def test_no_well_known_tags_and_no_item_tags(self) -> None:
+        """Both sources empty → empty."""
+        items = [
+            CompiledItem(
+                id="WI-a", kind="work_item", title="A", status="done",
+            ),
+        ]
+        assert _collect_all_tags(items, []) == []
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _compute_fav_5
+# ---------------------------------------------------------------------------
+
+
+class TestComputeFav5:
+    """Test fav-5 computation from toggle session history."""
+
+    def test_empty_sessions(self) -> None:
+        """No session history → empty fav list."""
+        assert _compute_fav_5([]) == []
+
+    def test_single_session_top_5(self) -> None:
+        """Top 5 from a single session, sorted by count desc then alpha."""
+        sessions = [
+            {
+                "status:done": 10,
+                "status:todo_hard": 8,
+                "tag:quality": 6,
+                "tag:perf": 4,
+                "status:in_progress": 2,
+                "tag:docs": 1,
+            },
+        ]
+        result = _compute_fav_5(sessions)
+        assert len(result) == 5
+        assert result[0] == "status:done"
+        assert result[1] == "status:todo_hard"
+        assert result[2] == "tag:quality"
+
+    def test_sums_across_sessions(self) -> None:
+        """Counts from multiple sessions are summed."""
+        sessions = [
+            {"status:done": 3, "tag:quality": 1},
+            {"status:done": 2, "tag:quality": 5},
+        ]
+        result = _compute_fav_5(sessions)
+        assert result[0] == "tag:quality"  # 6 total
+        assert result[1] == "status:done"  # 5 total
+
+    def test_max_sessions_window(self) -> None:
+        """Only the most recent max_sessions are considered."""
+        sessions = [
+            {"status:old": 100},  # old — should be ignored
+            {"status:recent1": 5},
+            {"status:recent2": 3},
+        ]
+        result = _compute_fav_5(sessions, max_sessions=2)
+        assert "status:old" not in result
+        assert "status:recent1" in result
+        assert "status:recent2" in result
+
+    def test_ties_broken_alphabetically(self) -> None:
+        """Equal counts are broken alphabetically."""
+        sessions = [{"a:x": 5, "a:a": 5, "a:m": 5}]
+        result = _compute_fav_5(sessions)
+        assert result == ["a:a", "a:m", "a:x"]
+
+    def test_fewer_than_5_keys(self) -> None:
+        """When fewer than 5 unique keys exist, return all of them."""
+        sessions = [{"status:done": 3, "tag:quality": 1}]
+        result = _compute_fav_5(sessions)
+        assert len(result) == 2
+
+    def test_zero_count_excluded(self) -> None:
+        """Keys with zero total count are excluded."""
+        sessions = [{"status:done": 0, "tag:quality": 3}]
+        result = _compute_fav_5(sessions)
+        assert result == ["tag:quality"]
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _format_filter_entry
+# ---------------------------------------------------------------------------
+
+
+class TestFormatFilterEntry:
+    """Test filter panel entry formatting."""
+
+    def test_visible_entry(self) -> None:
+        """Shown (not hidden) entry has empty checkbox."""
+        result = _format_filter_entry(1, "todo_hard", False, 5)
+        plain = _strip_markup(result)
+        assert "[1]" in plain
+        assert "[ ]" in plain
+        assert "todo_hard" in plain
+        assert "(5)" in plain
+
+    def test_hidden_entry(self) -> None:
+        """Hidden entry has X checkbox."""
+        result = _format_filter_entry(2, "done", True, 12)
+        plain = _strip_markup(result)
+        assert "[2]" in plain
+        assert "[X]" in plain
+        assert "done" in plain
+        assert "(12)" in plain
+
+    def test_fav_entry_has_star(self) -> None:
+        """Favorite entries show a star marker."""
+        result = _format_filter_entry(1, "done", False, 8, is_fav=True)
+        assert "★" in result or "*" in result or "⭐" in result or "star" in result.lower() or "★" in _strip_markup(result)
+
+    def test_no_number_for_zero_idx(self) -> None:
+        """Index 0 means no number shortcut (entries beyond 9)."""
+        result = _format_filter_entry(0, "rare", False, 1)
+        plain = _strip_markup(result)
+        assert "[ ]" in plain
+        assert "rare" in plain
+        # No [0] or number prefix
+        assert "[0]" not in plain
+
+    def test_hidden_entry_dim_style(self) -> None:
+        """Hidden entries use dim styling in the markup."""
+        result = _format_filter_entry(3, "wont_do", True, 0)
+        assert "dim" in result
+
+
+# ---------------------------------------------------------------------------
+# Pilot tests: filter panel
+# ---------------------------------------------------------------------------
+
+
+def _make_tracker_set_with_tags(tmp_path: Path) -> TrackerSet:
+    """Create a TrackerSet with items that have various tags."""
+    from helpers import make_test_config_dict
+
+    root = tmp_path / ".agent"
+    for d in [
+        root / "tracker" / ".ops",
+        root / "tracker-workspace" / ".ops",
+        root / "tracker-workspace" / "stealth",
+    ]:
+        d.mkdir(parents=True, exist_ok=True)
+
+    config = _make_config()
+    config_path = root / "tracker" / "config.yaml"
+    import yaml
+
+    config_path.write_text(yaml.dump(make_test_config_dict()))
+
+    ts = TrackerSet(root, config=config)
+
+    ts.add(kind="work_item", title="Task with quality tag",
+           status="todo_hard", priority=1, tags=["quality"])
+    ts.add(kind="work_item", title="Task with perf tag",
+           status="in_progress", priority=2, tags=["perf"])
+    ts.add(kind="work_item", title="Done task",
+           status="done", priority=0, tags=["quality", "perf"])
+    ts.add(kind="work_item", title="No tags task",
+           status="todo_soft", priority=3)
+
+    return ts
+
+
+class TestFilterPanel:
+    """Test filter panel visibility, content, and interactions."""
+
+    async def test_f_toggles_filter_panel(self, tmp_path: Path) -> None:
+        """Pressing f shows the filter panel in standard mode."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            assert not app._filter_panel_visible
+            await pilot.press("f")
+            await pilot.pause()
+            assert app._filter_panel_visible
+            # Press f again to hide
+            await pilot.press("f")
+            await pilot.pause()
+            assert not app._filter_panel_visible
+
+    async def test_filter_panel_shows_statuses(self, tmp_path: Path) -> None:
+        """Filter panel content includes status entries."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Static as StaticWidget
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            await pilot.press("f")
+            await pilot.pause()
+            content = app.query_one("#std-filter-content", StaticWidget)
+            plain = str(content.render())
+            assert "todo_hard" in plain or "Statuses" in plain
+
+    async def test_filter_panel_shows_tags(self, tmp_path: Path) -> None:
+        """Filter panel content includes tag entries when items have tags."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Static as StaticWidget
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            await pilot.press("f")
+            await pilot.pause()
+            content = app.query_one("#std-filter-content", StaticWidget)
+            plain = str(content.render())
+            assert "quality" in plain or "perf" in plain
+
+    async def test_digit_key_quick_toggle(self, tmp_path: Path) -> None:
+        """Pressing digit key 1 toggles the first filter entry."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            await pilot.press("f")
+            await pilot.pause()
+            initial_items = len(app._filtered_items())
+            await pilot.press("1")
+            await pilot.pause()
+            # Should have toggled something — either more or fewer items
+            new_items = len(app._filtered_items())
+            assert new_items != initial_items or len(app._hidden_statuses) + len(app._hidden_tags) > 0
+
+    async def test_digit_keys_ignored_when_panel_hidden(
+        self, tmp_path: Path,
+    ) -> None:
+        """Digit keys don't toggle filters when panel is not visible."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            assert not app._filter_panel_visible
+            initial_hidden = len(app._hidden_statuses) + len(app._hidden_tags)
+            await pilot.press("1")
+            await pilot.pause()
+            after_hidden = len(app._hidden_statuses) + len(app._hidden_tags)
+            assert initial_hidden == after_hidden
+
+    async def test_clear_all_filters(self, tmp_path: Path) -> None:
+        """_clear_all_filters clears hidden statuses and tags."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._hidden_statuses.add("done")
+            app._hidden_tags.add("quality")
+            # Make filter panel visible so _refresh_filter_panel is called
+            app._filter_panel_visible = True
+            app._clear_all_filters()
+            assert len(app._hidden_statuses) == 0
+            assert len(app._hidden_tags) == 0
+
+    async def test_restore_last_filters(self, tmp_path: Path) -> None:
+        """_restore_last_filters restores previously saved filter state."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._hidden_statuses.add("done")
+            app._hidden_tags.add("quality")
+            # Make filter panel visible so _refresh_filter_panel is called
+            app._filter_panel_visible = True
+            app._clear_all_filters()
+            assert len(app._hidden_statuses) == 0
+            app._restore_last_filters()
+            assert "done" in app._hidden_statuses
+            assert "quality" in app._hidden_tags
+
+    async def test_filter_panel_compact_not_available(
+        self, tmp_path: Path,
+    ) -> None:
+        """Filter panel is not available in compact mode."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(50, 18)) as pilot:
+            await _wait_for_table(pilot, app)
+            await pilot.press("f")
+            await pilot.pause()
+            assert not app._filter_panel_visible
+
+    async def test_filter_panel_wide_mode(self, tmp_path: Path) -> None:
+        """Filter panel works in wide mode (alongside activity panel)."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(130, 42)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            assert app._layout_tier == "wide"
+            await pilot.press("f")
+            await pilot.pause()
+            assert app._filter_panel_visible
+
+    async def test_toggle_tag_method(self, tmp_path: Path) -> None:
+        """_toggle_tag adds/removes tags from _hidden_tags."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            assert "quality" not in app._hidden_tags
+            app._toggle_tag("quality")
+            assert "quality" in app._hidden_tags
+            app._toggle_tag("quality")
+            assert "quality" not in app._hidden_tags
+
+    async def test_quit_saves_v2_preferences(self, tmp_path: Path) -> None:
+        """Quitting saves hidden_tags and toggle sessions."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._hidden_tags.add("quality")
+            app._current_session_counts["tag:quality"] = 3
+            await pilot.press("q")
+            await pilot.pause()
+        prefs = _load_tui_preferences(app._prefs_path)
+        assert "quality" in prefs["hidden_tags"]
+        assert len(prefs["toggle_sessions"]) >= 1
+
+    async def test_status_filter_bar_shows_tag_count(
+        self, tmp_path: Path,
+    ) -> None:
+        """Status filter bar shows hidden tag count."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Static as StaticWidget
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._hidden_tags.add("quality")
+            app._hidden_tags.add("perf")
+            app._update_status_filter_bar()
+            bar = app.query_one("#status-filter-bar", StaticWidget)
+            plain = bar.render()
+            assert "tags hidden: 2" in str(plain)
+
+    async def test_c_and_w_keys_removed(self, tmp_path: Path) -> None:
+        """The c and w keybindings no longer toggle done/wont_do directly."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # c and w should not change hidden_statuses
+            await pilot.press("c")
+            await pilot.pause()
+            assert "done" not in app._hidden_statuses
+            await pilot.press("w")
+            await pilot.pause()
+            assert "wont_do" not in app._hidden_statuses
+
+    async def test_toggle_count_incremented(self, tmp_path: Path) -> None:
+        """_increment_toggle_count bumps the current session count."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._increment_toggle_count("status:done")
+            app._increment_toggle_count("status:done")
+            app._increment_toggle_count("tag:quality")
+            assert app._current_session_counts["status:done"] == 2
+            assert app._current_session_counts["tag:quality"] == 1
+
+    async def test_filter_panel_standard_mode_placement(
+        self, tmp_path: Path,
+    ) -> None:
+        """In standard mode, filter panel appears in right panel area."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            await pilot.press("f")
+            await pilot.pause()
+            panel = app.query_one("#std-filter-panel-view")
+            assert panel.display is True
+
+    async def test_filters_active_count(self, tmp_path: Path) -> None:
+        """Filter panel header shows correct active filter count."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Static as StaticWidget
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._hidden_statuses.add("done")
+            app._hidden_tags.add("quality")
+            app._filter_panel_visible = True
+            app._refresh_filter_panel()
+            content = app.query_one("#std-filter-content", StaticWidget)
+            plain = str(content.render())
+            assert "Filters Active: 2" in plain
+
+    async def test_filter_panel_too_small_noop(self, tmp_path: Path) -> None:
+        """Filter panel toggle is a no-op in too-small mode."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(30, 10)) as pilot:
+            await pilot.pause()
+            assert app._layout_tier == "too-small"
+            # Call action directly since bindings may not fire in too-small mode
+            app.action_toggle_filter_panel()
+            assert not app._filter_panel_visible
+
+    async def test_quick_toggle_out_of_range(self, tmp_path: Path) -> None:
+        """_quick_toggle returns early for out-of-range index."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            await pilot.press("f")
+            await pilot.pause()
+            initial_hidden = len(app._hidden_statuses) + len(app._hidden_tags)
+            # Toggle index 0 (invalid — 1-based)
+            app._quick_toggle(0)
+            # Toggle index far beyond entries
+            app._quick_toggle(99)
+            after_hidden = len(app._hidden_statuses) + len(app._hidden_tags)
+            assert initial_hidden == after_hidden
+
+    async def test_quick_toggle_tag_entry(self, tmp_path: Path) -> None:
+        """_quick_toggle toggles tag entries correctly."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            await pilot.press("f")
+            await pilot.pause()
+            # Find a tag entry index
+            tag_idx = None
+            for i, (key, _name) in enumerate(app._filter_entries):
+                if key.startswith("tag:"):
+                    tag_idx = i + 1  # 1-based
+                    tag_name = key[4:]
+                    break
+            assert tag_idx is not None, "Expected at least one tag entry"
+            assert tag_name not in app._hidden_tags
+            app._quick_toggle(tag_idx)
+            assert tag_name in app._hidden_tags
+            assert app._current_session_counts.get(f"tag:{tag_name}", 0) > 0
+
+    async def test_fav_5_with_tag_entries(self, tmp_path: Path) -> None:
+        """Filter panel shows tag entries in Favorites section."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Static as StaticWidget
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Seed toggle sessions with tag entries to get them into fav 5
+            app._toggle_sessions = [
+                {"tag:quality": 10, "status:done": 5},
+            ]
+            app._filter_panel_visible = True
+            app._refresh_filter_panel()
+            content = app.query_one("#std-filter-content", StaticWidget)
+            plain = str(content.render())
+            assert "Favorites" in plain
+
+    async def test_fav_5_unknown_prefix_skipped(self, tmp_path: Path) -> None:
+        """Fav 5 entries with unknown prefix are skipped."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Static as StaticWidget
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Seed toggle sessions with unknown prefix entries
+            app._toggle_sessions = [
+                {"unknown:foo": 10, "bad:bar": 5},
+            ]
+            app._filter_panel_visible = True
+            app._refresh_filter_panel()
+            content = app.query_one("#std-filter-content", StaticWidget)
+            plain = str(content.render())
+            # Should NOT have Favorites section since all entries skipped
+            assert "Favorites" not in plain
+
+    async def test_filter_line_to_entry_populated(self, tmp_path: Path) -> None:
+        """_filter_line_to_entry is populated after _refresh_filter_panel."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._filter_panel_visible = True
+            app._refresh_filter_panel()
+            mapping = app._filter_line_to_entry
+            # Should have an entry for each filter entry
+            assert len(mapping) == len(app._filter_entries)
+            # All values should be 1-based indices
+            for _line_num, entry_idx in mapping.items():
+                assert entry_idx >= 1
+                assert entry_idx <= len(app._filter_entries)
+            # Header lines (0=header, 1=blank, 2=section header) not in map
+            assert 0 not in mapping
+            assert 1 not in mapping
+
+    async def test_click_toggles_filter_entry(self, tmp_path: Path) -> None:
+        """Clicking on a filter entry line toggles it."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            await pilot.press("f")
+            await pilot.pause()
+            assert app._filter_panel_visible
+            # Find the line for the first entry (entry idx 1)
+            line_for_first = None
+            for line_num, entry_idx in app._filter_line_to_entry.items():
+                if entry_idx == 1:
+                    line_for_first = line_num
+                    break
+            assert line_for_first is not None
+            first_key = app._filter_entries[0][0]
+            initial_hidden = set(app._hidden_statuses) | set(app._hidden_tags)
+            await pilot.click(
+                "#std-filter-content", offset=(2, line_for_first),
+            )
+            await pilot.pause()
+            after_hidden = set(app._hidden_statuses) | set(app._hidden_tags)
+            # The first entry should have been toggled
+            if first_key.startswith("status:"):
+                status = first_key[7:]
+                toggled = (status in after_hidden) != (status in initial_hidden)
+            else:
+                tag = first_key[4:]
+                toggled = (tag in after_hidden) != (tag in initial_hidden)
+            assert toggled, "Click should have toggled the filter entry"
+
+    async def test_click_on_header_line_is_noop(self, tmp_path: Path) -> None:
+        """Clicking on a section header does not toggle anything."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            await pilot.press("f")
+            await pilot.pause()
+            initial_hidden = len(app._hidden_statuses) + len(app._hidden_tags)
+            # Line 0 is the "Filters Active" header — not in mapping
+            await pilot.click("#std-filter-content", offset=(2, 0))
+            await pilot.pause()
+            after_hidden = len(app._hidden_statuses) + len(app._hidden_tags)
+            assert initial_hidden == after_hidden
+
+    async def test_click_ignored_when_panel_hidden(
+        self, tmp_path: Path,
+    ) -> None:
+        """on_click returns early when filter panel is not visible."""
+        from textual.events import Click
+        from textual.widgets import Static as StaticWidget
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            assert not app._filter_panel_visible
+            initial_hidden = len(app._hidden_statuses) + len(app._hidden_tags)
+            # Directly call on_click with a mock Click event
+            widget = app.query_one("#std-filter-content", StaticWidget)
+            event = Click(widget, 2, 3, 0, 0, 1, False, False, False)
+            app.on_click(event)
+            after_hidden = len(app._hidden_statuses) + len(app._hidden_tags)
+            assert initial_hidden == after_hidden
+
+    async def test_click_ignored_on_non_static_widget(
+        self, tmp_path: Path,
+    ) -> None:
+        """on_click returns early when clicked widget is not a Static."""
+        from textual.events import Click
+        from textual.widgets import DataTable as DT
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            await pilot.press("f")
+            await pilot.pause()
+            initial_hidden = len(app._hidden_statuses) + len(app._hidden_tags)
+            # Call on_click with a non-Static widget
+            table = app.query_one("#std-table", DT)
+            event = Click(table, 2, 3, 0, 0, 1, False, False, False)
+            app.on_click(event)
+            after_hidden = len(app._hidden_statuses) + len(app._hidden_tags)
+            assert initial_hidden == after_hidden
+
+    async def test_click_ignored_on_other_static(
+        self, tmp_path: Path,
+    ) -> None:
+        """on_click returns early when Static widget is not a filter panel."""
+        from textual.events import Click
+        from textual.widgets import Static as StaticWidget
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            await pilot.press("f")
+            await pilot.pause()
+            initial_hidden = len(app._hidden_statuses) + len(app._hidden_tags)
+            # Call on_click with a Static that's not a filter panel
+            detail = app.query_one("#std-detail-content", StaticWidget)
+            event = Click(detail, 2, 3, 0, 0, 1, False, False, False)
+            app.on_click(event)
+            after_hidden = len(app._hidden_statuses) + len(app._hidden_tags)
+            assert initial_hidden == after_hidden
+
+    async def test_click_on_entries_beyond_9(self, tmp_path: Path) -> None:
+        """Clicking entries beyond index 9 works (unlike keyboard shortcuts)."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(130, 42)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            await pilot.press("f")
+            await pilot.pause()
+            # Find entries beyond index 9 (tags in our fixture)
+            beyond_9_line = None
+            beyond_9_idx = None
+            for line_num, entry_idx in app._filter_line_to_entry.items():
+                if entry_idx > 9:
+                    beyond_9_line = line_num
+                    beyond_9_idx = entry_idx
+                    break
+            if beyond_9_idx is None:
+                pytest.skip("Not enough entries to test beyond index 9")
+            entry_key = app._filter_entries[beyond_9_idx - 1][0]
+            initial_hidden = set(app._hidden_statuses) | set(app._hidden_tags)
+            # Wide mode uses #filter-panel-content
+            await pilot.click(
+                "#filter-panel-content", offset=(2, beyond_9_line),
+            )
+            await pilot.pause()
+            after_hidden = set(app._hidden_statuses) | set(app._hidden_tags)
+            if entry_key.startswith("status:"):
+                name = entry_key[7:]
+                toggled = (name in after_hidden) != (name in initial_hidden)
+            else:
+                name = entry_key[4:]
+                toggled = (name in after_hidden) != (name in initial_hidden)
+            assert toggled, (
+                f"Click on entry {beyond_9_idx} (line {beyond_9_line}) "
+                "should have toggled the filter"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Disambiguate screen & prefix resolution
+# ---------------------------------------------------------------------------
+
+
+class TestDisambiguateScreen:
+    """Test the DisambiguateScreen modal for ambiguous prefix resolution."""
+
+    async def test_renders_candidates(self, tmp_path: Path) -> None:
+        """DisambiguateScreen displays candidate items."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import OptionList as OL
+
+        candidates = [
+            ("INV-aaaa-bbbb-cccc-dddd", "Symbol IDs must be stable"),
+            ("INV-aaaa-xxxx-yyyy-zzzz", "Routes need validation"),
+        ]
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            screen = DisambiguateScreen("INV-aaaa", candidates)
+            app.push_screen(screen)
+            for _ in range(20):
+                await pilot.pause()
+            ol = screen.query_one("#disambig-list", OL)
+            assert ol.option_count == 2
+
+    async def test_select_returns_full_id(self, tmp_path: Path) -> None:
+        """Selecting an option dismisses with the full ID."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        candidates = [
+            ("INV-aaaa-bbbb", "First"),
+            ("INV-aaaa-cccc", "Second"),
+        ]
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            result_holder: list[str | None] = []
+            app.push_screen(
+                DisambiguateScreen("INV-aaaa", candidates),
+                callback=result_holder.append,
+            )
+            for _ in range(20):
+                await pilot.pause()
+            # Select first option via Enter
+            await pilot.press("enter")
+            await pilot.pause()
+            assert result_holder == ["INV-aaaa-bbbb"]
+
+    async def test_cancel_returns_none(self, tmp_path: Path) -> None:
+        """Escape dismisses with None."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        candidates = [
+            ("INV-aaaa-bbbb", "First"),
+            ("INV-aaaa-cccc", "Second"),
+        ]
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            result_holder: list[str | None] = []
+            app.push_screen(
+                DisambiguateScreen("INV-aaaa", candidates),
+                callback=result_holder.append,
+            )
+            for _ in range(20):
+                await pilot.pause()
+            # Press escape to cancel
+            await pilot.press("escape")
+            await pilot.pause()
+            assert result_holder == [None]
+
+    async def test_cancel_button_returns_none(self, tmp_path: Path) -> None:
+        """Cancel button press dismisses with None."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        candidates = [
+            ("INV-aaaa-bbbb", "First"),
+        ]
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            result_holder: list[str | None] = []
+            app.push_screen(
+                DisambiguateScreen("INV-aaaa", candidates),
+                callback=result_holder.append,
+            )
+            for _ in range(20):
+                await pilot.pause()
+            # Click Cancel button via pilot
+            await pilot.click("#cancel")
+            await pilot.pause()
+            assert result_holder == [None]
+
+
+class TestResolveIds:
+    """Test TrackerApp._resolve_ids callback-based prefix resolution."""
+
+    async def test_unique_prefix_resolves(self, tmp_path: Path) -> None:
+        """Unique prefix is resolved to full ID via TrackerSet._resolve_id."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = ts.list_items()
+            full_id = items[0].id
+            result_holder: list[list[str] | None] = []
+            app._resolve_ids([full_id], result_holder.append)
+            assert result_holder == [[full_id]]
+
+    async def test_not_found_returns_none(self, tmp_path: Path) -> None:
+        """Non-existent prefix calls back with None."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            result_holder: list[list[str] | None] = []
+            app._resolve_ids(["NONEXISTENT-xxxxx"], result_holder.append)
+            assert result_holder == [None]
+
+    async def test_ambiguous_shows_disambiguate_screen(
+        self, tmp_path: Path,
+    ) -> None:
+        """Ambiguous prefix pushes DisambiguateScreen; selection resolves."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            candidates = [
+                ("INV-aaaa-bbbb", "First"),
+                ("INV-aaaa-cccc", "Second"),
+            ]
+            result_holder: list[list[str] | None] = []
+            with patch.object(
+                ts, "_resolve_id",
+                side_effect=AmbiguousPrefixError("INV-aaaa", candidates),
+            ):
+                app._resolve_ids(["INV-aaaa"], result_holder.append)
+            # Wait for DisambiguateScreen to appear
+            for _ in range(20):
+                await pilot.pause()
+                if any(
+                    isinstance(s, DisambiguateScreen)
+                    for s in app.screen_stack
+                ):
+                    break
+            # Select first option
+            await pilot.press("enter")
+            await pilot.pause()
+            assert result_holder == [["INV-aaaa-bbbb"]]
+
+    async def test_ambiguous_cancel_returns_none(
+        self, tmp_path: Path,
+    ) -> None:
+        """Cancelling disambiguation calls back with None."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            candidates = [
+                ("INV-aaaa-bbbb", "First"),
+                ("INV-aaaa-cccc", "Second"),
+            ]
+            result_holder: list[list[str] | None] = []
+            with patch.object(
+                ts, "_resolve_id",
+                side_effect=AmbiguousPrefixError("INV-aaaa", candidates),
+            ):
+                app._resolve_ids(["INV-aaaa"], result_holder.append)
+            for _ in range(20):
+                await pilot.pause()
+                if any(
+                    isinstance(s, DisambiguateScreen)
+                    for s in app.screen_stack
+                ):
+                    break
+            await pilot.press("escape")
+            await pilot.pause()
+            assert result_holder == [None]
+
+    async def test_multiple_ids_resolve_sequentially(
+        self, tmp_path: Path,
+    ) -> None:
+        """Multiple IDs are resolved one by one."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            items = ts.list_items()
+            id_a = items[0].id
+            id_b = items[1].id
+            result_holder: list[list[str] | None] = []
+            app._resolve_ids([id_a, id_b], result_holder.append)
+            assert result_holder == [[id_a, id_b]]
