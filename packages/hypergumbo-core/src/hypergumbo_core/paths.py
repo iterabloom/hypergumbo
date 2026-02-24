@@ -146,6 +146,7 @@ def is_utility_file(path: str) -> bool:
     - docs_src/, docs/, documentation/ (documentation source)
     - examples/, example/, samples/ (example code)
     - scripts/, tools/, bin/ (utility scripts)
+    - dev/, contrib/, hack/ (dev tooling / contributor scripts)
     - benchmarks/, benchmark/, bench/ (performance tests)
 
     Args:
@@ -164,6 +165,8 @@ def is_utility_file(path: str) -> bool:
         "examples", "example", "samples", "sample", "demos", "demo",
         # Scripts/tools
         "scripts", "tools", "bin", "utils", "utilities",
+        # Dev/contrib (e.g., Airflow dev/, Kubernetes hack/, contrib/ dirs)
+        "dev", "contrib", "hack",
         # Build systems
         "vcbuild", "cmake",
         # Benchmarks

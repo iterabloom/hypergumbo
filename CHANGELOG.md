@@ -53,6 +53,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Kafka Connect framework patterns**: SinkTask, SourceTask, SinkConnector, and SourceConnector base class patterns detected as controller entrypoints. Framework detection from `connect-api` in Maven/Gradle builds. Enables entrypoint detection for streaming data connectors (e.g., Apache Iceberg's IcebergSinkTask, Debezium connectors).
 - **XORM framework detection**: XORM ORM (used by Forgejo/Gitea) detected via `xorm.io/xorm` in `go.mod`. Engine operation patterns (`Get`, `Find`, `Insert`, `Update`, `Delete`, etc.) matched as repository concepts.
 - **FastAPI named router detection**: Named routers (`dag_run_router.get`, `connections_router.post`, `v1_router.delete`, etc.) now match FastAPI route patterns, not just bare `app` or `router` variables. Surfaces ~200 previously invisible routes in projects like Apache Airflow that use `APIRouter` with descriptive variable names. Also applies to middleware, exception_handler, and lifecycle patterns.
+- **Dev/contrib utility file detection**: `dev/`, `contrib/`, and `hack/` directories are now classified as utility files. Prevents dev tooling scripts (e.g., Airflow's `dev/check_*.py`, `dev/update_*.py`) from dominating centrality rankings and entrypoint lists.
 
 #### CLI & developer tooling
 

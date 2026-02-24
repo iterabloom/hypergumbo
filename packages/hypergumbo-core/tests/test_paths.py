@@ -286,6 +286,17 @@ class TestIsUtilityFile:
         assert is_utility_file("vcbuild/msvc-lib.d") is True
         assert is_utility_file("cmake/FindFoo.cmake") is True
 
+    def test_dev_directories(self) -> None:
+        """Files in dev/ directories are utility files."""
+        assert is_utility_file("dev/check_providers.py") is True
+        assert is_utility_file("dev/update_versions.py") is True
+        assert is_utility_file("dev/breeze/src/tool.py") is True
+
+    def test_contrib_and_hack_directories(self) -> None:
+        """Files in contrib/ and hack/ directories are utility files."""
+        assert is_utility_file("contrib/nginx.conf") is True
+        assert is_utility_file("hack/update-codegen.sh") is True
+
     def test_not_utility_file(self) -> None:
         """Regular source files are not utility files."""
         assert is_utility_file("src/main.py") is False
