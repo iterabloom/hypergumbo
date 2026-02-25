@@ -46,3 +46,31 @@
   nonce: 55fd  # 55fd
   set:  # 55fd
     status: todo_soft  # 55fd
+- op: update  # 0702
+  at: '2026-02-25T20:49:26Z'  # 0702
+  by: agent  # 0702
+  actor: jgstern_agent  # 0702
+  clock: 5  # 0702
+  nonce: '0702'  # 0702
+  set: {}  # 0702
+- op: discuss  # 23bc
+  at: '2026-02-25T20:49:26Z'  # 23bc
+  by: agent  # 23bc
+  actor: jgstern_agent  # 23bc
+  clock: 6  # 23bc
+  nonce: 23bc  # 23bc
+  message: "Go-swagger handler cache route detection implemented (PR #1466). Alertmanager v2 routes now visible (9 routes). Next: re-run alertmanager assessment, then deep-dive prometheus and kserve."  # 23bc
+- op: update  # 99a3
+  at: '2026-02-25T21:20:51Z'  # 99a3
+  by: agent  # 99a3
+  actor: jgstern_agent  # 99a3
+  clock: 7  # 99a3
+  nonce: 99a3  # 99a3
+  set: {}  # 99a3
+- op: discuss  # 5066
+  at: '2026-02-25T21:20:51Z'  # 5066
+  by: agent  # 5066
+  actor: jgstern_agent  # 5066
+  clock: 8  # 5066
+  nonce: '5066'  # 5066
+  message: "FastAPI add_api_route detection implemented (PR #1467). kserve routes: 6→21. Combined with go-swagger (PR #1466, alertmanager 13→22), both route detection gaps from prior assessments are now fixed. Remaining issues: method-name collision false positives in prometheus reverse slice, centrality ranking inaccuracies across all 3 repos."  # 5066
