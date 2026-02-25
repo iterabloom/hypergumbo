@@ -343,7 +343,8 @@ def apply_noise_weights(
 # plumbing, not architecture.  Matching is case-insensitive.
 #
 # Categories:
-#   - Logging: Logger, getLogger, log_message
+#   - Logging classes: Logger, getLogger, log_message
+#   - Logging methods: log, warn, error, debug, info, trace, fatal (+ Go fmt variants)
 #   - Timing: Clock, DefaultClock, SystemClock
 #   - Metrics: Metrics, MetricsCollector, metricsRecorder
 #   - Error sentinels: ErrNotFound, ErrTimeout (Go convention)
@@ -353,6 +354,11 @@ _UTILITY_SYMBOL_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"(?i)logger$"),          # Logger, AppLogger, getLogger
     re.compile(r"(?i)^get_?logger$"),    # getLogger, get_logger
     re.compile(r"(?i)^log_"),            # log_message, log_error
+    # Logging method names — exact match with optional format suffix (f/ln).
+    # Catches: log, warn, error, debug, info, trace, fatal, Errorf, Warnln, Printf.
+    # Avoids false positives: login, logout, dialog, catalog, handleError, UserInfo,
+    # information, debugger, traceback, warningLevel, fatalError, ErrorHandler.
+    re.compile(r"(?i)^(?:log|warn|error|debug|info|trace|fatal|print)(?:f|ln)?$"),
     re.compile(r"(?i)clock$"),           # Clock, DefaultClock, SystemClock
     re.compile(r"(?i)^metrics"),         # Metrics, MetricsCollector
     re.compile(r"(?i)^err[A-Z_]"),       # ErrNotFound, ErrTimeout, err_invalid
@@ -380,6 +386,21 @@ def is_utility_symbol(name: str) -> bool:
     return any(p.search(name) for p in _UTILITY_SYMBOL_PATTERNS)
 
 
+# Concepts from framework YAML patterns that indicate infrastructure logging.
+# Symbols enriched with these concepts by logging-conventions.yaml get dampened.
+_LOGGING_CONCEPTS: frozenset[str] = frozenset({"logging", "logger"})
+
+
+def _has_logging_concept(symbol: "Symbol | None") -> bool:
+    """Check if a symbol has a logging-related framework concept."""
+    if symbol is None or not symbol.meta:
+        return False
+    for concept in symbol.meta.get("concepts", []):
+        if isinstance(concept, dict) and concept.get("concept") in _LOGGING_CONCEPTS:
+            return True
+    return False
+
+
 def apply_utility_symbol_weights(
     centrality: Dict[str, float],
     symbols: List[Symbol],
@@ -388,14 +409,16 @@ def apply_utility_symbol_weights(
     """Apply utility symbol weighting to centrality scores.
 
     Symbols whose names match infrastructure utility patterns (loggers,
-    clocks, metrics, STL accessors) get their centrality reduced by
-    utility_weight. This prevents infrastructure hubs from dominating
-    rankings even after hub saturation dampening.
+    clocks, metrics, STL accessors) OR whose framework concepts indicate
+    logging infrastructure get their centrality reduced by utility_weight.
+    This prevents infrastructure hubs from dominating rankings even after
+    hub saturation dampening.
 
-    This addresses INV-mahap finding: DefaultClock.Now (in-degree 474)
-    dominates vault rankings because hub saturation at 100 only reduces
-    effective_in to ~106, which is still the highest in the codebase.
-    Symbol-level utility detection provides the missing signal.
+    Two detection mechanisms (INV-mosag):
+    1. Name-based: regex patterns in _UTILITY_SYMBOL_PATTERNS
+    2. Concept-based: symbols enriched with "logging" concept by
+       logging-conventions.yaml (catches custom logger wrappers,
+       log bridges, logger factory classes)
 
     Args:
         centrality: Centrality scores (possibly already tier-weighted).
@@ -405,11 +428,12 @@ def apply_utility_symbol_weights(
     Returns:
         Dictionary mapping symbol ID to utility-weighted centrality score.
     """
-    symbol_names = {s.id: s.name for s in symbols}
+    symbol_lookup = {s.id: s for s in symbols}
     weighted = {}
     for sid, score in centrality.items():
-        name = symbol_names.get(sid, "")
-        if is_utility_symbol(name):
+        sym = symbol_lookup.get(sid)
+        name = sym.name if sym else ""
+        if is_utility_symbol(name) or _has_logging_concept(sym):
             weighted[sid] = score * utility_weight
         else:
             weighted[sid] = score

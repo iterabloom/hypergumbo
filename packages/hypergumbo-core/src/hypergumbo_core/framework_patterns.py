@@ -1001,6 +1001,7 @@ def enrich_symbols(
     # - config-conventions.yaml: NPM, Maven, Cargo dependency patterns
     # - naming-conventions.yaml: Controller, Handler, Service naming heuristics (0.70)
     # - library-exports.yaml: JS/TS index exports, Go exported symbols, Elixir modules
+    # - logging-conventions.yaml: Logger classes, factory methods, log bridges
     for convention_id in (
         "main-functions",
         "test-frameworks",
@@ -1008,6 +1009,7 @@ def enrich_symbols(
         "config-conventions",
         "naming-conventions",
         "library-exports",
+        "logging-conventions",
     ):
         convention_patterns = load_framework_patterns(convention_id)
         if convention_patterns:

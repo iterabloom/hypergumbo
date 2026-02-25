@@ -27,6 +27,7 @@ from hypergumbo_core.ranking import (
     compute_symbol_mention_centrality,
     compute_symbol_mention_centrality_batch,
     _compute_centrality_with_python,
+    _has_logging_concept,
 )
 
 
@@ -1920,6 +1921,61 @@ class TestIsUtilitySymbol:
         assert is_utility_symbol("__hash__")
         assert is_utility_symbol("__eq__")
 
+    def test_logging_method_names(self):
+        """Universal logging method names are detected.
+
+        These are the methods that appear at top of rankings in bakeoff
+        repos (forgejo: XORMLogBridge.Errorf rank 2, kong: log rank 2,
+        postal: Base#log rank 7). Covers all common logging verb patterns.
+        """
+        # Core logging verbs (exact match, case-insensitive)
+        assert is_utility_symbol("log")
+        assert is_utility_symbol("Log")
+        assert is_utility_symbol("warn")
+        assert is_utility_symbol("Warn")
+        assert is_utility_symbol("debug")
+        assert is_utility_symbol("Debug")
+        assert is_utility_symbol("info")
+        assert is_utility_symbol("Info")
+        assert is_utility_symbol("trace")
+        assert is_utility_symbol("Trace")
+        assert is_utility_symbol("fatal")
+        assert is_utility_symbol("Fatal")
+        assert is_utility_symbol("error")
+        assert is_utility_symbol("Error")
+        # Go-style format variants
+        assert is_utility_symbol("Errorf")
+        assert is_utility_symbol("Warnf")
+        assert is_utility_symbol("Debugf")
+        assert is_utility_symbol("Infof")
+        assert is_utility_symbol("Tracef")
+        assert is_utility_symbol("Fatalf")
+        assert is_utility_symbol("Logf")
+        assert is_utility_symbol("Printf")
+        # Prefixed variants
+        assert is_utility_symbol("Warnln")
+        assert is_utility_symbol("Errorln")
+        assert is_utility_symbol("Println")
+
+    def test_logging_names_not_false_positive(self):
+        """Domain terms containing logging substrings are NOT matched.
+
+        'error' and 'info' are substrings of many domain-relevant names.
+        The patterns must not false-positive on these.
+        """
+        assert not is_utility_symbol("handleError")
+        # ErrorHandler IS matched by Go error sentinel pattern (?i)^err[A-Z_] — correct
+        assert not is_utility_symbol("UserInfo")
+        assert not is_utility_symbol("information")
+        assert not is_utility_symbol("traceback")
+        assert not is_utility_symbol("debugger")
+        assert not is_utility_symbol("warningLevel")
+        assert not is_utility_symbol("fatalError")  # compound word, not log method
+        assert not is_utility_symbol("login")
+        assert not is_utility_symbol("logout")
+        assert not is_utility_symbol("dialog")
+        assert not is_utility_symbol("catalog")
+
     def test_domain_names_not_matched(self):
         """Domain-relevant symbol names are NOT detected as utility."""
         assert not is_utility_symbol("handleRequest")
@@ -2003,6 +2059,60 @@ class TestApplyUtilitySymbolWeights:
         assert router_ranked.rank < logger_ranked.rank, (
             f"Router (rank {router_ranked.rank}) should outrank "
             f"Logger (rank {logger_ranked.rank}) due to utility dampening"
+        )
+
+
+class TestHasLoggingConcept:
+    """Tests for _has_logging_concept — concept-based logging detection."""
+
+    def test_symbol_with_logging_concept(self):
+        """Symbol enriched with 'logging' concept is detected."""
+        sym = make_symbol("XORMLogBridge", path="src/log.go", language="go")
+        sym.meta = {"concepts": [{"concept": "logging", "framework": "logging-conventions"}]}
+        assert _has_logging_concept(sym)
+
+    def test_symbol_with_logger_concept(self):
+        """Symbol enriched with 'logger' concept is detected."""
+        sym = make_symbol("MyCustomLog", path="src/log.py")
+        sym.meta = {"concepts": [{"concept": "logger", "framework": "laminas"}]}
+        assert _has_logging_concept(sym)
+
+    def test_symbol_without_logging_concept(self):
+        """Symbol with non-logging concept is not detected."""
+        sym = make_symbol("UserController", path="src/controller.py")
+        sym.meta = {"concepts": [{"concept": "route", "framework": "django"}]}
+        assert not _has_logging_concept(sym)
+
+    def test_symbol_without_meta(self):
+        """Symbol with no meta is not detected."""
+        sym = make_symbol("Something", path="src/main.py")
+        sym.meta = None
+        assert not _has_logging_concept(sym)
+
+    def test_symbol_without_concepts(self):
+        """Symbol with meta but no concepts is not detected."""
+        sym = make_symbol("Something", path="src/main.py")
+        sym.meta = {"decorators": ["@app.route"]}
+        assert not _has_logging_concept(sym)
+
+    def test_none_symbol(self):
+        """None symbol is not detected."""
+        assert not _has_logging_concept(None)
+
+    def test_concept_based_dampening_in_apply_utility(self):
+        """Symbols with logging concept are dampened by apply_utility_symbol_weights."""
+        bridge = make_symbol("XORMLogBridge", path="src/log_bridge.go", language="go")
+        bridge.meta = {"concepts": [{"concept": "logging", "framework": "logging-conventions"}]}
+        router = make_symbol("Router", path="src/router.go", language="go")
+
+        centrality = {bridge.id: 0.9, router.id: 0.7}
+        result = apply_utility_symbol_weights(centrality, [bridge, router])
+
+        assert result[bridge.id] == pytest.approx(0.09), (
+            "Logging-concept symbol should be dampened to 0.1x"
+        )
+        assert result[router.id] == 0.7, (
+            "Non-logging symbol should be unchanged"
         )
 
 

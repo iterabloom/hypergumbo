@@ -15629,3 +15629,131 @@ class TestKafkaConnectPatterns:
         )
         results = match_patterns(symbol, [pattern_def])
         assert len(results) == 0
+
+
+class TestLoggingConventionsPatterns:
+    """Tests for logging-conventions.yaml patterns (INV-mosag).
+
+    These patterns detect logging infrastructure symbols — logger classes,
+    factory methods, log bridges — to enable concept-based centrality
+    dampening in ranking.py.
+    """
+
+    def test_logging_conventions_yaml_loads(self) -> None:
+        """logging-conventions.yaml loads correctly."""
+        pattern_def = load_framework_patterns("logging-conventions")
+        assert pattern_def is not None
+        assert pattern_def.id == "logging-conventions"
+        assert pattern_def.language == "multi"
+        assert len(pattern_def.patterns) >= 5
+
+    def test_logger_class_by_inheritance(self) -> None:
+        """Class extending Logger matches logging concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("logging-conventions")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="python:app_logger.py:1-20:AppLogger:class",
+            name="AppLogger",
+            kind="class",
+            language="python",
+            path="src/app_logger.py",
+            span=Span(1, 20, 0, 0),
+            meta={"base_classes": ["Logger"]},
+        )
+        results = match_patterns(symbol, [pattern_def])
+        assert any(r["concept"] == "logging" for r in results)
+
+    def test_logger_class_by_name(self) -> None:
+        """Class with Logger suffix matches logging concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("logging-conventions")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="go:custom_logger.go:1-30:CustomLogger:struct",
+            name="CustomLogger",
+            kind="struct",
+            language="go",
+            path="pkg/custom_logger.go",
+            span=Span(1, 30, 0, 0),
+            meta={},
+        )
+        results = match_patterns(symbol, [pattern_def])
+        assert any(r["concept"] == "logging" for r in results)
+
+    def test_get_logger_factory(self) -> None:
+        """getLogger factory function matches logging concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("logging-conventions")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="python:logging_setup.py:5-10:getLogger:function",
+            name="getLogger",
+            kind="function",
+            language="python",
+            path="src/logging_setup.py",
+            span=Span(5, 10, 0, 0),
+            meta={},
+        )
+        results = match_patterns(symbol, [pattern_def])
+        assert any(r["concept"] == "logging" for r in results)
+
+    def test_log_bridge_class(self) -> None:
+        """Log bridge class (e.g. XORMLogBridge) matches logging concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("logging-conventions")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="go:xorm_log.go:10-50:XORMLogBridge:struct",
+            name="XORMLogBridge",
+            kind="struct",
+            language="go",
+            path="modules/log/xorm_log.go",
+            span=Span(10, 50, 0, 0),
+            meta={},
+        )
+        results = match_patterns(symbol, [pattern_def])
+        assert any(r["concept"] == "logging" for r in results)
+
+    def test_domain_class_not_matched(self) -> None:
+        """Domain classes (Router, UserService) do NOT match logging concept."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("logging-conventions")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="go:router.go:1-100:Router:struct",
+            name="Router",
+            kind="struct",
+            language="go",
+            path="pkg/router.go",
+            span=Span(1, 100, 0, 0),
+            meta={},
+        )
+        results = match_patterns(symbol, [pattern_def])
+        assert not any(r["concept"] == "logging" for r in results)
+
+    def test_enrich_symbols_with_logging_concept(self) -> None:
+        """enrich_symbols enriches Logger subclass with logging concept."""
+        clear_pattern_cache()
+
+        symbol = Symbol(
+            id="java:AppLogger.java:1-30:AppLogger:class",
+            name="AppLogger",
+            kind="class",
+            language="java",
+            path="src/main/java/com/app/AppLogger.java",
+            span=Span(1, 30, 0, 0),
+            meta={"base_classes": ["AbstractLogger"]},
+        )
+
+        enriched = enrich_symbols([symbol], set())
+        assert len(enriched) == 1
+        concepts = enriched[0].meta.get("concepts", [])
+        logging_concepts = [c for c in concepts if c.get("concept") == "logging"]
+        assert len(logging_concepts) >= 1
+        assert logging_concepts[0]["framework"] == "logging-conventions"
