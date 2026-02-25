@@ -45,3 +45,12 @@
   nonce: bff7  # bff7
   set:  # bff7
     status: violated  # bff7
+- op: update  # 6fc5
+  at: '2026-02-25T15:39:33Z'  # 6fc5
+  by: agent  # 6fc5
+  actor: jgstern_agent  # 6fc5
+  clock: 5  # 6fc5
+  nonce: 6fc5  # 6fc5
+  set:  # 6fc5
+    status: holding  # 6fc5
+    pr_ref: '#1450'  # 6fc5
