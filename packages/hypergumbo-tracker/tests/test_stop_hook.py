@@ -47,8 +47,21 @@ def _setup_tracker(tmp_path: Path) -> Path:
     return tracker_root
 
 
-def _add_item(ops_dir: Path, item_id: str, status: str = "todo_hard") -> None:
+def _add_item(
+    ops_dir: Path,
+    item_id: str,
+    status: str = "todo_hard",
+    kind: str = "work_item",
+    priority: int = 2,
+) -> None:
     """Write a simple ops file."""
+    fields_block = ""
+    if kind == "invariant":
+        fields_block = (
+            '    fields:\n'
+            '      statement: "test invariant statement"\n'
+            '      root_cause: "test root cause"\n'
+        )
     ops_content = textwrap.dedent(f"""\
         - op: create
           at: "2026-01-01T00:00:00Z"
@@ -57,11 +70,13 @@ def _add_item(ops_dir: Path, item_id: str, status: str = "todo_hard") -> None:
           clock: 1
           nonce: a1b2
           data:
-            kind: work_item
+            kind: {kind}
             title: "Item {item_id}"
             status: {status}
-            priority: 2
+            priority: {priority}
     """)
+    if fields_block:
+        ops_content = ops_content.rstrip("\n") + "\n" + fields_block
     (ops_dir / f".{item_id}.ops").write_text(ops_content)
 
 
@@ -452,6 +467,77 @@ class TestGenerateGuidance:
         assert hi_pos < mid_pos < lo_pos
 
 
+    def test_violated_invariants_in_own_section(self, tmp_path: Path) -> None:
+        """Violated invariants appear in '## Invariant Violations', not soft."""
+        tracker_root = _setup_tracker(tmp_path)
+        canonical_ops = tracker_root / "tracker" / ".ops"
+        _add_item(canonical_ops, "INV-bad", "violated", kind="invariant")
+        _add_item(canonical_ops, "WI-soft", "todo_soft")
+        _add_item(canonical_ops, "WI-hard", "todo_hard")
+
+        config = _make_config()
+        guidance_dir = tmp_path / "guidance"
+        result = generate_guidance(
+            tracker_root, guidance_dir=guidance_dir, config=config,
+        )
+        content = Path(result).read_text()
+
+        # Invariant violation gets its own section
+        assert "## Invariant Violations" in content
+        assert "## Hard TODO Items" in content
+        assert "## Soft TODO Items" in content
+
+        # Status summary counts violated items separately
+        assert "Invariant Violations: 1" in content
+
+        # INV item appears in violations section, not soft
+        inv_section_pos = content.index("## Invariant Violations")
+        soft_section_pos = content.index("## Soft TODO Items")
+        inv_item_pos = content.index("INV-bad")
+        assert inv_section_pos < inv_item_pos < soft_section_pos
+
+        # Guidance mentions invariant violations
+        assert "Invariant violations: these are blocking" in content
+
+        # No redundant status or tier in item lines
+        assert "status:" not in content
+        assert "tier:" not in content
+
+    def test_no_violated_skips_section(self, tmp_path: Path) -> None:
+        """When no violated items exist, the section is omitted."""
+        tracker_root = _setup_tracker(tmp_path)
+        canonical_ops = tracker_root / "tracker" / ".ops"
+        _add_item(canonical_ops, "WI-a", "todo_hard")
+
+        config = _make_config()
+        guidance_dir = tmp_path / "guidance"
+        result = generate_guidance(
+            tracker_root, guidance_dir=guidance_dir, config=config,
+        )
+        content = Path(result).read_text()
+        assert "## Invariant Violations" not in content
+        assert "Invariant violations: these are blocking" not in content
+
+    def test_guidance_drops_status_and_tier(self, tmp_path: Path) -> None:
+        """Item lines should not include redundant status: or tier: metadata."""
+        tracker_root = _setup_tracker(tmp_path)
+        canonical_ops = tracker_root / "tracker" / ".ops"
+        _add_item(canonical_ops, "WI-a", "todo_hard")
+        _add_item(canonical_ops, "WI-b", "todo_soft")
+
+        config = _make_config()
+        guidance_dir = tmp_path / "guidance"
+        result = generate_guidance(
+            tracker_root, guidance_dir=guidance_dir, config=config,
+        )
+        content = Path(result).read_text()
+        assert "status:" not in content
+        assert "tier:" not in content
+        # Items still appear with ID, priority, and title
+        assert "[WI-a] P2 Item WI-a" in content
+        assert "[WI-b] P2 Item WI-b" in content
+
+
 class TestGenerateGuidanceSafe:
     def test_safe_returns_path_on_success(self, tmp_path: Path) -> None:
         tracker_root = _setup_tracker(tmp_path)
@@ -530,6 +616,47 @@ class TestGenerateGuidanceUnreadMessages:
         assert "WI-ur" in content
         assert "1 with unread human message(s)" in content
         assert "check-messages" in content
+
+    def test_violated_item_with_unread_gets_count(self, tmp_path: Path) -> None:
+        """Violated invariant with unread message shows count in status."""
+        tracker_root = _setup_tracker(tmp_path)
+        canonical_ops = tracker_root / "tracker" / ".ops"
+        # Write invariant ops with discussion inline
+        ops_content = textwrap.dedent("""\
+            - op: create
+              at: "2026-01-01T00:00:00Z"
+              by: agent
+              actor: test_agent
+              clock: 1
+              nonce: a1b2
+              data:
+                kind: invariant
+                title: "Bad invariant"
+                status: violated
+                priority: 2
+                fields:
+                  statement: "X must be true"
+                  root_cause: "X is false"
+            - op: discuss
+              at: "2026-01-15T10:00:00Z"
+              by: human
+              actor: jgstern
+              clock: 10
+              nonce: d001
+              message: "please investigate"
+        """)
+        (canonical_ops / ".INV-viol.ops").write_text(ops_content)
+
+        config = _make_config()
+        guidance_dir = tmp_path / "guidance"
+        result = generate_guidance(
+            tracker_root, guidance_dir=guidance_dir, config=config,
+        )
+        content = Path(result).read_text()
+        assert "Invariant Violations: 1" in content
+        assert "1 with unread human message(s)" in content
+        assert "INV-viol" in content
+        assert "**[UNREAD]**" in content
 
     def test_non_blocking_item_with_unread(self, tmp_path: Path) -> None:
         """Non-blocking item with trailing human message appears in separate section."""

@@ -11,7 +11,7 @@ Design rationale:
   intentional — a broken tracker should not silently allow stopping.
 - Hard/soft distinction: --hard returns only statuses containing "hard"
   from the blocking_statuses list. --soft returns the remainder.
-  This matches the **TODO!** (hard) vs **TODO** (soft) convention.
+  This matches the hard/soft TODO convention.
 - hash_todos provides a fingerprint for circuit-breaker detection:
   if the hash hasn't changed between stop attempts, no progress was made.
 - generate_guidance writes a markdown file listing blocking items sorted
@@ -227,24 +227,33 @@ def generate_guidance(
         tiers_to_check = list(Tier)
 
     hard_items: list[CompiledItem] = []
+    violated_items: list[CompiledItem] = []
     soft_items: list[CompiledItem] = []
     all_items: list[CompiledItem] = []
 
     for t in tiers_to_check:
         store = ts._tier_stores[t]
         for item in store._compile_all():
+            item.tier = t
             all_items.append(item)
             if item.status in hard_statuses:
                 hard_items.append(item)
+            elif item.status == "violated":
+                violated_items.append(item)
             elif item.status in soft_statuses:
                 soft_items.append(item)
 
     # Sort by priority (ascending — P0 first) then ID for stability
     hard_items.sort(key=lambda i: (i.priority, i.id))
+    violated_items.sort(key=lambda i: (i.priority, i.id))
     soft_items.sort(key=lambda i: (i.priority, i.id))
 
     # Scan for unread human messages
-    blocking_ids = {i.id for i in hard_items} | {i.id for i in soft_items}
+    blocking_ids = (
+        {i.id for i in hard_items}
+        | {i.id for i in violated_items}
+        | {i.id for i in soft_items}
+    )
     items_with_unread_blocking: set[str] = set()
     unread_non_blocking: list[CompiledItem] = []
 
@@ -270,6 +279,13 @@ def generate_guidance(
     unread_hard_count = sum(1 for i in hard_items if i.id in items_with_unread_blocking)
     if unread_hard_count:
         lines.append(f"  > {unread_hard_count} with unread human message(s)")
+    if violated_items:
+        lines.append(f"- Invariant Violations: {len(violated_items)}")
+        unread_violated_count = sum(
+            1 for i in violated_items if i.id in items_with_unread_blocking
+        )
+        if unread_violated_count:
+            lines.append(f"  > {unread_violated_count} with unread human message(s)")
     lines.append(f"- Soft TODO Items: {len(soft_items)}")
     unread_soft_count = sum(1 for i in soft_items if i.id in items_with_unread_blocking)
     if unread_soft_count:
@@ -279,24 +295,29 @@ def generate_guidance(
     lines.append("")
 
     if hard_items:
-        lines.append("## Hard TODO Items (TODO! — investigate deeply, assume structural)")
+        lines.append("## Hard TODO Items")
         for item in hard_items:
-            tier_str = item.tier.value if item.tier else "unknown"
             unread_tag = " **[UNREAD]**" if item.id in items_with_unread_blocking else ""
             lines.append(
-                f"- [{item.id}] P{item.priority} {item.title} "
-                f"(status: {item.status}, tier: {tier_str}){unread_tag}"
+                f"- [{item.id}] P{item.priority} {item.title}{unread_tag}"
+            )
+        lines.append("")
+
+    if violated_items:
+        lines.append("## Invariant Violations")
+        for item in violated_items:
+            unread_tag = " **[UNREAD]**" if item.id in items_with_unread_blocking else ""
+            lines.append(
+                f"- [{item.id}] P{item.priority} {item.title}{unread_tag}"
             )
         lines.append("")
 
     if soft_items:
-        lines.append("## Soft TODO Items (TODO — address or defer freely)")
+        lines.append("## Soft TODO Items")
         for item in soft_items:
-            tier_str = item.tier.value if item.tier else "unknown"
             unread_tag = " **[UNREAD]**" if item.id in items_with_unread_blocking else ""
             lines.append(
-                f"- [{item.id}] P{item.priority} {item.title} "
-                f"(status: {item.status}, tier: {tier_str}){unread_tag}"
+                f"- [{item.id}] P{item.priority} {item.title}{unread_tag}"
             )
         lines.append("")
 
@@ -304,12 +325,10 @@ def generate_guidance(
         lines.append("## Unread Human Messages (non-blocking)")
         lines.append("These items have unread human messages but are not in blocking status.")
         for item in unread_non_blocking:
-            tier_str = item.tier.value if item.tier else "unknown"
             msgs = unread_human_messages(item)
             lines.append(
                 f"- [{item.id}] P{item.priority} {item.title} "
-                f"(status: {item.status}, tier: {tier_str}, "
-                f"{len(msgs)} unread)"
+                f"({len(msgs)} unread)"
             )
         lines.append("")
 
@@ -318,6 +337,11 @@ def generate_guidance(
         "Hard TODO items: investigate deeply; assume the item is "
         "a symptom of a structural defect."
     )
+    if violated_items:
+        lines.append(
+            "Invariant violations: these are blocking. Investigate the "
+            "root cause and fix or escalate."
+        )
     lines.append(
         "Soft TODO items: resolve the issue normally. As always, "
         "revise your beliefs when new information comes to light."
