@@ -110,9 +110,12 @@ EOF
 fi
 
 # --- Check loop sentinel ---
+# When --mode broad|deep is explicit, imply the sentinel is present for simulation
 LOOP_SENTINEL="absent"
 if [[ -f "$REPO_ROOT/.agent/LOOP" ]]; then
   LOOP_SENTINEL="present"
+elif [[ -n "$REQUESTED_MODE" && "$MODE" != "OFF" && "$MODE" != "FALSE" ]]; then
+  LOOP_SENTINEL="present (implied by --mode $MODE)"
 fi
 
 # If loop sentinel is missing, the stop hook would approve
