@@ -241,11 +241,46 @@ class BakeoffFeaturesState:
     verdicts: list = field(default_factory=list)
     created_at: str = ""
     updated_at: str = ""
+    hypergumbo_code_hash: str = ""
 
 
 # =============================================================================
 # Utility functions
 # =============================================================================
+
+def compute_hypergumbo_code_hash() -> str:
+    """Compute SHA-256 hash of hypergumbo source files.
+
+    Hashes all .py files under packages/hypergumbo-*/src/ and framework
+    YAML files. Used to detect when hypergumbo code hasn't changed between
+    bakeoff iterations, allowing skip of redundant re-analysis.
+    """
+    h = hashlib.sha256()
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    packages_dir = os.path.join(repo_root, "packages")
+
+    if not os.path.isdir(packages_dir):
+        return ""
+
+    source_files = []
+    for dirpath, _dirnames, filenames in os.walk(packages_dir):
+        # Only hash src/ directories (not tests/)
+        if "/src/" not in dirpath and "\\src\\" not in dirpath:
+            continue
+        for f in filenames:
+            if f.endswith((".py", ".yaml", ".yml")):
+                source_files.append(os.path.join(dirpath, f))
+
+    # Sort for deterministic ordering
+    for fpath in sorted(source_files):
+        try:
+            with open(fpath, "rb") as fp:
+                h.update(fp.read())
+        except OSError:
+            pass
+
+    return h.hexdigest()[:16]  # Short hash is sufficient
+
 
 def get_dir_size(path: str) -> int:
     """Get directory size in bytes."""
@@ -814,14 +849,31 @@ def cmd_run(args):
 
     pool_path = os.environ.get("BAKEOFF_FEATURES_POOL", state.pool_path)
 
+    # No-change check: skip re-analysis when hypergumbo source unchanged
+    current_hash = compute_hypergumbo_code_hash()
+    if current_hash and current_hash == state.hypergumbo_code_hash and state.iteration > 0:
+        prev_dir = os.path.join(
+            workdir, "out",
+            f"cohort-{state.cohort_number:03d}",
+            f"iter-{state.iteration:03d}",
+        )
+        if os.path.isdir(prev_dir):
+            print(f"⏭️  Skipping: hypergumbo code unchanged (hash {current_hash})")
+            print(f"   Previous results: {prev_dir}")
+            print("   To force re-run, delete the previous iteration directory.")
+            return 0
+
     # Increment iteration
     state.iteration += 1
+    state.hypergumbo_code_hash = current_hash
     out_dir = os.path.join(workdir, "out", f"cohort-{state.cohort_number:03d}", f"iter-{state.iteration:03d}")
     os.makedirs(out_dir, exist_ok=True)
     save_state(state)
 
     print(f"Feature bakeoff run: cohort #{state.cohort_number}, iteration #{state.iteration}")
     print(f"Output: {out_dir}")
+    if current_hash:
+        print(f"Code hash: {current_hash}")
     print()
 
     for repo_name in state.current_cohort:
