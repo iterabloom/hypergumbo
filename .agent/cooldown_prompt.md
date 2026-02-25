@@ -3,9 +3,9 @@
 Reflection was completed recently. Instead of re-running the full checklist, **act on what the last reflection identified.**
 
 ## 1. Implement Next Actions
-The stop hook injects `LAST REFLECTION NOTES` below (from `last_stop_check.json`). These are concrete next actions from the most recent reflection cycle.
+Below you will find the `LAST REFLECTION NOTES` (from `last_stop_check.json`). These are concrete next actions from the most recent reflection cycle.
 
-**If notes contain implementation tasks** (e.g., "add Go library-export patterns", "fix entrypoint fallback"):
+**If notes contain implementation tasks**:
 - Start immediately. Follow TDD: write failing test, make it pass, refactor, PR.
 - This is the highest priority. Do not do more analysis if there's implementation work to do.
 
@@ -13,13 +13,12 @@ The stop hook injects `LAST REFLECTION NOTES` below (from `last_stop_check.json`
 - Check the tracker for ready items: `scripts/tracker ready` (sorted by priority).
 - Check the lab notebook (`~/hypergumbo_lab_notebook/`) for recent entries with implementation-ready insights.
 - Check the DEEP/BROAD priority queues in `AGENTS.md` for the next work item.
-- Check the tracker for hard TODOs: `scripts/tracker list --status todo_hard`.
 
 ## 2. Lab Notebook Mining
 If Section 1 didn't yield implementation work, mine the lab notebook:
-- `ls -t ~/hypergumbo_lab_notebook/*.md | head -5` — find recent entries
+- `ls -t ~/hypergumbo_lab_notebook/*.md | head -10` — find recent entries
 - Look for hypotheses, bug reports, or feature gaps that suggest concrete code changes
-- Governance ideas tagged `[GOVERNANCE-IDEA]` can be implemented if they don't touch gated files, or can be proposed as PRs if they do touch gated files
+- Governance ideas tagged `[GOVERNANCE-IDEA]` should be added to the tracker with status `needs_human_review`
 
 ## 3. Analysis & Tooling (Only If Nothing to Implement)
 Only resort to analysis if Sections 1-2 produced no implementation work:
