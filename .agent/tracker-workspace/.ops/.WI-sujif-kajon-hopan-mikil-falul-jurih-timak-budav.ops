@@ -1,0 +1,19 @@
+- op: create  # 06f8
+  at: '2026-02-25T18:38:38Z'  # 06f8
+  by: agent  # 06f8
+  actor: jgstern_agent  # 06f8
+  clock: 1  # 06f8
+  nonce: 06f8  # 06f8
+  data:  # 06f8
+    kind: work_item  # 06f8
+    title: "ci-debug status reports misleading 'Overall: failure' when ci-complete passed"  # 06f8
+    status: needs_human_review  # 06f8
+    priority: 2  # 06f8
+    parent:  # 06f8
+    tags: []  # 06f8
+    before: []  # 06f8
+    duplicate_of: []  # 06f8
+    not_duplicate_of: []  # 06f8
+    pr_ref:  # 06f8
+    description: "When pytest fails but pytest-retry succeeds and ci-complete passes, ci-debug status reports 'Overall: failure'. This is misleading — CI actually passed. The script should check ci-complete status and report 'Overall: success (recovered)' when ci-complete succeeds despite individual job failures. Additionally, Codeberg branch protection may need reconfiguration to gate on ci-complete rather than all individual jobs, since the retry mechanism exists specifically to handle flaky failures. Both ci-debug and merge-pr are governance files requiring human approval."  # 06f8
+    fields: {}  # 06f8
