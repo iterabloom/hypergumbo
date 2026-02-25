@@ -15757,3 +15757,572 @@ class TestLoggingConventionsPatterns:
         logging_concepts = [c for c in concepts if c.get("concept") == "logging"]
         assert len(logging_concepts) >= 1
         assert logging_concepts[0]["framework"] == "logging-conventions"
+
+
+class TestGuicePatterns:
+    """Tests for Google Guice DI and Guava EventBus framework pattern matching."""
+
+    def test_guice_inject_pattern(self) -> None:
+        """Guice @Inject annotation matches dependency pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("guice")
+        assert pattern_def is not None, "Guice patterns YAML should exist"
+
+        symbol = Symbol(
+            id="java:PaymentService.java:1-50:PaymentService:class",
+            name="PaymentService",
+            kind="class",
+            language="java",
+            path="src/main/java/com/app/PaymentService.java",
+            span=Span(1, 50, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Inject", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "dependency"
+
+    def test_guice_provides_pattern(self) -> None:
+        """Guice @Provides annotation matches bean pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("guice")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:AppModule.java:10-20:provideDataSource:method",
+            name="provideDataSource",
+            kind="method",
+            language="java",
+            path="src/main/java/com/app/AppModule.java",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Provides", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "bean"
+
+    def test_guice_singleton_pattern(self) -> None:
+        """Guice @Singleton annotation matches service pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("guice")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:CacheService.java:1-80:CacheService:class",
+            name="CacheService",
+            kind="class",
+            language="java",
+            path="src/main/java/com/app/CacheService.java",
+            span=Span(1, 80, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Singleton", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "service"
+
+    def test_guice_abstract_module_pattern(self) -> None:
+        """Guice AbstractModule base class matches configuration pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("guice")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:PaymentModule.java:1-40:PaymentModule:class",
+            name="PaymentModule",
+            kind="class",
+            language="java",
+            path="src/main/java/com/app/PaymentModule.java",
+            span=Span(1, 40, 0, 0),
+            meta={
+                "base_classes": ["AbstractModule"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "configuration"
+        assert results[0]["matched_base_class"] == "AbstractModule"
+
+    def test_guice_named_qualifier_pattern(self) -> None:
+        """Guice @Named annotation matches qualifier pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("guice")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:Config.java:5-10:getDbUrl:method",
+            name="getDbUrl",
+            kind="method",
+            language="java",
+            path="src/main/java/com/app/Config.java",
+            span=Span(5, 10, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Named", "args": ["db.url"], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "qualifier"
+
+    def test_guava_subscribe_event_handler(self) -> None:
+        """Guava EventBus @Subscribe annotation matches event_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("guice")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:InvoiceHandler.java:20-35:onInvoiceCreated:method",
+            name="onInvoiceCreated",
+            kind="method",
+            language="java",
+            path="src/main/java/com/app/InvoiceHandler.java",
+            span=Span(20, 35, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Subscribe", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "event_handler"
+
+    def test_guice_enrich_symbols_integration(self) -> None:
+        """enrich_symbols enriches Guice-annotated symbols correctly."""
+        clear_pattern_cache()
+
+        service = Symbol(
+            id="java:BillingService.java:1-100:BillingService:class",
+            name="BillingService",
+            kind="class",
+            language="java",
+            path="src/main/java/com/billing/BillingService.java",
+            span=Span(1, 100, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Singleton", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        handler = Symbol(
+            id="java:EventListener.java:10-30:onPayment:method",
+            name="onPayment",
+            kind="method",
+            language="java",
+            path="src/main/java/com/billing/EventListener.java",
+            span=Span(10, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Subscribe", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([service, handler], {"guice"})
+        svc = enriched[0]
+        hdl = enriched[1]
+
+        svc_concepts = [c["concept"] for c in svc.meta.get("concepts", [])]
+        assert "service" in svc_concepts
+
+        hdl_concepts = [c["concept"] for c in hdl.meta.get("concepts", [])]
+        assert "event_handler" in hdl_concepts
+
+    def test_guice_linkers_include_event_sourcing(self) -> None:
+        """Guice framework activates event-sourcing linker."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("guice")
+        assert pattern_def is not None
+        assert "event-sourcing" in pattern_def.linkers
+
+
+class TestJakartaCDIPatterns:
+    """Tests for Jakarta CDI framework pattern matching."""
+
+    def test_cdi_application_scoped_pattern(self) -> None:
+        """CDI @ApplicationScoped annotation matches service pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jakarta-cdi")
+        assert pattern_def is not None, "Jakarta CDI patterns YAML should exist"
+
+        symbol = Symbol(
+            id="java:AuthService.java:1-60:AuthService:class",
+            name="AuthService",
+            kind="class",
+            language="java",
+            path="src/main/java/org/keycloak/AuthService.java",
+            span=Span(1, 60, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "ApplicationScoped", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "service"
+
+    def test_cdi_request_scoped_pattern(self) -> None:
+        """CDI @RequestScoped annotation matches service pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jakarta-cdi")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:RequestCtx.java:1-30:RequestCtx:class",
+            name="RequestCtx",
+            kind="class",
+            language="java",
+            path="src/main/java/org/app/RequestCtx.java",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "RequestScoped", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "service"
+
+    def test_cdi_session_scoped_pattern(self) -> None:
+        """CDI @SessionScoped annotation matches service pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jakarta-cdi")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:UserSession.java:1-40:UserSession:class",
+            name="UserSession",
+            kind="class",
+            language="java",
+            path="src/main/java/org/app/UserSession.java",
+            span=Span(1, 40, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "SessionScoped", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "service"
+
+    def test_cdi_dependent_pattern(self) -> None:
+        """CDI @Dependent annotation matches component pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jakarta-cdi")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:Helper.java:1-20:Helper:class",
+            name="Helper",
+            kind="class",
+            language="java",
+            path="src/main/java/org/app/Helper.java",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Dependent", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "component"
+
+    def test_cdi_produces_pattern(self) -> None:
+        """CDI @Produces annotation matches bean pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jakarta-cdi")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:Producers.java:10-20:createEntityManager:method",
+            name="createEntityManager",
+            kind="method",
+            language="java",
+            path="src/main/java/org/app/Producers.java",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Produces", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "bean"
+
+    def test_cdi_interceptor_pattern(self) -> None:
+        """CDI @Interceptor annotation matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jakarta-cdi")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:LoggingInterceptor.java:1-40:LoggingInterceptor:class",
+            name="LoggingInterceptor",
+            kind="class",
+            language="java",
+            path="src/main/java/org/app/LoggingInterceptor.java",
+            span=Span(1, 40, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Interceptor", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_cdi_fqn_application_scoped(self) -> None:
+        """CDI jakarta.enterprise.context.ApplicationScoped FQN matches."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jakarta-cdi")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:RealmProvider.java:1-80:RealmProvider:class",
+            name="RealmProvider",
+            kind="class",
+            language="java",
+            path="src/main/java/org/keycloak/RealmProvider.java",
+            span=Span(1, 80, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "jakarta.enterprise.context.ApplicationScoped",
+                     "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "service"
+
+    def test_cdi_alternative_pattern(self) -> None:
+        """CDI @Alternative annotation matches component pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jakarta-cdi")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="java:MockAuth.java:1-20:MockAuth:class",
+            name="MockAuth",
+            kind="class",
+            language="java",
+            path="src/main/java/org/app/MockAuth.java",
+            span=Span(1, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Alternative", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "component"
+
+    def test_cdi_enrich_symbols_integration(self) -> None:
+        """enrich_symbols enriches CDI-annotated symbols correctly."""
+        clear_pattern_cache()
+
+        service = Symbol(
+            id="java:KeycloakSession.java:1-200:KeycloakSession:class",
+            name="KeycloakSession",
+            kind="class",
+            language="java",
+            path="src/main/java/org/keycloak/KeycloakSession.java",
+            span=Span(1, 200, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "ApplicationScoped", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols([service], {"jakarta-cdi"})
+        concepts = [c["concept"] for c in enriched[0].meta.get("concepts", [])]
+        assert "service" in concepts
+
+    def test_cdi_linkers_include_event_sourcing(self) -> None:
+        """Jakarta CDI framework activates event-sourcing linker."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jakarta-cdi")
+        assert pattern_def is not None
+        assert "event-sourcing" in pattern_def.linkers
+
+
+class TestRailsCallbackPatterns:
+    """Tests for Rails callback and event patterns."""
+
+    def test_rails_after_commit_callback(self) -> None:
+        """Rails after_commit callback matches event_handler via usage pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="after_commit",
+            position="args[0]",
+            path="app/models/user.rb",
+            span=Span(5, 5, 0, 50),
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "event_handler"
+
+    def test_rails_before_action_callback(self) -> None:
+        """Rails before_action callback matches event_handler via usage pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="before_action",
+            position="args[0]",
+            path="app/controllers/base_controller.rb",
+            span=Span(3, 3, 0, 50),
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "event_handler"
+
+    def test_rails_after_save_callback(self) -> None:
+        """Rails after_save callback matches event_handler via usage pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="after_save",
+            position="args[0]",
+            path="app/models/order.rb",
+            span=Span(8, 8, 0, 50),
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "event_handler"
+
+    def test_rails_after_create_commit_callback(self) -> None:
+        """Rails after_create_commit callback matches event_handler."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="after_create_commit",
+            position="args[0]",
+            path="app/models/message.rb",
+            span=Span(5, 5, 0, 50),
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "event_handler"
+
+    def test_rails_around_action_callback(self) -> None:
+        """Rails around_action callback matches event_handler."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="around_action",
+            position="args[0]",
+            path="app/controllers/base_controller.rb",
+            span=Span(2, 2, 0, 50),
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "event_handler"
+
+    def test_rails_non_callback_not_matched(self) -> None:
+        """Non-callback Rails call does not match event_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+        assert pattern_def is not None
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="validates",
+            position="args[0]",
+            path="app/models/user.rb",
+            span=Span(3, 3, 0, 50),
+            metadata={},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+        event_results = [r for r in results if r["concept"] == "event_handler"]
+        assert len(event_results) == 0
+
+    def test_rails_wisper_publisher_pattern(self) -> None:
+        """Rails Wisper::Publisher base class matches event_publisher pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="ruby:notification_service.rb:1-30:NotificationService:class",
+            name="NotificationService",
+            kind="class",
+            language="ruby",
+            path="app/services/notification_service.rb",
+            span=Span(1, 30, 0, 0),
+            meta={
+                "base_classes": ["Wisper::Publisher"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        publisher_results = [r for r in results if r["concept"] == "event_publisher"]
+        assert len(publisher_results) == 1
+        assert publisher_results[0]["matched_base_class"] == "Wisper::Publisher"
+
+    def test_rails_linkers_include_event_sourcing(self) -> None:
+        """Rails framework now activates event-sourcing linker."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("rails")
+        assert pattern_def is not None
+        assert "event-sourcing" in pattern_def.linkers

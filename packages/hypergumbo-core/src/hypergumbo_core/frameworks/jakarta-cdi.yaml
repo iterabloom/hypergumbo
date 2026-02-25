@@ -1,0 +1,127 @@
+# Jakarta CDI (Contexts and Dependency Injection) patterns (ADR-0003)
+#
+# Jakarta CDI is the standard DI framework for Jakarta EE (formerly Java EE).
+# Used by application servers (WildFly, GlassFish) and projects like Keycloak.
+#
+# Key concepts:
+# - Scoping: @ApplicationScoped, @RequestScoped, @SessionScoped, @Dependent
+# - Producers: @Produces methods create injectable instances
+# - Events: CDI event system (Event<T>, @Observes)
+# - Interceptors: @Interceptor, @AroundInvoke for AOP
+
+id: jakarta-cdi
+language: java
+
+patterns:
+  # ==================== SCOPING ANNOTATIONS ====================
+
+  # @ApplicationScoped - one instance per application
+  - concept: service
+    decorator: "^ApplicationScoped$"
+
+  - concept: service
+    decorator: "^jakarta\\.enterprise\\.context\\.ApplicationScoped$"
+
+  - concept: service
+    decorator: "^javax\\.enterprise\\.context\\.ApplicationScoped$"
+
+  # @RequestScoped - one instance per HTTP request
+  - concept: service
+    decorator: "^RequestScoped$"
+
+  - concept: service
+    decorator: "^jakarta\\.enterprise\\.context\\.RequestScoped$"
+
+  - concept: service
+    decorator: "^javax\\.enterprise\\.context\\.RequestScoped$"
+
+  # @SessionScoped - one instance per HTTP session
+  - concept: service
+    decorator: "^SessionScoped$"
+
+  - concept: service
+    decorator: "^jakarta\\.enterprise\\.context\\.SessionScoped$"
+
+  - concept: service
+    decorator: "^javax\\.enterprise\\.context\\.SessionScoped$"
+
+  # @Dependent - default scope, new instance per injection point
+  - concept: component
+    decorator: "^Dependent$"
+
+  - concept: component
+    decorator: "^jakarta\\.enterprise\\.context\\.Dependent$"
+
+  - concept: component
+    decorator: "^javax\\.enterprise\\.context\\.Dependent$"
+
+  # ==================== PRODUCERS ====================
+
+  # @Produces - factory method for injectable instances
+  - concept: bean
+    decorator: "^Produces$"
+
+  - concept: bean
+    decorator: "^jakarta\\.enterprise\\.inject\\.Produces$"
+
+  - concept: bean
+    decorator: "^javax\\.enterprise\\.inject\\.Produces$"
+
+  # ==================== EVENTS ====================
+
+  # @Observes - CDI event observer method (subscriber)
+  - concept: event_handler
+    parameter_type: "^Observes$"
+
+  # @ObservesAsync - async event observer
+  - concept: event_handler
+    parameter_type: "^ObservesAsync$"
+
+  # ==================== INTERCEPTORS ====================
+
+  # @Interceptor - AOP interceptor
+  - concept: middleware
+    decorator: "^Interceptor$"
+
+  - concept: middleware
+    decorator: "^jakarta\\.interceptor\\.Interceptor$"
+
+  # @AroundInvoke - method-level AOP
+  - concept: middleware
+    decorator: "^AroundInvoke$"
+
+  - concept: middleware
+    decorator: "^jakarta\\.interceptor\\.AroundInvoke$"
+
+  # ==================== QUALIFIERS ====================
+
+  # @Named qualifier
+  - concept: qualifier
+    decorator: "^Named$"
+
+  - concept: qualifier
+    decorator: "^jakarta\\.inject\\.Named$"
+
+  - concept: qualifier
+    decorator: "^javax\\.inject\\.Named$"
+
+  # @Alternative - alternative bean for testing/configuration
+  - concept: component
+    decorator: "^Alternative$"
+
+  - concept: component
+    decorator: "^jakarta\\.enterprise\\.inject\\.Alternative$"
+
+  # ==================== STEREOTYPES ====================
+
+  # @Model - shorthand for @Named @RequestScoped
+  - concept: model
+    decorator: "^Model$"
+
+  - concept: model
+    decorator: "^jakarta\\.enterprise\\.inject\\.Model$"
+
+linkers:
+  - http
+  - database_query
+  - event-sourcing

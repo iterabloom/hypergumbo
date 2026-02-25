@@ -302,6 +302,16 @@ JAVA_FRAMEWORKS = {
     "jetpack-compose": ["androidx.compose", "compose.ui", "compose.runtime", "compose.material"],
     # Kafka Connect
     "kafka-connect": ["org.apache.kafka:connect-api", "kafka-connect", "connect-api"],
+    # Google Guice DI
+    "guice": ["com.google.inject", "google/inject", "guice"],
+    # Jakarta CDI (standalone or via WildFly/GlassFish)
+    "jakarta-cdi": [
+        "jakarta.enterprise.context",
+        "javax.enterprise.context",
+        "jakarta.enterprise.inject",
+        "javax.enterprise.inject",
+        "weld",
+    ],
 }
 
 # Swift Package.swift detection patterns

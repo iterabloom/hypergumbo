@@ -2156,3 +2156,57 @@ def test_bottle_detected_when_actual_dependency(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
     assert "bottle" in data["profile"]["frameworks"]
+
+
+def test_detects_guice_from_maven(tmp_path: Path) -> None:
+    """Should detect Google Guice from pom.xml."""
+    (tmp_path / "Main.java").write_text("public class Main {}\n")
+    (tmp_path / "pom.xml").write_text("""<?xml version="1.0"?>
+<project>
+    <dependencies>
+        <dependency>
+            <groupId>com.google.inject</groupId>
+            <artifactId>guice</artifactId>
+        </dependency>
+    </dependencies>
+</project>""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "guice" in data["profile"]["frameworks"]
+
+
+def test_detects_jakarta_cdi_from_maven(tmp_path: Path) -> None:
+    """Should detect Jakarta CDI from pom.xml with CDI context import."""
+    (tmp_path / "Main.java").write_text("public class Main {}\n")
+    (tmp_path / "pom.xml").write_text("""<?xml version="1.0"?>
+<project>
+    <dependencies>
+        <dependency>
+            <groupId>org.jboss.weld.se</groupId>
+            <artifactId>weld-se-core</artifactId>
+        </dependency>
+    </dependencies>
+</project>""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "jakarta-cdi" in data["profile"]["frameworks"]
+
+
+def test_detects_guice_from_gradle(tmp_path: Path) -> None:
+    """Should detect Google Guice from build.gradle."""
+    (tmp_path / "Main.java").write_text("public class Main {}\n")
+    (tmp_path / "build.gradle").write_text("""dependencies {
+    implementation 'com.google.inject:guice:5.1.0'
+}""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "guice" in data["profile"]["frameworks"]

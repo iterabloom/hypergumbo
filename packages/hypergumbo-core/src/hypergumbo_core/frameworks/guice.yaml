@@ -1,0 +1,90 @@
+# Google Guice dependency injection patterns (ADR-0003)
+#
+# Guice is Google's lightweight DI framework for Java. It uses annotations
+# and Module classes to define object wiring. Common in Java projects like
+# killbill, Presto, and many Google-internal projects.
+#
+# Key concepts:
+# - @Inject: constructor/field/method injection points
+# - @Provides: factory methods in Modules that create instances
+# - @Singleton: scoping annotation for single-instance bindings
+# - AbstractModule: base class for binding configuration
+# - @Named: qualifier for distinguishing multiple bindings of same type
+
+id: guice
+language: java
+
+patterns:
+  # ==================== DEPENDENCY INJECTION ====================
+
+  # @Inject marks constructor/field/method injection points
+  - concept: dependency
+    decorator: "^Inject$"
+
+  - concept: dependency
+    decorator: "^com\\.google\\.inject\\.Inject$"
+
+  - concept: dependency
+    decorator: "^javax\\.inject\\.Inject$"
+
+  - concept: dependency
+    decorator: "^jakarta\\.inject\\.Inject$"
+
+  # @Provides methods in Modules create instances (factory pattern)
+  - concept: bean
+    decorator: "^Provides$"
+
+  - concept: bean
+    decorator: "^com\\.google\\.inject\\.Provides$"
+
+  # @Singleton scoping - single instance per injector
+  - concept: service
+    decorator: "^Singleton$"
+
+  - concept: service
+    decorator: "^javax\\.inject\\.Singleton$"
+
+  - concept: service
+    decorator: "^jakarta\\.inject\\.Singleton$"
+
+  # @Named qualifier for disambiguating bindings
+  - concept: qualifier
+    decorator: "^Named$"
+
+  - concept: qualifier
+    decorator: "^javax\\.inject\\.Named$"
+
+  - concept: qualifier
+    decorator: "^jakarta\\.inject\\.Named$"
+
+  # ==================== MODULE CONFIGURATION ====================
+
+  # AbstractModule - Guice binding configuration class
+  - concept: configuration
+    base_class: "^AbstractModule$"
+
+  - concept: configuration
+    base_class: "^com\\.google\\.inject\\.AbstractModule$"
+
+  # PrivateModule - module with private bindings (only exposed bindings visible)
+  - concept: configuration
+    base_class: "^PrivateModule$"
+
+  # ==================== EVENT BUS (Guava) ====================
+  # Guice projects commonly use Guava EventBus for pub/sub messaging.
+  # @Subscribe marks event handler methods.
+
+  - concept: event_handler
+    decorator: "^Subscribe$"
+
+  - concept: event_handler
+    decorator: "^com\\.google\\.common\\.eventbus\\.Subscribe$"
+
+  # @AllowConcurrentEvents marks thread-safe event handlers
+  - concept: event_handler
+    decorator: "^AllowConcurrentEvents$"
+
+linkers:
+  - http
+  - database_query
+  - event-sourcing
