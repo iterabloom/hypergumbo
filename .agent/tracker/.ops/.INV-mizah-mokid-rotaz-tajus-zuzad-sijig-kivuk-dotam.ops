@@ -54,3 +54,10 @@
   nonce: 3dcc  # 3dcc
   set:  # 3dcc
     status: deleted  # 3dcc
+- op: discuss  # adb9
+  at: '2026-02-25T08:42:41Z'  # adb9
+  by: agent  # adb9
+  actor: jgstern_agent  # adb9
+  clock: 6  # adb9
+  nonce: adb9  # adb9
+  message: "[migrated from justification field] Holding audit: branch coverage was intentionally removed (2026-02-07 resolution). This invariant is no longer maintained. Recommend deletion."  # adb9

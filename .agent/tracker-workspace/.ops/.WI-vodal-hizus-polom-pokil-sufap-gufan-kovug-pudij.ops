@@ -79,3 +79,10 @@
   set:  # 8efb
     status: done  # 8efb
     justification: "Reassessed: resolved by recent bakeoff infrastructure changes. Cohort numbering is now per-session (resets to 001 for each new init). Each init creates a new timestamped top-level directory, not sub-sessions. No global counter confusion remains."  # 8efb
+- op: discuss  # fb03
+  at: '2026-02-25T08:42:40Z'  # fb03
+  by: agent  # fb03
+  actor: jgstern_agent  # fb03
+  clock: 12  # fb03
+  nonce: fb03  # fb03
+  message: "[migrated from justification field] Reassessed: resolved by recent bakeoff infrastructure changes. Cohort numbering is now per-session (resets to 001 for each new init). Each init creates a new timestamped top-level directory, not sub-sessions. No global counter confusion remains."  # fb03

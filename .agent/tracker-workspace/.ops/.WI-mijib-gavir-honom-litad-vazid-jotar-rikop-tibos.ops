@@ -35,3 +35,10 @@
   nonce: a4fd  # a4fd
   set:  # a4fd
     status: todo_soft  # a4fd
+- op: discuss  # 148d
+  at: '2026-02-25T08:42:41Z'  # 148d
+  by: agent  # 148d
+  actor: jgstern_agent  # 148d
+  clock: 4  # 148d
+  nonce: 148d  # 148d
+  message: "[migrated from justification field] auto-pr is a governance file; changes require human approval per AGENTS.md"  # 148d

@@ -72,3 +72,10 @@
   nonce: 4a73  # 4a73
   set:  # 4a73
     parent: WI-tadof-zujaj-nizoz-zutam-sizad-nasid-sosob-nuhol  # 4a73
+- op: discuss  # 3423
+  at: '2026-02-25T08:42:41Z'  # 3423
+  by: agent  # 3423
+  actor: jgstern_agent  # 3423
+  clock: 8  # 3423
+  nonce: '3423'  # 3423
+  message: "[migrated from justification field] Option A (language-scoped normalization) chosen over Option B (canonical cross-language mapping) because: (1) stable_id tracks single-symbol identity across refactors, not cross-language comparison; (2) containing_module_stable_id already prevents cross-language collisions structurally; (3) Option A is a strict subset of Option B — per-language normalization is needed either way; (4) matches shape_id precedent (within-language, not cross-language)."  # 3423

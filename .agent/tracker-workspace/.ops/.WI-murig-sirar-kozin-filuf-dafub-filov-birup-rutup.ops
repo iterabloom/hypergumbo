@@ -38,3 +38,10 @@
   nonce: b653  # b653
   set:  # b653
     parent: WI-tadof-zujaj-nizoz-zutam-sizad-nasid-sosob-nuhol  # b653
+- op: discuss  # 56bb
+  at: '2026-02-25T08:42:40Z'  # 56bb
+  by: agent  # 56bb
+  actor: jgstern_agent  # 56bb
+  clock: 4  # 56bb
+  nonce: 56bb  # 56bb
+  message: "[migrated from justification field] Investigation shows signatures ALREADY preserve generic type parameters (e.g., Java: '(Map<String, Integer> scores) List<String>', Kotlin: '(items: List<T>, pred: (T) -> Boolean): List<T>', C#: '(Dictionary<string, T> map) List<T>'). Generics are only stripped during type inference for method resolution, which is correct behavior. No work needed."  # 56bb
