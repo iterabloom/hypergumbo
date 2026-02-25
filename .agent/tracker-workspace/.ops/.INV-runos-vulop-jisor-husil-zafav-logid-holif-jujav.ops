@@ -29,3 +29,11 @@
   nonce: 0f99  # 0f99
   set:  # 0f99
     status: holding  # 0f99
+- op: update  # deed
+  at: '2026-02-25T17:25:30Z'  # deed
+  by: human  # deed
+  actor: jgstern  # deed
+  clock: 3  # deed
+  nonce: deed  # deed
+  set:  # deed
+    title: "Properties analyzer must handle non-UTF-8 encoded files (UnicodeDecodeError)"  # deed
