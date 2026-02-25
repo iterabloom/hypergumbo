@@ -6,12 +6,10 @@ Reflection was completed recently. Instead of re-running the full checklist, **a
 Below you will find the `LAST REFLECTION NOTES` (from `last_stop_check.json`). These are concrete next actions from the most recent reflection cycle.
 
 **If notes contain implementation tasks**:
-- Start immediately. Follow TDD: write failing test, make it pass, refactor, PR.
-- This is the highest priority. Do not do more analysis if there's implementation work to do.
+- Check the tracker for any preexisting relevant entries to reopen and amend, or add a new item to the tracker. If you don't already see one, include a reminder to follow TDD: write failing test, make it pass, refactor, PR.
 
 **If notes are empty or vague:**
-- Check the tracker for ready items: `scripts/tracker ready` (sorted by priority).
-- Check the lab notebook (`~/hypergumbo_lab_notebook/`) for recent entries with implementation-ready insights.
+- Check the lab notebook (`~/hypergumbo_lab_notebook/`) for recent entries with implementation-ready insights that can be used to update the tracker.
 - Check the DEEP/BROAD priority queues in `AGENTS.md` for the next work item.
 
 ## 2. Lab Notebook Mining
