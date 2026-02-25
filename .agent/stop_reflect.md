@@ -43,14 +43,14 @@ scripts/tracker add work_item --title "..." --status todo_soft --priority N
 # Governance proposals, architectural questions, needs human judgment:
 scripts/tracker add work_item --title "..." --status needs_human_review --priority N
 ```
-**When in doubt, use `todo_hard`** — the circuit breaker prevents death spirals, so err on the side of taking things seriously. Use `needs_human_review` for items that genuinely require human decision-making rather than just human review of agent work.
+**When in doubt, use `todo_hard`** — the circuit breaker prevents death spirals, so err on the side of taking things too seriously. Use `needs_human_review` for items that genuinely require human decision-making rather than just human review of agent work.
 
 ## 5. Decision
 - If root cause is unfixed (even partially) and analogous issues might exist: **DO NOT STOP** — fix the root cause or investigate further
 - If root cause is fixed or truly isolated: update the tracker item to `done`, then decide your next action.
 
 **Next action selection (in priority order):**
-1. **Implementation-ready insights:** Check the lab notebook (`ls -t ~/hypergumbo_lab_notebook/*.md | head -5`) for recent entries that identify concrete code changes. If found, implement them (TDD).
+1. **Implementation-ready insights:** Check the lab notebook (`ls -t ~/hypergumbo_lab_notebook/*.md | head -10`) for recent entries that identify concrete code changes. If found, add them to the tracker. Include a reminder to use red-green-refactor/TDD.
 2. **DEEP/BROAD priority queue:** Check `AGENTS.md` for the next item in the current mode's priority queue.
 3. **Bakeoff or artifact analysis:** Only if 1-2 yielded nothing actionable.
 
@@ -59,13 +59,13 @@ scripts/tracker add work_item --title "..." --status needs_human_review --priori
 ## 6. Artifact Analysis (If Needed)
 Use analysis when you need data to inform an implementation decision, not as a destination in itself. Every analysis session should end with a concrete "what to implement" conclusion written into either the lab notebook or `last_stop_check.json` notes.
 
-Analysis toolkit (see `~/hypergumbo_lab_notebook/analysis_lib/README.md` for current inventory):
+Analysis toolkit (see `~/hypergumbo_lab_notebook/analysis_lib/README.md` for additional inventory):
 - `./scripts/bakeoff-reflect` — structured LLM-driven parse correctness assessment (generates per-repo prompts, aggregates YAML results)
 - `scripts/hypergumbo_diag.py` — comprehensive diagnostic report
 - `scripts/analyze-artifacts` — catalog, summary, routes, concepts, edges, gaps
 - `~/hypergumbo_lab_notebook/analysis_lib/` — 18+ reusable analysis scripts (run `ls ~/hypergumbo_lab_notebook/analysis_lib/[0-9]*.py` for current list)
 
-If analysis reveals concerns, investigate the root cause and implement the fix before stopping.
+If analysis reveals concerns, check the tracker for any preexisting relevant entries to amend, or add a new item to the tracker. Reference the lab notebook as the authoritative analysis, but try to make the tracker entry complete.
 
 ## 7. Design Quality Meta-Reflection
 Consider the last few changes made:
