@@ -93,7 +93,7 @@ whether hypergumbo's analysis outputs would be useful to you for common developm
 ## Available Artifacts
 The following hypergumbo outputs are available for your assessment:
 {artifact_list}
-
+{prior_context_section}
 ## Assessment Protocol
 
 Examine the artifacts and source code, then evaluate usefulness for these 3 tasks:
@@ -125,6 +125,15 @@ Examine the artifacts and source code, then evaluate usefulness for these 3 task
    - Do the top-ranked symbols match what's actually important?
    - Does the call graph reveal the architecture?
    - Are the cross-file relationships meaningful?
+
+## Scoring Rubric
+
+For each task, assign a numeric score from 0-100:
+- **0-20:** Not useful at all — output is misleading or empty
+- **21-40:** Marginally useful — some signal but mostly noise or gaps
+- **41-60:** Partially useful — real signal mixed with significant gaps/noise
+- **61-80:** Useful — actionable output with minor gaps
+- **81-100:** Highly useful — comprehensive, accurate, directly actionable
 
 ## Output Format
 
@@ -164,8 +173,14 @@ developer_assessment:
       - "misleading or confusing elements"
     notes: "additional observations"
 
+  task_scores:
+    refactoring_score: <0-100>
+    new_feature_score: <0-100>
+    understanding_score: <0-100>
+
   overall_verdict: USEFUL | PARTIALLY_USEFUL | NOT_USEFUL
   confidence: HIGH | MEDIUM | LOW
+  trajectory: IMPROVING | STABLE | REGRESSING | FIRST_ASSESSMENT
 
   improvement_ideas:
     - "specific, actionable suggestion 1"
@@ -177,6 +192,34 @@ developer_assessment:
 
 Be specific and concrete. Reference actual files and functions from the repo.
 Focus on practical utility, not theoretical correctness.
+"""
+
+PRIOR_CONTEXT_TEMPLATE = """
+## Prior Assessment Context
+
+This repo was previously assessed in an earlier cohort. Here are the prior findings
+so you can evaluate whether things have improved, stayed the same, or regressed:
+
+- **Prior verdict:** {prior_verdict}
+- **Prior confidence:** {prior_confidence}
+{prior_scores_section}
+**Prior improvement ideas:**
+{prior_ideas}
+
+**Prior missing items (refactoring):**
+{prior_refactoring_missing}
+
+**Prior missing items (new feature):**
+{prior_new_feature_missing}
+
+**Prior missing items (understanding):**
+{prior_understanding_missing}
+
+When assigning your trajectory field, compare against these prior findings:
+- IMPROVING: Meaningful improvement in output quality vs. prior assessment
+- STABLE: Roughly the same quality (within ~5 points)
+- REGRESSING: Output quality has gotten worse
+- FIRST_ASSESSMENT: Use this if no prior assessment context is provided
 """
 
 
@@ -220,21 +263,215 @@ def load_state(workdir: str) -> dict:
         return json.load(f)
 
 
-def generate_assessment_prompt(repo_name: str, repo_path: str, repo_out_dir: str) -> str:
-    """Generate the assessment prompt for a specific repo."""
+def find_prior_assessment(workdir: str, repo_name: str, cohort_number: int):
+    """Find the most recent prior assessment for a repo.
+
+    Searches backward through cohort directories (cohort_number-1 down to 1)
+    for an assessment YAML file for the given repo. Returns the parsed
+    assessment dict or None if no prior exists.
+    """
+    if cohort_number <= 1:
+        return None
+
+    reflect_base = os.path.join(workdir, "reflect")
+    if not os.path.isdir(reflect_base):
+        return None
+
+    # Search backward from the previous cohort
+    for prev_cohort in range(cohort_number - 1, 0, -1):
+        # Check all iterations (prefer highest)
+        cohort_dir = os.path.join(reflect_base, f"cohort-{prev_cohort:03d}")
+        if not os.path.isdir(cohort_dir):
+            continue
+
+        iter_dirs = sorted(
+            [
+                d
+                for d in os.listdir(cohort_dir)
+                if os.path.isdir(os.path.join(cohort_dir, d))
+                and d.startswith("iter-")
+            ],
+            reverse=True,
+        )
+
+        for iter_dir in iter_dirs:
+            assessment_path = os.path.join(
+                cohort_dir, iter_dir, f"{repo_name}.assessment.yaml"
+            )
+            if os.path.exists(assessment_path):
+                try:
+                    import yaml
+
+                    with open(assessment_path) as f:
+                        data = yaml.safe_load(f)
+                    if data and "developer_assessment" in data:
+                        return data["developer_assessment"]
+                    return data
+                except Exception:
+                    continue
+
+    return None
+
+
+def find_prior_summary(workdir: str, cohort_number: int):
+    """Find the most recent prior summary.yaml with score_statistics.
+
+    Returns the parsed summary dict or None if no prior summary with
+    scores exists.
+    """
+    if cohort_number <= 1:
+        return None
+
+    reflect_base = os.path.join(workdir, "reflect")
+    if not os.path.isdir(reflect_base):
+        return None
+
+    for prev_cohort in range(cohort_number - 1, 0, -1):
+        cohort_dir = os.path.join(reflect_base, f"cohort-{prev_cohort:03d}")
+        if not os.path.isdir(cohort_dir):
+            continue
+
+        iter_dirs = sorted(
+            [
+                d
+                for d in os.listdir(cohort_dir)
+                if os.path.isdir(os.path.join(cohort_dir, d))
+                and d.startswith("iter-")
+            ],
+            reverse=True,
+        )
+
+        for iter_dir in iter_dirs:
+            summary_path = os.path.join(cohort_dir, iter_dir, "summary.yaml")
+            if os.path.exists(summary_path):
+                try:
+                    import yaml
+
+                    with open(summary_path) as f:
+                        data = yaml.safe_load(f)
+                    if data and "score_statistics" in data:
+                        return data
+                except Exception:
+                    continue
+
+    return None
+
+
+def format_prior_context(prior_assessment: dict) -> str:
+    """Format a prior assessment into a context section for the prompt."""
+    if not prior_assessment:
+        return ""
+
+    prior_verdict = prior_assessment.get("overall_verdict", "unknown")
+    prior_confidence = prior_assessment.get("confidence", "unknown")
+
+    # Format scores if available
+    scores = prior_assessment.get("task_scores", {})
+    if scores:
+        prior_scores_section = (
+            f"- **Prior scores:** "
+            f"refactoring={scores.get('refactoring_score', '?')}, "
+            f"new_feature={scores.get('new_feature_score', '?')}, "
+            f"understanding={scores.get('understanding_score', '?')}\n"
+        )
+    else:
+        prior_scores_section = "- **Prior scores:** not available (pre-scoring assessment)\n"
+
+    # Format improvement ideas
+    ideas = prior_assessment.get("improvement_ideas", [])
+    prior_ideas = "\n".join(f"- {idea}" for idea in ideas[:5]) if ideas else "- (none)"
+
+    # Format missing items from each task
+    def format_missing(section_name):
+        section = prior_assessment.get(section_name, {})
+        missing = section.get("missing", [])
+        return "\n".join(f"- {m}" for m in missing[:3]) if missing else "- (none)"
+
+    return PRIOR_CONTEXT_TEMPLATE.format(
+        prior_verdict=prior_verdict,
+        prior_confidence=prior_confidence,
+        prior_scores_section=prior_scores_section,
+        prior_ideas=prior_ideas,
+        prior_refactoring_missing=format_missing("refactoring"),
+        prior_new_feature_missing=format_missing("new_feature"),
+        prior_understanding_missing=format_missing("understanding"),
+    )
+
+
+def generate_assessment_prompt(
+    repo_name: str,
+    repo_path: str,
+    repo_out_dir: str,
+    prior_assessment: dict = None,
+) -> str:
+    """Generate the assessment prompt for a specific repo.
+
+    If prior_assessment is provided, includes prior findings context
+    so the assessor can compute trajectory.
+    """
     artifact_list = get_artifact_list(repo_out_dir)
     timestamp = datetime.datetime.now().isoformat()
+    prior_context_section = format_prior_context(prior_assessment)
 
     return ASSESSMENT_PROMPT_TEMPLATE.format(
         repo_name=repo_name,
         repo_path=repo_path,
         artifact_list=artifact_list,
         timestamp=timestamp,
+        prior_context_section=prior_context_section,
     )
 
 
+def compute_trajectory(current_scores: dict, prior_scores: dict):
+    """Compute trajectory by comparing current vs prior score statistics.
+
+    Returns a dict with trend (IMPROVING/STABLE/REGRESSING), delta, and
+    prior_mean_score. Returns None if prior_scores is None.
+
+    Threshold: +/- 5 points is considered STABLE.
+    """
+    if prior_scores is None:
+        return None
+
+    current_mean = current_scores.get("mean_score", 0)
+    prior_mean = prior_scores.get("mean_score", 0)
+    delta = current_mean - prior_mean
+
+    if delta > 5:
+        trend = "IMPROVING"
+    elif delta < -5:
+        trend = "REGRESSING"
+    else:
+        trend = "STABLE"
+
+    trajectory = {
+        "trend": trend,
+        "delta": round(delta, 1),
+        "prior_mean_score": round(prior_mean, 1),
+        "current_mean_score": round(current_mean, 1),
+    }
+
+    # Per-task trajectory if available
+    current_per_task = current_scores.get("per_task", {})
+    prior_per_task = prior_scores.get("per_task", {})
+    if current_per_task and prior_per_task:
+        task_deltas = {}
+        for task_name in ["refactoring", "new_feature", "understanding"]:
+            cur = current_per_task.get(task_name, {}).get("mean", 0)
+            pri = prior_per_task.get(task_name, {}).get("mean", 0)
+            task_deltas[task_name] = round(cur - pri, 1)
+        trajectory["per_task_deltas"] = task_deltas
+
+    return trajectory
+
+
 def aggregate_assessments(assessments: list) -> dict:
-    """Aggregate individual assessments into a summary report."""
+    """Aggregate individual assessments into a summary report.
+
+    Handles both legacy assessments (no scores) and new assessments with
+    task_scores. When scores are present, computes statistics (mean, median,
+    min, max) overall and per-task.
+    """
     summary = {
         "total_repos": len(assessments),
         "verdicts": {"USEFUL": 0, "PARTIALLY_USEFUL": 0, "NOT_USEFUL": 0},
@@ -247,6 +484,15 @@ def aggregate_assessments(assessments: list) -> dict:
     all_noise = []
     all_ideas = []
     all_questions = []
+
+    # Score collection
+    overall_scores = []
+    task_scores_by_name = {
+        "refactoring": [],
+        "new_feature": [],
+        "understanding": [],
+    }
+    repo_scores = []
 
     for a in assessments:
         if not a:
@@ -266,6 +512,27 @@ def aggregate_assessments(assessments: list) -> dict:
         all_ideas.extend(a.get("improvement_ideas", []))
         all_questions.extend(a.get("questions", []))
 
+        # Collect scores if present
+        scores = a.get("task_scores")
+        if scores:
+            r = scores.get("refactoring_score")
+            n = scores.get("new_feature_score")
+            u = scores.get("understanding_score")
+            if r is not None and n is not None and u is not None:
+                task_scores = [r, n, u]
+                repo_overall = sum(task_scores) / len(task_scores)
+                overall_scores.append(repo_overall)
+                task_scores_by_name["refactoring"].append(r)
+                task_scores_by_name["new_feature"].append(n)
+                task_scores_by_name["understanding"].append(u)
+                repo_scores.append({
+                    "repo": a.get("repo", "unknown"),
+                    "refactoring_score": r,
+                    "new_feature_score": n,
+                    "understanding_score": u,
+                    "overall_score": round(repo_overall, 1),
+                })
+
     # Deduplicate and count
     def count_items(items):
         counts = {}
@@ -284,6 +551,33 @@ def aggregate_assessments(assessments: list) -> dict:
 
     question_counts = count_items(all_questions)
     summary["questions"] = [{"question": q, "count": c} for q, c in question_counts[:10]]
+
+    # Compute score statistics if any scores exist
+    if overall_scores:
+        import statistics as stats_mod
+
+        per_task = {}
+        for task_name, scores_list in task_scores_by_name.items():
+            if scores_list:
+                per_task[task_name] = {
+                    "mean": round(stats_mod.mean(scores_list), 1),
+                    "min": min(scores_list),
+                    "max": max(scores_list),
+                }
+
+        summary["score_statistics"] = {
+            "scored_repos": len(overall_scores),
+            "mean_score": round(stats_mod.mean(overall_scores), 1),
+            "min_score": round(min(overall_scores), 1),
+            "max_score": round(max(overall_scores), 1),
+            "per_task": per_task,
+            "repos": repo_scores,
+        }
+
+        if len(overall_scores) > 1:
+            summary["score_statistics"]["median_score"] = round(
+                stats_mod.median(overall_scores), 1
+            )
 
     return summary
 
@@ -358,7 +652,14 @@ def cmd_reflect(args):
             print(f"[{repo_name}] Skipped (no output)")
             continue
 
-        prompt = generate_assessment_prompt(repo_name, repo_path, repo_out)
+        # Look for prior assessment to inject context
+        prior = find_prior_assessment(workdir, repo_name, cohort_number)
+        if prior:
+            print(f"[{repo_name}] Found prior assessment (injecting context)")
+
+        prompt = generate_assessment_prompt(
+            repo_name, repo_path, repo_out, prior_assessment=prior
+        )
 
         # Write prompt to file
         prompt_path = os.path.join(prompts_dir, f"{repo_name}.prompt.md")
@@ -447,6 +748,15 @@ def cmd_aggregate(args):
     summary["iteration"] = iteration
     summary["timestamp"] = datetime.datetime.now().isoformat()
 
+    # Compute trajectory if scores and prior summary exist
+    if "score_statistics" in summary:
+        prior_summary = find_prior_summary(workdir, cohort_number)
+        if prior_summary:
+            prior_stats = prior_summary.get("score_statistics")
+            trajectory = compute_trajectory(summary["score_statistics"], prior_stats)
+            if trajectory:
+                summary["trajectory"] = trajectory
+
     # Write summary
     summary_path = os.path.join(prompts_dir, "summary.yaml")
     with open(summary_path, "w") as f:
@@ -462,6 +772,21 @@ def cmd_aggregate(args):
     for verdict, count in summary["verdicts"].items():
         print(f"  {verdict}: {count}")
     print()
+
+    if summary.get("score_statistics"):
+        stats = summary["score_statistics"]
+        print(f"Scores (0-100):")
+        print(f"  Mean: {stats['mean_score']}")
+        print(f"  Range: {stats['min_score']} - {stats['max_score']}")
+        if "per_task" in stats:
+            for task, task_stats in stats["per_task"].items():
+                print(f"  {task}: {task_stats['mean']}")
+        print()
+
+    if summary.get("trajectory"):
+        t = summary["trajectory"]
+        print(f"Trajectory: {t['trend']} ({t['delta']:+.1f} points vs prior)")
+        print()
 
     if summary.get("common_missing"):
         print("Common missing items:")
