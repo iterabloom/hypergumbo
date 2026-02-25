@@ -409,6 +409,10 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
         remove_fields=remove_fields or None,
     )
 
+    # --note is shorthand for a follow-up discuss call
+    if args.note:
+        ts.discuss(args.item_id, message=args.note)
+
     if args.json:
         print(json.dumps({"ok": True}))
     else:
@@ -1087,6 +1091,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_update.add_argument("--remove-not-duplicate-of", action="append",
                           help="Remove not-duplicate-of link")
     p_update.add_argument("--field", action="append", help="Field key=value (repeatable)")
+    p_update.add_argument("--note", help="Add a discussion note (shorthand for discuss)")
 
     # --- discuss ---
     p_discuss = sub.add_parser("discuss", help="Add discussion to an item")
