@@ -330,3 +330,25 @@ app.version=1.0
         prop = next((s for s in result.symbols if s.kind == "property"), None)
         assert prop is not None
         assert prop.meta.get("category") == "persistence"
+
+    def test_non_utf8_encoded_file(self, tmp_path: Path) -> None:
+        """Non-UTF-8 encoded .properties files (Latin-1/ISO-8859-1) must not crash.
+
+        Java .properties files commonly use Latin-1 encoding. Keycloak uses
+        0xe9 (é) and Jenkins uses 0xe5 (å). The analyzer must handle these
+        gracefully instead of raising UnicodeDecodeError.
+        """
+        file_path = tmp_path / "messages.properties"
+        # Latin-1 content: "greeting=Bienvenue à l'application"
+        # The 'à' is 0xe0, 'é' would be 0xe9 in Latin-1
+        content = b"greeting=Bienvenue \xe0 l'application\nname=caf\xe9\n"
+        file_path.write_bytes(content)
+        result = analyze_properties(tmp_path)
+        assert not result.skipped
+        props = [s for s in result.symbols if s.kind == "property"]
+        assert len(props) == 2
+        # Values should contain replacement characters for non-UTF-8 bytes
+        greeting = next(p for p in props if p.name == "greeting")
+        assert greeting.meta.get("value") is not None
+        name_prop = next(p for p in props if p.name == "name")
+        assert name_prop.meta.get("value") is not None

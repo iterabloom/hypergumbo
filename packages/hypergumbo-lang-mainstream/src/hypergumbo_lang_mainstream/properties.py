@@ -59,8 +59,12 @@ def find_properties_files(repo_root: Path) -> list[Path]:
 
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
-    """Get the text content of a node."""
-    return node.text.decode("utf-8") if node.text else ""
+    """Get the text content of a node.
+
+    Uses errors="replace" because .properties files commonly use Latin-1/
+    ISO-8859-1 encoding (Java default), not UTF-8.
+    """
+    return node.text.decode("utf-8", errors="replace") if node.text else ""
 
 
 def _make_symbol_id(path: Path, name: str, kind: str) -> str:

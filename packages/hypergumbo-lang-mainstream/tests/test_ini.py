@@ -341,3 +341,19 @@ disable = C0111
         section = next((s for s in result.symbols if s.kind == "section"), None)
         assert section is not None
         assert section.name == "MESSAGES CONTROL"
+
+    def test_non_utf8_encoded_file(self, tmp_path: Path) -> None:
+        """Non-UTF-8 encoded INI files must not crash.
+
+        Windows INI files commonly use CP-1252 or Latin-1 encoding.
+        The analyzer must handle these gracefully.
+        """
+        file_path = tmp_path / "config.ini"
+        # CP-1252 content with é (0xe9) and ü (0xfc)
+        content = b"[g\xe9n\xe9ral]\nnom=caf\xe9\nstadt=M\xfcnchen\n"
+        file_path.write_bytes(content)
+        result = analyze_ini(tmp_path)
+        assert not result.skipped
+        # Should parse without crashing
+        sections = [s for s in result.symbols if s.kind == "section"]
+        assert len(sections) >= 1
