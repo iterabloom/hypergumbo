@@ -179,3 +179,117 @@ class TestSliceTierFilterReverse:
         assert first_party.id in result.node_ids
         # Should NOT include external (tier 3)
         assert external.id not in result.node_ids
+
+
+class TestSliceHubPruningDepthExempt:
+    """Test that depth-1 nodes are exempt from hub pruning.
+
+    In the common "main → run()" orchestrator pattern, the run() function
+    has many outgoing edges (it sets up the entire application). If run()
+    is hub-pruned, the slice from main is nearly empty. Exempting depth-1
+    nodes from hub pruning ensures the entry point's immediate dependencies
+    are always traversed, giving a useful slice even when those dependencies
+    are high-degree orchestrators.
+    """
+
+    def test_depth1_hub_node_traversed(self):
+        """A hub node at depth 1 should be traversed, not pruned."""
+        # main → run (hub, 60 outgoing edges) → many callees
+        entry = make_symbol("main", path="cmd/main.go", kind="function")
+        run = make_symbol("run", path="cmd/main.go", kind="function", start_line=100)
+
+        # Create 60 callees of run (exceeds default hub_threshold=50)
+        callees = []
+        for i in range(60):
+            callees.append(make_symbol(
+                f"setup_{i}", path=f"pkg/setup_{i}.go", kind="function",
+            ))
+
+        edges = [make_edge(entry, run)]
+        for callee in callees:
+            edges.append(make_edge(run, callee))
+
+        all_symbols = [entry, run] + callees
+        query = SliceQuery(
+            entrypoint="main", max_hops=2, hub_threshold=50,
+        )
+        result = slice_graph(all_symbols, edges, query)
+
+        # run should be included AND traversed (depth 1 exempt from pruning)
+        assert run.id in result.node_ids
+        # All 60 callees should be included (traversal through run)
+        for callee in callees:
+            assert callee.id in result.node_ids, (
+                f"Callee {callee.name} should be in slice — "
+                f"depth-1 hub node 'run' should not be pruned"
+            )
+
+    def test_depth2_hub_node_still_pruned(self):
+        """A hub node at depth 2 should still be pruned."""
+        entry = make_symbol("main", path="cmd/main.go", kind="function")
+        run = make_symbol("run", path="cmd/main.go", kind="function", start_line=100)
+        orchestrator = make_symbol(
+            "orchestrator", path="pkg/orch.go", kind="function",
+        )
+
+        # orchestrator has 60 outgoing edges (hub)
+        leaf_nodes = []
+        for i in range(60):
+            leaf_nodes.append(make_symbol(
+                f"leaf_{i}", path=f"pkg/leaf_{i}.go", kind="function",
+            ))
+
+        edges = [
+            make_edge(entry, run),
+            make_edge(run, orchestrator),
+        ]
+        for leaf in leaf_nodes:
+            edges.append(make_edge(orchestrator, leaf))
+
+        all_symbols = [entry, run, orchestrator] + leaf_nodes
+        query = SliceQuery(
+            entrypoint="main", max_hops=3, hub_threshold=50,
+        )
+        result = slice_graph(all_symbols, edges, query)
+
+        # orchestrator (depth 2) should be included but NOT traversed
+        assert orchestrator.id in result.node_ids
+        # Its leaves should NOT be in the slice (hub pruned at depth 2)
+        included_leaves = [l for l in leaf_nodes if l.id in result.node_ids]
+        assert len(included_leaves) == 0, (
+            f"Expected 0 leaves (depth-2 hub pruned), got {len(included_leaves)}"
+        )
+        assert "hub_pruned" in result.limits_hit
+
+    def test_reverse_depth1_hub_exempt(self):
+        """In reverse slice, depth-1 hubs should also be exempt."""
+        target = make_symbol("handler", path="api/handler.go", kind="function")
+        dispatcher = make_symbol(
+            "dispatcher", path="api/dispatch.go", kind="function", start_line=50,
+        )
+
+        # dispatcher has 60 incoming edges (many things call it)
+        # But we're doing reverse slice, so relevant_edges are "edges_to"
+        callers = []
+        for i in range(60):
+            callers.append(make_symbol(
+                f"caller_{i}", path=f"cmd/caller_{i}.go", kind="function",
+            ))
+
+        edges = [make_edge(dispatcher, target)]
+        for caller in callers:
+            edges.append(make_edge(caller, dispatcher))
+
+        all_symbols = [target, dispatcher] + callers
+        query = SliceQuery(
+            entrypoint="handler", max_hops=2, hub_threshold=50, reverse=True,
+        )
+        result = slice_graph(all_symbols, edges, query)
+
+        # dispatcher (depth 1 in reverse) should be traversed
+        assert dispatcher.id in result.node_ids
+        # All callers should be included
+        for caller in callers:
+            assert caller.id in result.node_ids, (
+                f"Caller {caller.name} should be in reverse slice"
+            )

@@ -445,11 +445,14 @@ def slice_graph(
             relevant_edges = edges_from.get(current_id, [])
 
         # Hub node pruning: skip traversal for high-degree nodes.
-        # Entry nodes are exempt — they are the starting points we want to expand.
+        # Entry nodes and their immediate neighbors (depth ≤ 1) are exempt.
+        # This prevents the common "main → run()" pattern from producing
+        # nearly-empty slices when run() is a large orchestrator function.
         if (
             query.hub_threshold is not None
             and len(relevant_edges) > query.hub_threshold
             and current_id not in entry_node_ids
+            and hop >= 2
         ):
             if "hub_pruned" not in limits_hit:
                 limits_hit.append("hub_pruned")

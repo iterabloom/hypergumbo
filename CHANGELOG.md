@@ -27,6 +27,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Analysis core
 
+- **Hub pruning depth-1 exemption**: Nodes at depth ≤ 1 from the entry point are now exempt from hub pruning in both forward and reverse slices. This fixes the common "main → run()" orchestrator pattern where `run()` has many outgoing edges (e.g., 110 in alertmanager) and was hub-pruned at the default threshold, producing a nearly-empty slice. Hub pruning still applies at depth ≥ 2 to prevent BFS explosion through utility functions.
 - **Route promotion from generated code (WI-pasuz)**: Route-bearing symbols in generated/derived files (tier 4) are now promoted to tier 2 (internal dep) before tier filtering. Routes represent the API surface and should be visible regardless of whether the code is generated (e.g., go-swagger stubs with "DO NOT EDIT" headers). Previously, alertmanager's 9 go-swagger v2 routes were invisible at default `--max-tier 3`.
 - **Scaled entrypoint cap (WI-pohom)**: Entrypoint count cap now scales with repo size via `compute_entrypoint_cap(node_count)`: small repos keep the base cap of 50, larger repos scale at 1% of symbols (max 500). GitLab with 90K+ files previously lost most of its 693+ controllers to the fixed cap of 50.
 - **Slice node depth tracking**: `SliceResult.node_depths` records BFS hop distance for each node (0 for entries, 1 for direct callees, etc.), enabling LLMs to distinguish 1-hop vs 8-hop dependencies in slice output.
