@@ -2777,6 +2777,7 @@ class TrackerApp(App):
             ItemNotFoundError,
             LockedFieldError,
             DiscussionRateLimitError,
+            PermissionError,
         ) as e:
             self.notify(str(e), severity="error")
 
@@ -2799,7 +2800,7 @@ class TrackerApp(App):
             self._tracker_set.discuss(item_id, "", clear=True)
             self.notify(f"Discussion cleared for {item_id}")
             self._reload_after_write(item_id)
-        except (HumanAuthorityError, ItemNotFoundError) as e:
+        except (HumanAuthorityError, ItemNotFoundError, PermissionError) as e:
             self.notify(str(e), severity="error")
 
     def action_tier_move(self) -> None:
@@ -2830,6 +2831,7 @@ class TrackerApp(App):
             self._reload_after_write(item_id)
         except (
             TierMovementError, HumanAuthorityError, ItemNotFoundError,
+            PermissionError,
         ) as e:
             self.notify(str(e), severity="error")
 
@@ -2882,7 +2884,7 @@ class TrackerApp(App):
             )
             self.notify(f"Updated: {item_id}")
             self._reload_after_write(item_id)
-        except (ItemNotFoundError, LockedFieldError) as e:
+        except (ItemNotFoundError, LockedFieldError, PermissionError) as e:
             self.notify(str(e), severity="error")
 
     def action_set_parent(self) -> None:
@@ -2975,6 +2977,7 @@ class TrackerApp(App):
             self._reload_after_write(item_id)
         except (
             ItemNotFoundError, LockedFieldError, AmbiguousPrefixError,
+            PermissionError,
         ) as e:
             self.notify(str(e), severity="error")
 
@@ -3016,6 +3019,7 @@ class TrackerApp(App):
                 self._reload_after_write(item_id)
             except (
                 ItemNotFoundError, LockedFieldError, AmbiguousPrefixError,
+                PermissionError,
             ) as e:
                 self.notify(str(e), severity="error")
 
@@ -3064,7 +3068,7 @@ class TrackerApp(App):
                 self._tracker_set.unlock(item_id, result["unlock"])
             self.notify(f"Lock state updated for {item_id}")
             self._reload_after_write(item_id)
-        except (HumanAuthorityError, ItemNotFoundError) as e:
+        except (HumanAuthorityError, ItemNotFoundError, PermissionError) as e:
             self.notify(str(e), severity="error")
 
     def action_toggle_freeze(self) -> None:
@@ -3081,7 +3085,10 @@ class TrackerApp(App):
                 self._tracker_set.freeze(item.id)
                 self.notify(f"Frozen: {item.id}")
             self._reload_after_write(item.id)
-        except (HumanAuthorityError, FrozenItemError, ValueError) as e:
+        except (
+            HumanAuthorityError, FrozenItemError, ValueError,
+            PermissionError,
+        ) as e:
             self.notify(str(e), severity="error")
 
     def action_repair_drift(self) -> None:
@@ -3105,7 +3112,7 @@ class TrackerApp(App):
                 self._tracker_set.repair_drift(item.id)
                 self.notify(f"Drift repaired: {item.id}")
                 self._reload_after_write(item.id)
-            except (HumanAuthorityError, ValueError) as e:
+            except (HumanAuthorityError, ValueError, PermissionError) as e:
                 self.notify(str(e), severity="error")
 
         self.push_screen(
