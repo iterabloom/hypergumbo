@@ -5196,20 +5196,18 @@ class TestTuiPreferences:
         assert len(result["toggle_sessions"]) == 1
         assert result["toggle_sessions"][0] == {"status:done": 5, "tag:quality": 2}
 
-    def test_toggle_sessions_cap_at_3(self, tmp_path: Path) -> None:
-        """Only the most recent 3 toggle sessions are kept on save."""
+    def test_toggle_sessions_cap_at_9(self, tmp_path: Path) -> None:
+        """Only the most recent 9 toggle sessions are kept on save."""
         import json
         p = tmp_path / "prefs.json"
-        sessions = [
-            {"a": 1}, {"b": 2}, {"c": 3}, {"d": 4},
-        ]
+        sessions = [{"s%d" % i: i} for i in range(12)]
         _save_tui_preferences(
             p, set(), [],
             toggle_sessions=sessions,
         )
         result = _load_tui_preferences(p)
-        assert len(result["toggle_sessions"]) == 3
-        assert result["toggle_sessions"][0] == {"b": 2}
+        assert len(result["toggle_sessions"]) == 9
+        assert result["toggle_sessions"][0] == {"s3": 3}
 
 
 # ---------------------------------------------------------------------------
@@ -6876,7 +6874,7 @@ class TestComputeFav5:
         assert _compute_fav_5([]) == []
 
     def test_single_session_top_5(self) -> None:
-        """Top 5 from a single session, sorted by count desc then alpha."""
+        """Top 5 from a single session, re-alphabetized."""
         sessions = [
             {
                 "status:done": 10,
@@ -6889,19 +6887,25 @@ class TestComputeFav5:
         ]
         result = _compute_fav_5(sessions)
         assert len(result) == 5
-        assert result[0] == "status:done"
-        assert result[1] == "status:todo_hard"
-        assert result[2] == "tag:quality"
+        # Top 5 by count: done(10), todo_hard(8), quality(6), perf(4), in_progress(2)
+        # Re-alphabetized:
+        assert result == [
+            "status:done",
+            "status:in_progress",
+            "status:todo_hard",
+            "tag:perf",
+            "tag:quality",
+        ]
 
     def test_sums_across_sessions(self) -> None:
-        """Counts from multiple sessions are summed."""
+        """Counts from multiple sessions are summed, result re-alphabetized."""
         sessions = [
             {"status:done": 3, "tag:quality": 1},
             {"status:done": 2, "tag:quality": 5},
         ]
         result = _compute_fav_5(sessions)
-        assert result[0] == "tag:quality"  # 6 total
-        assert result[1] == "status:done"  # 5 total
+        # quality=6, done=5 → re-alphabetized
+        assert result == ["status:done", "tag:quality"]
 
     def test_max_sessions_window(self) -> None:
         """Only the most recent max_sessions are considered."""
@@ -6932,6 +6936,14 @@ class TestComputeFav5:
         sessions = [{"status:done": 0, "tag:quality": 3}]
         result = _compute_fav_5(sessions)
         assert result == ["tag:quality"]
+
+    def test_result_re_alphabetized(self) -> None:
+        """Top 5 are re-alphabetized regardless of count order."""
+        sessions = [
+            {"z:zzz": 100, "a:aaa": 50, "m:mmm": 30, "b:bbb": 20, "c:ccc": 10},
+        ]
+        result = _compute_fav_5(sessions)
+        assert result == ["a:aaa", "b:bbb", "c:ccc", "m:mmm", "z:zzz"]
 
 
 # ---------------------------------------------------------------------------
@@ -7344,6 +7356,60 @@ class TestFilterPanel:
             content = app.query_one("#std-filter-content", StaticWidget)
             plain = str(content.render())
             assert "Favorites" in plain
+
+    async def test_fav_entries_appear_in_both_sections(self, tmp_path: Path) -> None:
+        """Fav entries also appear in their normal Statuses/Tags section."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Seed toggle sessions so "done" status is a fav
+            app._toggle_sessions = [{"status:done": 10, "tag:quality": 5}]
+            app._filter_panel_visible = True
+            app._refresh_filter_panel()
+            # Count how many times "status:done" appears in filter_entries
+            done_count = sum(1 for k, _ in app._filter_entries if k == "status:done")
+            assert done_count == 2, "status:done should appear in both Favorites and Statuses"
+            quality_count = sum(1 for k, _ in app._filter_entries if k == "tag:quality")
+            assert quality_count == 2, "tag:quality should appear in both Favorites and Tags"
+
+    async def test_fav_and_normal_entries_share_toggle_state(self, tmp_path: Path) -> None:
+        """Toggling a fav entry also affects its normal-section appearance."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Static as StaticWidget
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._toggle_sessions = [{"status:done": 10}]
+            app._filter_panel_visible = True
+            app._refresh_filter_panel()
+            # Find the fav entry for "done" (first occurrence)
+            fav_idx = None
+            for i, (key, _) in enumerate(app._filter_entries):
+                if key == "status:done":
+                    fav_idx = i + 1
+                    break
+            assert fav_idx is not None
+            # Toggle via the fav entry
+            app._quick_toggle(fav_idx)
+            assert "done" in app._hidden_statuses
+            # Refresh and verify both entries show hidden state
+            app._refresh_filter_panel()
+            content = app.query_one("#std-filter-content", StaticWidget)
+            plain = str(content.render())
+            # "done" should appear as hidden in both sections
+            # Count [X] occurrences with "done" nearby
+            lines = plain.split("\n")
+            hidden_done_lines = [
+                l for l in lines if "done" in l and "[X]" in l
+            ]
+            assert len(hidden_done_lines) == 2, (
+                "Both fav and normal 'done' entries should show hidden state"
+            )
 
     async def test_fav_5_unknown_prefix_skipped(self, tmp_path: Path) -> None:
         """Fav 5 entries with unknown prefix are skipped."""

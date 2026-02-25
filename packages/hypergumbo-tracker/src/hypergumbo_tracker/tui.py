@@ -325,7 +325,7 @@ def _collect_all_tags(
 
 def _compute_fav_5(
     toggle_sessions: list[dict[str, int]],
-    max_sessions: int = 3,
+    max_sessions: int = 9,
 ) -> list[str]:
     """Compute the "Fav 5" filter entries from recent toggle history.
 
@@ -342,7 +342,7 @@ def _compute_fav_5(
     totals = {k: v for k, v in totals.items() if v > 0}
     # Sort by count desc, then alphabetically
     ranked = sorted(totals.keys(), key=lambda k: (-totals[k], k))
-    return ranked[:5]
+    return sorted(ranked[:5])
 
 
 def _format_filter_entry(
@@ -379,7 +379,7 @@ _PREFS_DEFAULTS: dict = {
     "hide_tagged": False,
 }
 
-_MAX_TOGGLE_SESSIONS = 3
+_MAX_TOGGLE_SESSIONS = 9
 
 
 def _load_tui_preferences(path: Path) -> dict:
@@ -441,7 +441,7 @@ def _save_tui_preferences(
     ``display_order``, ``hidden_tags``, ``toggle_sessions``, and
     ``last_filters`` keys.  Creates parent directories as needed.
 
-    ``toggle_sessions`` is capped to the most recent 3 entries.
+    ``toggle_sessions`` is capped to the most recent 9 entries.
 
     Returns ``True`` on success, ``False`` if the write failed (e.g.
     permission denied).  Callers should tolerate failure gracefully —
@@ -2508,8 +2508,6 @@ class TrackerApp(App):
                 if self._current_session_counts else []
             ),
         )
-        fav_set = set(fav_5)
-
         # Count items per status and tag
         status_counts: dict[str, int] = {}
         for item in items:
@@ -2562,8 +2560,6 @@ class TrackerApp(App):
         lines.append("── Statuses ──")
         for s in statuses:
             key = f"status:{s}"
-            if key in fav_set:
-                continue  # already in favorites
             is_hidden = s in self._hidden_statuses
             count = status_counts.get(s, 0)
             entry_idx = idx if idx <= 9 else 0
@@ -2587,21 +2583,19 @@ class TrackerApp(App):
         self._filter_entries.append(("meta:tagged", "Tagged"))
         idx += 1
 
-        # Then individual tag entries (non-fav only)
+        # Then individual tag entries
         if all_tags:
-            non_fav_tags = [t for t in all_tags if f"tag:{t}" not in fav_set]
-            if non_fav_tags:
-                for t in non_fav_tags:
-                    key = f"tag:{t}"
-                    is_hidden = t in self._hidden_tags
-                    count = tag_counts.get(t, 0)
-                    entry_idx = idx if idx <= 9 else 0
-                    self._filter_line_to_entry[len(lines)] = idx
-                    lines.append(
-                        _format_filter_entry(entry_idx, t, is_hidden, count),
-                    )
-                    self._filter_entries.append((key, t))
-                    idx += 1
+            for t in all_tags:
+                key = f"tag:{t}"
+                is_hidden = t in self._hidden_tags
+                count = tag_counts.get(t, 0)
+                entry_idx = idx if idx <= 9 else 0
+                self._filter_line_to_entry[len(lines)] = idx
+                lines.append(
+                    _format_filter_entry(entry_idx, t, is_hidden, count),
+                )
+                self._filter_entries.append((key, t))
+                idx += 1
 
         content = "\n".join(lines)
         # Update both panel locations
