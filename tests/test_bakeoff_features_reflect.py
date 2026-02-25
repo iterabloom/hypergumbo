@@ -13,6 +13,7 @@ import importlib
 import json
 import os
 import statistics
+import subprocess
 import sys
 from pathlib import Path
 from unittest import mock
@@ -915,3 +916,335 @@ class TestCmdAggregate:
         summary = yaml.safe_load(summary_path.read_text())
         assert "trajectory" in summary
         assert summary["trajectory"]["trend"] == "IMPROVING"
+
+
+class TestNormalizeIdea:
+    """Tests for improvement idea normalization."""
+
+    def test_lowercases(self, bakeoff_features_reflect):
+        assert bakeoff_features_reflect._normalize_idea("ADD Middleware") == "add middleware"
+
+    def test_strips_whitespace(self, bakeoff_features_reflect):
+        assert bakeoff_features_reflect._normalize_idea("  idea  ") == "idea"
+
+    def test_truncates_at_80_chars(self, bakeoff_features_reflect):
+        long_idea = "A" * 100
+        result = bakeoff_features_reflect._normalize_idea(long_idea)
+        assert len(result) == 80
+
+
+class TestListStealthTitles:
+    """Tests for _list_stealth_titles dedup helper."""
+
+    def test_returns_set_of_lowercase_titles(self, bakeoff_features_reflect):
+        items = [
+            {"id": "WI-abc", "title": "Add Middleware Tracing"},
+            {"id": "WI-def", "title": "Improve Slice Quality"},
+        ]
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock.Mock(
+                returncode=0,
+                stdout=json.dumps(items),
+            )
+            titles = bakeoff_features_reflect._list_stealth_titles("/fake/tracker")
+
+        assert titles == {"add middleware tracing", "improve slice quality"}
+
+    def test_returns_empty_on_failure(self, bakeoff_features_reflect):
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock.Mock(returncode=1, stdout="")
+            titles = bakeoff_features_reflect._list_stealth_titles("/fake/tracker")
+
+        assert titles == set()
+
+    def test_returns_empty_on_bad_json(self, bakeoff_features_reflect):
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock.Mock(returncode=0, stdout="not-json")
+            titles = bakeoff_features_reflect._list_stealth_titles("/fake/tracker")
+
+        assert titles == set()
+
+
+class TestIngestImprovementIdeas:
+    """Tests for improvement idea ingestion into tracker."""
+
+    def test_creates_items_above_threshold(self, bakeoff_features_reflect):
+        """Creates tracker items for ideas with count >= min_count."""
+        summary = {
+            "improvement_ideas": [
+                {"idea": "Add middleware chain tracing", "count": 3},
+                {"idea": "Improve reverse slice", "count": 1},
+            ]
+        }
+
+        with mock.patch("subprocess.run") as mock_run:
+            # First call: list stealth items (empty)
+            # Subsequent calls: add items
+            mock_run.side_effect = [
+                mock.Mock(returncode=0, stdout="[]"),  # list
+                mock.Mock(returncode=0, stdout="WI-new-item\n"),  # add
+            ]
+
+            created = bakeoff_features_reflect.ingest_improvement_ideas(
+                summary, min_count=2, tracker_script="/fake/tracker"
+            )
+
+        assert len(created) == 1
+        assert created[0]["idea"] == "Add middleware chain tracing"
+        assert created[0]["id"] == "WI-new-item"
+
+        # Verify the add call has correct args
+        add_call = mock_run.call_args_list[1]
+        add_args = add_call[0][0]
+        assert "--tier" in add_args
+        tier_idx = add_args.index("--tier")
+        assert add_args[tier_idx + 1] == "stealth"
+        assert "--tag" in add_args
+
+    def test_skips_existing_items(self, bakeoff_features_reflect):
+        """Does not create items that already exist in stealth."""
+        summary = {
+            "improvement_ideas": [
+                {"idea": "Add middleware chain tracing", "count": 3},
+            ]
+        }
+
+        existing = [{"id": "WI-old", "title": "Add middleware chain tracing"}]
+
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock.Mock(
+                returncode=0, stdout=json.dumps(existing)
+            )
+
+            created = bakeoff_features_reflect.ingest_improvement_ideas(
+                summary, min_count=1, tracker_script="/fake/tracker"
+            )
+
+        assert len(created) == 0
+        # Only one call (list), no add call
+        assert mock_run.call_count == 1
+
+    def test_empty_ideas_returns_empty(self, bakeoff_features_reflect):
+        """Returns empty list when no improvement ideas."""
+        created = bakeoff_features_reflect.ingest_improvement_ideas(
+            {}, tracker_script="/fake/tracker"
+        )
+        assert created == []
+
+    def test_all_below_threshold(self, bakeoff_features_reflect):
+        """Returns empty when all ideas are below threshold."""
+        summary = {
+            "improvement_ideas": [
+                {"idea": "Low-frequency idea", "count": 1},
+            ]
+        }
+        created = bakeoff_features_reflect.ingest_improvement_ideas(
+            summary, min_count=2, tracker_script="/fake/tracker"
+        )
+        assert created == []
+
+    def test_dry_run_does_not_call_tracker(self, bakeoff_features_reflect):
+        """Dry run reports ideas without calling tracker add."""
+        summary = {
+            "improvement_ideas": [
+                {"idea": "Add middleware chain tracing", "count": 3},
+            ]
+        }
+
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock.Mock(returncode=0, stdout="[]")
+
+            created = bakeoff_features_reflect.ingest_improvement_ideas(
+                summary, min_count=1, tracker_script="/fake/tracker",
+                dry_run=True,
+            )
+
+        assert len(created) == 1
+        assert created[0]["id"] == "(dry-run)"
+        # Only the list call, no add calls
+        assert mock_run.call_count == 1
+
+    def test_handles_tracker_add_failure(self, bakeoff_features_reflect):
+        """Continues gracefully when tracker add fails."""
+        summary = {
+            "improvement_ideas": [
+                {"idea": "Idea that fails", "count": 2},
+                {"idea": "Idea that succeeds", "count": 2},
+            ]
+        }
+
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                mock.Mock(returncode=0, stdout="[]"),  # list
+                mock.Mock(returncode=1, stdout="", stderr="error"),  # add fails
+                mock.Mock(returncode=0, stdout="WI-ok\n"),  # add succeeds
+            ]
+
+            created = bakeoff_features_reflect.ingest_improvement_ideas(
+                summary, min_count=1, tracker_script="/fake/tracker"
+            )
+
+        assert len(created) == 1
+        assert created[0]["id"] == "WI-ok"
+
+    def test_title_truncation(self, bakeoff_features_reflect):
+        """Long ideas get truncated to 80 chars in title."""
+        long_idea = "A" * 120
+        summary = {
+            "improvement_ideas": [
+                {"idea": long_idea, "count": 2},
+            ]
+        }
+
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                mock.Mock(returncode=0, stdout="[]"),  # list
+                mock.Mock(returncode=0, stdout="WI-new\n"),  # add
+            ]
+
+            created = bakeoff_features_reflect.ingest_improvement_ideas(
+                summary, min_count=1, tracker_script="/fake/tracker"
+            )
+
+        assert len(created) == 1
+        # Verify title was truncated in the add call
+        add_call = mock_run.call_args_list[1]
+        add_args = add_call[0][0]
+        title_idx = add_args.index("--title")
+        assert len(add_args[title_idx + 1]) == 80
+
+
+class TestCmdIngest:
+    """Tests for the ingest subcommand."""
+
+    def test_ingest_reads_summary_and_creates_items(
+        self, tmp_path, bakeoff_features_reflect
+    ):
+        """cmd_ingest reads summary.yaml and calls ingest_improvement_ideas."""
+        import yaml
+
+        # Create session structure
+        session_dir = tmp_path / "deep-20260218-150000"
+        session_dir.mkdir()
+        state = {
+            "session_id": "test",
+            "workdir": str(session_dir),
+            "current_cohort": ["repo-a"],
+            "cohort_number": 1,
+            "iteration": 1,
+        }
+        (session_dir / "state.json").write_text(json.dumps(state))
+
+        reflect_dir = session_dir / "reflect" / "cohort-001" / "iter-001"
+        reflect_dir.mkdir(parents=True)
+
+        summary = {
+            "total_repos": 2,
+            "improvement_ideas": [
+                {"idea": "Add middleware tracing", "count": 3},
+            ],
+        }
+        (reflect_dir / "summary.yaml").write_text(
+            yaml.dump(summary, default_flow_style=False)
+        )
+
+        args = mock.Mock()
+        args.workdir = str(session_dir)
+        args.iteration = None
+        args.min_count = 1
+        args.dry_run = True
+
+        result = bakeoff_features_reflect.cmd_ingest(args)
+        assert result == 0
+
+    def test_ingest_fails_without_summary(self, tmp_path, bakeoff_features_reflect):
+        """cmd_ingest fails gracefully when no summary.yaml exists."""
+        session_dir = tmp_path / "deep-20260218-150000"
+        session_dir.mkdir()
+        state = {
+            "session_id": "test",
+            "workdir": str(session_dir),
+            "current_cohort": ["repo-a"],
+            "cohort_number": 1,
+            "iteration": 1,
+        }
+        (session_dir / "state.json").write_text(json.dumps(state))
+
+        args = mock.Mock()
+        args.workdir = str(session_dir)
+        args.iteration = None
+        args.min_count = 2
+        args.dry_run = False
+
+        result = bakeoff_features_reflect.cmd_ingest(args)
+        assert result == 1
+
+
+class TestAggregateWithIngest:
+    """Test the --ingest flag on aggregate command."""
+
+    def test_aggregate_ingest_calls_ingestion(
+        self, deep_session, bakeoff_features_reflect
+    ):
+        """cmd_aggregate with --ingest creates stealth tracker items."""
+        session_dir, state = deep_session
+
+        reflect_dir = session_dir / "reflect" / "cohort-002" / "iter-001"
+        reflect_dir.mkdir(parents=True)
+
+        a1 = _make_deep_assessment("repo-a", "USEFUL")
+        a2 = _make_deep_assessment("repo-b", "PARTIALLY_USEFUL")
+        # Both have "Add middleware chain tracing" as improvement_idea
+
+        (reflect_dir / "repo-a.assessment.yaml").write_text(
+            json.dumps({"developer_assessment": a1})
+        )
+        (reflect_dir / "repo-b.assessment.yaml").write_text(
+            json.dumps({"developer_assessment": a2})
+        )
+
+        args = mock.Mock()
+        args.workdir = str(session_dir)
+        args.iteration = None
+        args.ingest = True
+
+        with mock.patch.object(
+            bakeoff_features_reflect,
+            "ingest_improvement_ideas",
+            return_value=[{"idea": "test", "id": "WI-test"}],
+        ) as mock_ingest:
+            result = bakeoff_features_reflect.cmd_aggregate(args)
+
+        assert result == 0
+        mock_ingest.assert_called_once()
+        call_args = mock_ingest.call_args
+        summary = call_args[0][0]
+        assert "improvement_ideas" in summary
+
+    def test_aggregate_no_ingest_by_default(
+        self, deep_session, bakeoff_features_reflect
+    ):
+        """cmd_aggregate without --ingest does not call ingestion."""
+        session_dir, state = deep_session
+
+        reflect_dir = session_dir / "reflect" / "cohort-002" / "iter-001"
+        reflect_dir.mkdir(parents=True)
+
+        a1 = _make_deep_assessment("repo-a", "USEFUL")
+        (reflect_dir / "repo-a.assessment.yaml").write_text(
+            json.dumps({"developer_assessment": a1})
+        )
+
+        args = mock.Mock()
+        args.workdir = str(session_dir)
+        args.iteration = None
+        args.ingest = False
+
+        with mock.patch.object(
+            bakeoff_features_reflect,
+            "ingest_improvement_ideas",
+        ) as mock_ingest:
+            result = bakeoff_features_reflect.cmd_aggregate(args)
+
+        assert result == 0
+        mock_ingest.assert_not_called()

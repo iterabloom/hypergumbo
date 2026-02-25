@@ -76,6 +76,7 @@ import argparse
 import datetime
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -802,6 +803,18 @@ def cmd_aggregate(args):
 
     print(f"Full summary: {summary_path}")
 
+    # Optional: ingest improvement ideas into tracker
+    if getattr(args, "ingest", False):
+        print()
+        print("Ingesting improvement ideas into stealth tracker items...")
+        created = ingest_improvement_ideas(summary, min_count=2)
+        if created:
+            print(f"Created {len(created)} stealth tracker item(s):")
+            for item in created:
+                print(f"  {item['id']}: {item['idea'][:60]}...")
+        else:
+            print("No new items (all already exist or below threshold).")
+
     return 0
 
 
@@ -954,6 +967,183 @@ def cmd_check(args):
     return 0
 
 
+# ---------------------------------------------------------------------------
+# Improvement idea ingestion → tracker
+# ---------------------------------------------------------------------------
+
+
+def _tracker_script() -> str:
+    """Return the path to the tracker CLI script."""
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "tracker")
+
+
+def _list_stealth_titles(tracker_script: str) -> set[str]:
+    """List existing stealth tracker item titles for dedup.
+
+    Returns a set of lowercase titles for case-insensitive matching.
+    """
+    result = subprocess.run(
+        [tracker_script, "--json", "list", "--tier", "stealth"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return set()
+    try:
+        items = json.loads(result.stdout)
+        return {item["title"].lower() for item in items if "title" in item}
+    except (json.JSONDecodeError, KeyError):
+        return set()
+
+
+def _normalize_idea(idea: str) -> str:
+    """Normalize an improvement idea string for dedup comparison.
+
+    Strips whitespace and lowercases for case-insensitive matching.
+    Takes the first 80 chars to match the title truncation.
+    """
+    return idea.strip().lower()[:80]
+
+
+def ingest_improvement_ideas(
+    summary: dict,
+    *,
+    min_count: int = 2,
+    tracker_script: str | None = None,
+    dry_run: bool = False,
+) -> list[dict]:
+    """Create stealth-tier tracker items from aggregated improvement ideas.
+
+    Only ideas appearing in >= min_count assessments are ingested. Ideas are
+    deduplicated against existing stealth items by title prefix.
+
+    Args:
+        summary: Aggregated summary dict with ``improvement_ideas`` key.
+        min_count: Minimum occurrence count to ingest (default 2).
+        tracker_script: Path to tracker CLI script (auto-detected if None).
+        dry_run: If True, report what would be created without calling tracker.
+
+    Returns:
+        List of dicts describing created items: [{"idea": str, "id": str}].
+    """
+    if tracker_script is None:
+        tracker_script = _tracker_script()
+
+    ideas = summary.get("improvement_ideas", [])
+    if not ideas:
+        return []
+
+    # Filter by count threshold
+    candidates = [i for i in ideas if i.get("count", 0) >= min_count]
+    if not candidates:
+        return []
+
+    # Get existing stealth titles for dedup
+    existing = _list_stealth_titles(tracker_script)
+
+    created = []
+    for item in candidates:
+        idea_text = item["idea"]
+        title = idea_text[:80]
+
+        # Dedup: skip if a stealth item with the same title prefix exists
+        if _normalize_idea(idea_text) in existing:
+            continue
+
+        count = item.get("count", 1)
+        description = (
+            f"{idea_text}\n\n"
+            f"Source: bakeoff assessment aggregation "
+            f"(found in {count} assessment(s))."
+        )
+
+        if dry_run:
+            created.append({"idea": idea_text, "id": "(dry-run)"})
+            continue
+
+        result = subprocess.run(
+            [
+                tracker_script,
+                "--no-auto-sync",
+                "add",
+                "--kind", "work_item",
+                "--title", title,
+                "--status", "todo_soft",
+                "--priority", "3",
+                "--tier", "stealth",
+                "--tag", "bakeoff",
+                "--tag", "assessment",
+                "--description", description,
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode == 0:
+            item_id = result.stdout.strip()
+            created.append({"idea": idea_text, "id": item_id})
+        else:
+            print(
+                f"  Warning: failed to create tracker item for: "
+                f"{title[:50]}...",
+                file=sys.stderr,
+            )
+            if result.stderr:
+                print(f"    {result.stderr.strip()}", file=sys.stderr)
+
+    return created
+
+
+def cmd_ingest(args):
+    """Ingest improvement ideas from aggregated summary into tracker."""
+    workdir = resolve_workdir(args.workdir)
+    print(f"Workdir: {workdir}")
+    state = load_state(workdir)
+
+    if not state:
+        print("Error: No feature bakeoff session found.", file=sys.stderr)
+        return 1
+
+    cohort_number = state.get("cohort_number", 0)
+    iteration = args.iteration or state.get("iteration", 0)
+
+    summary_path = os.path.join(
+        workdir, "reflect",
+        f"cohort-{cohort_number:03d}",
+        f"iter-{iteration:03d}",
+        "summary.yaml",
+    )
+
+    if not os.path.exists(summary_path):
+        print(f"Error: No summary found at {summary_path}", file=sys.stderr)
+        print("Run 'aggregate' first.", file=sys.stderr)
+        return 1
+
+    import yaml
+    with open(summary_path) as f:
+        summary = yaml.safe_load(f)
+
+    min_count = getattr(args, "min_count", 2)
+    dry_run = getattr(args, "dry_run", False)
+
+    print(f"Ingesting improvement ideas (min_count={min_count})...")
+    if dry_run:
+        print("  (dry-run mode — no items will be created)")
+
+    created = ingest_improvement_ideas(
+        summary, min_count=min_count, dry_run=dry_run,
+    )
+
+    if created:
+        print(f"\nCreated {len(created)} stealth tracker item(s):")
+        for item in created:
+            print(f"  {item['id']}: {item['idea'][:60]}...")
+    else:
+        print("\nNo new items to create (all already exist or below threshold).")
+
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="LLM-driven qualitative assessment of hypergumbo outputs",
@@ -971,6 +1161,10 @@ def main():
     p_aggregate = subparsers.add_parser("aggregate", help="Aggregate assessment results")
     p_aggregate.add_argument("--workdir", help="Bakeoff workdir")
     p_aggregate.add_argument("--iteration", type=int, help="Specific iteration")
+    p_aggregate.add_argument(
+        "--ingest", action="store_true",
+        help="Also ingest improvement ideas into stealth tracker items",
+    )
 
     # check (aggregation resilience)
     p_check = subparsers.add_parser(
@@ -981,6 +1175,21 @@ def main():
         "--auto-aggregate",
         action="store_true",
         help="Automatically aggregate any unaggregated assessment sets",
+    )
+
+    # ingest (improvement ideas → tracker)
+    p_ingest = subparsers.add_parser(
+        "ingest", help="Ingest improvement ideas into stealth tracker items"
+    )
+    p_ingest.add_argument("--workdir", help="Bakeoff workdir")
+    p_ingest.add_argument("--iteration", type=int, help="Specific iteration")
+    p_ingest.add_argument(
+        "--min-count", type=int, default=2, dest="min_count",
+        help="Minimum occurrence count to ingest (default: 2)",
+    )
+    p_ingest.add_argument(
+        "--dry-run", action="store_true", dest="dry_run",
+        help="Report what would be created without calling tracker",
     )
 
     args = parser.parse_args()
@@ -995,6 +1204,7 @@ def main():
         "reflect": cmd_reflect,
         "aggregate": cmd_aggregate,
         "check": cmd_check,
+        "ingest": cmd_ingest,
     }
 
     return commands[args.command](args)
