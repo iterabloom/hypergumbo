@@ -47,3 +47,10 @@
   set:  # caa8
     status: violated  # caa8
     priority: 3  # caa8
+- op: discuss  # d597
+  at: '2026-02-25T09:47:11Z'  # d597
+  by: agent  # d597
+  actor: jgstern_agent  # d597
+  clock: 5  # d597
+  nonce: d597  # d597
+  message: "Acknowledged. Implementing (a)+(c): name-based detection for universal patterns (log, warn, error, debug, info, trace, fatal) plus framework YAML entries for library-specific loggers (logrus, zap, slog, log4j, winston, structlog) with infrastructure:logging category dampening."  # d597

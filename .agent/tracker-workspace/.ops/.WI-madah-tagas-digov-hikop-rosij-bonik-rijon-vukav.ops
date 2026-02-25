@@ -34,3 +34,10 @@
   nonce: 131d  # 131d
   set:  # 131d
     status: todo_soft  # 131d
+- op: discuss  # 7490
+  at: '2026-02-25T09:47:12Z'  # 7490
+  by: agent  # 7490
+  actor: jgstern_agent  # 7490
+  clock: 4  # 7490
+  nonce: '7490'  # 7490
+  message: "Acknowledged. Will implement bakeoff items as stealth-tier (gitignored). Will verify auto-sync skips stealth items and they don't count toward the sync threshold."  # 7490
