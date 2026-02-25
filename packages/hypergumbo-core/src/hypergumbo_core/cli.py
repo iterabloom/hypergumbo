@@ -4071,6 +4071,21 @@ def run_behavior_map(
     show_progress("Classifying symbols", 60)
     _classify_symbols(all_symbols, repo_root, package_roots)
 
+    # Promote route-bearing symbols from derived (tier 4) to internal (tier 2).
+    # Routes represent the API surface and are valuable regardless of whether
+    # the code is generated (e.g., go-swagger, protobuf gRPC stubs).
+    for s in all_symbols:
+        if s.supply_chain_tier == 4:
+            is_route = s.kind == "route"
+            if not is_route:
+                for concept in (s.meta or {}).get("concepts", []):
+                    if isinstance(concept, dict) and concept.get("concept") == "route":
+                        is_route = True
+                        break
+            if is_route:
+                s.supply_chain_tier = 2
+                s.supply_chain_reason = "route promoted from derived"
+
     # Apply tier filtering: always exclude DERIVED (tier 4) unless --max-tier 4.
     # DERIVED files are minified/bundled/generated artifacts whose symbols distort
     # centrality rankings and inflate edge counts via false-positive name collisions.
