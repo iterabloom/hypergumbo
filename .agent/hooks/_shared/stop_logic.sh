@@ -10,12 +10,23 @@
 # Exports: TOTAL_HARD, TOTAL_SOFT, TOTAL_TODOS, CIRCUIT_BREAKER_TRIPPED,
 #          GUIDANCE_FILE, GUIDANCE_FILE_COOLDOWN, GUIDANCE_FILE_REFLECTION,
 #          STATE_FILE, ELAPSED_MIN
+#
+# Optional env vars for dry-run (set by scripts/stop-hook-preview):
+#   STOP_HOOK_DRY_RUN       - When non-empty, writes go to a temp dir instead
+#                             of permanent locations. No side effects on disk.
+#   STOP_HOOK_BAKEOFF_FILTER - Glob pattern for bakeoff session dirs (e.g.
+#                             "broad-*"). Default: "*" (all sessions).
 
 # --- Setup ---
 GUIDANCE_LOG_DIR="$HOME/hypergumbo_lab_notebook/guidance_log"
 mkdir -p "$GUIDANCE_LOG_DIR"
 HASH_FILE="/tmp/hypergumbo_stop_hashes"
 HASH_THRESHOLD=5
+
+# --- Dry-run support ---
+if [[ -n "${STOP_HOOK_DRY_RUN:-}" ]]; then
+  _DRY_RUN_TMPDIR=$(mktemp -d)
+fi
 
 # --- Structured tracker (fail-closed) ---
 TOTAL_HARD=0
@@ -33,7 +44,9 @@ CIRCUIT_BREAKER_TRIPPED=false
 if [[ "$TOTAL_TODOS" -gt 0 ]]; then
   CURRENT_HASH=$("$REPO_ROOT/scripts/tracker" hash-todos 2>/dev/null) || \
     { echo "WARNING: hash-todos failed, using fallback hash" >&2; CURRENT_HASH="fallback-$$"; }
-  echo "$CURRENT_HASH" >> "$HASH_FILE"
+  if [[ -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
+    echo "$CURRENT_HASH" >> "$HASH_FILE"
+  fi
   TAIL_COUNT=$(tail -n "$HASH_THRESHOLD" "$HASH_FILE" | wc -l)
   UNIQUE_COUNT=$(tail -n "$HASH_THRESHOLD" "$HASH_FILE" | sort -u | wc -l)
   if [[ "$TAIL_COUNT" -ge "$HASH_THRESHOLD" && "$UNIQUE_COUNT" -eq 1 ]]; then
@@ -44,14 +57,18 @@ fi
 # --- Write guidance file (if any TODOs exist) ---
 GUIDANCE_FILE=""
 if [[ "$TOTAL_TODOS" -gt 0 ]]; then
-  GUIDANCE_FILE=$("$REPO_ROOT/scripts/tracker" guidance --guidance-dir "$GUIDANCE_LOG_DIR" 2>/dev/null) || true
+  if [[ -n "${STOP_HOOK_DRY_RUN:-}" ]]; then
+    GUIDANCE_FILE=$("$REPO_ROOT/scripts/tracker" guidance --guidance-dir "$_DRY_RUN_TMPDIR" 2>/dev/null) || true
+  else
+    GUIDANCE_FILE=$("$REPO_ROOT/scripts/tracker" guidance --guidance-dir "$GUIDANCE_LOG_DIR" 2>/dev/null) || true
+  fi
   if [[ -z "$GUIDANCE_FILE" ]] || [[ ! -f "$GUIDANCE_FILE" ]]; then
     echo "WARNING: tracker guidance generation failed, continuing without guidance file" >&2
     GUIDANCE_FILE=""
   fi
 
   # Update last_stop_check.json with guidance_file pointer
-  if [[ -n "$GUIDANCE_FILE" ]]; then
+  if [[ -n "$GUIDANCE_FILE" && -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
     STATE_FILE_FOR_GF="$REPO_ROOT/.agent/last_stop_check.json"
     if command -v jq &>/dev/null && [[ -f "$STATE_FILE_FOR_GF" ]]; then
       TMP=$(mktemp)
@@ -68,7 +85,8 @@ fi
 BAKEOFF_SUFFIX=""
 BAKEOFF_DIR="$HOME/hypergumbo_lab_notebook/bakeoff_artifacts"
 if [[ -d "$BAKEOFF_DIR" ]]; then
-  LATEST_STATE=$(find "$BAKEOFF_DIR" -maxdepth 2 -name state.json -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+  BAKEOFF_GLOB="${STOP_HOOK_BAKEOFF_FILTER:-*}"
+  LATEST_STATE=$(find "$BAKEOFF_DIR" -maxdepth 2 -path "*/${BAKEOFF_GLOB}/state.json" -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
   if [[ -n "$LATEST_STATE" ]]; then
     BAKEOFF_SUMMARY=$(python3 -c "
 import json, sys
@@ -120,7 +138,11 @@ fi
 GUIDANCE_FILE_COOLDOWN=""
 if [[ "$ELAPSED_MIN" -lt 30 ]]; then
   TIMESTAMP=$(date +%m%d%Y_%H%M)
-  GUIDANCE_FILE_COOLDOWN="$GUIDANCE_LOG_DIR/stop_guidance_cooldown_${TIMESTAMP}.md"
+  if [[ -n "${STOP_HOOK_DRY_RUN:-}" ]]; then
+    GUIDANCE_FILE_COOLDOWN="${_DRY_RUN_TMPDIR}/stop_guidance_cooldown_${TIMESTAMP}.md"
+  else
+    GUIDANCE_FILE_COOLDOWN="$GUIDANCE_LOG_DIR/stop_guidance_cooldown_${TIMESTAMP}.md"
+  fi
   {
     cat "$REPO_ROOT/.agent/cooldown_prompt.md"
     # Append last reflection notes if present
@@ -142,7 +164,11 @@ fi
 GUIDANCE_FILE_REFLECTION=""
 if [[ "$ELAPSED_MIN" -ge 30 ]]; then
   TIMESTAMP=$(date +%m%d%Y_%H%M)
-  GUIDANCE_FILE_REFLECTION="$GUIDANCE_LOG_DIR/stop_guidance_reflect_${TIMESTAMP}.md"
+  if [[ -n "${STOP_HOOK_DRY_RUN:-}" ]]; then
+    GUIDANCE_FILE_REFLECTION="${_DRY_RUN_TMPDIR}/stop_guidance_reflect_${TIMESTAMP}.md"
+  else
+    GUIDANCE_FILE_REFLECTION="$GUIDANCE_LOG_DIR/stop_guidance_reflect_${TIMESTAMP}.md"
+  fi
   {
     cat "$REPO_ROOT/.agent/stop_reflect.md"
     if [[ -n "$BAKEOFF_SUFFIX" ]]; then
