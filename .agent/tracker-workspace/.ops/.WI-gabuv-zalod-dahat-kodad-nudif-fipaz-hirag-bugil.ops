@@ -20,3 +20,12 @@
     justification:  # 7884
     description: "SOURCE: Process health synthesis 3.10, recommendation 13. gitlab (709MB) pushes hypergumbo to ~5.2 GB RSS and ~101 min CPU time. The human reports past OOM failures on large repos. As the bakeoff curriculum moves to Web App Monoliths (cohort 19: gitlab, chatwoot, keycloak, killbill, jenkins), memory failures become a process health risk. Options: (a) Streaming/incremental graph construction to cap peak memory — process files in batches rather than loading the entire graph into memory at once. (b) Per-repo memory limits with graceful degradation — analyze what fits, report what was skipped. (c) Document the effective repo size ceiling for the current infrastructure. (d) Profile memory usage to identify the largest allocations (likely the edge list or symbol table) and optimize those structures."  # 7884
     fields: {}  # 7884
+- op: update  # 3e0d
+  at: '2026-02-25T08:08:10Z'  # 3e0d
+  by: human  # 3e0d
+  actor: jgstern  # 3e0d
+  clock: 2  # 3e0d
+  nonce: 3e0d  # 3e0d
+  set:  # 3e0d
+    status: todo_soft  # 3e0d
+    priority: 4  # 3e0d

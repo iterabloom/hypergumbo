@@ -36,3 +36,10 @@
     status: done  # 3c89
     pr_ref: '#1334'  # 3c89
     justification: "Fixed: _resolve_ref() resolves short prefixes at CLI write time; validate_all() in preflight_check() catches dangling refs before sync push"  # 3c89
+- op: discuss  # 485a
+  at: '2026-02-25T08:40:28Z'  # 485a
+  by: agent  # 485a
+  actor: jgstern_agent  # 485a
+  clock: 4  # 485a
+  nonce: 485a  # 485a
+  message: "[migrated from justification field] Fixed: _resolve_ref() resolves short prefixes at CLI write time; validate_all() in preflight_check() catches dangling refs before sync push"  # 485a

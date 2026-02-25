@@ -37,3 +37,11 @@
   clock: 3  # fcad
   nonce: fcad  # fcad
   message: "Human decision (2026-02-25): option (a)+(d) — numeric quality scores (0-100) plus trajectory field (IMPROVING/STABLE/REGRESSING). Implement for DEEP pipeline first since that is the active focus."  # fcad
+- op: update  # bff7
+  at: '2026-02-25T07:56:44Z'  # bff7
+  by: human  # bff7
+  actor: jgstern  # bff7
+  clock: 4  # bff7
+  nonce: bff7  # bff7
+  set:  # bff7
+    status: violated  # bff7

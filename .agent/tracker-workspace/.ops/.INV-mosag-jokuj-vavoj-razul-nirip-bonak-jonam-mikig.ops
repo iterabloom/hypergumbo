@@ -31,3 +31,19 @@
   set: {}  # 59a8
   add:  # 59a8
     before: [WI-bimab-ravus-lugig-bapus-maval-donoj-huboz-kodoz]  # 59a8
+- op: discuss  # 0bfb
+  at: '2026-02-25T08:13:51Z'  # 0bfb
+  by: human  # 0bfb
+  actor: jgstern  # 0bfb
+  clock: 3  # 0bfb
+  nonce: 0bfb  # 0bfb
+  message: "- (a) Name-based + caller-file-span threshold — quickest, catches the obvious cases (log, warn, error, debug, info, trace, fatal). Fragile against custom logger wrappers.\n  - (b) Behavioral detection — most principled (high in-degree + low semantic diversity). But risks false positives on legitimate hub functions.\n  - (c) Framework-aware tagging — most robust (logrus, zap, slog, log4j, winston, structlog as YAML patterns with infrastructure:logging category). Requires maintaining YAML entries per logging library but fits the existing framework pattern\n  system.\n\nLet's go with (a)+(c) as it is the pragmatic combination — name-based catches universal patterns, framework YAML catches library-specific ones."  # 0bfb
+- op: update  # caa8
+  at: '2026-02-25T08:14:58Z'  # caa8
+  by: human  # caa8
+  actor: jgstern  # caa8
+  clock: 4  # caa8
+  nonce: caa8  # caa8
+  set:  # caa8
+    status: violated  # caa8
+    priority: 3  # caa8

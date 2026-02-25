@@ -37,3 +37,11 @@
   clock: 3  # e5ae
   nonce: e5ae  # e5ae
   message: "Human decision (2026-02-25): Keep both pipelines. Focus fixes on DEEP pipeline first. BROAD validation deferred."  # e5ae
+- op: update  # 2869
+  at: '2026-02-25T08:00:06Z'  # 2869
+  by: human  # 2869
+  actor: jgstern  # 2869
+  clock: 4  # 2869
+  nonce: '2869'  # 2869
+  set:  # 2869
+    status: violated  # 2869

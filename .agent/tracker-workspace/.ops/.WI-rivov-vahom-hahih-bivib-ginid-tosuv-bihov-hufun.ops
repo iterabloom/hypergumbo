@@ -26,3 +26,11 @@
   clock: 2  # d9a8
   nonce: d9a8  # d9a8
   message: "Human decision (2026-02-25): Keep both pipelines, but defer BROAD validation. Focus on DEEP first — too many plates spinning to reliably test BROAD without accidentally using it as a real tool rather than validating it."  # d9a8
+- op: update  # 28c1
+  at: '2026-02-25T07:58:29Z'  # 28c1
+  by: human  # 28c1
+  actor: jgstern  # 28c1
+  clock: 3  # 28c1
+  nonce: 28c1  # 28c1
+  set:  # 28c1
+    priority: 4  # 28c1

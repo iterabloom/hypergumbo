@@ -38,3 +38,11 @@
   set: {}  # a966
   remove:  # a966
     before: [META-donon-hajit-bajag-kolaf-tuhov-fomin-dujov-zuzih]  # a966
+- op: update  # 55fd
+  at: '2026-02-25T08:01:34Z'  # 55fd
+  by: human  # 55fd
+  actor: jgstern  # 55fd
+  clock: 4  # 55fd
+  nonce: 55fd  # 55fd
+  set:  # 55fd
+    status: todo_soft  # 55fd

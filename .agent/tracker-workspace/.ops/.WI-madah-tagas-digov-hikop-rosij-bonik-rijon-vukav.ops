@@ -26,3 +26,11 @@
   clock: 2  # f625
   nonce: f625  # f625
   message: "I like both (a) and (b). I think these bakeoff items should be stealth-tier, lest the agentic loop get bogged down in CI. Even a 30-second wait seems to bog things down leading to confusion. This means we want to confirm that auto-sync realizes that stealth items are gitignored and they don't get counted in the threshold mechanism."  # f625
+- op: update  # 131d
+  at: '2026-02-25T08:16:56Z'  # 131d
+  by: human  # 131d
+  actor: jgstern  # 131d
+  clock: 3  # 131d
+  nonce: 131d  # 131d
+  set:  # 131d
+    status: todo_soft  # 131d
