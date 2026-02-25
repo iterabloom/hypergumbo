@@ -32,6 +32,7 @@ from hypergumbo_tracker.cli import (
     _maybe_auto_sync,
     _print_sync_reminder,
     _print_screen_warning,
+    _warn_unread_human_messages,
     main,
     textconv_main,
 )
@@ -919,6 +920,15 @@ class TestWriteCommands:
         out = capsys.readouterr().out
         assert "unread message from the human" in out
         assert "Check this please" in out
+
+    def test_warn_unread_silently_handles_missing_item(
+        self, tmp_path: Path, mock_agent_uid: None,
+    ) -> None:
+        """_warn_unread_human_messages returns silently for nonexistent items."""
+        tracker_root = _setup_tracker(tmp_path)
+        ts = TrackerSet(tracker_root)
+        # Should not raise — the caller handles the error
+        _warn_unread_human_messages("WI-nonexistent", ts)
 
 
 # ---------------------------------------------------------------------------
