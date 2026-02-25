@@ -2132,6 +2132,110 @@ def _extract_go_routes(
                                                 evidence_type="route_mount",
                                             ))
 
+        elif n.type == "assignment_statement":
+            # go-swagger/go-openapi handler cache pattern:
+            #   o.handlers["DELETE"]["/silence/{id}"] = silence.NewDeleteSilence(...)
+            #
+            # AST: assignment_statement
+            #   left: expression_list
+            #     index_expression           ← outer: ["/path"]
+            #       index_expression         ← inner: ["METHOD"]
+            #         selector_expression    ← o.handlers
+            #         interpreted_string_literal  ← "DELETE"
+            #       interpreted_string_literal    ← "/silence/{id}"
+            #   right: expression_list
+            #     call_expression            ← silence.NewDeleteSilence(...)
+            left = find_child_by_field(n, "left")
+            if left is None:  # pragma: no cover - tree-sitter guarantees left field
+                continue
+            # The left side is an expression_list with one child
+            outer_idx = None
+            for child in left.children:
+                if child.type == "index_expression":
+                    outer_idx = child
+                    break
+            if outer_idx is None:
+                continue
+
+            # outer_idx should contain an inner index_expression and a string
+            inner_idx = None
+            route_path_node = None
+            for child in outer_idx.children:
+                if child.type == "index_expression":
+                    inner_idx = child
+                elif child.type == "interpreted_string_literal":
+                    route_path_node = child
+
+            if inner_idx is None or route_path_node is None:  # pragma: no cover - structural
+                continue
+
+            # inner_idx should contain a string literal with HTTP method
+            method_node = None
+            for child in inner_idx.children:
+                if child.type == "interpreted_string_literal":
+                    method_node = child
+
+            if method_node is None:  # pragma: no cover - structural
+                continue
+
+            method_str = node_text(method_node, source).strip('"')
+            route_path = node_text(route_path_node, source).strip('"')
+
+            # Validate: method must be a known HTTP method, path must start with /
+            if method_str.upper() not in {
+                "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS",
+            }:
+                continue
+            if not route_path.startswith("/"):
+                continue
+
+            # Extract handler from the RHS call expression
+            right = find_child_by_field(n, "right")
+            handler_name: str | None = None
+            if right is not None:
+                for child in right.children:
+                    if child.type == "call_expression":
+                        func_node = find_child_by_field(child, "function")
+                        if func_node:
+                            handler_name = node_text(func_node, source)
+                        break
+                    elif child.type in ("identifier", "selector_expression"):
+                        handler_name = node_text(child, source)
+                        break
+
+            if handler_name is None:
+                continue
+
+            normalized_method = method_str.upper()
+            start_line = n.start_point[0] + 1
+            end_line = n.end_point[0] + 1
+
+            route_sym = Symbol(
+                id=make_symbol_id(
+                    "go", str(file_path), start_line, end_line,
+                    f"{normalized_method} {route_path}", "route",
+                ),
+                stable_id=make_route_stable_id(normalized_method, route_path),
+                name=handler_name,
+                kind="route",
+                language="go",
+                path=str(file_path),
+                span=Span(
+                    start_line=start_line,
+                    end_line=end_line,
+                    start_col=n.start_point[1],
+                    end_col=n.end_point[1],
+                ),
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+                meta={
+                    "route_path": route_path,
+                    "http_method": normalized_method,
+                    "handler_name": handler_name,
+                },
+            )
+            routes.append(route_sym)
+
     return (routes, mount_edges)
 
 

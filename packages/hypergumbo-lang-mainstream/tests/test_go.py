@@ -1541,6 +1541,188 @@ func main() {
         assert mounts[0].meta["handler_ref"] == "api.Routes"
 
 
+class TestGoSwaggerHandlerCacheRoutes:
+    """Tests for go-swagger/go-openapi initHandlerCache route detection.
+
+    go-swagger generates route registration using a handler cache pattern:
+        o.handlers["DELETE"]["/silence/{silenceID}"] = silence.NewDeleteSilence(...)
+
+    This is an assignment_statement with double index_expression: the first
+    index is an HTTP method string and the second is a route path starting
+    with "/".  The RHS call expression's function name becomes the handler.
+    """
+
+    def test_single_handler_cache_entry(self, tmp_path: Path) -> None:
+        """Detects a single go-swagger handler cache assignment."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "api.go"
+        go_file.write_text("""
+package operations
+
+func (o *API) initHandlerCache() {
+    o.handlers["DELETE"]["/silence/{silenceID}"] = silence.NewDeleteSilence(o.context, o.DeleteSilenceHandler)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 1
+        r = routes[0]
+        assert r.meta["http_method"] == "DELETE"
+        assert r.meta["route_path"] == "/silence/{silenceID}"
+        assert r.meta["handler_name"] == "silence.NewDeleteSilence"
+
+    def test_multiple_handler_cache_entries(self, tmp_path: Path) -> None:
+        """Detects multiple go-swagger handler cache assignments."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "api.go"
+        go_file.write_text("""
+package operations
+
+func (o *AlertmanagerAPI) initHandlerCache() {
+    o.handlers["DELETE"]["/silence/{silenceID}"] = silence.NewDeleteSilence(o.context, o.DeleteSilenceHandler)
+    o.handlers["GET"]["/alerts/groups"] = alert.NewGetAlertGroups(o.context, o.GetAlertGroupsHandler)
+    o.handlers["GET"]["/alerts"] = alert.NewGetAlerts(o.context, o.GetAlertsHandler)
+    o.handlers["GET"]["/receivers"] = receiver.NewGetReceivers(o.context, o.GetReceiversHandler)
+    o.handlers["GET"]["/silence/{silenceID}"] = silence.NewGetSilence(o.context, o.GetSilenceHandler)
+    o.handlers["GET"]["/silences"] = silence.NewGetSilences(o.context, o.GetSilencesHandler)
+    o.handlers["GET"]["/status"] = general.NewGetStatus(o.context, o.GetStatusHandler)
+    o.handlers["POST"]["/alerts"] = alert.NewPostAlerts(o.context, o.PostAlertsHandler)
+    o.handlers["POST"]["/silences"] = silence.NewPostSilence(o.context, o.PostSilenceHandler)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 9
+
+        # Check method distribution
+        methods = sorted([r.meta["http_method"] for r in routes])
+        assert methods == ["DELETE", "GET", "GET", "GET", "GET", "GET", "GET", "POST", "POST"]
+
+        # Spot-check a specific route
+        post_silences = [r for r in routes if r.meta["route_path"] == "/silences" and r.meta["http_method"] == "POST"]
+        assert len(post_silences) == 1
+        assert post_silences[0].meta["handler_name"] == "silence.NewPostSilence"
+
+    def test_handler_cache_stable_ids_unique(self, tmp_path: Path) -> None:
+        """Each handler cache route gets a unique stable_id."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "api.go"
+        go_file.write_text("""
+package operations
+
+func (o *API) initHandlerCache() {
+    o.handlers["GET"]["/alerts"] = alert.NewGetAlerts(o.context, o.GetAlertsHandler)
+    o.handlers["POST"]["/alerts"] = alert.NewPostAlerts(o.context, o.PostAlertsHandler)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 2
+        stable_ids = [r.stable_id for r in routes]
+        assert len(set(stable_ids)) == 2, f"stable_id collision: {stable_ids}"
+
+    def test_handler_cache_unqualified_handler(self, tmp_path: Path) -> None:
+        """Handles unqualified handler function names."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "api.go"
+        go_file.write_text("""
+package operations
+
+func (o *API) initHandlerCache() {
+    o.handlers["GET"]["/health"] = NewHealthCheck(o.context, o.HealthHandler)
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 1
+        assert routes[0].meta["handler_name"] == "NewHealthCheck"
+
+    def test_handler_cache_ignores_non_method_index(self, tmp_path: Path) -> None:
+        """Ignores assignments where the first index isn't an HTTP method."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func init() {
+    m["key1"]["key2"] = someValue
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 0
+
+    def test_handler_cache_ignores_non_path_value(self, tmp_path: Path) -> None:
+        """Ignores when second index doesn't start with '/'."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""
+package main
+
+func init() {
+    o.handlers["GET"]["not-a-path"] = handler
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 0
+
+    def test_handler_cache_bare_identifier_rhs(self, tmp_path: Path) -> None:
+        """Handles RHS as bare identifier (not a call expression)."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "api.go"
+        go_file.write_text("""
+package operations
+
+func (o *API) initHandlerCache() {
+    o.handlers["GET"]["/health"] = healthHandler
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 1
+        assert routes[0].meta["handler_name"] == "healthHandler"
+
+    def test_handler_cache_no_handler_rhs(self, tmp_path: Path) -> None:
+        """Skips when RHS has no recognizable handler."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "api.go"
+        go_file.write_text("""
+package operations
+
+func (o *API) initHandlerCache() {
+    o.handlers["GET"]["/health"] = nil
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        routes = [s for s in result.symbols if s.kind == "route"]
+        assert len(routes) == 0
+
+
 class TestGoSignatureExtraction:
     """Tests for extracting function signatures from Go code."""
 
