@@ -376,6 +376,7 @@ _PREFS_DEFAULTS: dict = {
     "hidden_tags": [],
     "toggle_sessions": [],
     "last_filters": {"hidden_statuses": [], "hidden_tags": []},
+    "hide_tagged": False,
 }
 
 _MAX_TOGGLE_SESSIONS = 3
@@ -412,6 +413,7 @@ def _load_tui_preferences(path: Path) -> dict:
                 "last_filters",
                 {"hidden_statuses": [], "hidden_tags": []},
             ),
+            "hide_tagged": data.get("hide_tagged", False),
         }
         # Migrate legacy flat toggle_counts → single-element sessions list
         if not result["toggle_sessions"] and "toggle_counts" in data:
@@ -431,6 +433,7 @@ def _save_tui_preferences(
     hidden_tags: set[str] | None = None,
     toggle_sessions: list[dict[str, int]] | None = None,
     last_filters: dict[str, list[str]] | None = None,
+    hide_tagged: bool = False,
 ) -> bool:
     """Persist TUI preferences to disk (v2 schema).
 
@@ -447,7 +450,7 @@ def _save_tui_preferences(
     sessions = list(toggle_sessions) if toggle_sessions else []
     if len(sessions) > _MAX_TOGGLE_SESSIONS:
         sessions = sessions[-_MAX_TOGGLE_SESSIONS:]
-    has_v2 = hidden_tags is not None or toggle_sessions is not None or last_filters is not None
+    has_v2 = hidden_tags is not None or toggle_sessions is not None or last_filters is not None or hide_tagged
     data: dict[str, Any] = {
         "version": 2 if has_v2 else 1,
         "hidden_statuses": sorted(hidden_statuses),
@@ -459,6 +462,7 @@ def _save_tui_preferences(
         data["last_filters"] = last_filters or {
             "hidden_statuses": [], "hidden_tags": [],
         }
+        data["hide_tagged"] = hide_tagged
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
@@ -1518,6 +1522,7 @@ class TrackerApp(App):
         self._show_full_ids: bool = False
         self._hidden_statuses: set[str] = set()
         self._hidden_tags: set[str] = set()
+        self._hide_tagged: bool = False
         self._custom_order: list[str] = []
         self._blockers_of: dict[str, list[str]] = {}
         self._dependents_of: dict[str, list[str]] = {}
@@ -1584,6 +1589,7 @@ class TrackerApp(App):
         prefs = _load_tui_preferences(self._prefs_path)
         self._hidden_statuses = set(prefs["hidden_statuses"])
         self._hidden_tags = set(prefs.get("hidden_tags", []))
+        self._hide_tagged = bool(prefs.get("hide_tagged", False))
         self._custom_order = list(prefs["display_order"])
         self._toggle_sessions = list(prefs.get("toggle_sessions", []))
         self._last_filters = prefs.get(
@@ -1752,6 +1758,9 @@ class TrackerApp(App):
                 i for i in base
                 if not any(t in self._hidden_tags for t in i.tags)
             ]
+        # 1c. Exclude all tagged items if meta:tagged is active
+        if self._hide_tagged:
+            base = [i for i in base if not i.tags]
         # 2. Apply text filter
         if self._filter_text:
             needle = self._filter_text.lower()
@@ -1815,6 +1824,9 @@ class TrackerApp(App):
 
         table.add_column("Title", key="title")
 
+        if is_standard:
+            table.add_column("Tags", key="tags")
+
         if is_wide:
             table.add_column("Conflict", key="conflict")
             table.add_column("Created", key="created")
@@ -1856,6 +1868,9 @@ class TrackerApp(App):
                 row.append(RichText.from_markup(pills) if pills else "")
             title_text = f"\U0001f9ca {item.title}" if item.frozen else item.title
             row.append(title_text)
+
+            if is_standard:
+                row.append(", ".join(item.tags) if item.tags else "")
 
             if is_wide:
                 row.append("\u26a0" if item.cross_tier_conflict else "")
@@ -2351,7 +2366,7 @@ class TrackerApp(App):
         bar = self.query_one("#status-filter-bar", Static)
         resolved = self._tracker_set.config.resolved_statuses
         has_hidden_tags = bool(self._hidden_tags)
-        if not resolved and not has_hidden_tags:
+        if not resolved and not has_hidden_tags and not self._hide_tagged:
             bar.display = False
             return
         parts: list[str] = []
@@ -2360,6 +2375,8 @@ class TrackerApp(App):
             parts.append(f"[{s}: {state}]")
         if has_hidden_tags:
             parts.append(f"[tags hidden: {len(self._hidden_tags)}]")
+        if self._hide_tagged:
+            parts.append("[tagged: hidden]")
         bar.update("  ".join(parts))
         bar.display = True
 
@@ -2449,9 +2466,11 @@ class TrackerApp(App):
         self._last_filters = {
             "hidden_statuses": sorted(self._hidden_statuses),
             "hidden_tags": sorted(self._hidden_tags),
+            "hide_tagged": self._hide_tagged,
         }
         self._hidden_statuses.clear()
         self._hidden_tags.clear()
+        self._hide_tagged = False
         self._update_status_filter_bar()
         self._reload_active_table()
         self._restore_selection()
@@ -2466,6 +2485,7 @@ class TrackerApp(App):
         self._hidden_tags = set(
             self._last_filters.get("hidden_tags", []),
         )
+        self._hide_tagged = bool(self._last_filters.get("hide_tagged", False))
         self._update_status_filter_bar()
         self._reload_active_table()
         self._restore_selection()
@@ -2503,7 +2523,10 @@ class TrackerApp(App):
         self._filter_entries = []
         self._filter_line_to_entry = {}
         lines: list[str] = []
-        active_count = len(self._hidden_statuses) + len(self._hidden_tags)
+        active_count = (
+            len(self._hidden_statuses) + len(self._hidden_tags)
+            + (1 if self._hide_tagged else 0)
+        )
         lines.append(f"Filters Active: {active_count}")
         lines.append("")
 
@@ -2551,11 +2574,23 @@ class TrackerApp(App):
             self._filter_entries.append((key, s))
             idx += 1
 
-        # Tags section
+        # Tags section — always show "Tagged" meta-entry first
+        tagged_count = sum(1 for item in items if item.tags)
+        lines.append("── Tags ──")
+        entry_idx_display = idx if idx <= 9 else 0
+        self._filter_line_to_entry[len(lines)] = idx
+        lines.append(
+            _format_filter_entry(
+                entry_idx_display, "Tagged", self._hide_tagged, tagged_count,
+            ),
+        )
+        self._filter_entries.append(("meta:tagged", "Tagged"))
+        idx += 1
+
+        # Then individual tag entries (non-fav only)
         if all_tags:
             non_fav_tags = [t for t in all_tags if f"tag:{t}" not in fav_set]
             if non_fav_tags:
-                lines.append("── Tags ──")
                 for t in non_fav_tags:
                     key = f"tag:{t}"
                     is_hidden = t in self._hidden_tags
@@ -2596,6 +2631,13 @@ class TrackerApp(App):
             tag = key[4:]
             self._toggle_tag(tag)
             self._increment_toggle_count(key)
+        elif key.startswith("meta:"):
+            if key == "meta:tagged":
+                self._hide_tagged = not self._hide_tagged
+                self._update_status_filter_bar()
+                self._reload_active_table()
+                self._restore_selection()
+            self._increment_toggle_count(key)
         if self._filter_panel_visible:
             self._refresh_filter_panel()
 
@@ -2632,6 +2674,7 @@ class TrackerApp(App):
             hidden_tags=self._hidden_tags,
             toggle_sessions=sessions,
             last_filters=self._last_filters,
+            hide_tagged=self._hide_tagged,
         ):
             self.notify("Could not save preferences (permission denied)",
                         severity="warning")

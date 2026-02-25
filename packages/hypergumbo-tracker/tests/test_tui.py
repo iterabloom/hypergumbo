@@ -7524,6 +7524,7 @@ class TestFilterPanel:
                 pytest.skip("Not enough entries to test beyond index 9")
             entry_key = app._filter_entries[beyond_9_idx - 1][0]
             initial_hidden = set(app._hidden_statuses) | set(app._hidden_tags)
+            initial_hide_tagged = app._hide_tagged
             # Wide mode uses #filter-panel-content
             await pilot.click(
                 "#filter-panel-content", offset=(2, beyond_9_line),
@@ -7533,6 +7534,8 @@ class TestFilterPanel:
             if entry_key.startswith("status:"):
                 name = entry_key[7:]
                 toggled = (name in after_hidden) != (name in initial_hidden)
+            elif entry_key.startswith("meta:"):
+                toggled = app._hide_tagged != initial_hide_tagged
             else:
                 name = entry_key[4:]
                 toggled = (name in after_hidden) != (name in initial_hidden)
@@ -7751,3 +7754,347 @@ class TestResolveIds:
             result_holder: list[list[str] | None] = []
             app._resolve_ids([id_a, id_b], result_holder.append)
             assert result_holder == [[id_a, id_b]]
+
+
+# ---------------------------------------------------------------------------
+# Tags column tests
+# ---------------------------------------------------------------------------
+
+
+class TestTagsColumn:
+    """Test the Tags column in standard/wide DataTable."""
+
+    async def test_tags_column_present_standard(self, tmp_path: Path) -> None:
+        """Standard table has a Tags column."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            column_keys = [c.key.value for c in table.columns.values()]
+            assert "tags" in column_keys
+
+    async def test_tags_column_absent_compact(self, tmp_path: Path) -> None:
+        """Compact table does not have a Tags column."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(50, 18)) as pilot:
+            await _wait_for_table(pilot, app)
+            table = app.query_one("#item-table")
+            column_keys = [c.key.value for c in table.columns.values()]
+            assert "tags" not in column_keys
+
+    async def test_tags_column_content(self, tmp_path: Path) -> None:
+        """Items with tags show comma-separated tags; items without show empty."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            column_keys = [c.key.value for c in table.columns.values()]
+            tags_col_idx = column_keys.index("tags")
+            # Check each row for tag content
+            for row_key in table.rows:
+                row_data = table.get_row(row_key)
+                cell_val = str(row_data[tags_col_idx])
+                item_id = str(row_key.value)
+                item = next(i for i in app._items if i.id == item_id)
+                if item.tags:
+                    assert cell_val == ", ".join(item.tags)
+                else:
+                    assert cell_val == ""
+
+    async def test_tags_column_present_wide(self, tmp_path: Path) -> None:
+        """Wide table has Tags column, appearing before conflict/created/updated."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(130, 42)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            assert app._layout_tier == "wide"
+            table = app.query_one("#std-table")
+            column_keys = [c.key.value for c in table.columns.values()]
+            assert "tags" in column_keys
+            # Tags should come before conflict
+            tags_idx = column_keys.index("tags")
+            conflict_idx = column_keys.index("conflict")
+            assert tags_idx < conflict_idx
+
+    async def test_tags_column_after_resize_standard_to_wide(
+        self, tmp_path: Path,
+    ) -> None:
+        """Tags column remains present after resize from standard to wide."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            column_keys = [c.key.value for c in table.columns.values()]
+            assert "tags" in column_keys
+            # Resize to wide
+            await pilot.resize_terminal(130, 42)
+            await pilot.pause()
+            table = app.query_one("#std-table")
+            column_keys = [c.key.value for c in table.columns.values()]
+            assert "tags" in column_keys
+
+
+# ---------------------------------------------------------------------------
+# "Tagged" meta-filter tests
+# ---------------------------------------------------------------------------
+
+
+class TestTaggedMetaFilter:
+    """Test the 'Tagged' meta-filter in the filter panel."""
+
+    async def test_tagged_always_in_filter_panel(self, tmp_path: Path) -> None:
+        """'Tagged' entry appears even when no items have tags."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Static as StaticWidget
+
+        ts = _make_tracker_set(tmp_path)  # only 1 item has tags
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._filter_panel_visible = True
+            app._refresh_filter_panel()
+            content = app.query_one("#std-filter-content", StaticWidget)
+            plain = str(content.render())
+            assert "Tagged" in plain
+            assert "Tags" in plain
+
+    async def test_tagged_always_in_filter_panel_no_tags(
+        self, tmp_path: Path,
+    ) -> None:
+        """'Tagged' entry appears even when zero items have any tags."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Static as StaticWidget
+        from helpers import make_test_config_dict
+        import yaml
+
+        # Create tracker set with no tags on any item
+        root = tmp_path / ".agent"
+        for d in [
+            root / "tracker" / ".ops",
+            root / "tracker-workspace" / ".ops",
+            root / "tracker-workspace" / "stealth",
+        ]:
+            d.mkdir(parents=True, exist_ok=True)
+        config = _make_config()
+        config_path = root / "tracker" / "config.yaml"
+        config_path.write_text(yaml.dump(make_test_config_dict()))
+        ts = TrackerSet(root, config=config)
+        ts.add(kind="work_item", title="No tags A", status="todo_hard", priority=1)
+        ts.add(kind="work_item", title="No tags B", status="in_progress", priority=2)
+
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._filter_panel_visible = True
+            app._refresh_filter_panel()
+            content = app.query_one("#std-filter-content", StaticWidget)
+            plain = str(content.render())
+            assert "Tagged" in plain
+            assert "Tags" in plain
+
+    async def test_toggle_tagged_hides_tagged_items(
+        self, tmp_path: Path,
+    ) -> None:
+        """Toggling 'Tagged' hides all items that have any tag."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            all_items = app._filtered_items()
+            # Items with tags: quality, perf, quality+perf = 3
+            tagged_count = sum(1 for i in all_items if i.tags)
+            assert tagged_count == 3
+            # Toggle tagged filter on
+            app._filter_panel_visible = True
+            app._refresh_filter_panel()
+            # Find meta:tagged entry
+            tagged_idx = None
+            for i, (key, _name) in enumerate(app._filter_entries):
+                if key == "meta:tagged":
+                    tagged_idx = i + 1
+                    break
+            assert tagged_idx is not None
+            app._quick_toggle(tagged_idx)
+            assert app._hide_tagged is True
+            # Only untagged items remain
+            filtered = app._filtered_items()
+            for item in filtered:
+                assert not item.tags
+
+    async def test_toggle_tagged_twice_restores(self, tmp_path: Path) -> None:
+        """Toggling 'Tagged' twice restores all items."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            initial_count = len(app._filtered_items())
+            app._filter_panel_visible = True
+            app._refresh_filter_panel()
+            tagged_idx = None
+            for i, (key, _name) in enumerate(app._filter_entries):
+                if key == "meta:tagged":
+                    tagged_idx = i + 1
+                    break
+            assert tagged_idx is not None
+            app._quick_toggle(tagged_idx)
+            assert app._hide_tagged is True
+            app._quick_toggle(tagged_idx)
+            assert app._hide_tagged is False
+            assert len(app._filtered_items()) == initial_count
+
+    async def test_tagged_count_is_correct(self, tmp_path: Path) -> None:
+        """The 'Tagged' entry shows the correct count of tagged items."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Static as StaticWidget
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._filter_panel_visible = True
+            app._refresh_filter_panel()
+            content = app.query_one("#std-filter-content", StaticWidget)
+            plain = str(content.render())
+            # 3 items have tags in _make_tracker_set_with_tags
+            # The "Tagged" line should show count 3
+            assert "(3)" in plain
+
+    async def test_clear_restore_includes_tagged(
+        self, tmp_path: Path,
+    ) -> None:
+        """_clear_all_filters clears _hide_tagged; _restore_last_filters restores it."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._hide_tagged = True
+            app._hidden_statuses.add("done")
+            app._filter_panel_visible = True
+            app._clear_all_filters()
+            assert app._hide_tagged is False
+            assert len(app._hidden_statuses) == 0
+            app._restore_last_filters()
+            assert app._hide_tagged is True
+            assert "done" in app._hidden_statuses
+
+    async def test_preferences_persistence_hide_tagged(
+        self, tmp_path: Path,
+    ) -> None:
+        """_hide_tagged survives save/load cycle."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._hide_tagged = True
+            await pilot.press("q")
+            await pilot.pause()
+        prefs = _load_tui_preferences(app._prefs_path)
+        assert prefs.get("hide_tagged") is True
+
+    async def test_preferences_load_hide_tagged(
+        self, tmp_path: Path,
+    ) -> None:
+        """_hide_tagged is restored from preferences on mount."""
+        import json
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        # Pre-write prefs with hide_tagged=True
+        prefs_path = (
+            tmp_path / ".agent" / "tracker-workspace" / "tui_preferences.json"
+        )
+        prefs_path.parent.mkdir(parents=True, exist_ok=True)
+        prefs_path.write_text(json.dumps({
+            "version": 2,
+            "hidden_statuses": [],
+            "display_order": [],
+            "hidden_tags": [],
+            "toggle_sessions": [],
+            "last_filters": {"hidden_statuses": [], "hidden_tags": [],
+                             "hide_tagged": True},
+            "hide_tagged": True,
+        }), encoding="utf-8")
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            assert app._hide_tagged is True
+
+    async def test_filter_active_count_includes_tagged(
+        self, tmp_path: Path,
+    ) -> None:
+        """Filter panel 'Filters Active' count includes _hide_tagged."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Static as StaticWidget
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._hide_tagged = True
+            app._hidden_statuses.add("done")
+            app._filter_panel_visible = True
+            app._refresh_filter_panel()
+            content = app.query_one("#std-filter-content", StaticWidget)
+            plain = str(content.render())
+            # 1 status + tagged = 2
+            assert "Filters Active: 2" in plain
+
+    async def test_status_filter_bar_shows_tagged_hidden(
+        self, tmp_path: Path,
+    ) -> None:
+        """Status filter bar shows tagged-hidden indicator."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Static as StaticWidget
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._hide_tagged = True
+            app._update_status_filter_bar()
+            bar = app.query_one("#status-filter-bar", StaticWidget)
+            plain = str(bar.render())
+            assert "tagged: hidden" in plain
+
+    async def test_toggle_count_incremented_for_meta_tagged(
+        self, tmp_path: Path,
+    ) -> None:
+        """_increment_toggle_count is called for meta:tagged toggles."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_tags(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            app._filter_panel_visible = True
+            app._refresh_filter_panel()
+            tagged_idx = None
+            for i, (key, _name) in enumerate(app._filter_entries):
+                if key == "meta:tagged":
+                    tagged_idx = i + 1
+                    break
+            assert tagged_idx is not None
+            app._quick_toggle(tagged_idx)
+            assert app._current_session_counts.get("meta:tagged", 0) > 0
