@@ -1457,6 +1457,35 @@ def _extract_edges_from_file(
                                     import_path_hint = import_aliases[
                                         node_text(inner_operand, source)
                                     ]
+                        # Chained-call ambiguity guard: when the receiver
+                        # is a call_expression but we couldn't determine its
+                        # package (import_path_hint still None), the receiver
+                        # type is a return value of unknown type.  Resolving
+                        # to a single global candidate is almost certainly
+                        # wrong (e.g. c.CoreV1().Endpoints(ns).Update() →
+                        # Manager.Update is false positive).  Emit as
+                        # unresolved instead.
+                        if (
+                            callee_name
+                            and import_path_hint is None
+                            and operand_node is not None
+                            and operand_node.type == "call_expression"
+                        ):
+                            dst_id = (
+                                f"go:external:0-0:{callee_name}:unresolved"
+                            )
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=dst_id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="chained_call_unresolved",
+                                confidence=0.40,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
+                            callee_name = None  # Already handled
+
                         # Unified ambiguity guard for ALL selector expressions:
                         # covers simple identifiers (x.Close()), chained calls
                         # (getWriter().Close()), field access (resp.Body.Close()),

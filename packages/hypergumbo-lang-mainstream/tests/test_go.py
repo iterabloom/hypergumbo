@@ -3664,15 +3664,90 @@ func cleanup() {
             f"cleanup should have a call edge for Close(), found: {cleanup_calls}"
         )
 
-        # Should be unresolved — NOT resolved to any specific type
+        # Should be unresolved — chained-call guard fires before ambiguity guard
         for edge in close_calls:
-            assert edge.evidence_type == "ambiguous_method_call", (
+            assert edge.evidence_type == "chained_call_unresolved", (
                 f"Chained call Close() with 3+ candidates should be "
-                f"ambiguous_method_call, got '{edge.evidence_type}'"
+                f"chained_call_unresolved, got '{edge.evidence_type}'"
             )
             assert "Server.Close" not in edge.dst
             assert "Client.Close" not in edge.dst
             assert "Worker.Close" not in edge.dst
+
+    def test_chained_call_single_candidate_unresolved(self, tmp_path: Path) -> None:
+        """getClient().Update() with 1 candidate → unresolved edge.
+
+        Even with only 1 implementation of Update() in the repo, a chained
+        call (receiver is a call_expression) should NOT resolve to it.
+        The return type of getClient() is unknown, so the Update() call
+        could be on any type.  This prevents false positives like
+        c.CoreV1().Endpoints(ns).Update() → Manager.Update in prometheus.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Manager struct{}
+
+func (m *Manager) Update() {}
+
+func getClient() interface{} { return nil }
+
+func testFunc() {
+    getClient().Update()
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        test_calls = [e for e in call_edges if "testFunc" in e.src]
+
+        update_calls = [e for e in test_calls if "Update" in e.dst]
+        assert len(update_calls) >= 1, (
+            f"testFunc should have a call edge for Update(), found: {test_calls}"
+        )
+
+        # Should NOT resolve to Manager.Update — receiver type is unknown
+        for edge in update_calls:
+            assert edge.evidence_type == "chained_call_unresolved", (
+                f"Chained call Update() with 1 candidate should be "
+                f"chained_call_unresolved, got '{edge.evidence_type}'"
+            )
+            assert "Manager.Update" not in edge.dst, (
+                f"Should not resolve to Manager.Update, got {edge.dst}"
+            )
+
+    def test_chained_call_package_qualified_resolves(self, tmp_path: Path) -> None:
+        """json.NewEncoder(w).Encode(data) should resolve (package is known).
+
+        When the inner call is package-qualified, the import_path_hint is set
+        and the chained-call guard should NOT fire.
+        """
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import "encoding/json"
+
+func handler() {
+    json.NewEncoder(nil).Encode("data")
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        handler_calls = [e for e in call_edges if "handler" in e.src]
+
+        # Should NOT be marked as chained_call_unresolved
+        for edge in handler_calls:
+            assert edge.evidence_type != "chained_call_unresolved", (
+                f"Package-qualified chained call should not trigger guard, "
+                f"got '{edge.evidence_type}'"
+            )
 
     def test_selector_operand_ambiguous(self, tmp_path: Path) -> None:
         """resp.Body.Close() with 3+ types → unresolved edge.
