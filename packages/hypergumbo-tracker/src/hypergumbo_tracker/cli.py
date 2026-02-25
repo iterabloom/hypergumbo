@@ -411,6 +411,7 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
 
     # --note is shorthand for a follow-up discuss call
     if args.note:
+        _warn_unread_human_messages(args.item_id, ts)
         ts.discuss(args.item_id, message=args.note)
 
     if args.json:
@@ -420,8 +421,55 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
     return EXIT_SUCCESS
 
 
+def _warn_unread_human_messages(item_id: str, ts: TrackerSet) -> None:
+    """Print a warning if the item has unread human discussion messages.
+
+    Checks whether the most recent discussion entry is from a human.
+    If so, prints the unread message and the full prior transcript to
+    stdout so the agent can reply via ``tracker discuss``.
+
+    Uses the single-agent heuristic from AGENTS.md: a trailing human
+    message means the agent hasn't replied yet.
+    """
+    try:
+        item = ts.get(item_id)
+    except (ItemNotFoundError, AmbiguousPrefixError):
+        return  # Item resolution will fail properly in the caller
+    if not has_unread_human_messages(item):
+        return
+
+    unread = unread_human_messages(item)
+    # Build the prior transcript (everything before the unread messages)
+    prior_count = len(item.discussion) - len(unread)
+    prior = item.discussion[:prior_count]
+
+    print()
+    print(
+        "Your addition to the Activity/Discussion for this item "
+        "comes after an unread message from the human:"
+    )
+    for entry in unread:
+        print(f"  [{entry.at}] {entry.actor}: {entry.message}")
+    if prior:
+        print()
+        print(
+            "For context, here is the full Activity/Discussion "
+            "transcript preceding that latest unread message:"
+        )
+        for entry in prior:
+            prefix = "(summary) " if entry.is_summary else ""
+            print(f"  [{entry.at}] {entry.actor} ({entry.by}): {prefix}{entry.message}")
+    print()
+    print("Please reply to the human's message using `tracker discuss`.")
+    print()
+
+
 def _cmd_discuss(args: argparse.Namespace, ts: TrackerSet) -> int:
     """Handle 'discuss' subcommand."""
+    # Warn about unread human messages before adding agent's message
+    if not args.clear and args.summarize is None:
+        _warn_unread_human_messages(args.item_id, ts)
+
     if args.clear:
         ts.discuss(args.item_id, message="", clear=True)
     elif args.summarize is not None:

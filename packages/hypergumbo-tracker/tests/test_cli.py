@@ -788,6 +788,138 @@ class TestWriteCommands:
             ])
         assert exc.value.code == EXIT_SUCCESS
 
+    def test_discuss_warns_unread_human_message(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Discuss warns when the last message is from a human."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item_with_discussion(ops_dir, "WI-test", [
+            {"at": "2026-01-01T01:00:00Z", "by": "agent",
+             "actor": "test_agent", "message": "Initial note"},
+            {"at": "2026-01-02T01:00:00Z", "by": "human",
+             "actor": "jgstern", "message": "Please investigate this"},
+        ])
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "discuss", "WI-test", "Will do",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "unread message from the human" in out
+        assert "Please investigate this" in out
+        assert "tracker discuss" in out
+
+    def test_discuss_no_warning_when_last_is_agent(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """No unread warning when the last message is from an agent."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item_with_discussion(ops_dir, "WI-test", [
+            {"at": "2026-01-01T01:00:00Z", "by": "agent",
+             "actor": "test_agent", "message": "Status update"},
+        ])
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "discuss", "WI-test", "Another update",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "unread message from the human" not in out
+
+    def test_discuss_no_warning_on_clear(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_human_uid: None,
+    ) -> None:
+        """No unread warning when using --clear."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item_with_discussion(ops_dir, "WI-test", [
+            {"at": "2026-01-01T01:00:00Z", "by": "human",
+             "actor": "jgstern", "message": "Some human message"},
+        ])
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "discuss", "WI-test", "--clear",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "unread message from the human" not in out
+
+    def test_discuss_no_warning_on_summarize(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """No unread warning when using --summarize."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item_with_discussion(ops_dir, "WI-test", [
+            {"at": "2026-01-01T01:00:00Z", "by": "human",
+             "actor": "jgstern", "message": "Human says hello"},
+        ])
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "discuss", "WI-test", "--summarize", "Summary text",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "unread message from the human" not in out
+
+    def test_discuss_shows_prior_transcript(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Unread warning includes prior transcript."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item_with_discussion(ops_dir, "WI-test", [
+            {"at": "2026-01-01T01:00:00Z", "by": "agent",
+             "actor": "test_agent", "message": "First note"},
+            {"at": "2026-01-02T01:00:00Z", "by": "agent",
+             "actor": "test_agent", "message": "Second note"},
+            {"at": "2026-01-03T01:00:00Z", "by": "human",
+             "actor": "jgstern", "message": "Human reply"},
+        ])
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "discuss", "WI-test", "Agent responds",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "Human reply" in out
+        assert "First note" in out
+        assert "Second note" in out
+
+    def test_update_note_warns_unread_human_message(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """update --note also warns about unread human messages."""
+        tracker_root = _setup_tracker(tmp_path)
+        ops_dir = tracker_root / "tracker-workspace" / ".ops"
+        _add_item_with_discussion(ops_dir, "WI-test", [
+            {"at": "2026-01-01T01:00:00Z", "by": "human",
+             "actor": "jgstern", "message": "Check this please"},
+        ])
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test", "--status", "done",
+                "--note", "Fixed it",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        out = capsys.readouterr().out
+        assert "unread message from the human" in out
+        assert "Check this please" in out
+
 
 # ---------------------------------------------------------------------------
 # Lock/Unlock commands
