@@ -116,12 +116,12 @@ _COMMON_FIELD_ORDER = ["op", "at", "by", "actor", "clock", "nonce"]
 _CREATE_DATA_FIELD_ORDER = [
     "kind", "title", "status", "priority", "parent", "tags",
     "before", "duplicate_of", "not_duplicate_of", "pr_ref",
-    "justification", "description", "fields",
+    "description", "fields",
 ]
 
 # Fields that must always be double-quoted in YAML output
 _DOUBLE_QUOTED_FIELDS = frozenset({
-    "title", "description", "justification", "message",
+    "title", "description", "message",
 })
 
 # Set-valued fields on items (accumulated via add/remove, not LWW)
@@ -133,7 +133,7 @@ _SET_VALUED_FIELDS = frozenset({"tags", "before", "duplicate_of", "not_duplicate
 _LOCKABLE_FIELDS = frozenset({
     "title", "status", "priority", "parent",
     "tags", "before", "duplicate_of", "not_duplicate_of",
-    "pr_ref", "justification", "description",
+    "pr_ref", "description",
     "fields", "discussion",
 })
 
@@ -142,7 +142,7 @@ _LOCKABLE_FIELDS = frozenset({
 _UPDATABLE_FIELDS = frozenset({
     "title", "status", "priority", "parent",
     "tags", "before", "duplicate_of", "not_duplicate_of",
-    "pr_ref", "justification", "description",
+    "pr_ref", "description",
     "fields",
 })
 
@@ -525,7 +525,6 @@ def compile_ops(ops: list[dict[str, Any]], item_id: str = "") -> CompiledItem:
         duplicate_of=list(data.get("duplicate_of", [])),
         not_duplicate_of=list(data.get("not_duplicate_of", [])),
         pr_ref=data.get("pr_ref"),
-        justification=data.get("justification"),
         description=data.get("description", ""),
         fields=dict(data.get("fields", {})),
         created_at=first_create.get("at", ""),
@@ -888,7 +887,6 @@ class Store:
         duplicate_of: list[str] | None = None,
         not_duplicate_of: list[str] | None = None,
         pr_ref: str | None = None,
-        justification: str | None = None,
     ) -> str:
         """Add a new item to the store.
 
@@ -949,7 +947,6 @@ class Store:
             "duplicate_of": duplicate_of or [],
             "not_duplicate_of": not_duplicate_of or [],
             "pr_ref": pr_ref,
-            "justification": justification,
             "description": description,
             "fields": fields or {},
         }

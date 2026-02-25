@@ -171,8 +171,6 @@ def _format_item_full(item: CompiledItem) -> str:
             lines.append(f"  fields.{k}: {v}")
     if item.description:
         lines.append(f"  description: {item.description}")
-    if item.justification:
-        lines.append(f"  justification: {item.justification}")
     if item.discussion:
         lines.append(f"  discussion: ({len(item.discussion)} entries)")
         for entry in item.discussion:
@@ -210,7 +208,6 @@ def _item_to_dict(item: CompiledItem) -> dict[str, Any]:
         "duplicate_of": item.duplicate_of,
         "not_duplicate_of": item.not_duplicate_of,
         "pr_ref": item.pr_ref,
-        "justification": item.justification,
         "description": item.description,
         "fields": item.fields,
         "locked_fields": sorted(item.locked_fields),
@@ -332,9 +329,6 @@ def _cmd_add(args: argparse.Namespace, ts: TrackerSet) -> int:
         kwargs["description"] = args.description
     if args.pr_ref:
         kwargs["pr_ref"] = args.pr_ref
-    if args.justification:
-        kwargs["justification"] = args.justification
-
     # Parse --field key=value pairs
     if args.field:
         fields: dict[str, Any] = {}
@@ -370,8 +364,6 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
         set_fields["parent"] = _resolve_ref(ts, args.parent, "--parent")
     if args.pr_ref:
         set_fields["pr_ref"] = args.pr_ref
-    if args.justification:
-        set_fields["justification"] = args.justification
     if args.description:
         set_fields["description"] = args.description
 
@@ -1069,7 +1061,6 @@ def _build_parser() -> argparse.ArgumentParser:
     p_add.add_argument("--before", action="append", help="Before ID (repeatable)")
     p_add.add_argument("--description", help="Description text")
     p_add.add_argument("--pr-ref", dest="pr_ref", help="PR reference")
-    p_add.add_argument("--justification", help="Justification text")
     p_add.add_argument("--field", action="append", help="Field key=value (repeatable)")
     p_add.add_argument("--tier", choices=["canonical", "workspace", "stealth"],
                         default=None, help="Target tier (default: workspace)")
@@ -1082,7 +1073,6 @@ def _build_parser() -> argparse.ArgumentParser:
     p_update.add_argument("--title", help="New title")
     p_update.add_argument("--parent", help="New parent")
     p_update.add_argument("--pr-ref", dest="pr_ref", help="New PR reference")
-    p_update.add_argument("--justification", help="New justification")
     p_update.add_argument("--description", help="New description")
     p_update.add_argument("--add-tag", action="append", help="Add tag")
     p_update.add_argument("--remove-tag", action="append", help="Remove tag")

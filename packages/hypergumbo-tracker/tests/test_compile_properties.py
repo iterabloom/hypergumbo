@@ -55,7 +55,6 @@ def create_op(draw: st.DrawFn) -> dict[str, Any]:
             "duplicate_of": [],
             "not_duplicate_of": [],
             "pr_ref": None,
-            "justification": None,
             "description": draw(st.text(max_size=100)),
             "fields": {
                 "statement": draw(st.text(max_size=50)),

@@ -304,7 +304,6 @@ class TestUpsert:
             duplicate_of=["INV-dup"],
             not_duplicate_of=["INV-nodup"],
             pr_ref="PR-42",
-            justification="Because reasons",
             description="Full description",
             fields={"statement": "s", "root_cause": "r"},
             locked_fields={"status", "priority"},
@@ -335,7 +334,6 @@ class TestUpsert:
         assert r.duplicate_of == ["INV-dup"]
         assert r.not_duplicate_of == ["INV-nodup"]
         assert r.pr_ref == "PR-42"
-        assert r.justification == "Because reasons"
         assert r.description == "Full description"
         assert r.fields == {"statement": "s", "root_cause": "r"}
         assert r.locked_fields == {"status", "priority"}
@@ -647,7 +645,7 @@ class TestSerializationRoundTrip:
             id="INV-none",
             kind="work_item", title="None Fields",
             status="todo_hard",
-            parent=None, pr_ref=None, justification=None,
+            parent=None, pr_ref=None,
             simhash=None,
             created_at="2026-01-01T00:00:00Z",
             updated_at="2026-01-01T00:00:00Z",
@@ -657,7 +655,6 @@ class TestSerializationRoundTrip:
         assert len(result) == 1
         assert result[0].parent is None
         assert result[0].pr_ref is None
-        assert result[0].justification is None
         assert result[0].simhash is None
         cache.close()
 

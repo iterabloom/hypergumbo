@@ -178,7 +178,7 @@ statuses:
   - todo_soft       # address or defer freely
   - in_progress     # actively being worked on
   - done            # completed
-  - deferred        # explicitly deferred (justification required)
+  - deferred        # explicitly deferred
   - wont_do         # decided against
 
 # Stop hook semantics. blocking_statuses are what count-todos counts.
@@ -261,7 +261,6 @@ Each op log file (`.ops`) is an **append-only list of operations**. The store ne
     duplicate_of: []  # f7a2
     not_duplicate_of: []  # f7a2
     pr_ref: null  # f7a2
-    justification: null  # f7a2
     description: ""  # f7a2
     fields:  # f7a2
       statement: "Every emitted `calls` edge has a non-null caller symbol"  # f7a2
@@ -671,7 +670,7 @@ The `compile()` function is a pure function: it takes a list of ops from an op l
 
 | Field / op type | Compile behavior |
 |---|---|
-| Scalar fields (`status`, `priority`, `title`, `parent`, `description`, `justification`, `pr_ref`) | Last write wins |
+| Scalar fields (`status`, `priority`, `title`, `parent`, `description`, `pr_ref`) | Last write wins |
 | `tags` | Accumulated: `add` ops union into the set, `remove` ops subtract. `set` replaces wholesale (use sparingly — concurrent `set` ops lose one side's intent). |
 | `before` | Accumulated: `add` ops union, `remove` ops subtract. `set` replaces wholesale. |
 | `duplicate_of` | Accumulated: `add` ops union, `remove` ops subtract. `set` replaces wholesale. |
@@ -732,7 +731,7 @@ This split means the hot path — `compile()`, `list`, `ready`, `count-todos` �
 **Benchmark-confirmed performance gap.** Testing with realistic op log files (180–12,000 ops) shows CSafeLoader is consistently 3–10× faster than both SafeLoader and ruamel.yaml's parser. At 3,000 ops (~750KB file), CSafeLoader parses in ~200ms vs. ~1,000ms for SafeLoader and ~1,170ms for ruamel.yaml. This dual-library split improves the hot path speed by 5×.
 
 **Quoting rules:**
-- String fields that could be misinterpreted are always double-quoted: `title`, `description`, `justification`, `message` (in discuss ops), all `fields.*` string values
+- String fields that could be misinterpreted are always double-quoted: `title`, `description`, `message` (in discuss ops), all `fields.*` string values
 - `op`, `status`, `kind`, `by` are unquoted (controlled vocabulary, known-safe values)
 - Multiline strings use block scalar (`|`) style
 - **List-valued fields in `update` ops** (`add`/`remove` dicts): always use YAML flow-style (e.g., `tags: [ci_infrastructure, analysis_quality]`). Flow-style keeps the entire list on one line, making it atomic under `merge=union` — git cannot interleave lines from different ops within a single-line value. Lists inside `create` ops' `data.fields` (e.g., `regression_tests`) may use block-style safely, since each `create` op has a unique nonce namespace and interleaving across ops cannot occur.
@@ -746,7 +745,7 @@ op (with nonce comment), at, by, actor, clock, nonce, [op-specific fields: data/
 
 Within the `create` op's `data`, fields are ordered:
 ```
-kind, title, status, priority, parent, tags, before, duplicate_of, not_duplicate_of, pr_ref, justification, description, fields
+kind, title, status, priority, parent, tags, before, duplicate_of, not_duplicate_of, pr_ref, description, fields
 ```
 
 **Sole-writer invariant.** The store is the sole writer of op log files. Agents and humans use the CLI/TUI — they never edit `.ops` files directly. Agents should never *read* op log files either — they use `scripts/tracker show <ID>` for compiled state (see [Agent Context Protection](#agent-context-protection)).
@@ -797,7 +796,6 @@ CREATE TABLE items (
     duplicate_of TEXT,              -- JSON array of IDs
     not_duplicate_of TEXT,          -- JSON array of IDs
     pr_ref      TEXT,
-    justification TEXT,
     description TEXT,
     fields      TEXT,               -- JSON dict
     locked_fields TEXT,             -- JSON array
@@ -1336,7 +1334,6 @@ Validation catches:
 - Priority not an integer in range 0–4
 - Timestamps not valid ISO 8601 UTC
 - Duplicate IDs (across all tiers: canonical, workspace, stealth)
-- Deferred items without justification (in compiled state)
 - Dangling parent references (parent ID doesn't exist)
 - ID prefix doesn't match kind's configured prefix
 - Cycles in `before` links
@@ -1426,7 +1423,7 @@ Migration is idempotent: re-running produces the same IDs (same content → same
 - `test_cache.py`: SQLite cache correctness — write-through (append op, verify cache row updated without re-parse, verify `source_size` updated), mtime invalidation (touch YAML file, verify re-parse on next read), cold start (delete `.cache.db`, verify rebuilt from YAML), corruption recovery (corrupt `.cache.db`, verify rebuilt transparently), stale cache (simulate `git pull` changing file mtimes, verify only changed items re-parsed), cache-vs-YAML consistency (compile from YAML and compare against cache row for all items), **incremental invalidation** (append discuss op to file, verify only new bytes parsed and data fields not re-compiled; append update op to file, verify full re-compile triggered; simulate `merge=union` by appending ops from two simulated branches, verify incremental parse finds all new ops; simulate file truncation/rewrite, verify fallback to full re-parse; verify `source_size` tracking is accurate across append/merge/rewrite scenarios)
 
 #### PR 1c: Validation + CLI + textconv `[MERGED]` (commit 2574412 — also absorbed PR 3)
-- `validation.py`: schema checks, status validation against config (not a hardcoded enum), dedup (across all tiers), cross-tier duplicate detection, parent ref checks (cross-tier), `before` cycle detection (cross-tier), compiled-state checks (deferred justification, etc.), per-kind `fields_schema` validation (required fields present, type/range checks on known fields, edit-distance typo warnings for unknown fields), **config-vs-template divergence warning** (warn when `config.yaml` has kinds/statuses not in `config.yaml.template`), **flow-style enforcement for list-valued fields in `update` ops**. Must support optional file-path arguments from the start (for incremental pre-commit validation — see [Pre-Commit Validation](#pre-commit-validation)). **Exit codes:** 0 = valid (warnings to stderr), 1 = validation errors, 2 = internal failure
+- `validation.py`: schema checks, status validation against config (not a hardcoded enum), dedup (across all tiers), cross-tier duplicate detection, parent ref checks (cross-tier), `before` cycle detection (cross-tier), compiled-state checks, per-kind `fields_schema` validation (required fields present, type/range checks on known fields, edit-distance typo warnings for unknown fields), **config-vs-template divergence warning** (warn when `config.yaml` has kinds/statuses not in `config.yaml.template`), **flow-style enforcement for list-valued fields in `update` ops**. Must support optional file-path arguments from the start (for incremental pre-commit validation — see [Pre-Commit Validation](#pre-commit-validation)). **Exit codes:** 0 = valid (warnings to stderr), 1 = validation errors, 2 = internal failure
 - Tests: validation pass/fail (including `fields_schema`: required field missing → error, wrong type → error, unknown field with close edit distance → warning with suggestion, unknown field on kind without schema → no warning), **exit code verification** (errors → exit 1, warnings only → exit 0, internal failure → exit 2, `--strict` promotes warnings to exit 1)
 
 #### PR 2: Migration script `[MERGED]` (commits e471b2e, c12ee34 — migration + bootstrap)

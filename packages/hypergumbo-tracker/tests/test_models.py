@@ -305,7 +305,6 @@ class TestCompiledItem:
         assert item.duplicate_of == []
         assert item.not_duplicate_of == []
         assert item.pr_ref is None
-        assert item.justification is None
         assert item.description == ""
         assert item.fields == {}
         assert item.locked_fields == set()

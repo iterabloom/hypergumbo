@@ -66,7 +66,7 @@ class CreateOp:
     """Initialize an item with all fields.
 
     The data dict contains: kind, title, status, priority, parent, tags,
-    before, duplicate_of, not_duplicate_of, pr_ref, justification,
+    before, duplicate_of, not_duplicate_of, pr_ref,
     description, fields.
     """
 
@@ -370,7 +370,6 @@ class CompiledItem:
     duplicate_of: list[str] = field(default_factory=list)
     not_duplicate_of: list[str] = field(default_factory=list)
     pr_ref: str | None = None
-    justification: str | None = None
     description: str = ""
     fields: dict[str, Any] = field(default_factory=dict)
     locked_fields: set[str] = field(default_factory=set)

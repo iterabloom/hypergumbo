@@ -568,7 +568,6 @@ class TestParseWorkItems:
         items = parse_work_items(content)
         assert len(items) == 1
         assert items[0].status == "todo_soft"
-        assert items[0].justification is None
 
 
 # ============================================================================
@@ -595,7 +594,6 @@ class TestBuildCreateOp:
             fields={"statement": "must be true", "root_cause": "bug"},
             tags=["analysis_quality"],
             pr_ref=None,
-            justification=None,
             parent_source_id=None,
         )
         op_dict, item_id = build_create_op(item, config)
@@ -622,7 +620,6 @@ class TestBuildCreateOp:
             fields={},
             tags=[],
             pr_ref=None,
-            justification=None,
             parent_source_id=None,
         )
         _, id1 = build_create_op(item, config)

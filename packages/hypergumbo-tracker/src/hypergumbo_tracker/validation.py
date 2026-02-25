@@ -543,7 +543,6 @@ def validate_all(
     - Dangling parent references
     - ID prefix doesn't match kind
     - Cycles in before links
-    - Deferred without justification
     - Config vs template comparison (if both exist)
     - SimHash near-duplicate warnings (if check_similar=True)
     - Embedding near-duplicate warnings (if check_deep_similar=True)

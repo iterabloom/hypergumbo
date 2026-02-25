@@ -542,7 +542,6 @@ class TestStoreAdd:
             description="Full description",
             fields={"statement": "test stmt", "root_cause": "test cause"},
             pr_ref="PR-42",
-            justification="because",
         )
         item = store.get(item_id)
         assert item.status == "violated"
@@ -552,7 +551,6 @@ class TestStoreAdd:
         assert item.description == "Full description"
         assert item.fields["statement"] == "test stmt"
         assert item.pr_ref == "PR-42"
-        assert item.justification == "because"
 
 
 # ---------------------------------------------------------------------------

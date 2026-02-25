@@ -50,7 +50,7 @@ class TestNonceOnEveryLine:
                 "duplicate_of": [],
                 "not_duplicate_of": [],
                 "pr_ref": None,
-                "justification": None,
+
                 "description": "A test description",
                 "fields": {"statement": "test statement"},
             },
@@ -122,7 +122,7 @@ class TestCanonicalFieldOrder:
                 "duplicate_of": [],
                 "not_duplicate_of": [],
                 "pr_ref": None,
-                "justification": None,
+
                 "description": "",
                 "fields": {},
             },
@@ -145,7 +145,7 @@ class TestCanonicalFieldOrder:
         expected = [
             "kind", "title", "status", "priority", "parent", "tags",
             "before", "duplicate_of", "not_duplicate_of", "pr_ref",
-            "justification", "description", "fields",
+            "description", "fields",
         ]
         assert data_fields == expected
 
@@ -304,7 +304,7 @@ class TestCSafeLoaderRuamelParity:
                 "duplicate_of": [],
                 "not_duplicate_of": [],
                 "pr_ref": None,
-                "justification": None,
+
                 "description": "A description with *markdown*",
                 "fields": {
                     "statement": "true",

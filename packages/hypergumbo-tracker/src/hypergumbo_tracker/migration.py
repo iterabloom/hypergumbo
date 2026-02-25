@@ -58,7 +58,6 @@ class ParsedItem:
     fields: dict[str, Any]
     tags: list[str]
     pr_ref: str | None
-    justification: str | None
     parent_source_id: str | None
 
 
@@ -342,7 +341,6 @@ def parse_invariant_ledger(content: str) -> list[ParsedItem]:
             fields=fields,
             tags=[],
             pr_ref=None,
-            justification=None,
             parent_source_id=None,
         ))
 
@@ -372,7 +370,6 @@ def parse_invariant_ledger(content: str) -> list[ParsedItem]:
                 fields={},
                 tags=[],
                 pr_ref=None,
-                justification=None,
                 parent_source_id=current["source_id"],
             ))
 
@@ -552,7 +549,6 @@ def parse_work_items(content: str) -> list[ParsedItem]:
                 description = rest[period_idx + 2:].strip()
 
             # Generate source_id
-            justification: str | None = None
             tag = category_to_tag(current_category)
             cat_slug = tag.replace("_", "-")
             idx = category_counts.get(cat_slug, 0)
@@ -569,7 +565,6 @@ def parse_work_items(content: str) -> list[ParsedItem]:
                 fields={},
                 tags=[tag] if tag else [],
                 pr_ref=pr_ref,
-                justification=justification,
                 parent_source_id=None,
             ))
 
@@ -607,7 +602,6 @@ def build_create_op(
         "duplicate_of": [],
         "not_duplicate_of": [],
         "pr_ref": item.pr_ref,
-        "justification": item.justification,
         "description": item.description,
         "fields": item.fields,
     }

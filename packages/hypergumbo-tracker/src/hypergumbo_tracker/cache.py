@@ -53,7 +53,6 @@ CREATE TABLE IF NOT EXISTS items (
     duplicate_of  TEXT,
     not_duplicate_of TEXT,
     pr_ref        TEXT,
-    justification TEXT,
     description   TEXT,
     fields        TEXT,
     locked_fields TEXT,
@@ -142,7 +141,7 @@ class Cache:
             return None
 
         stat = source_path.stat()
-        stored_mtime = row[21]  # source_mtime column index
+        stored_mtime = row[20]  # source_mtime column index
         if stat.st_mtime != stored_mtime:
             return None  # Stale — caller should recompile
 
@@ -170,10 +169,10 @@ class Cache:
                 """INSERT OR REPLACE INTO items
                    (id, kind, title, status, priority, parent, tags,
                     before_ids, duplicate_of, not_duplicate_of, pr_ref,
-                    justification, description, fields, locked_fields,
+                    description, fields, locked_fields,
                     discussion, simhash, tier, created_at, updated_at,
                     cross_tier_conflict, source_mtime, source_size)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     item_id,
                     item.kind,
@@ -186,7 +185,6 @@ class Cache:
                     json.dumps(item.duplicate_of),
                     json.dumps(item.not_duplicate_of),
                     item.pr_ref,
-                    item.justification,
                     item.description,
                     json.dumps(item.fields),
                     json.dumps(sorted(item.locked_fields)),
@@ -460,7 +458,7 @@ class Cache:
 
     def _row_to_item(self, row: tuple[Any, ...]) -> CompiledItem:
         """Convert a SQLite row to a CompiledItem."""
-        discussion_raw = json.loads(row[15]) if row[15] else []
+        discussion_raw = json.loads(row[14]) if row[14] else []
         discussion = [
             DiscussionEntry(
                 by=d["by"], actor=d["actor"], at=d["at"],
@@ -481,16 +479,15 @@ class Cache:
             duplicate_of=json.loads(row[8]) if row[8] else [],
             not_duplicate_of=json.loads(row[9]) if row[9] else [],
             pr_ref=row[10],
-            justification=row[11],
-            description=row[12] or "",
-            fields=json.loads(row[13]) if row[13] else {},
-            locked_fields=set(json.loads(row[14])) if row[14] else set(),
+            description=row[11] or "",
+            fields=json.loads(row[12]) if row[12] else {},
+            locked_fields=set(json.loads(row[13])) if row[13] else set(),
             discussion=discussion,
-            simhash=row[16],
-            created_at=row[18],
-            updated_at=row[19],
-            cross_tier_conflict=bool(row[20]),
-            tier=Tier(row[17]),
+            simhash=row[15],
+            created_at=row[17],
+            updated_at=row[18],
+            cross_tier_conflict=bool(row[19]),
+            tier=Tier(row[16]),
         )
 
     def _delete_row(self, item_id: str) -> None:

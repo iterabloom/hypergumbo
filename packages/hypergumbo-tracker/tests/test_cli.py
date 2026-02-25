@@ -119,7 +119,7 @@ class TestFormatting:
         item = CompiledItem(
             id="WI-test", kind="work_item", title="Test Item",
             status="todo_hard", priority=1, tags=["a", "b"],
-            description="A description", justification="Because reasons",
+            description="A description",
             fields={"key": "val"}, locked_fields={"priority"},
             duplicate_of=["WI-other"], not_duplicate_of=["WI-another"],
             discussion=[DiscussionEntry(by="agent", actor="a", at="t", message="m")],
@@ -130,7 +130,6 @@ class TestFormatting:
         assert "WI-test" in result
         assert "Test Item" in result
         assert "A description" in result
-        assert "Because reasons" in result
         assert "fields.key: val" in result
         assert "locked" in result
         assert "duplicate_of" in result
@@ -536,7 +535,6 @@ class TestWriteCommands:
                 "add", "--kind", "work_item", "--title", "Test",
                 "--before", "WI-before-target",
                 "--pr-ref", "#123",
-                "--justification", "needed",
                 "--parent", "WI-parent-target",
             ])
         assert exc.value.code == EXIT_SUCCESS
@@ -649,7 +647,6 @@ class TestWriteCommands:
                 "--priority", "0",
                 "--parent", "WI-parent-ref",
                 "--pr-ref", "#456",
-                "--justification", "reason",
                 "--description", "new desc",
                 "--add-before", "WI-before-ref",
                 "--remove-tag", "old",
