@@ -1,0 +1,20 @@
+- op: create  # 8ccc
+  at: '2026-02-25T10:35:55Z'  # 8ccc
+  by: agent  # 8ccc
+  actor: jgstern_agent  # 8ccc
+  clock: 1  # 8ccc
+  nonce: 8ccc  # 8ccc
+  data:  # 8ccc
+    kind: work_item  # 8ccc
+    title: "Memento protocol: CI debugging resilience across context windows"  # 8ccc
+    status: needs_human_review  # 8ccc
+    priority: 2  # 8ccc
+    parent:  # 8ccc
+    tags: []  # 8ccc
+    before: []  # 8ccc
+    duplicate_of: []  # 8ccc
+    not_duplicate_of: []  # 8ccc
+    pr_ref:  # 8ccc
+    description: ""  # 8ccc
+    fields:  # 8ccc
+      statement: "Agent loses CI debugging context across sessions. Scripts (auto-pr, ci-debug, merge-pr) are the tattoos but can mislead. Need: (1) better CI failure diagnostics, (2) last_stop_check.json should capture CI/PR state, (3) no first-shot assumptions on CI, (4) no parallel work while CI pending, (5) timing awareness for stale fetches/PRs."  # 8ccc
