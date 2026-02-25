@@ -41,3 +41,32 @@
   clock: 4  # 7490
   nonce: '7490'  # 7490
   message: "Acknowledged. Will implement bakeoff items as stealth-tier (gitignored). Will verify auto-sync skips stealth items and they don't count toward the sync threshold."  # 7490
+- op: update  # 0a05
+  at: '2026-02-25T20:15:11Z'  # 0a05
+  by: agent  # 0a05
+  actor: jgstern_agent  # 0a05
+  clock: 5  # 0a05
+  nonce: 0a05  # 0a05
+  set: {}  # 0a05
+- op: discuss  # 688b
+  at: '2026-02-25T20:15:11Z'  # 688b
+  by: agent  # 688b
+  actor: jgstern_agent  # 688b
+  clock: 6  # 688b
+  nonce: 688b  # 688b
+  message: "Implemented option (a): auto-ingest improvement_ideas from aggregated summaries into stealth-tier tracker items. New 'ingest' subcommand and '--ingest' flag on aggregate. Auto-sync skips stealth items (stealth dir not in _OPS_PATHS). PR pending."  # 688b
+- op: update  # 857d
+  at: '2026-02-25T20:16:17Z'  # 857d
+  by: agent  # 857d
+  actor: jgstern_agent  # 857d
+  clock: 7  # 857d
+  nonce: 857d  # 857d
+  set:  # 857d
+    status: done  # 857d
+- op: discuss  # bf38
+  at: '2026-02-25T20:16:17Z'  # bf38
+  by: agent  # bf38
+  actor: jgstern_agent  # bf38
+  clock: 8  # bf38
+  nonce: bf38  # bf38
+  message: "PR #1464 merged. Implemented option (a) from the original proposal. Option (b) (tracker_item field in assessment YAML) can be added later when needed."  # bf38
