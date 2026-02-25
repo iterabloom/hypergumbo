@@ -619,6 +619,143 @@ class TestFindPriorAssessment:
         assert result is None
 
 
+class TestFindUnaggregated:
+    """Test detection of cohort/iter dirs with assessments but no summary."""
+
+    def test_finds_unaggregated_cohort(
+        self, deep_session, bakeoff_features_reflect
+    ):
+        """Detects a cohort with assessments but no summary.yaml."""
+        session_dir, state = deep_session
+
+        # Create assessments without summary.yaml
+        reflect_dir = session_dir / "reflect" / "cohort-001" / "iter-001"
+        reflect_dir.mkdir(parents=True)
+        a = _make_deep_assessment("repo-a")
+        (reflect_dir / "repo-a.assessment.yaml").write_text(
+            json.dumps({"developer_assessment": a})
+        )
+
+        result = bakeoff_features_reflect.find_unaggregated(str(session_dir))
+        assert len(result) == 1
+        assert result[0]["cohort"] == 1
+        assert result[0]["iteration"] == 1
+        assert result[0]["assessment_count"] == 1
+
+    def test_ignores_aggregated_cohort(
+        self, deep_session, bakeoff_features_reflect
+    ):
+        """Cohorts with summary.yaml are not returned."""
+        session_dir, state = deep_session
+
+        reflect_dir = session_dir / "reflect" / "cohort-001" / "iter-001"
+        reflect_dir.mkdir(parents=True)
+        a = _make_deep_assessment("repo-a")
+        (reflect_dir / "repo-a.assessment.yaml").write_text(
+            json.dumps({"developer_assessment": a})
+        )
+        (reflect_dir / "summary.yaml").write_text("total_repos: 1\n")
+
+        result = bakeoff_features_reflect.find_unaggregated(str(session_dir))
+        assert len(result) == 0
+
+    def test_returns_empty_when_no_reflect_dir(
+        self, deep_session, bakeoff_features_reflect
+    ):
+        """Returns empty list when no reflect/ directory exists."""
+        session_dir, state = deep_session
+        result = bakeoff_features_reflect.find_unaggregated(str(session_dir))
+        assert result == []
+
+    def test_finds_multiple_unaggregated(
+        self, deep_session, bakeoff_features_reflect
+    ):
+        """Finds multiple unaggregated cohort/iter combos."""
+        session_dir, state = deep_session
+
+        for cohort in [1, 2]:
+            reflect_dir = (
+                session_dir / "reflect" / f"cohort-{cohort:03d}" / "iter-001"
+            )
+            reflect_dir.mkdir(parents=True)
+            a = _make_deep_assessment(f"repo-{cohort}")
+            (reflect_dir / f"repo-{cohort}.assessment.yaml").write_text(
+                json.dumps({"developer_assessment": a})
+            )
+
+        result = bakeoff_features_reflect.find_unaggregated(str(session_dir))
+        assert len(result) == 2
+
+
+class TestCmdCheck:
+    """Test the check-unaggregated command."""
+
+    def test_check_finds_unaggregated(
+        self, deep_session, bakeoff_features_reflect, capsys
+    ):
+        """check command reports unaggregated cohorts."""
+        session_dir, state = deep_session
+
+        reflect_dir = session_dir / "reflect" / "cohort-001" / "iter-001"
+        reflect_dir.mkdir(parents=True)
+        a = _make_deep_assessment("repo-a")
+        (reflect_dir / "repo-a.assessment.yaml").write_text(
+            json.dumps({"developer_assessment": a})
+        )
+
+        args = mock.Mock()
+        args.workdir = str(session_dir)
+        args.auto_aggregate = False
+
+        result = bakeoff_features_reflect.cmd_check(args)
+        assert result == 1  # Exit code 1 = unaggregated found
+
+        captured = capsys.readouterr()
+        assert "cohort-001/iter-001" in captured.out
+        assert "1 assessment" in captured.out
+
+    def test_check_clean_returns_0(
+        self, deep_session, bakeoff_features_reflect, capsys
+    ):
+        """check command returns 0 when everything is aggregated."""
+        session_dir, state = deep_session
+
+        args = mock.Mock()
+        args.workdir = str(session_dir)
+        args.auto_aggregate = False
+
+        result = bakeoff_features_reflect.cmd_check(args)
+        assert result == 0
+
+    def test_check_auto_aggregate(
+        self, deep_session, bakeoff_features_reflect
+    ):
+        """check --auto-aggregate triggers aggregation."""
+        session_dir, state = deep_session
+
+        # Create unaggregated cohort
+        reflect_dir = session_dir / "reflect" / "cohort-001" / "iter-001"
+        reflect_dir.mkdir(parents=True)
+        a = _make_deep_assessment("repo-a")
+        (reflect_dir / "repo-a.assessment.yaml").write_text(
+            json.dumps({"developer_assessment": a})
+        )
+
+        # Need a state.json that matches cohort 1
+        state["cohort_number"] = 1
+        (session_dir / "state.json").write_text(json.dumps(state))
+
+        args = mock.Mock()
+        args.workdir = str(session_dir)
+        args.auto_aggregate = True
+
+        result = bakeoff_features_reflect.cmd_check(args)
+        assert result == 0
+
+        # Summary should now exist
+        assert (reflect_dir / "summary.yaml").exists()
+
+
 class TestCmdAggregate:
     """Test the full aggregate command."""
 

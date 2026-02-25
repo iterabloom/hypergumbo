@@ -805,6 +805,155 @@ def cmd_aggregate(args):
     return 0
 
 
+def find_unaggregated(workdir: str) -> list:
+    """Find cohort/iter dirs that have assessments but no summary.yaml.
+
+    Returns a list of dicts: [{"cohort": N, "iteration": M, "path": str,
+    "assessment_count": int}, ...] sorted by cohort then iteration.
+    """
+    reflect_base = os.path.join(workdir, "reflect")
+    if not os.path.isdir(reflect_base):
+        return []
+
+    unaggregated = []
+
+    for cohort_entry in sorted(os.listdir(reflect_base)):
+        if not cohort_entry.startswith("cohort-"):
+            continue
+        cohort_dir = os.path.join(reflect_base, cohort_entry)
+        if not os.path.isdir(cohort_dir):
+            continue
+
+        try:
+            cohort_num = int(cohort_entry.split("-")[1])
+        except (IndexError, ValueError):
+            continue
+
+        for iter_entry in sorted(os.listdir(cohort_dir)):
+            if not iter_entry.startswith("iter-"):
+                continue
+            iter_dir = os.path.join(cohort_dir, iter_entry)
+            if not os.path.isdir(iter_dir):
+                continue
+
+            try:
+                iter_num = int(iter_entry.split("-")[1])
+            except (IndexError, ValueError):
+                continue
+
+            # Check: has assessments but no summary
+            summary_path = os.path.join(iter_dir, "summary.yaml")
+            if os.path.exists(summary_path):
+                continue
+
+            assessment_count = sum(
+                1
+                for f in os.listdir(iter_dir)
+                if f.endswith(".assessment.yaml")
+            )
+
+            if assessment_count > 0:
+                unaggregated.append({
+                    "cohort": cohort_num,
+                    "iteration": iter_num,
+                    "path": iter_dir,
+                    "assessment_count": assessment_count,
+                })
+
+    return unaggregated
+
+
+def cmd_check(args):
+    """Check for unaggregated assessment sets and optionally aggregate them.
+
+    This command addresses aggregation resilience: when a session dies after
+    subagents complete their assessments but before aggregation runs, the
+    orphaned assessments can be recovered by running this command.
+
+    Returns 0 if all clean (or auto-aggregated), 1 if unaggregated found.
+    """
+    workdir = resolve_workdir(args.workdir)
+    print(f"Workdir: {workdir}")
+
+    unaggregated = find_unaggregated(workdir)
+
+    if not unaggregated:
+        print("All assessment sets are aggregated.")
+        return 0
+
+    print(f"Found {len(unaggregated)} unaggregated assessment set(s):")
+    for item in unaggregated:
+        print(
+            f"  cohort-{item['cohort']:03d}/iter-{item['iteration']:03d}: "
+            f"{item['assessment_count']} assessment(s)"
+        )
+
+    if not args.auto_aggregate:
+        print()
+        print("Run with --auto-aggregate to aggregate them, or run manually:")
+        for item in unaggregated:
+            print(
+                f"  ./scripts/bakeoff-features-reflect aggregate "
+                f"--workdir {workdir} --iteration {item['iteration']}"
+            )
+        return 1
+
+    # Auto-aggregate each unaggregated set
+    import yaml
+
+    state = load_state(workdir)
+
+    for item in unaggregated:
+        iter_dir = item["path"]
+        print(f"\nAggregating cohort-{item['cohort']:03d}/iter-{item['iteration']:03d}...")
+
+        # Load assessments from the directory
+        assessments = []
+        for f in sorted(os.listdir(iter_dir)):
+            if not f.endswith(".assessment.yaml"):
+                continue
+            try:
+                fpath = os.path.join(iter_dir, f)
+                with open(fpath) as fh:
+                    data = yaml.safe_load(fh)
+                if data and "developer_assessment" in data:
+                    assessments.append(data["developer_assessment"])
+                elif data:
+                    assessments.append(data)
+            except Exception as e:
+                print(f"  Error loading {f}: {e}")
+
+        if not assessments:
+            print(f"  No valid assessments found, skipping.")
+            continue
+
+        summary = aggregate_assessments(assessments)
+        summary["cohort"] = item["cohort"]
+        summary["iteration"] = item["iteration"]
+        summary["timestamp"] = datetime.datetime.now().isoformat()
+        summary["retroactive"] = True
+
+        # Compute trajectory if scores and prior summary exist
+        if "score_statistics" in summary:
+            prior_summary = find_prior_summary(workdir, item["cohort"])
+            if prior_summary:
+                prior_stats = prior_summary.get("score_statistics")
+                trajectory = compute_trajectory(
+                    summary["score_statistics"], prior_stats
+                )
+                if trajectory:
+                    summary["trajectory"] = trajectory
+
+        summary_path = os.path.join(iter_dir, "summary.yaml")
+        with open(summary_path, "w") as fh:
+            yaml.dump(summary, fh, default_flow_style=False, sort_keys=False)
+
+        print(f"  Wrote {summary_path} ({summary['total_repos']} repos)")
+
+    print(f"\nAggregated {len(unaggregated)} set(s).")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="LLM-driven qualitative assessment of hypergumbo outputs",
@@ -823,6 +972,17 @@ def main():
     p_aggregate.add_argument("--workdir", help="Bakeoff workdir")
     p_aggregate.add_argument("--iteration", type=int, help="Specific iteration")
 
+    # check (aggregation resilience)
+    p_check = subparsers.add_parser(
+        "check", help="Find and optionally aggregate orphaned assessment sets"
+    )
+    p_check.add_argument("--workdir", help="Bakeoff workdir")
+    p_check.add_argument(
+        "--auto-aggregate",
+        action="store_true",
+        help="Automatically aggregate any unaggregated assessment sets",
+    )
+
     args = parser.parse_args()
 
     # Default to reflect if no command given
@@ -834,6 +994,7 @@ def main():
     commands = {
         "reflect": cmd_reflect,
         "aggregate": cmd_aggregate,
+        "check": cmd_check,
     }
 
     return commands[args.command](args)
