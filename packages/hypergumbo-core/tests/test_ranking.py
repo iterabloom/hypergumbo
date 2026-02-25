@@ -11,6 +11,7 @@ from hypergumbo_core.ranking import (
     apply_tier_weights,
     apply_test_weights,
     apply_utility_symbol_weights,
+    apply_common_method_name_weights,
     group_symbols_by_file,
     compute_file_scores,
     rank_symbols,
@@ -2453,3 +2454,149 @@ class TestTrivialSinkDampening:
         assert result[big.id] == pytest.approx(0.8)
         # caller: out=2, loc=3 → NOT dampened (out_degree > 1)
         assert result[caller.id] == pytest.approx(0.5)
+
+
+class TestApplyCommonMethodNameWeights:
+    """Tests for apply_common_method_name_weights.
+
+    Methods with names shared across many distinct symbols (e.g., 'execute'
+    defined on 50+ classes) get centrality dampening proportional to the
+    number of symbols sharing that name.  This addresses bakeoff finding
+    WI-luvaj: PartialToViewsMappings#execute (in-degree 2894) dominates
+    rankings due to receiver_call false positives from 'execute' calls
+    resolving to the wrong target.
+    """
+
+    def test_common_name_dampened(self):
+        """Method names shared by many symbols get dampened."""
+        # 12 symbols all named "execute" — this exceeds the default threshold
+        execute_syms = [
+            make_symbol("execute", path=f"src/svc{i}.rb", language="ruby")
+            for i in range(12)
+        ]
+        unique = make_symbol("analyze_data", path="src/analyzer.py")
+
+        all_syms = execute_syms + [unique]
+        centrality = {s.id: 1.0 for s in all_syms}
+
+        result = apply_common_method_name_weights(centrality, all_syms)
+
+        # execute syms should be dampened
+        for s in execute_syms:
+            assert result[s.id] < 1.0, (
+                f"Symbol {s.id} with common name 'execute' should be dampened"
+            )
+        # unique name should be unchanged
+        assert result[unique.id] == 1.0
+
+    def test_below_threshold_not_dampened(self):
+        """Method names shared by fewer symbols than threshold are unaffected."""
+        # 5 symbols named "process" — below default threshold of 10
+        process_syms = [
+            make_symbol("process", path=f"src/handler{i}.py")
+            for i in range(5)
+        ]
+        centrality = {s.id: 1.0 for s in process_syms}
+
+        result = apply_common_method_name_weights(centrality, process_syms)
+
+        for s in process_syms:
+            assert result[s.id] == 1.0, "Below-threshold names should not be dampened"
+
+    def test_dampening_proportional_to_count(self):
+        """Higher duplication counts produce stronger dampening."""
+        # 20 symbols named "call" vs 11 named "run"
+        call_syms = [
+            make_symbol("call", path=f"src/c{i}.py") for i in range(20)
+        ]
+        run_syms = [
+            make_symbol("run", path=f"src/r{i}.py") for i in range(11)
+        ]
+
+        all_syms = call_syms + run_syms
+        centrality = {s.id: 1.0 for s in all_syms}
+
+        result = apply_common_method_name_weights(centrality, all_syms)
+
+        call_weight = result[call_syms[0].id]
+        run_weight = result[run_syms[0].id]
+
+        assert call_weight < run_weight, (
+            f"'call' (20 instances) weight {call_weight} should be less than "
+            f"'run' (11 instances) weight {run_weight}"
+        )
+
+    def test_class_names_excluded(self):
+        """Class-kind symbols are excluded from the method name count.
+
+        Multiple classes named 'Controller' is normal (different modules).
+        Only method/function names should trigger dampening.
+        """
+        controllers = [
+            make_symbol("Controller", path=f"src/app{i}.py", kind="class")
+            for i in range(15)
+        ]
+        centrality = {s.id: 1.0 for s in controllers}
+
+        result = apply_common_method_name_weights(centrality, controllers)
+
+        for s in controllers:
+            assert result[s.id] == 1.0, "Class names should not be dampened"
+
+    def test_integration_with_rank_symbols(self):
+        """rank_symbols integrates common method name dampening.
+
+        When 'execute' is defined on 50+ classes (as in gitlab bakeoff),
+        the first execute symbol should have reduced weighted_centrality
+        compared to its raw_centrality.
+        """
+        # 50 symbols named "execute" — realistic for enterprise codebase
+        execute_syms = [
+            make_symbol("execute", path=f"src/svc{i}.rb", language="ruby")
+            for i in range(50)
+        ]
+        domain_fn = make_symbol("validate_order", path="src/orders.rb", language="ruby")
+
+        # Callers
+        callers = [
+            make_symbol(f"caller{i}", path=f"src/caller{i}.rb", language="ruby")
+            for i in range(10)
+        ]
+
+        edges = (
+            # 10 callers of the first execute symbol
+            [make_edge(c.id, execute_syms[0].id) for c in callers]
+            # 8 callers of the domain function
+            + [make_edge(callers[i].id, domain_fn.id) for i in range(8)]
+        )
+
+        all_syms = execute_syms + [domain_fn] + callers
+        result = rank_symbols(all_syms, edges)
+
+        execute_ranked = next(r for r in result if r.symbol.id == execute_syms[0].id)
+        domain_ranked = next(r for r in result if r.symbol.name == "validate_order")
+
+        # With 50 instances, dampening = 10/50 = 0.2x
+        # execute raw vs weighted should show significant reduction
+        assert execute_ranked.weighted_centrality < execute_ranked.raw_centrality, (
+            f"execute weighted ({execute_ranked.weighted_centrality}) should be "
+            f"less than raw ({execute_ranked.raw_centrality}) due to common name dampening"
+        )
+        # domain function should outrank execute with similar caller counts
+        assert domain_ranked.rank < execute_ranked.rank, (
+            f"validate_order (rank {domain_ranked.rank}) should outrank "
+            f"execute (rank {execute_ranked.rank}) due to common name dampening"
+        )
+
+    def test_floor_applied(self):
+        """Dampening has a floor (doesn't go below 0.1)."""
+        # 200 symbols named "id" — dampening should not go below 0.1
+        id_syms = [
+            make_symbol("id", path=f"src/model{i}.py") for i in range(200)
+        ]
+        centrality = {s.id: 1.0 for s in id_syms}
+
+        result = apply_common_method_name_weights(centrality, id_syms)
+
+        for s in id_syms:
+            assert result[s.id] >= 0.1, "Dampening should have a floor of 0.1"

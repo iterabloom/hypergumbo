@@ -506,6 +506,71 @@ def apply_trivial_sink_weights(
     return weighted
 
 
+def apply_common_method_name_weights(
+    centrality: Dict[str, float],
+    symbols: List[Symbol],
+    name_threshold: int = 10,
+    floor: float = 0.1,
+) -> Dict[str, float]:
+    """Dampen centrality for methods whose name appears on many distinct symbols.
+
+    When a method name (e.g., 'execute', 'call', 'perform') is defined on
+    many distinct classes/modules, receiver_call edges with confidence 0.75
+    create massive false positive in-degree because callers of ANY method
+    with that name get attributed to the same target.  This function applies
+    a dampening factor proportional to the number of symbols sharing the name.
+
+    Bakeoff finding WI-luvaj: PartialToViewsMappings#execute (in-degree 2894)
+    dominated rankings because 'execute' appears on 50+ classes and every
+    unresolved `.execute()` call was attributed to it.
+
+    Detection:
+    - Count distinct symbols with each method/function name
+    - Only counts function and method kinds (not class, module, etc.)
+    - If count > name_threshold (default 10), apply dampening:
+      factor = max(floor, name_threshold / count)
+    - e.g., 'execute' on 50 symbols → 10/50 = 0.2x
+    - e.g., 'process' on 15 symbols → 10/15 = 0.67x
+    - e.g., 'analyze_data' on 1 symbol → no dampening
+
+    Args:
+        centrality: Centrality scores to weight.
+        symbols: Symbol list (used for name counts).
+        name_threshold: Minimum symbol count before dampening applies (default 10).
+        floor: Minimum dampening factor (default 0.1).
+
+    Returns:
+        Dictionary mapping symbol ID to dampened centrality score.
+    """
+    # Count how many distinct symbols define each method name
+    # Only count callable kinds (function, method) — class names are
+    # expected to repeat across modules
+    _CALLABLE_KINDS = {"function", "method"}
+
+    name_counts: Dict[str, int] = {}
+    symbol_lookup: Dict[str, Symbol] = {}
+    for s in symbols:
+        symbol_lookup[s.id] = s
+        if s.kind in _CALLABLE_KINDS:
+            name_counts[s.name] = name_counts.get(s.name, 0) + 1
+
+    weighted = {}
+    for sid, score in centrality.items():
+        sym = symbol_lookup.get(sid)
+        if sym is None or sym.kind not in _CALLABLE_KINDS:
+            weighted[sid] = score
+            continue
+
+        count = name_counts.get(sym.name, 1)
+        if count > name_threshold:
+            factor = max(floor, name_threshold / count)
+            weighted[sid] = score * factor
+        else:
+            weighted[sid] = score
+
+    return weighted
+
+
 def group_symbols_by_file(symbols: List[Symbol]) -> Dict[str, List[Symbol]]:
     """Group symbols by their file path.
 
@@ -642,6 +707,11 @@ def rank_symbols(
 
     # De-weight utility symbols (loggers, clocks, STL accessors, etc.)
     weighted_centrality = apply_utility_symbol_weights(weighted_centrality, symbols)
+
+    # De-weight common method names (execute, call, perform, etc.)
+    weighted_centrality = apply_common_method_name_weights(
+        weighted_centrality, symbols,
+    )
 
     # De-weight trivial sinks (short-bodied pure sinks like accessors/stubs)
     weighted_centrality = apply_trivial_sink_weights(
