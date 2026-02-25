@@ -93,19 +93,33 @@ import json, sys
 try:
     with open('$LATEST_STATE') as f:
         state = json.load(f)
-    ch = state.get('convergence_history', [])
-    if not ch:
+    cohort_num = state.get('cohort_number', '?')
+    iteration = state.get('iteration', '?')
+    # BROAD schema: convergence_history with critical/high/new_issues
+    ch = state.get('convergence_history') or []
+    if ch:
+        latest = ch[-1]
+        crit = latest.get('critical', 0)
+        high = latest.get('high', 0)
+        new = latest.get('new_issues', 0)
+        cohort_num = latest.get('cohort', cohort_num)
+        iteration = latest.get('iteration', iteration)
+        if crit == 0 and high == 0 and new == 0:
+            print(f'CONVERGED cohort={cohort_num} iter={iteration}')
+        else:
+            print(f'NEEDS_WORK cohort={cohort_num} iter={iteration} critical={crit} high={high} new={new}')
         sys.exit(0)
-    latest = ch[-1]
-    crit = latest.get('critical', 0)
-    high = latest.get('high', 0)
-    new = latest.get('new_issues', 0)
-    cohort_num = latest.get('cohort', '?')
-    iteration = latest.get('iteration', '?')
-    if crit == 0 and high == 0 and new == 0:
-        print(f'CONVERGED cohort={cohort_num} iter={iteration}')
-    else:
-        print(f'NEEDS_WORK cohort={cohort_num} iter={iteration} critical={crit} high={high} new={new}')
+    # DEEP schema: verdicts with per-repo verdict (GOOD/WARN/FAIL)
+    verdicts = state.get('verdicts') or []
+    if verdicts:
+        good = sum(1 for v in verdicts if v.get('verdict') == 'GOOD')
+        warn = sum(1 for v in verdicts if v.get('verdict') == 'WARN')
+        fail = sum(1 for v in verdicts if v.get('verdict') == 'FAIL')
+        if fail == 0 and warn == 0:
+            print(f'CONVERGED cohort={cohort_num} iter={iteration}')
+        else:
+            print(f'NEEDS_WORK cohort={cohort_num} iter={iteration} good={good} warn={warn} fail={fail}')
+        sys.exit(0)
 except Exception:
     pass
 " 2>/dev/null || true)
