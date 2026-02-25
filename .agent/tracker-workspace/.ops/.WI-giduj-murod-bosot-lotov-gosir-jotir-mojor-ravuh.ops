@@ -57,3 +57,10 @@
   nonce: 75c6  # 75c6
   set:  # 75c6
     status: needs_human_review  # 75c6
+- op: discuss  # c947
+  at: '2026-02-25T08:43:42Z'  # c947
+  by: agent  # c947
+  actor: jgstern_agent  # c947
+  clock: 7  # c947
+  nonce: c947  # c947
+  message: "[migrated from justification field] Deferred: P4 niche language. DTS files found in kernel repos but not in current bakeoff cohorts."  # c947

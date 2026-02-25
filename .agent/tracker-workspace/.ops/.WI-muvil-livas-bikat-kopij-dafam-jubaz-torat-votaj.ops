@@ -57,3 +57,10 @@
   nonce: 92f4  # 92f4
   set:  # 92f4
     status: needs_human_review  # 92f4
+- op: discuss  # ddf0
+  at: '2026-02-25T08:43:43Z'  # ddf0
+  by: agent  # ddf0
+  actor: jgstern_agent  # ddf0
+  clock: 7  # ddf0
+  nonce: ddf0  # ddf0
+  message: "[migrated from justification field] Deferred: P4 niche language. Kconfig found in kernel repos but not in current bakeoff cohorts."  # ddf0

@@ -44,3 +44,10 @@
   set:  # 0593
     title: "CI matrix strategy: DRY refactor jobs and parallel pytest"  # 0593
     description: "Three overlapping CI improvements: (1) Matrix strategy for per-package jobs instead of manual duplication, (2) DRY refactor of near-identical test-* jobs in full-suite.yml via matrix or composite action, (3) Parallel pytest split by package for large changes. All non-blocking — CI works correctly as-is."  # 0593
+- op: discuss  # 22d9
+  at: '2026-02-25T08:43:43Z'  # 22d9
+  by: agent  # 22d9
+  actor: jgstern_agent  # 22d9
+  clock: 7  # 22d9
+  nonce: 22d9  # 22d9
+  message: "[migrated from justification field] Manual job per package currently. Use `matrix: { package: [core, mainstream, common, extended] }`. Would reduce CI config duplication but CI works correctly."  # 22d9

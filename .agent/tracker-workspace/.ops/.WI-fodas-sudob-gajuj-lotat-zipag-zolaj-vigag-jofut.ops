@@ -35,3 +35,10 @@
   nonce: c457  # c457
   set:  # c457
     status: needs_human_review  # c457
+- op: discuss  # 867c
+  at: '2026-02-25T08:43:42Z'  # 867c
+  by: agent  # 867c
+  actor: jgstern_agent  # 867c
+  clock: 5  # 867c
+  nonce: 867c  # 867c
+  message: "[migrated from justification field] Each test job restores grammar wheels from cache separately. Use `actions/upload-artifact`/`download-artifact` for faster sharing. Non-blocking optimization."  # 867c
