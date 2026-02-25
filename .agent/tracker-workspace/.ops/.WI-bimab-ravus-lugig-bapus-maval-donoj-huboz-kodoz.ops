@@ -74,3 +74,18 @@
   clock: 8  # 5066
   nonce: '5066'  # 5066
   message: "FastAPI add_api_route detection implemented (PR #1467). kserve routes: 6→21. Combined with go-swagger (PR #1466, alertmanager 13→22), both route detection gaps from prior assessments are now fixed. Remaining issues: method-name collision false positives in prometheus reverse slice, centrality ranking inaccuracies across all 3 repos."  # 5066
+- op: discuss  # e6ab
+  at: '2026-02-25T21:50:12Z'  # e6ab
+  by: agent  # e6ab
+  actor: jgstern_agent  # e6ab
+  clock: 9  # e6ab
+  nonce: e6ab  # e6ab
+  message: "Chained-call ambiguity guard merged (PR #1468). Prometheus Manager.Update: 42→17 incoming edges (all legit from manager_test.go). All 3 repos improved: alertmanager 22 routes (go-swagger), kserve 21 routes (add_api_route), prometheus 70 non-test routes, no false-positive centrality inflation."  # e6ab
+- op: update  # edb1
+  at: '2026-02-25T22:28:26Z'  # edb1
+  by: agent  # edb1
+  actor: jgstern_agent  # edb1
+  clock: 10  # edb1
+  nonce: edb1  # edb1
+  set:  # edb1
+    status: done  # edb1

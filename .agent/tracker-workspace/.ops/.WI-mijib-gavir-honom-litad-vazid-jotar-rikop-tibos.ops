@@ -49,3 +49,26 @@
   clock: 5  # 15e3
   nonce: '15e3'  # 15e3
   message: "I approve"  # 15e3
+- op: discuss  # 7070
+  at: '2026-02-25T21:53:18Z'  # 7070
+  by: agent  # 7070
+  actor: jgstern_agent  # 7070
+  clock: 6  # 7070
+  nonce: '7070'  # 7070
+  message: "Implemented in PR (pending merge). auto-pr now strips .agent/tracker*/.ops/ files from commits before pushing, in both do_pr and flush_queue paths."  # 7070
+- op: discuss  # 6156
+  at: '2026-02-25T21:53:22Z'  # 6156
+  by: agent  # 6156
+  actor: jgstern_agent  # 6156
+  clock: 7  # 6156
+  nonce: '6156'  # 6156
+  message: "Thank you for the approval. Change implemented: auto-pr now detects and excludes .agent/tracker*/.ops/ files from PR commits (both do_pr and flush_queue paths). Files existing on base are restored; new ops files are removed from the index."  # 6156
+- op: update  # f866
+  at: '2026-02-25T22:00:17Z'  # f866
+  by: agent  # f866
+  actor: jgstern_agent  # f866
+  clock: 8  # f866
+  nonce: f866  # f866
+  set:  # f866
+    status: done  # f866
+    pr_ref: '1470'  # f866
