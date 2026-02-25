@@ -38,6 +38,10 @@ from hypergumbo_tracker.trackerset import (
 )
 
 
+# Shorthand for required invariant fields — avoids verbose repetition.
+_INV_FIELDS: dict[str, str] = {"statement": "test", "root_cause": "test"}
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -129,7 +133,7 @@ class TestListItems:
     def test_merged_list_from_all_tiers(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        id1 = tracker_set.add("invariant", "Canonical Item", tier=Tier.CANONICAL)
+        id1 = tracker_set.add("invariant", "Canonical Item", fields=_INV_FIELDS, tier=Tier.CANONICAL)
         id2 = tracker_set.add("work_item", "Workspace Item", tier=Tier.WORKSPACE,
                               not_duplicate_of=[id1])
         items = tracker_set.list_items()
@@ -140,7 +144,7 @@ class TestListItems:
     def test_items_annotated_with_tier(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        id1 = tracker_set.add("invariant", "Can", tier=Tier.CANONICAL)
+        id1 = tracker_set.add("invariant", "Can", fields=_INV_FIELDS, tier=Tier.CANONICAL)
         id2 = tracker_set.add("work_item", "Work", tier=Tier.WORKSPACE,
                               not_duplicate_of=[id1])
         items = tracker_set.list_items()
@@ -151,7 +155,7 @@ class TestListItems:
     def test_filter_by_tier(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        id1 = tracker_set.add("invariant", "Can", tier=Tier.CANONICAL)
+        id1 = tracker_set.add("invariant", "Can", fields=_INV_FIELDS, tier=Tier.CANONICAL)
         tracker_set.add("work_item", "Work", tier=Tier.WORKSPACE,
                         not_duplicate_of=[id1])
         items = tracker_set.list_items(tier=Tier.CANONICAL)
@@ -172,7 +176,7 @@ class TestListItems:
     def test_filter_by_kind(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        id1 = tracker_set.add("invariant", "Inv", tier=Tier.WORKSPACE)
+        id1 = tracker_set.add("invariant", "Inv", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         tracker_set.add("work_item", "WI", tier=Tier.WORKSPACE,
                         not_duplicate_of=[id1])
         items = tracker_set.list_items(kind="invariant")
@@ -182,7 +186,7 @@ class TestListItems:
     def test_sorted_by_priority(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        id1 = tracker_set.add("invariant", "Low Priority", tier=Tier.WORKSPACE,
+        id1 = tracker_set.add("invariant", "Low Priority", fields=_INV_FIELDS, tier=Tier.WORKSPACE,
                               priority=3)
         id2 = tracker_set.add("work_item", "High Priority", tier=Tier.CANONICAL,
                               priority=1, not_duplicate_of=[id1])
@@ -206,7 +210,7 @@ class TestReady:
     def test_ready_across_tiers(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        id1 = tracker_set.add("invariant", "Ready Can", tier=Tier.CANONICAL)
+        id1 = tracker_set.add("invariant", "Ready Can", fields=_INV_FIELDS, tier=Tier.CANONICAL)
         id2 = tracker_set.add("work_item", "Ready WS", tier=Tier.WORKSPACE,
                               not_duplicate_of=[id1])
         ready = tracker_set.ready()
@@ -220,7 +224,7 @@ class TestReady:
         """Item in canonical with before:[Y] blocks Y in workspace."""
         id_y = tracker_set.add("work_item", "Target Y", tier=Tier.WORKSPACE)
         # Item X has before: [id_y] — meaning X blocks Y
-        id_x = tracker_set.add("invariant", "Blocker X", tier=Tier.CANONICAL,
+        id_x = tracker_set.add("invariant", "Blocker X", fields=_INV_FIELDS, tier=Tier.CANONICAL,
                                before=[id_y], not_duplicate_of=[id_y])
         ready = tracker_set.ready()
         ready_ids = {i.id for i in ready}
@@ -250,7 +254,7 @@ class TestGet:
     def test_get_from_any_tier(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        id1 = tracker_set.add("invariant", "In Canonical", tier=Tier.CANONICAL)
+        id1 = tracker_set.add("invariant", "In Canonical", fields=_INV_FIELDS, tier=Tier.CANONICAL)
         item = tracker_set.get(id1)
         assert item.id == id1
         assert item.tier == Tier.CANONICAL
@@ -271,7 +275,7 @@ class TestTreeTraversal:
     def test_children_span_tiers(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        parent_id = tracker_set.add("invariant", "Parent", tier=Tier.CANONICAL)
+        parent_id = tracker_set.add("invariant", "Parent", fields=_INV_FIELDS, tier=Tier.CANONICAL)
         child_id = tracker_set.add("work_item", "Child", tier=Tier.WORKSPACE,
                                    parent=parent_id, not_duplicate_of=[parent_id])
         children = tracker_set.children(parent_id)
@@ -282,7 +286,7 @@ class TestTreeTraversal:
     def test_ancestors_span_tiers(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        parent_id = tracker_set.add("invariant", "Grandparent", tier=Tier.CANONICAL)
+        parent_id = tracker_set.add("invariant", "Grandparent", fields=_INV_FIELDS, tier=Tier.CANONICAL)
         child_id = tracker_set.add("work_item", "Child", tier=Tier.WORKSPACE,
                                    parent=parent_id, not_duplicate_of=[parent_id])
         ancestors = tracker_set.ancestors(child_id)
@@ -300,21 +304,21 @@ class TestWriteRouting:
     def test_add_default_workspace(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        item_id = tracker_set.add("invariant", "Default Tier")
+        item_id = tracker_set.add("invariant", "Default Tier", fields=_INV_FIELDS)
         item = tracker_set.get(item_id)
         assert item.tier == Tier.WORKSPACE
 
     def test_add_to_canonical(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        item_id = tracker_set.add("invariant", "Canonical", tier=Tier.CANONICAL)
+        item_id = tracker_set.add("invariant", "Canonical", fields=_INV_FIELDS, tier=Tier.CANONICAL)
         item = tracker_set.get(item_id)
         assert item.tier == Tier.CANONICAL
 
     def test_add_to_stealth(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        item_id = tracker_set.add("invariant", "Stealth Item", tier=Tier.STEALTH)
+        item_id = tracker_set.add("invariant", "Stealth Item", fields=_INV_FIELDS, tier=Tier.STEALTH)
         item = tracker_set.get(item_id)
         assert item.tier == Tier.STEALTH
 
@@ -329,7 +333,7 @@ class TestWriteRouting:
     def test_discuss_routes_to_correct_tier(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        item_id = tracker_set.add("invariant", "Discuss Me", tier=Tier.WORKSPACE)
+        item_id = tracker_set.add("invariant", "Discuss Me", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         tracker_set.discuss(item_id, message="test discussion")
         item = tracker_set.get(item_id)
         assert len(item.discussion) == 1
@@ -337,7 +341,7 @@ class TestWriteRouting:
     def test_lock_routes_to_correct_tier(
         self, tracker_set: TrackerSet, mock_human_uid: None
     ) -> None:
-        item_id = tracker_set.add("invariant", "Lock Me", tier=Tier.WORKSPACE)
+        item_id = tracker_set.add("invariant", "Lock Me", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         tracker_set.lock(item_id, ["status"])
         item = tracker_set.get(item_id)
         assert "status" in item.locked_fields
@@ -345,7 +349,7 @@ class TestWriteRouting:
     def test_unlock_routes_to_correct_tier(
         self, tracker_set: TrackerSet, mock_human_uid: None
     ) -> None:
-        item_id = tracker_set.add("invariant", "Unlock Me", tier=Tier.WORKSPACE)
+        item_id = tracker_set.add("invariant", "Unlock Me", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         tracker_set.lock(item_id, ["status"])
         tracker_set.unlock(item_id, ["status"])
         item = tracker_set.get(item_id)
@@ -361,7 +365,7 @@ class TestCountTodos:
     def test_scope_all_counts_everything(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        id1 = tracker_set.add("invariant", "Can Todo", tier=Tier.CANONICAL)
+        id1 = tracker_set.add("invariant", "Can Todo", fields=_INV_FIELDS, tier=Tier.CANONICAL)
         id2 = tracker_set.add("work_item", "WS Todo", tier=Tier.WORKSPACE,
                               not_duplicate_of=[id1])
         assert tracker_set.count_todos() >= 2
@@ -375,7 +379,7 @@ class TestCountTodos:
         ws_config = replace(config, scope="workspace")
         ts = TrackerSet(tracker_root, config=ws_config)
 
-        id1 = ts.add("invariant", "Can Todo", tier=Tier.CANONICAL)
+        id1 = ts.add("invariant", "Can Todo", fields=_INV_FIELDS, tier=Tier.CANONICAL)
         ts.add("work_item", "WS Todo", tier=Tier.WORKSPACE,
                not_duplicate_of=[id1])
         assert ts.count_todos() == 1  # Only workspace counted
@@ -388,7 +392,7 @@ class TestCountTodos:
         ws_config = replace(config, scope="workspace")
         ts = TrackerSet(tracker_root, config=ws_config)
 
-        id1 = ts.add("invariant", "Stealth Todo", tier=Tier.STEALTH)
+        id1 = ts.add("invariant", "Stealth Todo", fields=_INV_FIELDS, tier=Tier.STEALTH)
         assert ts.count_todos() == 1
 
     def test_resolved_not_counted(
@@ -408,7 +412,7 @@ class TestPromoteDemote:
     def test_promote_workspace_to_canonical(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        item_id = tracker_set.add("invariant", "Promote Me", tier=Tier.WORKSPACE)
+        item_id = tracker_set.add("invariant", "Promote Me", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         tracker_set.promote(item_id)
         item = tracker_set.get(item_id)
         assert item.tier == Tier.CANONICAL
@@ -416,14 +420,14 @@ class TestPromoteDemote:
     def test_promote_from_wrong_tier_raises(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        item_id = tracker_set.add("invariant", "Already Can", tier=Tier.CANONICAL)
+        item_id = tracker_set.add("invariant", "Already Can", fields=_INV_FIELDS, tier=Tier.CANONICAL)
         with pytest.raises(TierMovementError, match="workspace"):
             tracker_set.promote(item_id)
 
     def test_demote_canonical_to_workspace(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        item_id = tracker_set.add("invariant", "Demote Me", tier=Tier.CANONICAL)
+        item_id = tracker_set.add("invariant", "Demote Me", fields=_INV_FIELDS, tier=Tier.CANONICAL)
         tracker_set.demote(item_id)
         item = tracker_set.get(item_id)
         assert item.tier == Tier.WORKSPACE
@@ -431,14 +435,14 @@ class TestPromoteDemote:
     def test_demote_from_wrong_tier_raises(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        item_id = tracker_set.add("invariant", "In WS", tier=Tier.WORKSPACE)
+        item_id = tracker_set.add("invariant", "In WS", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         with pytest.raises(TierMovementError, match="canonical"):
             tracker_set.demote(item_id)
 
     def test_promote_then_demote_roundtrip(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        item_id = tracker_set.add("invariant", "Roundtrip", tier=Tier.WORKSPACE)
+        item_id = tracker_set.add("invariant", "Roundtrip", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         tracker_set.promote(item_id)
         assert tracker_set.get(item_id).tier == Tier.CANONICAL
         tracker_set.demote(item_id)
@@ -465,7 +469,7 @@ class TestStealthUnstealth:
         self, tracker_root: Path, mock_human_uid: None
     ) -> None:
         ts = TrackerSet(tracker_root)
-        item_id = ts.add("invariant", "Stealth Me", tier=Tier.WORKSPACE)
+        item_id = ts.add("invariant", "Stealth Me", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         ts.stealth_item(item_id)
         item = ts.get(item_id)
         assert item.tier == Tier.STEALTH
@@ -473,7 +477,7 @@ class TestStealthUnstealth:
     def test_stealth_as_agent_raises(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        item_id = tracker_set.add("invariant", "No Stealth", tier=Tier.WORKSPACE)
+        item_id = tracker_set.add("invariant", "No Stealth", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         with pytest.raises(HumanAuthorityError, match="stealth"):
             tracker_set.stealth_item(item_id)
 
@@ -481,7 +485,7 @@ class TestStealthUnstealth:
         self, tracker_root: Path, mock_human_uid: None
     ) -> None:
         ts = TrackerSet(tracker_root)
-        item_id = ts.add("invariant", "In Can", tier=Tier.CANONICAL)
+        item_id = ts.add("invariant", "In Can", fields=_INV_FIELDS, tier=Tier.CANONICAL)
         with pytest.raises(TierMovementError, match="workspace"):
             ts.stealth_item(item_id)
 
@@ -489,7 +493,7 @@ class TestStealthUnstealth:
         self, tracker_root: Path, mock_human_uid: None
     ) -> None:
         ts = TrackerSet(tracker_root)
-        item_id = ts.add("invariant", "Unstealth Me", tier=Tier.WORKSPACE)
+        item_id = ts.add("invariant", "Unstealth Me", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         ts.stealth_item(item_id)
         ts.unstealth_item(item_id)
         item = ts.get(item_id)
@@ -499,7 +503,7 @@ class TestStealthUnstealth:
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
         # Manually create a stealth item
-        item_id = tracker_set.add("invariant", "Stealthed", tier=Tier.STEALTH)
+        item_id = tracker_set.add("invariant", "Stealthed", fields=_INV_FIELDS, tier=Tier.STEALTH)
         with pytest.raises(HumanAuthorityError, match="unstealth"):
             tracker_set.unstealth_item(item_id)
 
@@ -507,7 +511,7 @@ class TestStealthUnstealth:
         self, tracker_root: Path, mock_human_uid: None
     ) -> None:
         ts = TrackerSet(tracker_root)
-        item_id = ts.add("invariant", "In WS", tier=Tier.WORKSPACE)
+        item_id = ts.add("invariant", "In WS", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         with pytest.raises(TierMovementError, match="stealth"):
             ts.unstealth_item(item_id)
 
@@ -522,7 +526,7 @@ class TestFreezeUnfreeze:
         self, tracker_root: Path, mock_human_uid: None,
     ) -> None:
         ts = TrackerSet(tracker_root)
-        item_id = ts.add("invariant", "Freeze Check", tier=Tier.WORKSPACE)
+        item_id = ts.add("invariant", "Freeze Check", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         assert ts.is_frozen(item_id) is False
         ts.freeze(item_id)
         assert ts.is_frozen(item_id) is True
@@ -533,7 +537,7 @@ class TestFreezeUnfreeze:
         self, tracker_root: Path, mock_human_uid: None,
     ) -> None:
         ts = TrackerSet(tracker_root)
-        item_id = ts.add("invariant", "Drift Check", tier=Tier.WORKSPACE)
+        item_id = ts.add("invariant", "Drift Check", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         assert ts.drift_check(item_id) is None  # not frozen
         ts.freeze(item_id)
         assert ts.drift_check(item_id) is False  # no drift
@@ -548,7 +552,7 @@ class TestFreezeUnfreeze:
         self, tracker_root: Path, mock_human_uid: None,
     ) -> None:
         ts = TrackerSet(tracker_root)
-        item_id = ts.add("invariant", "Repair Drift", tier=Tier.WORKSPACE)
+        item_id = ts.add("invariant", "Repair Drift", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         ts.freeze(item_id)
         # Tamper .ops directly
         store = ts._tier_stores[Tier.WORKSPACE]
@@ -580,7 +584,7 @@ class TestReconciliation:
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
         """Item with promote op history → auto-merge to canonical."""
-        item_id = tracker_set.add("invariant", "Reconcile Promote", tier=Tier.WORKSPACE)
+        item_id = tracker_set.add("invariant", "Reconcile Promote", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         tracker_set.promote(item_id)
         # Simulate conflict: copy canonical item back to workspace
         self._create_duplicate(tracker_set, item_id, Tier.CANONICAL, Tier.WORKSPACE)
@@ -594,7 +598,7 @@ class TestReconciliation:
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
         """No tier-movement ops → flag cross_tier_conflict via reconcile op."""
-        item_id = tracker_set.add("invariant", "Conflict", tier=Tier.WORKSPACE)
+        item_id = tracker_set.add("invariant", "Conflict", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         # Copy to canonical to create duplicate without movement ops
         self._create_duplicate(tracker_set, item_id, Tier.WORKSPACE, Tier.CANONICAL)
         reconciled = tracker_set.reconcile()
@@ -609,7 +613,7 @@ class TestReconciliation:
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
         """After MAX_RECONCILE_ATTEMPTS, stop trying."""
-        item_id = tracker_set.add("invariant", "Max Attempts", tier=Tier.WORKSPACE)
+        item_id = tracker_set.add("invariant", "Max Attempts", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         self._create_duplicate(tracker_set, item_id, Tier.WORKSPACE, Tier.CANONICAL)
 
         # Run reconcile multiple times until max attempts
@@ -625,7 +629,7 @@ class TestReconciliation:
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
         """Reconciliation appends a reconcile op, never deletes existing ops."""
-        item_id = tracker_set.add("invariant", "Append Only", tier=Tier.WORKSPACE)
+        item_id = tracker_set.add("invariant", "Append Only", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         # Get initial op count
         initial_ops = _parse_ops_file(tracker_set.workspace.item_path(item_id))
         initial_count = len(initial_ops)
@@ -653,7 +657,7 @@ class TestReconciliation:
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
         """Reconcile skips items only in one tier."""
-        tracker_set.add("invariant", "Solo Item", tier=Tier.WORKSPACE)
+        tracker_set.add("invariant", "Solo Item", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         reconciled = tracker_set.reconcile()
         assert reconciled == []
 
@@ -663,7 +667,7 @@ class TestReconcileReset:
         self, tracker_root: Path, mock_human_uid: None
     ) -> None:
         ts = TrackerSet(tracker_root)
-        item_id = ts.add("invariant", "Reset Me", tier=Tier.WORKSPACE)
+        item_id = ts.add("invariant", "Reset Me", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         # Create duplicate in canonical
         shutil.copy(
             str(ts.workspace.item_path(item_id)),
@@ -677,7 +681,7 @@ class TestReconcileReset:
     def test_reconcile_reset_as_agent_raises(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        item_id = tracker_set.add("invariant", "No Reset", tier=Tier.WORKSPACE)
+        item_id = tracker_set.add("invariant", "No Reset", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         with pytest.raises(HumanAuthorityError, match="reconcile_reset"):
             tracker_set.reconcile_reset(item_id)
 
@@ -698,7 +702,7 @@ class TestResolveId:
     def test_resolve_full_id(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        item_id = tracker_set.add("invariant", "Full ID", tier=Tier.CANONICAL)
+        item_id = tracker_set.add("invariant", "Full ID", fields=_INV_FIELDS, tier=Tier.CANONICAL)
         full, store, tier = tracker_set._resolve_id(item_id)
         assert full == item_id
         assert tier == Tier.CANONICAL
@@ -715,8 +719,8 @@ class TestResolveId:
         """Different items with same prefix across tiers raises ambiguous."""
         # This is hard to trigger naturally since content-hash IDs differ,
         # but we can create items with similar prefixes across tiers
-        id1 = tracker_set.add("invariant", "First", tier=Tier.CANONICAL)
-        id2 = tracker_set.add("invariant", "Second", tier=Tier.WORKSPACE,
+        id1 = tracker_set.add("invariant", "First", fields=_INV_FIELDS, tier=Tier.CANONICAL)
+        id2 = tracker_set.add("invariant", "Second", fields=_INV_FIELDS, tier=Tier.WORKSPACE,
                               not_duplicate_of=[id1])
         # Both are INV- prefixed, so "INV-" should be ambiguous across tiers
         with pytest.raises(AmbiguousPrefixError):
@@ -726,7 +730,7 @@ class TestResolveId:
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
         """Same ID in multiple tiers → returns canonical."""
-        item_id = tracker_set.add("invariant", "Dup Item", tier=Tier.WORKSPACE)
+        item_id = tracker_set.add("invariant", "Dup Item", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         # Copy to canonical
         shutil.copy(
             str(tracker_set.workspace.item_path(item_id)),
@@ -745,7 +749,7 @@ class TestFindItemTier:
     def test_find_in_canonical(
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
-        item_id = tracker_set.add("invariant", "In Can", tier=Tier.CANONICAL)
+        item_id = tracker_set.add("invariant", "In Can", fields=_INV_FIELDS, tier=Tier.CANONICAL)
         store, tier = tracker_set._find_item_tier(item_id)
         assert tier == Tier.CANONICAL
 
@@ -776,7 +780,7 @@ class TestCacheHooks:
         """set_caches stores cache instances."""
         mock_cache = MagicMock()
         tracker_set.set_caches({Tier.WORKSPACE: mock_cache})
-        item_id = tracker_set.add("invariant", "With Cache")
+        item_id = tracker_set.add("invariant", "With Cache", fields=_INV_FIELDS)
         # Cache upsert should have been called
         mock_cache.upsert.assert_called()
 
@@ -794,7 +798,7 @@ class TestCacheHooks:
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
         """Discuss triggers cache upsert."""
-        item_id = tracker_set.add("invariant", "Cache Discuss")
+        item_id = tracker_set.add("invariant", "Cache Discuss", fields=_INV_FIELDS)
         mock_cache = MagicMock()
         tracker_set.set_caches({Tier.WORKSPACE: mock_cache})
         tracker_set.discuss(item_id, message="test")
@@ -804,7 +808,7 @@ class TestCacheHooks:
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
         """Promote deletes from workspace cache, upserts to canonical cache."""
-        item_id = tracker_set.add("invariant", "Cache Promote")
+        item_id = tracker_set.add("invariant", "Cache Promote", fields=_INV_FIELDS)
         ws_cache = MagicMock()
         can_cache = MagicMock()
         tracker_set.set_caches({
@@ -857,7 +861,7 @@ class TestEdgeCases:
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
         """Item with demote ops → workspace wins."""
-        item_id = tracker_set.add("invariant", "Demote Winner", tier=Tier.CANONICAL)
+        item_id = tracker_set.add("invariant", "Demote Winner", fields=_INV_FIELDS, tier=Tier.CANONICAL)
         tracker_set.demote(item_id)
         # Now in workspace with demote op history
         # Create conflict by copying to canonical
@@ -874,7 +878,7 @@ class TestEdgeCases:
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
         """No movement ops → returns None."""
-        item_id = tracker_set.add("invariant", "No Movement", tier=Tier.WORKSPACE)
+        item_id = tracker_set.add("invariant", "No Movement", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         shutil.copy(
             str(tracker_set.workspace.item_path(item_id)),
             str(tracker_set.canonical.item_path(item_id)),
@@ -889,7 +893,7 @@ class TestEdgeCases:
     ) -> None:
         """Lock works on canonical items."""
         ts = TrackerSet(tracker_root)
-        item_id = ts.add("invariant", "Lock Can", tier=Tier.CANONICAL)
+        item_id = ts.add("invariant", "Lock Can", fields=_INV_FIELDS, tier=Tier.CANONICAL)
         ts.lock(item_id, ["status"])
         item = ts.get(item_id)
         assert "status" in item.locked_fields
@@ -899,7 +903,7 @@ class TestEdgeCases:
     ) -> None:
         """Unlock works on stealth items."""
         ts = TrackerSet(tracker_root)
-        item_id = ts.add("invariant", "Lock Stealth", tier=Tier.STEALTH)
+        item_id = ts.add("invariant", "Lock Stealth", fields=_INV_FIELDS, tier=Tier.STEALTH)
         ts.lock(item_id, ["title"])
         ts.unlock(item_id, ["title"])
         item = ts.get(item_id)
@@ -909,7 +913,7 @@ class TestEdgeCases:
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
         """ready() excludes items with duplicate_of set."""
-        id1 = tracker_set.add("invariant", "Original", tier=Tier.WORKSPACE)
+        id1 = tracker_set.add("invariant", "Original", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         id2 = tracker_set.add("work_item", "Dup", tier=Tier.CANONICAL,
                               duplicate_of=[id1], not_duplicate_of=[])
         ready = tracker_set.ready()
@@ -923,7 +927,7 @@ class TestEdgeCases:
         """ready() excludes items flagged with cross_tier_conflict."""
         from unittest.mock import patch
 
-        item_id = tracker_set.add("invariant", "Conflicted", tier=Tier.WORKSPACE)
+        item_id = tracker_set.add("invariant", "Conflicted", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
 
         # Patch _compile_all on the workspace store to return an item
         # with cross_tier_conflict=True
@@ -943,7 +947,7 @@ class TestEdgeCases:
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
         """ancestors() when parent references a non-existent item."""
-        item_id = tracker_set.add("invariant", "Orphan", tier=Tier.WORKSPACE,
+        item_id = tracker_set.add("invariant", "Orphan", fields=_INV_FIELDS, tier=Tier.WORKSPACE,
                                   parent="INV-does-not-exist")
         ancestors = tracker_set.ancestors(item_id)
         assert ancestors == []
@@ -952,8 +956,8 @@ class TestEdgeCases:
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
         """AmbiguousPrefixError within a single tier re-raised."""
-        id1 = tracker_set.add("invariant", "First Ambiguous", tier=Tier.WORKSPACE)
-        id2 = tracker_set.add("invariant", "Second Ambiguous", tier=Tier.WORKSPACE,
+        id1 = tracker_set.add("invariant", "First Ambiguous", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
+        id2 = tracker_set.add("invariant", "Second Ambiguous", fields=_INV_FIELDS, tier=Tier.WORKSPACE,
                               not_duplicate_of=[id1])
         # Both are INV- prefixed within workspace → ambiguous
         with pytest.raises(AmbiguousPrefixError):
@@ -990,7 +994,7 @@ class TestTrackerSetCacheIntegration:
         cache_dir = tmp_path / "cache"
         cache_dir.mkdir()
         ts = self._make_cached_tracker_set(tracker_root, cache_dir)
-        item_id = ts.add("invariant", "Cached Add", tier=Tier.WORKSPACE)
+        item_id = ts.add("invariant", "Cached Add", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         # Check that cache has the item
         cached = ts._caches[Tier.WORKSPACE].get_all()
         assert any(i.id == item_id for i in cached)
@@ -1013,7 +1017,7 @@ class TestTrackerSetCacheIntegration:
         cache_dir = tmp_path / "cache"
         cache_dir.mkdir()
         ts = self._make_cached_tracker_set(tracker_root, cache_dir)
-        item_id = ts.add("invariant", "Cache Promote", tier=Tier.WORKSPACE)
+        item_id = ts.add("invariant", "Cache Promote", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         ts.promote(item_id)
 
         # Should be in canonical cache, not workspace
@@ -1028,7 +1032,7 @@ class TestTrackerSetCacheIntegration:
         cache_dir = tmp_path / "cache"
         cache_dir.mkdir()
         ts = self._make_cached_tracker_set(tracker_root, cache_dir)
-        item_id = ts.add("invariant", "Cache Demote", tier=Tier.CANONICAL)
+        item_id = ts.add("invariant", "Cache Demote", fields=_INV_FIELDS, tier=Tier.CANONICAL)
         ts.demote(item_id)
 
         can_items = ts._caches[Tier.CANONICAL].get_all()
@@ -1042,7 +1046,7 @@ class TestTrackerSetCacheIntegration:
         cache_dir = tmp_path / "cache"
         cache_dir.mkdir()
         ts = self._make_cached_tracker_set(tracker_root, cache_dir)
-        item_id = ts.add("invariant", "Cache Discuss", tier=Tier.WORKSPACE)
+        item_id = ts.add("invariant", "Cache Discuss", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         ts.discuss(item_id, message="hello from cache test")
         cached = ts._caches[Tier.WORKSPACE].get_all()
         item = next(i for i in cached if i.id == item_id)
@@ -1054,7 +1058,7 @@ class TestTrackerSetCacheIntegration:
         cache_dir = tmp_path / "cache"
         cache_dir.mkdir()
         ts = self._make_cached_tracker_set(tracker_root, cache_dir)
-        item_id = ts.add("invariant", "Cache Reconcile", tier=Tier.WORKSPACE)
+        item_id = ts.add("invariant", "Cache Reconcile", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         ts.promote(item_id)
 
         # Create conflict
@@ -1079,7 +1083,7 @@ class TestPositionalAliasPersistence:
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
         """:N resolves correctly within same TrackerSet instance after list_items()."""
-        id1 = tracker_set.add("invariant", "Alias P1", tier=Tier.CANONICAL, priority=1)
+        id1 = tracker_set.add("invariant", "Alias P1", fields=_INV_FIELDS, tier=Tier.CANONICAL, priority=1)
         id2 = tracker_set.add("work_item", "Alias P3", tier=Tier.WORKSPACE,
                               priority=3, not_duplicate_of=[id1])
         tracker_set.list_items()
@@ -1094,7 +1098,7 @@ class TestPositionalAliasPersistence:
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
         """:N resolves correctly after ready()."""
-        id1 = tracker_set.add("invariant", "Ready Alias", tier=Tier.WORKSPACE)
+        id1 = tracker_set.add("invariant", "Ready Alias", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         tracker_set.ready()
 
         full_id, _, _ = tracker_set._resolve_id(":1")
@@ -1108,7 +1112,7 @@ class TestPositionalAliasPersistence:
         cache_dir.mkdir()
 
         ts1 = TrackerSet(tracker_root, cache_dir=cache_dir)
-        id1 = ts1.add("invariant", "Persist Alias", tier=Tier.WORKSPACE)
+        id1 = ts1.add("invariant", "Persist Alias", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         ts1.list_items()
 
         # Create a new TrackerSet with the same cache_dir
@@ -1124,7 +1128,7 @@ class TestPositionalAliasPersistence:
         cache_dir.mkdir()
 
         ts1 = TrackerSet(tracker_root, cache_dir=cache_dir)
-        id1 = ts1.add("invariant", "Stale Alias", tier=Tier.WORKSPACE)
+        id1 = ts1.add("invariant", "Stale Alias", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         ts1.list_items()
 
         # Delete the item's ops file
@@ -1139,7 +1143,7 @@ class TestPositionalAliasPersistence:
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
         """Merged list from 3 tiers, :N resolves to correct tier."""
-        id1 = tracker_set.add("invariant", "Can P1", tier=Tier.CANONICAL, priority=1)
+        id1 = tracker_set.add("invariant", "Can P1", fields=_INV_FIELDS, tier=Tier.CANONICAL, priority=1)
         id2 = tracker_set.add("work_item", "WS P2", tier=Tier.WORKSPACE,
                               priority=2, not_duplicate_of=[id1])
         id3 = tracker_set.add("work_item", "Stealth P3", tier=Tier.STEALTH,
@@ -1157,7 +1161,7 @@ class TestPositionalAliasPersistence:
         self, tracker_set: TrackerSet, mock_agent_uid: None
     ) -> None:
         """:99 raises ItemNotFoundError with list size."""
-        tracker_set.add("invariant", "Solo", tier=Tier.WORKSPACE)
+        tracker_set.add("invariant", "Solo", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         tracker_set.list_items()
 
         with pytest.raises(ItemNotFoundError, match="1 items"):
@@ -1175,7 +1179,7 @@ class TestPositionalAliasPersistence:
     ) -> None:
         """No cache_dir: aliases work in-memory only (no persistence, no crash)."""
         ts = TrackerSet(tracker_root)  # No cache_dir
-        id1 = ts.add("invariant", "In Memory", tier=Tier.WORKSPACE)
+        id1 = ts.add("invariant", "In Memory", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         ts.list_items()
 
         # In-memory alias works
@@ -1252,7 +1256,7 @@ class TestCacheAcceleratedReads:
         cache_dir = tmp_path / "cache"
         cache_dir.mkdir()
         ts = self._make_cached_ts(tracker_root, cache_dir)
-        id1 = ts.add("invariant", "Cache List", tier=Tier.WORKSPACE)
+        id1 = ts.add("invariant", "Cache List", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         items = ts.list_items()
         assert any(i.id == id1 for i in items)
 
@@ -1263,6 +1267,6 @@ class TestCacheAcceleratedReads:
         cache_dir = tmp_path / "cache"
         cache_dir.mkdir()
         ts = self._make_cached_ts(tracker_root, cache_dir)
-        id1 = ts.add("invariant", "Cache Ready", tier=Tier.WORKSPACE)
+        id1 = ts.add("invariant", "Cache Ready", fields=_INV_FIELDS, tier=Tier.WORKSPACE)
         items = ts.ready()
         assert any(i.id == id1 for i in items)

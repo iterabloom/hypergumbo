@@ -35,6 +35,10 @@ def _make_config() -> TrackerConfig:
     return make_test_config()
 
 
+# Shorthand for required invariant fields — avoids verbose repetition.
+_INV_FIELDS: dict[str, str] = {"statement": "test", "root_cause": "test"}
+
+
 def _make_store_and_cache(
     tmp_path: Path,
     tier: Tier = Tier.WORKSPACE,
@@ -124,7 +128,7 @@ class TestRebuild:
         self, tmp_path: Path, mock_agent_uid: None
     ) -> None:
         store, cache, _ = _make_store_and_cache(tmp_path)
-        item_id = store.add(kind="invariant", title="Rebuild Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Rebuild Test")
         cache.rebuild()
         item = cache.get_compiled(item_id)
         assert item is not None
@@ -135,7 +139,7 @@ class TestRebuild:
         self, tmp_path: Path, mock_agent_uid: None
     ) -> None:
         store, cache, _ = _make_store_and_cache(tmp_path)
-        item_id = store.add(kind="invariant", title="Mtime Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Mtime Test")
         cache.rebuild()
         source_path = store.item_path(item_id)
         stat = source_path.stat()
@@ -155,7 +159,7 @@ class TestGetCompiled:
         self, tmp_path: Path, mock_agent_uid: None
     ) -> None:
         store, cache, _ = _make_store_and_cache(tmp_path)
-        item_id = store.add(kind="invariant", title="Cached")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Cached")
         source_path = store.item_path(item_id)
         stat = source_path.stat()
         ops = _parse_ops_file(source_path)
@@ -200,7 +204,7 @@ class TestGetCompiled:
         self, tmp_path: Path, mock_agent_uid: None
     ) -> None:
         store, cache, _ = _make_store_and_cache(tmp_path)
-        item_id = store.add(kind="invariant", title="Will Delete")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Will Delete")
         source_path = store.item_path(item_id)
         stat = source_path.stat()
         ops = _parse_ops_file(source_path)
@@ -219,7 +223,7 @@ class TestGetCompiled:
     ) -> None:
         """Corrupt DB triggers recovery on get_compiled."""
         store, cache, db_path = _make_store_and_cache(tmp_path)
-        item_id = store.add(kind="invariant", title="Corrupt Get")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Corrupt Get")
 
         # Corrupt the DB by closing and overwriting
         cache.close()
@@ -246,7 +250,7 @@ class TestGetAll:
         self, tmp_path: Path, mock_agent_uid: None
     ) -> None:
         store, cache, _ = _make_store_and_cache(tmp_path)
-        id1 = store.add(kind="invariant", title="Item 1")
+        id1 = store.add(kind="invariant", fields=_INV_FIELDS, title="Item 1")
         id2 = store.add(kind="work_item", title="Item 2", not_duplicate_of=[id1])
         cache.rebuild()
         items = cache.get_all()
@@ -268,7 +272,7 @@ class TestGetAll:
     ) -> None:
         """Corrupt DB triggers recovery on get_all."""
         store, cache, _ = _make_store_and_cache(tmp_path)
-        store.add(kind="invariant", title="Get All Corrupt")
+        store.add(kind="invariant", fields=_INV_FIELDS, title="Get All Corrupt")
         cache.rebuild()
 
         # Simulate corruption by dropping the table
@@ -459,7 +463,7 @@ class TestInvalidateStale:
         self, tmp_path: Path, mock_agent_uid: None
     ) -> None:
         store, cache, _ = _make_store_and_cache(tmp_path)
-        item_id = store.add(kind="invariant", title="Delete After Cache")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Delete After Cache")
         cache.rebuild()
 
         # Delete source
@@ -472,7 +476,7 @@ class TestInvalidateStale:
         self, tmp_path: Path, mock_agent_uid: None
     ) -> None:
         store, cache, _ = _make_store_and_cache(tmp_path)
-        store.add(kind="invariant", title="Stay Fresh")
+        store.add(kind="invariant", fields=_INV_FIELDS, title="Stay Fresh")
         cache.rebuild()
         refreshed = cache.invalidate_stale()
         assert refreshed == []
@@ -512,7 +516,7 @@ class TestQueryBlocking:
         self, tmp_path: Path, mock_agent_uid: None
     ) -> None:
         store, cache, _ = _make_store_and_cache(tmp_path)
-        store.add(kind="invariant", title="Anything")
+        store.add(kind="invariant", fields=_INV_FIELDS, title="Anything")
         cache.rebuild()
         count = cache.query_blocking([])
         assert count == 0
@@ -670,7 +674,7 @@ class TestRecoveryPaths:
     ) -> None:
         """DatabaseError in get_compiled triggers recovery."""
         store, cache, _ = _make_store_and_cache(tmp_path)
-        item_id = store.add(kind="invariant", title="DB Error Get")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="DB Error Get")
         cache.rebuild()
 
         # Drop table to force DatabaseError on next SELECT
@@ -687,7 +691,7 @@ class TestRecoveryPaths:
     ) -> None:
         """DatabaseError during rebuild DELETE triggers recovery."""
         store, cache, _ = _make_store_and_cache(tmp_path)
-        store.add(kind="invariant", title="Rebuild Error")
+        store.add(kind="invariant", fields=_INV_FIELDS, title="Rebuild Error")
 
         # Drop table so DELETE FROM items fails
         assert cache._conn is not None
@@ -709,7 +713,7 @@ class TestDiscussionOnlyFastPath:
     ) -> None:
         """Appending only discuss ops triggers discussion-only update."""
         store, cache, _ = _make_store_and_cache(tmp_path)
-        item_id = store.add(kind="invariant", title="Discuss Only")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Discuss Only")
         cache.rebuild()
 
         # Verify initial state
@@ -762,7 +766,7 @@ class TestDiscussionOnlyFastPath:
     ) -> None:
         """File that shrank (rewritten) triggers full reparse."""
         store, cache, _ = _make_store_and_cache(tmp_path)
-        item_id = store.add(kind="invariant", title="Shrink Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Shrink Test")
         cache.rebuild()
 
         # Get current source path
@@ -785,7 +789,7 @@ class TestDiscussionOnlyFastPath:
     ) -> None:
         """discuss_summarize is treated as discussion-only."""
         store, cache, _ = _make_store_and_cache(tmp_path)
-        item_id = store.add(kind="invariant", title="Summarize Fast Path")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Summarize Fast Path")
         store.discuss(item_id, message="initial message")
         cache.rebuild()
 
@@ -807,7 +811,7 @@ class TestDiscussionOnlyFastPath:
     ) -> None:
         """Empty new bytes (whitespace only) doesn't trigger fast path."""
         store, cache, _ = _make_store_and_cache(tmp_path)
-        item_id = store.add(kind="invariant", title="Empty Append")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Empty Append")
         cache.rebuild()
 
         # Touch the file to change mtime but don't add meaningful content
@@ -825,7 +829,7 @@ class TestDiscussionOnlyFastPath:
     ) -> None:
         """Invalid YAML in appended bytes falls through to full reparse."""
         store, cache, _ = _make_store_and_cache(tmp_path)
-        item_id = store.add(kind="invariant", title="Bad YAML Append")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Bad YAML Append")
         cache.rebuild()
 
         # Append garbage YAML
@@ -845,7 +849,7 @@ class TestDiscussionOnlyFastPath:
     ) -> None:
         """YAML that parses to non-list falls through to full reparse."""
         store, cache, _ = _make_store_and_cache(tmp_path)
-        item_id = store.add(kind="invariant", title="Non-list Append")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Non-list Append")
         cache.rebuild()
 
         source_path = store.item_path(item_id)
@@ -862,7 +866,7 @@ class TestDiscussionOnlyFastPath:
     ) -> None:
         """Append with non-dict op entry falls through to full reparse."""
         store, cache, _ = _make_store_and_cache(tmp_path)
-        item_id = store.add(kind="invariant", title="Non-dict Op")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Non-dict Op")
         cache.rebuild()
 
         source_path = store.item_path(item_id)
@@ -882,7 +886,7 @@ class TestDiscussionOnlyFastPath:
         from unittest.mock import patch as mock_patch
 
         store, cache, _ = _make_store_and_cache(tmp_path)
-        item_id = store.add(kind="invariant", title="OSError Read")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="OSError Read")
         cache.rebuild()
 
         # Modify the file
@@ -915,7 +919,7 @@ class TestDiscussionOnlyFastPath:
         from unittest.mock import patch as mock_patch
 
         store, cache, _ = _make_store_and_cache(tmp_path)
-        item_id = store.add(kind="invariant", title="Compile Error")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Compile Error")
         cache.rebuild()
 
         source_path = store.item_path(item_id)

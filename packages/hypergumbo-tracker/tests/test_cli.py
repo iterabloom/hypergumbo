@@ -523,6 +523,53 @@ class TestWriteCommands:
             ])
         assert exc.value.code == EXIT_USER_ERROR
 
+    def test_add_invariant_missing_required_fields(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Adding an invariant without required fields (statement, root_cause) must fail."""
+        tracker_root = _setup_tracker(tmp_path)
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "add", "--kind", "invariant", "--title", "Missing fields",
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+        err = capsys.readouterr().err
+        assert "statement" in err
+        assert "root_cause" in err
+
+    def test_add_invariant_partial_required_fields(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Adding an invariant with only one required field must fail."""
+        tracker_root = _setup_tracker(tmp_path)
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "add", "--kind", "invariant", "--title", "Partial fields",
+                "--field", "statement=Some statement",
+            ])
+        assert exc.value.code == EXIT_USER_ERROR
+        err = capsys.readouterr().err
+        assert "root_cause" in err
+
+    def test_add_invariant_all_required_fields_succeeds(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture,
+        mock_agent_uid: None,
+    ) -> None:
+        """Adding an invariant with all required fields must succeed."""
+        tracker_root = _setup_tracker(tmp_path)
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "add", "--kind", "invariant", "--title", "Valid invariant",
+                "--field", "statement=X must always be true",
+                "--field", "root_cause=Y is broken",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+
     def test_add_with_before_and_more(self, tmp_path: Path, capsys: pytest.CaptureFixture,
                                       mock_agent_uid: None) -> None:
         tracker_root = _setup_tracker(tmp_path)

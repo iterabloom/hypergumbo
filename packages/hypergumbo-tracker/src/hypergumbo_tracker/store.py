@@ -894,7 +894,8 @@ class Store:
 
         Raises:
             ItemExistsError: If an item with the same content hash already exists.
-            ValueError: If kind is not recognized in config.
+            ValueError: If kind is not recognized in config, or if required
+                fields from the kind's fields_schema are missing.
         """
         if kind not in self._config.kinds:
             raise ValueError(
@@ -924,6 +925,20 @@ class Store:
                 f"Status '{status}' is not allowed for kind '{kind}'. "
                 f"Allowed: {kind_config.allowed_statuses}"
             )
+
+        # Validate required fields from fields_schema at creation time
+        if kind_config.fields_schema:
+            provided = fields or {}
+            missing = [
+                name
+                for name, fs in kind_config.fields_schema.items()
+                if fs.required and name not in provided
+            ]
+            if missing:
+                raise ValueError(
+                    f"Kind '{kind}' requires field(s): {', '.join(missing)}. "
+                    f"Use --field {missing[0]}=..."
+                )
 
         by, actor = resolve_actor(self._config.agent_usernames)
 

@@ -1449,7 +1449,7 @@ def main(argv: list[str] | None = None) -> None:
 
     try:
         exit_code = handler(args, ts) if args.command not in ("init",) else handler(args)
-    except (ItemNotFoundError, AmbiguousPrefixError, ItemExistsError) as e:
+    except (ItemNotFoundError, AmbiguousPrefixError, ItemExistsError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         raise SystemExit(EXIT_USER_ERROR) from e
     except (

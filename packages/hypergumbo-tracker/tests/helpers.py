@@ -80,6 +80,9 @@ TRACKER_TEST_KINDS: dict[str, KindConfig] = {
     "work_item": KindConfig(prefix="WI", description="Work item"),
 }
 
+# Shorthand for required invariant fields — avoids repetition in tests
+INV_FIELDS: dict[str, str] = {"statement": "test", "root_cause": "test"}
+
 
 # ---------------------------------------------------------------------------
 # Config factories

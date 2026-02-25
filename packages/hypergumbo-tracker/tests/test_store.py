@@ -63,6 +63,10 @@ def _make_config(**overrides: Any) -> TrackerConfig:
     return make_test_config(**overrides)
 
 
+# Shorthand for required invariant fields — avoids verbose repetition.
+_INV_FIELDS: dict[str, str] = {"statement": "test", "root_cause": "test"}
+
+
 def _write_ops_file(ops_dir: Path, item_id: str, ops_yaml: str) -> Path:
     """Write an ops YAML string directly to a .ops file."""
     path = ops_dir / f".{item_id}.ops"
@@ -473,7 +477,7 @@ class TestCompile:
 class TestStoreAdd:
     def test_add_creates_ops_file(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Test Item", description="desc")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Test Item", description="desc")
         assert item_id.startswith("INV-")
 
         item_path = ops_dir / f".{item_id}.ops"
@@ -487,9 +491,9 @@ class TestStoreAdd:
 
     def test_add_same_content_raises(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        store.add(kind="invariant", title="Duplicate Test", description="desc")
+        store.add(kind="invariant", fields=_INV_FIELDS, title="Duplicate Test", description="desc")
         with pytest.raises(ItemExistsError, match="already exists"):
-            store.add(kind="invariant", title="Duplicate Test", description="desc")
+            store.add(kind="invariant", fields=_INV_FIELDS, title="Duplicate Test", description="desc")
 
     def test_add_unknown_kind_raises(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
@@ -498,7 +502,7 @@ class TestStoreAdd:
 
     def test_add_hash_collision_auto_salt(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Collision Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Collision Test")
 
         # Simulate a hash collision: create a file at the same path but with
         # NO create ops (so the existence check finds the file but no create op,
@@ -509,7 +513,7 @@ class TestStoreAdd:
                              "  clock: 1\n  nonce: xxxx\n  set:\n    status: done\n")
 
         # Now add with the same data — file exists, no create ops found → salt
-        item_id2 = store.add(kind="invariant", title="Collision Test")
+        item_id2 = store.add(kind="invariant", fields=_INV_FIELDS, title="Collision Test")
         assert item_id2 != item_id
         assert item_id2.startswith("INV-")
 
@@ -521,14 +525,14 @@ class TestStoreAdd:
 
     def test_add_default_status_invariant(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Default Status Invariant")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Default Status Invariant")
         item = store.get(item_id)
         assert item.status == "violated"  # First blocking status in allowed_statuses
 
     def test_add_disallowed_status_for_kind(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
         with pytest.raises(ValueError, match="not allowed for kind 'invariant'"):
-            store.add(kind="invariant", title="Bad Status", status="done")
+            store.add(kind="invariant", fields=_INV_FIELDS, title="Bad Status", status="done")
 
     def test_add_with_all_fields(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
@@ -561,7 +565,7 @@ class TestStoreAdd:
 class TestStoreUpdate:
     def test_update_disallowed_status_for_kind(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Invariant Item")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Invariant Item")
         with pytest.raises(ValueError, match="not allowed for kind 'invariant'"):
             store.update(item_id, set_fields={"status": "done"})
 
@@ -580,7 +584,7 @@ class TestStoreUpdate:
 
     def test_update_locked_field_rejected(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Lock Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Lock Test")
 
         # Manually add a lock op (simulating human action)
         item_path = ops_dir / f".{item_id}.ops"
@@ -598,7 +602,7 @@ class TestStoreUpdate:
 
     def test_update_with_add_remove(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Tag Test", tags=["old_tag"])
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Tag Test", tags=["old_tag"])
         store.update(
             item_id,
             set_fields={},
@@ -618,7 +622,7 @@ class TestStoreUpdate:
 class TestStoreDiscuss:
     def test_discuss_appends_message(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Discuss Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Discuss Test")
         store.discuss(item_id, "Hello from agent")
 
         item = store.get(item_id)
@@ -628,13 +632,13 @@ class TestStoreDiscuss:
 
     def test_discuss_clear_by_agent_raises(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Clear Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Clear Test")
         with pytest.raises(HumanAuthorityError, match="human authority"):
             store.discuss(item_id, "", clear=True)
 
     def test_discuss_clear_by_human(self, ops_dir: Path, mock_human_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Clear Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Clear Test")
         store.discuss(item_id, "message 1")
         store.discuss(item_id, "", clear=True)
         item = store.get(item_id)
@@ -642,7 +646,7 @@ class TestStoreDiscuss:
 
     def test_discuss_summarize(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Summarize Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Summarize Test")
         store.discuss(item_id, "msg1")
         store.discuss(item_id, "msg2")
         store.discuss(item_id, "Summary of discussion", summarize=True)
@@ -661,7 +665,7 @@ class TestStoreDiscuss:
         self, ops_dir: Path, mock_agent_uid: None
     ) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Lock Discuss Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Lock Discuss Test")
 
         # Manually add a lock on discussion
         item_path = ops_dir / f".{item_id}.ops"
@@ -679,7 +683,7 @@ class TestStoreDiscuss:
 
     def test_discussion_rate_limit(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Rate Limit Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Rate Limit Test")
 
         # Write enough discuss ops to exceed the daily limit
         item_path = ops_dir / f".{item_id}.ops"
@@ -701,7 +705,7 @@ class TestStoreDiscuss:
 
     def test_discussion_soft_cap_warning(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Soft Cap Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Soft Cap Test")
 
         # Add enough discuss ops to trigger soft cap
         item_path = ops_dir / f".{item_id}.ops"
@@ -727,13 +731,13 @@ class TestStoreDiscuss:
 class TestStoreLock:
     def test_lock_by_agent_raises(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Lock Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Lock Test")
         with pytest.raises(HumanAuthorityError, match="human authority"):
             store.lock(item_id, ["priority"])
 
     def test_lock_by_human(self, ops_dir: Path, mock_human_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Lock Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Lock Test")
         store.lock(item_id, ["priority", "status"])
         item = store.get(item_id)
         assert "priority" in item.locked_fields
@@ -741,13 +745,13 @@ class TestStoreLock:
 
     def test_unlock_by_agent_raises(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Unlock Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Unlock Test")
         with pytest.raises(HumanAuthorityError, match="human authority"):
             store.unlock(item_id, ["priority"])
 
     def test_unlock_by_human(self, ops_dir: Path, mock_human_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Unlock Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Unlock Test")
         store.lock(item_id, ["priority"])
         store.unlock(item_id, ["priority"])
         item = store.get(item_id)
@@ -845,10 +849,10 @@ class TestSimHash:
             "and framework that hypergumbo supports including java python "
             "typescript ruby scala"
         )
-        store.add(kind="invariant", title=title_base, description="")
+        store.add(kind="invariant", fields=_INV_FIELDS, title=title_base, description="")
         # Add near-identical item (differs by one token) — should warn
         with pytest.warns(UserWarning, match="similar"):
-            store.add(kind="invariant", title=title_similar, description="")
+            store.add(kind="invariant", fields=_INV_FIELDS, title=title_similar, description="")
 
     def test_not_duplicate_of_suppresses_warning(
         self, ops_dir: Path, mock_agent_uid: None
@@ -864,10 +868,11 @@ class TestSimHash:
             "and framework that hypergumbo supports including java python "
             "typescript ruby scala"
         )
-        id1 = store.add(kind="invariant", title=title_base, description="")
+        id1 = store.add(kind="invariant", fields=_INV_FIELDS, title=title_base, description="")
         # Add similar with not_duplicate_of — no warning expected
         store.add(
             kind="invariant",
+            fields=_INV_FIELDS,
             title=title_similar,
             description="",
             not_duplicate_of=[id1],
@@ -882,13 +887,13 @@ class TestSimHash:
 class TestPrefixMatching:
     def test_exact_match(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Prefix Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Prefix Test")
         resolved = store._resolve_id(item_id)
         assert resolved == item_id
 
     def test_prefix_with_kind(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Prefix Test Unique")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Prefix Test Unique")
         # Use first 10 chars as prefix
         prefix = item_id[:10]
         resolved = store._resolve_id(prefix)
@@ -896,7 +901,7 @@ class TestPrefixMatching:
 
     def test_prefix_without_kind(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Prefix No Kind")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Prefix No Kind")
         # Use the proquint part (after "INV-")
         proquint_prefix = item_id.split("-", 1)[1][:5]
         resolved = store._resolve_id(proquint_prefix)
@@ -904,8 +909,8 @@ class TestPrefixMatching:
 
     def test_ambiguous_prefix(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        store.add(kind="invariant", title="Ambiguous A")
-        store.add(kind="invariant", title="Ambiguous B")
+        store.add(kind="invariant", fields=_INV_FIELDS, title="Ambiguous A")
+        store.add(kind="invariant", fields=_INV_FIELDS, title="Ambiguous B")
         # "INV-" matches both
         with pytest.raises(AmbiguousPrefixError, match="ambiguous"):
             store._resolve_id("INV-")
@@ -917,7 +922,7 @@ class TestPrefixMatching:
 
     def test_positional_alias(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        id1 = store.add(kind="invariant", title="Alias Item 1")
+        id1 = store.add(kind="invariant", fields=_INV_FIELDS, title="Alias Item 1")
         id2 = store.add(kind="work_item", title="Alias Item 2")
 
         # list_items populates the alias stash
@@ -928,7 +933,7 @@ class TestPrefixMatching:
 
     def test_positional_alias_out_of_range(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        store.add(kind="invariant", title="Only Item")
+        store.add(kind="invariant", fields=_INV_FIELDS, title="Only Item")
         store.list_items()
         with pytest.raises(ItemNotFoundError, match="out of range"):
             store._resolve_id(":99")
@@ -947,7 +952,7 @@ class TestPrefixMatching:
 class TestReadyAndList:
     def test_list_items_all(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        store.add(kind="invariant", title="Item 1")
+        store.add(kind="invariant", fields=_INV_FIELDS, title="Item 1")
         store.add(kind="work_item", title="Item 2")
         items = store.list_items()
         assert len(items) == 2
@@ -962,7 +967,7 @@ class TestReadyAndList:
 
     def test_list_items_filter_kind(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        store.add(kind="invariant", title="Inv Item")
+        store.add(kind="invariant", fields=_INV_FIELDS, title="Inv Item")
         store.add(kind="work_item", title="WI Item")
         items = store.list_items(kind="invariant")
         assert len(items) == 1
@@ -970,8 +975,8 @@ class TestReadyAndList:
 
     def test_list_items_filter_tag(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        store.add(kind="invariant", title="Tagged", tags=["analysis_quality"])
-        store.add(kind="invariant", title="Untagged")
+        store.add(kind="invariant", fields=_INV_FIELDS, title="Tagged", tags=["analysis_quality"])
+        store.add(kind="invariant", fields=_INV_FIELDS, title="Untagged")
         items = store.list_items(tag="analysis_quality")
         assert len(items) == 1
         assert items[0].title == "Tagged"
@@ -1038,10 +1043,10 @@ class TestReadyAndList:
 class TestTreeTraversal:
     def test_children(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        parent_id = store.add(kind="invariant", title="Parent")
-        child1_id = store.add(kind="invariant", title="Child 1", parent=parent_id)
-        child2_id = store.add(kind="invariant", title="Child 2", parent=parent_id)
-        store.add(kind="invariant", title="Not a child")
+        parent_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Parent")
+        child1_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Child 1", parent=parent_id)
+        child2_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Child 2", parent=parent_id)
+        store.add(kind="invariant", fields=_INV_FIELDS, title="Not a child")
 
         children = store.children(parent_id)
         assert len(children) == 2
@@ -1050,9 +1055,9 @@ class TestTreeTraversal:
 
     def test_ancestors(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        root_id = store.add(kind="invariant", title="Root")
-        mid_id = store.add(kind="invariant", title="Middle", parent=root_id)
-        leaf_id = store.add(kind="invariant", title="Leaf", parent=mid_id)
+        root_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Root")
+        mid_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Middle", parent=root_id)
+        leaf_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Leaf", parent=mid_id)
 
         ancestors = store.ancestors(leaf_id)
         assert len(ancestors) == 2
@@ -1068,8 +1073,8 @@ class TestTreeTraversal:
 class TestBeforeCycles:
     def test_no_cycles(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        id1 = store.add(kind="invariant", title="A")
-        store.add(kind="invariant", title="B", before=[id1])
+        id1 = store.add(kind="invariant", fields=_INV_FIELDS, title="A")
+        store.add(kind="invariant", fields=_INV_FIELDS, title="B", before=[id1])
         cycles = store.check_before_cycles()
         assert cycles == []
 
@@ -1082,7 +1087,7 @@ class TestBeforeCycles:
 class TestStoreGet:
     def test_get_by_full_id(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Get Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Get Test")
         item = store.get(item_id)
         assert item.title == "Get Test"
 
@@ -1118,7 +1123,7 @@ class TestCorruptFileHandling:
 
     def test_compile_all_skips_corrupt(self, ops_dir: Path, mock_agent_uid: None) -> None:
         store = Store(ops_dir, config=_make_config())
-        store.add(kind="invariant", title="Good Item")
+        store.add(kind="invariant", fields=_INV_FIELDS, title="Good Item")
         # Add a corrupt file
         (ops_dir / ".INV-corrupt-test.ops").write_text("{{bad")
         items = store.list_items()
@@ -1588,7 +1593,7 @@ class TestStoreProperties:
     def test_item_path_public(self, ops_dir: Path, mock_agent_uid: None) -> None:
         """item_path (public) returns correct path for item ID."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Public Path Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Public Path Test")
         path = store.item_path(item_id)
         assert path == ops_dir / f".{item_id}.ops"
         assert path.exists()
@@ -1596,7 +1601,7 @@ class TestStoreProperties:
     def test_item_ids(self, ops_dir: Path, mock_agent_uid: None) -> None:
         """item_ids() returns all item IDs in the store."""
         store = Store(ops_dir, config=_make_config())
-        id1 = store.add(kind="invariant", title="First Item")
+        id1 = store.add(kind="invariant", fields=_INV_FIELDS, title="First Item")
         id2 = store.add(kind="work_item", title="Second Item", not_duplicate_of=[id1])
         ids = store.item_ids()
         assert set(ids) == {id1, id2}
@@ -1639,7 +1644,7 @@ class TestAgentEnforcement:
     def test_update_locked_add_field(self, ops_dir: Path, mock_agent_uid: None) -> None:
         """Agent add on locked field raises LockedFieldError."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Locked Tags")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Locked Tags")
 
         lock_op = {
             "op": "lock", "at": "2026-02-14T12:00:00Z",
@@ -1657,7 +1662,7 @@ class TestAgentEnforcement:
     def test_update_locked_remove_field(self, ops_dir: Path, mock_agent_uid: None) -> None:
         """Agent remove on locked field raises LockedFieldError."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Locked Remove", tags=["a"])
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Locked Remove", tags=["a"])
 
         lock_op = {
             "op": "lock", "at": "2026-02-14T12:00:00Z",
@@ -1675,14 +1680,14 @@ class TestAgentEnforcement:
     def test_discuss_clear_agent(self, ops_dir: Path, mock_agent_uid: None) -> None:
         """Agent discuss_clear raises HumanAuthorityError (line 1002)."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Clear Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Clear Test")
         with pytest.raises(HumanAuthorityError, match="discuss_clear"):
             store.discuss(item_id, message="", clear=True)
 
     def test_discuss_locked_discussion(self, ops_dir: Path, mock_agent_uid: None) -> None:
         """Agent discuss on locked discussion raises LockedFieldError."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Discussion Lock")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Discussion Lock")
 
         lock_op = {
             "op": "lock", "at": "2026-02-14T12:00:00Z",
@@ -1700,14 +1705,14 @@ class TestAgentEnforcement:
     def test_lock_agent(self, ops_dir: Path, mock_agent_uid: None) -> None:
         """Agent lock raises HumanAuthorityError (line 1087)."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Lock Agent Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Lock Agent Test")
         with pytest.raises(HumanAuthorityError, match="lock"):
             store.lock(item_id, ["status"])
 
     def test_unlock_agent(self, ops_dir: Path, mock_agent_uid: None) -> None:
         """Agent unlock raises HumanAuthorityError (line 1115)."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Unlock Agent Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Unlock Agent Test")
         with pytest.raises(HumanAuthorityError, match="unlock"):
             store.unlock(item_id, ["status"])
 
@@ -1736,7 +1741,7 @@ class TestAgentEnforcement:
     ) -> None:
         """Lock with mixed-case 'Title' blocks update of lowercase 'title'."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Case Lock Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Case Lock Test")
 
         # Write lock op with mixed-case field name (human authority)
         import datetime
@@ -1806,7 +1811,7 @@ class TestAgentEnforcement:
     ) -> None:
         """Locking 'fields.foo' blocks agent update with --field foo=bar."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Custom Lock Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Custom Lock Test")
 
         import datetime
         lock_op = {
@@ -1828,7 +1833,7 @@ class TestAgentEnforcement:
     ) -> None:
         """Locking an unknown field raises ValueError."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Bad Lock Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Bad Lock Test")
 
         with pytest.raises(ValueError, match="Unknown field 'nonexistent'"):
             store.lock(item_id, ["nonexistent"])
@@ -1838,7 +1843,7 @@ class TestAgentEnforcement:
     ) -> None:
         """Unlocking an unknown field raises ValueError."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Bad Unlock Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Bad Unlock Test")
 
         with pytest.raises(ValueError, match="Unknown field 'nonexistent'"):
             store.unlock(item_id, ["nonexistent"])
@@ -1848,7 +1853,7 @@ class TestAgentEnforcement:
     ) -> None:
         """Locking 'fields.root_cause' succeeds (custom field prefix)."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Custom Field Lock")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Custom Field Lock")
 
         # Should not raise
         store.lock(item_id, ["fields.root_cause"])
@@ -1863,7 +1868,7 @@ class TestAgentEnforcement:
     ) -> None:
         """Updating with an unknown field raises ValueError."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Bad Update Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Bad Update Test")
 
         with pytest.raises(ValueError, match="Unknown field 'bogus' in set"):
             store.update(item_id, set_fields={"bogus": "x"})
@@ -1880,14 +1885,14 @@ class TestFreezeUnfreeze:
     def test_freeze_agent_denied(self, ops_dir: Path, mock_agent_uid: None) -> None:
         """Agent attempts store.freeze() → HumanAuthorityError."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Freeze Agent Denied")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Freeze Agent Denied")
         with pytest.raises(HumanAuthorityError, match="freeze"):
             store.freeze(item_id)
 
     def test_unfreeze_agent_denied(self, ops_dir: Path, mock_agent_uid: None) -> None:
         """Agent attempts store.unfreeze() → HumanAuthorityError."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Unfreeze Agent Denied")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Unfreeze Agent Denied")
         # Create sentinel manually to test unfreeze denial
         import shutil
         shutil.copy2(store.item_path(item_id), store.frozen_path(item_id))
@@ -1897,7 +1902,7 @@ class TestFreezeUnfreeze:
     def test_freeze_creates_sentinel(self, ops_dir: Path, mock_human_uid: None) -> None:
         """Human freeze creates .frozen file."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Freeze Sentinel")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Freeze Sentinel")
         assert not store.frozen_path(item_id).exists()
         store.freeze(item_id)
         assert store.frozen_path(item_id).exists()
@@ -1908,7 +1913,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """Frozen item, agent update → FrozenItemError."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Freeze Block Update")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Freeze Block Update")
         # Manually create sentinel (agent can't call store.freeze)
         import shutil
         shutil.copy2(store.item_path(item_id), store.frozen_path(item_id))
@@ -1921,7 +1926,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """Frozen item, agent discuss → FrozenItemError."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Freeze Block Discuss")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Freeze Block Discuss")
         # Manually create sentinel (agent can't call store.freeze)
         import shutil
         shutil.copy2(store.item_path(item_id), store.frozen_path(item_id))
@@ -1934,7 +1939,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """Frozen item, human update → succeeds."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Freeze Human Update")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Freeze Human Update")
         store.freeze(item_id)
         # Human should be able to update frozen items
         store.update(item_id, set_fields={"priority": 0})
@@ -1946,7 +1951,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """Create sentinel then remove it, agent update → succeeds."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Unfreeze Agent Update")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Unfreeze Agent Update")
         # Manually create then remove sentinel to simulate freeze/unfreeze
         import shutil
         fp = store.frozen_path(item_id)
@@ -1963,7 +1968,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """Freeze an already-frozen item → ValueError."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Already Frozen")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Already Frozen")
         store.freeze(item_id)
         with pytest.raises(ValueError, match="already frozen"):
             store.freeze(item_id)
@@ -1973,7 +1978,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """Unfreeze a non-frozen item → ValueError."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Not Frozen")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Not Frozen")
         with pytest.raises(ValueError, match="not frozen"):
             store.unfreeze(item_id)
 
@@ -1982,7 +1987,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """Freeze, tamper .ops directly, drift_check → True."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Drift Check")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Drift Check")
         store.freeze(item_id)
         # Tamper the ops file directly (simulating agent bypass)
         ip = store.item_path(item_id)
@@ -1995,7 +2000,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """Freeze, no changes, drift_check → False."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="No Drift")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="No Drift")
         store.freeze(item_id)
         assert store.drift_check(item_id) is False
 
@@ -2004,7 +2009,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """drift_check on unfrozen item → None."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Not Frozen Drift")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Not Frozen Drift")
         assert store.drift_check(item_id) is None
 
     def test_frozen_flag_in_compiled_item(
@@ -2012,7 +2017,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """Compiled item has frozen=True when sentinel exists."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Frozen Flag")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Frozen Flag")
         assert store.get(item_id).frozen is False
         store.freeze(item_id)
         assert store.get(item_id).frozen is True
@@ -2022,7 +2027,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """list_items() sets frozen=True on frozen items."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Frozen List")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Frozen List")
         store.freeze(item_id)
         items = store.list_items()
         frozen_items = [i for i in items if i.id == item_id]
@@ -2050,7 +2055,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """Race: ops file vanishes between _resolve_id and exists check."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Race Freeze")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Race Freeze")
         # Delete the ops file so freeze's item_path.exists() fails
         store.item_path(item_id).unlink()
         with patch.object(store, "_resolve_id", return_value=item_id):
@@ -2062,7 +2067,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """Race: ops file vanishes between _resolve_id and exists check."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Race Unfreeze")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Race Unfreeze")
         store.item_path(item_id).unlink()
         with patch.object(store, "_resolve_id", return_value=item_id):
             with pytest.raises(ItemNotFoundError, match="not found"):
@@ -2073,7 +2078,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """drift_check with frozen sentinel but ops file deleted → None."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Drift Race")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Drift Race")
         store.freeze(item_id)
         # Delete the ops file, frozen sentinel remains
         store.item_path(item_id).unlink()
@@ -2085,7 +2090,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """Freeze, tamper .ops, repair → .ops matches .frozen, drift_check → False."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Repair Drift")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Repair Drift")
         store.freeze(item_id)
         # Tamper the ops file directly
         ip = store.item_path(item_id)
@@ -2100,7 +2105,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """Freeze, tamper .ops, repair → compiled item matches pre-tamper state."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Repair Content")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Repair Content")
         store.freeze(item_id)
         pre_tamper = store.get(item_id)
         # Tamper the ops file directly
@@ -2117,7 +2122,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """Agent calls repair_drift → HumanAuthorityError."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Repair Agent Denied")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Repair Agent Denied")
         # Manually create sentinel (agent can't call store.freeze)
         import shutil
         shutil.copy2(store.item_path(item_id), store.frozen_path(item_id))
@@ -2129,7 +2134,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """repair_drift on unfrozen item → ValueError."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Repair Not Frozen")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Repair Not Frozen")
         with pytest.raises(ValueError, match="not frozen"):
             store.repair_drift(item_id)
 
@@ -2138,7 +2143,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """Freeze, no tamper, repair → still succeeds."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Repair Idempotent")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Repair Idempotent")
         store.freeze(item_id)
         store.repair_drift(item_id)
         assert store.drift_check(item_id) is False
@@ -2148,7 +2153,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """repair_drift must not propagate sentinel's 0444 mode onto .ops."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Repair Writable")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Repair Writable")
         store.freeze(item_id)
         ip = store.item_path(item_id)
         with open(ip, "a") as f:
@@ -2166,7 +2171,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """repair_drift cleans up temp file if rename fails (fd already closed)."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Repair Rename Error")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Repair Rename Error")
         store.freeze(item_id)
         ip = store.item_path(item_id)
         with open(ip, "a") as f:
@@ -2183,7 +2188,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """repair_drift cleans up temp file if fchmod fails (fd still open)."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Repair Early Error")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Repair Early Error")
         store.freeze(item_id)
         ip = store.item_path(item_id)
         with open(ip, "a") as f:
@@ -2200,7 +2205,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """repair_drift succeeds even when .ops is read-only (cross-user case)."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Repair Readonly Ops")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Repair Readonly Ops")
         store.freeze(item_id)
         ip = store.item_path(item_id)
         # Make .ops read-only (simulates file owned by different user)
@@ -2221,7 +2226,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """freeze → sentinel file has mode 0444."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Sentinel Mode")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Sentinel Mode")
         store.freeze(item_id)
         import stat
         mode = store.frozen_path(item_id).stat().st_mode & 0o777
@@ -2232,7 +2237,7 @@ class TestFreezeUnfreeze:
     ) -> None:
         """Freeze, human update via store → sentinel updated, drift_check → False."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Auto Refresh")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Auto Refresh")
         store.freeze(item_id)
         # Human update should auto-refresh sentinel
         store.update(item_id, set_fields={"priority": 0})
@@ -2252,7 +2257,7 @@ class TestCrossBranchLockedFields:
     def test_no_git_dir(self, ops_dir: Path, mock_agent_uid: None) -> None:
         """Returns empty set when no git dir found (line 1167)."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="No Git")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="No Git")
         item_path = ops_dir / f".{item_id}.ops"
 
         with patch("hypergumbo_tracker.store._find_git_dir", return_value=None):
@@ -2262,7 +2267,7 @@ class TestCrossBranchLockedFields:
     def test_value_error_relative_path(self, ops_dir: Path, tmp_path: Path, mock_agent_uid: None) -> None:
         """Returns empty set on ValueError (file not relative to git parent)."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="RelPath Error")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="RelPath Error")
         item_path = ops_dir / f".{item_id}.ops"
         # Git dir in different tree
         other_git = tmp_path / "other" / ".git"
@@ -2275,7 +2280,7 @@ class TestCrossBranchLockedFields:
     def test_with_mocked_git(self, ops_dir: Path, mock_agent_uid: None) -> None:
         """Cross-branch lock check with mocked git cat-file (lines 1185-1228)."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Cross Branch Lock")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Cross Branch Lock")
         item_path = ops_dir / f".{item_id}.ops"
 
         # Build mock git output that has a lock op
@@ -2305,7 +2310,7 @@ class TestCrossBranchLockedFields:
     def test_corrupt_branch_content(self, ops_dir: Path, mock_agent_uid: None) -> None:
         """CorruptFileError on branch content is silently ignored (line 1241)."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Corrupt Branch")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Corrupt Branch")
         item_path = ops_dir / f".{item_id}.ops"
 
         # Git output with content that parses as YAML list but fails compile (no create)
@@ -2328,7 +2333,7 @@ class TestCrossBranchLockedFields:
     def test_oserror(self, ops_dir: Path, mock_agent_uid: None) -> None:
         """OSError in cross-branch check is silently handled (line 1228)."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="OS Error")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="OS Error")
         item_path = ops_dir / f".{item_id}.ops"
 
         git_dir = ops_dir.parent / ".git"
@@ -2353,7 +2358,7 @@ class TestSimilarityCheckCorrupt:
         # Write a corrupt ops file
         (ops_dir / ".INV-corrupt-sim.ops").write_text("{{bad yaml")
         # Adding a new item should succeed (corrupt file skipped in similarity check)
-        item_id = store.add(kind="invariant", title="Not Corrupt")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Not Corrupt")
         assert item_id.startswith("INV-")
 
 
@@ -2367,7 +2372,7 @@ class TestDiscussionRateLimit:
         """Discussion rate limit triggers DiscussionRateLimitError (line 1256)."""
         import datetime
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Rate Limited")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Rate Limited")
 
         # Write many discuss ops with today's date to exceed 200k tokens
         today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -2394,8 +2399,8 @@ class TestResolveIdAmbiguous:
     def test_ambiguous_prefix(self, ops_dir: Path, mock_agent_uid: None) -> None:
         """Ambiguous prefix raises AmbiguousPrefixError (lines 1347-1348)."""
         store = Store(ops_dir, config=_make_config())
-        store.add(kind="invariant", title="Item Alpha")
-        store.add(kind="invariant", title="Item Beta")
+        store.add(kind="invariant", fields=_INV_FIELDS, title="Item Alpha")
+        store.add(kind="invariant", fields=_INV_FIELDS, title="Item Beta")
 
         # "INV-" matches both
         with pytest.raises(AmbiguousPrefixError, match="ambiguous"):
@@ -2449,8 +2454,8 @@ class TestBeforeCycleDetection:
     def test_cycle_detected(self, ops_dir: Path, mock_agent_uid: None) -> None:
         """Check before_cycles detects cycles (lines 1539-1540)."""
         store = Store(ops_dir, config=_make_config())
-        id_a = store.add(kind="invariant", title="A")
-        id_b = store.add(kind="invariant", title="B")
+        id_a = store.add(kind="invariant", fields=_INV_FIELDS, title="A")
+        id_b = store.add(kind="invariant", fields=_INV_FIELDS, title="B")
 
         # A.before = [B] means A blocks B
         store.update(id_a, add_fields={"before": [id_b]})
@@ -2473,7 +2478,7 @@ class TestHumanAuthorityOps:
     def test_lock_as_human(self, ops_dir: Path, mock_human_uid: None) -> None:
         """Human can lock fields."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Human Lock")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Human Lock")
         store.lock(item_id, ["status", "priority"])
         item = store.get(item_id)
         assert "status" in item.locked_fields
@@ -2482,7 +2487,7 @@ class TestHumanAuthorityOps:
     def test_unlock_as_human(self, ops_dir: Path, mock_human_uid: None) -> None:
         """Human can unlock fields."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Human Unlock")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Human Unlock")
         store.lock(item_id, ["status"])
         store.unlock(item_id, ["status"])
         item = store.get(item_id)
@@ -2491,7 +2496,7 @@ class TestHumanAuthorityOps:
     def test_discuss_clear_as_human(self, ops_dir: Path, mock_human_uid: None) -> None:
         """Human can clear discussion."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Clear Discussion")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Clear Discussion")
         store.discuss(item_id, message="first message")
         item = store.get(item_id)
         assert len(item.discussion) == 1
@@ -2502,7 +2507,7 @@ class TestHumanAuthorityOps:
     def test_discuss_summarize(self, ops_dir: Path, mock_human_uid: None) -> None:
         """Summarize replaces discussion with summary entry."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Summarize Test")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Summarize Test")
         store.discuss(item_id, message="msg1")
         store.discuss(item_id, message="msg2")
         store.discuss(item_id, message="Summary of discussion", summarize=True)
@@ -2536,7 +2541,7 @@ class TestGetEdgeCases:
     def test_get_deleted_after_resolve(self, ops_dir: Path, mock_agent_uid: None) -> None:
         """get() when item path doesn't exist after resolve (line 1478)."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Will Delete")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Will Delete")
         # Delete the file after resolve would succeed
         item_path = ops_dir / f".{item_id}.ops"
         item_path.unlink()
@@ -2553,7 +2558,7 @@ class TestCompileAllCorrupt:
     def test_compile_all_skips_no_create(self, ops_dir: Path, mock_agent_uid: None) -> None:
         """_compile_all skips files that fail to compile (line 1492)."""
         store = Store(ops_dir, config=_make_config())
-        store.add(kind="invariant", title="Good")
+        store.add(kind="invariant", fields=_INV_FIELDS, title="Good")
         # Write file with only an update op (no create → CorruptFileError in compile)
         (ops_dir / ".INV-nocreate.ops").write_text("- op: update\n  clock: 1\n")
         items = store.list_items()
@@ -2660,7 +2665,7 @@ class TestCrossBranchParsingEdgeCases:
     def _make_store_with_item(self, ops_dir: Path) -> tuple:
         """Helper: create store with one item and return (store, item_id, item_path)."""
         store = Store(ops_dir, config=_make_config())
-        item_id = store.add(kind="invariant", title="Cross Branch Parse")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Cross Branch Parse")
         item_path = ops_dir / f".{item_id}.ops"
         return store, item_id, item_path
 
@@ -2735,7 +2740,7 @@ class TestSimilarityNoCreate:
             "- op: update\n  at: T1\n  by: agent\n  actor: a\n  clock: 1\n  nonce: aaaa\n  set: {status: done}\n"
         )
         # Adding a new item should not crash on the no-create file
-        item_id = store.add(kind="invariant", title="Has Create")
+        item_id = store.add(kind="invariant", fields=_INV_FIELDS, title="Has Create")
         assert item_id.startswith("INV-")
 
 
@@ -2792,7 +2797,7 @@ class TestAncestorsOrphanParent:
         store = Store(ops_dir, config=_make_config())
         # Create item with a parent that doesn't exist in the store
         item_id = store.add(
-            kind="invariant", title="Child with Missing Parent",
+            kind="invariant", fields=_INV_FIELDS, title="Child with Missing Parent",
             parent="INV-nonexistent-parent-id",
         )
         ancestors = store.ancestors(item_id)
