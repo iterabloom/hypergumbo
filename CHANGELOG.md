@@ -13,6 +13,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Linkers
 
+- **HTTP linker: Ruby + Java client detection (WI-voril)**: Detects HTTP client calls in Ruby (RestClient, HTTParty, Faraday, Net::HTTP) and Java (Spring RestTemplate, Retrofit annotations) source files. Creates cross-language `http_calls` edges linking client call sites to server route handlers.
 - **JS/TS module resolution**: Resolves import edges to file symbols via relative imports (extension/index probing), `tsconfig.json`/`jsconfig.json`/`vite.config` path aliases, and monorepo tsconfig discovery.
 - **Vue**: Template-method linker connects event handlers (`@click`, `v-on:input`) to `<script>` symbols; component linker resolves import paths to `.vue` files on disk.
 - **FFI (5 languages)**: Python (ctypes/cffi/PyO3), Ruby (FFI gem, C extensions), Go (Cgo), Node.js (N-API/node-addon-api), and Lua (LuaJIT ffi.C/ffi.load) cross-language call linking to C/C++ symbols.

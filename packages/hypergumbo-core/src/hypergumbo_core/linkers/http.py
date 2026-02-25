@@ -1,7 +1,8 @@
 """HTTP client-server linker for detecting cross-language API calls.
 
-This linker detects HTTP client calls (fetch, axios, requests, OpenAPI clients)
-and links them to server route handlers detected by language analyzers.
+This linker detects HTTP client calls (fetch, axios, requests, OpenAPI clients,
+RestClient, HTTParty, Faraday, Net::HTTP, RestTemplate, Retrofit) and links them
+to server route handlers detected by language analyzers.
 
 Detected Client Patterns
 ------------------------
@@ -25,6 +26,22 @@ Go:
 - http.NewRequest("DELETE", "/api/users/1", nil) - explicit method
 - http.NewRequestWithContext(ctx, "PATCH", "/api/users/1", body) - with context
 
+Ruby:
+- RestClient.get("/api/users") - rest-client gem
+- HTTParty.get("/api/users") - httparty gem
+- Faraday.get("/api/users") - faraday gem
+- Net::HTTP.get(URI("/api/users")) - stdlib net/http
+- Net::HTTP.post_form(URI("/api/users"), data) - stdlib net/http POST
+- Net::HTTP.get_response(URI("/api/users")) - stdlib net/http
+
+Java:
+- restTemplate.getForObject("/api/users", ...) - Spring RestTemplate
+- restTemplate.postForEntity("/api/users", ...) - Spring RestTemplate
+- restTemplate.exchange("/api/users", HttpMethod.GET, ...) - Spring RestTemplate
+- restTemplate.delete("/api/users/1") - Spring RestTemplate
+- @GET("/api/users") - Retrofit annotation
+- @POST("/api/items") - Retrofit annotation
+
 Variable URL Detection
 ----------------------
 URLs stored in variables are detected with lower confidence (0.65 vs 0.9):
@@ -39,7 +56,7 @@ Routes are matched by:
 
 Parameterized routes are supported:
 - /users/:id (Express/Flask style)
-- /users/{id} (FastAPI style)
+- /users/{id} (FastAPI/Retrofit style)
 - /users/<id> (Flask style)
 
 How It Works
@@ -258,9 +275,61 @@ GO_HTTP_NEW_REQUEST_CTX_PATTERN = re.compile(
 )
 
 
+# Ruby HTTP client patterns
+# RestClient.get/post/put/patch/delete("url") - rest-client gem
+# HTTParty.get/post/put/patch/delete("url") - httparty gem
+# Faraday.get/post/put/patch/delete("url") - faraday gem
+RUBY_HTTP_LIB_PATTERN = re.compile(
+    rf"""(?:RestClient|HTTParty|Faraday)\.
+        (get|post|put|patch|delete|head|options)
+        \s*\(\s*
+        {_URL_ARG}""",
+    re.VERBOSE | re.IGNORECASE,
+)
+
+# Net::HTTP.get/get_response(URI("url")) or Net::HTTP.get(URI.parse("url"))
+# Net::HTTP.post_form(URI("url"), data)
+RUBY_NET_HTTP_PATTERN = re.compile(
+    r"""Net::HTTP\.(get|post_form|get_response)
+        \s*\(\s*
+        URI(?:\.parse)?\s*\(\s*
+        ["']([^"']+)["']""",
+    re.VERBOSE,
+)
+
+# Java RestTemplate patterns
+# restTemplate.getForObject/getForEntity/postForObject/postForEntity/delete/put/patchForObject("url", ...)
+JAVA_REST_TEMPLATE_PATTERN = re.compile(
+    rf"""\w+\.(getForObject|getForEntity|postForObject|postForEntity|
+        patchForObject|delete|put)
+        \s*\(\s*
+        {_URL_ARG}""",
+    re.VERBOSE,
+)
+
+# restTemplate.exchange("url", HttpMethod.METHOD, ...)
+JAVA_REST_TEMPLATE_EXCHANGE_PATTERN = re.compile(
+    rf"""\w+\.exchange\s*\(\s*
+        {_URL_ARG}\s*,\s*
+        HttpMethod\.(\w+)""",
+    re.VERBOSE,
+)
+
+# Retrofit annotations: @GET("/api/users"), @POST("/api/users"), etc.
+JAVA_RETROFIT_ANNOTATION_PATTERN = re.compile(
+    r"""@(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)
+        \s*\(\s*
+        ["']([^"']+)["']""",
+    re.VERBOSE,
+)
+
+
 def _find_source_files(root: Path) -> Iterator[Path]:
     """Find files that might contain HTTP client calls."""
-    patterns = ["**/*.py", "**/*.js", "**/*.ts", "**/*.jsx", "**/*.tsx", "**/*.go"]
+    patterns = [
+        "**/*.py", "**/*.js", "**/*.ts", "**/*.jsx", "**/*.tsx",
+        "**/*.go", "**/*.rb", "**/*.java",
+    ]
     for path in find_files(root, patterns):
         yield path
 
@@ -459,6 +528,139 @@ def _scan_go_file(file_path: Path, content: str) -> list[HttpClientCall]:
     return calls
 
 
+def _scan_ruby_file(file_path: Path, content: str) -> list[HttpClientCall]:
+    """Scan a Ruby file for HTTP client calls.
+
+    Detects three families of Ruby HTTP clients:
+    - RestClient, HTTParty, Faraday: LIB.method("url") pattern
+    - Net::HTTP: Net::HTTP.get/post_form/get_response(URI("url")) pattern
+    """
+    calls: list[HttpClientCall] = []
+
+    # RestClient/HTTParty/Faraday.method("url")
+    for match in RUBY_HTTP_LIB_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        # Groups: 1=method, 2=literal URL, 3=variable URL
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="ruby",
+                url_type=url_type,
+            )
+        )
+
+    # Net::HTTP.get/post_form/get_response(URI("url"))
+    for match in RUBY_NET_HTTP_PATTERN.finditer(content):
+        method_name = match.group(1).lower()
+        url = match.group(2)
+        line_num = content[: match.start()].count("\n") + 1
+
+        # Map method names to HTTP methods
+        if method_name == "post_form":
+            http_method = "POST"
+        else:
+            # get and get_response both map to GET
+            http_method = "GET"
+
+        calls.append(
+            HttpClientCall(
+                method=http_method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="ruby",
+                url_type="literal",
+            )
+        )
+
+    return calls
+
+
+# Map RestTemplate method names to HTTP methods
+_REST_TEMPLATE_METHOD_MAP = {
+    "getforobject": "GET",
+    "getforentity": "GET",
+    "postforobject": "POST",
+    "postforentity": "POST",
+    "patchforobject": "PATCH",
+    "delete": "DELETE",
+    "put": "PUT",
+}
+
+
+def _scan_java_file(file_path: Path, content: str) -> list[HttpClientCall]:
+    """Scan a Java file for HTTP client calls.
+
+    Detects two families of Java HTTP clients:
+    - Spring RestTemplate: restTemplate.getForObject/postForEntity/exchange/delete/put
+    - Retrofit: @GET/@POST/@PUT/@DELETE/@PATCH annotations
+    """
+    calls: list[HttpClientCall] = []
+
+    # RestTemplate method calls (getForObject, postForEntity, delete, put, etc.)
+    for match in JAVA_REST_TEMPLATE_PATTERN.finditer(content):
+        method_name = match.group(1).lower()
+        # Groups: 1=method name, 2=literal URL, 3=variable URL
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        line_num = content[: match.start()].count("\n") + 1
+
+        http_method = _REST_TEMPLATE_METHOD_MAP.get(method_name, "GET")
+
+        calls.append(
+            HttpClientCall(
+                method=http_method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="java",
+                url_type=url_type,
+            )
+        )
+
+    # RestTemplate.exchange("url", HttpMethod.METHOD, ...)
+    for match in JAVA_REST_TEMPLATE_EXCHANGE_PATTERN.finditer(content):
+        # Groups: 1=literal URL, 2=variable URL, 3=HTTP method
+        url, url_type = _extract_url_from_match(match, literal_group=1, var_group=2)
+        http_method = match.group(3).upper()
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=http_method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="java",
+                url_type=url_type,
+            )
+        )
+
+    # Retrofit annotations: @GET("/api/users"), @POST("/api/items")
+    for match in JAVA_RETROFIT_ANNOTATION_PATTERN.finditer(content):
+        http_method = match.group(1).upper()
+        url = match.group(2)
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=http_method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="java",
+                url_type="literal",
+            )
+        )
+
+    return calls
+
+
 def _create_client_symbol(call: HttpClientCall, root: Path) -> Symbol:
     """Create a symbol for an HTTP client call."""
     rel_path = Path(call.file_path).relative_to(root) if root else Path(call.file_path)
@@ -514,6 +716,10 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
                 calls = _scan_python_file(file_path, content)
             elif file_path.suffix == ".go":
                 calls = _scan_go_file(file_path, content)
+            elif file_path.suffix == ".rb":
+                calls = _scan_ruby_file(file_path, content)
+            elif file_path.suffix == ".java":
+                calls = _scan_java_file(file_path, content)
             else:
                 calls = _scan_javascript_file(file_path, content)
 
