@@ -45,3 +45,10 @@
     status: wont_do  # 1b0c
   add:  # 1b0c
     duplicate_of: [WI-hugir-balik]  # 1b0c
+- op: discuss  # 7e6f
+  at: '2026-02-25T08:44:46Z'  # 7e6f
+  by: agent  # 7e6f
+  actor: jgstern_agent  # 7e6f
+  clock: 7  # 7e6f
+  nonce: 7e6f  # 7e6f
+  message: "[migrated from justification field] All selected tests run in single job. For large changes affecting multiple packages, could split by package. Non-blocking optimization."  # 7e6f

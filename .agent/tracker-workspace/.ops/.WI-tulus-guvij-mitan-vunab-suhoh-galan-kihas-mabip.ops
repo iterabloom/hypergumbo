@@ -43,3 +43,10 @@
   nonce: 682d  # 682d
   set:  # 682d
     status: wont_do  # 682d
+- op: discuss  # 8b73
+  at: '2026-02-25T08:44:46Z'  # 8b73
+  by: agent  # 8b73
+  actor: jgstern_agent  # 8b73
+  clock: 6  # 8b73
+  nonce: 8b73  # 8b73
+  message: "[migrated from justification field] Branch coverage was never in CI, ~70% of uncovered branches are unreachable defensive code, and bakeoff on real repos is a better quality signal than chasing branch partials."  # 8b73

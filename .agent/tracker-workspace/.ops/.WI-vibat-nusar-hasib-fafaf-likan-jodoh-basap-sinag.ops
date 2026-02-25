@@ -45,3 +45,10 @@
     status: wont_do  # b266
   add:  # b266
     duplicate_of: [WI-hugir-balik]  # b266
+- op: discuss  # 3bdb
+  at: '2026-02-25T08:44:46Z'  # 3bdb
+  by: agent  # 3bdb
+  actor: jgstern_agent  # 3bdb
+  clock: 7  # 3bdb
+  nonce: 3bdb  # 3bdb
+  message: "[migrated from justification field] Currently 4 near-identical `test-*` jobs copy-pasted. Use matrix strategy or composite action to reduce duplication. Non-blocking; CI works correctly as-is."  # 3bdb

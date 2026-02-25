@@ -35,3 +35,10 @@
   nonce: 400b  # 400b
   set:  # 400b
     status: needs_human_review  # 400b
+- op: discuss  # 0ed9
+  at: '2026-02-25T08:44:46Z'  # 0ed9
+  by: agent  # 0ed9
+  actor: jgstern_agent  # 0ed9
+  clock: 6  # 0ed9
+  nonce: 0ed9  # 0ed9
+  message: "[migrated from justification field] ci.yml doesn't report how many tests ran. Add count to output for validating smart-test selection. Nice-to-have."  # 0ed9
