@@ -226,6 +226,23 @@ Individual commits are preserved in the history."
 	# Checkout tip and push
 	git checkout "$tip_branch"
 
+	# Exclude tracker ops files from PR (they flow through tracker sync)
+	local ops_files
+	ops_files=$(git diff --name-only "$base_branch"..HEAD -- '.agent/tracker*/.ops/' 2>/dev/null || true)
+	if [[ -n "$ops_files" ]]; then
+		echo "🔧 Excluding tracker ops from flush PR (flows through tracker sync)..."
+		while IFS= read -r f; do
+			if git cat-file -e "$base_branch:$f" 2>/dev/null; then
+				git checkout "$base_branch" -- "$f"
+			else
+				git rm --cached --quiet "$f" 2>/dev/null || true
+			fi
+		done <<<"$ops_files"
+		git commit --amend --no-edit -s
+		tip_sha=$(git rev-parse HEAD)
+		echo "🔑 Commit: ${tip_sha:0:7} (tracker ops excluded)"
+	fi
+
 	detect_api_base
 
 	local max_attempts=3
@@ -465,6 +482,24 @@ do_pr() {
 		fi
 	else
 		echo "   ⚠️  Manifest generation skipped (no stable hypergumbo?)"
+	fi
+
+	# Exclude tracker ops files from PR (they flow through tracker sync)
+	local ops_files
+	ops_files=$(git diff --name-only "$BASE_BRANCH"..HEAD -- '.agent/tracker*/.ops/' 2>/dev/null || true)
+	if [[ -n "$ops_files" ]]; then
+		echo "---------------------------------------------------"
+		echo "🔧 Excluding tracker ops from PR (flows through tracker sync)..."
+		while IFS= read -r f; do
+			if git cat-file -e "$BASE_BRANCH:$f" 2>/dev/null; then
+				git checkout "$BASE_BRANCH" -- "$f"
+			else
+				git rm --cached --quiet "$f" 2>/dev/null || true
+			fi
+		done <<<"$ops_files"
+		git commit --amend --no-edit -s
+		LOCAL_SHA="$(git rev-parse HEAD)"
+		echo "🔑 Commit: ${LOCAL_SHA:0:7} (tracker ops excluded)"
 	fi
 
 	# Check if queue is non-empty - if so, queue this too (maintain atomicity)
