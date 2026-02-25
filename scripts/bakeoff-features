@@ -932,6 +932,10 @@ def cmd_run(args):
         # Default 3 hops is too shallow for large repos (10K+ nodes), and the
         # default 100-file limit naturally constrains output size even at high
         # hop counts. Using 200 files in bakeoff to measure quality potential.
+        # Use --hub-threshold 100 (vs default 50) for enterprise Java repos
+        # where service interfaces commonly have 50-100+ outgoing edges.
+        # WI-sivun: cohort-019 forward slices stopped at 18-66 nodes because
+        # intermediate service hubs exceeded the default threshold.
         for i, entry in enumerate(entries[:5]):
             safe_name = entry.replace("/", "_").replace(":", "_")[:50]
             print(f"  slice[{entry[:30]}]...", end=" ", flush=True)
@@ -942,6 +946,7 @@ def cmd_run(args):
                 "--inline",
                 "--exclude-tests",
                 "--exclude-imports",
+                "--hub-threshold", "100",
                 "--max-hops", "10",
                 "--max-files", "200",
                 "--out", os.path.join(repo_out, f"slice.{i}.json"),
