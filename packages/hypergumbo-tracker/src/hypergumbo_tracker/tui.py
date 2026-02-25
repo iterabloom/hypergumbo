@@ -25,9 +25,11 @@ are pure functions for easy unit testing. IDs are auto-shortened to the
 minimum distinguishing prefix (snapped to proquint syllable boundaries);
 the ``i`` key toggles full ID display.
 
-The ``y`` key copies the selected item's detail text to the system clipboard
-via the OSC 52 terminal escape sequence (Textual's ``copy_to_clipboard``).
-This bypasses the mouse-capture issue where Textual intercepts click-and-drag,
+``Ctrl+C`` copies text to the system clipboard via the OSC 52 terminal
+escape sequence (Textual's ``copy_to_clipboard``).  When the inline chat
+TextArea (wide mode) is focused with a selection, it yanks the selection;
+otherwise it yanks the full detail text for the highlighted item.  This
+bypasses the mouse-capture issue where Textual intercepts click-and-drag,
 preventing terminal-native text selection in clients like Royal TSX.
 
 Write keybindings (d, D, m, n, e, p, b, l) push ModalScreen subclasses that
@@ -68,6 +70,7 @@ from textual.widgets import (
     Rule,
     Select,
     Static,
+    TextArea,
     Tree,
 )
 from textual.widgets.option_list import Option
@@ -572,7 +575,7 @@ def _format_dep_pills(
     item_id: str,
     blockers_of: dict[str, list[str]],
     dependents_of: dict[str, list[str]],
-    max_pills: int = 4,
+    max_pills: int = 2,
     hidden_ids: set[str] | None = None,
 ) -> str:
     """Format dependency pills as Rich markup for DataTable display.
@@ -1384,7 +1387,7 @@ class TrackerApp(App):
     }
 
     #left-panel {
-        width: 45%;
+        width: 55%;
         min-width: 30;
     }
 
@@ -1421,10 +1424,31 @@ class TrackerApp(App):
         display: none;
     }
 
+    #activity-column {
+        height: 1fr;
+    }
+
     #activity-view {
         display: none;
-        height: 40%;
+        height: 1fr;
         overflow-y: auto;
+    }
+
+    #chat-hint {
+        display: none;
+        height: 1;
+    }
+
+    #chat-input {
+        display: none;
+        height: 6;
+        min-height: 4;
+    }
+
+    #chat-send {
+        display: none;
+        width: auto;
+        min-width: 8;
     }
 
     #status-filter-bar {
@@ -1442,7 +1466,7 @@ class TrackerApp(App):
 
     #activity-filter-row {
         display: none;
-        height: 40%;
+        height: 55%;
         layout: horizontal;
     }
 
@@ -1483,7 +1507,7 @@ class TrackerApp(App):
         ("z", "toggle_freeze", "Freeze"),
         ("R", "repair_drift", "Repair Drift"),
         ("i", "toggle_full_ids", "Full IDs"),
-        ("y", "yank", "Copy"),
+        ("ctrl+c", "yank", "Copy"),
     ]
 
     def deliver_screenshot(
@@ -1565,9 +1589,17 @@ class TrackerApp(App):
                 yield Rule(id="activity-divider")
                 # Wide mode: activity + filter side by side
                 with Horizontal(id="activity-filter-row"):
-                    yield VerticalScroll(
-                        Static("", id="activity-content"), id="activity-view"
-                    )
+                    with Vertical(id="activity-column"):
+                        yield VerticalScroll(
+                            Static("", id="activity-content"),
+                            id="activity-view",
+                        )
+                        yield Static(
+                            "[dim]Ctrl+C copy \u00b7 Shift+Ins paste[/dim]",
+                            id="chat-hint",
+                        )
+                        yield TextArea("", id="chat-input")
+                        yield Button("Send", id="chat-send")
                     yield Rule(
                         orientation="vertical", id="filter-divider",
                     )
@@ -1677,10 +1709,17 @@ class TrackerApp(App):
             # Activity panel and filter panel in wide mode
             activity_view = self.query_one("#activity-view")
             activity_divider = self.query_one("#activity-divider")
+            # Chat widgets (wide-only inline discuss)
+            chat_input = self.query_one("#chat-input", TextArea)
+            chat_send = self.query_one("#chat-send", Button)
+            chat_hint = self.query_one("#chat-hint", Static)
             if self._layout_tier == "wide":
                 activity_filter_row.display = True
                 activity_view.display = True
                 activity_divider.display = True
+                chat_input.display = True
+                chat_send.display = True
+                chat_hint.display = True
                 # Wide filter panel: inside the activity-filter-row
                 filter_panel_view.display = self._filter_panel_visible
                 filter_divider.display = self._filter_panel_visible
@@ -1690,6 +1729,9 @@ class TrackerApp(App):
                 activity_filter_row.display = False
                 activity_view.display = False
                 activity_divider.display = False
+                chat_input.display = False
+                chat_send.display = False
+                chat_hint.display = False
                 filter_panel_view.display = False
                 filter_divider.display = False
                 # Standard mode: filter panel below detail
@@ -2675,17 +2717,26 @@ class TrackerApp(App):
         await super().action_quit()
 
     def action_yank(self) -> None:
-        """Copy the selected item's detail text to the system clipboard.
+        """Copy text to the system clipboard via OSC 52.
 
-        Uses the OSC 52 terminal escape sequence via Textual's
-        ``copy_to_clipboard``.  This sidesteps the fact that Textual's
-        mouse protocol prevents terminal-native click-and-drag selection
-        in clients like Royal TSX.
+        When the ``#chat-input`` TextArea is focused and has a selection,
+        yanks only the selected text.  Otherwise falls back to yanking the
+        full detail text for the currently selected tracker item.
 
         Rich markup is stripped so the clipboard receives plain text
         (e.g. ``Title:`` not ``[bold reverse]Title:[/]``).
         """
         from rich.text import Text
+
+        # If the chat TextArea is focused with a selection, yank that
+        try:
+            text_area = self.query_one("#chat-input", TextArea)
+            if text_area.has_focus and text_area.selected_text:
+                self.copy_to_clipboard(text_area.selected_text)
+                self.notify("Copied selection to clipboard")
+                return
+        except Exception:  # pragma: no cover
+            pass
 
         item = self._get_selected_item()
         if not item:
@@ -2753,6 +2804,31 @@ class TrackerApp(App):
     # ------------------------------------------------------------------
     # Write actions
     # ------------------------------------------------------------------
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle inline chat Send button in wide mode."""
+        if event.button.id != "chat-send":
+            return
+        item = self._get_selected_item()
+        if not item:
+            self.notify("No item selected", severity="warning")
+            return
+        text_area = self.query_one("#chat-input", TextArea)
+        message = text_area.text.strip()
+        if not message:
+            return
+        try:
+            self._tracker_set.discuss(item.id, message)
+            text_area.clear()
+            self.notify(f"Discussion added to {item.id}")
+            self._reload_after_write(item.id)
+        except (
+            ItemNotFoundError,
+            LockedFieldError,
+            DiscussionRateLimitError,
+            PermissionError,
+        ) as e:
+            self.notify(str(e), severity="error")
 
     def action_discuss(self) -> None:
         """Open the discuss modal for the selected item."""

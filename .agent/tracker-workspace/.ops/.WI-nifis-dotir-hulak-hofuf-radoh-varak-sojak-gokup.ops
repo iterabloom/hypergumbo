@@ -35,3 +35,16 @@
   nonce: c146  # c146
   set:  # c146
     status: wont_do  # c146
+- op: discuss  # 0816
+  at: '2026-02-25T03:18:25Z'  # 0816
+  by: human  # 0816
+  actor: jgstern  # 0816
+  clock: 5  # 0816
+  nonce: '0816'  # 0816
+  message: "This is a test message.\n\nWith 2 paragraphs.\n\nActually it has 3 para\n\nHooray!\n\nhmmm Test paste I guess command-v works on a mac"  # 0816
+- op: discuss_clear  # a3f2
+  at: '2026-02-25T03:19:14Z'  # a3f2
+  by: human  # a3f2
+  actor: jgstern  # a3f2
+  clock: 6  # a3f2
+  nonce: a3f2  # a3f2

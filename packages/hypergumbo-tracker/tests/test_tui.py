@@ -2067,7 +2067,7 @@ class TestWideLayout:
     async def test_activity_hidden_in_standard(
         self, tracker_set: TrackerSet
     ) -> None:
-        """Activity panel should be hidden in standard mode."""
+        """Activity panel and chat widgets should be hidden in standard mode."""
         from hypergumbo_tracker.tui import TrackerApp
 
         app = TrackerApp(tracker_set=tracker_set)
@@ -2077,6 +2077,11 @@ class TestWideLayout:
             assert activity_view.display is False
             activity_divider = app.query_one("#activity-divider")
             assert activity_divider.display is False
+            # Chat widgets hidden in standard mode
+            from textual.widgets import TextArea
+            assert app.query_one("#chat-input", TextArea).display is False
+            assert app.query_one("#chat-send").display is False
+            assert app.query_one("#chat-hint").display is False
 
     async def test_wide_activity_updates_on_cursor_move(
         self, tmp_path: Path
@@ -4979,7 +4984,7 @@ class TestDeliverScreenshot:
 
 
 class TestYankAction:
-    """Tests for the 'y' keybinding that copies detail text to clipboard."""
+    """Tests for the Ctrl+C keybinding that copies detail text to clipboard."""
 
     @pytest.fixture()
     def tracker_set(self, tmp_path: Path) -> TrackerSet:
@@ -4987,7 +4992,7 @@ class TestYankAction:
 
     @pytest.mark.asyncio
     async def test_yank_no_item_warns(self, tmp_path: Path) -> None:
-        """Pressing 'y' with no items shows warning."""
+        """Pressing Ctrl+C with no items shows warning."""
         from hypergumbo_tracker.tui import TrackerApp
 
         ts = _make_empty_tracker_set(tmp_path)
@@ -4995,7 +5000,7 @@ class TestYankAction:
         async with app.run_test(size=(80, 24)) as pilot:
             for _ in range(5):
                 await pilot.pause()
-            await pilot.press("y")
+            await pilot.press("ctrl+c")
             await pilot.pause()
             # No crash; warning notification shown
 
@@ -5003,7 +5008,7 @@ class TestYankAction:
     async def test_yank_standard_copies_to_clipboard(
         self, tracker_set: TrackerSet,
     ) -> None:
-        """Pressing 'y' in standard layout copies detail text."""
+        """Pressing Ctrl+C in standard layout copies detail text."""
         from hypergumbo_tracker.tui import TrackerApp
 
         app = TrackerApp(tracker_set=tracker_set)
@@ -5013,7 +5018,7 @@ class TestYankAction:
             assert item is not None
 
             with patch.object(app, "copy_to_clipboard") as mock_copy:
-                await pilot.press("y")
+                await pilot.press("ctrl+c")
                 await pilot.pause()
                 mock_copy.assert_called_once()
                 text = mock_copy.call_args[0][0]
@@ -5024,7 +5029,7 @@ class TestYankAction:
     async def test_yank_compact_copies_to_clipboard(
         self, tracker_set: TrackerSet,
     ) -> None:
-        """Pressing 'y' in compact detail view copies detail text."""
+        """Pressing Ctrl+C in compact detail view copies detail text."""
         from hypergumbo_tracker.tui import TrackerApp
 
         app = TrackerApp(tracker_set=tracker_set)
@@ -5037,12 +5042,196 @@ class TestYankAction:
                     break
 
             with patch.object(app, "copy_to_clipboard") as mock_copy:
-                await pilot.press("y")
+                await pilot.press("ctrl+c")
                 await pilot.pause()
                 mock_copy.assert_called_once()
                 text = mock_copy.call_args[0][0]
                 assert "Title:" in text
                 assert "Status:" in text
+
+    @pytest.mark.asyncio
+    async def test_ctrl_c_yanks_textarea_selection(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        """Ctrl+C with focused TextArea selection copies selection text."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import TextArea
+        from textual.widgets.text_area import Selection
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            text_area = app.query_one("#chat-input", TextArea)
+            text_area.load_text("hello world")
+            await pilot.pause()
+            # Select "hello" (first 5 chars)
+            text_area.selection = Selection(
+                start=(0, 0), end=(0, 5),
+            )
+            await pilot.pause()
+
+            with (
+                patch.object(
+                    type(text_area), "has_focus",
+                    new_callable=lambda: property(lambda self: True),
+                ),
+                patch.object(app, "copy_to_clipboard") as mock_copy,
+            ):
+                app.action_yank()
+                await pilot.pause()
+                mock_copy.assert_called_once_with("hello")
+
+
+# ---------------------------------------------------------------------------
+# Inline Chat (wide mode)
+# ---------------------------------------------------------------------------
+
+
+class TestInlineChat:
+    """Tests for the inline chat TextArea and Send button in wide mode."""
+
+    @pytest.fixture()
+    def tracker_set(self, tmp_path: Path) -> TrackerSet:
+        return _make_tracker_set(tmp_path)
+
+    @pytest.mark.asyncio
+    async def test_chat_send_happy_path(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        """Type message in chat input, click Send — discuss() called, input cleared."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import TextArea
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            item = app._get_selected_item()
+            assert item is not None
+
+            text_area = app.query_one("#chat-input", TextArea)
+            text_area.load_text("inline chat message")
+            await pilot.pause()
+
+            with patch.object(
+                tracker_set, "discuss", wraps=tracker_set.discuss,
+            ) as mock_discuss:
+                await pilot.click("#chat-send")
+                await pilot.pause()
+                await pilot.pause()
+                mock_discuss.assert_called_once_with(
+                    item.id, "inline chat message",
+                )
+                # TextArea should be cleared after send
+                assert text_area.text == ""
+
+    @pytest.mark.asyncio
+    async def test_chat_send_empty_ignored(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        """Clicking Send with empty TextArea does nothing."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(tracker_set, "discuss") as mock_discuss:
+                await pilot.click("#chat-send")
+                await pilot.pause()
+                mock_discuss.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_chat_send_no_item_warns(self, tmp_path: Path) -> None:
+        """Clicking Send with no item selected shows warning."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import TextArea
+
+        ts = _make_empty_tracker_set(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            for _ in range(5):
+                await pilot.pause()
+            text_area = app.query_one("#chat-input", TextArea)
+            text_area.load_text("test message")
+            await pilot.pause()
+            await pilot.click("#chat-send")
+            await pilot.pause()
+            # No crash; warning notification shown
+
+    @pytest.mark.asyncio
+    async def test_chat_send_permission_error(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        """PermissionError from discuss() is caught and notified."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import TextArea
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            text_area = app.query_one("#chat-input", TextArea)
+            text_area.load_text("test msg")
+            await pilot.pause()
+            with patch.object(
+                tracker_set, "discuss",
+                side_effect=PermissionError("read-only"),
+            ):
+                await pilot.click("#chat-send")
+                await pilot.pause()
+                await pilot.pause()
+                # Error notification shown, no crash
+                # TextArea is NOT cleared on error
+                assert text_area.text == "test msg"
+
+    @pytest.mark.asyncio
+    async def test_chat_widgets_hidden_in_standard(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        """Chat widgets are not visible at standard (80x24) size."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import TextArea
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            assert app.query_one("#chat-input", TextArea).display is False
+            assert app.query_one("#chat-send").display is False
+            assert app.query_one("#chat-hint").display is False
+
+    @pytest.mark.asyncio
+    async def test_chat_hint_visible_in_wide(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        """Chat hint Static is visible in wide mode."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            hint = app.query_one("#chat-hint")
+            assert hint.display is True
+
+    @pytest.mark.asyncio
+    async def test_chat_send_locked_field_error(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        """LockedFieldError from discuss() is caught and notified."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import TextArea
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            text_area = app.query_one("#chat-input", TextArea)
+            text_area.load_text("msg")
+            await pilot.pause()
+            with patch.object(
+                tracker_set, "discuss",
+                side_effect=LockedFieldError("discussion locked"),
+            ):
+                await pilot.click("#chat-send")
+                await pilot.pause()
+                await pilot.pause()
+                # No crash; error notification shown
 
 
 # ---------------------------------------------------------------------------
