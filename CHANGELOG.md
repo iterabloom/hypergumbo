@@ -25,6 +25,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Assembly language**: Tree-sitter-based analyzer for `.s`/`.asm`/`.S` files. Extracts labels as function/variable symbols, detects call instructions with cross-file resolution.
 
+#### Sketch
+
+- **Exclude lock files from Configuration section**: Removed 9 lock files (go.sum, Cargo.lock, composer.lock, Gemfile.lock, mix.lock, shard.lock, Manifest.toml, renv.lock, flake.lock) from `CONFIG_FILES_BY_LANG`. Lock files contain version-pinned checksums that waste sketch token budget — the primary manifest files already provide the useful dependency information.
+
 #### Analysis core
 
 - **Hub pruning depth-1 exemption**: Nodes at depth ≤ 1 from the entry point are now exempt from hub pruning in both forward and reverse slices. This fixes the common "main → run()" orchestrator pattern where `run()` has many outgoing edges (e.g., 110 in alertmanager) and was hub-pruned at the default threshold, producing a nearly-empty slice. Hub pruning still applies at depth ≥ 2 to prevent BFS explosion through utility functions.

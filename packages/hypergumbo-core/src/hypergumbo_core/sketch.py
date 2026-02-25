@@ -695,22 +695,22 @@ CONFIG_FILES_BY_LANG: dict[str, list[str]] = {
     "javascript": ["package.json"],
     "typescript": ["package.json", "tsconfig.json"],
     # Go
-    "go": ["go.mod", "go.sum"],
+    "go": ["go.mod"],
     # Java/JVM ecosystem
     "java": ["pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"],
     "kotlin": ["build.gradle.kts", "settings.gradle.kts", "pom.xml"],
     "scala": ["build.sbt", "build.gradle"],
     "groovy": ["build.gradle", "settings.gradle"],
     # Rust
-    "rust": ["Cargo.toml", "Cargo.lock"],
+    "rust": ["Cargo.toml"],
     # Python
     "python": ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "Pipfile"],
     # PHP
-    "php": ["composer.json", "composer.lock"],
+    "php": ["composer.json"],
     # Ruby
-    "ruby": ["Gemfile", "Gemfile.lock", ".ruby-version"],
+    "ruby": ["Gemfile", ".ruby-version"],
     # Elixir/Erlang
-    "elixir": ["mix.exs", "mix.lock"],
+    "elixir": ["mix.exs"],
     "erlang": ["rebar.config"],
     # Haskell
     "haskell": ["package.yaml", "stack.yaml", "cabal.project"],
@@ -733,19 +733,19 @@ CONFIG_FILES_BY_LANG: dict[str, list[str]] = {
     # Dart/Flutter
     "dart": ["pubspec.yaml"],
     # Julia
-    "julia": ["Project.toml", "Manifest.toml"],
+    "julia": ["Project.toml"],
     # Nix
-    "nix": ["flake.nix", "flake.lock", "default.nix", "shell.nix"],
+    "nix": ["flake.nix", "default.nix", "shell.nix"],
     # Elm
     "elm": ["elm.json"],
     # PureScript
     "purescript": ["spago.dhall", "packages.dhall"],
     # Crystal
-    "crystal": ["shard.yml", "shard.lock"],
+    "crystal": ["shard.yml"],
     # Lua
     "lua": ["*.rockspec", ".luacheckrc"],
     # R
-    "r": ["DESCRIPTION", "renv.lock", "NAMESPACE"],
+    "r": ["DESCRIPTION", "NAMESPACE"],
     # Perl
     "perl": ["cpanfile", "Makefile.PL", "Build.PL", "META.json"],
     # HCL/Terraform

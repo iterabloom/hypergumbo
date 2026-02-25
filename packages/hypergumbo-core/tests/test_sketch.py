@@ -1,4 +1,5 @@
 """Tests for the sketch module (token-budgeted Markdown output)."""
+from typing import ClassVar
 from pathlib import Path
 
 import pytest
@@ -33,6 +34,7 @@ from hypergumbo_core.sketch import (
     _extract_path_from_forge_url,
     _extract_readme_internal_links,
     _format_file_content_block,
+    CONFIG_FILES_BY_LANG,
 )
 from hypergumbo_core.ranking import compute_centrality, _is_test_path
 from hypergumbo_core.profile import detect_profile
@@ -7455,4 +7457,42 @@ class TestBatchEmbedFiles:
         assert len(save_calls) == 1
         assert save_calls[0][0] == cache_dir
         assert save_calls[0][2] is fake_embedding
+
+
+class TestConfigFilesNoLockFiles:
+    """Lock files should not be in CONFIG_FILES_BY_LANG.
+
+    Lock files (go.sum, Cargo.lock, composer.lock, Gemfile.lock, etc.)
+    contain version-pinned checksums that waste sketch token budget.
+    The primary manifest files (go.mod, Cargo.toml, etc.) already provide
+    the useful dependency information. Lock files are also in
+    DEFAULT_EXCLUDES for source analysis.
+    """
+
+    # Exhaustive list of lock files that should NOT appear
+    LOCK_FILES: ClassVar[list[str]] = [
+        "go.sum",
+        "Cargo.lock",
+        "composer.lock",
+        "Gemfile.lock",
+        "mix.lock",
+        "shard.lock",
+        "Manifest.toml",  # Julia lock file
+        "renv.lock",       # R lock file
+        "flake.lock",      # Nix lock file
+    ]
+
+    def test_no_lock_files_in_config(self):
+        """CONFIG_FILES_BY_LANG should not include any lock files."""
+        all_config_files = []
+        for lang, files in CONFIG_FILES_BY_LANG.items():
+            for f in files:
+                all_config_files.append((lang, f))
+
+        for lang, filename in all_config_files:
+            assert filename not in self.LOCK_FILES, (
+                f"Lock file '{filename}' found in CONFIG_FILES_BY_LANG['{lang}']. "
+                f"Lock files waste sketch token budget — the primary manifest "
+                f"already provides dependency information."
+            )
 
