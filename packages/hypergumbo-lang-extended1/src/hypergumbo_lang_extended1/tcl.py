@@ -51,7 +51,7 @@ def find_tcl_files(root: Path) -> Iterator[Path]:
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
-    return node.text.decode("utf-8")
+    return node.text.decode("utf-8", errors="replace")
 
 
 def _get_proc_name(node: "tree_sitter.Node") -> Optional[str]:

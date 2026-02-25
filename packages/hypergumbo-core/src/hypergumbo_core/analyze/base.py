@@ -1497,14 +1497,14 @@ class TreeSitterAnalyzer:
         """
         for child in decorator_node.children:
             if child.type == "identifier":
-                return child.text.decode("utf-8") if child.text else ""
+                return child.text.decode("utf-8", errors="replace") if child.text else ""
             # Dotted path: @module.decorator → take last segment
             if child.type in ("attribute", "dotted_name"):
                 # Find the last identifier in the chain
                 last_ident = ""
                 for sub in child.children:
                     if sub.type == "identifier":
-                        last_ident = sub.text.decode("utf-8") if sub.text else ""
+                        last_ident = sub.text.decode("utf-8", errors="replace") if sub.text else ""
                 if last_ident:
                     return last_ident
             # Call form: @decorator(args) → look inside the call

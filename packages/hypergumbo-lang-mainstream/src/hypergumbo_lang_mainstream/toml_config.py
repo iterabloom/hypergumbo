@@ -68,9 +68,9 @@ def find_toml_files(root: Path) -> Iterator[Path]:
 def _get_key_text(node) -> str:
     """Extract key text from a key node."""
     if node.type == "bare_key":
-        return node.text.decode("utf-8")
+        return node.text.decode("utf-8", errors="replace")
     elif node.type == "quoted_key":  # pragma: no cover - rare in practice
-        text = node.text.decode("utf-8")  # pragma: no cover - rare in practice
+        text = node.text.decode("utf-8", errors="replace")  # pragma: no cover - rare in practice
         return text.strip('"').strip("'")  # pragma: no cover - rare in practice
     elif node.type == "dotted_key":
         # Join dotted key parts
@@ -79,14 +79,14 @@ def _get_key_text(node) -> str:
             if child.type in ("bare_key", "quoted_key"):
                 parts.append(_get_key_text(child))
         return ".".join(parts)
-    return node.text.decode("utf-8") if node.text else ""  # pragma: no cover
+    return node.text.decode("utf-8", errors="replace") if node.text else ""  # pragma: no cover
 
 
 def _get_string_value(node) -> str:
     """Extract string value from a string node."""
     if node is None:  # pragma: no cover - defensive
         return ""  # pragma: no cover - defensive
-    text = node.text.decode("utf-8") if node.text else ""
+    text = node.text.decode("utf-8", errors="replace") if node.text else ""
     # Strip quotes - various quote styles supported by TOML
     if text.startswith('"""') and text.endswith('"""'):  # pragma: no cover - multi-line
         return text[3:-3]  # pragma: no cover - multi-line

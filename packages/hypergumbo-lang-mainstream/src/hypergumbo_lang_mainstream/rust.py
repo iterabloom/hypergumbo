@@ -372,7 +372,7 @@ def _extract_modifiers_rust(node: "tree_sitter.Node", source: bytes) -> list[str
     modifiers: list[str] = []
     for child in node.children:
         if child.type == "visibility_modifier":
-            vis_text = child.text.decode("utf-8") if child.text else "pub"
+            vis_text = child.text.decode("utf-8", errors="replace") if child.text else "pub"
             modifiers.append(vis_text)
     return modifiers
 

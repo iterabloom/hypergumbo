@@ -58,7 +58,7 @@ def find_scss_files(repo_root: Path) -> list[Path]:
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
-    return node.text.decode("utf-8") if node.text else ""
+    return node.text.decode("utf-8", errors="replace") if node.text else ""
 
 
 def _make_symbol_id(path: Path, name: str, kind: str, line: int) -> str:

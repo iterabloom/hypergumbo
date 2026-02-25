@@ -55,7 +55,7 @@ PASS_ID = make_pass_id("smithy")
 
 def _get_node_text(node: "tree_sitter.Node") -> str:
     """Get the text content of a node."""
-    return node.text.decode("utf-8") if node.text else ""
+    return node.text.decode("utf-8", errors="replace") if node.text else ""
 
 
 def find_smithy_files(repo_root: Path) -> list[Path]:
