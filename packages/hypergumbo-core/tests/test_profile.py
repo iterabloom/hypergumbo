@@ -1003,6 +1003,22 @@ gem 'puma'
     assert "sinatra" in data["profile"]["frameworks"]
 
 
+def test_detects_ruby_grape_framework(tmp_path: Path) -> None:
+    """Should detect Grape from Gemfile."""
+    (tmp_path / "app.rb").write_text("require 'grape'\n")
+    (tmp_path / "Gemfile").write_text("""source 'https://rubygems.org'
+
+gem 'grape'
+gem 'grape-entity'
+""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "grape" in data["profile"]["frameworks"]
+
+
 # Elixir framework detection tests
 
 

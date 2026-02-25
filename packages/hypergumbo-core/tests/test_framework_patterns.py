@@ -16326,3 +16326,354 @@ class TestRailsCallbackPatterns:
         pattern_def = load_framework_patterns("rails")
         assert pattern_def is not None
         assert "event-sourcing" in pattern_def.linkers
+
+
+class TestGrapePatterns:
+    """Tests for Grape API framework pattern matching."""
+
+    def test_grape_api_base_class(self) -> None:
+        """Grape::API base class matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+        assert pattern_def is not None, "Grape patterns YAML should exist"
+
+        symbol = Symbol(
+            id="test:users_api.rb:1:UsersAPI:class",
+            name="UsersAPI",
+            kind="class",
+            language="ruby",
+            path="lib/api/users.rb",
+            span=Span(1, 50, 0, 0),
+            meta={"base_classes": ["Grape::API"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+        assert results[0]["matched_base_class"] == "Grape::API"
+
+    def test_grape_api_instance_base_class(self) -> None:
+        """Grape::API::Instance base class matches controller pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:base.rb:1:Base:class",
+            name="Base",
+            kind="class",
+            language="ruby",
+            path="lib/api/base.rb",
+            span=Span(1, 30, 0, 0),
+            meta={"base_classes": ["Grape::API::Instance"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "controller"
+
+    def test_grape_entity_base_class(self) -> None:
+        """Grape::Entity base class matches serializer pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:user_entity.rb:1:UserEntity:class",
+            name="UserEntity",
+            kind="class",
+            language="ruby",
+            path="lib/api/entities/user.rb",
+            span=Span(1, 20, 0, 0),
+            meta={"base_classes": ["Grape::Entity"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "serializer"
+
+    def test_grape_get_route_via_usage(self) -> None:
+        """Grape get route matches via usage context (args[last])."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="get",
+            position="args[last]",
+            path="lib/api/users.rb",
+            span=Span(10, 15, 0, 0),
+            symbol_ref="test:users.rb:10:list_users:other",
+            metadata={"url": "/users"},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_grape_post_route_via_usage(self) -> None:
+        """Grape post route matches via usage context."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="post",
+            position="args[last]",
+            path="lib/api/users.rb",
+            span=Span(20, 25, 0, 0),
+            symbol_ref="test:users.rb:20:create_user:other",
+            metadata={"url": "/users"},
+        )
+
+        results = match_usage_patterns(ctx, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "route"
+
+    def test_grape_delete_route_decorator(self) -> None:
+        """Grape delete route matches via decorator pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:users.rb:30:destroy:method",
+            name="destroy",
+            kind="method",
+            language="ruby",
+            path="lib/api/users.rb",
+            span=Span(30, 35, 0, 0),
+            meta={"decorators": ["delete"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        route_results = [r for r in results if r["concept"] == "route"]
+        assert len(route_results) >= 1
+
+    def test_grape_resource_decorator(self) -> None:
+        """Grape resource grouping matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:users.rb:5:users_resource:other",
+            name="users_resource",
+            kind="other",
+            language="ruby",
+            path="lib/api/users.rb",
+            span=Span(5, 50, 0, 0),
+            meta={"decorators": ["resource"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        route_results = [r for r in results if r["concept"] == "route"]
+        assert len(route_results) >= 1
+
+    def test_grape_namespace_decorator(self) -> None:
+        """Grape namespace grouping matches route pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:admin.rb:1:admin_ns:other",
+            name="admin_ns",
+            kind="other",
+            language="ruby",
+            path="lib/api/admin.rb",
+            span=Span(1, 40, 0, 0),
+            meta={"decorators": ["namespace"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        route_results = [r for r in results if r["concept"] == "route"]
+        assert len(route_results) >= 1
+
+    def test_grape_helpers_decorator(self) -> None:
+        """Grape helpers matches helper pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:base.rb:10:auth_helpers:other",
+            name="auth_helpers",
+            kind="other",
+            language="ruby",
+            path="lib/api/base.rb",
+            span=Span(10, 20, 0, 0),
+            meta={"decorators": ["helpers"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "helper"
+
+    def test_grape_before_filter(self) -> None:
+        """Grape before filter matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:base.rb:5:auth_filter:other",
+            name="auth_filter",
+            kind="other",
+            language="ruby",
+            path="lib/api/base.rb",
+            span=Span(5, 10, 0, 0),
+            meta={"decorators": ["before"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_grape_after_validation_filter(self) -> None:
+        """Grape after_validation filter matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:base.rb:12:validate_filter:other",
+            name="validate_filter",
+            kind="other",
+            language="ruby",
+            path="lib/api/base.rb",
+            span=Span(12, 18, 0, 0),
+            meta={"decorators": ["after_validation"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_grape_rescue_from(self) -> None:
+        """Grape rescue_from matches error_handler pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:base.rb:20:error_handler:other",
+            name="error_handler",
+            kind="other",
+            language="ruby",
+            path="lib/api/base.rb",
+            span=Span(20, 25, 0, 0),
+            meta={"decorators": ["rescue_from"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "error_handler"
+
+    def test_grape_params_validation(self) -> None:
+        """Grape params matches validation pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:users.rb:15:user_params:other",
+            name="user_params",
+            kind="other",
+            language="ruby",
+            path="lib/api/users.rb",
+            span=Span(15, 20, 0, 0),
+            meta={"decorators": ["params"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "validation"
+
+    def test_grape_desc_documentation(self) -> None:
+        """Grape desc matches documentation pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:users.rb:9:endpoint_desc:other",
+            name="endpoint_desc",
+            kind="other",
+            language="ruby",
+            path="lib/api/users.rb",
+            span=Span(9, 9, 0, 0),
+            meta={"decorators": ["desc"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "documentation"
+
+    def test_grape_format_middleware(self) -> None:
+        """Grape format matches middleware pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:base.rb:3:json_format:other",
+            name="json_format",
+            kind="other",
+            language="ruby",
+            path="lib/api/base.rb",
+            span=Span(3, 3, 0, 0),
+            meta={"decorators": ["format"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "middleware"
+
+    def test_grape_http_auth(self) -> None:
+        """Grape http_basic matches auth pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+
+        symbol = Symbol(
+            id="test:base.rb:7:basic_auth:other",
+            name="basic_auth",
+            kind="other",
+            language="ruby",
+            path="lib/api/base.rb",
+            span=Span(7, 10, 0, 0),
+            meta={"decorators": ["http_basic"]},
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        assert len(results) == 1
+        assert results[0]["concept"] == "auth"
+
+    def test_grape_enrich_symbols_integration(self) -> None:
+        """Enrich symbols applies Grape patterns to matching symbols."""
+        clear_pattern_cache()
+
+        symbols = [
+            Symbol(
+                id="test:api.rb:1:UsersAPI:class",
+                name="UsersAPI",
+                kind="class",
+                language="ruby",
+                path="lib/api/users.rb",
+                span=Span(1, 50, 0, 0),
+                meta={"base_classes": ["Grape::API"]},
+            ),
+            Symbol(
+                id="test:entity.rb:1:UserEntity:class",
+                name="UserEntity",
+                kind="class",
+                language="ruby",
+                path="lib/api/entities/user.rb",
+                span=Span(1, 20, 0, 0),
+                meta={"base_classes": ["Grape::Entity"]},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, ["grape"])
+        api_sym = next(s for s in enriched if s.name == "UsersAPI")
+        entity_sym = next(s for s in enriched if s.name == "UserEntity")
+
+        api_concepts = api_sym.meta.get("concepts", [])
+        assert any(c["concept"] == "controller" for c in api_concepts)
+        entity_concepts = entity_sym.meta.get("concepts", [])
+        assert any(c["concept"] == "serializer" for c in entity_concepts)
+
+    def test_grape_linkers_include_http(self) -> None:
+        """Grape framework activates http linker."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("grape")
+        assert pattern_def is not None
+        assert "http" in pattern_def.linkers
