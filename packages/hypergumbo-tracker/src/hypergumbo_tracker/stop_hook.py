@@ -315,12 +315,12 @@ def generate_guidance(
 
     lines.append("## Guidance")
     lines.append(
-        "Hard TODO items: investigate deeply, assume structural. "
-        "Fix or explicitly DEFER with justification."
+        "Hard TODO items: investigate deeply; assume the item is "
+        "a symptom of a structural defect."
     )
     lines.append(
-        "Soft TODO items: address or defer freely. "
-        "OK to defer if higher-priority work exists."
+        "Soft TODO items: resolve the issue normally. As always, "
+        "revise your beliefs when new information comes to light."
     )
     if items_with_unread_blocking or unread_non_blocking:
         lines.append(
