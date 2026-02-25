@@ -79,3 +79,10 @@
   set:  # 736d
     status: done  # 736d
     justification: "Investigated and confirmed NOT a bug. Vue template nodes from app/javascript/ are correctly tier1 and vastly outnumber tier2 test symbols. Metric interpretation issue, not classification bug."  # 736d
+- op: discuss  # a6fa
+  at: '2026-02-25T08:41:25Z'  # a6fa
+  by: agent  # a6fa
+  actor: jgstern_agent  # a6fa
+  clock: 11  # a6fa
+  nonce: a6fa  # a6fa
+  message: "[migrated from justification field] Investigated and confirmed NOT a bug. Vue template nodes from app/javascript/ are correctly tier1 and vastly outnumber tier2 test symbols. Metric interpretation issue, not classification bug."  # a6fa

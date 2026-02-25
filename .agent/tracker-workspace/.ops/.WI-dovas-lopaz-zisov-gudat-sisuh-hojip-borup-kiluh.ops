@@ -80,3 +80,10 @@
   set:  # 2b74
     status: done  # 2b74
     justification: "N-API linker merged in upcoming PR"  # 2b74
+- op: discuss  # f7d8
+  at: '2026-02-25T08:41:25Z'  # f7d8
+  by: agent  # f7d8
+  actor: jgstern_agent  # f7d8
+  clock: 11  # f7d8
+  nonce: f7d8  # f7d8
+  message: "[migrated from justification field] N-API linker merged in upcoming PR"  # f7d8

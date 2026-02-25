@@ -80,3 +80,10 @@
     status: done  # be7d
     pr_ref: '1178'  # be7d
     justification: "Added template call detection (to!string) and UFCS template property expressions (arr.map!(fn)). These are the two most common call patterns missing from the D analyzer."  # be7d
+- op: discuss  # 6199
+  at: '2026-02-25T08:41:25Z'  # 6199
+  by: agent  # 6199
+  actor: jgstern_agent  # 6199
+  clock: 11  # 6199
+  nonce: '6199'  # 6199
+  message: "[migrated from justification field] Added template call detection (to!string) and UFCS template property expressions (arr.map!(fn)). These are the two most common call patterns missing from the D analyzer."  # 6199

@@ -80,3 +80,10 @@
     status: done  # 6f70
     pr_ref: '1177'  # 6f70
     justification: "Added classify_dot_m_file() content-based heuristic in discovery.py. All three analyzers now filter .m files correctly."  # 6f70
+- op: discuss  # 31eb
+  at: '2026-02-25T08:41:24Z'  # 31eb
+  by: agent  # 31eb
+  actor: jgstern_agent  # 31eb
+  clock: 11  # 31eb
+  nonce: 31eb  # 31eb
+  message: "[migrated from justification field] Added classify_dot_m_file() content-based heuristic in discovery.py. All three analyzers now filter .m files correctly."  # 31eb
