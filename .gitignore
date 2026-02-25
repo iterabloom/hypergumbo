@@ -52,3 +52,4 @@ package-lock.json
 # Tracker
 **/config.yaml
 !**/config.yaml.template
+.agent/.cache-*.db
