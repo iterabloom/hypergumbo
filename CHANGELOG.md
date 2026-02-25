@@ -26,6 +26,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Analysis core
 
+- **Scaled entrypoint cap (WI-pohom)**: Entrypoint count cap now scales with repo size via `compute_entrypoint_cap(node_count)`: small repos keep the base cap of 50, larger repos scale at 1% of symbols (max 500). GitLab with 90K+ files previously lost most of its 693+ controllers to the fixed cap of 50.
 - **Slice node depth tracking**: `SliceResult.node_depths` records BFS hop distance for each node (0 for entries, 1 for direct callees, etc.), enabling LLMs to distinguish 1-hop vs 8-hop dependencies in slice output.
 - **C forward declaration entrypoint dedup**: Functions appearing as both declaration (`.h`) and definition (`.c`) no longer produce duplicate entrypoints. Declarations get `modifiers=["declaration"]`; entrypoint detection prefers definitions when both exist.
 - **Docstring extraction (103/105 analyzers)**: Extracts first-line doc comment summaries into `Symbol.docstring` using position-based tree-sitter node lookup. Covers all analyzers except HTML (no code symbols) and JSON (no comment syntax). Mainstream overriders (Go, Java, JS/TS, Kotlin, PHP) harmonized to a single `populate_docstrings_from_tree()` call per file.

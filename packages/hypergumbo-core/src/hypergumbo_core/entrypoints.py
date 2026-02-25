@@ -73,11 +73,40 @@ from .paths import is_test_file, is_utility_file
 # should not appear in --list-entries or --entry auto candidate lists.
 MIN_ENTRYPOINT_CONFIDENCE: float = 0.10
 
-# Maximum number of entrypoints returned by detect_entrypoints().
-# Prevents output flooding for repos with many routes/exports.
-# The cap is applied after confidence filtering and sorting by confidence,
-# so the highest-confidence entries are always preserved.
-MAX_ENTRYPOINT_COUNT: int = 50
+# Base entrypoint cap for small repos (< 5000 nodes).
+# For larger repos, the cap scales proportionally via compute_entrypoint_cap().
+BASE_ENTRYPOINT_CAP: int = 50
+
+# Absolute maximum entrypoint cap, even for very large repos.
+# Prevents pathological output for repos with 100K+ symbols.
+MAX_ENTRYPOINT_CAP: int = 500
+
+# Legacy alias for backwards compatibility with tests importing this name.
+MAX_ENTRYPOINT_COUNT: int = BASE_ENTRYPOINT_CAP
+
+
+def compute_entrypoint_cap(node_count: int) -> int:
+    """Compute the entrypoint cap based on repo size (number of symbols).
+
+    Small repos (< 5000 nodes): BASE_ENTRYPOINT_CAP (50).
+    Larger repos: scales as node_count // 100 (1% of symbols),
+    floored at BASE_ENTRYPOINT_CAP, capped at MAX_ENTRYPOINT_CAP.
+
+    Examples:
+        500 nodes   → 50  (base)
+        5000 nodes  → 50  (base)
+        10000 nodes → 100
+        25000 nodes → 250
+        90000 nodes → 500 (capped)
+
+    Args:
+        node_count: Total number of symbols in the behavior map.
+
+    Returns:
+        Maximum number of entrypoints to return.
+    """
+    scaled = max(BASE_ENTRYPOINT_CAP, node_count // 100)
+    return min(scaled, MAX_ENTRYPOINT_CAP)
 
 
 class EntrypointKind(Enum):
@@ -892,10 +921,11 @@ def detect_entrypoints(
     ]
 
     # Cap the number of returned entrypoints.
-    # Even with confidence filtering, some repos (e.g., microservice gateways)
-    # have hundreds of high-confidence routes. The cap preserves the top entries
-    # (list is already sorted by confidence descending).
-    if len(unique_entrypoints) > MAX_ENTRYPOINT_COUNT:
-        unique_entrypoints = unique_entrypoints[:MAX_ENTRYPOINT_COUNT]
+    # The cap scales with repo size: small repos get 50, large repos up to 500.
+    # This ensures large codebases (GitLab: 90K+ files, 693+ controllers)
+    # don't lose most of their entrypoints to a fixed cap.
+    cap = compute_entrypoint_cap(len(nodes))
+    if len(unique_entrypoints) > cap:
+        unique_entrypoints = unique_entrypoints[:cap]
 
     return unique_entrypoints

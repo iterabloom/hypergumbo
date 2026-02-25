@@ -3,9 +3,12 @@ import pytest
 
 from hypergumbo_core.ir import Symbol, Edge, Span
 from hypergumbo_core.entrypoints import (
+    compute_entrypoint_cap,
     detect_entrypoints,
     Entrypoint,
     EntrypointKind,
+    BASE_ENTRYPOINT_CAP,
+    MAX_ENTRYPOINT_CAP,
 )
 from hypergumbo_core.paths import is_test_file
 
@@ -2937,16 +2940,15 @@ class TestEntrypointConfidenceFiltering:
         )
 
     def test_count_cap_limits_results(self) -> None:
-        """detect_entrypoints returns at most MAX_ENTRYPOINT_COUNT entries.
+        """detect_entrypoints caps results based on repo size.
 
+        For small repos, the cap is BASE_ENTRYPOINT_CAP (50).
         Even when many entries pass the confidence threshold, the result
         is capped to prevent output flooding.
         """
-        from hypergumbo_core.entrypoints import MAX_ENTRYPOINT_COUNT
-
-        # Create more routes than the cap
+        # Create more routes than the base cap (small repo)
         nodes = []
-        for i in range(MAX_ENTRYPOINT_COUNT + 20):
+        for i in range(BASE_ENTRYPOINT_CAP + 20):
             nodes.append(make_symbol(
                 f"route_{i}", path=f"src/routes_{i}.py",
                 start_line=1,
@@ -2954,7 +2956,31 @@ class TestEntrypointConfidenceFiltering:
             ))
 
         entrypoints = detect_entrypoints(nodes, [])
-        assert len(entrypoints) <= MAX_ENTRYPOINT_COUNT
+        assert len(entrypoints) <= BASE_ENTRYPOINT_CAP
+
+    def test_count_cap_scales_with_large_repo(self) -> None:
+        """detect_entrypoints allows more entries for large repos.
+
+        A repo with 20000 symbols should allow up to 200 entrypoints
+        (node_count // 100), not just 50.
+        """
+        # Create 200 routes + 19800 non-entrypoint symbols = 20000 total
+        nodes = []
+        for i in range(200):
+            nodes.append(make_symbol(
+                f"route_{i}", path=f"src/routes_{i}.py",
+                start_line=1,
+                meta={"concepts": [{"concept": "route"}]},
+            ))
+        for i in range(19800):
+            nodes.append(make_symbol(
+                f"helper_{i}", path=f"src/helpers_{i}.py",
+                start_line=1,
+            ))
+
+        entrypoints = detect_entrypoints(nodes, [])
+        # With 20000 nodes, cap is 200 — all 200 routes should be returned
+        assert len(entrypoints) == 200
 
     def test_high_confidence_entries_preserved(self) -> None:
         """Entries above threshold are preserved."""
@@ -2987,3 +3013,36 @@ class TestEntrypointConfidenceFiltering:
         entrypoints = detect_entrypoints(exports, [])
         # No demotion happens (no semantic entries), so all at 0.80
         assert len(entrypoints) == 5
+
+
+class TestComputeEntrypointCap:
+    """Tests for compute_entrypoint_cap() scaling function."""
+
+    def test_small_repo_gets_base_cap(self) -> None:
+        """Repos with < 5000 nodes get the base cap of 50."""
+        assert compute_entrypoint_cap(100) == BASE_ENTRYPOINT_CAP
+        assert compute_entrypoint_cap(1000) == BASE_ENTRYPOINT_CAP
+        assert compute_entrypoint_cap(4999) == BASE_ENTRYPOINT_CAP
+
+    def test_medium_repo_scales_proportionally(self) -> None:
+        """Repos with 5000-50000 nodes scale at 1% of node count."""
+        assert compute_entrypoint_cap(10000) == 100
+        assert compute_entrypoint_cap(20000) == 200
+        assert compute_entrypoint_cap(25000) == 250
+
+    def test_large_repo_capped_at_maximum(self) -> None:
+        """Very large repos are capped at MAX_ENTRYPOINT_CAP (500)."""
+        assert compute_entrypoint_cap(90000) == MAX_ENTRYPOINT_CAP
+        assert compute_entrypoint_cap(200000) == MAX_ENTRYPOINT_CAP
+
+    def test_zero_nodes(self) -> None:
+        """Zero nodes returns base cap."""
+        assert compute_entrypoint_cap(0) == BASE_ENTRYPOINT_CAP
+
+    def test_exact_threshold(self) -> None:
+        """At exactly 5000 nodes, cap equals base cap (5000 // 100 = 50)."""
+        assert compute_entrypoint_cap(5000) == BASE_ENTRYPOINT_CAP
+
+    def test_just_above_threshold(self) -> None:
+        """At 5100 nodes, cap scales to 51."""
+        assert compute_entrypoint_cap(5100) == 51
