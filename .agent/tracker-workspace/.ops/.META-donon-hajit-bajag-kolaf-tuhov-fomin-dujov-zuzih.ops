@@ -30,3 +30,10 @@
   set: {}  # cd9d
   add:  # cd9d
     before: [WI-bimab-ravus-lugig-bapus-maval-donoj-huboz-kodoz]  # cd9d
+- op: discuss  # fcad
+  at: '2026-02-25T07:46:59Z'  # fcad
+  by: agent  # fcad
+  actor: jgstern_agent  # fcad
+  clock: 3  # fcad
+  nonce: fcad  # fcad
+  message: "Human decision (2026-02-25): option (a)+(d) — numeric quality scores (0-100) plus trajectory field (IMPROVING/STABLE/REGRESSING). Implement for DEEP pipeline first since that is the active focus."  # fcad
