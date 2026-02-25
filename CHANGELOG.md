@@ -186,6 +186,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Standardized pass IDs and versions**: All analyzers and linkers derive `PASS_ID` via `make_pass_id()` (canonical format: `{name}-v1`) and `PASS_VERSION` from the package version. Eliminates 4 competing ID formats and 4 stale version strings across ~105 files. `TreeSitterAnalyzer` subclasses auto-derive both from `lang`. Affects the `origin` field in output symbols (e.g., `bitbake.tree_sitter` → `bitbake-v1`).
 - **Generalized symbol identity (ADR-0014 Phases 0–2)**: Symbol `id` is now location-based (`{lang}:{path}:{start}-{end}:{name}:{kind}`) and `stable_id` is signature-based (`sha256:...` hash of kind, arity, decorators, containing scope). `shape_id` provides structural fingerprinting via CST skeleton hashing. Converted all 27 language analyzers from location-based `_make_stable_id()` strings to the new `compute_stable_id()` / `make_symbol_id()` system. Zero legacy ID functions remain.
+- **Tracker `update --note` flag (WI-hinus)**: `scripts/tracker update <ID> --status done --note "reason"` now adds a discussion entry as shorthand for a separate `discuss` call. Prevents context loss when resolving tracker items.
 
 ### Fixed
 

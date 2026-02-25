@@ -702,6 +702,45 @@ class TestWriteCommands:
             ])
         assert exc.value.code == EXIT_SUCCESS
 
+    def test_update_with_note(self, tmp_path: Path, capsys: pytest.CaptureFixture,
+                               mock_agent_uid: None) -> None:
+        """--note adds a discussion entry after the update."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root),
+                "update", "WI-test", "--status", "done",
+                "--note", "Resolved via PR #1457",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        assert "updated" in capsys.readouterr().out
+        # Verify the discussion was actually added
+        with pytest.raises(SystemExit):
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "show", "WI-test",
+            ])
+        show_data = json.loads(capsys.readouterr().out)
+        discussion = show_data.get("discussion", [])
+        assert any("Resolved via PR #1457" in str(d) for d in discussion)
+
+    def test_update_with_note_json(self, tmp_path: Path,
+                                    capsys: pytest.CaptureFixture,
+                                    mock_agent_uid: None) -> None:
+        """--note works in JSON output mode too."""
+        tracker_root = _setup_tracker(tmp_path)
+        _add_item(tracker_root / "tracker-workspace" / ".ops", "WI-test")
+        with pytest.raises(SystemExit) as exc:
+            main([
+                "--tracker-root", str(tracker_root), "--json",
+                "update", "WI-test",
+                "--note", "Context note for tracking",
+            ])
+        assert exc.value.code == EXIT_SUCCESS
+        data = json.loads(capsys.readouterr().out)
+        assert data["ok"] is True
+
     def test_discuss(self, tmp_path: Path, capsys: pytest.CaptureFixture,
                      mock_agent_uid: None) -> None:
         tracker_root = _setup_tracker(tmp_path)
