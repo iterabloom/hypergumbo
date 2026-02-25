@@ -662,7 +662,11 @@ def _extract_from_metadata(metadata: dict[str, Any], path: str) -> str | None:
             return str(kwargs[key])
     else:
         if path in metadata:
-            return str(metadata[path])
+            val = metadata[path]
+            # List values (e.g., methods=["GET", "POST"]): join with comma
+            if isinstance(val, list):
+                return ",".join(str(v) for v in val)
+            return str(val)
 
     return None
 

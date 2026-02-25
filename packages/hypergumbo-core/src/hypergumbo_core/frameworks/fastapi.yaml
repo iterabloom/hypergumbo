@@ -22,6 +22,19 @@ patterns:
     extract_path: "args[0]"
     extract_method: "kwargs.methods"
 
+  # ==================== USAGE-BASED PATTERNS (v1.1.x) ====================
+  # These match against UsageContext records for call-based routing
+
+  # FastAPI add_api_route - router.add_api_route('/path', handler, methods=['GET'])
+  - concept: route
+    usage:
+      kind: "^call$"
+      name: "^(app|router|\\w+_router)\\.add_api_route$"
+      position: "^view_func$"
+    extract:
+      path: "metadata.route_path"
+      method: "metadata.methods"
+
   # APIRouter with prefix - router = APIRouter(prefix="/api/v1")
   # Note: This pattern won't match directly since it's an assignment,
   # but the prefix info should be in symbol metadata

@@ -259,9 +259,12 @@ HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "rou
 # These emit UsageContext records for YAML pattern matching (v1.1.x)
 DJANGO_URL_FUNCTIONS = {"path", "re_path", "url"}
 
-# Flask URL pattern functions (call-based routing)
-# Flask's add_url_rule() is the call-based alternative to @app.route()
-FLASK_URL_FUNCTIONS = {"add_url_rule"}
+# Flask/FastAPI call-based URL routing functions.
+# Flask's add_url_rule() is the call-based alternative to @app.route().
+# FastAPI's add_api_route() registers routes programmatically instead of
+# using @router.get() decorators.  Both take a path string as the first
+# argument and a handler function as a subsequent argument.
+FLASK_URL_FUNCTIONS = {"add_url_rule", "add_api_route"}
 
 
 def _ast_value_to_python(node: ast.expr) -> str | int | float | bool | list | dict | None:
@@ -737,16 +740,18 @@ def _extract_flask_usage_contexts(
     file_path: str,
     symbol_by_name: dict[str, Symbol],
 ) -> list[UsageContext]:
-    """Extract UsageContext records for Flask add_url_rule() calls.
+    """Extract UsageContext records for Flask/FastAPI call-based route registration.
 
     Creates UsageContext records that capture how view functions are used
-    in add_url_rule() calls. These are matched against YAML patterns in
-    the enrichment phase.
+    in add_url_rule() and add_api_route() calls. These are matched against
+    YAML patterns in the enrichment phase.
 
     Supported patterns:
     - app.add_url_rule('/users', 'user_list', user_list)
     - app.add_url_rule('/users', view_func=user_list)
     - blueprint.add_url_rule('/items', view_func=get_items, methods=['GET'])
+    - router.add_api_route('/path', handler, methods=['GET'])
+    - router.add_api_route('/path', handler, response_model=Model)
 
     Args:
         tree: The parsed AST module
@@ -789,7 +794,8 @@ def _extract_flask_usage_contexts(
 
         # Extract view function - can be:
         # 1. Third positional arg: add_url_rule('/path', 'name', view_func)
-        # 2. view_func keyword arg: add_url_rule('/path', view_func=handler)
+        # 2. Second positional arg: add_api_route('/path', handler, ...)
+        # 3. view_func keyword arg: add_url_rule('/path', view_func=handler)
         view_ref = None
         view_name = None
 
@@ -804,15 +810,18 @@ def _extract_flask_usage_contexts(
                     view_name = kw.value.attr
                 break
 
-        # If not found in kwargs, check third positional arg
-        if view_name is None and len(node.args) >= 3:
-            third_arg = node.args[2]
-            if isinstance(third_arg, ast.Name):
-                view_name = third_arg.id
+        # If not found in kwargs, check positional args.
+        # add_api_route: second arg is handler ('/path', handler, ...)
+        # add_url_rule: third arg is handler ('/path', 'name', handler)
+        handler_arg_idx = 1 if func_name == "add_api_route" else 2
+        if view_name is None and len(node.args) > handler_arg_idx:
+            handler_arg = node.args[handler_arg_idx]
+            if isinstance(handler_arg, ast.Name):
+                view_name = handler_arg.id
                 if view_name in symbol_by_name:
                     view_ref = symbol_by_name[view_name].id
-            elif isinstance(third_arg, ast.Attribute):
-                view_name = third_arg.attr
+            elif isinstance(handler_arg, ast.Attribute):
+                view_name = handler_arg.attr
 
         # Extract methods if specified
         methods = None

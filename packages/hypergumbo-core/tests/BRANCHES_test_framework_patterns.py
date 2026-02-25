@@ -185,6 +185,16 @@ class TestStandaloneExtractFromMetadata:
         result = _extract_from_metadata({"route_path": "/users"}, "route_path")
         assert result == "/users"
 
+    def test_direct_key_list_value_joined(self) -> None:
+        """List values are comma-joined (e.g., methods=['GET', 'POST'])."""
+        result = _extract_from_metadata({"methods": ["GET", "POST"]}, "methods")
+        assert result == "GET,POST"
+
+    def test_direct_key_single_element_list(self) -> None:
+        """Single-element list is returned without comma."""
+        result = _extract_from_metadata({"methods": ["GET"]}, "methods")
+        assert result == "GET"
+
 
 class TestEnrichSymbolsBranches:
     """Branch coverage for enrich_symbols name lookup."""

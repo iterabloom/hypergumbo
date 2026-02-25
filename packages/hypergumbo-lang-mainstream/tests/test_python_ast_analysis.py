@@ -1017,6 +1017,108 @@ def test_flask_add_url_rule_positional_attribute_handler(tmp_path: Path) -> None
 
 
 # ============================================================================
+# FastAPI add_api_route UsageContext Tests
+# ============================================================================
+
+
+def test_fastapi_add_api_route_usage_context(tmp_path: Path) -> None:
+    """FastAPI add_api_route() should emit UsageContext records."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "endpoints.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "\n"
+        "def list_items():\n"
+        "    return []\n"
+        "\n"
+        "router = APIRouter()\n"
+        "router.add_api_route('/items', list_items, methods=['GET'])\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    usage_contexts = [uc.to_dict() for uc in result.usage_contexts]
+    assert len(usage_contexts) >= 1
+    ctx = usage_contexts[0]
+    assert ctx["context_name"] == "router.add_api_route"
+    assert ctx["metadata"]["route_path"] == "/items"
+    assert ctx["metadata"]["view_name"] == "list_items"
+    assert ctx["metadata"]["methods"] == ["GET"]
+
+
+def test_fastapi_add_api_route_second_positional_arg(tmp_path: Path) -> None:
+    """FastAPI add_api_route handler is the second positional arg (not third)."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "v2_endpoints.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "\n"
+        "def infer():\n"
+        "    pass\n"
+        "\n"
+        "v2_router = APIRouter()\n"
+        "v2_router.add_api_route('/models/{model_name}/infer', infer, methods=['POST'])\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    usage_contexts = [uc.to_dict() for uc in result.usage_contexts]
+    assert len(usage_contexts) >= 1
+    ctx = usage_contexts[0]
+    assert ctx["metadata"]["view_name"] == "infer"
+    assert ctx["metadata"]["route_path"] == "/models/{model_name}/infer"
+    assert ctx["metadata"]["methods"] == ["POST"]
+
+
+def test_fastapi_add_api_route_attribute_handler(tmp_path: Path) -> None:
+    """FastAPI add_api_route with attribute-based handler (endpoints.func)."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "routes.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "import endpoints\n"
+        "\n"
+        "router = APIRouter()\n"
+        "router.add_api_route('/health', endpoints.health_check, methods=['GET'])\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    usage_contexts = [uc.to_dict() for uc in result.usage_contexts]
+    assert len(usage_contexts) >= 1
+    ctx = usage_contexts[0]
+    assert ctx["metadata"]["view_name"] == "health_check"
+    assert ctx["metadata"]["route_path"] == "/health"
+
+
+def test_fastapi_add_api_route_no_explicit_methods(tmp_path: Path) -> None:
+    """FastAPI add_api_route without explicit methods defaults to ['GET']."""
+    from hypergumbo_lang_mainstream.py import analyze_python
+
+    py_file = tmp_path / "routes.py"
+    py_file.write_text(
+        "from fastapi import APIRouter\n"
+        "\n"
+        "def root():\n"
+        "    return {'status': 'ok'}\n"
+        "\n"
+        "router = APIRouter()\n"
+        "router.add_api_route('/', root)\n"
+    )
+
+    result = analyze_python(tmp_path)
+
+    usage_contexts = [uc.to_dict() for uc in result.usage_contexts]
+    assert len(usage_contexts) >= 1
+    ctx = usage_contexts[0]
+    assert ctx["metadata"]["view_name"] == "root"
+    assert ctx["metadata"]["methods"] == ["GET"]  # default
+
+
+# ============================================================================
 # Django/DRF Decorator Metadata Tests
 # ============================================================================
 
