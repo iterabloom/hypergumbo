@@ -3367,6 +3367,29 @@ class TestEditItemKeybinding:
                 await pilot.pause()
 
 
+    async def test_edit_permission_error_shows_notification(
+        self, tracker_set: TrackerSet,
+    ) -> None:
+        """PermissionError on update shows notification instead of crashing."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        app = TrackerApp(tracker_set=tracker_set)
+        async with app.run_test(size=(80, 40)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            with patch.object(
+                tracker_set, "update",
+                side_effect=PermissionError(13, "Cannot take ownership"),
+            ):
+                app.action_edit_item()
+                await _wait_for_modal(pilot, app)
+                app.screen.query_one("#title-input").value = "New Title"
+                await pilot.pause()
+                await pilot.click("#submit")
+                await pilot.pause()
+                # App should still be running (no crash)
+                assert app.is_running
+
+
 class TestSetParentKeybinding:
     """Test the 'p' set-parent keybinding."""
 
