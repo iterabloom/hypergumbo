@@ -954,6 +954,14 @@ def _extract_object_properties(
                         properties[key] = val[1:-1] if len(val) >= 2 else val
                     elif value_node.type == "identifier":
                         properties[key] = _node_text(value_node, source)
+                    elif value_node.type == "member_expression":
+                        # Member access like this.getAllStrategies —
+                        # extract the property name for handler resolution.
+                        prop_id = None
+                        for me_child in value_node.children:
+                            if me_child.type == "property_identifier":
+                                prop_id = _node_text(me_child, source)
+                        properties[key] = prop_id or _node_text(value_node, source)
                     elif value_node.type in ("function_expression", "arrow_function"):
                         # For inline functions, record a special marker
                         properties[key] = "<inline_function>"

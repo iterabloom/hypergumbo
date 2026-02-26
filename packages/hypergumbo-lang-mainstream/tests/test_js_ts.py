@@ -4915,6 +4915,84 @@ server.route({
         assert ctx.metadata.get("handler_name") is None
 
 
+class TestControllerRoutePattern:
+    """Tests for Express Controller.route() config-object pattern (WI-bajod).
+
+    Unleash-style Express apps use a base Controller class with
+    ``this.route({method, path, handler})`` for route registration.
+    This is structurally identical to Hapi's config-object pattern
+    but uses ``this`` as the receiver instead of a named variable.
+    """
+
+    def test_this_route_config_object(self, tmp_path: Path) -> None:
+        """Detects this.route({method, path, handler}) in a class constructor."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "controller.ts").write_text("""
+class StrategyController extends Controller {
+    constructor(config) {
+        super(config);
+        this.route({
+            method: 'get',
+            path: '',
+            handler: this.getAllStrategies,
+            permission: 'NONE',
+        });
+        this.route({
+            method: 'delete',
+            path: '/:name',
+            handler: this.removeStrategy,
+            permission: 'DELETE_STRATEGY',
+        });
+    }
+
+    async getAllStrategies(req, res) {
+        return res.json([]);
+    }
+
+    async removeStrategy(req, res) {
+        return res.json({ ok: true });
+    }
+}
+""")
+        result = analyze_javascript(tmp_path)
+        route_contexts = [
+            c for c in result.usage_contexts
+            if "route" in c.context_name and c.metadata.get("config_based")
+        ]
+        assert len(route_contexts) >= 2
+        methods = {c.metadata["http_method"] for c in route_contexts}
+        assert "GET" in methods
+        assert "DELETE" in methods
+        # Handler should be extracted from this.methodName
+        handler_names = {c.metadata.get("handler_name") for c in route_contexts}
+        assert "getAllStrategies" in handler_names or "this.getAllStrategies" in handler_names
+
+    def test_this_route_member_expression_handler(self, tmp_path: Path) -> None:
+        """Handler value this.methodName is extracted from member_expression."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "tag.ts").write_text("""
+class TagController extends Controller {
+    constructor(config) {
+        super(config);
+        this.route({ method: 'get', path: '', handler: this.getTags, permission: 'NONE' });
+        this.route({ method: 'post', path: '', handler: this.createTag, permission: 'NONE' });
+    }
+    async getTags(req, res) { return []; }
+    async createTag(req, res) { return {}; }
+}
+""")
+        result = analyze_javascript(tmp_path)
+        route_contexts = [
+            c for c in result.usage_contexts
+            if "route" in c.context_name and c.metadata.get("config_based")
+        ]
+        assert len(route_contexts) >= 2
+        paths = {c.metadata["route_path"] for c in route_contexts}
+        assert "/" in paths  # empty path normalizes to /
+
+
 class TestNextJsUsageContext:
     """Tests for Next.js file-based routing detection."""
 

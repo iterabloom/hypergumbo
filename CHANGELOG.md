@@ -54,6 +54,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Language & framework support
 
+- **Express Controller.route() config-object pattern (WI-bajod)**: Detects route registrations via `this.route({method, path, handler})` in Express apps that wrap router registration in a base Controller class (e.g., Unleash). The `_extract_object_properties` helper now extracts handler method names from `member_expression` values like `this.getAllStrategies`.
 - **Framework detection for 16 languages**: Haskell, Clojure, R, Lua, C++, Erlang, F#, Kotlin, C#, Dart, Julia, OCaml, Nim, Zig, D, Groovy.
 - **Test framework patterns for 16 languages**: Elixir, Scala, Dart, Clojure, Haskell, Erlang, F#, Ruby, Julia, OCaml, Lua, R, Nim, Zig, D, Groovy.
 - **Main function entrypoint detection for 7 more languages**: D, Nim, Zig, V, Odin, Gleam, Haxe.
