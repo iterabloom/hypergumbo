@@ -50,7 +50,7 @@ The project uses a YAML-backed structured tracker (ADR-0013) in `.agent/tracker/
   scripts/tracker update WI-foo --status done
   scripts/tracker discuss WI-foo "Fixed in PR #1234. Root cause was X, fix does Y."
   ```
-  The `--note` flag does not exist on `update` — use `discuss` instead. Omitting the rationale loses context about why work was completed or deferred.
+  Alternatively, combine both steps: `scripts/tracker update WI-foo --status done --note "Fixed in PR #1234."` (`--note` is shorthand for `discuss`). Omitting the rationale loses context about why work was completed or deferred.
 - **Unread Messages:** Use `scripts/tracker check-messages` to see items with unread human discussion messages. The stop hook guidance also surfaces these. Heuristic: a thread is "unread" if its last entry has `by: human` (single-agent assumption — once the agent replies, the thread is considered "read").
 
 ## No Weasel Words
