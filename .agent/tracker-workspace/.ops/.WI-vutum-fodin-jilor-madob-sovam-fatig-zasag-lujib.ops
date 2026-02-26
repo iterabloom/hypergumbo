@@ -1,0 +1,22 @@
+- op: create  # 5bc3
+  at: '2026-02-26T02:44:58Z'  # 5bc3
+  by: agent  # 5bc3
+  actor: jgstern_agent  # 5bc3
+  clock: 1  # 5bc3
+  nonce: 5bc3  # 5bc3
+  data:  # 5bc3
+    kind: work_item  # 5bc3
+    title: "Clojure test-* prefix false positive entrypoints"  # 5bc3
+    status: todo_soft  # 5bc3
+    priority: 3  # 5bc3
+    parent:  # 5bc3
+    tags:  # 5bc3
+    - analyzer  # 5bc3
+    - clojure  # 5bc3
+    - entrypoints  # 5bc3
+    before: []  # 5bc3
+    duplicate_of: []  # 5bc3
+    not_duplicate_of: []  # 5bc3
+    pr_ref:  # 5bc3
+    description: "DEEP bakeoff cohort #20 (metabase): Clojure functions like test-ldap-connection, test-database-connection are production code (they test/validate connections) but are classified as test_function entrypoints because of the test- prefix. In Clojure, test- is a naming convention for 'verify this thing', not necessarily a test. Fix: check if the function is in a test namespace (e.g., *_test.clj or test/ directory) before applying the test_function classification. Also: Clojure symbol name conflation via (:refer-clojure :exclude [...]) causes implausible in-degree values."  # 5bc3
+    fields: {}  # 5bc3
