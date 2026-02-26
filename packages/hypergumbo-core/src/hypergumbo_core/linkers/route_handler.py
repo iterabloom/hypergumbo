@@ -129,6 +129,28 @@ def _resolve_rails_handler(
         if name.endswith(hash_suffix) or name.endswith(dot_suffix):
             return sym
 
+    # Reverse suffix matching: route has a namespaced controller_action
+    # (e.g., "api/v1/statuses#destroy" → "Api::V1::StatusesController") but the
+    # symbol has a SHORT name (e.g., "StatusesController#destroy") because the
+    # Ruby analyzer only captures the immediately enclosing class. Check if the
+    # normalized controller_class ENDS WITH the symbol's class portion, respecting
+    # namespace boundaries (:: separator) to avoid false positives like
+    # "SubscriptionStatusesController" matching "StatusesController".
+    for name, sym in symbol_by_name.items():
+        for sep in ("#", "."):
+            if sep not in name:
+                continue
+            sym_class_part, sym_action = name.rsplit(sep, 1)
+            if sym_action != action:
+                continue
+            if sym_class_part == controller_class:
+                # Already handled by exact match above.
+                continue  # pragma: no cover
+            # Check namespace-boundary-separated suffix
+            reverse_suffix = f"::{sym_class_part}"
+            if controller_class.endswith(reverse_suffix):
+                return sym
+
     # Case-insensitive fallback for Rails acronym inflections (ADR-0008).
     # Rails treats words like IP, HTTP, SMTP, API as acronyms:
     # 'ip_pool_rules' → 'IPPoolRulesController', not 'IpPoolRulesController'.
@@ -149,6 +171,11 @@ def _resolve_rails_handler(
             # Suffix match for deeply namespaced controllers
             ci_suffix = f"::{controller_lower}"
             if sym_class_part.lower().endswith(ci_suffix):
+                return sym
+            # Reverse suffix (case-insensitive): controller_class ends with
+            # symbol's class portion at a namespace boundary.
+            reverse_ci_suffix = f"::{sym_class_part.lower()}"
+            if controller_lower.endswith(reverse_ci_suffix):
                 return sym
 
     return None

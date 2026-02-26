@@ -1538,6 +1538,131 @@ class TestLaravelSuffixMatchFallback:
         assert len(result.edges) == 1
         assert result.edges[0].dst == handler.id
 
+    def test_rails_reverse_suffix_namespaced_route_short_symbol(self) -> None:
+        """Namespaced route controller_action resolves to short-named symbol.
+
+        In Mastodon-style Rails apps, routes.rb produces controller_action
+        like "api/v1/statuses#destroy" (fully namespaced), but the Ruby analyzer
+        produces symbols named "StatusesController#destroy" (only the immediately
+        enclosing class). The linker must reverse-suffix-match: check if the
+        normalized controller class ENDS WITH the symbol's class portion.
+        """
+        route = Symbol(
+            id="ruby:/config/routes.rb:42-42:DELETE /api/v1/statuses/:id:route",
+            name="DELETE /api/v1/statuses/:id",
+            kind="route",
+            language="ruby",
+            path="/config/routes.rb",
+            span=Span(start_line=42, end_line=42, start_col=0, end_col=60),
+            meta={
+                "http_method": "DELETE",
+                "route_path": "/api/v1/statuses/:id",
+                "controller_action": "api/v1/statuses#destroy",
+            },
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+
+        # Symbol has SHORT name — only the immediately enclosing class
+        handler = Symbol(
+            id="ruby:/app/controllers/api/v1/statuses_controller.rb:80-95:StatusesController#destroy:method",
+            name="StatusesController#destroy",
+            kind="method",
+            language="ruby",
+            path="/app/controllers/api/v1/statuses_controller.rb",
+            span=Span(start_line=80, end_line=95, start_col=4, end_col=7),
+            meta={"class": "StatusesController"},
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+        assert len(result.edges) == 1
+        assert result.edges[0].src == route.id
+        assert result.edges[0].dst == handler.id
+        assert result.edges[0].edge_type == "routes_to"
+
+    def test_rails_reverse_suffix_no_false_positive(self) -> None:
+        """Reverse suffix matching doesn't match partial controller names.
+
+        "Api::V1::StatusesController" should NOT match a symbol named
+        "SubscriptionStatusesController#destroy" — "StatusesController" is
+        a suffix of "SubscriptionStatusesController" but not a namespace-
+        boundary-separated suffix.
+        """
+        route = Symbol(
+            id="ruby:/config/routes.rb:42-42:DELETE /api/v1/statuses/:id:route",
+            name="DELETE /api/v1/statuses/:id",
+            kind="route",
+            language="ruby",
+            path="/config/routes.rb",
+            span=Span(start_line=42, end_line=42, start_col=0, end_col=60),
+            meta={
+                "http_method": "DELETE",
+                "route_path": "/api/v1/statuses/:id",
+                "controller_action": "api/v1/statuses#destroy",
+            },
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+
+        # "SubscriptionStatusesController" ends with "StatusesController"
+        # but it's NOT the same controller — should NOT match
+        wrong_handler = Symbol(
+            id="ruby:/app/controllers/subscription_statuses_controller.rb:10-20:SubscriptionStatusesController#destroy:method",
+            name="SubscriptionStatusesController#destroy",
+            kind="method",
+            language="ruby",
+            path="/app/controllers/subscription_statuses_controller.rb",
+            span=Span(start_line=10, end_line=20, start_col=4, end_col=7),
+            meta={"class": "SubscriptionStatusesController"},
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, wrong_handler], [])
+        assert len(result.edges) == 0
+
+    def test_rails_reverse_suffix_case_insensitive(self) -> None:
+        """Reverse suffix matching works with acronym case differences.
+
+        Route produces "api/v1/ip_addresses#index" → normalized
+        "Api::V1::IpAddressesController", but the symbol uses the Rails
+        acronym form "IPAddressesController#index".
+        """
+        route = Symbol(
+            id="ruby:/config/routes.rb:50-50:GET /api/v1/ip_addresses:route",
+            name="GET /api/v1/ip_addresses",
+            kind="route",
+            language="ruby",
+            path="/config/routes.rb",
+            span=Span(start_line=50, end_line=50, start_col=0, end_col=60),
+            meta={
+                "http_method": "GET",
+                "route_path": "/api/v1/ip_addresses",
+                "controller_action": "api/v1/ip_addresses#index",
+            },
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+
+        # Symbol uses Rails acronym casing
+        handler = Symbol(
+            id="ruby:/app/controllers/api/v1/ip_addresses_controller.rb:5-10:IPAddressesController#index:method",
+            name="IPAddressesController#index",
+            kind="method",
+            language="ruby",
+            path="/app/controllers/api/v1/ip_addresses_controller.rb",
+            span=Span(start_line=5, end_line=10, start_col=2, end_col=5),
+            meta={"class": "IPAddressesController"},
+            origin="ruby-v1",
+            origin_run_id="test-run",
+        )
+
+        result = link_routes_to_handlers([route, handler], [])
+        assert len(result.edges) == 1
+        assert result.edges[0].dst == handler.id
+
     def test_no_false_suffix_match(self) -> None:
         """Suffix match doesn't match partial controller names."""
         route = Symbol(
