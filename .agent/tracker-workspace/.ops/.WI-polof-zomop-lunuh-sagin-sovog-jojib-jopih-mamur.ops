@@ -1,0 +1,22 @@
+- op: create  # d2e7
+  at: '2026-02-26T02:43:41Z'  # d2e7
+  by: agent  # d2e7
+  actor: jgstern_agent  # d2e7
+  clock: 1  # d2e7
+  nonce: d2e7  # d2e7
+  data:  # d2e7
+    kind: work_item  # d2e7
+    title: "Rails route-to-controller edge linking"  # d2e7
+    status: todo_soft  # d2e7
+    priority: 2  # d2e7
+    parent:  # d2e7
+    tags:  # d2e7
+    - linker  # d2e7
+    - rails  # d2e7
+    - routes  # d2e7
+    before: []  # d2e7
+    duplicate_of: []  # d2e7
+    not_duplicate_of: []  # d2e7
+    pr_ref:  # d2e7
+    description: "DEEP bakeoff cohort #20 (mastodon): 1830 routes correctly extracted from config/routes.rb but all are orphan nodes. Zero edges connect them to controller actions. Route nodes cannot participate in slicing. Mastodon orphan rate drops from 16.6% to 8.8% excluding route orphans. Need a Rails-specific linker mapping 'GET /accounts -> accounts#show' to AccountsController#show method symbol."  # d2e7
+    fields: {}  # d2e7

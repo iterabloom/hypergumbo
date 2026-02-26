@@ -34,3 +34,18 @@
   clock: 3  # 639d
   nonce: 639d  # 639d
   message: "Starting implementation. Elevated to todo_hard since this involves TUI changes with filter interaction complexity."  # 639d
+- op: update  # cde3
+  at: '2026-02-26T02:13:09Z'  # cde3
+  by: agent  # cde3
+  actor: jgstern_agent  # cde3
+  clock: 4  # cde3
+  nonce: cde3  # cde3
+  set:  # cde3
+    status: done  # cde3
+- op: discuss  # a6f4
+  at: '2026-02-26T02:13:09Z'  # a6f4
+  by: agent  # a6f4
+  actor: jgstern_agent  # a6f4
+  clock: 5  # a6f4
+  nonce: a6f4  # a6f4
+  message: "Implemented in PR #1479. Blue dot unread indicator, mark read/unread buttons, filter override for unread items, preferences persistence."  # a6f4
