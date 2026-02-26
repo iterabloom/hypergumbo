@@ -39,6 +39,7 @@ from hypergumbo_tracker.setup import (
     _check_gitignore,
     _check_group_permissions,
     _check_home_traversable,
+    _check_hooks_path,
     _check_ops_writable,
     _check_precommit_hook,
     _check_reflection_state,
@@ -1768,6 +1769,183 @@ class TestCheckGroupPermissions:
         # Only .ops dirs checked, all fine → passes
         assert result.status == "ok"
 
+    def test_file_permissions_auto_fixed(self, tmp_path: Path) -> None:
+        """Files in shared-group dirs that lack g+rw are auto-fixed."""
+        import stat
+
+        root = _make_full_agent_dir(tmp_path)
+        ops_dir = root / "tracker-workspace" / ".ops"
+        # Create a file with no group-read/write
+        test_file = ops_dir / "test-item.ops"
+        test_file.write_text("test data")
+        test_file.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0600 — no group bits
+
+        current_gid = os.stat(ops_dir).st_gid
+        fake_gid = current_gid + 1
+        current_uid = os.getuid()
+
+        # Dirs have correct perms (shared group, g+rws)
+        dir_stat = MagicMock()
+        dir_stat.st_gid = fake_gid
+        dir_stat.st_mode = (
+            stat.S_IFDIR | stat.S_IRWXU | stat.S_IRWXG | stat.S_ISGID
+        )
+        dir_stat.st_uid = current_uid
+
+        original_stat = Path.stat
+        # Identify directories by known paths (avoid recursion via is_dir)
+        dir_paths = {str(d) for d in [
+            root / "tracker" / ".ops",
+            root / "tracker-workspace",
+            root / "tracker-workspace" / ".ops",
+            root / "tracker-workspace" / "stealth",
+        ]}
+
+        def selective_stat(self, *args, **kwargs):
+            if str(self) in dir_paths:
+                return dir_stat
+            return original_stat(self, *args, **kwargs)
+
+        fake_grp = MagicMock()
+        fake_grp.gr_name = "project-dev"
+        fake_grp.gr_mem = [os.environ.get("USER", "testuser")]
+
+        with (
+            patch.object(Path, "stat", selective_stat),
+            patch("hypergumbo_tracker.setup.grp.getgrgid", return_value=fake_grp),
+            patch(
+                "hypergumbo_tracker.setup.pwd.getpwuid",
+                return_value=MagicMock(
+                    pw_name=os.environ.get("USER", "testuser"),
+                    pw_gid=current_gid,
+                ),
+            ),
+            patch("hypergumbo_tracker.setup.os.chmod") as mock_chmod,
+        ):
+            result = _check_group_permissions(root)
+        # Dirs are fine, but file needed fixing
+        assert result.status == "fixed"
+        # At least one chmod call was for our test file
+        file_chmod_calls = [
+            c for c in mock_chmod.call_args_list
+            if str(test_file) in str(c)
+        ]
+        assert len(file_chmod_calls) >= 1
+
+    def test_file_stat_oserror_skipped(self, tmp_path: Path) -> None:
+        """OSError when stat()-ing a file in .ops dir is caught gracefully."""
+        import stat
+
+        root = _make_full_agent_dir(tmp_path)
+        ops_dir = root / "tracker-workspace" / ".ops"
+        test_file = ops_dir / "test-item.ops"
+        test_file.write_text("test data")
+
+        current_gid = os.stat(ops_dir).st_gid
+        fake_gid = current_gid + 1
+        current_uid = os.getuid()
+
+        dir_stat = MagicMock()
+        dir_stat.st_gid = fake_gid
+        dir_stat.st_mode = (
+            stat.S_IFDIR | stat.S_IRWXU | stat.S_IRWXG | stat.S_ISGID
+        )
+        dir_stat.st_uid = current_uid
+
+        original_stat = Path.stat
+        dir_paths = {str(d) for d in [
+            root / "tracker" / ".ops",
+            root / "tracker-workspace",
+            root / "tracker-workspace" / ".ops",
+            root / "tracker-workspace" / "stealth",
+        ]}
+
+        file_path_str = str(test_file)
+
+        def selective_stat(self, *args, **kwargs):
+            if str(self) in dir_paths:
+                return dir_stat
+            if str(self) == file_path_str:
+                raise OSError("permission denied")
+            return original_stat(self, *args, **kwargs)
+
+        fake_grp = MagicMock()
+        fake_grp.gr_name = "project-dev"
+        fake_grp.gr_mem = [os.environ.get("USER", "testuser")]
+
+        with (
+            patch.object(Path, "stat", selective_stat),
+            patch("hypergumbo_tracker.setup.grp.getgrgid", return_value=fake_grp),
+            patch(
+                "hypergumbo_tracker.setup.pwd.getpwuid",
+                return_value=MagicMock(
+                    pw_name=os.environ.get("USER", "testuser"),
+                    pw_gid=current_gid,
+                ),
+            ),
+        ):
+            result = _check_group_permissions(root)
+        # File stat failed silently, dirs are fine
+        assert result.status == "ok"
+
+    def test_file_chmod_oserror_advisory(self, tmp_path: Path) -> None:
+        """OSError when chmod-ing a file produces advisory message."""
+        import stat
+
+        root = _make_full_agent_dir(tmp_path)
+        ops_dir = root / "tracker-workspace" / ".ops"
+        test_file = ops_dir / "test-item.ops"
+        test_file.write_text("test data")
+        test_file.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0600
+
+        current_gid = os.stat(ops_dir).st_gid
+        fake_gid = current_gid + 1
+        current_uid = os.getuid()
+
+        dir_stat = MagicMock()
+        dir_stat.st_gid = fake_gid
+        dir_stat.st_mode = (
+            stat.S_IFDIR | stat.S_IRWXU | stat.S_IRWXG | stat.S_ISGID
+        )
+        dir_stat.st_uid = current_uid
+
+        original_stat = Path.stat
+        dir_paths = {str(d) for d in [
+            root / "tracker" / ".ops",
+            root / "tracker-workspace",
+            root / "tracker-workspace" / ".ops",
+            root / "tracker-workspace" / "stealth",
+        ]}
+
+        def selective_stat(self, *args, **kwargs):
+            if str(self) in dir_paths:
+                return dir_stat
+            return original_stat(self, *args, **kwargs)
+
+        fake_grp = MagicMock()
+        fake_grp.gr_name = "project-dev"
+        fake_grp.gr_mem = [os.environ.get("USER", "testuser")]
+
+        with (
+            patch.object(Path, "stat", selective_stat),
+            patch("hypergumbo_tracker.setup.grp.getgrgid", return_value=fake_grp),
+            patch(
+                "hypergumbo_tracker.setup.pwd.getpwuid",
+                return_value=MagicMock(
+                    pw_name=os.environ.get("USER", "testuser"),
+                    pw_gid=current_gid,
+                ),
+            ),
+            patch(
+                "hypergumbo_tracker.setup.os.chmod",
+                side_effect=OSError("permission denied"),
+            ),
+        ):
+            result = _check_group_permissions(root)
+        # File chmod failed → error with sudo advisory
+        assert result.status == "error"
+        assert "group-read/write" in str(result.details)
+
 
 # ---------------------------------------------------------------------------
 # Check #12: .ops/ writable
@@ -2421,6 +2599,95 @@ class TestCheckPrecommitHook:
 
 
 # ---------------------------------------------------------------------------
+# Check #19b: Hooks path
+# ---------------------------------------------------------------------------
+
+
+class TestCheckHooksPath:
+    """Tests for _check_hooks_path (check #19b)."""
+
+    def test_no_repo(self) -> None:
+        result = _check_hooks_path(None)
+        assert result.status == "ok"
+        assert "skipped" in result.message
+
+    def test_no_githooks_dir(self, tmp_path: Path) -> None:
+        result = _check_hooks_path(tmp_path)
+        assert result.status == "ok"
+        assert "N/A" in result.message
+
+    def test_already_configured(self, tmp_path: Path) -> None:
+        (tmp_path / ".githooks").mkdir()
+        with patch(
+            "hypergumbo_tracker.setup.subprocess.run",
+            return_value=MagicMock(stdout=".githooks\n", returncode=0),
+        ):
+            result = _check_hooks_path(tmp_path)
+        assert result.status == "ok"
+        assert ".githooks" in result.message
+
+    def test_auto_fixed(self, tmp_path: Path) -> None:
+        (tmp_path / ".githooks").mkdir()
+        # First call: get current (empty), second call: set it
+        call_count = {"n": 0}
+
+        def mock_run(*args, **kwargs):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return MagicMock(stdout="\n", returncode=1)  # Not set
+            return MagicMock(returncode=0)  # Set succeeded
+
+        with patch("hypergumbo_tracker.setup.subprocess.run", side_effect=mock_run):
+            result = _check_hooks_path(tmp_path)
+        assert result.status == "fixed"
+
+    def test_auto_fix_fails(self, tmp_path: Path) -> None:
+        (tmp_path / ".githooks").mkdir()
+
+        def mock_run(*args, **kwargs):
+            return MagicMock(stdout="\n", returncode=1)
+
+        with patch("hypergumbo_tracker.setup.subprocess.run", side_effect=mock_run):
+            result = _check_hooks_path(tmp_path)
+        assert result.status == "warn"
+        assert "git config" in str(result.details)
+
+    def test_subprocess_oserror(self, tmp_path: Path) -> None:
+        (tmp_path / ".githooks").mkdir()
+        with patch(
+            "hypergumbo_tracker.setup.subprocess.run",
+            side_effect=OSError("git not found"),
+        ):
+            result = _check_hooks_path(tmp_path)
+        assert result.status == "warn"
+
+    def test_subprocess_timeout(self, tmp_path: Path) -> None:
+        (tmp_path / ".githooks").mkdir()
+        with patch(
+            "hypergumbo_tracker.setup.subprocess.run",
+            side_effect=subprocess.TimeoutExpired("git", 5),
+        ):
+            result = _check_hooks_path(tmp_path)
+        assert result.status == "warn"
+
+    def test_auto_fix_oserror(self, tmp_path: Path) -> None:
+        """OSError during the fix subprocess call is caught gracefully."""
+        (tmp_path / ".githooks").mkdir()
+        call_count = {"n": 0}
+
+        def mock_run(*args, **kwargs):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return MagicMock(stdout="\n", returncode=1)  # Not set
+            raise OSError("permission denied")  # Fix fails
+
+        with patch("hypergumbo_tracker.setup.subprocess.run", side_effect=mock_run):
+            result = _check_hooks_path(tmp_path)
+        assert result.status == "warn"
+        assert "git config" in str(result.details)
+
+
+# ---------------------------------------------------------------------------
 # Check #19: Autonomous mode consistency
 # ---------------------------------------------------------------------------
 
@@ -2571,6 +2838,18 @@ class TestCheckReflectionState:
         assert result.status == "warn"
         assert "missing" in result.message.lower() or "key" in result.message.lower()
 
+    def test_permission_denied(self, tmp_path: Path) -> None:
+        """OSError when reading state file should degrade gracefully."""
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir()
+        state_file = agent_dir / "last_stop_check.json"
+        state_file.write_text('{"branch": "dev"}')
+        # Mock read_text to raise PermissionError (chmod 0o000 doesn't work as root in CI)
+        with patch.object(type(state_file), "read_text", side_effect=PermissionError("Permission denied")):
+            result = _check_reflection_state(tmp_path)
+        assert result.status == "warn"
+        assert "permission" in result.message.lower()
+
     def test_unparseable_timestamp(self, tmp_path: Path) -> None:
         agent_dir = tmp_path / ".agent"
         agent_dir.mkdir()
@@ -2603,8 +2882,8 @@ class TestRunSetup:
             "hypergumbo_tracker.setup.resolve_actor", return_value=("human", "alice")
         ):
             results = run_setup(root)
-        # Should have one result per check (23 total, including sync prerequisites)
-        assert len(results) == 23
+        # Should have one result per check (24 total, including sync prerequisites + hooks_path)
+        assert len(results) == 24
         # Directory structure should be fixed
         dir_result = next(r for r in results if r.name == "directory_structure")
         assert dir_result.status == "fixed"

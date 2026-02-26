@@ -1001,6 +1001,33 @@ def _check_group_permissions(
             if missing_setgid:
                 needs_sudo.append(f"{d}: missing setgid bit")
 
+    # Also fix file permissions in shared-group directories (not just dirs).
+    # Files restored by git checkout/merge lose group-write bits because git
+    # only stores 0644/0755. Fix files owned by the current user that lack
+    # g+rw in the same directories we already checked.
+    if shared_group_detected:
+        for d in existing:
+            if not d.is_dir():
+                continue
+            for f in d.iterdir():
+                try:
+                    if not f.is_file():
+                        continue
+                    fst = f.stat()
+                except OSError:
+                    continue
+                if fst.st_uid != current_uid:
+                    continue
+                fmode = fst.st_mode
+                missing_grw = not (fmode & stat.S_IRGRP and fmode & stat.S_IWGRP)
+                if missing_grw:
+                    new_fmode = fmode | stat.S_IRGRP | stat.S_IWGRP
+                    try:
+                        os.chmod(f, new_fmode)
+                        auto_fixed.append(str(f))
+                    except OSError:
+                        needs_sudo.append(f"{f}: missing group-read/write permission")
+
     if not shared_group_detected:
         return CheckResult(
             name="group_permissions",
@@ -1507,6 +1534,79 @@ def _check_precommit_hook(repo_root: Path | None) -> CheckResult:
     )
 
 
+def _check_hooks_path(repo_root: Path | None) -> CheckResult:
+    """Check #19b: Verify git core.hooksPath points to .githooks.
+
+    When a .githooks/ directory exists in the repo root, git needs
+    ``core.hooksPath=.githooks`` to use project-local hooks (including
+    the post-checkout/post-merge permission repair hooks for two-user
+    setups). Auto-fixes if writable.
+    """
+    if repo_root is None:
+        return CheckResult(
+            name="hooks_path",
+            status="ok",
+            message="Hooks path check skipped (no git repo)",
+        )
+
+    githooks_dir = repo_root / ".githooks"
+    if not githooks_dir.is_dir():
+        return CheckResult(
+            name="hooks_path",
+            status="ok",
+            message="No .githooks/ directory (hooks path check N/A)",
+        )
+
+    # Check current core.hooksPath setting
+    try:
+        result = subprocess.run(  # nosec B603, B607
+            ["git", "config", "--get", "core.hooksPath"],  # noqa: S607
+            capture_output=True, text=True, cwd=str(repo_root),
+            timeout=5,
+        )
+        current = result.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        return CheckResult(
+            name="hooks_path",
+            status="warn",
+            message="Could not read git config core.hooksPath",
+        )
+
+    if current == ".githooks":
+        return CheckResult(
+            name="hooks_path",
+            status="ok",
+            message="core.hooksPath is set to .githooks",
+        )
+
+    # Try to auto-fix
+    try:
+        fix = subprocess.run(  # nosec B603, B607
+            ["git", "config", "core.hooksPath", ".githooks"],  # noqa: S607
+            capture_output=True, text=True, cwd=str(repo_root),
+            timeout=5,
+        )
+        if fix.returncode == 0:
+            return CheckResult(
+                name="hooks_path",
+                status="fixed",
+                message="Set core.hooksPath=.githooks",
+            )
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+    # Auto-fix failed — advise manual fix
+    return CheckResult(
+        name="hooks_path",
+        status="warn",
+        message="core.hooksPath is not set to .githooks",
+        details=[
+            "Fix with: git config core.hooksPath .githooks",
+            "Or globally: git config --global core.hooksPath .githooks",
+        ],
+    )
+
+
 def _check_autonomous_mode(repo_root: Path | None) -> CheckResult:
     """Check #19: Cross-check autonomous mode config and loop sentinel.
 
@@ -1610,6 +1710,16 @@ def _check_reflection_state(repo_root: Path | None) -> CheckResult:
             status="warn",
             message="last_stop_check.json: invalid JSON",
             details=["The file exists but cannot be parsed."],
+        )
+    except OSError:
+        return CheckResult(
+            name="reflection_state",
+            status="warn",
+            message="last_stop_check.json: permission denied",
+            details=[
+                "The file exists but cannot be read (likely owned by another user).",
+                "Fix: ensure both users share a group with read access to .agent/",
+            ],
         )
 
     if not isinstance(raw, dict):
@@ -1797,6 +1907,7 @@ def run_setup(root: Path, repo_root: Path | None = None) -> list[CheckResult]:
     results.append(_check_agents_md(repo_root))            # 17
     results.append(_check_stop_hook(repo_root))            # 18
     results.append(_check_precommit_hook(repo_root))       # 19
+    results.append(_check_hooks_path(repo_root))           # 19b
     results.append(_check_autonomous_mode(repo_root))      # 20
     results.append(_check_reflection_state(repo_root))     # 21
     results.append(_check_sync_prerequisites(root, repo_root))  # 22
