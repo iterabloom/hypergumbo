@@ -860,8 +860,19 @@ def cmd_cohort(args):
     return 0
 
 
+def _load_cohort_metadata(workdir: str, cohort_num: int) -> list | None:
+    """Load repo list from cohort metadata file. Returns None if not found."""
+    meta_path = os.path.join(workdir, "cohorts", f"cohort-{cohort_num:03d}", "metadata.json")
+    try:
+        with open(meta_path) as f:
+            data = json.load(f)
+        return [r["name"] for r in data.get("repos", [])]
+    except (OSError, json.JSONDecodeError, KeyError):
+        return None
+
+
 def cmd_run(args):
-    """Run feature battery on current cohort."""
+    """Run feature battery on current cohort, or all cohorts with --all."""
     workdir = resolve_workdir(args.workdir)
     print(f"Workdir: {workdir}")
     state = load_state(workdir)
@@ -875,9 +886,67 @@ def cmd_run(args):
         return 1
 
     pool_path = os.environ.get("BAKEOFF_FEATURES_POOL", state.pool_path)
+    current_hash = compute_hypergumbo_code_hash()
+
+    # --all / --some N: run multiple cohorts in batch.
+    #   --all:    every cohort with metadata but no output
+    #   --some N: up to N unanalyzed cohorts (same filter, capped)
+    batch_count = None
+    if getattr(args, "all", False):
+        batch_count = float("inf")
+    elif getattr(args, "some", None):
+        batch_count = args.some
+
+    if batch_count is not None:
+        cohorts_base = os.path.join(workdir, "cohorts")
+        if not os.path.isdir(cohorts_base):
+            print("Error: No cohorts directory found.", file=sys.stderr)
+            return 1
+        cohort_nums = sorted(
+            int(d.split("-")[1])
+            for d in os.listdir(cohorts_base)
+            if d.startswith("cohort-") and os.path.isdir(os.path.join(cohorts_base, d))
+        )
+        if not cohort_nums:
+            print("Error: No cohorts found.", file=sys.stderr)
+            return 1
+        label = "all" if batch_count == float("inf") else f"up to {batch_count}"
+        print(f"Running {label} of {len(cohort_nums)} cohort(s)")
+        overall_rc = 0
+        ran_count = 0
+        for cohort_num in cohort_nums:
+            if ran_count >= batch_count:
+                break
+            repos = _load_cohort_metadata(workdir, cohort_num)
+            if not repos:
+                print(f"\n[cohort-{cohort_num:03d}] No metadata — skipping")
+                continue
+            # Check if already analysed at current code hash
+            out_dir = os.path.join(workdir, "out", f"cohort-{cohort_num:03d}")
+            if os.path.isdir(out_dir) and os.listdir(out_dir):
+                print(f"\n[cohort-{cohort_num:03d}] Already has output — skipping (delete to re-run)")
+                continue
+            # Temporarily point state at this cohort
+            state.cohort_number = cohort_num
+            state.current_cohort = repos
+            state.iteration = 0
+            state.iteration += 1
+            state.hypergumbo_code_hash = current_hash
+            iter_dir = os.path.join(out_dir, f"iter-{state.iteration:03d}")
+            os.makedirs(iter_dir, exist_ok=True)
+            save_state(state)
+            print(f"\n{'='*60}")
+            print(f"Cohort #{cohort_num} ({len(repos)} repos), iteration #{state.iteration}")
+            print(f"Output: {iter_dir}")
+            print(f"{'='*60}")
+            rc = _run_cohort_repos(repos, pool_path, iter_dir)
+            ran_count += 1
+            if rc != 0:
+                overall_rc = rc
+        print(f"\nBatch complete: ran {ran_count} cohort(s)")
+        return overall_rc
 
     # No-change check: skip re-analysis when hypergumbo source unchanged
-    current_hash = compute_hypergumbo_code_hash()
     if current_hash and current_hash == state.hypergumbo_code_hash and state.iteration > 0:
         prev_dir = os.path.join(
             workdir, "out",
@@ -903,7 +972,20 @@ def cmd_run(args):
         print(f"Code hash: {current_hash}")
     print()
 
-    for repo_name in state.current_cohort:
+    return _run_cohort_repos(state.current_cohort, pool_path, out_dir)
+
+
+def _run_cohort_repos(repos: list, pool_path: str, out_dir: str) -> int:
+    """Run the full feature battery on a list of repos.
+
+    This is the inner loop shared by single-cohort ``run`` and batch ``run --all``.
+    For each repo it runs: hypergumbo analysis, entrypoints, forward slices,
+    reverse slices (domain-scored seeds), tier-bounded slices, symbols, and routes.
+    All outputs go under *out_dir/<repo_name>/*.
+
+    Returns 0 on success (individual repo failures are logged but not fatal).
+    """
+    for repo_name in repos:
         repo_path = os.path.join(pool_path, repo_name)
         repo_out = os.path.join(out_dir, repo_name)
         os.makedirs(repo_out, exist_ok=True)
@@ -1355,10 +1437,13 @@ def cmd_diagnose(args):
         print("Error: No cohort output directories found.", file=sys.stderr)
         return 1
 
-    # --all: diagnose every cohort; default: latest cohort only
+    # --all / --some N: diagnose multiple cohorts; default: latest only
     if args.all:
         cohort_dirs = all_cohort_dirs
         print(f"Diagnosing all {len(cohort_dirs)} cohort(s)")
+    elif getattr(args, "some", None):
+        cohort_dirs = all_cohort_dirs[-args.some:]
+        print(f"Diagnosing latest {len(cohort_dirs)} cohort(s)")
     else:
         cohort_dirs = [all_cohort_dirs[-1]]
         if len(all_cohort_dirs) > 1:
@@ -1529,11 +1614,17 @@ def main():
     # run
     p_run = subparsers.add_parser("run", help="Run feature battery on cohort")
     p_run.add_argument("--workdir", help="Override workdir")
+    p_run.add_argument("--all", action="store_true",
+                        help="Run all cohorts that have metadata but no output yet (batch mode)")
+    p_run.add_argument("--some", type=int, metavar="N",
+                        help="Run up to N unanalyzed cohorts (like --all but capped)")
 
     # diagnose
     p_diag = subparsers.add_parser("diagnose", help="Generate quality metrics report")
     p_diag.add_argument("--workdir", help="Override workdir")
     p_diag.add_argument("--all", action="store_true", help="Diagnose all cohorts (default: latest only)")
+    p_diag.add_argument("--some", type=int, metavar="N",
+                        help="Diagnose up to N cohorts (latest N, like --all but capped)")
 
     # status
     p_status = subparsers.add_parser("status", help="Show session status")

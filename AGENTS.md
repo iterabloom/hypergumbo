@@ -550,9 +550,12 @@ DEEP mode scripts:
 # Or use explicit repos (for curriculum-based workflows)
 ./scripts/bakeoff-features cohort --repos repo-a,repo-b,repo-c
 
-./scripts/bakeoff-features run
-./scripts/bakeoff-features diagnose        # Latest cohort only
-./scripts/bakeoff-features diagnose --all  # All cohorts in session
+./scripts/bakeoff-features run               # Current cohort only
+./scripts/bakeoff-features run --all         # All unanalyzed cohorts (batch)
+./scripts/bakeoff-features run --some 3      # Up to 3 unanalyzed cohorts
+./scripts/bakeoff-features diagnose          # Latest cohort only
+./scripts/bakeoff-features diagnose --all    # All cohorts in session
+./scripts/bakeoff-features diagnose --some 3 # Latest 3 cohorts
 
 # LLM-driven qualitative assessment
 ./scripts/bakeoff-features-reflect
