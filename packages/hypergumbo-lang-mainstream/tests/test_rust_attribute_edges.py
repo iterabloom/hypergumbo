@@ -192,6 +192,196 @@ trait OldApi {
         assert len(decorated_by_edges) >= 1, "Expected decorated_by edge for trait attribute"
 
 
+class TestRustBuiltinAttributeFalsePositives:
+    """Tests that built-in Rust attributes don't create false edges to user functions.
+
+    When a Rust file contains both ``#[test]`` on a function and a user-defined
+    function named ``test``, the ``#[test]`` attribute should NOT resolve to
+    that function.  Built-in attributes (``test``, ``cfg``, ``allow``,
+    ``inline``, etc.) are compiler-provided and have no corresponding symbol
+    in user code.
+
+    Regression tests for WI-votaj.
+    """
+
+    def test_test_attr_does_not_resolve_to_test_function(self, tmp_path: Path) -> None:
+        """#[test] must not create a resolved edge to a function named 'test'."""
+        code = '''
+fn test() -> bool {
+    true
+}
+
+#[test]
+fn it_works() {
+    assert!(test());
+}
+'''
+        rs_file = tmp_path / "lib.rs"
+        rs_file.write_text(code)
+
+        result = analyze_rust(tmp_path)
+
+        decorated_by_edges = [
+            e for e in result.edges
+            if e.edge_type == "decorated_by" and "it_works" in e.src
+        ]
+        assert len(decorated_by_edges) == 1, "Expected exactly one decorated_by edge"
+        edge = decorated_by_edges[0]
+        # Must be unresolved — NOT pointing at the user function named "test"
+        assert "unresolved" in edge.dst, (
+            f"#[test] should be unresolved but resolved to {edge.dst}"
+        )
+
+    def test_cfg_attr_does_not_resolve_to_cfg_function(self, tmp_path: Path) -> None:
+        """#[cfg(test)] must not resolve to a function named 'cfg'."""
+        code = '''
+fn cfg() -> String {
+    "config".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    fn helper() {}
+}
+'''
+        rs_file = tmp_path / "lib.rs"
+        rs_file.write_text(code)
+
+        result = analyze_rust(tmp_path)
+
+        decorated_by_edges = [
+            e for e in result.edges
+            if e.edge_type == "decorated_by" and "tests" in e.src
+        ]
+        for edge in decorated_by_edges:
+            if "cfg" in edge.dst:
+                assert "unresolved" in edge.dst, (
+                    f"#[cfg(...)] should be unresolved but resolved to {edge.dst}"
+                )
+
+    def test_allow_attr_does_not_resolve_to_allow_function(self, tmp_path: Path) -> None:
+        """#[allow(unused)] must not resolve to a function named 'allow'."""
+        code = '''
+fn allow() {}
+
+#[allow(unused)]
+fn unused_fn() {}
+'''
+        rs_file = tmp_path / "lib.rs"
+        rs_file.write_text(code)
+
+        result = analyze_rust(tmp_path)
+
+        decorated_by_edges = [
+            e for e in result.edges
+            if e.edge_type == "decorated_by" and "unused_fn" in e.src
+        ]
+        assert len(decorated_by_edges) == 1
+        edge = decorated_by_edges[0]
+        assert "unresolved" in edge.dst, (
+            f"#[allow(...)] should be unresolved but resolved to {edge.dst}"
+        )
+
+    def test_inline_attr_does_not_resolve_to_inline_function(self, tmp_path: Path) -> None:
+        """#[inline] must not resolve to a function named 'inline'."""
+        code = '''
+fn inline() {}
+
+#[inline]
+fn fast_path() -> i32 {
+    42
+}
+'''
+        rs_file = tmp_path / "lib.rs"
+        rs_file.write_text(code)
+
+        result = analyze_rust(tmp_path)
+
+        decorated_by_edges = [
+            e for e in result.edges
+            if e.edge_type == "decorated_by" and "fast_path" in e.src
+        ]
+        assert len(decorated_by_edges) == 1
+        edge = decorated_by_edges[0]
+        assert "unresolved" in edge.dst, (
+            f"#[inline] should be unresolved but resolved to {edge.dst}"
+        )
+
+    def test_custom_proc_macro_still_resolves(self, tmp_path: Path) -> None:
+        """A non-built-in attribute like #[custom_attr] should still resolve."""
+        code = '''
+fn custom_attr() {}
+
+#[custom_attr]
+fn handler() {}
+'''
+        rs_file = tmp_path / "lib.rs"
+        rs_file.write_text(code)
+
+        result = analyze_rust(tmp_path)
+
+        decorated_by_edges = [
+            e for e in result.edges
+            if e.edge_type == "decorated_by" and "handler" in e.src
+        ]
+        assert len(decorated_by_edges) == 1
+        edge = decorated_by_edges[0]
+        # custom_attr is NOT a built-in, so it should resolve normally
+        assert "custom_attr" in edge.dst
+        assert "unresolved" not in edge.dst
+
+    def test_must_use_attr_does_not_resolve(self, tmp_path: Path) -> None:
+        """#[must_use] must not resolve to a function named 'must_use'."""
+        code = '''
+fn must_use() {}
+
+#[must_use]
+fn compute() -> i32 {
+    42
+}
+'''
+        rs_file = tmp_path / "lib.rs"
+        rs_file.write_text(code)
+
+        result = analyze_rust(tmp_path)
+
+        decorated_by_edges = [
+            e for e in result.edges
+            if e.edge_type == "decorated_by" and "compute" in e.src
+        ]
+        assert len(decorated_by_edges) == 1
+        edge = decorated_by_edges[0]
+        assert "unresolved" in edge.dst, (
+            f"#[must_use] should be unresolved but resolved to {edge.dst}"
+        )
+
+    def test_derive_attr_still_unresolved(self, tmp_path: Path) -> None:
+        """#[derive(Debug)] should remain unresolved (it's a built-in)."""
+        code = '''
+fn derive() {}
+
+#[derive(Debug)]
+struct Foo {
+    x: i32,
+}
+'''
+        rs_file = tmp_path / "lib.rs"
+        rs_file.write_text(code)
+
+        result = analyze_rust(tmp_path)
+
+        decorated_by_edges = [
+            e for e in result.edges
+            if e.edge_type == "decorated_by" and "Foo" in e.src
+        ]
+        assert len(decorated_by_edges) >= 1
+        for edge in decorated_by_edges:
+            if "derive" in edge.dst:
+                assert "unresolved" in edge.dst, (
+                    f"#[derive] should be unresolved but resolved to {edge.dst}"
+                )
+
+
 class TestRustAttributeEdgesDefensiveBranches:
     """Tests for defensive branches in Rust attribute edge extraction."""
 

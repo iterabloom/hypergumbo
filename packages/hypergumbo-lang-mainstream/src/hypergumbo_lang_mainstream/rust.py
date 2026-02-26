@@ -899,6 +899,43 @@ def _extract_edges_from_file(
     return edges
 
 
+# Compiler-provided attributes that must never resolve to user-defined symbols.
+# Covers: testing, conditional compilation, diagnostics, code-generation hints,
+# derive macros, linking, FFI, documentation, async runtimes (tokio), and
+# serialization (serde).  Proc-macro *crate* attributes (e.g. ``serde``,
+# ``tokio``) are included because the crate re-exports only derive/attribute
+# macros — a user function named ``serde`` is never the intended target.
+_BUILTIN_RUST_ATTRIBUTES: frozenset[str] = frozenset({
+    # Testing
+    "test", "bench", "ignore", "should_panic",
+    # Conditional compilation
+    "cfg", "cfg_attr",
+    # Derive
+    "derive",
+    # Diagnostics / lints
+    "allow", "warn", "deny", "forbid", "deprecated", "must_use",
+    # Code generation
+    "inline", "cold", "no_mangle", "track_caller", "target_feature",
+    "instruction_set",
+    # Linking / FFI
+    "link", "link_name", "link_section", "no_link", "export_name",
+    "link_ordinal", "no_builtins", "repr", "used",
+    # Documentation
+    "doc",
+    # Module / crate level
+    "path", "no_std", "no_implicit_prelude", "macro_use", "macro_export",
+    "crate_type", "no_main", "recursion_limit", "type_length_limit",
+    # Proc-macro
+    "proc_macro", "proc_macro_derive", "proc_macro_attribute",
+    # Type system
+    "non_exhaustive",
+    # Runtime
+    "panic_handler", "global_allocator", "windows_subsystem",
+    # Common ecosystem proc-macro crate names (not user functions)
+    "serde", "tokio", "async_trait",
+})
+
+
 def _extract_attribute_edges(
     symbols: list[Symbol],
     global_symbols: dict[str, Symbol],
@@ -907,8 +944,14 @@ def _extract_attribute_edges(
     """Extract decorated_by edges from Rust attribute metadata.
 
     Creates edges from symbols to their attributes. For example,
-    #[test] on a function creates a decorated_by edge from the function
-    to the test attribute.
+    ``#[my_macro]`` on a function creates a ``decorated_by`` edge from the
+    function to the macro symbol (if resolvable).
+
+    Built-in compiler attributes (``test``, ``cfg``, ``derive``, ``inline``,
+    ``allow``, ``must_use``, …) are **never** resolved against
+    ``global_symbols``.  Without this guard, a user-defined function named
+    ``test`` would be incorrectly linked to every ``#[test]`` annotation in the
+    crate — a common false-positive in test-heavy codebases (WI-votaj).
 
     Args:
         symbols: All symbols extracted from the codebase.
@@ -936,12 +979,18 @@ def _extract_attribute_edges(
             if not attr_name or not isinstance(attr_name, str):  # pragma: no cover
                 continue
 
-            # Try to resolve the attribute to a symbol
-            # For qualified names like "actix_web::get", try both full and short name
-            attr_sym = global_symbols.get(attr_name)
-            if not attr_sym and "::" in attr_name:
-                short_name = attr_name.rsplit("::", 1)[-1]
-                attr_sym = global_symbols.get(short_name)
+            # Built-in attributes must never resolve to user symbols.
+            # Skip resolution entirely for these — they have no user-space
+            # definition and matching by name creates false edges.
+            if attr_name in _BUILTIN_RUST_ATTRIBUTES:
+                attr_sym = None
+            else:
+                # Try to resolve the attribute to a symbol
+                # For qualified names like "actix_web::get", try both full and short name
+                attr_sym = global_symbols.get(attr_name)
+                if not attr_sym and "::" in attr_name:
+                    short_name = attr_name.rsplit("::", 1)[-1]
+                    attr_sym = global_symbols.get(short_name)
 
             line = sym.span.start_line if sym.span else 0
 
