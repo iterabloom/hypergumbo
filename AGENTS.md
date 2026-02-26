@@ -45,6 +45,12 @@ The project uses a YAML-backed structured tracker (ADR-0013) in `.agent/tracker/
   ```bash
   git log --oneline -- ':!.agent/tracker/.ops' ':!.agent/tracker-workspace/.ops'
   ```
+- **Resolution Rationale:** When changing a tracker item to a resolved state (`done`, `holding`, `wontfix`), always record WHY by following up with a discussion entry:
+  ```bash
+  scripts/tracker update WI-foo --status done
+  scripts/tracker discuss WI-foo "Fixed in PR #1234. Root cause was X, fix does Y."
+  ```
+  The `--note` flag does not exist on `update` — use `discuss` instead. Omitting the rationale loses context about why work was completed or deferred.
 - **Unread Messages:** Use `scripts/tracker check-messages` to see items with unread human discussion messages. The stop hook guidance also surfaces these. Heuristic: a thread is "unread" if its last entry has `by: human` (single-agent assumption — once the agent replies, the thread is considered "read").
 
 ## No Weasel Words
