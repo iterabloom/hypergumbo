@@ -1,0 +1,19 @@
+- op: create  # f121
+  at: '2026-02-26T23:47:16Z'  # f121
+  by: agent  # f121
+  actor: jgstern_agent  # f121
+  clock: 1  # f121
+  nonce: f121  # f121
+  data:  # f121
+    kind: work_item  # f121
+    title: "Remove short-name registration from register_symbol in 10 languages"  # f121
+    status: todo_hard  # f121
+    priority: 2  # f121
+    parent:  # f121
+    tags: []  # f121
+    before: []  # f121
+    duplicate_of: []  # f121
+    not_duplicate_of: []  # f121
+    pr_ref:  # f121
+    description: "PR #1528 fixed Rust register_symbol to stop registering short names (suffix index handles lookups). Same collision-prone pattern exists in C++ Scala Swift Ruby Groovy C# Elixir (unconditional overwrite) and Perl Hack Apex Luau (guarded but order-dependent). Fix: remove short-name registration from all, rely on suffix index."  # f121
+    fields: {}  # f121
