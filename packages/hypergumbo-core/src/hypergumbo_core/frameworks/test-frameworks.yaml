@@ -255,10 +255,14 @@ patterns:
     language: "^dart$"
 
   # ====== Clojure ======
-  # clojure.test: deftest macro creates test functions
+  # clojure.test: deftest macro creates test functions.
+  # Guard: require test directory because Clojure uses test- as a naming
+  # convention for "verify/probe" (e.g., test-ldap-connection is production
+  # code that validates LDAP connectivity). WI-vutum.
   - concept: test_function
     symbol_name: "^test-"
     symbol_kind: "^function$"
+    symbol_path: "(^|/)test(s)?/"
     language: "^clojure$"
 
   # clojure.test: deftest (captured as macro call)

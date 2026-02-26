@@ -16677,3 +16677,66 @@ class TestGrapePatterns:
         pattern_def = load_framework_patterns("grape")
         assert pattern_def is not None
         assert "http" in pattern_def.linkers
+
+
+class TestClojureTestPrefixGuard:
+    """Tests for Clojure test-* prefix path guard (WI-vutum).
+
+    In Clojure, ``test-`` is a naming convention for "verify/probe this
+    thing" (e.g., ``test-ldap-connection``, ``test-database-connection``).
+    These are production functions, not tests.  The actual test framework
+    (``clojure.test``) uses the ``deftest`` macro.  The ``test-*`` pattern
+    should only match in test directories.
+    """
+
+    def test_clojure_test_prefix_in_src_not_classified(self) -> None:
+        """test-* function in src/ should NOT be classified as test_function.
+
+        ``test-ldap-connection`` in ``src/metabase/sso/ldap.clj`` is a
+        production function that validates LDAP connectivity.
+        """
+        clear_pattern_cache()
+        symbols = [
+            Symbol(
+                id="clojure:src/metabase/sso/ldap.clj:82-100:test-ldap-connection:function",
+                name="test-ldap-connection",
+                kind="function",
+                language="clojure",
+                path="src/metabase/sso/ldap.clj",
+                span=Span(82, 100, 0, 50),
+                meta={},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, set())
+        sym = enriched[0]
+        concepts = sym.meta.get("concepts", [])
+        test_concepts = [c for c in concepts if c["concept"] == "test_function"]
+        assert len(test_concepts) == 0, (
+            f"test-ldap-connection in src/ should NOT be classified as "
+            f"test_function — it's a production connectivity check. "
+            f"Got concepts: {concepts}"
+        )
+
+    def test_clojure_test_prefix_in_test_dir_classified(self) -> None:
+        """test-* function in test/ directory IS classified as test_function."""
+        clear_pattern_cache()
+        symbols = [
+            Symbol(
+                id="clojure:test/metabase/sso/ldap_test.clj:10-20:test-ldap-settings:function",
+                name="test-ldap-settings",
+                kind="function",
+                language="clojure",
+                path="test/metabase/sso/ldap_test.clj",
+                span=Span(10, 20, 0, 50),
+                meta={},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, set())
+        sym = enriched[0]
+        concepts = sym.meta.get("concepts", [])
+        test_concepts = [c for c in concepts if c["concept"] == "test_function"]
+        assert len(test_concepts) >= 1, (
+            "test-* function in test/ dir should be classified as test_function"
+        )
