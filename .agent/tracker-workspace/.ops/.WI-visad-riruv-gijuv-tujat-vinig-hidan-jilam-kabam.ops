@@ -1,0 +1,19 @@
+- op: create  # cacb
+  at: '2026-02-26T21:14:56Z'  # cacb
+  by: agent  # cacb
+  actor: jgstern_agent  # cacb
+  clock: 1  # cacb
+  nonce: cacb  # cacb
+  data:  # cacb
+    kind: work_item  # cacb
+    title: "C/Java repos get bash script entrypoints instead of production code entry points"  # cacb
+    status: todo_hard  # cacb
+    priority: 2  # cacb
+    parent:  # cacb
+    tags: []  # cacb
+    before: []  # cacb
+    duplicate_of: []  # cacb
+    not_duplicate_of: []  # cacb
+    pr_ref:  # cacb
+    description: "In the Java/C bakeoff cohort (guacamole-client, guacamole-server-main, tmux), all entrypoints selected are bash scripts (generate-licenses.sh, entrypoint.sh, guacget, guacctl, regress/format-strings.sh). No C main() or Java servlet/controller entrypoints appear. This causes: (1) zero forward slices because bash scripts have no outgoing call edges, (2) reverse-slice seeds are bash utilities instead of production C/Java symbols, (3) the entire bakeoff assessment for these repos is uninformative. Root cause likely in entrypoint detection: bash scripts may rank higher than C main() or Java framework entrypoints."  # cacb
+    fields: {}  # cacb

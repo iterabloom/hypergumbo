@@ -1,0 +1,19 @@
+- op: create  # b053
+  at: '2026-02-26T21:17:20Z'  # b053
+  by: agent  # b053
+  actor: jgstern_agent  # b053
+  clock: 1  # b053
+  nonce: b053  # b053
+  data:  # b053
+    kind: work_item  # b053
+    title: "Bakeoff diagnose: orphan rate calculation denominator appears wrong"  # b053
+    status: todo_soft  # b053
+    priority: 3  # b053
+    parent:  # b053
+    tags: []  # b053
+    before: []  # b053
+    duplicate_of: []  # b053
+    not_duplicate_of: []  # b053
+    pr_ref:  # b053
+    description: "In the DEEP bakeoff diagnose output, orphan_rate is calculated with a wrong denominator. Example: livekit shows orphan_count=3 but orphan_rate=100.0% — this is 3/3 (number of reverse-slice seeds or similar), not 3/4567 (total nodes). The HIGH_ORPHAN_RATE threshold fires spuriously, inflating WARN verdicts and making diagnostics less trustworthy. Several repos show >50% orphan rates that are not meaningful: tmux (67%), guacamole-client (86%), workadventure (93%), livekit (100%), bun (51%). Fix: use total_nodes as denominator, or change to absolute orphan_count threshold."  # b053
+    fields: {}  # b053

@@ -1,0 +1,19 @@
+- op: create  # 9a19
+  at: '2026-02-26T21:17:20Z'  # 9a19
+  by: agent  # 9a19
+  actor: jgstern_agent  # 9a19
+  clock: 1  # 9a19
+  nonce: 9a19  # 9a19
+  data:  # 9a19
+    kind: work_item  # 9a19
+    title: "Bakeoff state.json: hypergumbo_code_hash is empty string"  # 9a19
+    status: todo_soft  # 9a19
+    priority: 3  # 9a19
+    parent:  # 9a19
+    tags: []  # 9a19
+    before: []  # 9a19
+    duplicate_of: []  # 9a19
+    not_duplicate_of: []  # 9a19
+    pr_ref:  # 9a19
+    description: "Both the main 23-repo session and the validation session have empty hypergumbo_code_hash in state.json. This prevents A/B comparisons from verifying which code version produced which results. The code_hash should capture the git SHA or a content hash of the hypergumbo source at analysis time. Fix: populate code_hash in bakeoff-features init or run."  # 9a19
+    fields: {}  # 9a19
