@@ -11,6 +11,7 @@ from hypergumbo_core.paths import (
     get_filename,
     is_under_directory,
     is_test_file,
+    is_test_node,
     is_utility_file,
 )
 
@@ -328,3 +329,74 @@ class TestIsUtilityFile:
         """Directory matching is case-insensitive."""
         assert is_utility_file("Examples/demo.py") is True
         assert is_utility_file("DOCS/guide.md") is True
+
+
+class TestIsTestNode:
+    """Tests for is_test_node: checks both file path and annotations."""
+
+    def test_test_file_path_detected(self) -> None:
+        """Nodes in test file paths are detected as test nodes."""
+        assert is_test_node("tests/test_main.py", None) is True
+        assert is_test_node("test_main.py", None) is True
+
+    def test_non_test_path_no_meta(self) -> None:
+        """Non-test path with no meta is not a test node."""
+        assert is_test_node("src/main.py", None) is False
+
+    def test_non_test_path_empty_meta(self) -> None:
+        """Non-test path with empty meta is not a test node."""
+        assert is_test_node("src/main.py", {}) is False
+
+    def test_rust_test_attribute(self) -> None:
+        """Rust #[test] attribute makes node a test node."""
+        meta = {"decorators": [{"name": "test", "args": [], "kwargs": {}}]}
+        assert is_test_node("src/lib.rs", meta) is True
+
+    def test_rust_cfg_test_attribute(self) -> None:
+        """Rust #[cfg(test)] attribute makes node a test node."""
+        meta = {"decorators": [{"name": "cfg", "args": ["test"], "kwargs": {}}]}
+        assert is_test_node("src/lib.rs", meta) is True
+
+    def test_rust_tokio_test_attribute(self) -> None:
+        """Rust #[tokio::test] attribute makes node a test node."""
+        meta = {"decorators": [{"name": "tokio::test", "args": [], "kwargs": {}}]}
+        assert is_test_node("src/lib.rs", meta) is True
+
+    def test_python_pytest_mark(self) -> None:
+        """Python @pytest.mark.* decorator is not test indicator by itself.
+
+        Python test functions are in test files, not marked by decorator alone.
+        The decorator doesn't indicate the node IS a test, just that it has
+        pytest configuration. is_test_node checks for pytest.fixture though.
+        """
+        meta = {"decorators": [{"name": "pytest.fixture", "args": [], "kwargs": {}}]}
+        # Fixtures are test infrastructure
+        assert is_test_node("src/conftest.py", meta) is False  # conftest is not test_*
+
+    def test_non_test_decorator_ignored(self) -> None:
+        """Decorators like #[derive(Debug)] don't make a node a test."""
+        meta = {"decorators": [{"name": "derive", "args": ["Debug"], "kwargs": {}}]}
+        assert is_test_node("src/lib.rs", meta) is False
+
+    def test_multiple_decorators_one_test(self) -> None:
+        """If any decorator is a test annotation, node is test."""
+        meta = {"decorators": [
+            {"name": "derive", "args": ["Debug"], "kwargs": {}},
+            {"name": "test", "args": [], "kwargs": {}},
+        ]}
+        assert is_test_node("src/lib.rs", meta) is True
+
+    def test_annotations_key_also_checked(self) -> None:
+        """The 'annotations' key is also checked (alternative to 'decorators')."""
+        meta = {"annotations": [{"name": "test", "args": [], "kwargs": {}}]}
+        assert is_test_node("src/lib.rs", meta) is True
+
+    def test_java_test_annotation(self) -> None:
+        """Java @Test annotation makes node a test node."""
+        meta = {"decorators": [{"name": "Test", "args": [], "kwargs": {}}]}
+        assert is_test_node("src/main/java/Foo.java", meta) is True
+
+    def test_junit_annotation(self) -> None:
+        """Java @org.junit.Test annotation makes node a test node."""
+        meta = {"decorators": [{"name": "org.junit.Test", "args": [], "kwargs": {}}]}
+        assert is_test_node("src/main/java/Foo.java", meta) is True

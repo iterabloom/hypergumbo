@@ -22,6 +22,7 @@ def make_symbol(
     start_line: int = 1,
     end_line: int = 5,
     language: str = "python",
+    meta: dict | None = None,
 ) -> Symbol:
     """Helper to create test symbols."""
     span = Span(start_line=start_line, end_line=end_line, start_col=0, end_col=10)
@@ -35,6 +36,7 @@ def make_symbol(
         span=span,
         origin=f"{language}-ast-v1",
         origin_run_id="uuid:test",
+        meta=meta,
     )
 
 
@@ -895,6 +897,52 @@ class TestSliceEdgeCases:
 
         # Entry node should be excluded, so no nodes in result
         assert len(result.node_ids) == 0
+
+    def test_entry_node_with_test_annotation_excluded(self) -> None:
+        """Entry node with #[test] annotation excluded when exclude_tests=True.
+
+        Rust test functions live in production files (src/lib.rs) but are
+        annotated with #[test]. The exclude_tests filter should catch them
+        via is_test_node even though the file path is not a test path.
+        """
+        test_meta = {"decorators": [{"name": "test", "args": [], "kwargs": {}}]}
+        sym = make_symbol(
+            "test_it_works", path="src/lib.rs", language="rust", meta=test_meta
+        )
+        nodes = [sym]
+        edges: List[Edge] = []
+
+        query = SliceQuery(entrypoint="test_it_works", max_hops=3, exclude_tests=True)
+        result = slice_graph(nodes, edges, query)
+
+        assert len(result.node_ids) == 0
+
+    def test_bfs_skips_test_annotated_neighbor(self) -> None:
+        """BFS excludes neighbor with #[test] annotation even in non-test file.
+
+        Forward slice from main() should NOT follow edge to test_add() when
+        test_add has #[test] and exclude_tests=True.
+        """
+        main = make_symbol("main", path="src/main.rs", language="rust")
+        test_meta = {"decorators": [{"name": "test", "args": [], "kwargs": {}}]}
+        test_add = make_symbol(
+            "test_add", path="src/lib.rs", language="rust",
+            start_line=10, end_line=15, meta=test_meta,
+        )
+        real_fn = make_symbol(
+            "add", path="src/lib.rs", language="rust",
+            start_line=1, end_line=5,
+        )
+        nodes = [main, test_add, real_fn]
+        edges = [make_edge(main, test_add), make_edge(main, real_fn)]
+
+        query = SliceQuery(entrypoint="main", max_hops=3, exclude_tests=True)
+        result = slice_graph(nodes, edges, query)
+
+        # main and add should be in the result, but test_add excluded
+        assert main.id in result.node_ids
+        assert real_fn.id in result.node_ids
+        assert test_add.id not in result.node_ids
 
     def test_entry_node_is_utility_file_excluded(self) -> None:
         """Entry node in utility file is excluded when exclude_utility=True."""

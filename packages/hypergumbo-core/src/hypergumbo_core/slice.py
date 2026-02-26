@@ -71,7 +71,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Set
 
 from .ir import Symbol, Edge
-from .paths import normalize_path, path_ends_with, is_test_file, is_utility_file
+from .paths import normalize_path, path_ends_with, is_test_node, is_utility_file
 from .ranking import compute_centrality, apply_tier_weights, apply_test_weights
 
 # Structural edges excluded from forward slice BFS traversal.
@@ -385,7 +385,7 @@ def slice_graph(
 
     # Initialize with entry nodes
     for entry in entry_nodes:
-        if query.exclude_tests and is_test_file(entry.path):
+        if query.exclude_tests and is_test_node(entry.path, entry.meta):
             continue
         if query.exclude_utility and is_utility_file(entry.path):
             continue
@@ -414,7 +414,7 @@ def slice_graph(
             member = node_by_id.get(edge.dst)
             if member is None:  # pragma: no cover - edge dst always in node_by_id
                 continue
-            if query.exclude_tests and is_test_file(member.path):
+            if query.exclude_tests and is_test_node(member.path, member.meta):
                 continue
             if query.exclude_utility and is_utility_file(member.path):
                 continue
@@ -486,8 +486,8 @@ def slice_graph(
             if next_node is None:
                 continue
 
-            # Filter test files
-            if query.exclude_tests and is_test_file(next_node.path):
+            # Filter test nodes (by path or annotation, e.g. Rust #[test])
+            if query.exclude_tests and is_test_node(next_node.path, next_node.meta):
                 continue
 
             # Filter utility files (docs, examples, scripts)

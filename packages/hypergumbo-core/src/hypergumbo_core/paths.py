@@ -11,6 +11,7 @@ Key design decisions:
 """
 
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 
 def normalize_path(path: str | Path) -> str:
@@ -256,5 +257,68 @@ def is_test_file(path: str) -> bool:
     # interface definitions, not tests.
     if path_parts and path_parts[0].lower() == "spec":
         return True
+
+    return False
+
+
+# Annotation names that indicate a test function/method, matched case-sensitively.
+# Covers Rust (#[test], #[cfg(test)], #[tokio::test]), Java/Kotlin (@Test,
+# @org.junit.Test, @org.junit.jupiter.api.Test), and C# ([TestMethod],
+# [Fact], [Theory]).
+_TEST_ANNOTATION_NAMES = frozenset({
+    "test", "Test",
+    "tokio::test", "actix_rt::test", "async_std::test",
+    "org.junit.Test", "org.junit.jupiter.api.Test",
+    "TestMethod", "Fact", "Theory",
+})
+
+
+def _has_test_annotation(decorators: list[Dict[str, Any]]) -> bool:
+    """Check if any decorator/annotation indicates a test function.
+
+    Matches exact annotation names (e.g., ``#[test]``, ``@Test``) and also
+    the Rust ``#[cfg(test)]`` pattern where ``cfg`` has ``"test"`` as an arg.
+    """
+    for dec in decorators:
+        name = dec.get("name", "")
+        if name in _TEST_ANNOTATION_NAMES:
+            return True
+        # Rust #[cfg(test)] — "cfg" with "test" in args
+        if name == "cfg" and "test" in dec.get("args", []):
+            return True
+    return False
+
+
+def is_test_node(path: str, meta: Optional[Dict[str, Any]]) -> bool:
+    """Check if a node is test code, using both file path and annotations.
+
+    Extends ``is_test_file`` by also consulting the node's metadata for
+    language-specific test annotations. This catches:
+
+    - Rust ``#[test]``, ``#[cfg(test)]``, ``#[tokio::test]`` functions
+      inside non-test files (e.g., ``src/lib.rs``)
+    - Java ``@Test`` / ``@org.junit.Test`` methods in production paths
+    - C# ``[TestMethod]`` / ``[Fact]`` attributes
+
+    Args:
+        path: File path of the node.
+        meta: Node metadata dict (may contain ``decorators`` or ``annotations``
+              lists). None or empty dict means no annotation data.
+
+    Returns:
+        True if the node is test code (by path or by annotation).
+    """
+    if is_test_file(path):
+        return True
+
+    if not meta:
+        return False
+
+    # Check both 'decorators' and 'annotations' keys — different analyzers
+    # use different names for the same concept.
+    for key in ("decorators", "annotations"):
+        annotations = meta.get(key)
+        if annotations and _has_test_annotation(annotations):
+            return True
 
     return False
