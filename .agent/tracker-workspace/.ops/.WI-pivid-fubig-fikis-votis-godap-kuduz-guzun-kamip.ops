@@ -1,0 +1,36 @@
+- op: create  # f747
+  at: '2026-02-26T00:36:50Z'  # f747
+  by: agent  # f747
+  actor: jgstern_agent  # f747
+  clock: 1  # f747
+  nonce: f747  # f747
+  data:  # f747
+    kind: work_item  # f747
+    title: "TUI: unread discussion indicator (blue dot, mark-as-read buttons, filter override)"  # f747
+    status: todo_soft  # f747
+    priority: 2  # f747
+    parent:  # f747
+    tags:  # f747
+    - tui  # f747
+    - ux  # f747
+    before: []  # f747
+    duplicate_of: []  # f747
+    not_duplicate_of: []  # f747
+    pr_ref:  # f747
+    description: "Add an 'unread' indicator system to hypergumbo-tracker's TUI for discussion entries:\n\n1. Blue dot emoji in left pane: When an item contains Activity/Discussion entries that the human has not read, prepend a blue dot emoji to the item title in the left pane list.\n\n2. Mark-as-Read/Unread buttons: In the Activity/Discussion pane, just above the text entry box on the right side, add two buttons: Mark as Human-Read and Mark as Human-Unread.\n\n3. Auto-toggle behavior: State becomes Human-Unread when the agent makes a new discussion entry. State becomes Human-Read when the human makes a new discussion entry.\n\n4. State storage: Store the read/unread state in the display order file (not tracked in git). This keeps git history clean since read status is local UI state.\n\n5. Filter override: Items with Human-Unread status override active filters. Similar to how dependency chain members show temporarily in italics when a related item is selected (even if filter-hidden), filter-hidden items with unread status should appear in italics with the blue dot emoji. This override clears when the human marks the item as Human-Read or adds a message to the item Discussion.\n\nRationale: Gives the human a convenient way to know where the agent has made progress, and to flag items for follow-up, like an unread email indicator."  # f747
+    fields: {}  # f747
+- op: update  # 281c
+  at: '2026-02-26T00:40:51Z'  # 281c
+  by: agent  # 281c
+  actor: jgstern_agent  # 281c
+  clock: 2  # 281c
+  nonce: 281c  # 281c
+  set:  # 281c
+    status: todo_hard  # 281c
+- op: discuss  # 639d
+  at: '2026-02-26T00:40:51Z'  # 639d
+  by: agent  # 639d
+  actor: jgstern_agent  # 639d
+  clock: 3  # 639d
+  nonce: 639d  # 639d
+  message: "Starting implementation. Elevated to todo_hard since this involves TUI changes with filter interaction complexity."  # 639d

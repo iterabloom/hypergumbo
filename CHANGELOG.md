@@ -118,6 +118,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Three responsive layout tiers**: Compact (40x16+), standard (60x20+, two-pane), wide (120x38+). Dynamic resize preserves selection.
 - **Write keybindings**: 8 modal dialogs for discuss, move, new, edit, set parent, edit dependencies, lock/unlock.
 - **Snapshot tests**: SVG-based visual regression tests for all layout tiers.
+- **Unread discussion indicator (WI-pivid)**: Blue dot (🔵) prepended to item titles when the last discussion entry is from an agent (human-unread). Auto-toggles based on last author. Manual "Mark Read"/"Mark Unread" buttons in the Activity pane. Unread items override active filters (appear in italics until acknowledged). State persisted in `tui_preferences.json`.
 
 #### Documentation
 

@@ -70,6 +70,8 @@ from hypergumbo_tracker.tui import (
     _format_detail_lines,
     _format_filter_entry,
     _format_timestamp,
+    _is_human_unread,
+    _item_title_text,
     _label,
     _load_tui_preferences,
     _save_tui_preferences,
@@ -2080,7 +2082,7 @@ class TestWideLayout:
             # Chat widgets hidden in standard mode
             from textual.widgets import TextArea
             assert app.query_one("#chat-input", TextArea).display is False
-            assert app.query_one("#chat-send").display is False
+            assert app.query_one("#chat-buttons").display is False
             assert app.query_one("#chat-hint").display is False
 
     async def test_wide_activity_updates_on_cursor_move(
@@ -5194,7 +5196,7 @@ class TestInlineChat:
         async with app.run_test(size=(80, 24)) as pilot:
             await _wait_for_std_table(pilot, app)
             assert app.query_one("#chat-input", TextArea).display is False
-            assert app.query_one("#chat-send").display is False
+            assert app.query_one("#chat-buttons").display is False
             assert app.query_one("#chat-hint").display is False
 
     @pytest.mark.asyncio
@@ -8376,3 +8378,649 @@ class TestTaggedMetaFilter:
             assert tagged_idx is not None
             app._quick_toggle(tagged_idx)
             assert app._current_session_counts.get("meta:tagged", 0) > 0
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _is_human_unread
+# ---------------------------------------------------------------------------
+
+
+class TestIsHumanUnread:
+    """Test the unread-from-human-perspective detection logic."""
+
+    def test_empty_discussion_is_read(self) -> None:
+        """Items with no discussion are considered read."""
+        item = CompiledItem(
+            id="WI-abc", kind="work_item", title="Test",
+            status="todo_hard", discussion=[],
+        )
+        assert _is_human_unread(item, {}) is False
+
+    def test_last_entry_by_agent_is_unread(self) -> None:
+        """When the last discussion entry is by an agent, human hasn't seen it."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        item = CompiledItem(
+            id="WI-abc", kind="work_item", title="Test",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="agent", actor="bot", at="2026-01-01T10:00:00Z",
+                    message="I did a thing",
+                ),
+            ],
+        )
+        assert _is_human_unread(item, {}) is True
+
+    def test_last_entry_by_human_is_read(self) -> None:
+        """When the last entry is by a human, item is considered read."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        item = CompiledItem(
+            id="WI-abc", kind="work_item", title="Test",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="agent", actor="bot", at="2026-01-01T10:00:00Z",
+                    message="I did a thing",
+                ),
+                DiscussionEntry(
+                    by="human", actor="dev", at="2026-01-02T14:30:00Z",
+                    message="Looks good",
+                ),
+            ],
+        )
+        assert _is_human_unread(item, {}) is False
+
+    def test_manual_read_overrides_auto(self) -> None:
+        """Manual mark-as-read overrides auto-detected unread status."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        item = CompiledItem(
+            id="WI-abc", kind="work_item", title="Test",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="agent", actor="bot", at="2026-01-01T10:00:00Z",
+                    message="I did a thing",
+                ),
+            ],
+        )
+        # Auto-detect says unread, but manual override says read
+        state = {"WI-abc": {"read": True, "discussion_len": 1}}
+        assert _is_human_unread(item, state) is False
+
+    def test_manual_unread_overrides_auto(self) -> None:
+        """Manual mark-as-unread overrides auto-detected read status."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        item = CompiledItem(
+            id="WI-abc", kind="work_item", title="Test",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="human", actor="dev", at="2026-01-01T10:00:00Z",
+                    message="Please check this",
+                ),
+            ],
+        )
+        # Auto-detect says read, but manual override says unread
+        state = {"WI-abc": {"read": False, "discussion_len": 1}}
+        assert _is_human_unread(item, state) is True
+
+    def test_new_entry_invalidates_stale_override(self) -> None:
+        """When discussion has grown since manual override, auto-toggle fires."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        item = CompiledItem(
+            id="WI-abc", kind="work_item", title="Test",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="human", actor="dev", at="2026-01-01T10:00:00Z",
+                    message="Please check",
+                ),
+                DiscussionEntry(
+                    by="agent", actor="bot", at="2026-01-02T10:00:00Z",
+                    message="Done",
+                ),
+            ],
+        )
+        # Override was set when discussion had 1 entry, now has 2 → stale
+        state = {"WI-abc": {"read": True, "discussion_len": 1}}
+        # Auto-detect fires: last entry by agent → unread
+        assert _is_human_unread(item, state) is True
+
+    def test_stale_override_human_last_entry(self) -> None:
+        """Stale override with human as last entry → read."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        item = CompiledItem(
+            id="WI-abc", kind="work_item", title="Test",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="agent", actor="bot", at="2026-01-01T10:00:00Z",
+                    message="Started work",
+                ),
+                DiscussionEntry(
+                    by="human", actor="dev", at="2026-01-02T10:00:00Z",
+                    message="Thanks",
+                ),
+            ],
+        )
+        # Override set at len=1, now len=2 → stale → auto-detect
+        state = {"WI-abc": {"read": False, "discussion_len": 1}}
+        assert _is_human_unread(item, state) is False
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _item_title_text
+# ---------------------------------------------------------------------------
+
+
+class TestItemTitleText:
+    """Test the _item_title_text helper that builds display titles."""
+
+    def test_plain_title(self) -> None:
+        """Normal item gets no prefix."""
+        item = CompiledItem(
+            id="WI-abc", kind="work_item", title="Hello",
+            status="todo_hard",
+        )
+        assert _item_title_text(item, {}) == "Hello"
+
+    def test_unread_title(self) -> None:
+        """Unread item gets blue dot prefix."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        item = CompiledItem(
+            id="WI-abc", kind="work_item", title="Hello",
+            status="todo_hard",
+            discussion=[
+                DiscussionEntry(
+                    by="agent", actor="bot", at="2026-01-01T10:00:00Z",
+                    message="Progress",
+                ),
+            ],
+        )
+        assert _item_title_text(item, {}) == "\U0001f535 Hello"
+
+    def test_frozen_title(self) -> None:
+        """Frozen item gets ice emoji prefix."""
+        item = CompiledItem(
+            id="WI-abc", kind="work_item", title="Hello",
+            status="todo_hard", frozen=True,
+        )
+        assert _item_title_text(item, {}) == "\U0001f9ca Hello"
+
+    def test_frozen_and_unread_title(self) -> None:
+        """Frozen + unread item gets both: blue dot first, then ice."""
+        from hypergumbo_tracker.models import DiscussionEntry
+
+        item = CompiledItem(
+            id="WI-abc", kind="work_item", title="Hello",
+            status="todo_hard", frozen=True,
+            discussion=[
+                DiscussionEntry(
+                    by="agent", actor="bot", at="2026-01-01T10:00:00Z",
+                    message="Progress",
+                ),
+            ],
+        )
+        assert _item_title_text(item, {}) == "\U0001f535 \U0001f9ca Hello"
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: preferences with human_read_state
+# ---------------------------------------------------------------------------
+
+
+class TestPreferencesHumanReadState:
+    """Test human_read_state persistence in tui_preferences.json."""
+
+    def test_load_missing_field_returns_empty_dict(self, tmp_path: Path) -> None:
+        """Old preference files without human_read_state get empty default."""
+        import json
+
+        p = tmp_path / "prefs.json"
+        data = {"version": 2, "hidden_statuses": [], "display_order": []}
+        p.write_text(json.dumps(data), encoding="utf-8")
+        result = _load_tui_preferences(p)
+        assert result["human_read_state"] == {}
+
+    def test_save_load_roundtrip(self, tmp_path: Path) -> None:
+        """human_read_state survives save → load roundtrip."""
+        p = tmp_path / "prefs.json"
+        hrs = {"WI-abc": {"read": True, "discussion_len": 5}}
+        assert _save_tui_preferences(
+            p, set(), [],
+            human_read_state=hrs,
+        ) is True
+        result = _load_tui_preferences(p)
+        assert result["human_read_state"] == hrs
+
+    def test_corrupt_human_read_state_returns_empty(self, tmp_path: Path) -> None:
+        """Non-dict human_read_state falls back to empty."""
+        import json
+
+        p = tmp_path / "prefs.json"
+        data = {
+            "version": 2, "hidden_statuses": [], "display_order": [],
+            "human_read_state": "invalid",
+        }
+        p.write_text(json.dumps(data), encoding="utf-8")
+        result = _load_tui_preferences(p)
+        assert result["human_read_state"] == {}
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: blue dot in title for unread items
+# ---------------------------------------------------------------------------
+
+
+def _make_tracker_set_with_discussion(tmp_path: Path) -> TrackerSet:
+    """Create a TrackerSet with items that have discussion entries.
+
+    All entries are by "agent" (since tests run as ``*_agent``).
+    The calling test can use ``_human_read_state`` to manually mark
+    items as read to simulate human interaction.
+    """
+    from helpers import make_test_config_dict
+
+    root = tmp_path / ".agent"
+    for d in [
+        root / "tracker" / ".ops",
+        root / "tracker-workspace" / ".ops",
+        root / "tracker-workspace" / "stealth",
+    ]:
+        d.mkdir(parents=True, exist_ok=True)
+
+    config = _make_config()
+    config_path = root / "tracker" / "config.yaml"
+    import yaml
+
+    config_path.write_text(yaml.dump(make_test_config_dict()))
+
+    ts = TrackerSet(root, config=config)
+
+    # Item with agent discussion entry → human-unread (auto-detect)
+    ts.add(kind="work_item", title="Agent updated",
+           status="todo_hard", priority=1)
+    items = ts.list_items()
+    agent_item = next(i for i in items if i.title == "Agent updated")
+    ts.discuss(agent_item.id, "I made progress")
+
+    # Item with agent discussion entry but manually marked read
+    # (simulates human having replied or pressed "Mark Read")
+    ts.add(kind="work_item", title="Marked read",
+           status="in_progress", priority=2)
+    items = ts.list_items()
+    read_item = next(i for i in items if i.title == "Marked read")
+    ts.discuss(read_item.id, "Agent did work")
+
+    # Item with no discussion → human-read
+    ts.add(kind="work_item", title="No discussion",
+           status="todo_soft", priority=3)
+
+    return ts
+
+
+class TestUnreadBlueDot:
+    """Test that unread items show a blue dot emoji in the title."""
+
+    async def test_unread_item_has_blue_dot_in_table(
+        self, tmp_path: Path,
+    ) -> None:
+        """Items with unread agent entries show 🔵 in the title column."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_discussion(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Mark "Marked read" item as read via manual override
+            items = app._filtered_items()
+            read_item = next(i for i in items if i.title == "Marked read")
+            app._mark_human_read(read_item.id)
+            await pilot.pause()
+            table = app.query_one("#std-table")
+            # Scan all cells in each row to find title content
+            found_unread = False
+            found_read = False
+            for row_key in table.rows:
+                row_data = table.get_row(row_key)
+                row_str = " ".join(str(c) for c in row_data)
+                if "Agent updated" in row_str:
+                    assert "\U0001f535" in row_str, "Unread item should have blue dot"
+                    found_unread = True
+                elif "Marked read" in row_str:
+                    assert "\U0001f535" not in row_str, "Read item should not have blue dot"
+                    found_read = True
+            assert found_unread, "Should find 'Agent updated' item"
+            assert found_read, "Should find 'Marked read' item"
+
+    async def test_no_discussion_no_blue_dot(
+        self, tmp_path: Path,
+    ) -> None:
+        """Items with no discussion entries have no blue dot."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_discussion(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            for row_key in table.rows:
+                row_data = table.get_row(row_key)
+                row_str = " ".join(str(c) for c in row_data)
+                if "No discussion" in row_str:
+                    assert "\U0001f535" not in row_str
+                    return
+            pytest.fail("Should find 'No discussion' item")
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: unread filter override
+# ---------------------------------------------------------------------------
+
+
+class TestUnreadFilterOverride:
+    """Test that human-unread items override filters and appear in italics."""
+
+    async def test_unread_item_appears_despite_status_filter(
+        self, tmp_path: Path,
+    ) -> None:
+        """A human-unread item hidden by status filter is still included."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_discussion(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Hide todo_hard status — this would normally hide "Agent updated"
+            app._hidden_statuses.add("todo_hard")
+            items = app._filtered_items()
+            item_titles = [i.title for i in items]
+            # "Agent updated" should still appear because it's unread
+            assert "Agent updated" in item_titles
+            # It should be tracked as an unread override
+            assert any(
+                i.id in app._unread_override_ids
+                for i in items if i.title == "Agent updated"
+            )
+
+    async def test_read_item_hidden_by_filter(
+        self, tmp_path: Path,
+    ) -> None:
+        """A manually-read item hidden by status filter stays hidden."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_discussion(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Mark "Marked read" as read
+            items = app._filtered_items()
+            read_item = next(i for i in items if i.title == "Marked read")
+            app._mark_human_read(read_item.id)
+            # Hide in_progress status — "Marked read" is read and should stay hidden
+            app._hidden_statuses.add("in_progress")
+            items = app._filtered_items()
+            item_titles = [i.title for i in items]
+            assert "Marked read" not in item_titles
+
+
+# ---------------------------------------------------------------------------
+# Tests: mark-as-read / mark-as-unread buttons
+# ---------------------------------------------------------------------------
+
+
+class TestMarkAsReadUnread:
+    """Test the Mark as Human-Read / Mark as Human-Unread buttons."""
+
+    async def test_mark_as_read_clears_blue_dot(
+        self, tmp_path: Path,
+    ) -> None:
+        """Pressing mark-as-read removes the unread indicator."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_discussion(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(130, 40)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Select the unread item
+            items = app._filtered_items()
+            unread_item = next(i for i in items if i.title == "Agent updated")
+            assert _is_human_unread(unread_item, app._human_read_state) is True
+            # Simulate pressing the mark-as-read button
+            app._mark_human_read(unread_item.id)
+            assert _is_human_unread(unread_item, app._human_read_state) is False
+
+    async def test_mark_as_unread_adds_blue_dot(
+        self, tmp_path: Path,
+    ) -> None:
+        """Pressing mark-as-unread on a read item makes it unread."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_discussion(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(130, 40)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # "No discussion" is read by default (no entries)
+            items = app._filtered_items()
+            no_disc = next(i for i in items if i.title == "No discussion")
+            assert _is_human_unread(no_disc, app._human_read_state) is False
+            # Mark it as unread
+            app._mark_human_unread(no_disc.id)
+            assert _is_human_unread(no_disc, app._human_read_state) is True
+
+    async def test_mark_read_button_event(
+        self, tmp_path: Path,
+    ) -> None:
+        """Clicking the mark-read button via event dispatches correctly."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Button
+
+        ts = _make_tracker_set_with_discussion(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Get the unread item ID
+            items = app._filtered_items()
+            unread_item = next(i for i in items if i.title == "Agent updated")
+            assert _is_human_unread(unread_item, app._human_read_state) is True
+            # Navigate to the unread item's row
+            table = app.query_one("#std-table")
+            for idx, rk in enumerate(table.rows):
+                if str(rk.value) == unread_item.id:
+                    table.move_cursor(row=idx)
+                    break
+            await pilot.pause()
+            # Press the mark-read button via click
+            btn = app.query_one("#mark-read", Button)
+            btn.press()
+            await pilot.pause()
+            assert _is_human_unread(unread_item, app._human_read_state) is False
+
+    async def test_mark_unread_button_event(
+        self, tmp_path: Path,
+    ) -> None:
+        """Clicking the mark-unread button via event dispatches correctly."""
+        from hypergumbo_tracker.tui import TrackerApp
+        from textual.widgets import Button
+
+        ts = _make_tracker_set_with_discussion(tmp_path)
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(160, 45)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Mark the unread item as read first
+            items = app._filtered_items()
+            unread_item = next(i for i in items if i.title == "Agent updated")
+            app._mark_human_read(unread_item.id)
+            assert _is_human_unread(unread_item, app._human_read_state) is False
+            # Navigate to the item's row
+            table = app.query_one("#std-table")
+            for idx, rk in enumerate(table.rows):
+                if str(rk.value) == unread_item.id:
+                    table.move_cursor(row=idx)
+                    break
+            await pilot.pause()
+            # Press the mark-unread button via click
+            btn = app.query_one("#mark-unread", Button)
+            btn.press()
+            await pilot.pause()
+            assert _is_human_unread(unread_item, app._human_read_state) is True
+
+
+# ---------------------------------------------------------------------------
+# Tests: frozen + unread combination
+# ---------------------------------------------------------------------------
+
+
+class TestFrozenUnreadCombination:
+    """Test that frozen items with unread discussion show both indicators."""
+
+    async def test_frozen_unread_shows_both_indicators(
+        self, tmp_path: Path,
+    ) -> None:
+        """A frozen item with unread agent entry shows both 🔵 and 🧊."""
+        from hypergumbo_tracker.tui import TrackerApp
+
+        ts = _make_tracker_set_with_discussion(tmp_path)
+        # Freeze the "Agent updated" item (which has unread status)
+        items = ts.list_items()
+        agent_item = next(i for i in items if i.title == "Agent updated")
+        # Freeze requires human authority; mock resolve_actor
+        from unittest.mock import patch as _patch
+        from hypergumbo_tracker import store as store_mod
+        with _patch.object(
+            store_mod, "resolve_actor", return_value=("human", "testuser"),
+        ):
+            ts.freeze(agent_item.id)
+
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            table = app.query_one("#std-table")
+            for row_key in table.rows:
+                row_data = table.get_row(row_key)
+                row_str = " ".join(str(c) for c in row_data)
+                if "Agent updated" in row_str:
+                    assert "\U0001f535" in row_str, "Should have blue dot"
+                    assert "\U0001f9ca" in row_str, "Should have frozen indicator"
+                    return
+            pytest.fail("Should find 'Agent updated' item")
+
+    async def test_unread_ghost_row_has_blue_dot(
+        self, tmp_path: Path,
+    ) -> None:
+        """An unread item appearing as a ghost row shows the blue dot."""
+        from helpers import make_test_config_dict
+        from hypergumbo_tracker.tui import TrackerApp
+
+        root = tmp_path / ".agent"
+        for d in [
+            root / "tracker" / ".ops",
+            root / "tracker-workspace" / ".ops",
+            root / "tracker-workspace" / "stealth",
+        ]:
+            d.mkdir(parents=True, exist_ok=True)
+
+        config = _make_config()
+        config_path = root / "tracker" / "config.yaml"
+        import yaml
+
+        config_path.write_text(yaml.dump(make_test_config_dict()))
+
+        ts = TrackerSet(root, config=config)
+
+        # Create chain: A (done, has discussion) → B (todo_hard)
+        id_a = ts.add(kind="work_item", title="Ghost unread item",
+                      status="done", priority=1)
+        id_b = ts.add(kind="work_item", title="Depends on ghost",
+                      status="todo_hard", priority=2)
+        ts.update(id_b, add_fields={"before": [id_a]})
+        # Add discussion to A so it's unread
+        ts.discuss(id_a, "Agent progress update")
+
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Hide "done" status — A becomes a ghost row
+            app._hidden_statuses.add("done")
+            app._reload_active_table()
+            await pilot.pause()
+            # Select B to trigger chain ghost rows
+            table = app.query_one("#std-table")
+            table.move_cursor(row=0)
+            await pilot.pause()
+            # Manually trigger chain highlight
+            app._remove_ghost_rows()
+            app._append_hidden_chain_rows(id_b)
+            # Ghost row for A should have blue dot
+            found_ghost = False
+            for row_key in table.rows:
+                row_data = table.get_row(row_key)
+                row_str = " ".join(str(c) for c in row_data)
+                if "Ghost unread item" in row_str:
+                    assert "\U0001f535" in row_str, "Ghost row should have blue dot"
+                    found_ghost = True
+            assert found_ghost, "Should find ghost row for unread item"
+
+    async def test_frozen_ghost_row_has_ice_indicator(
+        self, tmp_path: Path,
+    ) -> None:
+        """A frozen item appearing as a ghost row shows the 🧊 indicator."""
+        from helpers import make_test_config_dict
+        from hypergumbo_tracker.tui import TrackerApp
+
+        root = tmp_path / ".agent"
+        for d in [
+            root / "tracker" / ".ops",
+            root / "tracker-workspace" / ".ops",
+            root / "tracker-workspace" / "stealth",
+        ]:
+            d.mkdir(parents=True, exist_ok=True)
+
+        config = _make_config()
+        config_path = root / "tracker" / "config.yaml"
+        import yaml
+
+        config_path.write_text(yaml.dump(make_test_config_dict()))
+
+        ts = TrackerSet(root, config=config)
+
+        id_a = ts.add(kind="work_item", title="Frozen ghost item",
+                      status="done", priority=1)
+        id_b = ts.add(kind="work_item", title="Depends on frozen",
+                      status="todo_hard", priority=2)
+        ts.update(id_b, add_fields={"before": [id_a]})
+        # Freeze A (requires human authority mock)
+        from unittest.mock import patch as _patch
+        from hypergumbo_tracker import store as store_mod
+        with _patch.object(
+            store_mod, "resolve_actor", return_value=("human", "testuser"),
+        ):
+            ts.freeze(id_a)
+
+        app = TrackerApp(tracker_set=ts)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await _wait_for_std_table(pilot, app)
+            # Hide "done" status — A becomes a ghost row
+            app._hidden_statuses.add("done")
+            app._reload_active_table()
+            await pilot.pause()
+            table = app.query_one("#std-table")
+            table.move_cursor(row=0)
+            await pilot.pause()
+            app._remove_ghost_rows()
+            app._append_hidden_chain_rows(id_b)
+            found_ghost = False
+            for row_key in table.rows:
+                row_data = table.get_row(row_key)
+                row_str = " ".join(str(c) for c in row_data)
+                if "Frozen ghost item" in row_str:
+                    assert "\U0001f9ca" in row_str, "Ghost row should have frozen indicator"
+                    found_ghost = True
+            assert found_ghost, "Should find ghost row for frozen item"

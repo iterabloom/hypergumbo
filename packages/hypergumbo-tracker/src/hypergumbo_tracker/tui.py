@@ -240,6 +240,54 @@ def _format_timestamp(iso_ts: str) -> str:
     return readable.rstrip("Z")
 
 
+def _is_human_unread(
+    item: CompiledItem,
+    human_read_state: dict[str, dict[str, object]],
+) -> bool:
+    """Determine if an item has unread discussion entries from the human's perspective.
+
+    Auto-toggle logic: last discussion entry by agent → unread, by human → read.
+    Empty discussion → read.
+
+    Manual overrides stored in *human_read_state* take precedence, but become
+    stale when the discussion length changes (new entries arrived since the
+    override was set), at which point auto-toggle fires again.
+
+    State dict format per item: ``{"read": bool, "discussion_len": int}``.
+    """
+    # Check manual override first (takes precedence over auto-detect)
+    override = human_read_state.get(item.id)
+    if override is not None:
+        stored_len = override.get("discussion_len", 0)
+        if stored_len == len(item.discussion):
+            # Override is current — use it
+            return not override.get("read", True)
+        # Override is stale — fall through to auto-detect
+
+    if not item.discussion:
+        return False
+
+    # Auto-detect: last entry by agent → unread, by human → read
+    return item.discussion[-1].by != "human"
+
+
+def _item_title_text(
+    item: CompiledItem,
+    human_read_state: dict[str, dict[str, object]],
+) -> str:
+    """Build the display title for an item with frozen/unread indicators.
+
+    Prepends 🔵 for human-unread items and 🧊 for frozen items.
+    When both apply, the blue dot comes first: ``🔵 🧊 Title``.
+    """
+    prefix = ""
+    if item.frozen:
+        prefix = "\U0001f9ca "
+    if _is_human_unread(item, human_read_state):
+        prefix = "\U0001f535 " + prefix
+    return prefix + item.title
+
+
 def _format_activity_lines(item: CompiledItem, limit: int = 10) -> list[str]:
     """Format discussion entries as compact activity log lines.
 
@@ -380,6 +428,7 @@ _PREFS_DEFAULTS: dict = {
     "toggle_sessions": [],
     "last_filters": {"hidden_statuses": [], "hidden_tags": []},
     "hide_tagged": False,
+    "human_read_state": {},
 }
 
 _MAX_TOGGLE_SESSIONS = 9
@@ -407,6 +456,8 @@ def _load_tui_preferences(path: Path) -> dict:
         do = data.get("display_order", [])
         if not isinstance(hs, list) or not isinstance(do, list):
             return defaults
+        hrs_raw = data.get("human_read_state", {})
+        hrs = hrs_raw if isinstance(hrs_raw, dict) else {}
         result: dict = {
             "hidden_statuses": hs,
             "display_order": do,
@@ -417,6 +468,7 @@ def _load_tui_preferences(path: Path) -> dict:
                 {"hidden_statuses": [], "hidden_tags": []},
             ),
             "hide_tagged": data.get("hide_tagged", False),
+            "human_read_state": hrs,
         }
         # Migrate legacy flat toggle_counts → single-element sessions list
         if not result["toggle_sessions"] and "toggle_counts" in data:
@@ -437,12 +489,14 @@ def _save_tui_preferences(
     toggle_sessions: list[dict[str, int]] | None = None,
     last_filters: dict[str, list[str]] | None = None,
     hide_tagged: bool = False,
+    human_read_state: dict[str, dict[str, object]] | None = None,
 ) -> bool:
     """Persist TUI preferences to disk (v2 schema).
 
     Writes a JSON file with ``version``, ``hidden_statuses``,
-    ``display_order``, ``hidden_tags``, ``toggle_sessions``, and
-    ``last_filters`` keys.  Creates parent directories as needed.
+    ``display_order``, ``hidden_tags``, ``toggle_sessions``,
+    ``last_filters``, and ``human_read_state`` keys.  Creates parent
+    directories as needed.
 
     ``toggle_sessions`` is capped to the most recent 9 entries.
 
@@ -453,7 +507,7 @@ def _save_tui_preferences(
     sessions = list(toggle_sessions) if toggle_sessions else []
     if len(sessions) > _MAX_TOGGLE_SESSIONS:
         sessions = sessions[-_MAX_TOGGLE_SESSIONS:]
-    has_v2 = hidden_tags is not None or toggle_sessions is not None or last_filters is not None or hide_tagged
+    has_v2 = hidden_tags is not None or toggle_sessions is not None or last_filters is not None or hide_tagged or human_read_state is not None
     data: dict[str, Any] = {
         "version": 2 if has_v2 else 1,
         "hidden_statuses": sorted(hidden_statuses),
@@ -466,6 +520,7 @@ def _save_tui_preferences(
             "hidden_statuses": [], "hidden_tags": [],
         }
         data["hide_tagged"] = hide_tagged
+        data["human_read_state"] = human_read_state or {}
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
@@ -1445,10 +1500,24 @@ class TrackerApp(App):
         min-height: 4;
     }
 
-    #chat-send {
+    #chat-buttons {
         display: none;
+        height: auto;
+    }
+
+    #chat-send {
         width: auto;
         min-width: 8;
+    }
+
+    #mark-read {
+        width: auto;
+        min-width: 12;
+    }
+
+    #mark-unread {
+        width: auto;
+        min-width: 14;
     }
 
     #status-filter-bar {
@@ -1559,6 +1628,8 @@ class TrackerApp(App):
         }
         self._filter_entries: list[tuple[str, str]] = []  # (type:key, label) ordered
         self._filter_line_to_entry: dict[int, int] = {}  # line_num → 1-based entry index
+        self._human_read_state: dict[str, dict[str, object]] = {}
+        self._unread_override_ids: set[str] = set()
         self._prefs_path = (
             tracker_set._tracker_root / "tracker-workspace" / "tui_preferences.json"
         )
@@ -1599,7 +1670,10 @@ class TrackerApp(App):
                             id="chat-hint",
                         )
                         yield TextArea("", id="chat-input")
-                        yield Button("Send", id="chat-send")
+                        with Horizontal(id="chat-buttons"):
+                            yield Button("Send", id="chat-send")
+                            yield Button("Mark Read", id="mark-read")
+                            yield Button("Mark Unread", id="mark-unread")
                     yield Rule(
                         orientation="vertical", id="filter-divider",
                     )
@@ -1624,6 +1698,7 @@ class TrackerApp(App):
         self._hide_tagged = bool(prefs.get("hide_tagged", False))
         self._custom_order = list(prefs["display_order"])
         self._toggle_sessions = list(prefs.get("toggle_sessions", []))
+        self._human_read_state = dict(prefs.get("human_read_state", {}))
         self._last_filters = prefs.get(
             "last_filters", {"hidden_statuses": [], "hidden_tags": []},
         )
@@ -1711,14 +1786,14 @@ class TrackerApp(App):
             activity_divider = self.query_one("#activity-divider")
             # Chat widgets (wide-only inline discuss)
             chat_input = self.query_one("#chat-input", TextArea)
-            chat_send = self.query_one("#chat-send", Button)
+            chat_buttons = self.query_one("#chat-buttons", Horizontal)
             chat_hint = self.query_one("#chat-hint", Static)
             if self._layout_tier == "wide":
                 activity_filter_row.display = True
                 activity_view.display = True
                 activity_divider.display = True
                 chat_input.display = True
-                chat_send.display = True
+                chat_buttons.display = True
                 chat_hint.display = True
                 # Wide filter panel: inside the activity-filter-row
                 filter_panel_view.display = self._filter_panel_visible
@@ -1730,7 +1805,7 @@ class TrackerApp(App):
                 activity_view.display = False
                 activity_divider.display = False
                 chat_input.display = False
-                chat_send.display = False
+                chat_buttons.display = False
                 chat_hint.display = False
                 filter_panel_view.display = False
                 filter_divider.display = False
@@ -1788,9 +1863,14 @@ class TrackerApp(App):
         1. Exclude items whose status is in ``_hidden_statuses``
         2. Apply text-based filter (title, status, tags, kind)
         3. Apply custom display order (if any)
+        4. Append human-unread items that were filtered out (override)
 
         Matches against title, status, tags, and kind (case-insensitive).
         Empty filter returns all (non-hidden) items.
+
+        Items that are hidden by filters but have human-unread status are
+        appended at the end.  Their IDs are tracked in ``_unread_override_ids``
+        so the rendering code can style them differently (italic + blue dot).
         """
         # 1. Exclude hidden statuses
         base = [i for i in self._items if i.status not in self._hidden_statuses]
@@ -1820,6 +1900,15 @@ class TrackerApp(App):
         # 3. Apply custom display order
         if self._custom_order:
             base = _apply_custom_order(base, self._custom_order)
+        # 4. Append human-unread items hidden by filters (override)
+        visible_ids = {i.id for i in base}
+        self._unread_override_ids = set()
+        for item in self._items:
+            if item.id not in visible_ids and _is_human_unread(
+                item, self._human_read_state,
+            ):
+                base.append(item)
+                self._unread_override_ids.add(item.id)
         return base
 
     def _hidden_ids(self) -> set[str]:
@@ -1908,8 +1997,7 @@ class TrackerApp(App):
                     hidden_ids=hidden,
                 )
                 row.append(RichText.from_markup(pills) if pills else "")
-            title_text = f"\U0001f9ca {item.title}" if item.frozen else item.title
-            row.append(title_text)
+            row.append(_item_title_text(item, self._human_read_state))
 
             if is_standard:
                 row.append(", ".join(item.tags) if item.tags else "")
@@ -1955,8 +2043,7 @@ class TrackerApp(App):
                 tier_char = (
                     _TIER_INDICATOR.get(child.tier, "?") if child.tier else "?"
                 )
-                title_text = f"\U0001f9ca {child.title}" if child.frozen else child.title
-                label = f"[{tier_char}] {title_text}"
+                label = f"[{tier_char}] {_item_title_text(child, self._human_read_state)}"
                 node = parent_node.add(label, data=child.id)  # type: ignore[union-attr]
                 _add_children(node, child.id)
 
@@ -2130,10 +2217,7 @@ class TrackerApp(App):
                     hidden_ids=hidden,
                 )
                 row.append(RichText.from_markup(pills) if pills else "")
-            title_text = (
-                f"\U0001f9ca {item.title}" if item.frozen else item.title
-            )
-            row.append(title_text)
+            row.append(_item_title_text(item, self._human_read_state))
             if is_wide:
                 row.append("\u26a0" if item.cross_tier_conflict else "")
                 row.append(_format_timestamp(item.created_at))
@@ -2711,6 +2795,7 @@ class TrackerApp(App):
             toggle_sessions=sessions,
             last_filters=self._last_filters,
             hide_tagged=self._hide_tagged,
+            human_read_state=self._human_read_state,
         ):
             self.notify("Could not save preferences (permission denied)",
                         severity="warning")
@@ -2802,11 +2887,70 @@ class TrackerApp(App):
         self._restore_selection()
 
     # ------------------------------------------------------------------
+    # Human read/unread state management
+    # ------------------------------------------------------------------
+
+    def _mark_human_read(self, item_id: str) -> None:
+        """Mark an item as read by the human.
+
+        Stores the override in ``_human_read_state`` keyed by discussion
+        length so auto-toggle can invalidate it when new entries arrive.
+        """
+        item = next((i for i in self._items if i.id == item_id), None)
+        if not item:
+            return  # pragma: no cover
+        self._human_read_state[item_id] = {
+            "read": True,
+            "discussion_len": len(item.discussion),
+        }
+        self._save_human_read_state()
+        self._reload_active_table()
+        self._restore_selection()
+
+    def _mark_human_unread(self, item_id: str) -> None:
+        """Mark an item as unread by the human.
+
+        Stores the override in ``_human_read_state`` keyed by discussion
+        length so auto-toggle can invalidate it when new entries arrive.
+        """
+        item = next((i for i in self._items if i.id == item_id), None)
+        if not item:
+            return  # pragma: no cover
+        self._human_read_state[item_id] = {
+            "read": False,
+            "discussion_len": len(item.discussion),
+        }
+        self._save_human_read_state()
+        self._reload_active_table()
+        self._restore_selection()
+
+    def _save_human_read_state(self) -> None:
+        """Persist the human read state to the preferences file."""
+        _save_tui_preferences(
+            self._prefs_path, self._hidden_statuses, self._custom_order,
+            hidden_tags=self._hidden_tags,
+            toggle_sessions=self._toggle_sessions,
+            last_filters=self._last_filters,
+            hide_tagged=self._hide_tagged,
+            human_read_state=self._human_read_state,
+        )
+
+    # ------------------------------------------------------------------
     # Write actions
     # ------------------------------------------------------------------
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle inline chat Send button in wide mode."""
+        """Handle button presses: chat Send, mark-read, mark-unread."""
+        if event.button.id == "mark-read":
+            item = self._get_selected_item()
+            if item:
+                self._mark_human_read(item.id)
+            return
+        if event.button.id == "mark-unread":
+            item = self._get_selected_item()
+            if item:
+                self._mark_human_unread(item.id)
+            return
         if event.button.id != "chat-send":
             return
         item = self._get_selected_item()
