@@ -46,6 +46,13 @@ patterns:
     symbol_kind: "^function$"
     language: "^kotlin$"
 
+  # Scala: def main(args: Array[String]) — in Scala objects.
+  # Scala analyzer produces qualified names like "Kafka.main".
+  - concept: main_function
+    symbol_name: "(^|\\.)main$"
+    symbol_kind: "^method$"
+    language: "^scala$"
+
   # Python: main() function (often called from if __name__ == "__main__")
   - concept: main_function
     symbol_name: "^main$"

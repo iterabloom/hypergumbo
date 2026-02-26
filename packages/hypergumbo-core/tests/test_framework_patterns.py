@@ -16846,3 +16846,30 @@ class TestJavaQualifiedMainDetection:
         assert len(main_concepts) == 0, (
             "Method 'containsmain' should NOT be classified as main_function"
         )
+
+    def test_scala_qualified_main_detected(self) -> None:
+        """Scala Object.main should be classified as main_function.
+
+        Scala analyzer produces qualified method names (e.g., ``Kafka.main``).
+        Kafka has 7 Scala main methods that were previously undetected.
+        """
+        clear_pattern_cache()
+        symbols = [
+            Symbol(
+                id="scala:core/src/main/scala/kafka/Kafka.scala:72-100:Kafka.main:method",
+                name="Kafka.main",
+                kind="method",
+                language="scala",
+                path="core/src/main/scala/kafka/Kafka.scala",
+                span=Span(72, 100, 0, 100),
+                meta={},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, set())
+        sym = enriched[0]
+        concepts = sym.meta.get("concepts", [])
+        main_concepts = [c for c in concepts if c["concept"] == "main_function"]
+        assert len(main_concepts) >= 1, (
+            "Scala qualified method Object.main should be detected as main_function"
+        )
