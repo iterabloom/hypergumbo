@@ -1645,6 +1645,41 @@ def cmd_status(args):
     return 0
 
 
+def cmd_active(args):
+    """Print the resolved active session path and convergence status.
+
+    Machine-friendly output for integration with stop hooks and other
+    tooling. Prints one line per field, key=value format. Returns exit
+    code 1 if no session found.
+    """
+    workdir = resolve_workdir(args.workdir)
+    state = load_state(workdir)
+
+    if not state:
+        print("active=false", file=sys.stderr)
+        return 1
+
+    print(f"workdir={workdir}")
+    print(f"session_id={state.session_id}")
+    print(f"cohort_number={state.cohort_number}")
+    print(f"iteration={state.iteration}")
+    print(f"code_hash={state.hypergumbo_code_hash}")
+
+    # Compute convergence from verdicts
+    if state.verdicts:
+        good = sum(1 for v in state.verdicts if v.verdict == "GOOD")
+        warn = sum(1 for v in state.verdicts if v.verdict == "WARN")
+        fail = sum(1 for v in state.verdicts if v.verdict == "FAIL")
+        if fail == 0 and warn == 0:
+            print(f"convergence=CONVERGED good={good}")
+        else:
+            print(f"convergence=NEEDS_WORK good={good} warn={warn} fail={fail}")
+    else:
+        print("convergence=UNKNOWN")
+
+    return 0
+
+
 def cmd_cycle(args):
     """Run full cycle: run + diagnose."""
     rc = cmd_run(args)
@@ -1721,6 +1756,10 @@ def main():
     p_status = subparsers.add_parser("status", help="Show session status")
     p_status.add_argument("--workdir", help="Override workdir")
 
+    # active (machine-friendly)
+    p_active = subparsers.add_parser("active", help="Print active session path and convergence (machine-friendly)")
+    p_active.add_argument("--workdir", help="Override workdir")
+
     # cycle
     p_cycle = subparsers.add_parser("cycle", help="Run full cycle (run + diagnose)")
     p_cycle.add_argument("--workdir", help="Override workdir")
@@ -1740,6 +1779,7 @@ def main():
         "run": cmd_run,
         "diagnose": cmd_diagnose,
         "status": cmd_status,
+        "active": cmd_active,
         "cycle": cmd_cycle,
         "recommend": cmd_recommend,
     }
