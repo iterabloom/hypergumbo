@@ -238,6 +238,17 @@ class RepoVerdict:
 
 
 @dataclass
+class CohortReflectStatus:
+    """Tracks LLM assessment status for a single cohort."""
+    cohort_number: int
+    has_prompts: bool = False
+    has_assessments: bool = False
+    has_summary: bool = False
+    assessment_count: int = 0
+    repo_count: int = 0
+
+
+@dataclass
 class BakeoffFeaturesState:
     """Persistent state for a feature bakeoff session."""
     session_id: str
@@ -251,6 +262,7 @@ class BakeoffFeaturesState:
     created_at: str = ""
     updated_at: str = ""
     hypergumbo_code_hash: str = ""
+    reflect_statuses: list = field(default_factory=list)
 
 
 # =============================================================================
@@ -400,7 +412,70 @@ def load_state(workdir: str) -> Optional[BakeoffFeaturesState]:
         created_at=data.get("created_at", ""),
         updated_at=data.get("updated_at", ""),
         hypergumbo_code_hash=data.get("hypergumbo_code_hash", ""),
+        reflect_statuses=[CohortReflectStatus(**rs) for rs in data.get("reflect_statuses", [])],
     )
+
+
+def scan_reflect_statuses(workdir: str) -> list:
+    """Scan reflect directory and build per-cohort reflect status.
+
+    Returns a list of CohortReflectStatus for each cohort that has
+    output in the out/ directory. Checks for prompts, assessments,
+    and summary files in the reflect/ directory.
+    """
+    out_dir = os.path.join(workdir, "out")
+    reflect_dir = os.path.join(workdir, "reflect")
+    statuses = []
+
+    if not os.path.isdir(out_dir):
+        return statuses
+
+    for cohort_dir in sorted(glob.glob(os.path.join(out_dir, "cohort-*"))):
+        cohort_name = os.path.basename(cohort_dir)
+        # Extract cohort number
+        try:
+            cohort_num = int(cohort_name.split("-")[1])
+        except (IndexError, ValueError):
+            continue
+
+        # Find latest iteration in output
+        iter_dirs = sorted(glob.glob(os.path.join(cohort_dir, "iter-*")))
+        if not iter_dirs:
+            continue
+        latest_iter = os.path.basename(iter_dirs[-1])
+        repos = [d for d in os.listdir(iter_dirs[-1])
+                 if os.path.isdir(os.path.join(iter_dirs[-1], d))]
+        repo_count = len(repos)
+
+        # Check reflect directory for this cohort/iteration
+        reflect_iter = os.path.join(reflect_dir, cohort_name, latest_iter)
+        has_prompts = False
+        has_assessments = False
+        has_summary = False
+        assessment_count = 0
+
+        if os.path.isdir(reflect_iter):
+            prompts = glob.glob(os.path.join(reflect_iter, "*.prompt.md"))
+            assessments = glob.glob(os.path.join(reflect_iter, "*.assessment.yaml"))
+            # Also check new format (*.yaml excluding summary/report)
+            new_assessments = [f for f in glob.glob(os.path.join(reflect_iter, "*.yaml"))
+                               if not os.path.basename(f) in ("summary.yaml", "report.yaml")
+                               and not f.endswith(".assessment.yaml")]
+            has_prompts = len(prompts) > 0
+            assessment_count = len(assessments) + len(new_assessments)
+            has_assessments = assessment_count > 0
+            has_summary = os.path.exists(os.path.join(reflect_iter, "summary.yaml"))
+
+        statuses.append(CohortReflectStatus(
+            cohort_number=cohort_num,
+            has_prompts=has_prompts,
+            has_assessments=has_assessments,
+            has_summary=has_summary,
+            assessment_count=assessment_count,
+            repo_count=repo_count,
+        ))
+
+    return statuses
 
 
 def save_state(state: BakeoffFeaturesState):
@@ -1512,8 +1587,9 @@ def cmd_diagnose(args):
         with open(report_path, "w") as f:
             yaml.dump(report, f, default_flow_style=False, sort_keys=False)
 
-    # Update state with all verdicts
+    # Update state with all verdicts and reflect status
     state.verdicts = all_verdicts
+    state.reflect_statuses = scan_reflect_statuses(workdir)
     save_state(state)
 
     # Combined summary
