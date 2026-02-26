@@ -1,0 +1,21 @@
+- op: create  # f975
+  at: '2026-02-26T08:34:08Z'  # f975
+  by: agent  # f975
+  actor: jgstern_agent  # f975
+  clock: 1  # f975
+  nonce: f975  # f975
+  data:  # f975
+    kind: work_item  # f975
+    title: "Run full special-repos DEEP bakeoff (26 repos, 6 cohorts)"  # f975
+    status: todo_soft  # f975
+    priority: 3  # f975
+    parent:  # f975
+    tags:  # f975
+    - bakeoff  # f975
+    - deep-mode  # f975
+    before: []  # f975
+    duplicate_of: []  # f975
+    not_duplicate_of: []  # f975
+    pr_ref:  # f975
+    description: "Execute the entire special-repos curriculum at ~/hypergumbo_lab_notebook/curricula/deep-special-26repo-20260226.md. Source repos: /home/jgstern_agent/special_repos/. This is a brand new bakeoff session (init --pool, not an additional cohort of an existing session). Store artifacts using the timestamped convention (deep-YYYYMMDD-HHMMSS). Keep notes in the lab notebook (notebookjournal_MMDDYYYY_HHMM.md)."  # f975
+    fields: {}  # f975
