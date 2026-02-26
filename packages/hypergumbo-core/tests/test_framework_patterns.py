@@ -8081,16 +8081,16 @@ class TestMainFunctionPatterns:
         assert result["concept"] == "main_function"
 
     def test_main_function_pattern_match_java(self) -> None:
-        """Pattern matches Java main method."""
+        """Pattern matches Java main method (qualified name)."""
         pattern = Pattern(
             concept="main_function",
-            symbol_name="^main$",
+            symbol_name="(^|\\.)main$",
             symbol_kind="^method$",
             language="^java$",
         )
         symbol = Symbol(
-            id="java:Main.java:5-15:main:method",
-            name="main",
+            id="java:Main.java:5-15:Main.main:method",
+            name="Main.main",
             kind="method",
             language="java",
             path="Main.java",
@@ -16739,4 +16739,110 @@ class TestClojureTestPrefixGuard:
         test_concepts = [c for c in concepts if c["concept"] == "test_function"]
         assert len(test_concepts) >= 1, (
             "test-* function in test/ dir should be classified as test_function"
+        )
+
+
+class TestJavaQualifiedMainDetection:
+    """Tests for Java/C# main() detection with qualified method names (INV-lumiz).
+
+    Java and C# analyzers produce qualified method names like
+    ``ClassName.main`` instead of bare ``main``.  The main-functions.yaml
+    pattern must match these qualified names.
+    """
+
+    def test_java_qualified_main_detected(self) -> None:
+        """Java ClassName.main should be classified as main_function.
+
+        The Java analyzer produces qualified method names (e.g.,
+        ``PageViewUntypedDemo.main``).  The main-functions.yaml pattern
+        must match via the real YAML, not a hand-constructed Pattern.
+        """
+        clear_pattern_cache()
+        symbols = [
+            Symbol(
+                id="java:examples/PageViewUntypedDemo.java:5-15:PageViewUntypedDemo.main:method",
+                name="PageViewUntypedDemo.main",
+                kind="method",
+                language="java",
+                path="examples/PageViewUntypedDemo.java",
+                span=Span(5, 15, 0, 100),
+                meta={},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, set())
+        sym = enriched[0]
+        concepts = sym.meta.get("concepts", [])
+        main_concepts = [c for c in concepts if c["concept"] == "main_function"]
+        assert len(main_concepts) >= 1, (
+            "Java qualified method ClassName.main should be detected as main_function"
+        )
+
+    def test_java_bare_main_still_detected(self) -> None:
+        """Bare 'main' name should still match after the regex change."""
+        clear_pattern_cache()
+        symbols = [
+            Symbol(
+                id="java:Main.java:5-15:main:method",
+                name="main",
+                kind="method",
+                language="java",
+                path="Main.java",
+                span=Span(5, 15, 0, 100),
+                meta={},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, set())
+        sym = enriched[0]
+        concepts = sym.meta.get("concepts", [])
+        main_concepts = [c for c in concepts if c["concept"] == "main_function"]
+        assert len(main_concepts) >= 1, (
+            "Java bare 'main' method should still be detected as main_function"
+        )
+
+    def test_csharp_qualified_main_detected(self) -> None:
+        """C# ClassName.Main should be classified as main_function."""
+        clear_pattern_cache()
+        symbols = [
+            Symbol(
+                id="csharp:Program.cs:5-15:Program.Main:method",
+                name="Program.Main",
+                kind="method",
+                language="csharp",
+                path="Program.cs",
+                span=Span(5, 15, 0, 100),
+                meta={},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, set())
+        sym = enriched[0]
+        concepts = sym.meta.get("concepts", [])
+        main_concepts = [c for c in concepts if c["concept"] == "main_function"]
+        assert len(main_concepts) >= 1, (
+            "C# qualified method Program.Main should be detected as main_function"
+        )
+
+    def test_java_non_main_method_not_matched(self) -> None:
+        """Methods ending with 'main' but with a different name should not match."""
+        clear_pattern_cache()
+        symbols = [
+            Symbol(
+                id="java:Utils.java:5-15:Utils.containsmain:method",
+                name="Utils.containsmain",
+                kind="method",
+                language="java",
+                path="Utils.java",
+                span=Span(5, 15, 0, 100),
+                meta={},
+            ),
+        ]
+
+        enriched = enrich_symbols(symbols, set())
+        sym = enriched[0]
+        concepts = sym.meta.get("concepts", [])
+        main_concepts = [c for c in concepts if c["concept"] == "main_function"]
+        assert len(main_concepts) == 0, (
+            "Method 'containsmain' should NOT be classified as main_function"
         )

@@ -30,15 +30,19 @@ patterns:
     symbol_kind: "^function$"
     language: "^go$"
 
-  # Java: main method (could be main or Main depending on convention)
+  # Java: main method — use (^|\.)main$ to match both bare "main" and
+  # qualified "ClassName.main" (Java analyzer produces qualified names).
+  # INV-lumiz.
   - concept: main_function
-    symbol_name: "^main$"
+    symbol_name: "(^|\\.)main$"
     symbol_kind: "^method$"
     language: "^java$"
 
-  # Kotlin: main function
+  # Kotlin: main function — use (^|\.)main$ for consistency with Java.
+  # Kotlin top-level main() produces bare "main", but companion object
+  # main() could produce qualified names. INV-lumiz.
   - concept: main_function
-    symbol_name: "^main$"
+    symbol_name: "(^|\\.)main$"
     symbol_kind: "^function$"
     language: "^kotlin$"
 
@@ -66,9 +70,11 @@ patterns:
     symbol_kind: "^function$"
     language: "^rust$"
 
-  # C#: static void Main(...) - often capitalized
+  # C#: static void Main(...) — use (^|\.)Main$ to match both bare "Main"
+  # and qualified "Program.Main" (C# analyzer produces qualified names).
+  # INV-lumiz.
   - concept: main_function
-    symbol_name: "^Main$"
+    symbol_name: "(^|\\.)Main$"
     symbol_kind: "^method$"
     language: "^csharp$"
 
