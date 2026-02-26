@@ -1484,3 +1484,189 @@ class TestNormalizeRustSignature:
         from hypergumbo_lang_mainstream.rust import normalize_rust_signature
         assert normalize_rust_signature(None) is None
 
+
+class TestRustMethodCallAmbiguity:
+    """Tests for method call ambiguity penalty (WI-zojis).
+
+    Rust method calls like foo.clone() resolve by name only, which causes
+    massive false-positive fan-in when common names (.clone, .get, .build)
+    match dozens or hundreds of symbols. The fix applies a confidence
+    penalty proportional to the number of ambiguous candidates for method
+    calls (field_expression), not regular function calls (identifier).
+    """
+
+    def test_method_call_many_candidates_low_confidence(self, tmp_path: Path) -> None:
+        """Method call with many ambiguous candidates gets low confidence.
+
+        When bar() matches 20+ symbols via suffix, the edge confidence
+        should be much lower than 0.56 (the old flat ambiguous confidence).
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    foo.bar();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        # Build a registry with many symbols named "bar" under different types
+        registry: dict[str, Symbol] = {}
+        for i in range(20):
+            sym = Symbol(
+                id=f"rust:lib.rs:{i}-{i}:Type{i}.bar:method",
+                name=f"Type{i}.bar", kind="method", language="rust",
+                path="lib.rs",
+                span=Span(start_line=i, end_line=i, start_col=0, end_col=1),
+                origin="test", origin_run_id="run",
+            )
+            registry[f"Type{i}.bar"] = sym
+
+        resolver = NameResolver(registry)
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, {},
+            "run", resolver, {},
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        # With 20 candidates, confidence should be heavily penalized
+        # Old: 0.80 * 0.70 = 0.56. New: much lower.
+        assert call_edges[0].confidence < 0.15
+
+    def test_function_call_not_penalized(self, tmp_path: Path) -> None:
+        """Regular function calls (not method calls) keep normal confidence.
+
+        Only field_expression calls (foo.bar()) get the ambiguity penalty,
+        not plain identifier calls (bar()).
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    bar();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        # Build a registry with multiple "bar" symbols (ambiguous)
+        registry: dict[str, Symbol] = {}
+        for i in range(5):
+            sym = Symbol(
+                id=f"rust:lib.rs:{i}-{i}:Mod{i}.bar:function",
+                name=f"Mod{i}.bar", kind="function", language="rust",
+                path="lib.rs",
+                span=Span(start_line=i, end_line=i, start_col=0, end_col=1),
+                origin="test", origin_run_id="run",
+            )
+            registry[f"Mod{i}.bar"] = sym
+
+        resolver = NameResolver(registry)
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, {},
+            "run", resolver, {},
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        # Regular function calls use standard confidence: 0.80 * 0.70 = 0.56
+        assert call_edges[0].confidence >= 0.50
+
+    def test_method_call_few_candidates_moderate_confidence(self, tmp_path: Path) -> None:
+        """Method call with 2-3 candidates keeps moderate confidence.
+
+        Small ambiguity is acceptable — the penalty only kicks in hard
+        with many candidates.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    foo.process();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        # Only 2 candidates — moderate ambiguity
+        registry: dict[str, Symbol] = {}
+        for i in range(2):
+            sym = Symbol(
+                id=f"rust:lib.rs:{i}-{i}:Type{i}.process:method",
+                name=f"Type{i}.process", kind="method", language="rust",
+                path="lib.rs",
+                span=Span(start_line=i, end_line=i, start_col=0, end_col=1),
+                origin="test", origin_run_id="run",
+            )
+            registry[f"Type{i}.process"] = sym
+
+        resolver = NameResolver(registry)
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, {},
+            "run", resolver, {},
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        # With only 2 candidates, confidence should still be reasonable
+        assert call_edges[0].confidence >= 0.30
+

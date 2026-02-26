@@ -828,10 +828,12 @@ def _extract_edges_from_file(
                 func_node = _find_child_by_field(node, "function")
                 if func_node:
                     # Get the function name being called
+                    is_method_call = False
                     if func_node.type == "identifier":
                         callee_name = node_text(func_node, source)
                     elif func_node.type == "field_expression":
                         # method call like foo.bar()
+                        is_method_call = True
                         field_node = _find_child_by_field(func_node, "field")
                         if field_node:
                             callee_name = node_text(field_node, source)
@@ -867,13 +869,29 @@ def _extract_edges_from_file(
                             import_hint = use_aliases.get(callee_name)
                             lookup_result = resolver.lookup(callee_name, path_hint=import_hint)
                             if lookup_result.found and lookup_result.symbol is not None:
+                                confidence = 0.80 * lookup_result.confidence
+                                # Ambiguity penalty for method calls (field_expression).
+                                # Method calls like foo.bar() resolve by name only — no
+                                # receiver type info. When "bar" matches many symbols
+                                # (e.g., clone, get, build), confidence must drop to
+                                # prevent false-positive fan-in from corrupting centrality
+                                # and reverse slices.  Penalty: min(1, 3/N) where N is
+                                # candidate count.  Regular function calls (identifier)
+                                # are not penalized because they are less ambiguous.
+                                if (
+                                    is_method_call
+                                    and lookup_result.match_type == "suffix_ambiguous"
+                                    and lookup_result.candidates
+                                ):
+                                    n = len(lookup_result.candidates)
+                                    confidence *= min(1.0, 3.0 / n)
                                 edges.append(Edge.create(
                                     src=current_function.id,
                                     dst=lookup_result.symbol.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="function_call",
-                                    confidence=0.80 * lookup_result.confidence,
+                                    confidence=confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                 ))
