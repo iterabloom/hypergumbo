@@ -19,3 +19,18 @@
     pr_ref:  # f975
     description: "Execute the entire special-repos curriculum at ~/hypergumbo_lab_notebook/curricula/deep-special-26repo-20260226.md. Source repos: /home/jgstern_agent/special_repos/. This is a brand new bakeoff session (init --pool, not an additional cohort of an existing session). Store artifacts using the timestamped convention (deep-YYYYMMDD-HHMMSS). Keep notes in the lab notebook (notebookjournal_MMDDYYYY_HHMM.md)."  # f975
     fields: {}  # f975
+- op: update  # 9f62
+  at: '2026-02-26T17:25:15Z'  # 9f62
+  by: agent  # 9f62
+  actor: jgstern_agent  # 9f62
+  clock: 2  # 9f62
+  nonce: 9f62  # 9f62
+  set:  # 9f62
+    status: done  # 9f62
+- op: discuss  # 765e
+  at: '2026-02-26T17:25:15Z'  # 765e
+  by: agent  # 765e
+  actor: jgstern_agent  # 765e
+  clock: 3  # 765e
+  nonce: 765e  # 765e
+  message: "Full 26-repo, 6-cohort DEEP bakeoff completed. Session: deep-20260226-114957. All repos analyzed successfully. Total runtime ~33.5 min. Reflect prompts generated for all cohorts. Key findings: reverse-slice entrypoint fallback in many repos, polis 38% orphan rate, no OOM even on 475MB zed. Lab notebook: notebookjournal_02262026_1200.md."  # 765e
