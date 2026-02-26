@@ -398,6 +398,7 @@ def load_state(workdir: str) -> Optional[BakeoffFeaturesState]:
         verdicts=[RepoVerdict(**v) for v in data.get("verdicts", [])],
         created_at=data.get("created_at", ""),
         updated_at=data.get("updated_at", ""),
+        hypergumbo_code_hash=data.get("hypergumbo_code_hash", ""),
     )
 
 
