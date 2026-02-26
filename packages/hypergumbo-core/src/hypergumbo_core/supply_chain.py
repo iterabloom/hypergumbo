@@ -161,6 +161,15 @@ EXAMPLE_PATTERNS = [
     r"^tutorials?/",  # tutorials/ or tutorial/
 ]
 
+# Patterns for fuzz targets and benchmarks (tier 2) — not production code.
+# Checked with re.search to match at any depth (e.g., crates/core/fuzz/).
+FUZZ_BENCH_PATTERNS = [
+    r"(?:^|/)fuzz(?:ing)?/",       # fuzz/ or fuzzing/ at any level
+    r"(?:^|/)fuzz_targets/",       # fuzz_targets/ (cargo-fuzz convention)
+    r"(?:^|/)benchmarks?/",        # benchmark/ or benchmarks/ at any level
+    r"(?:^|/)benches/",            # benches/ (Rust convention) at any level
+]
+
 # Patterns for test code (tier 2) — checked BEFORE first-party patterns so that
 # test files in src/ or pkg/ are correctly classified as tier 2, not tier 1.
 # Directory patterns: top-level or nested test directories
@@ -289,7 +298,12 @@ def classify_file(
         if re.search(pattern, rel):
             return FileClassification(Tier.INTERNAL_DEP, f"test file matches {pattern}")
 
-    # 5c. Check custom first_party_patterns from config
+    # 5c. Check fuzz/benchmark patterns (not production code)
+    for pattern in FUZZ_BENCH_PATTERNS:
+        if re.search(pattern, rel):
+            return FileClassification(Tier.INTERNAL_DEP, f"fuzz/bench path matches {pattern}")
+
+    # 5d. Check custom first_party_patterns from config
     if config and config.first_party_patterns:
         for pattern in config.first_party_patterns:
             if rel.startswith(pattern) or re.match(f"^{re.escape(pattern)}", rel):

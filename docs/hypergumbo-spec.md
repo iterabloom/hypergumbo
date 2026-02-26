@@ -1191,6 +1191,15 @@ members = ["crates/*"]
 dependencies = ["./packages/core", "./packages/utils"]
 ```
 
+**Example/demo, test, and fuzz/bench patterns:**
+```
+examples/, demos/, samples/, tutorials/     # Example/demo code
+tests/, test/, __tests__/, spec/            # Test directories
+_test.go, .test.js, .spec.ts, _spec.rb     # Test file suffixes
+fuzz/, fuzzing/, fuzz_targets/              # Fuzz targets
+benches/, benchmarks/, benchmark/           # Benchmarks
+```
+
 #### 4. First-party detection (tier 1)
 
 **Explicit first-party patterns:**

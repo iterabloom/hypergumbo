@@ -523,6 +523,101 @@ class TestTestFileClassification:
         assert result.tier == Tier.DERIVED
 
 
+class TestFuzzBenchClassification:
+    """Test that fuzz and benchmark directories are classified as tier 2.
+
+    Fuzz targets and benchmarks are non-production code — they exercise the
+    library but are not part of its API surface.  Common across Rust, Go, C/C++.
+
+    - Rust: fuzz/, fuzz_targets/, benches/, criterion/
+    - Go: fuzz (in _test.go), benchmarks/ (less common)
+    - C/C++: fuzz/, fuzzing/, benchmarks/, benchmark/
+    """
+
+    def test_fuzz_dir_is_internal_dep(self, tmp_path):
+        """Top-level fuzz/ directory is tier 2."""
+        fuzz_dir = tmp_path / "fuzz" / "fuzz_targets"
+        fuzz_dir.mkdir(parents=True)
+        (fuzz_dir / "fuzz_diff.rs").write_text("fuzz_target!(|data| {})")
+
+        result = classify_file(fuzz_dir / "fuzz_diff.rs", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+        assert "fuzz" in result.reason.lower()
+
+    def test_fuzz_dir_with_cargo_toml(self, tmp_path):
+        """Fuzz Cargo.toml in fuzz/ is tier 2."""
+        fuzz_dir = tmp_path / "fuzz"
+        fuzz_dir.mkdir()
+        (fuzz_dir / "Cargo.toml").write_text('[package]\nname = "fuzz"')
+
+        result = classify_file(fuzz_dir / "Cargo.toml", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_nested_fuzz_dir_is_internal_dep(self, tmp_path):
+        """Nested fuzz/ in a crate workspace is tier 2."""
+        fuzz_dir = tmp_path / "crates" / "core" / "fuzz"
+        fuzz_dir.mkdir(parents=True)
+        (fuzz_dir / "fuzz_parse.rs").write_text("fuzz_target!(|data| {})")
+
+        result = classify_file(fuzz_dir / "fuzz_parse.rs", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_benches_dir_is_internal_dep(self, tmp_path):
+        """Rust benches/ directory is tier 2."""
+        bench_dir = tmp_path / "benches"
+        bench_dir.mkdir()
+        (bench_dir / "pipeline.rs").write_text("fn bench_pipeline() {}")
+
+        result = classify_file(bench_dir / "pipeline.rs", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+        assert "bench" in result.reason.lower()
+
+    def test_benchmarks_dir_is_internal_dep(self, tmp_path):
+        """benchmarks/ directory is tier 2."""
+        bench_dir = tmp_path / "benchmarks"
+        bench_dir.mkdir()
+        (bench_dir / "bench_main.cpp").write_text("BENCHMARK(main)")
+
+        result = classify_file(bench_dir / "bench_main.cpp", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_benchmark_singular_dir_is_internal_dep(self, tmp_path):
+        """benchmark/ (singular) directory is tier 2."""
+        bench_dir = tmp_path / "benchmark"
+        bench_dir.mkdir()
+        (bench_dir / "bench.go").write_text("func BenchmarkParse(b *testing.B)")
+
+        result = classify_file(bench_dir / "bench.go", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_fuzzing_dir_is_internal_dep(self, tmp_path):
+        """fuzzing/ directory is tier 2 (OSS-Fuzz convention)."""
+        fuzz_dir = tmp_path / "fuzzing"
+        fuzz_dir.mkdir()
+        (fuzz_dir / "fuzz_harness.c").write_text("int LLVMFuzzerTestOneInput()")
+
+        result = classify_file(fuzz_dir / "fuzz_harness.c", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_production_code_unaffected(self, tmp_path):
+        """Production code in src/ is not affected by fuzz/bench patterns."""
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "lib.rs").write_text("pub fn compute() {}")
+
+        result = classify_file(src_dir / "lib.rs", tmp_path, set())
+        assert result.tier == Tier.FIRST_PARTY
+
+    def test_fuzz_lower_priority_than_derived(self, tmp_path):
+        """Derived artifacts take priority over fuzz classification."""
+        dist_fuzz = tmp_path / "dist" / "fuzz"
+        dist_fuzz.mkdir(parents=True)
+        (dist_fuzz / "fuzz.js").write_text("// compiled fuzz")
+
+        result = classify_file(dist_fuzz / "fuzz.js", tmp_path, set())
+        assert result.tier == Tier.DERIVED
+
+
 class TestMinificationDetection:
     """Test content-based minification heuristics."""
 
