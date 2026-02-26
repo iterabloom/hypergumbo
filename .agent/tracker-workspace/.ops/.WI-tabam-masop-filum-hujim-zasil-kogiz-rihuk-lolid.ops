@@ -17,3 +17,18 @@
     pr_ref:  # 9a19
     description: "Both the main 23-repo session and the validation session have empty hypergumbo_code_hash in state.json. This prevents A/B comparisons from verifying which code version produced which results. The code_hash should capture the git SHA or a content hash of the hypergumbo source at analysis time. Fix: populate code_hash in bakeoff-features init or run."  # 9a19
     fields: {}  # 9a19
+- op: update  # b8a4
+  at: '2026-02-26T21:52:09Z'  # b8a4
+  by: agent  # b8a4
+  actor: jgstern_agent  # b8a4
+  clock: 2  # b8a4
+  nonce: b8a4  # b8a4
+  set:  # b8a4
+    status: done  # b8a4
+- op: discuss  # fe52
+  at: '2026-02-26T21:52:09Z'  # fe52
+  by: agent  # fe52
+  actor: jgstern_agent  # fe52
+  clock: 3  # fe52
+  nonce: fe52  # fe52
+  message: "Fixed in PR #1521. load_state() was missing hypergumbo_code_hash from constructor."  # fe52

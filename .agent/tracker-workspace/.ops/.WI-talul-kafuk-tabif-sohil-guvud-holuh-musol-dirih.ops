@@ -1,0 +1,20 @@
+- op: create  # 3047
+  at: '2026-02-26T21:49:51Z'  # 3047
+  by: agent  # 3047
+  actor: jgstern_agent  # 3047
+  clock: 1  # 3047
+  nonce: '3047'  # 3047
+  data:  # 3047
+    kind: work_item  # 3047
+    title: "DEEP bakeoff loop infrastructure overhaul"  # 3047
+    status: todo_soft  # 3047
+    priority: 2  # 3047
+    parent:  # 3047
+    tags:  # 3047
+    - bakeoff_infrastructure  # 3047
+    before: []  # 3047
+    duplicate_of: []  # 3047
+    not_duplicate_of: []  # 3047
+    pr_ref:  # 3047
+    description: "Five-phase plan to make the bakeoff loop more robust, efficient, and introspective. Covers: (1) fixing the guidance loop so convergence status reaches the agent, (2) improving session discoverability with reflect_status in state.json and a status subcommand, (3) WARN verdict graduation with metric details, (4) A/B comparison infrastructure, (5) test-path robustness. Full plan: ~/hypergumbo_lab_notebook/notebookjournal_02262026_2145.md"  # 3047
+    fields: {}  # 3047
