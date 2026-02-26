@@ -58,6 +58,7 @@ component.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -476,8 +477,9 @@ class NameResolver:
     ) -> LookupResult:
         """Look up symbol using suffix matching.
 
-        Finds any key that ends with '.{name}' or equals '{name}'.
-        For example, looking for 'doWork' matches 'MyClass.doWork'.
+        Finds any key whose suffix (after ``.`` or ``::`` splits) matches
+        ``name``.  For example, looking for ``'doWork'`` matches
+        ``'MyClass.doWork'``, and ``'compute'`` matches ``'Diff::compute'``.
 
         Args:
             name: The symbol name suffix to match.
@@ -529,22 +531,51 @@ class NameResolver:
         """Build suffix index lazily on first use.
 
         The suffix index maps each possible name suffix to all keys that
-        have that suffix. For key "pkg.ClassName.method", we index:
-        - "method" -> ["pkg.ClassName.method"]
-        - "ClassName.method" -> ["pkg.ClassName.method"]
-        - "pkg.ClassName.method" -> ["pkg.ClassName.method"]
+        have that suffix. Splits on both ``.`` and ``::`` so that Rust
+        qualified names (``Diff::compute``) are indexed alongside Java/JS
+        dot-separated names (``MyClass.doWork``).
+
+        For key ``crate::Diff::compute``, we index:
+        - ``"compute"`` → [``"crate::Diff::compute"``]
+        - ``"Diff::compute"`` → [``"crate::Diff::compute"``]
+        - ``"crate::Diff::compute"`` → [``"crate::Diff::compute"``]
+
+        Suffixes use the **original separator** from the key string, so
+        ``"Diff::compute"`` (not ``"Diff.compute"``) is indexed.
         """
         if self._suffix_index is not None:
             return
 
         self._suffix_index = {}
         for key in self.registry.keys():
-            parts = key.split(".")
-            for i in range(len(parts)):
-                suffix = ".".join(parts[i:])
-                if suffix not in self._suffix_index:
-                    self._suffix_index[suffix] = []
-                self._suffix_index[suffix].append(key)
+            self._index_key_suffixes(key)
+
+    def _index_key_suffixes(self, key: str) -> None:
+        """Index a key by all its name suffixes.
+
+        Walks the key backwards from the rightmost part, extracting each
+        suffix as a substring of the original key. This preserves the
+        original separator characters (``.`` or ``::``).
+        """
+        parts = re.split(r"\.|::", key)
+        # Walk backwards through the key to find suffix start positions.
+        # For "crate::Diff::compute" with parts ["crate","Diff","compute"]:
+        #   i=2 → pos points to "compute"
+        #   i=1 → pos points to "Diff::compute"
+        #   i=0 → pos points to "crate::Diff::compute"
+        assert self._suffix_index is not None
+        pos = len(key)
+        for i in range(len(parts) - 1, -1, -1):
+            part_len = len(parts[i])
+            pos -= part_len
+            suffix = key[pos:]
+            if suffix not in self._suffix_index:
+                self._suffix_index[suffix] = []
+            self._suffix_index[suffix].append(key)
+            # Skip the separator before this part (2 for '::', 1 for '.')
+            if pos > 0:
+                sep_len = 2 if key[pos - 2:pos] == "::" else 1
+                pos -= sep_len
 
     def clear_indexes(self) -> None:
         """Clear cached indexes."""

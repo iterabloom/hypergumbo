@@ -1670,3 +1670,203 @@ class TestRustMethodCallAmbiguity:
         # With only 2 candidates, confidence should still be reasonable
         assert call_edges[0].confidence >= 0.30
 
+
+class TestRustScopedIdentifierResolution:
+    """Tests for Rust scoped identifier (Foo::bar) call resolution.
+
+    When code calls Foo::bar(), the analyzer should use the full qualified
+    name "Foo::bar" for resolution instead of just "bar". This prevents
+    false edges when multiple types share a method name (e.g., Diff::compute
+    vs Parser::compute).
+    """
+
+    def _parse_and_extract(
+        self, source_text: bytes,
+        local_symbols: dict, global_symbols: dict,
+        use_aliases: dict | None = None,
+    ) -> list:
+        """Helper: parse Rust source and extract edges."""
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.symbol_resolution import NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+        tree = parser.parse(source_text)
+
+        resolver = NameResolver(global_symbols)
+
+        return _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, global_symbols,
+            "run", resolver, use_aliases or {},
+        )
+
+    def _make_rust_symbol(self, name: str, kind: str = "method"):
+        """Helper: create a Rust symbol for testing."""
+        from hypergumbo_core.ir import Symbol, Span
+        return Symbol(
+            id=f"rust:lib.rs:1-10:{name}:{kind}",
+            name=name, kind=kind, language="rust",
+            path="lib.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+    def test_scoped_call_exact_match(self, tmp_path: Path) -> None:
+        """Foo::bar() resolves to Foo::bar symbol via full qualified name."""
+        from hypergumbo_core.ir import Symbol, Span
+
+        caller = Symbol(
+            id="rust:test.rs:1-5:main:function",
+            name="main", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        target = self._make_rust_symbol("Diff::compute")
+
+        source = b"fn main() {\n    Diff::compute();\n}\n"
+        global_symbols = {"Diff::compute": target}
+
+        edges = self._parse_and_extract(
+            source, {"main": caller}, global_symbols,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        assert call_edges[0].dst == target.id
+        # Full qualified match → high confidence
+        assert call_edges[0].confidence >= 0.70
+
+    def test_scoped_call_with_multiple_types(self, tmp_path: Path) -> None:
+        """Diff::compute() resolves to Diff::compute, not Parser::compute.
+
+        This is the core fix: when multiple types share a method name,
+        the scoped call Diff::compute() should find the correct one.
+        """
+        from hypergumbo_core.ir import Symbol, Span
+
+        caller = Symbol(
+            id="rust:test.rs:1-5:main:function",
+            name="main", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        diff_compute = self._make_rust_symbol("Diff::compute")
+        parser_compute = Symbol(
+            id="rust:lib.rs:20-30:Parser::compute:method",
+            name="Parser::compute", kind="method", language="rust",
+            path="lib.rs",
+            span=Span(start_line=20, end_line=30, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        source = b"fn main() {\n    Diff::compute();\n}\n"
+        global_symbols = {
+            "Diff::compute": diff_compute,
+            "Parser::compute": parser_compute,
+        }
+
+        edges = self._parse_and_extract(
+            source, {"main": caller}, global_symbols,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        # Must resolve to Diff::compute, not Parser::compute
+        assert call_edges[0].dst == diff_compute.id
+        # With qualified lookup, should get exact match confidence (0.80),
+        # not ambiguous suffix confidence (0.80 * 0.70 = 0.56)
+        assert call_edges[0].confidence >= 0.70
+
+    def test_unscoped_method_still_works(self, tmp_path: Path) -> None:
+        """Regular foo.bar() method calls still resolve via suffix matching."""
+        from hypergumbo_core.ir import Symbol, Span
+
+        caller = Symbol(
+            id="rust:test.rs:1-5:main:function",
+            name="main", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        target = self._make_rust_symbol("MyType::bar")
+
+        source = b"fn main() {\n    foo.bar();\n}\n"
+        global_symbols = {"MyType::bar": target}
+
+        edges = self._parse_and_extract(
+            source, {"main": caller}, global_symbols,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        # Should find bar via suffix matching (MyType::bar → "bar" suffix)
+        assert len(call_edges) == 1
+        assert call_edges[0].dst == target.id
+
+    def test_scoped_call_not_in_registry(self, tmp_path: Path) -> None:
+        """Unknown::method() doesn't crash, no edge produced."""
+        from hypergumbo_core.ir import Symbol, Span
+
+        caller = Symbol(
+            id="rust:test.rs:1-5:main:function",
+            name="main", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        source = b"fn main() {\n    Unknown::method();\n}\n"
+
+        edges = self._parse_and_extract(
+            source, {"main": caller}, {},
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        # No symbols registered, so no edges should be produced
+        assert len(call_edges) == 0
+
+    def test_scoped_call_falls_back_to_short_name(self, tmp_path: Path) -> None:
+        """When full scoped name not found, falls back to short name lookup.
+
+        If registry has "bar" but not "Foo::bar", we should still find "bar"
+        via the short name fallback.
+        """
+        from hypergumbo_core.ir import Symbol, Span
+
+        caller = Symbol(
+            id="rust:test.rs:1-5:main:function",
+            name="main", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        target = Symbol(
+            id="rust:lib.rs:1-10:bar:function",
+            name="bar", kind="function", language="rust",
+            path="lib.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        source = b"fn main() {\n    Foo::bar();\n}\n"
+        # Registry only has "bar", not "Foo::bar"
+        global_symbols = {"bar": target}
+
+        edges = self._parse_and_extract(
+            source, {"main": caller}, global_symbols,
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        assert call_edges[0].dst == target.id
+

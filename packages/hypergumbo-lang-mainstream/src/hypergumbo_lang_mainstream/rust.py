@@ -829,6 +829,7 @@ def _extract_edges_from_file(
                 if func_node:
                     # Get the function name being called
                     is_method_call = False
+                    full_scoped_name = None
                     if func_node.type == "identifier":
                         callee_name = node_text(func_node, source)
                     elif func_node.type == "field_expression":
@@ -840,61 +841,100 @@ def _extract_edges_from_file(
                         else:
                             callee_name = None
                     elif func_node.type == "scoped_identifier":
-                        # qualified call like Foo::bar()
+                        # Qualified call like Foo::bar() or module::func().
+                        # Extract full qualified name for precise lookup.
+                        full_scoped_name = node_text(func_node, source)
                         name_node = _find_child_by_field(func_node, "name")
                         if name_node:
                             callee_name = node_text(name_node, source)
                         else:
-                            callee_name = node_text(func_node, source)
+                            callee_name = full_scoped_name
                     else:
                         callee_name = None
 
                     if callee_name:
-                        # Check local symbols first
-                        if callee_name in local_symbols:
-                            callee = local_symbols[callee_name]
-                            edges.append(Edge.create(
-                                src=current_function.id,
-                                dst=callee.id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                evidence_type="function_call",
-                                confidence=0.85,
-                                origin=PASS_ID,
-                                origin_run_id=run_id,
-                            ))
-                        # Check global symbols via resolver
-                        else:
-                            # Use import path as hint for disambiguation
-                            import_hint = use_aliases.get(callee_name)
-                            lookup_result = resolver.lookup(callee_name, path_hint=import_hint)
-                            if lookup_result.found and lookup_result.symbol is not None:
-                                confidence = 0.80 * lookup_result.confidence
-                                # Ambiguity penalty for method calls (field_expression).
-                                # Method calls like foo.bar() resolve by name only — no
-                                # receiver type info. When "bar" matches many symbols
-                                # (e.g., clone, get, build), confidence must drop to
-                                # prevent false-positive fan-in from corrupting centrality
-                                # and reverse slices.  Penalty: min(1, 3/N) where N is
-                                # candidate count.  Regular function calls (identifier)
-                                # are not penalized because they are less ambiguous.
-                                if (
-                                    is_method_call
-                                    and lookup_result.match_type == "suffix_ambiguous"
-                                    and lookup_result.candidates
-                                ):
-                                    n = len(lookup_result.candidates)
-                                    confidence *= min(1.0, 3.0 / n)
+                        resolved = False
+
+                        # Strategy 1: Try full scoped name first (e.g., "Diff::compute")
+                        # This gives precise resolution for qualified calls.
+                        if full_scoped_name and full_scoped_name != callee_name:
+                            if full_scoped_name in local_symbols:
+                                callee = local_symbols[full_scoped_name]
                                 edges.append(Edge.create(
                                     src=current_function.id,
-                                    dst=lookup_result.symbol.id,
+                                    dst=callee.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="function_call",
-                                    confidence=confidence,
+                                    confidence=0.90,
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                 ))
+                                resolved = True
+                            else:
+                                import_hint = use_aliases.get(callee_name)
+                                lookup_result = resolver.lookup(
+                                    full_scoped_name, path_hint=import_hint,
+                                )
+                                if lookup_result.found and lookup_result.symbol is not None:
+                                    edges.append(Edge.create(
+                                        src=current_function.id,
+                                        dst=lookup_result.symbol.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1,
+                                        evidence_type="function_call",
+                                        confidence=0.80 * lookup_result.confidence,
+                                        origin=PASS_ID,
+                                        origin_run_id=run_id,
+                                    ))
+                                    resolved = True
+
+                        # Strategy 2: Fall back to short name
+                        if not resolved:
+                            if callee_name in local_symbols:
+                                callee = local_symbols[callee_name]
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=callee.id,
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1,
+                                    evidence_type="function_call",
+                                    confidence=0.85,
+                                    origin=PASS_ID,
+                                    origin_run_id=run_id,
+                                ))
+                            # Check global symbols via resolver
+                            else:
+                                # Use import path as hint for disambiguation
+                                import_hint = use_aliases.get(callee_name)
+                                lookup_result = resolver.lookup(callee_name, path_hint=import_hint)
+                                if lookup_result.found and lookup_result.symbol is not None:
+                                    confidence = 0.80 * lookup_result.confidence
+                                    # Ambiguity penalty for method calls (field_expression).
+                                    # Method calls like foo.bar() resolve by name only — no
+                                    # receiver type info. When "bar" matches many symbols
+                                    # (e.g., clone, get, build), confidence must drop to
+                                    # prevent false-positive fan-in from corrupting centrality
+                                    # and reverse slices.  Penalty: min(1, 3/N) where N is
+                                    # candidate count.  Regular function calls (identifier)
+                                    # are not penalized because they are less ambiguous.
+                                    if (
+                                        is_method_call
+                                        and lookup_result.match_type == "suffix_ambiguous"
+                                        and lookup_result.candidates
+                                    ):
+                                        n = len(lookup_result.candidates)
+                                        confidence *= min(1.0, 3.0 / n)
+                                    edges.append(Edge.create(
+                                        src=current_function.id,
+                                        dst=lookup_result.symbol.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1,
+                                        evidence_type="function_call",
+                                        confidence=confidence,
+                                        origin=PASS_ID,
+                                        origin_run_id=run_id,
+                                    ))
 
     return edges
 
@@ -1048,11 +1088,15 @@ class RustAnalyzer(TreeSitterAnalyzer):
     def register_symbol(
         self, symbol: Symbol, global_symbols: dict,
     ) -> None:
-        """Register symbol globally, including short name for cross-file resolution."""
+        """Register symbol globally by qualified name.
+
+        Does NOT register by short name for ``::``-qualified symbols
+        (e.g., ``Diff::compute``). The suffix index in ``NameResolver``
+        handles ``"compute"`` → ``"Diff::compute"`` lookups. Registering
+        the short name caused false exact matches when multiple types
+        share a method name (the last one registered won the key).
+        """
         global_symbols[symbol.name] = symbol
-        # Store by short name (last segment after ::) for cross-file resolution
-        short_name = symbol.name.split("::")[-1] if "::" in symbol.name else symbol.name
-        global_symbols[short_name] = symbol
 
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,

@@ -921,3 +921,91 @@ class TestListNameResolverAmbiguityThreshold:
         assert "log" in result.symbol.path, (
             f"Should resolve to a symbol in pkg/log, got {result.symbol.path}"
         )
+
+
+# ============================================================================
+# NameResolver :: separator tests (Rust qualified names)
+# ============================================================================
+
+
+class TestNameResolverRustSeparator:
+    """Tests for NameResolver suffix index handling of :: separators.
+
+    Rust uses :: as the path separator (e.g., Diff::compute, crate::module::Foo).
+    The suffix index must split on both . and :: to support suffix lookups
+    like looking up "compute" and finding "Diff::compute".
+    """
+
+    def test_suffix_lookup_double_colon(self) -> None:
+        """Looking up 'compute' finds 'Diff::compute' via suffix matching."""
+        sym = make_symbol("Diff::compute", "/src/diff.rs", "rust")
+        registry = {"Diff::compute": sym}
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("compute")
+
+        assert result.found is True
+        assert result.symbol is sym
+        assert result.confidence == NameResolver.CONFIDENCE_SUFFIX
+        assert result.match_type == "suffix"
+
+    def test_suffix_lookup_nested_double_colon(self) -> None:
+        """Nested :: path supports suffix matching at multiple levels."""
+        sym = make_symbol(
+            "crate::module::Diff::compute", "/src/diff.rs", "rust",
+        )
+        registry = {"crate::module::Diff::compute": sym}
+        resolver = NameResolver(registry)
+
+        # Lookup by short name
+        result = resolver.lookup("compute")
+        assert result.found is True
+        assert result.symbol is sym
+
+        # Lookup by intermediate qualified name
+        result2 = resolver.lookup("Diff::compute")
+        assert result2.found is True
+        assert result2.symbol is sym
+
+    def test_exact_match_still_works(self) -> None:
+        """Exact match on full :: name returns confidence 1.0."""
+        sym = make_symbol("Diff::compute", "/src/diff.rs", "rust")
+        registry = {"Diff::compute": sym}
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("Diff::compute")
+
+        assert result.found is True
+        assert result.symbol is sym
+        assert result.confidence == 1.0
+        assert result.match_type == "exact"
+
+    def test_ambiguous_double_colon(self) -> None:
+        """Multiple :: entries with same suffix → ambiguous."""
+        sym1 = make_symbol("Diff::compute", "/src/diff.rs", "rust")
+        sym2 = make_symbol("Parser::compute", "/src/parser.rs", "rust")
+        registry = {"Diff::compute": sym1, "Parser::compute": sym2}
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("compute")
+
+        assert result.found is True
+        assert result.confidence == NameResolver.CONFIDENCE_AMBIGUOUS
+        assert result.match_type == "suffix_ambiguous"
+        assert len(result.candidates) == 2
+
+    def test_mixed_separators(self) -> None:
+        """Mixed . and :: in a key (e.g., 'pkg.Foo::bar') supports suffix lookup."""
+        sym = make_symbol("pkg.Foo::bar", "/src/foo.rs", "rust")
+        registry = {"pkg.Foo::bar": sym}
+        resolver = NameResolver(registry)
+
+        # Lookup by short name
+        result = resolver.lookup("bar")
+        assert result.found is True
+        assert result.symbol is sym
+
+        # Lookup by intermediate suffix crossing separator boundary
+        result2 = resolver.lookup("Foo::bar")
+        assert result2.found is True
+        assert result2.symbol is sym
