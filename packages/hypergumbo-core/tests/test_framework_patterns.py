@@ -6925,6 +6925,19 @@ class TestExtractUsageValue:
 
         assert extract_usage_value(ctx, "metadata.kwargs.name") == "user-list"
 
+    def test_metadata_direct_key_list_value(self) -> None:
+        """Extract list value from metadata direct key (joins with comma)."""
+        ctx = UsageContext.create(
+            kind="call",
+            context_name="methods",
+            position="args[0]",
+            path="file.py",
+            span=Span(1, 1, 0, 10),
+            metadata={"methods": ["GET", "POST"]},
+        )
+
+        assert extract_usage_value(ctx, "metadata.methods") == "GET,POST"
+
     def test_uppercase_transform(self) -> None:
         """Transform value to uppercase."""
         ctx = UsageContext.create(
@@ -15425,6 +15438,201 @@ class TestJavaLibraryExportPatterns:
         results = match_patterns(symbol, [pattern_def])
 
         lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+
+class TestRustLibraryExportPatterns:
+    """Tests for Rust library export YAML patterns.
+
+    Rust library crates expose their public API through ``pub`` items in
+    ``lib.rs`` (and re-exports).  The ``pub`` modifier is extracted by the
+    Rust analyzer as ``"pub"`` (not ``"public"``).  These patterns detect
+    ``pub`` functions, structs, traits, and enums in Rust code as library
+    exports.
+    """
+
+    def test_pub_function_matches_library_export(self) -> None:
+        """Rust pub function matches library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="rust:src/lib.rs:10-30:new:function",
+            name="new",
+            kind="function",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(10, 30, 0, 200),
+            meta={},
+            modifiers=["pub"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1, (
+            f"Rust pub function should match library_export, got: {results}"
+        )
+
+    def test_pub_struct_matches_library_export(self) -> None:
+        """Rust pub struct matches library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="rust:src/lib.rs:1-20:Config:struct",
+            name="Config",
+            kind="struct",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(1, 20, 0, 200),
+            meta={},
+            modifiers=["pub"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_pub_trait_matches_library_export(self) -> None:
+        """Rust pub trait matches library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="rust:src/lib.rs:5-40:Handler:trait",
+            name="Handler",
+            kind="trait",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(5, 40, 0, 300),
+            meta={},
+            modifiers=["pub"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_pub_enum_matches_library_export(self) -> None:
+        """Rust pub enum matches library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="rust:src/lib.rs:50-80:ErrorKind:enum",
+            name="ErrorKind",
+            kind="enum",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(50, 80, 0, 200),
+            meta={},
+            modifiers=["pub"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_private_function_no_match(self) -> None:
+        """Rust private (no pub modifier) functions do NOT match library_export."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="rust:src/lib.rs:5-15:helper:function",
+            name="helper",
+            kind="function",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(5, 15, 0, 100),
+            meta={},
+            modifiers=[],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 0
+
+    def test_pub_crate_function_no_match(self) -> None:
+        """Rust pub(crate) items are NOT library exports (crate-internal)."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="rust:src/internal.rs:1-10:internal_helper:function",
+            name="internal_helper",
+            kind="function",
+            language="rust",
+            path="src/internal.rs",
+            span=Span(1, 10, 0, 100),
+            meta={},
+            modifiers=["pub(crate)"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 0
+
+    def test_pub_method_matches_library_export(self) -> None:
+        """Rust pub methods match library_export pattern."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("library-exports")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="rust:src/lib.rs:20-35:Config.load:method",
+            name="Config.load",
+            kind="method",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(20, 35, 0, 150),
+            meta={},
+            modifiers=["pub"],
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+
+        lib_exports = [r for r in results if r["concept"] == "library_export"]
+        assert len(lib_exports) == 1
+
+    def test_rust_enrichment_without_framework_detection(self) -> None:
+        """Rust library exports are enriched even without framework detection.
+
+        library-exports is a convention pattern (loaded unconditionally),
+        so pub Rust items get library_export concepts even when no web
+        framework is detected.
+        """
+        clear_pattern_cache()
+
+        symbol = Symbol(
+            id="rust:src/lib.rs:10-30:parse:function",
+            name="parse",
+            kind="function",
+            language="rust",
+            path="src/lib.rs",
+            span=Span(10, 30, 0, 200),
+            meta={},
+            modifiers=["pub"],
+        )
+
+        # Empty detected_frameworks — simulates a Rust lib with no framework
+        enriched = enrich_symbols([symbol], set())
+
+        assert len(enriched) == 1
+        concepts = enriched[0].meta.get("concepts", [])
+        lib_exports = [c for c in concepts if c["concept"] == "library_export"]
         assert len(lib_exports) == 1
 
 

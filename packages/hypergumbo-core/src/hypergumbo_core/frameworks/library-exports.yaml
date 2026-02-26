@@ -14,6 +14,8 @@
 # - JS/TS: Match UsageContext records for exports from index files
 # - Go: Match exported (uppercase) functions, types, interfaces, structs
 # - Elixir: Match module definitions (defmodule) and public functions (def, not defp)
+# - Rust: Match pub items (functions, structs, traits, enums, methods)
+#   Note: pub(crate)/pub(super) are crate-internal, not library exports
 #
 # The entrypoint scoring system (confidence * connectivity boost) ensures
 # the most important/connected exports are prioritized for auto-slicing.
@@ -167,5 +169,42 @@ patterns:
     symbol_kind: "^function$"
     language: "^elixir$"
     modifiers_exclude: "^private$"
+
+  # === Rust: Definition-based (pub items) ===
+  # Rust library crates expose their public API through `pub` items.
+  # `pub(crate)`, `pub(super)`, and `pub(in path)` are crate-internal
+  # visibility, NOT library exports — the regex matches only bare `pub`.
+  # The Rust analyzer extracts modifiers as ["pub"], ["pub(crate)"], etc.
+  # Test files are handled by the entrypoint scorer's test-file penalty.
+
+  # Pub functions (e.g., pub fn new(), pub fn parse())
+  - concept: library_export
+    symbol_kind: "^function$"
+    language: "^rust$"
+    modifiers: "^pub$"
+
+  # Pub structs (e.g., pub struct Config, pub struct Builder)
+  - concept: library_export
+    symbol_kind: "^struct$"
+    language: "^rust$"
+    modifiers: "^pub$"
+
+  # Pub traits (e.g., pub trait Handler, pub trait Serialize)
+  - concept: library_export
+    symbol_kind: "^trait$"
+    language: "^rust$"
+    modifiers: "^pub$"
+
+  # Pub enums (e.g., pub enum ErrorKind, pub enum Mode)
+  - concept: library_export
+    symbol_kind: "^enum$"
+    language: "^rust$"
+    modifiers: "^pub$"
+
+  # Pub methods (e.g., pub fn load(&self) in impl blocks)
+  - concept: library_export
+    symbol_kind: "^method$"
+    language: "^rust$"
+    modifiers: "^pub$"
 
 linkers: []

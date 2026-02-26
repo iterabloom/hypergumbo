@@ -548,7 +548,7 @@ The pattern system has two categories:
 - `test-frameworks.yaml`: Test function detection (pytest, JUnit, xUnit, etc.)
 - `language-conventions.yaml`: CUDA kernels, WGSL shaders, COBOL programs, LaTeX structure, Starlark rules
 - `config-conventions.yaml`: NPM/Maven/Cargo dependencies, Android components, TypeScript references
-- `library-exports.yaml`: Library entry point detection via exports from index files (JS/TS)
+- `library-exports.yaml`: Library entry point detection (JS/TS index exports, Python __init__.py, Go uppercase, Java/Kotlin public, Elixir public, Rust pub)
 - `naming-conventions.yaml`: Heuristic entrypoints by naming pattern (`*Controller`, `*Handler`, `*Service`)
 
 **Framework patterns:** Loaded only when the framework is detected in profile. See [FRAMEWORKS.md](FRAMEWORKS.md) for the full list; YAML source is in `packages/hypergumbo-core/src/hypergumbo_core/frameworks/`.
