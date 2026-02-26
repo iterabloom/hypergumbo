@@ -1,0 +1,21 @@
+- op: create  # 6e1b
+  at: '2026-02-26T18:08:37Z'  # 6e1b
+  by: agent  # 6e1b
+  actor: jgstern_agent  # 6e1b
+  clock: 1  # 6e1b
+  nonce: 6e1b  # 6e1b
+  data:  # 6e1b
+    kind: work_item  # 6e1b
+    title: "Rust #[test] attribute filter: exclude_tests should check meta.annotations"  # 6e1b
+    status: todo_hard  # 6e1b
+    priority: 1  # 6e1b
+    parent:  # 6e1b
+    tags:  # 6e1b
+    - bakeoff  # 6e1b
+    - slice  # 6e1b
+    before: []  # 6e1b
+    duplicate_of: []  # 6e1b
+    not_duplicate_of: []  # 6e1b
+    pr_ref:  # 6e1b
+    description: "The exclude_tests filter in rslice prod mode only checks file paths (tests?/, spec/), not Rust #[test] attributes. Inline test functions in src/ modules pass through unexcluded. The annotation data IS present in node.meta.annotations — it just needs to be consulted. Affects 7+ repos: rodio, scap, mermaid-rs-renderer, codex-acp, candle, imara-diff, client-sdk-js."  # 6e1b
+    fields: {}  # 6e1b
