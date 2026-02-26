@@ -29,3 +29,10 @@
   set:  # 3e0d
     status: todo_soft  # 3e0d
     priority: 4  # 3e0d
+- op: discuss  # 3e86
+  at: '2026-02-26T17:33:53Z'  # 3e86
+  by: agent  # 3e86
+  actor: jgstern_agent  # 3e86
+  clock: 3  # 3e86
+  nonce: '3e86'  # 3e86
+  message: "DEEP bakeoff 2026-02-26 results: zed (475MB, 3712 files) completed in 376s without OOM. bun (190MB, 12088 files) in 686s. workadventure (313MB, 3606 files) in 192s. No crashes or memory failures on any of the 23 repos tested. Current ceiling appears functional for repos up to ~500MB. Still worth profiling for optimization, but no longer a blocking reliability concern."  # 3e86
