@@ -20,3 +20,18 @@
     pr_ref:  # cc0d
     description: "Jenkins uses Kohsuke Stapler for URL routing via convention-based doXxx() methods. hypergumbo misidentifies it as Jersey (zero JAX-RS imports). Only 47/423 doXxx web methods detected (11% coverage). Stapler also uses @RequirePOST annotations (130 methods in Jenkins core). Source: jenkins bakeoff assessment 2026-02-26."  # cc0d
     fields: {}  # cc0d
+- op: update  # d378
+  at: '2026-02-26T16:42:38Z'  # d378
+  by: agent  # d378
+  actor: jgstern_agent  # d378
+  clock: 2  # d378
+  nonce: d378  # d378
+  set:  # d378
+    status: done  # d378
+- op: discuss  # 379f
+  at: '2026-02-26T16:42:38Z'  # 379f
+  by: agent  # 379f
+  actor: jgstern_agent  # 379f
+  clock: 3  # 379f
+  nonce: 379f  # 379f
+  message: "Implemented in stapler.yaml. 10 tests covering @WebMethod, @RequirePOST, StaplerRequest params, RootAction/Action/ManagementLink/Descriptor base classes, doXxx/getXxx convention methods. Auto-detection from org.kohsuke.stapler in Maven/Gradle. Jenkins alias resolves to stapler."  # 379f
