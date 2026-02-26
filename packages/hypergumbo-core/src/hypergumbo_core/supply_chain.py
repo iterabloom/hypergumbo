@@ -130,6 +130,18 @@ EXTERNAL_DEP_PATTERNS = [
     (r"^_vendor/", "_vendor/"),
 ]
 
+# Patterns matched with re.search (anywhere in path) for vendored SDKs
+# that live inside subdirectories rather than at the repo root.
+# Common in Go monorepos where cloud providers embed SDK copies.
+# INV-mogud: cluster-autoscaler has 19K+ nodes from these SDKs classified
+# as tier-1 because they don't match the root-anchored patterns above.
+EXTERNAL_DEP_DEEP_PATTERNS = [
+    (r"(?:^|/)[^/]+-sdk-go(?:-[^/]+)?/", "vendored Go SDK"),
+    (r"(?:^|/)[^/]+-go-sdk/", "vendored Go SDK"),
+    (r"(?:^|/)[^/]+-sdk-golang/", "vendored Go SDK"),
+    (r"(?:^|/)vendor-internal/", "vendor-internal/"),
+]
+
 FIRST_PARTY_PATTERNS = [
     r"^src/",
     r"^lib/",
@@ -225,6 +237,12 @@ def classify_file(
     # 3. Check external dependencies
     for pattern, label in EXTERNAL_DEP_PATTERNS:
         if re.match(pattern, rel):
+            pkg = _extract_package_name(rel, label)
+            return FileClassification(Tier.EXTERNAL_DEP, f"in {label}", pkg)
+
+    # 3b. Check deep external dependency patterns (vendored SDKs anywhere in path)
+    for pattern, label in EXTERNAL_DEP_DEEP_PATTERNS:
+        if re.search(pattern, rel):
             pkg = _extract_package_name(rel, label)
             return FileClassification(Tier.EXTERNAL_DEP, f"in {label}", pkg)
 

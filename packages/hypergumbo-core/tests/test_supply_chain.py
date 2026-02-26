@@ -113,6 +113,66 @@ class TestExternalDepDetection:
             assert result.package_name == expected_pkg
 
 
+class TestVendoredSdkDetection:
+    """Test tier 3 detection for vendored SDKs nested deep in path (INV-mogud).
+
+    Go monorepos often embed cloud provider SDKs in subdirectories rather
+    than the repo root. These are not in a standard ``vendor/`` directory
+    so the root-anchored EXTERNAL_DEP_PATTERNS miss them. The deep
+    patterns use ``re.search`` to match SDK directory names anywhere.
+    """
+
+    @pytest.mark.parametrize("path", [
+        # Go cloud SDKs: *-sdk-go pattern
+        "cloudprovider/ionoscloud/ionos-cloud-sdk-go/api_.go",
+        "cloudprovider/tencentcloud/tencentcloud-sdk-go/common/http/request.go",
+        "cloudprovider/huaweicloud/huaweicloud-sdk-go-v3/core/auth/basic.go",
+        "cloudprovider/alibaba/alibaba-cloud-sdk-go/services/ecs/client.go",
+        "cloudprovider/baidu/baiducloud-sdk-go/bce/core.go",
+        "cloudprovider/civo/civo-cloud-sdk-go/client.go",
+        # Go cloud SDKs: *-go-sdk pattern
+        "cloudprovider/volcengine/volcengine-go-sdk/service/ecs/api.go",
+        # Go cloud SDKs: *-sdk-golang pattern
+        "cloudprovider/volcengine/volc-sdk-golang/base/client.go",
+        # vendor-internal pattern
+        "cloudprovider/oci/vendor-internal/github.com/oracle/oci-go-sdk/core.go",
+    ])
+    def test_vendored_sdk_classified_as_external(self, path, tmp_path):
+        """Vendored SDK files nested in subdirectories are tier 3."""
+        file_path = tmp_path / path
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("package main")
+
+        result = classify_file(file_path, tmp_path)
+        assert result.tier == Tier.EXTERNAL_DEP, (
+            f"{path} should be EXTERNAL_DEP, got {result.tier.name}: {result.reason}"
+        )
+
+    def test_regular_sdk_file_not_misclassified(self, tmp_path):
+        """Files with 'sdk' in name but not in SDK directory stay tier 1."""
+        path = "pkg/provider/aws_sdk_provider.go"
+        file_path = tmp_path / path
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("package provider")
+
+        result = classify_file(file_path, tmp_path)
+        assert result.tier != Tier.EXTERNAL_DEP, (
+            f"{path} should NOT be EXTERNAL_DEP (it's a regular file)"
+        )
+
+    def test_root_level_sdk_go_directory(self, tmp_path):
+        """SDK directory at repo root is also detected."""
+        path = "my-sdk-go/client.go"
+        file_path = tmp_path / path
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text("package sdk")
+
+        result = classify_file(file_path, tmp_path)
+        assert result.tier == Tier.EXTERNAL_DEP, (
+            f"{path} should be EXTERNAL_DEP"
+        )
+
+
 class TestFirstPartyDetection:
     """Test tier 1 (first_party) detection."""
 
