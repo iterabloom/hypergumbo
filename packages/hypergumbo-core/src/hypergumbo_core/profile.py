@@ -156,7 +156,10 @@ JS_FRAMEWORKS = {
     "hono": ["hono"],
     "elysia": ["elysia"],
     # GraphQL
-    "graphql": ["graphql", "@apollo/server", "graphql-yoga", "mercurius"],
+    # WI-rofiz: removed bare "graphql" npm package — it's often installed
+    # for type definitions or code generation without implementing a GraphQL
+    # server, causing false-positive graphql_resolver nodes.
+    "graphql": ["@apollo/server", "graphql-yoga", "mercurius", "type-graphql", "@nestjs/graphql"],
     "apollo": ["@apollo/client", "@apollo/server", "apollo-server"],
     # Mobile
     "react-native": ["react-native"],

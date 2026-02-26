@@ -2226,3 +2226,44 @@ def test_detects_guice_from_gradle(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
     assert "guice" in data["profile"]["frameworks"]
+
+
+def test_bare_graphql_package_does_not_trigger_framework(tmp_path: Path) -> None:
+    """Bare 'graphql' npm package should NOT activate graphql framework (WI-rofiz).
+
+    Many JS/TS projects install 'graphql' for type definitions or code
+    generation without implementing a GraphQL server. Only server-specific
+    packages like @apollo/server should trigger the framework.
+    """
+    (tmp_path / "app.ts").write_text("console.log('hello');\n")
+    (tmp_path / "package.json").write_text("""{
+    "dependencies": {
+        "graphql": "^16.0.0",
+        "express": "^4.18.0"
+    }
+}""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "graphql" not in data["profile"]["frameworks"], (
+        "Bare 'graphql' npm package should not activate graphql framework"
+    )
+
+
+def test_apollo_server_triggers_graphql_framework(tmp_path: Path) -> None:
+    """@apollo/server should activate graphql framework."""
+    (tmp_path / "app.ts").write_text("console.log('hello');\n")
+    (tmp_path / "package.json").write_text("""{
+    "dependencies": {
+        "@apollo/server": "^4.0.0",
+        "graphql": "^16.0.0"
+    }
+}""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "graphql" in data["profile"]["frameworks"]
