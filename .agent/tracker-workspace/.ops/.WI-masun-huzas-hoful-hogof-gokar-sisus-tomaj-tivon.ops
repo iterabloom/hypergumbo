@@ -19,3 +19,18 @@
     pr_ref:  # a9b9
     description: "When updating tracker items to resolved states (done, holding, etc.), context about WHY the status changed often needs to be recorded. The agent attempted --note on update, which doesn't exist, then retried without it — losing the context (META-radiz: PRs #1450 and #1452 context lost).\n\nProposal: Add guidance to AGENTS.md tracker section:\n- When changing status to a resolved state, ALWAYS follow up with `scripts/tracker discuss <ID> \"reason for status change\"` to record the rationale.\n- Example: after `scripts/tracker update FOO --status holding`, run `scripts/tracker discuss FOO \"Implemented in PR #1234.\"`.\n\nThis is a governance file change (AGENTS.md) and requires human approval."  # a9b9
     fields: {}  # a9b9
+- op: discuss  # d9c1
+  at: '2026-02-25T23:57:21Z'  # d9c1
+  by: human  # d9c1
+  actor: jgstern  # d9c1
+  clock: 2  # d9c1
+  nonce: d9c1  # d9c1
+  message: "I approve this work."  # d9c1
+- op: update  # eeb0
+  at: '2026-02-25T23:57:37Z'  # eeb0
+  by: human  # eeb0
+  actor: jgstern  # eeb0
+  clock: 3  # eeb0
+  nonce: eeb0  # eeb0
+  set:  # eeb0
+    status: todo_soft  # eeb0
