@@ -17,3 +17,11 @@
     pr_ref:  # 27dc
     description: "Add repair_tracker_perms() shell function to .githooks/post-checkout and .githooks/post-merge. Detects two-user setup, fixes group permissions on .agent/ files owned by current user (chmod g+rw files, chmod g+rwxs dirs, chgrp shared_group). No sudo. Part of htrac permission fix plan."  # 27dc
     fields: {}  # 27dc
+- op: update  # c504
+  at: '2026-02-26T06:51:56Z'  # c504
+  by: agent  # c504
+  actor: jgstern_agent  # c504
+  clock: 2  # c504
+  nonce: c504  # c504
+  set:  # c504
+    status: needs_human_review  # c504

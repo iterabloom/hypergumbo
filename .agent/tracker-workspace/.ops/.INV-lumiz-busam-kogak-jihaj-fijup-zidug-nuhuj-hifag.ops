@@ -21,3 +21,11 @@
     fields:  # f8ce
       statement: "main_function patterns for Java/C#/Kotlin must match qualified method names, not just bare names"  # f8ce
       root_cause: "main-functions.yaml uses symbol_name: '^main$' which requires exact match, but Java/C#/Kotlin analyzers produce ClassName.main qualified names"  # f8ce
+- op: update  # b8f9
+  at: '2026-02-26T06:26:59Z'  # b8f9
+  by: agent  # b8f9
+  actor: jgstern_agent  # b8f9
+  clock: 2  # b8f9
+  nonce: b8f9  # b8f9
+  set:  # b8f9
+    status: holding  # b8f9

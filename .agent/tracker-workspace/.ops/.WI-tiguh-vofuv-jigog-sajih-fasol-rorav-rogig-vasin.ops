@@ -17,3 +17,18 @@
     pr_ref:  # 7974
     description: "setup.py _check_reflection_state try block catches JSONDecodeError/ValueError but not PermissionError. Add PermissionError to except clause so htrac setup degrades gracefully when .agent/last_stop_check.json is owned by another user."  # 7974
     fields: {}  # 7974
+- op: update  # 06be
+  at: '2026-02-26T07:36:17Z'  # 06be
+  by: agent  # 06be
+  actor: jgstern_agent  # 06be
+  clock: 2  # 06be
+  nonce: 06be  # 06be
+  set:  # 06be
+    status: done  # 06be
+- op: discuss  # 785e
+  at: '2026-02-26T07:36:17Z'  # 785e
+  by: agent  # 785e
+  actor: jgstern_agent  # 785e
+  clock: 3  # 785e
+  nonce: 785e  # 785e
+  message: "PR #1497: catch OSError in _check_reflection_state"  # 785e
