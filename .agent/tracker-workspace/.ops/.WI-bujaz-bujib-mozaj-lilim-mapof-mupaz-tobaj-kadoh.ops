@@ -1,0 +1,19 @@
+- op: create  # 27dc
+  at: '2026-02-26T06:16:42Z'  # 27dc
+  by: agent  # 27dc
+  actor: jgstern_agent  # 27dc
+  clock: 1  # 27dc
+  nonce: 27dc  # 27dc
+  data:  # 27dc
+    kind: work_item  # 27dc
+    title: "Add permission repair to post-checkout/post-merge git hooks"  # 27dc
+    status: todo_soft  # 27dc
+    priority: 2  # 27dc
+    parent:  # 27dc
+    tags: []  # 27dc
+    before: []  # 27dc
+    duplicate_of: []  # 27dc
+    not_duplicate_of: []  # 27dc
+    pr_ref:  # 27dc
+    description: "Add repair_tracker_perms() shell function to .githooks/post-checkout and .githooks/post-merge. Detects two-user setup, fixes group permissions on .agent/ files owned by current user (chmod g+rw files, chmod g+rwxs dirs, chgrp shared_group). No sudo. Part of htrac permission fix plan."  # 27dc
+    fields: {}  # 27dc
