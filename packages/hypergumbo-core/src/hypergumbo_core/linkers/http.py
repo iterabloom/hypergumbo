@@ -298,10 +298,13 @@ RUBY_NET_HTTP_PATTERN = re.compile(
 )
 
 # Java RestTemplate patterns
-# restTemplate.getForObject/getForEntity/postForObject/postForEntity/delete/put/patchForObject("url", ...)
+# restTemplate.getForObject/getForEntity/postForObject/postForEntity/patchForObject("url", ...)
+# Note: `put` and `delete` are excluded because they're too common as generic
+# method names (HashMap.put, List.delete, etc.), causing false positives.
+# Use the exchange() pattern (below) for RestTemplate PUT/DELETE detection.
 JAVA_REST_TEMPLATE_PATTERN = re.compile(
     rf"""\w+\.(getForObject|getForEntity|postForObject|postForEntity|
-        patchForObject|delete|put)
+        patchForObject)
         \s*\(\s*
         {_URL_ARG}""",
     re.VERBOSE,
@@ -589,8 +592,6 @@ _REST_TEMPLATE_METHOD_MAP = {
     "postforobject": "POST",
     "postforentity": "POST",
     "patchforobject": "PATCH",
-    "delete": "DELETE",
-    "put": "PUT",
 }
 
 

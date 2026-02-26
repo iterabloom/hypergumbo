@@ -6442,6 +6442,36 @@ class TestJaxRsPatterns:
         assert route_concept["path"] == "/api/users"
 
 
+    def test_jaxrs_resource_interface_not_controller(self) -> None:
+        """Non-JAX-RS classes implementing interfaces named 'Resource' should not
+        be tagged as controllers. Keycloak's ResourceAdapter implements
+        org.keycloak.authorization.model.Resource (an authorization domain model),
+        not a JAX-RS resource. The @Path annotation is the true JAX-RS signal.
+        """
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jax-rs")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:ResourceAdapter.java:42:ResourceAdapter:class",
+            name="ResourceAdapter",
+            kind="class",
+            language="java",
+            path="model/infinispan/src/main/java/org/keycloak/models/cache/infinispan/authorization/ResourceAdapter.java",
+            span=Span(42, 291, 0, 0),
+            meta={
+                "base_classes": ["Resource"],
+            },
+        )
+
+        results = match_patterns(symbol, [pattern_def])
+        controller_results = [r for r in results if r["concept"] == "controller"]
+        assert controller_results == [], (
+            "Classes implementing a generic 'Resource' interface should not be "
+            "tagged as JAX-RS controllers without @Path annotation"
+        )
+
+
 class TestMicronautPatterns:
     """Tests for Micronaut framework pattern matching."""
 

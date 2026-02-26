@@ -214,8 +214,11 @@ SQS_RECEIVE_JS_PATTERN = re.compile(
 # ============================================================================
 
 # Python redis: redis.publish('channel', 'message') or (channel_var, message)
+# Requires either (a) a redis/pubsub/client prefix, or (b) a string literal
+# as the first argument. This avoids false positives from unrelated .publish()
+# methods like servlet context publishing (e.g. HudsonFailedToLoad.publish(context, home)).
 REDIS_PUBLISH_PATTERN = re.compile(
-    rf"\.publish\s*\(\s*{_TOPIC_ARG}",
+    rf"(?:redis|pubsub|client|producer|pub|conn|r|rc)\s*\.\s*publish\s*\(\s*{_TOPIC_ARG}",
     re.MULTILINE,
 )
 

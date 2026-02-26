@@ -148,9 +148,21 @@ def _detect_language(file_path: Path) -> str:
     return "unknown"  # pragma: no cover
 
 
+_GRAPHQL_CONTEXT_RE = re.compile(
+    r"(?:graphql|apollo|@apollo|gql`|typeDefs|makeExecutableSchema|"
+    r"graphql-yoga|type Query|type Mutation|resolvers\s*[=:])",
+    re.IGNORECASE,
+)
+
+
 def _scan_javascript_resolvers(file_path: Path, content: str) -> list[ResolverPattern]:
     """Scan JavaScript/TypeScript file for resolver patterns."""
     patterns: list[ResolverPattern] = []
+
+    # Skip files without any GraphQL context to avoid false positives
+    # from generic PascalCase object literals (e.g. ERROR: { ... } in UI code).
+    if not _GRAPHQL_CONTEXT_RE.search(content):
+        return patterns
 
     # Find type objects (Query: {, User: {, etc.)
     lines = content.split("\n")

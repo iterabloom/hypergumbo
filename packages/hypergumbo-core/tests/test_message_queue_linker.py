@@ -6,7 +6,9 @@ from textwrap import dedent
 from hypergumbo_core.linkers.message_queue import (
     _scan_file,
     link_message_queues,
+    message_queue_linker,
 )
+from hypergumbo_core.linkers.registry import LinkerContext
 
 
 class TestKafkaPatterns:
@@ -306,6 +308,18 @@ class TestRedisPubSubPatterns:
         assert patterns[0].type == "publish"
         assert patterns[0].topic == "notifications"
         assert patterns[0].queue_type == "redis"
+
+    def test_servlet_publish_not_redis(self, tmp_path: Path):
+        """Servlet context .publish(context, home) must not be detected as Redis publish."""
+        code = dedent('''
+            new HudsonFailedToLoad(e).publish(context, _home);
+            new HudsonIsLoading().publish(context, home);
+        ''')
+        file = tmp_path / "WebAppMain.java"
+        file.write_text(code)
+        patterns = _scan_file(file, code)
+        publish_patterns = [p for p in patterns if p.type == "publish"]
+        assert publish_patterns == []
 
     def test_python_redis_subscribe(self, tmp_path: Path):
         """Detect pubsub.subscribe('channel') pattern."""
@@ -697,3 +711,19 @@ class TestMessageQueueLinker:
         assert symbol.meta["queue_type"] == "kafka"
         assert symbol.meta["topic"] == "my-topic"
         assert symbol.stable_id == "kafka:my-topic"
+
+
+class TestMessageQueueLinkerRegistry:
+    """Tests for the registry-based linker wrapper."""
+
+    def test_message_queue_linker_wrapper(self, tmp_path: Path):
+        """Registry wrapper delegates to link_message_queues correctly."""
+        file = tmp_path / "test.py"
+        file.write_text("producer.send('my-topic', b'msg')")
+
+        ctx = LinkerContext(repo_root=tmp_path)
+        result = message_queue_linker(ctx)
+
+        assert len(result.symbols) == 1
+        assert result.symbols[0].kind == "mq_publisher"
+        assert result.run is not None

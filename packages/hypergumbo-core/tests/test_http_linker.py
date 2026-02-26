@@ -1296,24 +1296,37 @@ class TestScanJavaFile:
         assert len(calls) == 1
         assert calls[0].method == "POST"
 
-    def test_rest_template_delete(self):
-        """Detects restTemplate.delete("/api/users/1")."""
+    def test_rest_template_delete_not_detected(self):
+        """restTemplate.delete() is NOT detected — too ambiguous with generic .delete().
+
+        Use exchange(url, HttpMethod.DELETE, ...) instead.
+        """
         code = dedent('''
             restTemplate.delete("/api/users/1");
         ''')
         calls = _scan_java_file(Path("Client.java"), code)
-        assert len(calls) == 1
-        assert calls[0].method == "DELETE"
-        assert calls[0].url == "/api/users/1"
+        assert len(calls) == 0
 
-    def test_rest_template_put(self):
-        """Detects restTemplate.put("/api/users/1", entity)."""
+    def test_rest_template_put_not_detected(self):
+        """restTemplate.put() is NOT detected — too ambiguous with HashMap.put().
+
+        Use exchange(url, HttpMethod.PUT, ...) instead.
+        """
         code = dedent('''
             restTemplate.put("/api/users/1", entity);
         ''')
         calls = _scan_java_file(Path("Client.java"), code)
-        assert len(calls) == 1
-        assert calls[0].method == "PUT"
+        assert len(calls) == 0
+
+    def test_hashmap_put_not_http_client(self):
+        """HashMap.put() must not be detected as an HTTP client call."""
+        code = dedent('''
+            states.put(InstallState.CONFIGURE_INSTANCE, InstallState.INITIAL_SETUP_COMPLETED);
+            errors.put("username", Messages.HudsonPrivateSecurityRealm_CreateAccount_UserNameRequired());
+            map.put("key", value);
+        ''')
+        calls = _scan_java_file(Path("InstallUtil.java"), code)
+        assert len(calls) == 0
 
     def test_rest_template_exchange(self):
         """Detects restTemplate.exchange("/api/users", HttpMethod.GET, ...)."""

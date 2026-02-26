@@ -25,10 +25,6 @@ patterns:
     decorator: "^Path$"
     extract_path: "args[0]"
 
-  # Resource class patterns (commonly extend or implement these)
-  - concept: controller
-    base_class: "^Resource$"
-
   # Provider patterns
   - concept: provider
     decorator: "^Provider$"
