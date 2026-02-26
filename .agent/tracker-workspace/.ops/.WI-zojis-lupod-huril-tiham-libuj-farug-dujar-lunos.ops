@@ -1,0 +1,21 @@
+- op: create  # fc48
+  at: '2026-02-26T18:09:51Z'  # fc48
+  by: agent  # fc48
+  actor: jgstern_agent  # fc48
+  clock: 1  # fc48
+  nonce: fc48  # fc48
+  data:  # fc48
+    kind: work_item  # fc48
+    title: "Rust method name collision: false-positive call edges from unqualified name matching"  # fc48
+    status: todo_hard  # fc48
+    priority: 1  # fc48
+    parent:  # fc48
+    tags:  # fc48
+    - bakeoff  # fc48
+    - analyzer  # fc48
+    before: []  # fc48
+    duplicate_of: []  # fc48
+    not_duplicate_of: []  # fc48
+    pr_ref:  # fc48
+    description: "All Rust function_call edges resolve at 0.8 confidence by method name only, with no type disambiguation. Common names (.clone(), .build(), .get(), .filter(), .new(), .to_string()) produce massive false-positive fan-in. Examples: zed Source::clone has 6849 false in-edges, candle Tensor::get has 391 false callers, codex NetworkProxyBuilder::build has 20 false callers. This corrupts centrality rankings, reverse slices, and sketch selection for every Rust repo. Fixing requires type inference or at minimum receiver-type heuristics."  # fc48
+    fields: {}  # fc48
