@@ -32,3 +32,18 @@
   clock: 3  # 1cb2
   nonce: 1cb2  # 1cb2
   message: "Same root cause as PR #1519 (test path regex). Already fixed."  # 1cb2
+- op: update  # cc65
+  at: '2026-02-26T21:31:08Z'  # cc65
+  by: agent  # cc65
+  actor: jgstern_agent  # cc65
+  clock: 2  # cc65
+  nonce: cc65  # cc65
+  set:  # cc65
+    status: done  # cc65
+- op: discuss  # 0d05
+  at: '2026-02-26T21:31:08Z'  # 0d05
+  by: agent  # 0d05
+  actor: jgstern_agent  # 0d05
+  clock: 3  # 0d05
+  nonce: 0d05  # 0d05
+  message: "Same root cause as WI-visad: _TEST_PATH_RE bare 't' alternative matched /t anywhere in path, filtering production code in transport/, telemetry/, types/ directories. Fixed in PR #1519 by requiring trailing / for all directory patterns."  # 0d05

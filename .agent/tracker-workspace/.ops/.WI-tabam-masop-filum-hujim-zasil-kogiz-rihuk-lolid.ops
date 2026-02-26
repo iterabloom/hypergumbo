@@ -32,3 +32,18 @@
   clock: 3  # fe52
   nonce: fe52  # fe52
   message: "Fixed in PR #1521. load_state() was missing hypergumbo_code_hash from constructor."  # fe52
+- op: update  # 3719
+  at: '2026-02-26T21:39:15Z'  # 3719
+  by: agent  # 3719
+  actor: jgstern_agent  # 3719
+  clock: 2  # 3719
+  nonce: '3719'  # 3719
+  set:  # 3719
+    status: done  # 3719
+- op: discuss  # 6f9f
+  at: '2026-02-26T21:39:15Z'  # 6f9f
+  by: agent  # 6f9f
+  actor: jgstern_agent  # 6f9f
+  clock: 3  # 6f9f
+  nonce: 6f9f  # 6f9f
+  message: "Fixed in PR #1521. Root cause: load_state() constructor was missing hypergumbo_code_hash field, so it defaulted to empty string every time state was loaded from disk. save_state() correctly persisted it via asdict()."  # 6f9f
