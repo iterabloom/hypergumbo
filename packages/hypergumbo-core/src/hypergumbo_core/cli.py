@@ -52,6 +52,7 @@ from .linkers.registry import LinkerContext, run_all_linkers
 import hypergumbo_core.linkers.cgo as _cgo_linker  # noqa: F401
 import hypergumbo_core.linkers.containment as _containment_linker  # noqa: F401
 import hypergumbo_core.linkers.database_query as _database_query_linker  # noqa: F401
+import hypergumbo_core.linkers.di_resolution as _di_resolution_linker  # noqa: F401
 import hypergumbo_core.linkers.dependency as _dependency_linker  # noqa: F401
 import hypergumbo_core.linkers.event_sourcing as _event_sourcing_linker  # noqa: F401
 import hypergumbo_core.linkers.graphql as _graphql_linker  # noqa: F401

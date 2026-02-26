@@ -20,3 +20,18 @@
     pr_ref:  # 4f9e
     description: "Forward slices stop at interface boundaries in DI-heavy Java codebases (Guice, CDI, SPI). This is the #1 gap identified in Java bakeoff assessments (keycloak: 62/100 refactoring, killbill: 30/100 refactoring, jenkins: 58/100 refactoring). Options: (a) Parse Guice module bindings (bind(X).to(Y)), (b) Detect CDI @Inject qualifiers, (c) Parse ServiceLoader patterns, (d) Heuristic: match interface method to Default* implementation. Source: bakeoff-features-reflect cohort keycloak/killbill/jenkins 2026-02-26."  # 4f9e
     fields: {}  # 4f9e
+- op: update  # 51ec
+  at: '2026-02-26T16:20:37Z'  # 51ec
+  by: agent  # 51ec
+  actor: jgstern_agent  # 51ec
+  clock: 2  # 51ec
+  nonce: 51ec  # 51ec
+  set:  # 51ec
+    status: done  # 51ec
+- op: discuss  # ae5c
+  at: '2026-02-26T16:20:37Z'  # ae5c
+  by: agent  # ae5c
+  actor: jgstern_agent  # ae5c
+  clock: 3  # ae5c
+  nonce: ae5c  # ae5c
+  message: "Implemented in di_resolution.py linker. Supports Guice bind().to(), Spring @Bean, C# AddScoped/AddTransient/AddSingleton, NestJS/Angular/Inversify providers, Python injector, Kotlin Koin, Java SPI META-INF/services. Resolution cascade: explicit (0.90) > SPI (0.85) > naming convention (0.75) > single-impl (0.70). Creates di_resolves edges (non-structural, followed by forward BFS). 35 tests, 100% coverage."  # ae5c

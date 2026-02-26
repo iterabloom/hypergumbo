@@ -20,3 +20,19 @@
     pr_ref:  # 7d68
     description: "Bakeoff found 3 categories of false-positive node kinds: (1) http_client: HashMap.put() calls misclassified, (2) graphql_resolver: JS error handling code misclassified, (3) mq_publisher: servlet context initialization misclassified, (4) ResourceAdapter/ResourceWrapper implementing org.keycloak.authorization.model.Resource misidentified as JAX-RS controllers. Source: jenkins + keycloak bakeoff assessments 2026-02-26."  # 7d68
     fields: {}  # 7d68
+- op: update  # 546d
+  at: '2026-02-26T09:03:17Z'  # 546d
+  by: agent  # 546d
+  actor: jgstern_agent  # 546d
+  clock: 2  # 546d
+  nonce: 546d  # 546d
+  set:  # 546d
+    status: done  # 546d
+    pr_ref: PR pending  # 546d
+- op: discuss  # 146a
+  at: '2026-02-26T09:03:17Z'  # 146a
+  by: agent  # 146a
+  actor: jgstern_agent  # 146a
+  clock: 3  # 146a
+  nonce: 146a  # 146a
+  message: "Fixed all 4 categories: (1) removed base_class Resource from jax-rs.yaml, (2) removed put/delete from REST template pattern, (3) added prefix requirement to Redis publish pattern, (4) added GraphQL context guard for JS resolver detection."  # 146a

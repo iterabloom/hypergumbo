@@ -435,6 +435,26 @@ Detects message send/receive patterns across process boundaries using string lit
 * Literal URL match: 0.90
 * Variable/computed URL: 0.65
 
+### DI resolution linking
+
+🟩 The DI resolution linker (`linkers/di_resolution.py`) creates `di_resolves` edges from interface methods to their DI-bound implementation methods. Unlike `dispatches_to` (which is structural and excluded from forward slices to prevent fan-out explosion), `di_resolves` edges are followed by forward BFS — correct for DI-heavy codebases where the binding narrows to one high-confidence implementation.
+
+**Supported DI frameworks:**
+- Java/Kotlin/Scala: Guice `bind(X.class).to(Y.class)`, Spring `@Bean` methods
+- C#: ASP.NET Core `services.AddScoped<I, C>()` / `AddTransient` / `AddSingleton`
+- TypeScript: NestJS/Angular `{ provide: X, useClass: Y }`, InversifyJS `container.bind<I>().to(C)`
+- Python: `binder.bind(I, to=C)` (injector library)
+- Kotlin: Koin `single<I> { Impl() }`
+- Java SPI: `META-INF/services/` files
+
+**Resolution cascade** (highest-confidence wins):
+1. Explicit framework binding (Guice/Spring/C#/NestJS/Inversify/Koin/Python injector): 0.90
+2. Java SPI `META-INF/services/` file: 0.85
+3. Naming convention (`DefaultX` or `XImpl`): 0.75
+4. Single implementation of interface: 0.70
+
+Edges are created at method level (interface method → implementation method with matching short name), not at class level.
+
 ### Language-specific notes for cross-language linking
 
 The C analyzer detects JNI export patterns (`JNIEXPORT`, `JNICALL`, `Java_*` naming) and the Java analyzer detects `native` method declarations, both feeding into the JNI linker above. For full per-language analyzer capabilities, see [LANGUAGES.md](LANGUAGES.md).

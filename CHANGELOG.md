@@ -13,6 +13,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Linkers
 
+- **DI resolution linker (WI-tafaf)**: Creates `di_resolves` edges from interface methods to DI-bound implementation methods. Supports Guice `bind().to()`, Spring `@Bean`, ASP.NET Core `AddScoped/AddTransient/AddSingleton`, NestJS/Angular `{ provide, useClass }`, InversifyJS `bind().to()`, Python injector `binder.bind()`, Kotlin Koin `single<I> { Impl() }`, and Java SPI `META-INF/services/`. Heuristic fallbacks for single-implementation (0.70 confidence) and naming conventions like `DefaultX`/`XImpl` (0.75). Unlike `dispatches_to` (structural, excluded from forward slices), `di_resolves` edges are followed by forward BFS—correct for DI-heavy codebases where the binding narrows to one implementation.
 - **HTTP linker: Ruby + Java client detection (WI-voril)**: Detects HTTP client calls in Ruby (RestClient, HTTParty, Faraday, Net::HTTP) and Java (Spring RestTemplate, Retrofit annotations) source files. Creates cross-language `http_calls` edges linking client call sites to server route handlers.
 - **JS/TS module resolution**: Resolves import edges to file symbols via relative imports (extension/index probing), `tsconfig.json`/`jsconfig.json`/`vite.config` path aliases, and monorepo tsconfig discovery.
 - **Vue**: Template-method linker connects event handlers (`@click`, `v-on:input`) to `<script>` symbols; component linker resolves import paths to `.vue` files on disk.
