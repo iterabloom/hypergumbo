@@ -33,6 +33,7 @@
 The project uses a YAML-backed structured tracker (ADR-0013) in `.agent/tracker/`. Key rules:
 
 - **Agent Context Protection:** Always use `scripts/tracker show <ID>` or `scripts/tracker show <ID> --json` to read tracker item state. Always refuse to read files ending in `.ops`. These are internal operation logs that will pollute your context window with historical data you don't need. The CLI compiles ops into current state — that's what you want.
+- **Auto-Sync:** NEVER manually commit or push tracker `.ops` files. The tracker has a built-in auto-sync mechanism (`_maybe_auto_sync`) that automatically creates branches, commits, pushes, polls CI, and merges when pending ops exceed the threshold (40 lines). Do NOT include `.agent/tracker-workspace/.ops/` or `.agent/tracker/.ops/` in feature branch commits.
 - **Task Selection:** Use `scripts/tracker ready` (not `list`) to pick your next work item. `ready` filters to actionable items sorted by priority.
 - **Commit Convention:** Tracker-only changes use a `tracker:` conventional-commit prefix:
   ```
