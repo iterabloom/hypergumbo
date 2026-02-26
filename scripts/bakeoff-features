@@ -70,6 +70,7 @@ Environment:
 
 import argparse
 import datetime
+import glob
 import hashlib
 import json
 import os
@@ -1531,7 +1532,13 @@ def cmd_diagnose(args):
 
 
 def cmd_status(args):
-    """Show feature bakeoff session status."""
+    """Show comprehensive feature bakeoff session status.
+
+    Displays session metadata, per-cohort breakdown (output, diagnostics,
+    and LLM assessment status), and overall verdict summary. Designed so
+    agents and humans can quickly determine what has been done and what
+    remains in a session.
+    """
     workdir = resolve_workdir(args.workdir)
     print(f"Workdir: {workdir}")
     state = load_state(workdir)
@@ -1540,25 +1547,100 @@ def cmd_status(args):
         print("Error: No feature bakeoff session found.", file=sys.stderr)
         return 1
 
+    hash_display = state.hypergumbo_code_hash[:12] + "..." if state.hypergumbo_code_hash else "(not recorded)"
     print(f"Feature Bakeoff Session: {state.session_id}")
-    print(f"  Pool: {state.pool_path}")
-    print(f"  Workdir: {state.workdir}")
-    print(f"  Created: {state.created_at}")
+    print(f"  Pool:      {state.pool_path}")
+    print(f"  Workdir:   {state.workdir}")
+    print(f"  Created:   {state.created_at}")
+    print(f"  Code hash: {hash_display}")
     print()
-    print(f"Current cohort: #{state.cohort_number}")
-    print(f"  Repos: {', '.join(state.current_cohort)}")
-    print(f"  Iteration: {state.iteration}")
-    print()
-    print(f"Tested repos: {len(state.tested_repos)}")
 
-    if state.verdicts:
+    # --- Per-cohort breakdown ---
+    out_dir = os.path.join(workdir, "out")
+    diag_dir = os.path.join(workdir, "diag")
+    reflect_dir = os.path.join(workdir, "reflect")
+
+    cohort_dirs = sorted(glob.glob(os.path.join(out_dir, "cohort-*"))) if os.path.isdir(out_dir) else []
+
+    if cohort_dirs:
+        print(f"{'Cohort':<10} {'Repos':<6} {'Output':<8} {'Diagnose':<10} {'Reflect':<9} {'Aggregate':<10}")
+        print("-" * 60)
+        total_repos = 0
+        for cd in cohort_dirs:
+            cohort_name = os.path.basename(cd)
+            # Find latest iteration
+            iter_dirs = sorted(glob.glob(os.path.join(cd, "iter-*")))
+            if not iter_dirs:
+                continue
+            latest_iter = iter_dirs[-1]
+            iter_name = os.path.basename(latest_iter)
+            repos = [d for d in os.listdir(latest_iter)
+                     if os.path.isdir(os.path.join(latest_iter, d))]
+            total_repos += len(repos)
+
+            # Check diagnose
+            diag_report = os.path.join(diag_dir, cohort_name, iter_name, "report.yaml")
+            has_diag = "done" if os.path.exists(diag_report) else "--"
+
+            # Check reflect (prompts + assessments)
+            reflect_iter = os.path.join(reflect_dir, cohort_name, iter_name)
+            if os.path.isdir(reflect_iter):
+                prompts = glob.glob(os.path.join(reflect_iter, "*.prompt.md"))
+                assessments = glob.glob(os.path.join(reflect_iter, "*.assessment.yaml"))
+                if assessments:
+                    has_reflect = f"{len(assessments)}/{len(repos)}"
+                elif prompts:
+                    has_reflect = "prompts"
+                else:
+                    has_reflect = "--"
+                summary_file = os.path.join(reflect_iter, "summary.yaml")
+                has_aggregate = "done" if os.path.exists(summary_file) else "--"
+            else:
+                has_reflect = "--"
+                has_aggregate = "--"
+
+            print(f"{cohort_name:<10} {len(repos):<6} done     {has_diag:<10} {has_reflect:<9} {has_aggregate:<10}")
+
         print()
-        print("Latest verdicts:")
+        print(f"Total repos analyzed: {total_repos}")
+    else:
+        print("No cohort outputs found.")
+
+    # --- Overall verdict summary (from state.json) ---
+    if state.verdicts:
+        good = sum(1 for v in state.verdicts if v.verdict == "GOOD")
+        warn = sum(1 for v in state.verdicts if v.verdict == "WARN")
+        fail = sum(1 for v in state.verdicts if v.verdict == "FAIL")
+        print()
+        print(f"Latest verdicts (cohort {state.cohort_number}): {good} GOOD, {warn} WARN, {fail} FAIL")
         for v in state.verdicts:
-            print(f"  {v.repo_name}: {v.verdict}")
-            if v.concerns:
-                for c in v.concerns[:2]:
-                    print(f"    - {c}")
+            if v.verdict in ("FAIL", "WARN") and v.concerns:
+                print(f"  {v.repo_name} ({v.verdict}): {v.concerns[0]}")
+
+    # --- Overall LLM assessment summary ---
+    overall_summary = os.path.join(reflect_dir, "overall-summary.yaml")
+    if os.path.exists(overall_summary):
+        try:
+            import yaml
+            with open(overall_summary) as f:
+                summary = yaml.safe_load(f)
+            verdicts_dict = summary.get("verdicts", {})
+            if verdicts_dict:
+                print()
+                parts = [f"{k}: {v}" for k, v in verdicts_dict.items()]
+                print(f"LLM Assessment: {', '.join(parts)}")
+            scores = summary.get("score_statistics", {})
+            if scores:
+                mean_overall = scores.get("overall_mean")
+                if mean_overall is not None:
+                    print(f"  Mean score: {mean_overall:.1f}/100")
+        except Exception:
+            pass
+
+    print()
+    print(f"Current cohort: #{state.cohort_number}, iteration: {state.iteration}")
+    print(f"  Repos: {', '.join(state.current_cohort)}")
+    print(f"Tested repos total: {len(state.tested_repos)}")
 
     return 0
 
