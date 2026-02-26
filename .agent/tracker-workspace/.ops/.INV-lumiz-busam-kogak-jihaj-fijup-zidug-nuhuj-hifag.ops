@@ -1,0 +1,23 @@
+- op: create  # f8ce
+  at: '2026-02-26T04:53:43Z'  # f8ce
+  by: agent  # f8ce
+  actor: jgstern_agent  # f8ce
+  clock: 1  # f8ce
+  nonce: f8ce  # f8ce
+  data:  # f8ce
+    kind: invariant  # f8ce
+    title: "Java/C#/Kotlin main() entrypoint detection broken by qualified names"  # f8ce
+    status: violated  # f8ce
+    priority: 1  # f8ce
+    parent:  # f8ce
+    tags:  # f8ce
+    - bakeoff  # f8ce
+    - entrypoint  # f8ce
+    before: []  # f8ce
+    duplicate_of: []  # f8ce
+    not_duplicate_of: []  # f8ce
+    pr_ref:  # f8ce
+    description: "Java main-functions.yaml pattern uses symbol_name: '^main$' but Java/C#/Kotlin analyzers produce qualified names like 'ClassName.main'. Pattern never matches. Fix: use method_name field instead. Source: bakeoff cohort #21."  # f8ce
+    fields:  # f8ce
+      statement: "main_function patterns for Java/C#/Kotlin must match qualified method names, not just bare names"  # f8ce
+      root_cause: "main-functions.yaml uses symbol_name: '^main$' which requires exact match, but Java/C#/Kotlin analyzers produce ClassName.main qualified names"  # f8ce

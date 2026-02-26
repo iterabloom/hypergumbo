@@ -1,0 +1,23 @@
+- op: create  # c955
+  at: '2026-02-26T04:53:44Z'  # c955
+  by: agent  # c955
+  actor: jgstern_agent  # c955
+  clock: 1  # c955
+  nonce: c955  # c955
+  data:  # c955
+    kind: invariant  # c955
+    title: "Go vendored SDK code not classified as external dependency"  # c955
+    status: violated  # c955
+    priority: 2  # c955
+    parent:  # c955
+    tags:  # c955
+    - bakeoff  # c955
+    - supply-chain  # c955
+    before: []  # c955
+    duplicate_of: []  # c955
+    not_duplicate_of: []  # c955
+    pr_ref:  # c955
+    description: "In cluster-autoscaler, 57% of nodes are vendored SDK code classified as tier-1. Fix: add SDK naming patterns to EXTERNAL_DEP_PATTERNS. Source: bakeoff cohort #21."  # c955
+    fields:  # c955
+      statement: "Vendored Go SDKs in *-sdk-go/ and vendor-internal/ paths must be classified as external dependencies (tier-3), not first-party code (tier-1)"  # c955
+      root_cause: "EXTERNAL_DEP_PATTERNS in supply_chain.py only detects standard vendor/ directory, not SDK-naming-convention paths like ionos-cloud-sdk-go/, huaweicloud-sdk-go-v3/, vendor-internal/"  # c955

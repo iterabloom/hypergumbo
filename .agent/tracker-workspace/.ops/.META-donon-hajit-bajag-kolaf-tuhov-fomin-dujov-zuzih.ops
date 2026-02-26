@@ -61,3 +61,10 @@
   clock: 6  # ec45
   nonce: ec45  # ec45
   message: "please double-check and confirm as to whether option (a)+(d) was implemented?"  # ec45
+- op: discuss  # e790
+  at: '2026-02-26T04:46:42Z'  # e790
+  by: agent  # e790
+  actor: jgstern_agent  # e790
+  clock: 7  # e790
+  nonce: e790  # e790
+  message: "Confirmed: option (a)+(d) is fully implemented and tested in the DEEP pipeline. Specifically:\n\n(a) Numeric quality scores (0-100): Assessment prompts collect per-task scores for refactoring, new_feature, and understanding. Aggregation computes mean/min/max/median statistics across repos. Implementation in scripts/bakeoff-features-reflect lines 130-140 (prompt rubric), 469-583 (aggregation).\n\n(d) Trajectory field: compute_trajectory() (lines 426-466) compares current vs prior cohort scores. Reports IMPROVING (+5+), STABLE (±5), or REGRESSING (-5+). Prior assessment context is injected into prompts so assessors can evaluate progress.\n\nTest coverage: 8 tests in tests/test_bakeoff_features_reflect.py covering scoring rubric, aggregation math, trajectory computation (improving/stable/regressing), and first-assessment handling.\n\nCHANGELOG entry at line 83: 'DEEP bakeoff verdict graduation (META-donon)'. PR ref: #1450."  # e790
