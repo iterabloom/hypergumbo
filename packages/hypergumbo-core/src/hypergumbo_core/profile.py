@@ -307,6 +307,8 @@ JAVA_FRAMEWORKS = {
     "kafka-connect": ["org.apache.kafka:connect-api", "kafka-connect", "connect-api"],
     # Google Guice DI
     "guice": ["com.google.inject", "google/inject", "guice"],
+    # Kohsuke Stapler (Jenkins URL dispatch)
+    "stapler": ["org.kohsuke.stapler", "stapler-core", "stapler-jelly"],
     # Jakarta CDI (standalone or via WildFly/GlassFish)
     "jakarta-cdi": [
         "jakarta.enterprise.context",

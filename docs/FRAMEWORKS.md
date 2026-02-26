@@ -16,7 +16,7 @@ See `packages/hypergumbo-core/src/hypergumbo_core/frameworks/*.yaml` for the ful
 - Rails, Sinatra, Grape, Hanami, Roda, Padrino
 
 ### Java/Kotlin/Scala
-- Spring Boot, Micronaut, Quarkus, Ktor, Http4k, Play, Akka HTTP, Scalatra, http4s, JAX-RS (Jersey), Javalin, Vert.x
+- Spring Boot, Micronaut, Quarkus, Ktor, Http4k, Play, Akka HTTP, Scalatra, http4s, JAX-RS (Jersey), Javalin, Vert.x, Stapler (Jenkins)
 
 ### PHP
 - Laravel, Slim, Symfony, CodeIgniter, Yii, CakePHP, Laminas, FuelPHP, Lumen

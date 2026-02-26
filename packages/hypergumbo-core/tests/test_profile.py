@@ -2267,3 +2267,23 @@ def test_apollo_server_triggers_graphql_framework(tmp_path: Path) -> None:
 
     data = json.loads(out_path.read_text())
     assert "graphql" in data["profile"]["frameworks"]
+
+
+def test_detects_stapler_from_maven(tmp_path: Path) -> None:
+    """Should detect Stapler framework from pom.xml."""
+    (tmp_path / "Main.java").write_text("public class Main {}\n")
+    (tmp_path / "pom.xml").write_text("""<?xml version="1.0"?>
+<project>
+    <dependencies>
+        <dependency>
+            <groupId>org.kohsuke.stapler</groupId>
+            <artifactId>stapler-core</artifactId>
+        </dependency>
+    </dependencies>
+</project>""")
+
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+
+    data = json.loads(out_path.read_text())
+    assert "stapler" in data["profile"]["frameworks"]

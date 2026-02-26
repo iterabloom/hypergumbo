@@ -22,6 +22,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Containment**: Creates `contains` edges from classes/interfaces/modules/services to their methods/RPCs/nested members across 15 languages. Handles nested classes and struct/trait/enum containers.
 - **Rails view template**: Convention-based linking from controller actions to view templates (`UsersController#show` → `app/views/users/show.html.erb`). Supports ERB, Haml, Slim, Jbuilder. Handles namespaced controllers.
 
+#### Frameworks
+
+- **Stapler framework detection (WI-mokuv)**: YAML pattern file for Kohsuke Stapler (Jenkins URL dispatch). Detects `@WebMethod`, `@RequirePOST` annotations, `doXxx()`/`getXxx()` convention methods in Stapler-routable classes (Action, RootAction, ManagementLink, Descriptor, etc.), and `StaplerRequest`/`StaplerResponse` parameter types. Framework auto-detected from `org.kohsuke.stapler` in Maven/Gradle builds. `jenkins` alias resolves to stapler patterns.
+
 #### Analyzers
 
 - **Assembly language**: Tree-sitter-based analyzer for `.s`/`.asm`/`.S` files. Extracts labels as function/variable symbols, detects call instructions with cross-file resolution.

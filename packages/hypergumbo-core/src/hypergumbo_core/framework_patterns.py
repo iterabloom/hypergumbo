@@ -765,6 +765,8 @@ _FRAMEWORK_ALIASES: dict[str, str] = {
     "gotham": "rust-web",
     "poem": "rust-web",
     "salvo": "rust-web",
+    # Jenkins Stapler URL dispatch -> stapler.yaml
+    "jenkins": "stapler",
     # Java JAX-RS implementations -> jax-rs.yaml
     "dropwizard": "jax-rs",
     "jersey": "jax-rs",

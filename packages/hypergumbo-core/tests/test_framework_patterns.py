@@ -16903,3 +16903,212 @@ class TestJavaQualifiedMainDetection:
         assert len(main_concepts) >= 1, (
             "Scala qualified method Object.main should be detected as main_function"
         )
+
+
+class TestStaplerPatterns:
+    """Tests for Kohsuke Stapler (Jenkins URL dispatch) pattern matching."""
+
+    def test_webmethod_annotation(self) -> None:
+        """@WebMethod with name kwarg extracts route path."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("stapler")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:MyAction.java:10:MyAction.doSubmit:method",
+            name="MyAction.doSubmit",
+            kind="method",
+            language="java",
+            path="src/main/java/MyAction.java",
+            span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "WebMethod", "args": [], "kwargs": {"name": "submit"}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        route = next((r for r in results if r["concept"] == "route"), None)
+        assert route is not None
+        assert route["path"] == "submit"
+
+    def test_require_post_annotation(self) -> None:
+        """@RequirePOST marks method as route."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("stapler")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:MyAction.java:15:MyAction.doDelete:method",
+            name="MyAction.doDelete",
+            kind="method",
+            language="java",
+            path="src/main/java/MyAction.java",
+            span=Span(15, 25, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "RequirePOST", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        route = next((r for r in results if r["concept"] == "route"), None)
+        assert route is not None
+
+    def test_stapler_request_parameter(self) -> None:
+        """Method with StaplerRequest parameter is a handler."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("stapler")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:MyAction.java:20:MyAction.doAction:method",
+            name="MyAction.doAction",
+            kind="method",
+            language="java",
+            path="src/main/java/MyAction.java",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "parameters": [
+                    {"name": "req", "type": "StaplerRequest"},
+                    {"name": "rsp", "type": "StaplerResponse"},
+                ],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        handler = next((r for r in results if r["concept"] == "handler"), None)
+        assert handler is not None
+
+    def test_root_action_base_class(self) -> None:
+        """Class extending RootAction is detected as controller."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("stapler")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:MyRootAction.java:5:MyRootAction:class",
+            name="MyRootAction",
+            kind="class",
+            language="java",
+            path="src/main/java/MyRootAction.java",
+            span=Span(5, 50, 0, 0),
+            meta={
+                "base_classes": ["RootAction"],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        ctrl = next((r for r in results if r["concept"] == "controller"), None)
+        assert ctrl is not None
+
+    def test_do_method_in_action_subclass(self) -> None:
+        """doXxx method in an Action subclass is detected as route."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("stapler")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:MyAction.java:30:MyAction.doSubmitForm:method",
+            name="MyAction.doSubmitForm",
+            kind="method",
+            language="java",
+            path="src/main/java/MyAction.java",
+            span=Span(30, 40, 0, 0),
+            meta={
+                "parent_base_classes": ["Action"],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        route = next((r for r in results if r["concept"] == "route"), None)
+        assert route is not None
+        assert route["matched_method_name"] == "doSubmitForm"
+
+    def test_get_method_in_action_subclass_is_facet(self) -> None:
+        """getXxx method in an Action subclass is a URL facet."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("stapler")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:MyAction.java:35:MyAction.getApi:method",
+            name="MyAction.getApi",
+            kind="method",
+            language="java",
+            path="src/main/java/MyAction.java",
+            span=Span(35, 45, 0, 0),
+            meta={
+                "parent_base_classes": ["RootAction"],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        facet = next((r for r in results if r["concept"] == "url_facet"), None)
+        assert facet is not None
+
+    def test_descriptor_base_class(self) -> None:
+        """Class extending Descriptor is detected as configuration."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("stapler")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:MyDescriptor.java:5:MyDescriptor:class",
+            name="MyDescriptor",
+            kind="class",
+            language="java",
+            path="src/main/java/MyDescriptor.java",
+            span=Span(5, 80, 0, 0),
+            meta={
+                "base_classes": ["Descriptor"],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        config = next((r for r in results if r["concept"] == "configuration"), None)
+        assert config is not None
+
+    def test_management_link_base_class(self) -> None:
+        """Class extending ManagementLink is a controller."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("stapler")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:MyLink.java:5:MyLink:class",
+            name="MyLink",
+            kind="class",
+            language="java",
+            path="src/main/java/MyLink.java",
+            span=Span(5, 80, 0, 0),
+            meta={
+                "base_classes": ["ManagementLink"],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        ctrl = next((r for r in results if r["concept"] == "controller"), None)
+        assert ctrl is not None
+
+    def test_non_do_method_not_matched(self) -> None:
+        """Regular method in Action subclass is NOT matched as route."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("stapler")
+        assert pattern_def is not None
+
+        symbol = Symbol(
+            id="test:MyAction.java:40:MyAction.helperMethod:method",
+            name="MyAction.helperMethod",
+            kind="method",
+            language="java",
+            path="src/main/java/MyAction.java",
+            span=Span(40, 50, 0, 0),
+            meta={
+                "parent_base_classes": ["Action"],
+            },
+        )
+        results = match_patterns(symbol, [pattern_def])
+        route = next((r for r in results if r["concept"] == "route"), None)
+        assert route is None
+
+    def test_jenkins_alias(self) -> None:
+        """'jenkins' framework ID resolves to stapler patterns."""
+        clear_pattern_cache()
+        pattern_def = load_framework_patterns("jenkins")
+        assert pattern_def is not None
+        assert pattern_def.id == "stapler"
