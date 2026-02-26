@@ -20,3 +20,18 @@
     pr_ref:  # 5bc3
     description: "DEEP bakeoff cohort #20 (metabase): Clojure functions like test-ldap-connection, test-database-connection are production code (they test/validate connections) but are classified as test_function entrypoints because of the test- prefix. In Clojure, test- is a naming convention for 'verify this thing', not necessarily a test. Fix: check if the function is in a test namespace (e.g., *_test.clj or test/ directory) before applying the test_function classification. Also: Clojure symbol name conflation via (:refer-clojure :exclude [...]) causes implausible in-degree values."  # 5bc3
     fields: {}  # 5bc3
+- op: update  # d845
+  at: '2026-02-26T03:34:11Z'  # d845
+  by: agent  # d845
+  actor: jgstern_agent  # d845
+  clock: 2  # d845
+  nonce: d845  # d845
+  set:  # d845
+    status: done  # d845
+- op: discuss  # bcfb
+  at: '2026-02-26T03:34:11Z'  # bcfb
+  by: agent  # bcfb
+  actor: jgstern_agent  # bcfb
+  clock: 3  # bcfb
+  nonce: bcfb  # bcfb
+  message: "Added symbol_path guard '(^|/)test(s)?/' to Clojure test-* pattern in test-frameworks.yaml. Mirrors Go's _test.go guard."  # bcfb
