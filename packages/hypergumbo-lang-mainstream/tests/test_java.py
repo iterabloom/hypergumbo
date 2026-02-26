@@ -3146,3 +3146,213 @@ class TestJavaMethodReferences:
         # No crash, no spurious edges
         ref_edges = [e for e in result.edges if e.edge_type == "references"]
         assert len(ref_edges) == 0
+
+
+class TestClassNameCollision:
+    """Tests for INV-finak: Java class name collision dampening.
+
+    When a file imports an external library class (e.g., org.slf4j.Logger)
+    and source code contains an inner class with the same simple name
+    (e.g., Config.Logger), the NameResolver's suffix matching incorrectly
+    resolves the simple name to the inner class. The fix checks file-level
+    imports: if the import FQN doesn't match the resolved candidate's path,
+    the edge is skipped (the developer intended the external class).
+    """
+
+    def test_instantiation_skipped_when_import_mismatches(self, tmp_path: Path) -> None:
+        """new Logger() should NOT resolve to Config.Logger when file imports org.slf4j.Logger."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # File with inner class named Logger
+        (tmp_path / "Config.java").write_text(
+            "package com.example.config;\n"
+            "public class Config {\n"
+            "    public static class Logger {\n"
+            "        public void log(String msg) {}\n"
+            "    }\n"
+            "}\n"
+        )
+        # File that imports external Logger and instantiates it
+        (tmp_path / "App.java").write_text(
+            "package com.example.app;\n"
+            "import org.slf4j.Logger;\n"
+            "public class App {\n"
+            "    public void run() {\n"
+            "        Logger log = new Logger();\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+
+        # Find the inner class symbol
+        config_logger = next(
+            (s for s in result.symbols if s.name == "Config.Logger"), None
+        )
+        assert config_logger is not None, "Config.Logger should be extracted"
+
+        # App.run should NOT have an instantiates edge to Config.Logger
+        app_run = next(
+            (s for s in result.symbols if s.name == "App.run"), None
+        )
+        assert app_run is not None, "App.run should be extracted"
+
+        false_edges = [
+            e for e in result.edges
+            if e.edge_type == "instantiates"
+            and e.src == app_run.id
+            and e.dst == config_logger.id
+        ]
+        assert len(false_edges) == 0, (
+            f"new Logger() in App.run should NOT resolve to Config.Logger "
+            f"when file imports org.slf4j.Logger (got {len(false_edges)} false edges)"
+        )
+
+    def test_instantiation_allowed_when_import_matches(self, tmp_path: Path) -> None:
+        """new Logger() SHOULD resolve when file imports the matching source-code class."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # Use directory structure matching the package declaration
+        logging_dir = tmp_path / "com" / "example" / "logging"
+        logging_dir.mkdir(parents=True)
+        app_dir = tmp_path / "com" / "example" / "app"
+        app_dir.mkdir(parents=True)
+
+        # File with top-level Logger class
+        (logging_dir / "Logger.java").write_text(
+            "package com.example.logging;\n"
+            "public class Logger {\n"
+            "    public void log(String msg) {}\n"
+            "}\n"
+        )
+        # File that imports the source-code Logger and instantiates it
+        (app_dir / "App.java").write_text(
+            "package com.example.app;\n"
+            "import com.example.logging.Logger;\n"
+            "public class App {\n"
+            "    public void run() {\n"
+            "        Logger log = new Logger();\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+
+        logger_sym = next(
+            (s for s in result.symbols if s.name == "Logger"), None
+        )
+        assert logger_sym is not None
+
+        app_run = next(
+            (s for s in result.symbols if s.name == "App.run"), None
+        )
+        assert app_run is not None
+
+        inst_edges = [
+            e for e in result.edges
+            if e.edge_type == "instantiates"
+            and e.src == app_run.id
+            and e.dst == logger_sym.id
+        ]
+        assert len(inst_edges) == 1, (
+            "new Logger() should resolve when import matches source-code class"
+        )
+
+    def test_instantiation_allowed_when_import_matches_short_path(self, tmp_path: Path) -> None:
+        """new Logger() SHOULD resolve when import short-matches source-code class path.
+
+        Covers the short-path match branch in _is_import_class_mismatch: when
+        the full FQN path doesn't match but the last 2 segments (package/Class)
+        do, the edge is allowed.
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # Directory structure uses abbreviated path that doesn't match full FQN
+        # but DOES match short path: "logging/Logger"
+        logging_dir = tmp_path / "src" / "logging"
+        logging_dir.mkdir(parents=True)
+        app_dir = tmp_path / "src" / "app"
+        app_dir.mkdir(parents=True)
+
+        (logging_dir / "Logger.java").write_text(
+            "package com.example.logging;\n"
+            "public class Logger {\n"
+            "    public void log(String msg) {}\n"
+            "}\n"
+        )
+        (app_dir / "App.java").write_text(
+            "package com.example.app;\n"
+            "import com.example.logging.Logger;\n"
+            "public class App {\n"
+            "    public void run() {\n"
+            "        Logger log = new Logger();\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+
+        logger_sym = next(
+            (s for s in result.symbols if s.name == "Logger"), None
+        )
+        assert logger_sym is not None
+
+        app_run = next(
+            (s for s in result.symbols if s.name == "App.run"), None
+        )
+        assert app_run is not None
+
+        inst_edges = [
+            e for e in result.edges
+            if e.edge_type == "instantiates"
+            and e.src == app_run.id
+            and e.dst == logger_sym.id
+        ]
+        assert len(inst_edges) == 1, (
+            "new Logger() should resolve when import short-path matches"
+        )
+
+    def test_type_inferred_call_skipped_when_import_mismatches(self, tmp_path: Path) -> None:
+        """logger.log() via type inference should NOT resolve to Config.Logger.log
+        when file imports org.slf4j.Logger."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        # File with inner class Logger that has a log method
+        (tmp_path / "Config.java").write_text(
+            "package com.example.config;\n"
+            "public class Config {\n"
+            "    public static class Logger {\n"
+            "        public void log(String msg) {}\n"
+            "    }\n"
+            "}\n"
+        )
+        # File that imports external Logger and calls methods on it
+        (tmp_path / "Service.java").write_text(
+            "package com.example.service;\n"
+            "import org.slf4j.Logger;\n"
+            "public class Service {\n"
+            "    private Logger logger;\n"
+            "    public void process() {\n"
+            "        logger.log(\"hello\");\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+
+        config_logger_log = next(
+            (s for s in result.symbols if s.name == "Config.Logger.log"), None
+        )
+        assert config_logger_log is not None
+
+        service_process = next(
+            (s for s in result.symbols if s.name == "Service.process"), None
+        )
+        assert service_process is not None
+
+        false_edges = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and e.src == service_process.id
+            and e.dst == config_logger_log.id
+        ]
+        assert len(false_edges) == 0, (
+            f"logger.log() should NOT resolve to Config.Logger.log "
+            f"when file imports org.slf4j.Logger (got {len(false_edges)} false edges)"
+        )

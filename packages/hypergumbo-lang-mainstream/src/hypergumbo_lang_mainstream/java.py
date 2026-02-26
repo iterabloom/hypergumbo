@@ -902,6 +902,48 @@ def _get_enclosing_method(
     return None
 
 
+def _is_import_class_mismatch(
+    type_name: str,
+    resolved_sym: "Symbol",
+    imports: dict[str, str],
+) -> bool:
+    """Check if a resolved class symbol conflicts with the file's imports.
+
+    When NameResolver suffix-matches ``Logger`` to ``Config.Logger`` but the
+    file actually imports ``org.slf4j.Logger``, the resolved symbol is wrong —
+    the developer intended the external library class. This prevents false
+    edges that inflate centrality of inner/nested classes (INV-finak).
+
+    Returns True when the edge should be **skipped** (import points elsewhere).
+
+    The check: if the file has an import for ``type_name`` whose FQN path
+    segments do NOT match the resolved symbol's file path, the import refers
+    to a different class.
+    """
+    if type_name not in imports:
+        return False  # No import → can't disprove; allow the edge
+
+    import_fqn = imports[type_name]
+    # Convert FQN to path segments: "org.slf4j.Logger" → "org/slf4j/Logger"
+    fqn_as_path = import_fqn.replace(".", "/")
+    resolved_path = resolved_sym.path or ""
+    resolved_no_ext = resolved_path.rsplit(".java", 1)[0]
+
+    # If resolved class path ends with the import FQN path, they match
+    if resolved_no_ext.endswith(fqn_as_path):
+        return False  # Import matches resolved symbol → allow the edge
+
+    # Try shorter match: last 2 segments (package + class)
+    fqn_parts = import_fqn.split(".")
+    if len(fqn_parts) >= 2:
+        short_path = "/".join(fqn_parts[-2:])
+        if resolved_no_ext.endswith(short_path):
+            return False  # Short match → allow the edge
+
+    # Import FQN doesn't match resolved symbol → skip the edge
+    return True
+
+
 def _resolve_base_class_java(
     base_name: str,
     child_sym: Symbol,
@@ -1192,7 +1234,9 @@ def _extract_edges(
                         type_class_name = var_types[receiver_name]
                         candidate = f"{type_class_name}.{method_name}"
                         lookup_result = resolver.lookup(candidate)
-                        if lookup_result.found:
+                        if lookup_result.found and not _is_import_class_mismatch(
+                            type_class_name, lookup_result.symbol, imports
+                        ):
                             edge_confidence = 0.85 * lookup_result.confidence
                             edge = Edge.create(
                                 src=current_method.id,
@@ -1281,17 +1325,22 @@ def _extract_edges(
                     if current_method:
                         lookup_result = class_resolver.lookup(type_name)
                         if lookup_result.found and lookup_result.symbol is not None:
-                            edge = Edge.create(
-                                src=current_method.id,
-                                dst=lookup_result.symbol.id,
-                                edge_type="instantiates",
-                                line=node.start_point[0] + 1,
-                                confidence=0.95 * lookup_result.confidence,
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                                evidence_type="ast_new",
-                            )
-                            edges.append(edge)
+                            # INV-finak: skip edge if file imports an external
+                            # class with the same simple name (e.g., Logger)
+                            if _is_import_class_mismatch(type_name, lookup_result.symbol, imports):
+                                pass  # Import points elsewhere; skip false edge
+                            else:
+                                edge = Edge.create(
+                                    src=current_method.id,
+                                    dst=lookup_result.symbol.id,
+                                    edge_type="instantiates",
+                                    line=node.start_point[0] + 1,
+                                    confidence=0.95 * lookup_result.confidence,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    evidence_type="ast_new",
+                                )
+                                edges.append(edge)
                     break
 
             # Track variable type for type inference
@@ -1333,7 +1382,12 @@ def _extract_edges(
                 if class_name and method_name == "new":
                     # Constructor reference: try to resolve the class
                     lookup_result = class_resolver.lookup(class_name)
-                    if lookup_result.found and lookup_result.symbol is not None:
+                    if (
+                        lookup_result.found
+                        and lookup_result.symbol is not None
+                        # INV-finak: skip if import points elsewhere
+                        and not _is_import_class_mismatch(class_name, lookup_result.symbol, imports)
+                    ):
                         edge = Edge.create(
                             src=current_method.id,
                             dst=lookup_result.symbol.id,
