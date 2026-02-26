@@ -550,7 +550,8 @@ DEEP mode scripts:
 ./scripts/bakeoff-features cohort --repos repo-a,repo-b,repo-c
 
 ./scripts/bakeoff-features run
-./scripts/bakeoff-features diagnose
+./scripts/bakeoff-features diagnose        # Latest cohort only
+./scripts/bakeoff-features diagnose --all  # All cohorts in session
 
 # LLM-driven qualitative assessment
 ./scripts/bakeoff-features-reflect
