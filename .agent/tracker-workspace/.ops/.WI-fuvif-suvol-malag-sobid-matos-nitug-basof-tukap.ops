@@ -1,0 +1,22 @@
+- op: create  # 7d68
+  at: '2026-02-26T08:36:25Z'  # 7d68
+  by: agent  # 7d68
+  actor: jgstern_agent  # 7d68
+  clock: 1  # 7d68
+  nonce: 7d68  # 7d68
+  data:  # 7d68
+    kind: work_item  # 7d68
+    title: "Fix false-positive node kind classifications in Java repos"  # 7d68
+    status: todo_soft  # 7d68
+    priority: 3  # 7d68
+    parent:  # 7d68
+    tags:  # 7d68
+    - bakeoff  # 7d68
+    - java  # 7d68
+    - assessment  # 7d68
+    before: []  # 7d68
+    duplicate_of: []  # 7d68
+    not_duplicate_of: []  # 7d68
+    pr_ref:  # 7d68
+    description: "Bakeoff found 3 categories of false-positive node kinds: (1) http_client: HashMap.put() calls misclassified, (2) graphql_resolver: JS error handling code misclassified, (3) mq_publisher: servlet context initialization misclassified, (4) ResourceAdapter/ResourceWrapper implementing org.keycloak.authorization.model.Resource misidentified as JAX-RS controllers. Source: jenkins + keycloak bakeoff assessments 2026-02-26."  # 7d68
+    fields: {}  # 7d68

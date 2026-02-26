@@ -1,0 +1,22 @@
+- op: create  # cc0d
+  at: '2026-02-26T08:36:25Z'  # cc0d
+  by: agent  # cc0d
+  actor: jgstern_agent  # cc0d
+  clock: 1  # cc0d
+  nonce: cc0d  # cc0d
+  data:  # cc0d
+    kind: work_item  # cc0d
+    title: "Add Stapler framework detection for Jenkins-style URL dispatch"  # cc0d
+    status: todo_soft  # cc0d
+    priority: 3  # cc0d
+    parent:  # cc0d
+    tags:  # cc0d
+    - bakeoff  # cc0d
+    - frameworks  # cc0d
+    - assessment  # cc0d
+    before: []  # cc0d
+    duplicate_of: []  # cc0d
+    not_duplicate_of: []  # cc0d
+    pr_ref:  # cc0d
+    description: "Jenkins uses Kohsuke Stapler for URL routing via convention-based doXxx() methods. hypergumbo misidentifies it as Jersey (zero JAX-RS imports). Only 47/423 doXxx web methods detected (11% coverage). Stapler also uses @RequirePOST annotations (130 methods in Jenkins core). Source: jenkins bakeoff assessment 2026-02-26."  # cc0d
+    fields: {}  # cc0d
