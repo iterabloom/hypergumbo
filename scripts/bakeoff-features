@@ -1680,6 +1680,235 @@ def cmd_active(args):
     return 0
 
 
+def _collect_diag_metrics(session_dir):
+    """Collect per-repo metrics from all diagnose reports in a session.
+
+    Returns dict mapping repo_name → {metric_name: value, verdict: str}.
+    Scans all cohorts and iterations, taking the latest iteration per cohort.
+    """
+    import yaml
+    diag_dir = os.path.join(session_dir, "diag")
+    if not os.path.isdir(diag_dir):
+        return {}
+
+    repo_metrics = {}
+    for cohort_dir in sorted(glob.glob(os.path.join(diag_dir, "cohort-*"))):
+        iter_dirs = sorted(glob.glob(os.path.join(cohort_dir, "iter-*")))
+        if not iter_dirs:
+            continue
+        report_path = os.path.join(iter_dirs[-1], "report.yaml")
+        if not os.path.exists(report_path):
+            continue
+        try:
+            with open(report_path) as f:
+                report = yaml.safe_load(f)
+            for repo in report.get("repos", []):
+                name = repo.get("repo_name", "")
+                if name:
+                    repo_metrics[name] = {
+                        "verdict": repo.get("verdict", "?"),
+                        **repo.get("metrics", {}),
+                    }
+        except Exception:
+            continue
+    return repo_metrics
+
+
+def _collect_reflect_scores(session_dir):
+    """Collect per-repo LLM assessment scores from reflect directory.
+
+    Returns dict mapping repo_name → {refactoring, new_feature,
+    understanding, overall_score}. Handles both numeric and ternary formats.
+    """
+    import yaml
+    reflect_dir = os.path.join(session_dir, "reflect")
+    if not os.path.isdir(reflect_dir):
+        return {}
+
+    repo_scores = {}
+    for cohort_dir in sorted(glob.glob(os.path.join(reflect_dir, "cohort-*"))):
+        iter_dirs = sorted(glob.glob(os.path.join(cohort_dir, "iter-*")))
+        if not iter_dirs:
+            continue
+        # Check both old format (*.assessment.yaml) and new format (*.yaml, excluding summary/report)
+        yaml_files = glob.glob(os.path.join(iter_dirs[-1], "*.assessment.yaml"))
+        yaml_files += [f for f in glob.glob(os.path.join(iter_dirs[-1], "*.yaml"))
+                       if not f.endswith(("summary.yaml", "report.yaml", ".assessment.yaml"))]
+        for assessment_path in yaml_files:
+            try:
+                with open(assessment_path) as f:
+                    data = yaml.safe_load(f)
+                # Numeric format: scores.refactoring, scores.new_feature, etc.
+                if "scores" in data and isinstance(data["scores"], dict):
+                    name = data.get("repo", os.path.basename(assessment_path).replace(".assessment.yaml", ""))
+                    repo_scores[name] = {
+                        "overall_score": data.get("overall_score"),
+                        **data["scores"],
+                    }
+                # Old format: developer_assessment with task_scores
+                elif "developer_assessment" in data:
+                    da = data["developer_assessment"]
+                    name = da.get("repo", os.path.basename(assessment_path).replace(".assessment.yaml", ""))
+                    ts = da.get("task_scores", {})
+                    if ts:
+                        r_score = ts.get("refactoring_score")
+                        n_score = ts.get("new_feature_score")
+                        u_score = ts.get("understanding_score")
+                        numeric = [s for s in (r_score, n_score, u_score) if s is not None]
+                        overall = sum(numeric) / len(numeric) if numeric else None
+                        repo_scores[name] = {
+                            "overall_score": ts.get("overall_mean", overall),
+                            "refactoring": r_score,
+                            "new_feature": n_score,
+                            "understanding": u_score,
+                        }
+            except Exception:
+                continue
+    return repo_scores
+
+
+def cmd_compare(args):
+    """Compare two bakeoff sessions side-by-side.
+
+    Shows per-repo metric deltas, verdict changes, and LLM score
+    differences for repos common to both sessions. Useful for measuring
+    the impact of hypergumbo code changes on analysis quality.
+    """
+    session_a = args.session_a
+    session_b = args.session_b
+
+    # Resolve session paths
+    base_dir = os.path.expanduser("~/hypergumbo_lab_notebook/bakeoff_artifacts")
+    for prefix in ("", base_dir + "/"):
+        if os.path.isdir(prefix + session_a):
+            session_a = prefix + session_a
+            break
+    for prefix in ("", base_dir + "/"):
+        if os.path.isdir(prefix + session_b):
+            session_b = prefix + session_b
+            break
+
+    # Handle nested session dirs (e.g., deep-postfix-validation/deep-YYYYMMDD-HHMMSS)
+    for sess_var in ("a", "b"):
+        sess_path = session_a if sess_var == "a" else session_b
+        state_path = os.path.join(sess_path, "state.json")
+        if not os.path.exists(state_path):
+            # Try to find state.json in subdirectories (up to 3 levels)
+            candidates = sorted(glob.glob(os.path.join(sess_path, "**", "state.json"), recursive=True))
+            if candidates:
+                resolved = os.path.dirname(candidates[-1])
+                if sess_var == "a":
+                    session_a = resolved
+                else:
+                    session_b = resolved
+
+    state_a = load_state(session_a)
+    state_b = load_state(session_b)
+
+    if not state_a:
+        print(f"Error: No session found at {session_a}", file=sys.stderr)
+        return 1
+    if not state_b:
+        print(f"Error: No session found at {session_b}", file=sys.stderr)
+        return 1
+
+    hash_a = state_a.hypergumbo_code_hash[:12] if state_a.hypergumbo_code_hash else "?"
+    hash_b = state_b.hypergumbo_code_hash[:12] if state_b.hypergumbo_code_hash else "?"
+    same_code = "same" if hash_a == hash_b and hash_a != "?" else "different" if hash_a != "?" and hash_b != "?" else "unknown"
+
+    print(f"Session A: {os.path.basename(session_a)} (hash: {hash_a})")
+    print(f"Session B: {os.path.basename(session_b)} (hash: {hash_b})")
+    print(f"Code: {same_code}")
+    print()
+
+    # Collect metrics
+    metrics_a = _collect_diag_metrics(session_a)
+    metrics_b = _collect_diag_metrics(session_b)
+    scores_a = _collect_reflect_scores(session_a)
+    scores_b = _collect_reflect_scores(session_b)
+
+    common_repos = sorted(set(metrics_a.keys()) & set(metrics_b.keys()))
+    only_a = sorted(set(metrics_a.keys()) - set(metrics_b.keys()))
+    only_b = sorted(set(metrics_b.keys()) - set(metrics_a.keys()))
+
+    if not common_repos:
+        print("No common repos between sessions.")
+        if only_a:
+            print(f"Only in A: {', '.join(only_a)}")
+        if only_b:
+            print(f"Only in B: {', '.join(only_b)}")
+        return 0
+
+    # Key metrics to compare
+    key_metrics = ["orphan_rate", "avg_slice_nodes", "cross_file_ratio", "centrality_gini"]
+
+    # Print header
+    header = f"{'Repo':<25} {'Verdict':<12}"
+    for m in key_metrics:
+        short = m.replace("_rate", "").replace("_nodes", "").replace("_ratio", "R").replace("_gini", "")
+        header += f" {short:>10}"
+    if any(r in scores_a or r in scores_b for r in common_repos):
+        header += f" {'LLM':>6}"
+    print(header)
+    print("-" * len(header))
+
+    # Aggregate deltas
+    metric_deltas = {m: [] for m in key_metrics}
+    score_deltas = []
+
+    for repo in common_repos:
+        ma = metrics_a.get(repo, {})
+        mb = metrics_b.get(repo, {})
+        va = ma.get("verdict", "?")
+        vb = mb.get("verdict", "?")
+        verdict_str = f"{va}->{vb}" if va != vb else va
+
+        row = f"{repo:<25} {verdict_str:<12}"
+        for m in key_metrics:
+            val_a = ma.get(m)
+            val_b = mb.get(m)
+            if val_a is not None and val_b is not None:
+                delta = val_b - val_a
+                metric_deltas[m].append(delta)
+                sign = "+" if delta > 0 else ""
+                row += f" {sign}{delta:>9.1f}"
+            else:
+                row += f" {'--':>10}"
+
+        # LLM score delta
+        sa = scores_a.get(repo, {}).get("overall_score")
+        sb = scores_b.get(repo, {}).get("overall_score")
+        if sa is not None and sb is not None:
+            delta = sb - sa
+            score_deltas.append(delta)
+            sign = "+" if delta > 0 else ""
+            row += f" {sign}{delta:>5.1f}"
+        elif any(r in scores_a or r in scores_b for r in common_repos):
+            row += f" {'--':>6}"
+
+        print(row)
+
+    # Aggregate summary
+    print()
+    print("Aggregate deltas (B - A, mean):")
+    for m in key_metrics:
+        if metric_deltas[m]:
+            mean_d = sum(metric_deltas[m]) / len(metric_deltas[m])
+            sign = "+" if mean_d > 0 else ""
+            print(f"  {m}: {sign}{mean_d:.2f}")
+    if score_deltas:
+        mean_s = sum(score_deltas) / len(score_deltas)
+        sign = "+" if mean_s > 0 else ""
+        print(f"  LLM overall: {sign}{mean_s:.2f}")
+
+    if only_a:
+        print(f"\nOnly in A ({len(only_a)}): {', '.join(only_a)}")
+    if only_b:
+        print(f"\nOnly in B ({len(only_b)}): {', '.join(only_b)}")
+
+    return 0
+
+
 def cmd_cycle(args):
     """Run full cycle: run + diagnose."""
     rc = cmd_run(args)
@@ -1760,6 +1989,11 @@ def main():
     p_active = subparsers.add_parser("active", help="Print active session path and convergence (machine-friendly)")
     p_active.add_argument("--workdir", help="Override workdir")
 
+    # compare
+    p_compare = subparsers.add_parser("compare", help="Compare two sessions side-by-side")
+    p_compare.add_argument("session_a", help="First session (path or dir name under bakeoff_artifacts)")
+    p_compare.add_argument("session_b", help="Second session (path or dir name under bakeoff_artifacts)")
+
     # cycle
     p_cycle = subparsers.add_parser("cycle", help="Run full cycle (run + diagnose)")
     p_cycle.add_argument("--workdir", help="Override workdir")
@@ -1780,6 +2014,7 @@ def main():
         "diagnose": cmd_diagnose,
         "status": cmd_status,
         "active": cmd_active,
+        "compare": cmd_compare,
         "cycle": cmd_cycle,
         "recommend": cmd_recommend,
     }
