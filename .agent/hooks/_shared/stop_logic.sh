@@ -54,39 +54,14 @@ if [[ "$TOTAL_TODOS" -gt 0 ]]; then
   fi
 fi
 
-# --- Write guidance file (if any TODOs exist) ---
-GUIDANCE_FILE=""
-if [[ "$TOTAL_TODOS" -gt 0 ]]; then
-  if [[ -n "${STOP_HOOK_DRY_RUN:-}" ]]; then
-    GUIDANCE_FILE=$("$REPO_ROOT/scripts/tracker" guidance --guidance-dir "$_DRY_RUN_TMPDIR" 2>/dev/null) || true
-  else
-    GUIDANCE_FILE=$("$REPO_ROOT/scripts/tracker" guidance --guidance-dir "$GUIDANCE_LOG_DIR" 2>/dev/null) || true
-  fi
-  if [[ -z "$GUIDANCE_FILE" ]] || [[ ! -f "$GUIDANCE_FILE" ]]; then
-    echo "WARNING: tracker guidance generation failed, continuing without guidance file" >&2
-    GUIDANCE_FILE=""
-  fi
-
-  # Update last_stop_check.json with guidance_file pointer
-  if [[ -n "$GUIDANCE_FILE" && -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
-    STATE_FILE_FOR_GF="$REPO_ROOT/.agent/last_stop_check.json"
-    if command -v jq &>/dev/null && [[ -f "$STATE_FILE_FOR_GF" ]]; then
-      TMP=$(mktemp)
-      if jq --arg gf "$GUIDANCE_FILE" '. + {guidance_file: $gf}' "$STATE_FILE_FOR_GF" > "$TMP" 2>/dev/null; then
-        mv "$TMP" "$STATE_FILE_FOR_GF"
-      else
-        rm -f "$TMP"
-      fi
-    fi
-  fi
-fi
-
 # --- Bakeoff convergence summary (shared across all vendors) ---
+# Computed early so it can be appended to guidance files.
 BAKEOFF_SUFFIX=""
+BAKEOFF_CONVERGENCE_LINE=""
 BAKEOFF_DIR="$HOME/hypergumbo_lab_notebook/bakeoff_artifacts"
 if [[ -d "$BAKEOFF_DIR" ]]; then
   BAKEOFF_GLOB="${STOP_HOOK_BAKEOFF_FILTER:-*}"
-  LATEST_STATE=$(find "$BAKEOFF_DIR" -maxdepth 2 -path "*/${BAKEOFF_GLOB}/state.json" -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+  LATEST_STATE=$(find "$BAKEOFF_DIR" -maxdepth 3 -path "*/${BAKEOFF_GLOB}/state.json" -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
   if [[ -n "$LATEST_STATE" ]]; then
     BAKEOFF_SUMMARY=$(python3 -c "
 import json, sys
@@ -115,22 +90,69 @@ try:
         good = sum(1 for v in verdicts if v.get('verdict') == 'GOOD')
         warn = sum(1 for v in verdicts if v.get('verdict') == 'WARN')
         fail = sum(1 for v in verdicts if v.get('verdict') == 'FAIL')
+        # Collect worst repos (FAIL first, then WARN) with their top concern
+        worst = []
+        for v in verdicts:
+            if v.get('verdict') in ('FAIL', 'WARN') and v.get('concerns'):
+                worst.append(f\"{v['repo_name']}: {v['concerns'][0]}\")
+        worst_str = ''
+        if worst:
+            worst_str = '\\n  Worst: ' + '; '.join(worst[:3])
         if fail == 0 and warn == 0:
             print(f'CONVERGED cohort={cohort_num} iter={iteration}')
         else:
-            print(f'NEEDS_WORK cohort={cohort_num} iter={iteration} good={good} warn={warn} fail={fail}')
+            print(f'NEEDS_WORK cohort={cohort_num} iter={iteration} good={good} warn={warn} fail={fail}{worst_str}')
         sys.exit(0)
 except Exception:
     pass
 " 2>/dev/null || true)
 
     if [[ "$BAKEOFF_SUMMARY" == CONVERGED* ]]; then
+      BAKEOFF_CONVERGENCE_LINE="$BAKEOFF_SUMMARY"
       BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest bakeoff session is CONVERGED — no critical/high issues. Running another bakeoff on the same cohort would be redundant. Consider: selecting a new cohort, mining existing artifacts, or moving to other work items.'
     elif [[ "$BAKEOFF_SUMMARY" == NEEDS_WORK* ]]; then
+      BAKEOFF_CONVERGENCE_LINE="$BAKEOFF_SUMMARY"
       BAKEOFF_SUFFIX=$'\n\n---\nBakeoff convergence: '"$BAKEOFF_SUMMARY"$'\nLatest bakeoff session has outstanding issues. Consider investigating these before starting new work.'
     fi
   fi
 fi
+
+# --- Write guidance file (if any TODOs exist) ---
+GUIDANCE_FILE=""
+if [[ "$TOTAL_TODOS" -gt 0 ]]; then
+  if [[ -n "${STOP_HOOK_DRY_RUN:-}" ]]; then
+    GUIDANCE_FILE=$("$REPO_ROOT/scripts/tracker" guidance --guidance-dir "$_DRY_RUN_TMPDIR" 2>/dev/null) || true
+  else
+    GUIDANCE_FILE=$("$REPO_ROOT/scripts/tracker" guidance --guidance-dir "$GUIDANCE_LOG_DIR" 2>/dev/null) || true
+  fi
+  if [[ -z "$GUIDANCE_FILE" ]] || [[ ! -f "$GUIDANCE_FILE" ]]; then
+    echo "WARNING: tracker guidance generation failed, continuing without guidance file" >&2
+    GUIDANCE_FILE=""
+  fi
+
+  # Phase 1a: append bakeoff convergence to guidance file
+  if [[ -n "$GUIDANCE_FILE" && -n "$BAKEOFF_SUFFIX" ]]; then
+    printf '%s' "$BAKEOFF_SUFFIX" >> "$GUIDANCE_FILE"
+  fi
+
+  # Update last_stop_check.json with guidance_file pointer + bakeoff convergence
+  if [[ -n "$GUIDANCE_FILE" && -z "${STOP_HOOK_DRY_RUN:-}" ]]; then
+    STATE_FILE_FOR_GF="$REPO_ROOT/.agent/last_stop_check.json"
+    if command -v jq &>/dev/null && [[ -f "$STATE_FILE_FOR_GF" ]]; then
+      TMP=$(mktemp)
+      if jq --arg gf "$GUIDANCE_FILE" \
+            --arg bc "${BAKEOFF_CONVERGENCE_LINE:-}" \
+            '. + {guidance_file: $gf} + (if $bc != "" then {bakeoff_convergence: $bc} else {} end)' \
+            "$STATE_FILE_FOR_GF" > "$TMP" 2>/dev/null; then
+        mv "$TMP" "$STATE_FILE_FOR_GF"
+      else
+        rm -f "$TMP"
+      fi
+    fi
+  fi
+fi
+
+# (Bakeoff convergence computed above, before guidance file write)
 
 # --- Cooldown & reflection: compute elapsed time, write guidance files ---
 STATE_FILE="$REPO_ROOT/.agent/last_stop_check.json"
