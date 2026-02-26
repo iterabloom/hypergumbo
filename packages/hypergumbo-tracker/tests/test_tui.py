@@ -8622,11 +8622,14 @@ class TestPreferencesHumanReadState:
 def _make_tracker_set_with_discussion(tmp_path: Path) -> TrackerSet:
     """Create a TrackerSet with items that have discussion entries.
 
-    All entries are by "agent" (since tests run as ``*_agent``).
+    Discussion entries are forced to ``by="agent"`` via a mock so the
+    tests work regardless of the OS username (CI may not match ``*_agent``).
     The calling test can use ``_human_read_state`` to manually mark
     items as read to simulate human interaction.
     """
     from helpers import make_test_config_dict
+    from unittest.mock import patch as _patch
+    from hypergumbo_tracker import store as _store_mod
 
     root = tmp_path / ".agent"
     for d in [
@@ -8644,20 +8647,24 @@ def _make_tracker_set_with_discussion(tmp_path: Path) -> TrackerSet:
 
     ts = TrackerSet(root, config=config)
 
-    # Item with agent discussion entry → human-unread (auto-detect)
-    ts.add(kind="work_item", title="Agent updated",
-           status="todo_hard", priority=1)
-    items = ts.list_items()
-    agent_item = next(i for i in items if i.title == "Agent updated")
-    ts.discuss(agent_item.id, "I made progress")
+    # Force agent identity for discussion entries
+    with _patch.object(
+        _store_mod, "resolve_actor", return_value=("agent", "test_agent"),
+    ):
+        # Item with agent discussion entry → human-unread (auto-detect)
+        ts.add(kind="work_item", title="Agent updated",
+               status="todo_hard", priority=1)
+        items = ts.list_items()
+        agent_item = next(i for i in items if i.title == "Agent updated")
+        ts.discuss(agent_item.id, "I made progress")
 
-    # Item with agent discussion entry but manually marked read
-    # (simulates human having replied or pressed "Mark Read")
-    ts.add(kind="work_item", title="Marked read",
-           status="in_progress", priority=2)
-    items = ts.list_items()
-    read_item = next(i for i in items if i.title == "Marked read")
-    ts.discuss(read_item.id, "Agent did work")
+        # Item with agent discussion entry but manually marked read
+        # (simulates human having replied or pressed "Mark Read")
+        ts.add(kind="work_item", title="Marked read",
+               status="in_progress", priority=2)
+        items = ts.list_items()
+        read_item = next(i for i in items if i.title == "Marked read")
+        ts.discuss(read_item.id, "Agent did work")
 
     # Item with no discussion → human-read
     ts.add(kind="work_item", title="No discussion",
@@ -8935,14 +8942,22 @@ class TestFrozenUnreadCombination:
 
         ts = TrackerSet(root, config=config)
 
-        # Create chain: A (done, has discussion) → B (todo_hard)
-        id_a = ts.add(kind="work_item", title="Ghost unread item",
-                      status="done", priority=1)
-        id_b = ts.add(kind="work_item", title="Depends on ghost",
-                      status="todo_hard", priority=2)
-        ts.update(id_b, add_fields={"before": [id_a]})
-        # Add discussion to A so it's unread
-        ts.discuss(id_a, "Agent progress update")
+        # Force agent identity so discussion is by="agent" regardless
+        # of the OS username (CI may not match *_agent).
+        from unittest.mock import patch as _patch
+        from hypergumbo_tracker import store as _store_mod
+
+        with _patch.object(
+            _store_mod, "resolve_actor", return_value=("agent", "test_agent"),
+        ):
+            # Create chain: A (done, has discussion) → B (todo_hard)
+            id_a = ts.add(kind="work_item", title="Ghost unread item",
+                          status="done", priority=1)
+            id_b = ts.add(kind="work_item", title="Depends on ghost",
+                          status="todo_hard", priority=2)
+            ts.update(id_b, add_fields={"before": [id_a]})
+            # Add discussion to A so it's unread
+            ts.discuss(id_a, "Agent progress update")
 
         app = TrackerApp(tracker_set=ts)
         async with app.run_test(size=(80, 24)) as pilot:
