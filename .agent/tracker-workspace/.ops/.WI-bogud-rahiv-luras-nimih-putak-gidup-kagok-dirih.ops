@@ -1,0 +1,19 @@
+- op: create  # 8313
+  at: '2026-02-26T21:18:13Z'  # 8313
+  by: agent  # 8313
+  actor: jgstern_agent  # 8313
+  clock: 1  # 8313
+  nonce: '8313'  # 8313
+  data:  # 8313
+    kind: work_item  # 8313
+    title: "Run LLM assessment (bakeoff-features-reflect) for the full 23-repo DEEP session"  # 8313
+    status: todo_soft  # 8313
+    priority: 4  # 8313
+    parent:  # 8313
+    tags: []  # 8313
+    before: []  # 8313
+    duplicate_of: []  # 8313
+    not_duplicate_of: []  # 8313
+    pr_ref:  # 8313
+    description: "The main DEEP session deep-20260226-114957 completed all 6 cohorts (23 repos) with quantitative diagnostics but no qualitative LLM assessment (bakeoff-features-reflect was never run). Only the 4-repo validation session got LLM-scored. Running reflect on the main session would provide baseline quality scores for all 23 repos across diverse languages (Rust, Go, Java, C, TypeScript, Python)."  # 8313
+    fields: {}  # 8313
