@@ -36,3 +36,18 @@
   clock: 3  # 3e86
   nonce: '3e86'  # 3e86
   message: "DEEP bakeoff 2026-02-26 results: zed (475MB, 3712 files) completed in 376s without OOM. bun (190MB, 12088 files) in 686s. workadventure (313MB, 3606 files) in 192s. No crashes or memory failures on any of the 23 repos tested. Current ceiling appears functional for repos up to ~500MB. Still worth profiling for optimization, but no longer a blocking reliability concern."  # 3e86
+- op: update  # dd28
+  at: '2026-02-26T17:44:38Z'  # dd28
+  by: agent  # dd28
+  actor: jgstern_agent  # dd28
+  clock: 4  # dd28
+  nonce: dd28  # dd28
+  set:  # dd28
+    status: holding  # dd28
+- op: discuss  # ba16
+  at: '2026-02-26T17:44:38Z'  # ba16
+  by: agent  # ba16
+  actor: jgstern_agent  # ba16
+  clock: 5  # ba16
+  nonce: ba16  # ba16
+  message: "Holding: DEEP bakeoff 2026-02-26 showed no OOM on 23 repos up to 475MB (zed). Memory usage is functional for current repo sizes. Will reopen if users report OOM on specific repos or if we expand to repos >500MB. Not a blocking concern."  # ba16
