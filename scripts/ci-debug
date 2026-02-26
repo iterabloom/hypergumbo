@@ -89,6 +89,17 @@ try:
     data = json.load(sys.stdin)
     state = data.get('state', 'unknown')
     statuses = data.get('statuses', [])
+
+    # Check if ci-complete passed despite overall failure.
+    # When pytest-retry recovers a flaky test, individual jobs may show
+    # 'failure' but ci-complete (the gating job) shows 'success'.
+    ci_complete = next(
+        (s for s in statuses if s.get('context', '') == 'ci-complete'),
+        None,
+    )
+    if state == 'failure' and ci_complete and ci_complete.get('state') == 'success':
+        state = 'success (recovered)'
+
     print(f'Overall: {state}')
     if statuses:
         print('Jobs:')
@@ -136,8 +147,20 @@ cmd_pr_status() {
     echo ""
     echo "CI status for HEAD ($head_sha):"
     if api_get "$API_BASE/commits/$head_sha/status"; then
-      local ci_state
+      local ci_state ci_complete_state
       ci_state=$(echo "$API_RESPONSE" | json_field "state")
+      # Check if ci-complete passed despite overall failure (retry recovery)
+      ci_complete_state=$(echo "$API_RESPONSE" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for s in data.get('statuses', []):
+    if s.get('context', '') == 'ci-complete':
+        print(s.get('state', ''))
+        break
+" 2>/dev/null)
+      if [[ "$ci_state" == "failure" && "$ci_complete_state" == "success" ]]; then
+        ci_state="success (recovered)"
+      fi
       echo "  Overall: $ci_state"
     else
       echo "  ⚠️  Could not fetch CI status"
