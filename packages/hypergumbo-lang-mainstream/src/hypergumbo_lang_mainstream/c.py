@@ -57,6 +57,23 @@ if TYPE_CHECKING:
 PASS_ID = make_pass_id("c")
 
 
+def _remap_edge_ids(
+    edges: list[Edge], id_remap: dict[str, str],
+) -> list[Edge]:
+    """Rewrite edge src/dst that reference removed declaration symbol IDs."""
+    from dataclasses import replace
+
+    result: list[Edge] = []
+    for edge in edges:
+        new_src = id_remap.get(edge.src, edge.src)
+        new_dst = id_remap.get(edge.dst, edge.dst)
+        if new_src != edge.src or new_dst != edge.dst:
+            result.append(replace(edge, src=new_src, dst=new_dst))
+        else:
+            result.append(edge)
+    return result
+
+
 def _has_cpp_files(repo_root: Path) -> bool:
     """Check if the repository contains C++ files.
 
@@ -776,13 +793,7 @@ class CAnalyzer(TreeSitterAnalyzer):
 
         # Rewrite edge src/dst that reference removed declaration IDs
         if id_remap:
-            from dataclasses import replace as _dc_replace
-
-            for i, edge in enumerate(all_edges):
-                new_src = id_remap.get(edge.src, edge.src)
-                new_dst = id_remap.get(edge.dst, edge.dst)
-                if new_src != edge.src or new_dst != edge.dst:
-                    all_edges[i] = _dc_replace(edge, src=new_src, dst=new_dst)
+            all_edges = _remap_edge_ids(all_edges, id_remap)
 
         run.files_analyzed = files_analyzed
         run.files_skipped = files_skipped
