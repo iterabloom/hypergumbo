@@ -631,13 +631,13 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     AND callees (meaningful out-degree) — indicating domain logic rather than
     utility wrappers.
 
-    Scoring: ``in_degree * min(1.0, out_degree / 10)``.  This penalises
-    pure sinks (out-degree 0-1) while boosting functions that both receive
-    and make calls.  For example:
-      - die            (in=1296, out=0)  → score = 0    (eliminated)
-      - strbuf_release (in=1202, out=1)  → score = 120  (demoted)
-      - parse_options  (in=248,  out=9)  → score = 223  (promoted)
-      - start_command  (in=82,   out=27) → score = 82   (full weight)
+    Scoring: ``base * lang_weight * route_boost`` where:
+      - base = ``capped_in * min(1.0, out_degree / 10)``
+      - lang_weight = fraction of codebase in this language, normalised so the
+        dominant language = 1.0.  This prevents bash/shell utility functions
+        from outscoring primary-language entrypoints in polyglot repos.
+      - route_boost = 1.5 for HTTP route/entrypoint symbols (they're thin
+        dispatchers with low out-degree but are high-value reverse-slice seeds).
 
     Returns empty list if hg.json can't be read or has no edges.
     """
@@ -665,9 +665,19 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     # Build node lookup
     node_map = {n["id"]: n for n in nodes}
 
-    # Candidate kinds: function/method/class — the callable/structural symbols
-    # that are meaningful reverse-slice seeds.
+    # ---- Language-dominance weighting ----
+    # Count callable nodes per language (only seed_kinds, skip tests).
+    # Normalise so the dominant language gets weight 1.0 and minority
+    # languages get a proportional fraction.  This prevents e.g. bash
+    # utility functions (5% of codebase, high out-degree) from outscoring
+    # Java HTTP handlers (70% of codebase, lower out-degree).
     seed_kinds = {"function", "method", "class", "constructor", "route"}
+    lang_counts: dict[str, int] = {}
+    for n in nodes:
+        if n.get("kind", "") in seed_kinds:
+            lang = n.get("language", "unknown")
+            lang_counts[lang] = lang_counts.get(lang, 0) + 1
+    max_lang_count = max(lang_counts.values()) if lang_counts else 1
 
     # Out-degree threshold: functions with out-degree >= this value get full
     # weight.  Below this, score is proportionally reduced.  Value of 10
@@ -686,6 +696,11 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     # infrastructure.  Capping at 300 equalises domain functions
     # (in=100-300) against infrastructure (in=500-2000).
     _IN_DEGREE_CAP = 300
+
+    # Route boost: HTTP entrypoints are high-value reverse-slice seeds
+    # ("who calls this API?") but score low because they're thin dispatchers
+    # with low out-degree.  A 1.5x boost compensates.
+    _ROUTE_BOOST = 1.5
 
     candidates = []
     for node_id, in_deg in in_degree.items():
@@ -706,10 +721,27 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
         # Hard filter: skip pure sinks and thin wrappers entirely.
         if out_deg < _MIN_OUT_DEGREE:
             continue
-        # Score: capped in_degree weighted by out-degree ratio.
-        # Cap prevents infrastructure mega-hubs from dominating.
+        # Base score: capped in_degree weighted by out-degree ratio.
         capped_in = min(in_deg, _IN_DEGREE_CAP)
-        score = capped_in * min(1.0, out_deg / _OUT_THRESHOLD)
+        base_score = capped_in * min(1.0, out_deg / _OUT_THRESHOLD)
+
+        # Language-dominance weight: dominant language = 1.0, others proportional.
+        lang = node.get("language", "unknown")
+        lang_weight = lang_counts.get(lang, 1) / max_lang_count
+
+        # Route boost for HTTP entrypoints.
+        route_boost = 1.0
+        if kind == "route":
+            route_boost = _ROUTE_BOOST
+        else:
+            meta = node.get("meta") or {}
+            concepts = meta.get("concepts") or []
+            for c in concepts:
+                if isinstance(c, dict) and c.get("concept") == "route":
+                    route_boost = _ROUTE_BOOST
+                    break
+
+        score = base_score * lang_weight * route_boost
         candidates.append((score, in_deg, entry, name))
 
     # Sort by score descending, then in-degree descending, name for stability
@@ -724,10 +756,8 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
 
     # Relaxed fallback: drop the _MIN_OUT_DEGREE requirement.
     # Some repos (library crates, utility libs) have no functions with both
-    # high in-degree AND out-degree >= 3.  In that case, use pure in-degree
-    # ranking restricted to callable kinds and non-test paths.  This is less
-    # precise but far better than falling through to entrypoints (main()
-    # functions with 0 callers → empty reverse slices).
+    # high in-degree AND out-degree >= 3.  In that case, use language-weighted
+    # in-degree ranking restricted to callable kinds and non-test paths.
     relaxed = []
     for node_id, in_deg in in_degree.items():
         node = node_map.get(node_id)
@@ -743,10 +773,13 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
         if not entry:
             continue
         name = node.get("name", "")
-        relaxed.append((in_deg, entry, name))
+        lang = node.get("language", "unknown")
+        lang_weight = lang_counts.get(lang, 1) / max_lang_count
+        weighted_in = in_deg * lang_weight
+        relaxed.append((weighted_in, in_deg, entry, name))
 
-    relaxed.sort(key=lambda x: (-x[0], x[2]))
-    return [entry for _, entry, _ in relaxed[:count]]
+    relaxed.sort(key=lambda x: (-x[0], -x[1], x[3]))
+    return [entry for _, _, entry, _ in relaxed[:count]]
 
 
 # =============================================================================
