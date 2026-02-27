@@ -1,0 +1,26 @@
+- op: create  # 40d3
+  at: '2026-02-27T17:24:59Z'  # 40d3
+  by: agent  # 40d3
+  actor: jgstern_agent  # 40d3
+  clock: 1  # 40d3
+  nonce: 40d3  # 40d3
+  data:  # 40d3
+    kind: work_item  # 40d3
+    title: "Migrate 53 Edge() sites to Edge.create()"  # 40d3
+    status: todo_soft  # 40d3
+    priority: 4  # 40d3
+    parent:  # 40d3
+    tags: []  # 40d3
+    before: []  # 40d3
+    duplicate_of: []  # 40d3
+    not_duplicate_of: []  # 40d3
+    pr_ref:  # 40d3
+    description: "Fixed defensively in deduplicate_edges (PR #1577). 53 production Edge() constructor calls should be migrated to Edge.create() which auto-generates edge_key. Without the defensive fix, all None-keyed edges collapse during dedup."  # 40d3
+    fields: {}  # 40d3
+- op: discuss  # d3cb
+  at: '2026-02-27T17:31:44Z'  # d3cb
+  by: human  # d3cb
+  actor: jgstern  # d3cb
+  clock: 2  # d3cb
+  nonce: d3cb  # d3cb
+  message: "Please double-check whether any further code changes are needed in order to mark this item as \"done\"?"  # d3cb

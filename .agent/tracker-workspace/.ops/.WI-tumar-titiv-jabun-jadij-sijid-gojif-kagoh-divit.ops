@@ -17,3 +17,25 @@
     pr_ref:  # 57ac
     description: "Add --all and --some flags to bakeoff-features-reflect aggregate (currently only aggregates latest cohort). Review all subcommands across bakeoff-features and bakeoff-features-reflect for consistency: diagnose already has --all/--some, aggregate does not. Ensure each subcommand that operates on cohorts supports --all (all cohorts), --some N (latest N cohorts), and default (latest only). Per user request."  # 57ac
     fields: {}  # 57ac
+- op: update  # 1702
+  at: '2026-02-27T12:37:47Z'  # 1702
+  by: agent  # 1702
+  actor: jgstern_agent  # 1702
+  clock: 2  # 1702
+  nonce: '1702'  # 1702
+  set:  # 1702
+    status: done  # 1702
+- op: discuss  # 60c2
+  at: '2026-02-27T12:37:47Z'  # 60c2
+  by: agent  # 60c2
+  actor: jgstern_agent  # 60c2
+  clock: 3  # 60c2
+  nonce: 60c2  # 60c2
+  message: "Audit shows --all/--some already supported by all cohort-iterating subcommands: run, diagnose, reflect, aggregate, ingest. The cycle command delegates to run+diagnose and inherits their flags. Only compress and status (intentionally all-cohorts) and check (auto-detects) don't need them. No work needed."  # 60c2
+- op: discuss  # 38e5
+  at: '2026-02-27T17:30:04Z'  # 38e5
+  by: human  # 38e5
+  actor: jgstern  # 38e5
+  clock: 4  # 38e5
+  nonce: '38e5'  # 38e5
+  message: "your latest message seems to contradict part of the description. The description implies that bakeoff-features and/or bakeoff-features-reflect does not (or did not) have --all/--some. Yet your last message implies that they *do* have --all/--some. Which is it? Or was it the former situation first and then subsequently the latter situation after specific code changes?"  # 38e5
