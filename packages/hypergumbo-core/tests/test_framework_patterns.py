@@ -6472,6 +6472,291 @@ class TestJaxRsPatterns:
         )
 
 
+    def test_jaxrs_subresource_locator_chain(self) -> None:
+        """JAX-RS subresource locator chains produce full URL paths.
+
+        Pattern: @Path("/session") class SessionRESTService has method
+        @Path("/data/{ds}") returning SessionResource, which has @GET method
+        @Path("/users/{id}"). The full URL should be /session/data/{ds}/users/{id}.
+        """
+        clear_pattern_cache()
+
+        # Class with @Path("/session")
+        session_service = Symbol(
+            id="test:SessionRESTService.java:10-100:SessionRESTService:class",
+            name="SessionRESTService",
+            kind="class",
+            language="java",
+            path="SessionRESTService.java",
+            span=Span(10, 100, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Path", "args": ["/session"], "kwargs": {}},
+                ],
+            },
+        )
+
+        # Subresource locator method: @Path("/data/{ds}") returning SessionResource
+        locator_method = Symbol(
+            id="test:SessionRESTService.java:20-30:SessionRESTService.getSession:method",
+            name="SessionRESTService.getSession",
+            kind="method",
+            language="java",
+            path="SessionRESTService.java",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Path", "args": ["/data/{ds}"], "kwargs": {}},
+                ],
+                "return_type": "SessionResource",
+            },
+        )
+
+        # Target class: SessionResource with @Path("")
+        session_resource = Symbol(
+            id="test:SessionResource.java:10-100:SessionResource:class",
+            name="SessionResource",
+            kind="class",
+            language="java",
+            path="SessionResource.java",
+            span=Span(10, 100, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Path", "args": [""], "kwargs": {}},
+                ],
+            },
+        )
+
+        # Route method on target class: @GET @Path("/users/{id}")
+        get_user = Symbol(
+            id="test:SessionResource.java:20-30:SessionResource.getUser:method",
+            name="SessionResource.getUser",
+            kind="method",
+            language="java",
+            path="SessionResource.java",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "GET", "args": [], "kwargs": {}},
+                    {"name": "Path", "args": ["/users/{id}"], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols(
+            [session_service, locator_method, session_resource, get_user],
+            {"jax-rs"},
+        )
+
+        # The GET method should have the full accumulated path
+        user_method = enriched[3]
+        route_concept = next(
+            (c for c in user_method.meta.get("concepts", []) if c.get("concept") == "route"),
+            None,
+        )
+        assert route_concept is not None, "Expected route concept on GET method"
+        assert route_concept["path"] == "/session/data/{ds}/users/{id}", (
+            f"Expected full subresource path, got: {route_concept.get('path')}"
+        )
+
+    def test_jaxrs_subresource_no_path_on_target_class(self) -> None:
+        """Subresource locator where target class has no @Path annotation."""
+        clear_pattern_cache()
+
+        parent_class = Symbol(
+            id="test:Parent.java:10-100:Parent:class",
+            name="Parent",
+            kind="class",
+            language="java",
+            path="Parent.java",
+            span=Span(10, 100, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Path", "args": ["/api"], "kwargs": {}},
+                ],
+            },
+        )
+
+        locator = Symbol(
+            id="test:Parent.java:20-30:Parent.getChild:method",
+            name="Parent.getChild",
+            kind="method",
+            language="java",
+            path="Parent.java",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "Path", "args": ["/child"], "kwargs": {}},
+                ],
+                "return_type": "ChildResource",
+            },
+        )
+
+        child_class = Symbol(
+            id="test:ChildResource.java:10-100:ChildResource:class",
+            name="ChildResource",
+            kind="class",
+            language="java",
+            path="ChildResource.java",
+            span=Span(10, 100, 0, 0),
+            meta={},
+        )
+
+        child_method = Symbol(
+            id="test:ChildResource.java:20-30:ChildResource.doGet:method",
+            name="ChildResource.doGet",
+            kind="method",
+            language="java",
+            path="ChildResource.java",
+            span=Span(20, 30, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "GET", "args": [], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols(
+            [parent_class, locator, child_class, child_method],
+            {"jax-rs"},
+        )
+
+        child_m = enriched[3]
+        route_concept = next(
+            (c for c in child_m.meta.get("concepts", []) if c.get("concept") == "route"),
+            None,
+        )
+        assert route_concept is not None
+        # Should have /api/child as prefix
+        assert route_concept["path"] == "/api/child", (
+            f"Expected /api/child, got: {route_concept.get('path')}"
+        )
+
+
+    def test_jaxrs_subresource_three_level_chain(self) -> None:
+        """Three-level subresource locator chain: A -> B -> C."""
+        clear_pattern_cache()
+
+        # Level 1: RootResource @Path("/api")
+        root_class = Symbol(
+            id="test:Root.java:1-100:RootResource:class",
+            name="RootResource", kind="class", language="java",
+            path="Root.java", span=Span(1, 100, 0, 0),
+            meta={"decorators": [{"name": "Path", "args": ["/api"], "kwargs": {}}]},
+        )
+        # Subresource locator: @Path("/v1") returns MiddleResource
+        root_locator = Symbol(
+            id="test:Root.java:10-20:RootResource.getV1:method",
+            name="RootResource.getV1", kind="method", language="java",
+            path="Root.java", span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [{"name": "Path", "args": ["/v1"], "kwargs": {}}],
+                "return_type": "MiddleResource",
+            },
+        )
+
+        # Level 2: MiddleResource @Path("")
+        mid_class = Symbol(
+            id="test:Middle.java:1-100:MiddleResource:class",
+            name="MiddleResource", kind="class", language="java",
+            path="Middle.java", span=Span(1, 100, 0, 0),
+            meta={"decorators": [{"name": "Path", "args": [""], "kwargs": {}}]},
+        )
+        # Subresource locator: @Path("/users") returns LeafResource
+        mid_locator = Symbol(
+            id="test:Middle.java:10-20:MiddleResource.getUsers:method",
+            name="MiddleResource.getUsers", kind="method", language="java",
+            path="Middle.java", span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [{"name": "Path", "args": ["/users"], "kwargs": {}}],
+                "return_type": "LeafResource",
+            },
+        )
+
+        # Level 3: LeafResource
+        leaf_class = Symbol(
+            id="test:Leaf.java:1-100:LeafResource:class",
+            name="LeafResource", kind="class", language="java",
+            path="Leaf.java", span=Span(1, 100, 0, 0),
+            meta={},
+        )
+        leaf_method = Symbol(
+            id="test:Leaf.java:10-20:LeafResource.list:method",
+            name="LeafResource.list", kind="method", language="java",
+            path="Leaf.java", span=Span(10, 20, 0, 0),
+            meta={"decorators": [{"name": "GET", "args": [], "kwargs": {}}]},
+        )
+
+        enriched = enrich_symbols(
+            [root_class, root_locator, mid_class, mid_locator, leaf_class, leaf_method],
+            {"jax-rs"},
+        )
+
+        leaf_m = enriched[5]
+        route = next(
+            (c for c in leaf_m.meta.get("concepts", []) if c.get("concept") == "route"),
+            None,
+        )
+        assert route is not None
+        assert route["path"] == "/api/v1/users", (
+            f"Expected /api/v1/users from 3-level chain, got: {route.get('path')}"
+        )
+
+    def test_jaxrs_subresource_with_nonempty_target_path(self) -> None:
+        """Target class has non-empty @Path and Phase 2 already set a combined path."""
+        clear_pattern_cache()
+
+        parent = Symbol(
+            id="test:Parent.java:1-100:Parent:class",
+            name="Parent", kind="class", language="java",
+            path="Parent.java", span=Span(1, 100, 0, 0),
+            meta={"decorators": [{"name": "Path", "args": ["/api"], "kwargs": {}}]},
+        )
+        locator = Symbol(
+            id="test:Parent.java:10-20:Parent.getChild:method",
+            name="Parent.getChild", kind="method", language="java",
+            path="Parent.java", span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [{"name": "Path", "args": ["/sub"], "kwargs": {}}],
+                "return_type": "ChildResource",
+            },
+        )
+        child_class = Symbol(
+            id="test:Child.java:1-100:ChildResource:class",
+            name="ChildResource", kind="class", language="java",
+            path="Child.java", span=Span(1, 100, 0, 0),
+            meta={"decorators": [{"name": "Path", "args": ["/items"], "kwargs": {}}]},
+        )
+        child_method = Symbol(
+            id="test:Child.java:10-20:ChildResource.getItem:method",
+            name="ChildResource.getItem", kind="method", language="java",
+            path="Child.java", span=Span(10, 20, 0, 0),
+            meta={
+                "decorators": [
+                    {"name": "GET", "args": [], "kwargs": {}},
+                    {"name": "Path", "args": ["/{id}"], "kwargs": {}},
+                ],
+            },
+        )
+
+        enriched = enrich_symbols(
+            [parent, locator, child_class, child_method],
+            {"jax-rs"},
+        )
+
+        child_m = enriched[3]
+        route = next(
+            (c for c in child_m.meta.get("concepts", []) if c.get("concept") == "route"),
+            None,
+        )
+        assert route is not None
+        # Full path: /api/sub (from locator) + /items (target class) + /{id} (method)
+        assert route["path"] == "/api/sub/items/{id}", (
+            f"Expected /api/sub/items/{{id}}, got: {route.get('path')}"
+        )
+
+
+
 class TestMicronautPatterns:
     """Tests for Micronaut framework pattern matching."""
 

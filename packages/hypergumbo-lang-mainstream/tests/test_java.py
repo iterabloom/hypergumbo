@@ -1888,6 +1888,73 @@ class TestJavaReturnTypeExtraction:
         assert _extract_java_return_type_name("no parens") is None
 
 
+class TestJavaReturnTypeMetadata:
+    """Tests for return_type in method symbol metadata."""
+
+    def test_method_return_type_in_meta(self, tmp_path: Path) -> None:
+        """Non-void, non-primitive return type is stored in meta.return_type."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Foo.java"
+        java_file.write_text(
+            "public class Foo {\n"
+            "    public UserResource getUser() {\n"
+            "        return new UserResource();\n"
+            "    }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        method = next(s for s in result.symbols if s.name == "Foo.getUser")
+        assert method.meta is not None
+        assert method.meta.get("return_type") == "UserResource"
+
+    def test_void_method_no_return_type(self, tmp_path: Path) -> None:
+        """Void methods do not have return_type in metadata."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Foo.java"
+        java_file.write_text(
+            "public class Foo {\n"
+            "    public void doWork() {}\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        method = next(s for s in result.symbols if s.name == "Foo.doWork")
+        assert method.meta is None or "return_type" not in (method.meta or {})
+
+    def test_primitive_return_type_excluded(self, tmp_path: Path) -> None:
+        """Primitive return types (int, boolean, etc.) are not stored."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Foo.java"
+        java_file.write_text(
+            "public class Foo {\n"
+            "    public int getCount() { return 0; }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        method = next(s for s in result.symbols if s.name == "Foo.getCount")
+        assert method.meta is None or "return_type" not in (method.meta or {})
+
+    def test_constructor_no_return_type(self, tmp_path: Path) -> None:
+        """Constructors do not have return_type metadata."""
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        java_file = tmp_path / "Foo.java"
+        java_file.write_text(
+            "public class Foo {\n"
+            "    public Foo(String name) {}\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        constructor = next(
+            (s for s in result.symbols if s.kind == "method" and "Foo.Foo" in s.name),
+            None,
+        )
+        if constructor is not None:
+            assert constructor.meta is None or "return_type" not in (constructor.meta or {})
+
+
 class TestJavaStaticImportSkip:
     """Tests for static import handling."""
 

@@ -799,6 +799,13 @@ def _extract_symbols(
                 # Extract signature
                 signature = _extract_java_signature(node, source, is_constructor=False)
 
+                # Add return type for subresource locator detection (JAX-RS)
+                ret_type_name = _extract_java_return_type_name(signature)
+                if ret_type_name:
+                    if meta is None:
+                        meta = {}
+                    meta["return_type"] = ret_type_name
+
                 # Typed stable_id (ADR-0014 §3)
                 norm_sig = normalize_java_signature(signature)
                 stable_id = make_typed_stable_id(

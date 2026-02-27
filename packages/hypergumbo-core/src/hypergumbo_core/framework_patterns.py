@@ -970,6 +970,170 @@ def _get_concept_path_from_symbol(symbol: "Symbol", concept_name: str) -> str | 
     return None  # pragma: no cover - concept not found on parent
 
 
+def _apply_subresource_locator_paths(
+    symbols: list["Symbol"],
+    class_lookup: dict[tuple[str, str], "Symbol"],
+) -> None:
+    """Propagate accumulated path prefixes through JAX-RS subresource locator chains.
+
+    Subresource locators are methods with a ``resource_path`` concept (from @Path)
+    but NO ``route`` concept (no @GET/@POST).  Their return type references another
+    resource class whose route methods should inherit the full accumulated path.
+
+    Algorithm:
+    1. Build a class-by-name lookup (cross-file).
+    2. Find subresource locator methods (have resource_path, no route, have return_type).
+    3. Accumulate the full path: parent class path + method path.
+    4. Update the target class's route methods by prepending the accumulated path.
+
+    Handles multi-level chains with cycle detection and depth limit.
+    """
+    # Build cross-file class name → Symbol lookup
+    class_by_name: dict[str, "Symbol"] = {}
+    for sym in symbols:
+        if sym.kind == "class":
+            class_by_name[sym.name] = sym
+
+    # Build method → parent class name lookup
+    methods_by_class: dict[str, list["Symbol"]] = {}
+    for sym in symbols:
+        if sym.kind in ("method", "function") and sym.meta:
+            parent_name = _get_parent_class_name(sym)
+            if parent_name:
+                methods_by_class.setdefault(parent_name, []).append(sym)
+
+    # Find subresource locator methods
+    locators: list[tuple["Symbol", str, str]] = []  # (method, accumulated_path, return_type)
+    for sym in symbols:
+        if sym.kind not in ("method", "function") or not sym.meta:
+            continue
+
+        concepts = sym.meta.get("concepts", [])
+        has_resource_path = False
+        has_route = False
+        path_value = None
+
+        for c in concepts:
+            if c.get("concept") == "resource_path":
+                has_resource_path = True
+                path_value = c.get("path", "")
+            elif c.get("concept") == "route":
+                has_route = True
+
+        if has_resource_path and not has_route:
+            return_type = sym.meta.get("return_type")
+            if return_type:
+                # Get parent class's resource_path
+                parent_name = _get_parent_class_name(sym)
+                if parent_name:
+                    parent_sym = class_lookup.get((sym.path, parent_name))
+                    parent_path = None
+                    if parent_sym:
+                        parent_path = _get_concept_path_from_symbol(
+                            parent_sym, "resource_path",
+                        )
+                    accumulated = _combine_route_paths(parent_path, path_value)
+                    if accumulated:
+                        locators.append((sym, accumulated, return_type))
+
+    if not locators:
+        return
+
+    # Propagate accumulated paths to target class route methods
+    # Handle multi-level chains (depth limit 10)
+    # Only seed root-level locators (whose parent class is NOT a target of
+    # another locator).  Chain iteration discovers mid-level locators with
+    # the correct accumulated prefix from their upstream locator.
+    target_classes = {ret for _, _, ret in locators}
+    propagated_prefixes: dict[str, str] = {}  # class_name -> accumulated prefix
+    for method, accumulated_path, return_type in locators:
+        parent_name = _get_parent_class_name(method)
+        if parent_name not in target_classes:
+            propagated_prefixes[return_type] = accumulated_path
+
+    # Iteratively resolve chained locators (A -> B -> C)
+    for _depth in range(10):
+        new_prefixes: dict[str, str] = {}
+        for class_name, prefix in propagated_prefixes.items():
+            class_methods = methods_by_class.get(class_name, [])
+            for method in class_methods:
+                if not method.meta:  # pragma: no cover - defensive
+                    continue
+                concepts = method.meta.get("concepts", [])
+                for c in concepts:
+                    if c.get("concept") == "resource_path" and not any(
+                        cc.get("concept") == "route" for cc in concepts
+                    ):
+                        ret = method.meta.get("return_type")
+                        if ret and ret not in propagated_prefixes:
+                            method_path = c.get("path", "")
+                            new_accumulated = _combine_route_paths(prefix, method_path)
+                            if new_accumulated:
+                                new_prefixes[ret] = new_accumulated
+        if not new_prefixes:
+            break
+        propagated_prefixes.update(new_prefixes)
+
+    # Now update route concepts on target class methods
+    for class_name, prefix in propagated_prefixes.items():
+        target_class = class_by_name.get(class_name)
+        target_class_path = _get_concept_path_from_symbol(
+            target_class, "resource_path",
+        ) if target_class else None
+
+        # Combine subresource prefix with target class's own resource_path
+        if target_class_path is not None:
+            full_class_prefix = _combine_route_paths(prefix, target_class_path)
+        else:
+            full_class_prefix = prefix
+
+        class_methods = methods_by_class.get(class_name, [])
+        for method in class_methods:
+            if not method.meta:  # pragma: no cover - defensive
+                continue
+            concepts = method.meta.get("concepts", [])
+
+            # Get the method's own @Path (resource_path concept), if any
+            method_own_path = None
+            for c in concepts:
+                if c.get("concept") == "resource_path":
+                    method_own_path = c.get("path")
+                    break
+
+            for c in concepts:
+                if c.get("concept") == "route":
+                    current_path = c.get("path")
+                    if current_path:
+                        # Phase 2 already set a path (parent class path + method path)
+                        # Replace the target class prefix with the full subresource prefix
+                        if target_class_path:
+                            stripped = target_class_path.strip("/")
+                            current_stripped = current_path.lstrip("/")
+                            if current_stripped.startswith(stripped):
+                                remainder = current_stripped[len(stripped):]
+                                method_segment = remainder.lstrip("/")
+                            else:  # pragma: no cover - defensive
+                                method_segment = current_path
+                        else:  # pragma: no cover - defensive
+                            method_segment = current_path
+                        # If stripping left nothing but method has its own
+                        # @Path, Phase 3 only prepended parent path — we need
+                        # to re-attach the method's own path segment.
+                        if not method_segment and method_own_path is not None:
+                            method_segment = method_own_path
+                        c["path"] = _combine_route_paths(
+                            full_class_prefix, method_segment,
+                        )
+                    elif method_own_path is not None:
+                        # Route has no path but method has @Path annotation
+                        c["path"] = _combine_route_paths(
+                            full_class_prefix, method_own_path,
+                        )
+                    else:
+                        # No method path at all; use just the class prefix
+                        c["path"] = full_class_prefix
+
+
 def enrich_symbols(
     symbols: list[Symbol],
     detected_frameworks: set[str],
@@ -1101,6 +1265,12 @@ def enrich_symbols(
                     combined_path = _combine_route_paths(parent_path, method_path)
                     if combined_path:
                         concept["path"] = combined_path
+
+    # Phase 2b: JAX-RS subresource locator path chaining
+    # Methods with @Path (resource_path concept) and a return_type that matches
+    # a class with resource_path or route methods are subresource locators.
+    # Propagate the accumulated path prefix to the target class's route methods.
+    _apply_subresource_locator_paths(symbols, class_lookup)
 
     # Phase 3: Usage-based matching (v1.1.x)
     if usage_contexts:

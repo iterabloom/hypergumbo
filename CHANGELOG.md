@@ -25,6 +25,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Frameworks
 
+- **JAX-RS subresource locator path chaining**: Detects subresource locator methods (methods with `@Path` annotation but no HTTP method annotation like `@GET`/`@POST`) and propagates accumulated path prefixes through the locator chain to target resource class route methods. Supports multi-level chains (A → B → C) with cycle detection and depth limit. Uses Java method `return_type` metadata to resolve locator targets across files.
 - **Stapler framework detection (WI-mokuv)**: YAML pattern file for Kohsuke Stapler (Jenkins URL dispatch). Detects `@WebMethod`, `@RequirePOST` annotations, `doXxx()`/`getXxx()` convention methods in Stapler-routable classes (Action, RootAction, ManagementLink, Descriptor, etc.), and `StaplerRequest`/`StaplerResponse` parameter types. Framework auto-detected from `org.kohsuke.stapler` in Maven/Gradle builds. `jenkins` alias resolves to stapler patterns.
 
 #### Analyzers
