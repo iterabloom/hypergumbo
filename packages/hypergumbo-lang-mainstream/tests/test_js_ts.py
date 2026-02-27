@@ -6253,6 +6253,31 @@ function doWork() {
             f"reject() inside Promise should not resolve to global, got: {false_edges}"
         )
 
+    def test_typescript_promise_function_expression(
+        self, tmp_path: Path
+    ) -> None:
+        """TS function expression params (required_parameter) shadow globals."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "other.js").write_text(
+            "function resolve(x) { return x; }\n"
+        )
+        (tmp_path / "app.ts").write_text("""
+function getEmail(s: string) {
+    return new Promise(function(resolve, reject) {
+        resolve(s);
+    });
+}
+""")
+        result = analyze_javascript(tmp_path)
+        false_edges = [
+            e for e in result.edges if e.edge_type == "calls"
+            and "getEmail" in e.src and "resolve" in e.dst
+        ]
+        assert len(false_edges) == 0, (
+            f"resolve() in TS function expression should not resolve to global, got: {false_edges}"
+        )
+
     def test_callback_param_shadows_global(
         self, tmp_path: Path
     ) -> None:

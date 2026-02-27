@@ -2421,8 +2421,14 @@ def _is_shadowed_by_param(node: "tree_sitter.Node", name: str, source: bytes) ->
             for child in current.children:
                 if child.type == "formal_parameters":
                     for param in child.children:
+                        # JS: direct identifier params
                         if param.type == "identifier" and _node_text(param, source) == name:
                             return True
+                        # TS: params wrapped in required_parameter or optional_parameter
+                        if param.type in ("required_parameter", "optional_parameter"):
+                            for pc in param.children:
+                                if pc.type == "identifier" and _node_text(pc, source) == name:
+                                    return True
                     break
                 # arrow_function with single param (no parens): (x) => ... vs x => ...
                 if current.type == "arrow_function" and child.type == "identifier":
