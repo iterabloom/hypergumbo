@@ -2395,6 +2395,48 @@ def _extract_symbols(
     return symbols
 
 
+def _is_shadowed_by_param(node: "tree_sitter.Node", name: str, source: bytes) -> bool:
+    """Check if *name* is shadowed by a parameter of an enclosing function.
+
+    Walks up the AST from *node* looking for ``arrow_function``,
+    ``function_declaration``, ``function_expression``, or ``method_definition``
+    ancestors whose ``formal_parameters`` contain an ``identifier`` child
+    matching *name*.
+
+    This prevents false cross-file edges when a callback parameter (e.g.,
+    ``resolve`` / ``reject`` inside ``new Promise((resolve, reject) => {...})``)
+    happens to share a name with a globally-defined function.
+
+    Stops walking after the first enclosing function body boundary to avoid
+    leaking scope outward.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type in (
+            "arrow_function",
+            "function_declaration",
+            "function_expression",
+            "method_definition",
+        ):
+            for child in current.children:
+                if child.type == "formal_parameters":
+                    for param in child.children:
+                        if param.type == "identifier" and _node_text(param, source) == name:
+                            return True
+                    break
+                # arrow_function with single param (no parens): (x) => ... vs x => ...
+                if current.type == "arrow_function" and child.type == "identifier":
+                    if _node_text(child, source) == name:
+                        return True
+            # Found an enclosing function but name is not a param — stop checking.
+            # The name could be a local variable in an outer scope, but that's
+            # a separate (and rarer) concern; we only guard against parameter
+            # shadowing here.
+            return False
+        current = current.parent
+    return False
+
+
 def _get_enclosing_function(
     node: "tree_sitter.Node",
     source: bytes,
@@ -2628,6 +2670,8 @@ def _extract_edges(
                     # (e.g., Number(x) → React component named Number).
                     if func_name in JS_BUILTIN_NAMES:
                         pass  # fall through to callback/middleware handling below
+                    elif _is_shadowed_by_param(node, func_name, source):
+                        pass  # local parameter shadows global — skip resolution
                     elif (current_function := _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset)):
                         # Try import-path disambiguation first (cross-package
                         # same-name functions, e.g. two packages both export

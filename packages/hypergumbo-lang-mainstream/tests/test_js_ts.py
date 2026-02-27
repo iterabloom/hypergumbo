@@ -6194,6 +6194,174 @@ function main() {
         assert len(calls) == 1
 
 
+class TestParameterShadowing:
+    """Tests for function parameter shadowing of global names.
+
+    When a function parameter shadows a global function name (e.g.,
+    ``resolve`` and ``reject`` in ``new Promise((resolve, reject) => {...})``),
+    calls to that name inside the function body should NOT resolve to the
+    global function.  This prevents false cross-package edges.
+    """
+
+    def test_promise_resolve_not_resolved_to_global(
+        self, tmp_path: Path
+    ) -> None:
+        """resolve() inside Promise callback should not resolve to global."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "other.js").write_text(
+            "function resolve(x) { return x; }\n"
+        )
+        (tmp_path / "app.js").write_text("""
+function doWork() {
+    return new Promise((resolve, reject) => {
+        resolve(42);
+    });
+}
+""")
+        result = analyze_javascript(tmp_path)
+        false_edges = [
+            e for e in result.edges if e.edge_type == "calls"
+            and "doWork" in e.src and "resolve" in e.dst
+        ]
+        assert len(false_edges) == 0, (
+            f"resolve() inside Promise should not resolve to global, got: {false_edges}"
+        )
+
+    def test_promise_reject_not_resolved_to_global(
+        self, tmp_path: Path
+    ) -> None:
+        """reject() inside Promise callback should not resolve to global."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "other.js").write_text(
+            "function reject(x) { return x; }\n"
+        )
+        (tmp_path / "app.js").write_text("""
+function doWork() {
+    return new Promise((resolve, reject) => {
+        reject("error");
+    });
+}
+""")
+        result = analyze_javascript(tmp_path)
+        false_edges = [
+            e for e in result.edges if e.edge_type == "calls"
+            and "doWork" in e.src and "reject" in e.dst
+        ]
+        assert len(false_edges) == 0, (
+            f"reject() inside Promise should not resolve to global, got: {false_edges}"
+        )
+
+    def test_callback_param_shadows_global(
+        self, tmp_path: Path
+    ) -> None:
+        """General case: callback param name shadows a same-named global fn."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "utils.js").write_text(
+            "function handler(x) { return x * 2; }\n"
+        )
+        (tmp_path / "app.js").write_text("""
+function setup() {
+    events.on("data", (handler) => {
+        handler("value");
+    });
+}
+""")
+        result = analyze_javascript(tmp_path)
+        false_edges = [
+            e for e in result.edges if e.edge_type == "calls"
+            and "setup" in e.src and "handler" in e.dst
+        ]
+        assert len(false_edges) == 0, (
+            f"handler() should be local param, not global, got: {false_edges}"
+        )
+
+    def test_non_shadowed_call_still_resolves(
+        self, tmp_path: Path
+    ) -> None:
+        """Calls to names NOT shadowed by params still resolve correctly."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "utils.js").write_text(
+            "function helper(x) { return x; }\n"
+        )
+        (tmp_path / "app.js").write_text("""
+function doWork() {
+    return new Promise((resolve, reject) => {
+        helper(42);
+        resolve(true);
+    });
+}
+""")
+        result = analyze_javascript(tmp_path)
+        # helper() should still resolve (not shadowed by params)
+        helper_edges = [
+            e for e in result.edges if e.edge_type == "calls"
+            and "helper" in e.dst
+        ]
+        assert len(helper_edges) == 1, (
+            f"helper() should still resolve, got: {helper_edges}"
+        )
+        # resolve() should NOT resolve to global
+        resolve_edges = [
+            e for e in result.edges if e.edge_type == "calls"
+            and "resolve" in e.dst
+        ]
+        assert len(resolve_edges) == 0
+
+    def test_regular_function_param_shadows_global(
+        self, tmp_path: Path
+    ) -> None:
+        """Regular function params (not arrow) also shadow globals."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "other.js").write_text(
+            "function callback(x) { return x; }\n"
+        )
+        (tmp_path / "app.js").write_text("""
+function doWork() {
+    items.forEach(function(callback) {
+        callback("value");
+    });
+}
+""")
+        result = analyze_javascript(tmp_path)
+        false_edges = [
+            e for e in result.edges if e.edge_type == "calls"
+            and "doWork" in e.src and "callback" in e.dst
+        ]
+        assert len(false_edges) == 0, (
+            f"callback() should be local param, not global, got: {false_edges}"
+        )
+
+    def test_single_param_arrow_shadows_global(
+        self, tmp_path: Path
+    ) -> None:
+        """Single-param arrow function (no parens) shadows global name."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "other.js").write_text(
+            "function cb(x) { return x; }\n"
+        )
+        (tmp_path / "app.js").write_text("""
+function doWork() {
+    items.forEach(cb => {
+        cb("value");
+    });
+}
+""")
+        result = analyze_javascript(tmp_path)
+        false_edges = [
+            e for e in result.edges if e.edge_type == "calls"
+            and "doWork" in e.src and "cb" in e.dst
+        ]
+        assert len(false_edges) == 0, (
+            f"cb() should be local arrow param, not global, got: {false_edges}"
+        )
+
+
 class TestMiddlewareChainEdges:
     """Tests for Express-style middleware chain edge creation.
 
