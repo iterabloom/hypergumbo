@@ -656,14 +656,25 @@ class CAnalyzer(TreeSitterAnalyzer):
         symbol: Symbol,
         global_symbols: dict,
     ) -> None:
-        """Register symbol, preferring .c definitions over .h declarations."""
+        """Register symbol, preferring definitions over declarations.
+
+        Priority: .c definition > .c declaration > .h declaration.
+        This ensures that ``resolver.lookup()`` returns the definition
+        symbol when both a declaration and definition exist, making
+        the post-analysis dedup remap deterministic.
+        """
         existing = global_symbols.get(symbol.name)
         if existing is None:
             global_symbols[symbol.name] = symbol
         else:
+            sym_is_def = "declaration" not in symbol.modifiers
+            existing_is_def = "declaration" not in existing.modifiers
             sym_is_source = symbol.path.endswith('.c')
             existing_is_source = existing.path.endswith('.c')
-            if sym_is_source and not existing_is_source:
+            # Prefer definition over declaration, then .c over .h
+            if (sym_is_def and not existing_is_def) or (
+                sym_is_source and not existing_is_source
+            ):
                 global_symbols[symbol.name] = symbol
 
     def extract_edges_from_file(

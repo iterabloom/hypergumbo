@@ -1547,6 +1547,36 @@ void use_point(void) {}
         assert len(enums) == 1
 
 
+class TestRemapEdgeIds:
+    """Tests for _remap_edge_ids helper."""
+
+    def test_remaps_edge_dst(self) -> None:
+        """Edges referencing a removed declaration ID are remapped."""
+        from hypergumbo_core.ir import Edge
+        from hypergumbo_lang_mainstream.c import _remap_edge_ids
+
+        edge = Edge.create(
+            src="s1", dst="decl:old", edge_type="calls",
+            line=1, confidence=0.9, origin="test", origin_run_id="r1",
+        )
+        result = _remap_edge_ids([edge], {"decl:old": "def:new"})
+        assert len(result) == 1
+        assert result[0].dst == "def:new"
+        assert result[0].src == "s1"
+
+    def test_preserves_unmatched_edges(self) -> None:
+        """Edges not in the remap table are returned unchanged."""
+        from hypergumbo_core.ir import Edge
+        from hypergumbo_lang_mainstream.c import _remap_edge_ids
+
+        edge = Edge.create(
+            src="s1", dst="def:ok", edge_type="calls",
+            line=1, confidence=0.9, origin="test", origin_run_id="r1",
+        )
+        result = _remap_edge_ids([edge], {"decl:old": "def:new"})
+        assert result[0] is edge  # same object, not a copy
+
+
 class TestCDocstrings:
     """Tests for Doxygen comment extraction via populate_docstrings_from_tree."""
 
