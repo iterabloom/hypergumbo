@@ -474,6 +474,24 @@ def _same_package_candidate(
     return None
 
 
+def _is_cross_package(file_path: Path, target_path: str) -> bool:
+    """Check if *target_path* is in a different npm package than *file_path*.
+
+    Returns True when both paths have package.json ancestors and those
+    ancestors differ.  Returns False when either path lacks a package.json
+    ancestor (can't determine package boundary) or when both are in the
+    same package.
+    """
+    src_root = _find_package_root(file_path)
+    if src_root is None:
+        return False
+    target = Path(target_path)
+    dst_root = _find_package_root(target)
+    if dst_root is None:
+        return False
+    return src_root != dst_root
+
+
 # JavaScript built-in constructor and global function names.
 # Calls like `Number(x)`, `String(x)`, `Boolean(x)` are type conversions,
 # not calls to user-defined functions.  Skip these during call resolution
@@ -2910,7 +2928,25 @@ def _extract_edges(
                         arg_name = _node_text(arg, source)
                         if arg_name in JS_BUILTIN_NAMES:
                             continue
-                        target = global_symbols.get(arg_name)
+                        # Parameter shadowing: skip if arg name matches a
+                        # param of an enclosing function (e.g., resolve
+                        # passed to forEach inside a Promise callback).
+                        if _is_shadowed_by_param(arg, arg_name, source):
+                            continue
+                        # Same resolution strategy as direct calls:
+                        # import-path first, then same-package, then global
+                        target: Symbol | None = None
+                        import_module = (named_imports or {}).get(arg_name)
+                        if import_module and symbols_by_name:
+                            target = _disambiguate_by_import(
+                                import_module, file_path, arg_name, symbols_by_name,
+                            )
+                        if target is None and symbols_by_name:
+                            target = _same_package_candidate(
+                                file_path, arg_name, symbols_by_name,
+                            )
+                        if target is None:
+                            target = global_symbols.get(arg_name)
                         if target is None:  # pragma: no cover - defensive resolver fallback
                             lookup_result = resolver.lookup(arg_name)
                             if lookup_result.found and lookup_result.symbol is not None:
@@ -2932,6 +2968,13 @@ def _extract_edges(
                             and target.kind in ("function", "method", "route")
                             and target.id != current_function.id
                         ):
+                            # Cross-package guard: callback args that resolve
+                            # to a different npm package without an explicit
+                            # import are likely false positives (e.g., error()
+                            # in client-admin resolving as a callback ref from
+                            # server code that passes error as argument).
+                            if _is_cross_package(file_path, target.path):
+                                continue
                             # Avoid duplicate: skip if we already created a
                             # direct call edge to the same target (the callee
                             # identifier itself is also an argument child).

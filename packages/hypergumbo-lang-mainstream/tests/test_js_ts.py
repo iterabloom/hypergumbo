@@ -6194,6 +6194,167 @@ function main() {
         assert len(calls) == 1
 
 
+class TestCallbackArgCrossPackageGuard:
+    """Tests for callback argument reference cross-package guard.
+
+    Callback arguments like ``app.get("/path", error)`` should not create
+    ``references`` edges to functions in different npm packages.  The
+    same-package preference and import-path disambiguation used for
+    direct calls must also apply to callback argument references.
+    """
+
+    def test_callback_arg_prefers_same_package(
+        self, tmp_path: Path
+    ) -> None:
+        """Callback arg ref should prefer same-package function."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # Two packages: server/ and client/
+        (tmp_path / "server" / "package.json").parent.mkdir()
+        (tmp_path / "server" / "package.json").write_text('{"name": "server"}')
+        (tmp_path / "server" / "handler.js").write_text(
+            "function error(msg) { console.log(msg); }\n"
+        )
+        (tmp_path / "server" / "app.js").write_text("""
+function setup() {
+    items.forEach(error);
+}
+""")
+        (tmp_path / "client" / "package.json").parent.mkdir()
+        (tmp_path / "client" / "package.json").write_text('{"name": "client"}')
+        (tmp_path / "client" / "actions.js").write_text(
+            "function error(msg) { alert(msg); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.evidence_type == "callback_argument_reference"
+            and "error" in e.dst
+        ]
+        # Should resolve to server/handler.js error, NOT client/actions.js error
+        for edge in ref_edges:
+            assert "client" not in edge.dst, (
+                f"Callback ref should prefer same-package, got cross-package: {edge.dst}"
+            )
+
+    def test_callback_arg_no_cross_package_when_only_other_pkg(
+        self, tmp_path: Path
+    ) -> None:
+        """No callback ref edge when function only exists in another package."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # error() defined only in client/, called from server/
+        (tmp_path / "server" / "package.json").parent.mkdir()
+        (tmp_path / "server" / "package.json").write_text('{"name": "server"}')
+        (tmp_path / "server" / "app.js").write_text("""
+function setup() {
+    items.forEach(error);
+}
+""")
+        (tmp_path / "client" / "package.json").parent.mkdir()
+        (tmp_path / "client" / "package.json").write_text('{"name": "client"}')
+        (tmp_path / "client" / "actions.js").write_text(
+            "function error(msg) { alert(msg); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.evidence_type == "callback_argument_reference"
+            and "error" in e.dst
+        ]
+        assert len(ref_edges) == 0, (
+            f"Callback ref should not cross package boundary, got: {ref_edges}"
+        )
+
+    def test_callback_arg_param_shadowing(
+        self, tmp_path: Path
+    ) -> None:
+        """Callback arg that matches a param of enclosing fn is skipped."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "other.js").write_text(
+            "function resolve(x) { return x; }\n"
+        )
+        (tmp_path / "app.js").write_text("""
+function doWork() {
+    return new Promise((resolve, reject) => {
+        items.forEach(resolve);
+    });
+}
+""")
+        result = analyze_javascript(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.evidence_type == "callback_argument_reference"
+            and "resolve" in e.dst
+        ]
+        assert len(ref_edges) == 0, (
+            f"resolve passed as callback arg should be local param, got: {ref_edges}"
+        )
+
+    def test_callback_arg_import_disambiguation(
+        self, tmp_path: Path
+    ) -> None:
+        """Named import should guide callback arg resolution."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        pkg = tmp_path / "pkg"
+        pkg.mkdir()
+        (pkg / "package.json").write_text('{"name": "pkg"}')
+        (pkg / "local.js").write_text(
+            "function myHandler(x) { return x; }\n"
+            "module.exports = { myHandler };\n"
+        )
+        (pkg / "other.js").write_text(
+            "function myHandler(x) { return x * 2; }\n"
+            "module.exports = { myHandler };\n"
+        )
+        (pkg / "app.js").write_text(
+            "import { myHandler } from './local';\n"
+            "function setup() {\n"
+            "    items.map(myHandler);\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.evidence_type == "callback_argument_reference"
+            and "myHandler" in e.dst
+        ]
+        # Should resolve to local.js (imported), not other.js
+        for edge in ref_edges:
+            assert "local" in edge.dst, (
+                f"Should resolve to imported module, got: {edge.dst}"
+            )
+
+    def test_cross_package_no_package_json_allows_resolution(
+        self, tmp_path: Path
+    ) -> None:
+        """When target has no package.json, cross-package guard allows resolution."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # Only source has package.json, target does not
+        (tmp_path / "src" / "package.json").parent.mkdir()
+        (tmp_path / "src" / "package.json").write_text('{"name": "app"}')
+        (tmp_path / "src" / "app.js").write_text("""
+function setup() {
+    items.forEach(helper);
+}
+""")
+        (tmp_path / "lib" / "utils.js").parent.mkdir()
+        (tmp_path / "lib" / "utils.js").write_text(
+            "function helper(x) { return x; }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.evidence_type == "callback_argument_reference"
+            and "helper" in e.dst
+        ]
+        # Should still resolve since we can't determine package boundary
+        assert len(ref_edges) == 1
+
+
 class TestParameterShadowing:
     """Tests for function parameter shadowing of global names.
 
