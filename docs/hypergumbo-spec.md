@@ -421,8 +421,10 @@ Detects message send/receive patterns across process boundaries using string lit
 
 | Language | Libraries | Example |
 |----------|-----------|---------|
-| JS/TS | `fetch`, `axios`, OpenAPI-generated clients | `fetch("/api/users")` |
+| JS/TS | `fetch`, `axios`, AngularJS `$http`, jQuery `$.ajax`/`$.get`/`$.post`, OpenAPI-generated clients | `fetch("/api/users")` |
 | Python | `requests`, `httpx` | `requests.get("/api/users")` |
+| Ruby | `RestClient`, `HTTParty`, `Faraday`, `Net::HTTP` | `RestClient.get("/api/users")` |
+| Java | Spring `RestTemplate`, Retrofit annotations | `restTemplate.getForObject("/api/users", ...)` |
 | Go | `net/http` | `http.Get("http://host/api/users")` |
 
 **Matching algorithm:**
@@ -440,7 +442,7 @@ Detects message send/receive patterns across process boundaries using string lit
 🟩 The DI resolution linker (`linkers/di_resolution.py`) creates `di_resolves` edges from interface methods to their DI-bound implementation methods. Unlike `dispatches_to` (which is structural and excluded from forward slices to prevent fan-out explosion), `di_resolves` edges are followed by forward BFS — correct for DI-heavy codebases where the binding narrows to one high-confidence implementation.
 
 **Supported DI frameworks:**
-- Java/Kotlin/Scala: Guice `bind(X.class).to(Y.class)`, Spring `@Bean` methods
+- Java/Kotlin/Scala: Guice `bind(X.class).to(Y.class)`, `@Provides` methods, `@ImplementedBy` annotations, Spring `@Bean` methods
 - C#: ASP.NET Core `services.AddScoped<I, C>()` / `AddTransient` / `AddSingleton`
 - TypeScript: NestJS/Angular `{ provide: X, useClass: Y }`, InversifyJS `container.bind<I>().to(C)`
 - Python: `binder.bind(I, to=C)` (injector library)
@@ -448,10 +450,11 @@ Detects message send/receive patterns across process boundaries using string lit
 - Java SPI: `META-INF/services/` files
 
 **Resolution cascade** (highest-confidence wins):
-1. Explicit framework binding (Guice/Spring/C#/NestJS/Inversify/Koin/Python injector): 0.90
-2. Java SPI `META-INF/services/` file: 0.85
-3. Naming convention (`DefaultX` or `XImpl`): 0.75
-4. Single implementation of interface: 0.70
+1. Explicit framework binding (Guice bind/provides/Spring/C#/NestJS/Inversify/Koin/Python injector): 0.90
+2. Guice `@ImplementedBy` annotation: 0.85
+3. Java SPI `META-INF/services/` file: 0.85
+4. Naming convention (`DefaultX` or `XImpl`): 0.75
+5. Single implementation of interface: 0.70
 
 Edges are created at method level (interface method → implementation method with matching short name), not at class level.
 
