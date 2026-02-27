@@ -4083,6 +4083,87 @@ func run(x interface{}) {
             )
 
 
+class TestGoSyncMapStdlibGuard:
+    """Tests that sync.Map methods (Store, Load, etc.) are guarded.
+
+    sync.Map is a concrete type (not an interface), but its methods are
+    extremely common in Go code. Without the guard, a single repo-defined
+    ``Store`` method absorbs 100+ false in-degree edges from unrelated
+    ``sync.Map.Store()`` calls.
+    """
+
+    def test_store_single_candidate_produces_unresolved(
+        self, tmp_path: Path,
+    ) -> None:
+        """x.Store() with only 1 Store method → unresolved (stdlib collision)."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+import "sync"
+
+type DownTrackSpreader struct {
+    cache sync.Map
+}
+
+func (d *DownTrackSpreader) Store(key, val interface{}) {
+    d.cache.Store(key, val)
+}
+
+func saveData(m *sync.Map) {
+    m.Store("key", "value")
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        save_calls = [e for e in call_edges if "saveData" in e.src]
+
+        store_calls = [e for e in save_calls if "Store" in e.dst]
+        assert len(store_calls) >= 1, (
+            f"saveData should have a call edge for m.Store(), found: {save_calls}"
+        )
+
+        for edge in store_calls:
+            assert "DownTrackSpreader.Store" not in edge.dst, (
+                f"m.Store() should NOT resolve to DownTrackSpreader.Store, got {edge.dst}"
+            )
+            assert edge.evidence_type == "stdlib_method_call", (
+                f"Expected evidence_type='stdlib_method_call', got '{edge.evidence_type}'"
+            )
+
+    def test_load_single_candidate_produces_unresolved(
+        self, tmp_path: Path,
+    ) -> None:
+        """x.Load() with only 1 Load method → unresolved (stdlib collision)."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Cache struct{}
+
+func (c *Cache) Load(key string) interface{} { return nil }
+
+func getData(x interface{}) {
+    x.Load("mykey")
+}
+""")
+
+        result = analyze_go(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        get_calls = [e for e in call_edges if "getData" in e.src]
+
+        load_calls = [e for e in get_calls if "Load" in e.dst]
+        assert len(load_calls) >= 1
+        for edge in load_calls:
+            assert "Cache.Load" not in edge.dst
+            assert edge.evidence_type == "stdlib_method_call"
+
+
 class TestGoPrivateMethodScope:
     """Tests for Go visibility rules in method resolution.
 

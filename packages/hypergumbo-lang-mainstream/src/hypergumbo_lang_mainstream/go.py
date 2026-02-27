@@ -95,13 +95,14 @@ if TYPE_CHECKING:
 
 PASS_ID = make_pass_id("go")
 
-# Well-known Go standard library interface methods.
+# Well-known Go standard library interface and concrete-type methods.
 # When a method call ``x.Lock()`` has no inferred receiver type and
 # the method name is in this set, the call is treated as ambiguous even
 # if only 1 candidate exists in the repo. Without this guard,
 # ``DirLocker.Lock`` (the only repo-defined Lock method) absorbs 255+
 # false in-degree edges from unrelated ``sync.Mutex.Lock()`` calls,
 # making it falsely rank #1 in centrality.
+# Also covers sync.Map methods (Store, Load, etc.) and sync.WaitGroup.
 #
 # This set covers the most common interface methods from:
 # - sync: Locker (Lock, Unlock)
@@ -135,6 +136,11 @@ _GO_STDLIB_INTERFACE_METHODS: frozenset[str] = frozenset({
     "Scan", "Next", "Prepare", "Exec", "Query", "QueryRow",
     # encoding
     "Encode", "Decode",
+    # sync.Map (concrete type, but methods are extremely common)
+    "Store", "Load", "LoadOrStore", "LoadAndDelete",
+    "CompareAndSwap", "CompareAndDelete", "Range",
+    # sync.WaitGroup
+    "Wait",
 })
 
 # Go web framework HTTP method names
