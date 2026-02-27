@@ -1,0 +1,19 @@
+- op: create  # 57ac
+  at: '2026-02-27T09:23:48Z'  # 57ac
+  by: agent  # 57ac
+  actor: jgstern_agent  # 57ac
+  clock: 1  # 57ac
+  nonce: 57ac  # 57ac
+  data:  # 57ac
+    kind: work_item  # 57ac
+    title: "Harmonize --all and --some flags across bakeoff infrastructure"  # 57ac
+    status: todo_soft  # 57ac
+    priority: 3  # 57ac
+    parent:  # 57ac
+    tags: []  # 57ac
+    before: []  # 57ac
+    duplicate_of: []  # 57ac
+    not_duplicate_of: []  # 57ac
+    pr_ref:  # 57ac
+    description: "Add --all and --some flags to bakeoff-features-reflect aggregate (currently only aggregates latest cohort). Review all subcommands across bakeoff-features and bakeoff-features-reflect for consistency: diagnose already has --all/--some, aggregate does not. Ensure each subcommand that operates on cohorts supports --all (all cohorts), --some N (latest N cohorts), and default (latest only). Per user request."  # 57ac
+    fields: {}  # 57ac
