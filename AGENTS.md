@@ -557,10 +557,20 @@ DEEP mode scripts:
 ./scripts/bakeoff-features diagnose --all    # All cohorts in session
 ./scripts/bakeoff-features diagnose --some 3 # Latest 3 cohorts
 
+# Session introspection
+./scripts/bakeoff-features status           # Per-cohort breakdown: output/diagnose/reflect status
+./scripts/bakeoff-features active           # Machine-friendly key=value (for stop hooks)
+./scripts/bakeoff-features compare A B      # Side-by-side metric/score deltas between sessions
+
 # LLM-driven qualitative assessment
 ./scripts/bakeoff-features-reflect
 ./scripts/bakeoff-features-reflect aggregate
 ```
+
+**Introspection subcommands:**
+- **`status`**: Shows per-cohort breakdown (output, diagnostics, LLM assessment status) and overall verdict summary. Use to see what's done and what remains in a session.
+- **`active`**: Machine-friendly key=value output for stop hooks. Prints workdir, session name, cohort counts, convergence, and worst-repo details. Exit 1 if no session.
+- **`compare <A> <B>`**: Side-by-side comparison of two sessions. Shows per-repo metric deltas (nodes, edges, orphan rate, tier1%, avg slice nodes), verdict changes, and LLM score differences. Sessions can be full paths or dir names under `bakeoff_artifacts/`.
 
 **Curricula:** Pre-planned cohort sequences live in `~/hypergumbo_lab_notebook/curricula/`.
 Check there before auto-selecting — if a curriculum exists for the current work, follow its

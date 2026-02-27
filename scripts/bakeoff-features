@@ -2259,15 +2259,28 @@ def main():
                         help="Diagnose up to N cohorts (latest N, like --all but capped)")
 
     # status
-    p_status = subparsers.add_parser("status", help="Show session status")
+    p_status = subparsers.add_parser(
+        "status", help="Show session status",
+        description="Show per-cohort breakdown: output (run), diagnostics (diagnose), "
+                    "and LLM assessment (reflect) status. Also shows overall verdict "
+                    "summary and reflect_statuses. Use to see what's done and what remains.")
     p_status.add_argument("--workdir", help="Override workdir")
 
     # active (machine-friendly)
-    p_active = subparsers.add_parser("active", help="Print active session path and convergence (machine-friendly)")
+    p_active = subparsers.add_parser(
+        "active", help="Print active session path and convergence (machine-friendly)",
+        description="Machine-friendly key=value output for stop hooks and automation. "
+                    "Prints: workdir, session name, total/completed cohorts, convergence "
+                    "status, and worst-repo details. Exit code 1 if no session found.")
     p_active.add_argument("--workdir", help="Override workdir")
 
     # compare
-    p_compare = subparsers.add_parser("compare", help="Compare two sessions side-by-side")
+    p_compare = subparsers.add_parser(
+        "compare", help="Compare two sessions side-by-side",
+        description="Side-by-side comparison of two bakeoff sessions. Shows per-repo "
+                    "metric deltas (node count, edge count, orphan rate, tier1%%, avg "
+                    "slice nodes), verdict changes, and LLM assessment score differences. "
+                    "Sessions can be full paths or directory names under bakeoff_artifacts/.")
     p_compare.add_argument("session_a", help="First session (path or dir name under bakeoff_artifacts)")
     p_compare.add_argument("session_b", help="Second session (path or dir name under bakeoff_artifacts)")
 
