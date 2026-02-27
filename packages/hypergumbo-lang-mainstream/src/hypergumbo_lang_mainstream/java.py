@@ -69,7 +69,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
@@ -1025,6 +1025,7 @@ def _extract_edges(
     symbol_by_position: dict[tuple[str, int, int], Symbol] | None = None,
     class_by_name: dict[str, list[Symbol]] | None = None,
     sym_file_imports: dict[str, dict[str, str]] | None = None,
+    method_resolver: ListNameResolver | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed Java tree (pass 2).
 
@@ -1610,6 +1611,8 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
     class_symbols: dict[str, Symbol] = {}
     # Multi-value lookup for extends/implements disambiguation (INV-015)
     class_by_name: dict[str, list[Symbol]] = {}
+    # Multi-value method lookup for AMB-METHOD ambiguity guard
+    global_methods: dict[str, list[Symbol]] = {}
 
     # Position-based lookup for enclosing method resolution in monorepos
     symbol_by_position: dict[tuple[str, int, int], Symbol] = {}
@@ -1622,6 +1625,9 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             if sym.name not in class_by_name:
                 class_by_name[sym.name] = []
             class_by_name[sym.name].append(sym)
+        elif sym.kind == "method":
+            short = sym.name.split(".")[-1] if "." in sym.name else sym.name
+            global_methods.setdefault(short, []).append(sym)
 
     # Build per-symbol file imports for extends/implements disambiguation
     # Maps symbol ID -> file-level imports (simple_name -> fqn)
@@ -1634,6 +1640,9 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
                     sym_file_imports[sym.id] = file_imports
 
     # Pass 2: Extract edges using global symbol registry
+    method_resolver = ListNameResolver(
+        global_methods, ambiguity_threshold=3,
+    )
     all_edges: list[Edge] = []
     for pf in parsed_files:
         edges = _extract_edges(
@@ -1642,6 +1651,7 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             symbol_by_position=symbol_by_position,
             class_by_name=class_by_name,
             sym_file_imports=sym_file_imports,
+            method_resolver=method_resolver,
         )
         all_edges.extend(edges)
 

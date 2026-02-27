@@ -44,7 +44,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
-from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -1778,6 +1778,7 @@ def _try_receiver_call(
     line: int,
     edges: list[Edge],
     run_id: str,
+    method_resolver: ListNameResolver | None = None,
 ) -> bool:
     """Try to resolve a receiver-qualified method call.
 
@@ -1882,8 +1883,13 @@ def _try_receiver_call(
                     ))
                     return True
 
-    # Try resolver with class name as path hint for suffix matching
-    lookup_result = resolver.lookup(method_name, path_hint=receiver_class)
+    # Try method resolver (with ambiguity guard) or fall back to name resolver.
+    # Don't pass receiver_class as path_hint to method_resolver — it's a class
+    # name, not a file path. The ambiguity_threshold guards against 3+ candidates.
+    if method_resolver is not None:
+        lookup_result = method_resolver.lookup(method_name)
+    else:  # pragma: no cover
+        lookup_result = resolver.lookup(method_name, path_hint=receiver_class)
     if lookup_result.found and lookup_result.symbol is not None:
         callee = lookup_result.symbol
         if callee.id != current_method.id:
@@ -2032,6 +2038,7 @@ def _extract_edges_from_file(
     resolver: NameResolver,
     require_hints: dict[str, str],
     method_candidates: dict[str, list[Symbol]] | None = None,
+    method_resolver: ListNameResolver | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -2044,6 +2051,9 @@ def _extract_edges_from_file(
         run_id: Execution ID for provenance
         resolver: Name resolver for cross-file lookups
         require_hints: Dict mapping class/module names to require paths for disambiguation.
+        method_resolver: Optional ListNameResolver with ambiguity_threshold for
+            method-specific lookups.  When provided, used instead of ``resolver``
+            for method name lookups (bare calls and receiver call fallbacks).
     """
     edges: list[Edge] = []
     file_id = make_file_id("ruby", str(file_path))
@@ -2146,6 +2156,7 @@ def _extract_edges_from_file(
                             receiver_node, callee_name, source,
                             current_method, global_symbols, resolver,
                             node.start_point[0] + 1, edges, run_id,
+                            method_resolver=method_resolver,
                         ):
                             pass  # Resolved via receiver
                         elif receiver_node is not None:
@@ -2568,6 +2579,9 @@ class RubyAnalyzer(TreeSitterAnalyzer):
 
         # Pass 2: Extract edges from files with symbols
         resolver = NameResolver(global_symbols)
+        method_resolver = ListNameResolver(
+            method_candidates, ambiguity_threshold=3,
+        )
         all_symbols: list[Symbol] = []
         all_edges: list[Edge] = []
         all_usage_contexts: list[UsageContext] = []
@@ -2585,6 +2599,7 @@ class RubyAnalyzer(TreeSitterAnalyzer):
                 run.execution_id, resolver,
                 require_hints=analysis.import_aliases,
                 method_candidates=method_candidates,
+                method_resolver=method_resolver,
             )
             all_edges.extend(edges)
 

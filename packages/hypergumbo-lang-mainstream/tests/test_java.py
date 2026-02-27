@@ -3356,3 +3356,73 @@ class TestClassNameCollision:
             f"logger.log() should NOT resolve to Config.Logger.log "
             f"when file imports org.slf4j.Logger (got {len(false_edges)} false edges)"
         )
+
+
+class TestJavaAmbiguousMethodGuard:
+    """Tests for AMB-METHOD invariant in Java.
+
+    When a method name appears in 3+ classes and the resolver falls back
+    to suffix matching, the analyzer must not create false-positive edges
+    to an arbitrary class's implementation.
+    """
+
+    def test_ambiguous_method_via_suffix_not_resolved(
+        self, tmp_path: Path,
+    ) -> None:
+        """Bare process() with 3 classes defining process() → no false edge.
+
+        In Java, method calls are always class-qualified by the analyzer.
+        But when the qualified name doesn't exist (e.g., inherited method),
+        the NameResolver falls back to suffix matching. This test verifies
+        that when 3+ classes define the same method, the ambiguity guard
+        prevents false resolution.
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Server.java").write_text("""
+public class Server {
+    public void process() { }
+}
+""")
+        (tmp_path / "Client.java").write_text("""
+public class Client {
+    public void process() { }
+}
+""")
+        (tmp_path / "Worker.java").write_text("""
+public class Worker {
+    public void process() { }
+}
+""")
+        # Orchestrator calls process() which is NOT defined in its own class.
+        # Without a receiver, lookup becomes "Orchestrator.process" which
+        # doesn't exist → falls to suffix matching → finds "process" in
+        # Server/Client/Worker → should NOT pick one.
+        (tmp_path / "Orchestrator.java").write_text("""
+public class Orchestrator {
+    public void run() {
+        process();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        run_calls = [
+            e for e in call_edges
+            if any("Orchestrator.run" in e.src for _ in [1])
+        ]
+
+        # Should NOT resolve to Server/Client/Worker.process
+        for edge in run_calls:
+            if "process" in edge.dst.lower():
+                assert "Server.process" not in edge.dst, (
+                    f"Should not resolve to Server.process: {edge.dst}"
+                )
+                assert "Client.process" not in edge.dst, (
+                    f"Should not resolve to Client.process: {edge.dst}"
+                )
+                assert "Worker.process" not in edge.dst, (
+                    f"Should not resolve to Worker.process: {edge.dst}"
+                )

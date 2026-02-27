@@ -54,6 +54,8 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 
+from hypergumbo_core.symbol_resolution import ListNameResolver
+
 if TYPE_CHECKING:
     import tree_sitter
     from hypergumbo_core.ir import AnalysisRun
@@ -785,6 +787,7 @@ def _extract_edges_from_file(
     run_id: str,
     resolver: "NameResolver",
     use_aliases: dict[str, str],
+    method_resolver: ListNameResolver | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -792,6 +795,9 @@ def _extract_edges_from_file(
 
     Args:
         use_aliases: Dict mapping local names to import paths for disambiguation.
+        method_resolver: Optional ListNameResolver with ambiguity_threshold for
+            method-specific lookups.  When provided, used for method calls
+            (``foo.bar()``) to guard against 3+ ambiguous candidates.
     """
     edges: list[Edge] = []
     file_id = make_file_id("rust", str(file_path))
@@ -905,26 +911,17 @@ def _extract_edges_from_file(
                                 ))
                             # Check global symbols via resolver
                             else:
-                                # Use import path as hint for disambiguation
-                                import_hint = use_aliases.get(callee_name)
-                                lookup_result = resolver.lookup(callee_name, path_hint=import_hint)
+                                # For method calls (foo.bar()), use method_resolver
+                                # which enforces the AMB-METHOD guard: 3+ candidates
+                                # → unresolved.  For regular function calls (identifier),
+                                # use the NameResolver which provides suffix matching.
+                                if is_method_call and method_resolver is not None:
+                                    lookup_result = method_resolver.lookup(callee_name)
+                                else:
+                                    import_hint = use_aliases.get(callee_name)
+                                    lookup_result = resolver.lookup(callee_name, path_hint=import_hint)
                                 if lookup_result.found and lookup_result.symbol is not None:
                                     confidence = 0.80 * lookup_result.confidence
-                                    # Ambiguity penalty for method calls (field_expression).
-                                    # Method calls like foo.bar() resolve by name only — no
-                                    # receiver type info. When "bar" matches many symbols
-                                    # (e.g., clone, get, build), confidence must drop to
-                                    # prevent false-positive fan-in from corrupting centrality
-                                    # and reverse slices.  Penalty: min(1, 3/N) where N is
-                                    # candidate count.  Regular function calls (identifier)
-                                    # are not penalized because they are less ambiguous.
-                                    if (
-                                        is_method_call
-                                        and lookup_result.match_type == "suffix_ambiguous"
-                                        and lookup_result.candidates
-                                    ):
-                                        n = len(lookup_result.candidates)
-                                        confidence *= min(1.0, 3.0 / n)
                                     edges.append(Edge.create(
                                         src=current_function.id,
                                         dst=lookup_result.symbol.id,
@@ -1106,10 +1103,24 @@ class RustAnalyzer(TreeSitterAnalyzer):
         resolver: "NameResolver",
     ) -> list[Edge]:
         """Extract call and use edges from a Rust file."""
+        # Build method resolver lazily (once per analyze() call).
+        # Keyed on global_symbols identity to invalidate between runs.
+        cache = getattr(self, "_mr_cache", None)
+        if cache is None or cache[0] is not global_symbols:
+            global_methods: dict[str, list[Symbol]] = {}
+            for sym in global_symbols.values():
+                if sym.kind in ("method", "function"):
+                    short = sym.name.split("::")[-1] if "::" in sym.name else sym.name
+                    global_methods.setdefault(short, []).append(sym)
+            mr = ListNameResolver(global_methods, ambiguity_threshold=3)
+            self._mr_cache = (global_symbols, mr)
+        else:
+            mr = cache[1]
         return _extract_edges_from_file(
             tree, source, rel_path,
             local_symbols, global_symbols,
             run.execution_id, resolver, import_aliases,
+            method_resolver=mr,
         )
 
     def extract_usage_contexts_from_file(

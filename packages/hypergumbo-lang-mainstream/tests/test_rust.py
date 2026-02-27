@@ -1495,18 +1495,18 @@ class TestRustMethodCallAmbiguity:
     calls (field_expression), not regular function calls (identifier).
     """
 
-    def test_method_call_many_candidates_low_confidence(self, tmp_path: Path) -> None:
-        """Method call with many ambiguous candidates gets low confidence.
+    def test_method_call_many_candidates_no_edge(self, tmp_path: Path) -> None:
+        """Method call with 20 ambiguous candidates produces no edge.
 
-        When bar() matches 20+ symbols via suffix, the edge confidence
-        should be much lower than 0.56 (the old flat ambiguous confidence).
+        When bar() matches 20 symbols and the method_resolver has
+        ambiguity_threshold=3, the guard fires and no edge is created.
         """
         from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
         )
         from hypergumbo_core.ir import Symbol, Span
-        from hypergumbo_core.symbol_resolution import NameResolver
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -1530,6 +1530,7 @@ class TestRustMethodCallAmbiguity:
 
         # Build a registry with many symbols named "bar" under different types
         registry: dict[str, Symbol] = {}
+        method_reg: dict[str, list[Symbol]] = {}
         for i in range(20):
             sym = Symbol(
                 id=f"rust:lib.rs:{i}-{i}:Type{i}.bar:method",
@@ -1539,20 +1540,21 @@ class TestRustMethodCallAmbiguity:
                 origin="test", origin_run_id="run",
             )
             registry[f"Type{i}.bar"] = sym
+            method_reg.setdefault("bar", []).append(sym)
 
         resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
         local_symbols = {"caller": caller}
 
         edges = _extract_edges_from_file(
             tree, source_text, "test.rs", local_symbols, {},
             "run", resolver, {},
+            method_resolver=method_resolver,
         )
 
         call_edges = [e for e in edges if e.edge_type == "calls"]
-        assert len(call_edges) == 1
-        # With 20 candidates, confidence should be heavily penalized
-        # Old: 0.80 * 0.70 = 0.56. New: much lower.
-        assert call_edges[0].confidence < 0.15
+        # With 20 candidates and ambiguity_threshold=3, no edge should be created
+        assert len(call_edges) == 0
 
     def test_function_call_not_penalized(self, tmp_path: Path) -> None:
         """Regular function calls (not method calls) keep normal confidence.
@@ -1613,17 +1615,17 @@ class TestRustMethodCallAmbiguity:
         assert call_edges[0].confidence >= 0.50
 
     def test_method_call_few_candidates_moderate_confidence(self, tmp_path: Path) -> None:
-        """Method call with 2-3 candidates keeps moderate confidence.
+        """Method call with 2 candidates keeps moderate confidence.
 
-        Small ambiguity is acceptable — the penalty only kicks in hard
-        with many candidates.
+        Below the ambiguity_threshold=3, so the method_resolver returns
+        a result with scaled confidence.
         """
         from hypergumbo_lang_mainstream.rust import (
             _extract_edges_from_file,
             is_rust_tree_sitter_available,
         )
         from hypergumbo_core.ir import Symbol, Span
-        from hypergumbo_core.symbol_resolution import NameResolver
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 
         if not is_rust_tree_sitter_available():
             pytest.skip("tree-sitter-rust not available")
@@ -1645,8 +1647,9 @@ class TestRustMethodCallAmbiguity:
             origin="test", origin_run_id="run",
         )
 
-        # Only 2 candidates — moderate ambiguity
+        # Only 2 candidates — below ambiguity threshold
         registry: dict[str, Symbol] = {}
+        method_reg: dict[str, list[Symbol]] = {}
         for i in range(2):
             sym = Symbol(
                 id=f"rust:lib.rs:{i}-{i}:Type{i}.process:method",
@@ -1656,18 +1659,21 @@ class TestRustMethodCallAmbiguity:
                 origin="test", origin_run_id="run",
             )
             registry[f"Type{i}.process"] = sym
+            method_reg.setdefault("process", []).append(sym)
 
         resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
         local_symbols = {"caller": caller}
 
         edges = _extract_edges_from_file(
             tree, source_text, "test.rs", local_symbols, {},
             "run", resolver, {},
+            method_resolver=method_resolver,
         )
 
         call_edges = [e for e in edges if e.edge_type == "calls"]
         assert len(call_edges) == 1
-        # With only 2 candidates, confidence should still be reasonable
+        # With only 2 candidates, confidence = 0.80 * 1/sqrt(2) ≈ 0.57
         assert call_edges[0].confidence >= 0.30
 
 

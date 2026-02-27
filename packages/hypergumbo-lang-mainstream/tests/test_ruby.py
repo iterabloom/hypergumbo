@@ -4258,6 +4258,62 @@ end
             "2 candidates should still resolve"
         )
 
+    def test_receiver_call_fallback_guarded_when_ambiguous(
+        self, tmp_path: Path,
+    ) -> None:
+        """Receiver call fallback through resolver must respect ambiguity guard.
+
+        When Config.process() is called but Config#process doesn't exist,
+        the resolver fallback should NOT pick an arbitrary process() from
+        3+ other classes.
+        """
+        from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+        rb_file = tmp_path / "multi_process.rb"
+        rb_file.write_text("""
+class Server
+  def process
+    true
+  end
+end
+
+class Client
+  def process
+    true
+  end
+end
+
+class Worker
+  def process
+    true
+  end
+end
+
+class Orchestrator
+  def run
+    Config.process
+  end
+end
+""")
+
+        result = analyze_ruby(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+        run_calls = [e for e in call_edges if "Orchestrator#run" in e.src]
+
+        # Config.process() should NOT resolve to Server/Client/Worker#process
+        for edge in run_calls:
+            if "process" in edge.dst.lower():
+                assert "Server#process" not in edge.dst, (
+                    f"Receiver fallback should not pick Server#process: {edge.dst}"
+                )
+                assert "Client#process" not in edge.dst, (
+                    f"Receiver fallback should not pick Client#process: {edge.dst}"
+                )
+                assert "Worker#process" not in edge.dst, (
+                    f"Receiver fallback should not pick Worker#process: {edge.dst}"
+                )
+
 
 class TestRubyDocstrings:
     """Tests for Ruby comment extraction via populate_docstrings_from_tree."""
