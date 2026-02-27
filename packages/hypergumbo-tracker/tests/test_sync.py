@@ -1479,6 +1479,40 @@ class TestDoSync:
         assert not (tmp_path / ".git" / "TRACKER_SYNC_PENDING").exists()
 
     @patch("hypergumbo_tracker.sync.time")
+    @patch("hypergumbo_tracker.sync._merge_pr")
+    @patch("hypergumbo_tracker.sync._poll_ci")
+    @patch("hypergumbo_tracker.sync._find_open_pr")
+    @patch("hypergumbo_tracker.sync._git")
+    def test_commit_disables_gpg_signing(
+        self,
+        mock_git: MagicMock,
+        mock_find_pr: MagicMock,
+        mock_poll: MagicMock,
+        mock_merge: MagicMock,
+        mock_time: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Tracker sync commits bypass GPG signing to avoid passphrase prompts."""
+        mock_time.strftime.return_value = "20260218-120000"
+        mock_time.sleep = MagicMock()
+        pre = _make_preflight(tmp_path)
+
+        mock_git.return_value = _make_completed_process()
+        mock_find_pr.return_value = (42, "sha123")
+        mock_poll.return_value = "success"
+        mock_merge.return_value = True
+
+        result = do_sync(repo_root=tmp_path, preflight=pre)
+        assert result.success
+
+        # Find the commit call (3rd git call: checkout -b, add, commit)
+        commit_call = mock_git.call_args_list[2]
+        commit_args = commit_call[0]  # positional args
+        # Should include -c commit.gpgSign=false before "commit"
+        assert "-c" in commit_args
+        assert "commit.gpgSign=false" in commit_args
+
+    @patch("hypergumbo_tracker.sync.time")
     @patch("hypergumbo_tracker.sync._git")
     def test_branch_creation_failure(
         self,

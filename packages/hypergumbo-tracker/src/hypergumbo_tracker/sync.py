@@ -721,10 +721,12 @@ def do_sync(
         stage_args.extend(_TRACKER_PATHS)
         _git(repo_root, *stage_args, check=False)
 
-        # 3. Commit with sign-off
+        # 3. Commit with sign-off (disable GPG signing — tracker commits
+        # are machine-generated metadata, not code changes)
         commit_msg = f"tracker: sync {file_count} file(s)"
         commit_result = _git(
-            repo_root, "commit", "-s", "-m", commit_msg, check=False
+            repo_root, "-c", "commit.gpgSign=false",
+            "commit", "-s", "-m", commit_msg, check=False
         )
         if commit_result.returncode != 0:
             return SyncResult(
