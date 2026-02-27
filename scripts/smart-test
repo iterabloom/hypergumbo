@@ -437,9 +437,13 @@ trap "rm -f $CHANGED_FILE_LIST" EXIT
 # Use hypergumbo slice --files to find dependent files
 log "Running reverse slice to find affected files..."
 SLICE_OUTPUT=$(mktemp)
-trap "rm -f $CHANGED_FILE_LIST $SLICE_OUTPUT" EXIT
+SLICE_STDERR=$(mktemp)
+trap "rm -f $CHANGED_FILE_LIST $SLICE_OUTPUT $SLICE_STDERR" EXIT
 
-if ! $STABLE_HG slice --files "$CHANGED_FILE_LIST" --output "$SLICE_OUTPUT" 2>/dev/null; then
+if ! $STABLE_HG slice --files "$CHANGED_FILE_LIST" --output "$SLICE_OUTPUT" 2>"$SLICE_STDERR"; then
+    if [[ -s "$SLICE_STDERR" ]]; then
+        log "Slice stderr: $(cat "$SLICE_STDERR")"
+    fi
     run_full_suite "slice command failed" "$CHANGED_FILES"
 fi
 

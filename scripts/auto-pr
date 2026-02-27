@@ -471,7 +471,12 @@ do_pr() {
 	echo "---------------------------------------------------"
 	echo "📋 Regenerating test manifest..."
 	if "$SCRIPT_DIR/smart-test" --manifest >/dev/null 2>&1; then
-		if ! git diff --quiet -- .ci/affected-tests.txt 2>/dev/null; then
+		# Guard: don't stage a full-suite manifest (pre-commit hook rejects it,
+		# and the existing committed manifest is likely better anyway)
+		if grep -q "^# Mode: full-suite" .ci/affected-tests.txt 2>/dev/null; then
+			echo "   ⚠️  Manifest regenerated as full-suite (slice failed?) — keeping existing"
+			git checkout -- .ci/affected-tests.txt 2>/dev/null || true
+		elif ! git diff --quiet -- .ci/affected-tests.txt 2>/dev/null; then
 			echo "   Manifest updated — amending commit"
 			git add .ci/affected-tests.txt
 			git commit --amend --no-edit -s
