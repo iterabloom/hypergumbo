@@ -1091,14 +1091,27 @@ class EditItemScreen(ModalScreen[dict[str, Any] | None]):
         # Filter statuses by kind's allowed_statuses if applicable
         kc = (kinds_config or {}).get(item.kind)
         if kc is not None and kc.allowed_statuses is not None:
-            self._statuses = kc.allowed_statuses
+            self._statuses = list(kc.allowed_statuses)
         else:
-            self._statuses = statuses
+            self._statuses = list(statuses)
+        # Ensure the item's current status is always an option, even if
+        # it was removed from allowed_statuses — otherwise the Select
+        # widget raises InvalidSelectValueError.  Track it as deprecated
+        # so compose() can render it dimmed.
+        self._deprecated_status: str | None = None
+        if item.status not in self._statuses:
+            self._statuses.insert(0, item.status)
+            self._deprecated_status = item.status
 
     def compose(self) -> ComposeResult:
-        status_options: list[tuple[str, str]] = [
-            (s, s) for s in self._statuses
-        ]
+        status_options: list[tuple[RichText | str, str]] = []
+        for s in self._statuses:
+            if s == self._deprecated_status:
+                label = RichText.from_markup(f"[dim]{s} (deprecated)[/dim]")
+                status_options.append((label, s))
+            else:
+                status_options.append((s, s))
+
         with Vertical(id="modal-dialog"):
             yield Static(f"Edit: {self._item.title}", id="modal-title")
             yield Static("Status:")

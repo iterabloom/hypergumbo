@@ -2604,6 +2604,60 @@ class TestEditItemScreenUnit:
             kinds_config={"invariant": kc},
         )
         assert screen._statuses == ["holding", "violated"]
+        assert screen._deprecated_status is None
+
+    def test_edit_item_includes_current_status_when_not_allowed(self) -> None:
+        """If item's current status was removed from allowed_statuses, it should
+        still appear in the options so the user can change it."""
+        from hypergumbo_tracker.models import KindConfig
+
+        item = CompiledItem(
+            id="WI-test",
+            kind="work_item",
+            title="Test Item",
+            status="holding",
+            priority=2,
+            tier=Tier.WORKSPACE,
+            tags=[],
+            description="",
+        )
+        # 'holding' is NOT in allowed_statuses
+        kc = KindConfig(prefix="WI", allowed_statuses=["todo_hard", "todo_soft", "done"])
+        screen = EditItemScreen(
+            item,
+            ["todo_hard", "todo_soft", "done"],
+            kinds_config={"work_item": kc},
+        )
+        assert "holding" in screen._statuses
+        assert screen._statuses[0] == "holding"
+        assert screen._deprecated_status == "holding"
+
+    async def test_deprecated_status_renders_dimmed(self) -> None:
+        """Deprecated status should render greyed out in the Select widget."""
+        from hypergumbo_tracker.models import KindConfig
+
+        item = CompiledItem(
+            id="WI-test",
+            kind="work_item",
+            title="Test Deprecated",
+            status="holding",
+            priority=2,
+            tier=Tier.WORKSPACE,
+            tags=[],
+            description="",
+        )
+        kc = KindConfig(prefix="WI", allowed_statuses=["todo_hard", "done"])
+        screen = EditItemScreen(
+            item, ["todo_hard", "done"],
+            kinds_config={"work_item": kc},
+        )
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 40)) as pilot:
+            await _wait_for_modal(pilot, app)
+            # The Select widget should have mounted without error
+            from textual.widgets import Select
+            select = app.screen.query_one("#status-select", Select)
+            assert select.value == "holding"
 
     async def test_submit_no_changes_returns_none(self) -> None:
         item = self._make_item()
