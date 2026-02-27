@@ -1659,3 +1659,164 @@ class TestCFunctionPointerReferences:
         ]
         assert len(ref_edges) == 0
 
+
+class TestCallbackArgDetection:
+    """Function pointer arguments to calls like pthread_create, qsort, signal."""
+
+    def test_pthread_create_callback(self, tmp_path: Path) -> None:
+        """pthread_create(tid, attr, worker_func, arg) → edge to worker_func."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "main.c").write_text(
+            "#include <pthread.h>\n"
+            "\n"
+            "void *worker_thread(void *arg) { return NULL; }\n"
+            "\n"
+            "void start_server() {\n"
+            "    pthread_t tid;\n"
+            "    pthread_create(&tid, NULL, worker_thread, NULL);\n"
+            "}\n"
+        )
+        result = analyze_c(tmp_path)
+        cb_edges = [
+            e for e in result.edges
+            if "start_server" in e.src and "worker_thread" in e.dst
+            and e.evidence_type == "function_pointer_arg"
+        ]
+        assert len(cb_edges) == 1
+        assert cb_edges[0].edge_type == "calls"
+        assert cb_edges[0].confidence > 0.0
+
+    def test_qsort_comparator(self, tmp_path: Path) -> None:
+        """qsort(arr, n, sz, compare_fn) → edge to compare_fn."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "main.c").write_text(
+            "int compare_ints(const void *a, const void *b) {\n"
+            "    return *(int*)a - *(int*)b;\n"
+            "}\n"
+            "\n"
+            "void sort_data(int *arr, int n) {\n"
+            "    qsort(arr, n, sizeof(int), compare_ints);\n"
+            "}\n"
+        )
+        result = analyze_c(tmp_path)
+        cb_edges = [
+            e for e in result.edges
+            if "sort_data" in e.src and "compare_ints" in e.dst
+            and e.evidence_type == "function_pointer_arg"
+        ]
+        assert len(cb_edges) == 1
+
+    def test_signal_handler(self, tmp_path: Path) -> None:
+        """signal(SIGINT, handler_fn) → edge to handler_fn."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "main.c").write_text(
+            "void handle_sigint(int sig) {}\n"
+            "\n"
+            "void setup_signals() {\n"
+            "    signal(2, handle_sigint);\n"
+            "}\n"
+        )
+        result = analyze_c(tmp_path)
+        cb_edges = [
+            e for e in result.edges
+            if "setup_signals" in e.src and "handle_sigint" in e.dst
+            and e.evidence_type == "function_pointer_arg"
+        ]
+        assert len(cb_edges) == 1
+
+    def test_atexit_callback(self, tmp_path: Path) -> None:
+        """atexit(cleanup) → edge to cleanup."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "main.c").write_text(
+            "void cleanup() {}\n"
+            "\n"
+            "int main() {\n"
+            "    atexit(cleanup);\n"
+            "    return 0;\n"
+            "}\n"
+        )
+        result = analyze_c(tmp_path)
+        cb_edges = [
+            e for e in result.edges
+            if "main" in e.src and "cleanup" in e.dst
+            and e.evidence_type == "function_pointer_arg"
+        ]
+        assert len(cb_edges) == 1
+
+    def test_no_false_positive_for_variable_args(self, tmp_path: Path) -> None:
+        """Regular variable arguments should NOT create callback edges."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "main.c").write_text(
+            "void process(int x) {}\n"
+            "\n"
+            "void run() {\n"
+            "    int count = 5;\n"
+            "    process(count);\n"
+            "}\n"
+        )
+        result = analyze_c(tmp_path)
+        cb_edges = [
+            e for e in result.edges
+            if e.evidence_type == "function_pointer_arg"
+        ]
+        assert len(cb_edges) == 0
+
+    def test_skip_callee_name_as_arg(self, tmp_path: Path) -> None:
+        """If arg name matches the called function, skip it (not a callback)."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "main.c").write_text(
+            "void setup(void (*setup)(void)) {}\n"
+            "\n"
+            "void run() {\n"
+            "    setup(setup);\n"
+            "}\n"
+        )
+        result = analyze_c(tmp_path)
+        # The arg 'setup' matches the callee name; should NOT get a
+        # function_pointer_arg edge (would be redundant with the direct call).
+        cb_edges = [
+            e for e in result.edges
+            if e.evidence_type == "function_pointer_arg"
+        ]
+        assert len(cb_edges) == 0
+
+    def test_no_duplicate_with_direct_call(self, tmp_path: Path) -> None:
+        """The called function itself should NOT get a callback edge.
+
+        pthread_create() gets a direct calls edge (ast_call_direct);
+        the callback arg worker_func gets a separate function_pointer_arg edge.
+        No double-counting.
+        """
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "main.c").write_text(
+            "void *worker(void *arg) { return NULL; }\n"
+            "\n"
+            "void run() {\n"
+            "    pthread_t t;\n"
+            "    pthread_create(&t, NULL, worker, NULL);\n"
+            "}\n"
+        )
+        result = analyze_c(tmp_path)
+        # Should have function_pointer_arg edge to worker
+        cb_edges = [
+            e for e in result.edges
+            if "run" in e.src and "worker" in e.dst
+            and e.evidence_type == "function_pointer_arg"
+        ]
+        assert len(cb_edges) == 1
+        # Should NOT have function_pointer_arg edge to pthread_create itself
+        # (it gets ast_call_direct instead, if resolved)
+        self_cb = [
+            e for e in result.edges
+            if e.evidence_type == "function_pointer_arg"
+            and "pthread_create" in e.dst
+        ]
+        assert len(self_cb) == 0
+

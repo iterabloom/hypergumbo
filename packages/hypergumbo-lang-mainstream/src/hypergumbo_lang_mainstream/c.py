@@ -420,6 +420,7 @@ def _extract_edges(
             if current_function:
                 # Get the function being called
                 func_node = node.child_by_field_name("function")
+                callee_name = None
                 if func_node and func_node.type == "identifier":
                     callee_name = node_text(func_node, source)
                     lookup_result = resolver.lookup(callee_name)
@@ -435,6 +436,38 @@ def _extract_edges(
                             evidence_type="ast_call_direct",
                         )
                         edges.append(edge)
+
+                # Callback argument detection: bare identifiers in the
+                # argument list that resolve to known functions are likely
+                # function pointer callbacks (pthread_create, qsort, signal,
+                # atexit, etc.).
+                arg_list = node.child_by_field_name("arguments")
+                if arg_list:
+                    for arg in arg_list.children:
+                        if arg.type != "identifier":
+                            continue
+                        arg_name = node_text(arg, source)
+                        # Skip the called function name itself (would
+                        # duplicate the direct call edge).
+                        if arg_name == callee_name:
+                            continue
+                        cb_lookup = resolver.lookup(arg_name)
+                        if (
+                            cb_lookup.found
+                            and cb_lookup.symbol is not None
+                            and cb_lookup.symbol.kind == "function"
+                            and cb_lookup.symbol.id != current_function.id
+                        ):
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=cb_lookup.symbol.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                confidence=0.80 * cb_lookup.confidence,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="function_pointer_arg",
+                            ))
 
         # Explicit function pointer: &process
         elif node.type == "pointer_expression":

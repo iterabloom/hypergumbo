@@ -1569,3 +1569,46 @@ class TestCppFunctionPointerReferences:
         ]
         assert len(ref_edges) == 0
 
+
+class TestCallbackArgDetection:
+    """Function pointer arguments in C++ calls (std::thread, etc.)."""
+
+    def test_pthread_create_callback(self, tmp_path: Path) -> None:
+        """pthread_create(tid, attr, worker, arg) → edge to worker."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "main.cpp").write_text(
+            "void* worker(void* arg) { return nullptr; }\n"
+            "\n"
+            "void run() {\n"
+            "    pthread_t tid;\n"
+            "    pthread_create(&tid, nullptr, worker, nullptr);\n"
+            "}\n"
+        )
+        result = analyze_cpp(tmp_path)
+        cb_edges = [
+            e for e in result.edges
+            if "run" in e.src and "worker" in e.dst
+            and e.evidence_type == "function_pointer_arg"
+        ]
+        assert len(cb_edges) == 1
+
+    def test_no_false_positive_for_variables(self, tmp_path: Path) -> None:
+        """Variable args should NOT create callback edges."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "main.cpp").write_text(
+            "void process(int x) {}\n"
+            "\n"
+            "void run() {\n"
+            "    int count = 5;\n"
+            "    process(count);\n"
+            "}\n"
+        )
+        result = analyze_cpp(tmp_path)
+        cb_edges = [
+            e for e in result.edges
+            if e.evidence_type == "function_pointer_arg"
+        ]
+        assert len(cb_edges) == 0
+
