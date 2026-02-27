@@ -800,6 +800,8 @@ def link_js_modules(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta={"package_name": pkg_name},
+                    supply_chain_tier=3,
+                    supply_chain_reason="npm_package (third-party dependency)",
                 )
                 npm_package_cache[pkg_name] = pkg_sym
                 new_symbols.append(pkg_sym)

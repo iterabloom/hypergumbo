@@ -1176,3 +1176,67 @@ class TestSupplyChainLimits:
         result = merged.to_dict()
         assert len(result["supply_chain"]["classification_failures"]) == 1
         assert len(result["supply_chain"]["ambiguous_paths"]) == 1
+
+
+class TestClassifySymbolsPreservesTier:
+    """_classify_symbols skips symbols that already have a linker-set tier."""
+
+    def test_preset_tier_preserved(self, tmp_path: Path) -> None:
+        """Symbols with tier != 1 or supply_chain_reason are not reclassified."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("x = 1\n")
+
+        # Symbol with pre-set tier 3 (like npm_package from linker)
+        preset = Symbol(
+            id="npm:lodash",
+            name="lodash",
+            kind="npm_package",
+            language="javascript",
+            path="",
+            span=Span(0, 0, 0, 0),
+            supply_chain_tier=3,
+            supply_chain_reason="npm_package (third-party dependency)",
+        )
+        # Normal symbol (tier 1, no reason) should be classified
+        normal = Symbol(
+            id="py:app:x",
+            name="x",
+            kind="variable",
+            language="python",
+            path="src/app.py",
+            span=Span(1, 1, 0, 5),
+        )
+
+        package_roots = detect_package_roots(tmp_path)
+        _classify_symbols([preset, normal], tmp_path, package_roots)
+
+        # Pre-set tier preserved
+        assert preset.supply_chain_tier == 3
+        assert preset.supply_chain_reason == "npm_package (third-party dependency)"
+        # Normal symbol got classified
+        assert normal.supply_chain_reason is not None
+        assert normal.supply_chain_reason != ""
+
+    def test_preset_reason_only_preserved(self, tmp_path: Path) -> None:
+        """Symbol with tier=1 but non-empty reason is not reclassified."""
+        from hypergumbo_core.cli import _classify_symbols
+        from hypergumbo_core.ir import Symbol, Span
+
+        sym = Symbol(
+            id="test:sym",
+            name="sym",
+            kind="function",
+            language="python",
+            path="",
+            span=Span(0, 0, 0, 0),
+            supply_chain_tier=1,
+            supply_chain_reason="manually classified",
+        )
+
+        package_roots = detect_package_roots(tmp_path)
+        _classify_symbols([sym], tmp_path, package_roots)
+
+        assert sym.supply_chain_reason == "manually classified"

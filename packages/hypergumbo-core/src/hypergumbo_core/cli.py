@@ -3855,9 +3855,13 @@ def _classify_symbols(
     """Apply supply chain classification to symbols in-place.
 
     Classifies each symbol's file path and updates supply_chain_tier
-    and supply_chain_reason fields.
+    and supply_chain_reason fields.  Symbols that already have a tier
+    set by a linker (e.g. npm_package with tier=3) are not reclassified
+    — the linker's tier takes precedence.
     """
     for symbol in symbols:
+        if symbol.supply_chain_tier != 1 or symbol.supply_chain_reason:
+            continue
         file_path = repo_root / symbol.path
         classification = classify_file(file_path, repo_root, package_roots)
         symbol.supply_chain_tier = classification.tier.value

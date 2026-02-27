@@ -4763,7 +4763,7 @@ def _run_analysis(
         all_symbols = filtered_symbols
         all_edges = filtered_edges
 
-    # Apply supply chain classification to all symbols
+    # Apply supply chain classification to all symbols.
     package_roots = detect_package_roots(repo_root)
     for symbol in all_symbols:
         file_path = repo_root / symbol.path

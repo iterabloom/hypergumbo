@@ -344,6 +344,8 @@ class TestLinkJsModules:
         npm_packages = [s for s in result.symbols if s.kind == "npm_package"]
         assert len(npm_packages) == 1
         assert npm_packages[0].name == "lodash"
+        assert npm_packages[0].supply_chain_tier == 3
+        assert npm_packages[0].supply_chain_reason == "npm_package (third-party dependency)"
 
         imports_module = [e for e in result.edges if e.edge_type == "imports_module"]
         assert len(imports_module) == 1
@@ -364,6 +366,7 @@ class TestLinkJsModules:
         npm_packages = [s for s in result.symbols if s.kind == "npm_package"]
         assert len(npm_packages) == 1
         assert npm_packages[0].name == "@vue/test-utils"
+        assert npm_packages[0].supply_chain_tier == 3
 
     def test_unresolvable_relative_ignored(self, repo_root: Path) -> None:
         """Relative import to nonexistent file produces no results."""
