@@ -6105,6 +6105,125 @@ function processForm(app: Express): void {
         assert "validate" in ref_edges[0].dst
 
 
+class TestMiddlewareChainEdges:
+    """Tests for Express-style middleware chain edge creation.
+
+    When Express routes register multiple middleware functions as arguments,
+    e.g. ``app.post('/path', auth, validate, handler)``, the analyzer should
+    create ``references`` edges between consecutive middleware/handler functions
+    with evidence_type ``middleware_chain``.  This makes the execution pipeline
+    visible in forward/reverse slices.
+    """
+
+    def test_middleware_chain_creates_edges_between_consecutive_handlers(
+        self, tmp_path: Path
+    ) -> None:
+        """app.post('/path', mw1, mw2, handler) creates chain edges."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function authMiddleware(req, res, next) { next(); }
+function validateInput(req, res, next) { next(); }
+function handleCreate(req, res) { res.json({}); }
+
+function setupRoutes(app) {
+    app.post("/api/items", authMiddleware, validateInput, handleCreate);
+}
+"""
+        (tmp_path / "routes.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        chain_edges = [
+            e for e in result.edges
+            if e.evidence_type == "middleware_chain"
+        ]
+        # Should have 2 chain edges: auth→validate, validate→handle
+        assert len(chain_edges) == 2
+        # First edge: authMiddleware → validateInput
+        assert any(
+            "authMiddleware" in e.src and "validateInput" in e.dst
+            for e in chain_edges
+        ), f"Expected auth→validate edge, got: {[(e.src, e.dst) for e in chain_edges]}"
+        # Second edge: validateInput → handleCreate
+        assert any(
+            "validateInput" in e.src and "handleCreate" in e.dst
+            for e in chain_edges
+        ), f"Expected validate→handle edge, got: {[(e.src, e.dst) for e in chain_edges]}"
+
+    def test_middleware_chain_with_factory_calls(self, tmp_path: Path) -> None:
+        """Middleware factories like need('txt') create chain edges to the
+        factory function, not the returned middleware."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function auth(req, res, next) { next(); }
+function need(param) { return function(req, res, next) { next(); }; }
+function handler(req, res) { res.json({}); }
+
+function setupRoutes(app) {
+    app.post("/api/comments", auth, need("txt"), handler);
+}
+"""
+        (tmp_path / "routes.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        chain_edges = [
+            e for e in result.edges
+            if e.evidence_type == "middleware_chain"
+        ]
+        # auth → need, need → handler
+        assert len(chain_edges) == 2
+        assert any(
+            "auth" in e.src and "need" in e.dst
+            for e in chain_edges
+        ), f"Expected auth→need edge, got: {[(e.src, e.dst) for e in chain_edges]}"
+        assert any(
+            "need" in e.src and "handler" in e.dst
+            for e in chain_edges
+        ), f"Expected need→handler edge, got: {[(e.src, e.dst) for e in chain_edges]}"
+
+    def test_no_middleware_chain_for_single_handler(self, tmp_path: Path) -> None:
+        """app.get('/path', handler) with a single handler creates no chain edges."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function getUsers(req, res) { res.json([]); }
+
+function setup(app) {
+    app.get("/users", getUsers);
+}
+"""
+        (tmp_path / "routes.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        chain_edges = [
+            e for e in result.edges
+            if e.evidence_type == "middleware_chain"
+        ]
+        assert len(chain_edges) == 0
+
+    def test_no_middleware_chain_for_non_route_calls(self, tmp_path: Path) -> None:
+        """Regular calls with multiple args don't create chain edges."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function onSuccess(data) { return data; }
+function onError(err) { throw err; }
+
+function fetch() {
+    promise.then(onSuccess, onError);
+}
+"""
+        (tmp_path / "fetch.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        chain_edges = [
+            e for e in result.edges
+            if e.evidence_type == "middleware_chain"
+        ]
+        assert len(chain_edges) == 0
+
+
 class TestNormalizeJstsSignature:
     """Tests for JS/TS signature normalization (ADR-0014 §3)."""
 

@@ -2849,6 +2849,57 @@ def _extract_edges(
                                 confidence=0.75,
                             ))
 
+            # Middleware chain edges: for Express-style route registrations
+            # with multiple middleware/handler arguments, create edges between
+            # consecutive handlers so the execution pipeline is visible in
+            # forward/reverse slices.
+            # Example: app.post('/path', auth, validate, handler) creates
+            #   auth→validate and validate→handler edges.
+            if args_node is not None:
+                http_method, route_path = _detect_route_call(node, source)
+                if http_method is not None:
+                    # Collect middleware/handler arguments (skip path string, parens, commas)
+                    chain_symbols: list[Symbol] = []
+                    for arg in args_node.children:
+                        if arg.type in ("(", ")", ",", "string", "template_string"):
+                            continue
+                        resolved: Symbol | None = None
+                        if arg.type == "identifier":
+                            arg_name = _node_text(arg, source)
+                            resolved = global_symbols.get(arg_name)
+                            if resolved is not None and resolved.kind == "route" and symbols_by_name:
+                                fn_cands = [
+                                    s for s in symbols_by_name.get(arg_name, [])
+                                    if s.kind in ("function", "method")
+                                ]
+                                if fn_cands:
+                                    resolved = fn_cands[0]
+                        elif arg.type == "call_expression":
+                            # Factory call like need('txt') — resolve the
+                            # factory function itself.
+                            for child in arg.children:
+                                if child.type == "identifier":
+                                    fn_name = _node_text(child, source)
+                                    resolved = global_symbols.get(fn_name)
+                                    break
+                        if resolved is not None and resolved.kind in ("function", "method", "route"):
+                            chain_symbols.append(resolved)
+                    # Create edges between consecutive chain entries
+                    for i in range(len(chain_symbols) - 1):
+                        src_sym = chain_symbols[i]
+                        dst_sym = chain_symbols[i + 1]
+                        if src_sym.id != dst_sym.id:
+                            edges.append(Edge.create(
+                                src=src_sym.id,
+                                dst=dst_sym.id,
+                                edge_type="references",
+                                line=node.start_point[0] + 1 + line_offset,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="middleware_chain",
+                                confidence=0.70,
+                            ))
+
         # new ClassName() or new namespace.ClassName()
         elif node.type == "new_expression":
             current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset)

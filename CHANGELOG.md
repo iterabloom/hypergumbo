@@ -32,6 +32,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **Clojure UsageContext generation**: The Clojure analyzer now emits `UsageContext` records for function calls, enabling YAML-driven framework pattern matching for Ring/Compojure route detection. Compojure macros like `(GET "/users" [] handler)` have their string-literal first argument captured as `metadata["url"]` for route path extraction.
 - **JS/TS callback argument function references**: When a function identifier is passed as an argument (e.g., `app.get("/users", handleUsers)`, `items.forEach(processData)`, `promise.then(onSuccess, onError)`), the analyzer now creates a `references` edge from the enclosing function to the handler. Previously, 95% of Express route handler connections were orphaned because the route registration call didn't link to the handler function definition. Correctly resolves route-shadowed symbols back to their function definitions via `symbols_by_name`.
+- **JS/TS Express middleware chain edges**: Route registrations with multiple middleware/handler arguments (e.g., `app.post('/path', auth, validate, handler)`) now produce `middleware_chain` edges between consecutive handlers (auth→validate, validate→handler). Handles both bare identifiers and factory calls like `need('txt')`. Makes the Express middleware execution pipeline visible in forward/reverse slices — previously, middleware functions were isolated nodes with no edges showing their chained execution order.
 - **Assembly language**: Tree-sitter-based analyzer for `.s`/`.asm`/`.S` files. Extracts labels as function/variable symbols, detects call instructions with cross-file resolution.
 
 #### Sketch
@@ -229,6 +230,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **Spurious TypeScript 'analyzer not installed' warning**: The partial install warning system recognized `javascript_ts`, `js_ts`, and `js` as covering TypeScript but not the actual registered analyzer name `javascript`. Repos with .ts files incorrectly warned "Typescript analyzer not installed" despite hypergumbo-lang-mainstream being present.
 - **Cross-package name collision false positives in JS/TS**: Two fixes for direct function calls resolving to the wrong package:
   1. **Import-path disambiguation**: Calls like `process()` after `import { process } from './module'` now use `_disambiguate_by_import` to resolve to the imported module when multiple files define the same function name.
   2. **Same-package preference**: Calls without imports (e.g., `error()` calling a local helper) now prefer symbols from the same npm package (nearest `package.json` ancestor) over distant packages. This eliminates the bulk of false cross-package edges for common names like `error`, `resolve`, `reject`, `Number` that collide across `server/` and `client-*/` packages.
