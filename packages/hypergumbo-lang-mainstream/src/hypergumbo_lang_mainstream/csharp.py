@@ -1298,9 +1298,10 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
         symbol: Symbol,
         global_symbols: dict,
     ) -> None:
-        """Register symbol with both short and full names for cross-file resolution."""
-        short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
-        global_symbols[short_name] = symbol
+        """Register symbol by qualified name only.
+
+        The ``NameResolver`` suffix index handles short-name lookups.
+        """
         global_symbols[symbol.name] = symbol
 
     def analyze(

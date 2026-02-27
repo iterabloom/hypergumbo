@@ -603,13 +603,10 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
         symbol: Symbol,
         global_symbols: dict,
     ) -> None:
-        """Register symbols with both short and fully-qualified names.
+        """Register symbol by qualified name only.
 
-        Methods like 'Utils.doSomething' are registered under both
-        'doSomething' and 'Utils.doSomething' for cross-file resolution.
+        The ``NameResolver`` suffix index handles short-name lookups.
         """
-        short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
-        global_symbols[short_name] = symbol
         global_symbols[symbol.name] = symbol
 
     def extract_edges_from_file(
@@ -634,8 +631,8 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
         global_methods: dict[str, list[Symbol]] = {}
         seen_ids: set[str] = set()
         for sym in global_symbols.values():
-            if sym.id in seen_ids:
-                continue
+            if sym.id in seen_ids:  # pragma: no cover
+                continue  # pragma: no cover
             seen_ids.add(sym.id)
             if sym.kind == "method":
                 short = sym.name.split(".")[-1] if "." in sym.name else sym.name

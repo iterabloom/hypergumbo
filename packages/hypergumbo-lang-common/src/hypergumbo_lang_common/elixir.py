@@ -976,13 +976,17 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
         symbol: Symbol,
         global_symbols: dict,
     ) -> None:
-        """Register symbol with both short and full names for cross-file resolution.
+        """Register symbol by qualified name only.
 
-        Also builds a multi-clause index under ``__multi__`` key.
+        The ``NameResolver`` suffix index handles short-name lookups.
+        Also builds a multi-clause index under ``__multi__`` key for
+        Elixir's multi-clause function dispatch. The ``__multi__`` index
+        keeps both short and qualified name keys because call sites use
+        bare function names (e.g., ``handle_call``) to look up all
+        clauses of ``MyApp.Server.handle_call``.
         """
-        short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
-        global_symbols[short_name] = symbol
         global_symbols[symbol.name] = symbol
+        short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
         multi: dict[str, list[Symbol]] = global_symbols.setdefault("__multi__", {})
         multi.setdefault(short_name, []).append(symbol)
         multi.setdefault(symbol.name, []).append(symbol)

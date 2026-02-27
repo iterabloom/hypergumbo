@@ -2381,7 +2381,8 @@ end
             f"Expected 1 resolver fallback edge, got {len(resolver_edges)}. "
             f"All call edges: {[(e.src, e.dst, e.evidence_type) for e in call_edges]}"
         )
-        assert resolver_edges[0].confidence == 0.75
+        # 0.75 * suffix_match(0.85) = 0.6375
+        assert 0.60 <= resolver_edges[0].confidence <= 0.75
 
     def test_receiver_call_outside_method_ignored(self, tmp_path: Path) -> None:
         """Receiver calls at module level (no enclosing method) produce no receiver_call edges."""

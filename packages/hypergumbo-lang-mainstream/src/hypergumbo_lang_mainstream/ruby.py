@@ -2485,11 +2485,11 @@ class RubyAnalyzer(TreeSitterAnalyzer):
     def register_symbol(
         self, symbol: Symbol, global_symbols: dict,
     ) -> None:
-        """Register symbol globally with short-name variants for cross-file resolution."""
-        # Store by short name for cross-file resolution
-        short_name = symbol.name.split("#")[-1] if "#" in symbol.name else symbol.name
-        short_name = short_name.split(".")[-1] if "." in short_name else short_name
-        global_symbols[short_name] = symbol
+        """Register symbol by qualified name only.
+
+        The ``NameResolver`` suffix index handles short-name lookups
+        across ``#`` and ``.`` separators.
+        """
         global_symbols[symbol.name] = symbol
 
     def analyze(

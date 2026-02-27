@@ -434,17 +434,12 @@ class LuauAnalyzer(TreeSitterAnalyzer):
         symbol: Symbol,
         global_symbols: dict,
     ) -> None:
-        """Register symbol with both full and short names."""
+        """Register symbol by qualified name only.
+
+        The ``NameResolver`` suffix index handles short-name lookups
+        across ``.`` and ``:`` separators.
+        """
         global_symbols[symbol.name] = symbol
-        # Also register short name (without module prefix)
-        if "." in symbol.name:
-            short_name = symbol.name.split(".")[-1]
-            if short_name not in global_symbols:
-                global_symbols[short_name] = symbol
-        if ":" in symbol.name:
-            short_name = symbol.name.split(":")[-1]
-            if short_name not in global_symbols:
-                global_symbols[short_name] = symbol
 
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,

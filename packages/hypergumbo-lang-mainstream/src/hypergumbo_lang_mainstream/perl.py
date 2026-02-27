@@ -273,16 +273,12 @@ class PerlAnalyzer(TreeSitterAnalyzer):
         return analysis
 
     def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
-        """Register both qualified and unqualified names in global registry.
+        """Register symbol by qualified name only.
 
-        For example, Utils::double is registered as both "Utils::double"
-        and "double" (if "double" isn't already taken).
+        The ``NameResolver`` suffix index handles short-name lookups
+        across ``::`` separators.
         """
         global_symbols[symbol.name] = symbol
-        if "::" in symbol.name:
-            unqualified = symbol.name.rsplit("::", 1)[-1]
-            if unqualified not in global_symbols:
-                global_symbols[unqualified] = symbol
 
     def extract_edges_from_file(
         self,

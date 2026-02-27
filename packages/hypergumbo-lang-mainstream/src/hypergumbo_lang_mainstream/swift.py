@@ -552,10 +552,11 @@ class SwiftAnalyzer(TreeSitterAnalyzer):
     def register_symbol(
         self, symbol: Symbol, global_symbols: dict,
     ) -> None:
-        """Register symbol globally, including short name for cross-file resolution."""
+        """Register symbol by qualified name only.
+
+        The ``NameResolver`` suffix index handles short-name lookups.
+        """
         global_symbols[symbol.name] = symbol
-        short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
-        global_symbols[short_name] = symbol
 
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,

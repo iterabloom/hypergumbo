@@ -477,9 +477,10 @@ class NameResolver:
     ) -> LookupResult:
         """Look up symbol using suffix matching.
 
-        Finds any key whose suffix (after ``.`` or ``::`` splits) matches
-        ``name``.  For example, looking for ``'doWork'`` matches
-        ``'MyClass.doWork'``, and ``'compute'`` matches ``'Diff::compute'``.
+        Finds any key whose suffix (after separator splits) matches
+        ``name``.  Separators: ``.``, ``::``, ``#``, ``\\``, ``:``.
+        For example, ``'doWork'`` matches ``'MyClass.doWork'``, and
+        ``'compute'`` matches ``'Diff::compute'``.
 
         Args:
             name: The symbol name suffix to match.
@@ -527,13 +528,18 @@ class NameResolver:
             candidates=candidates,
         )
 
+    # Regex that splits qualified names on any language separator.
+    # ``::`` must precede ``:`` so the longer match wins.
+    # Covers: ``.`` (Java/JS/C#/Scala/Swift/Groovy), ``::`` (Rust/C++/Perl),
+    # ``#`` (Ruby), ``\\`` (Hack/PHP), ``:`` (Luau/Lua).
+    _SEPARATOR_RE = re.compile(r"::|[.#\\:]")
+
     def _ensure_suffix_index(self) -> None:
         """Build suffix index lazily on first use.
 
         The suffix index maps each possible name suffix to all keys that
-        have that suffix. Splits on both ``.`` and ``::`` so that Rust
-        qualified names (``Diff::compute``) are indexed alongside Java/JS
-        dot-separated names (``MyClass.doWork``).
+        have that suffix. Splits on ``.``, ``::``, ``#``, ``\\``, and
+        ``:`` to support all language-specific qualified name separators.
 
         For key ``crate::Diff::compute``, we index:
         - ``"compute"`` → [``"crate::Diff::compute"``]
@@ -555,9 +561,13 @@ class NameResolver:
 
         Walks the key backwards from the rightmost part, extracting each
         suffix as a substring of the original key. This preserves the
-        original separator characters (``.`` or ``::``).
+        original separator characters.
+
+        Keys with no separators are also indexed (the full key is its own
+        suffix). This is needed when path hints cause the exact-match path
+        to be skipped — suffix matching must still find the bare key.
         """
-        parts = re.split(r"\.|::", key)
+        parts = self._SEPARATOR_RE.split(key)
         # Walk backwards through the key to find suffix start positions.
         # For "crate::Diff::compute" with parts ["crate","Diff","compute"]:
         #   i=2 → pos points to "compute"
@@ -572,7 +582,7 @@ class NameResolver:
             if suffix not in self._suffix_index:
                 self._suffix_index[suffix] = []
             self._suffix_index[suffix].append(key)
-            # Skip the separator before this part (2 for '::', 1 for '.')
+            # Skip the separator before this part
             if pos > 0:
                 sep_len = 2 if key[pos - 2:pos] == "::" else 1
                 pos -= sep_len

@@ -1009,3 +1009,63 @@ class TestNameResolverRustSeparator:
         result2 = resolver.lookup("Foo::bar")
         assert result2.found is True
         assert result2.symbol is sym
+
+    def test_hash_separator_ruby(self) -> None:
+        """Ruby # separator: 'User#save' → lookup 'save' finds it."""
+        sym = make_symbol("User#save", "/app/user.rb", "ruby")
+        registry = {"User#save": sym}
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("save")
+        assert result.found is True
+        assert result.symbol is sym
+        assert result.confidence == NameResolver.CONFIDENCE_SUFFIX
+
+    def test_backslash_separator_hack(self) -> None:
+        r"""Hack \\ separator: 'App\\Utils\\helper' → lookup 'helper' finds it."""
+        sym = make_symbol("App\\Utils\\helper", "/src/utils.hack", "hack")
+        registry = {"App\\Utils\\helper": sym}
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("helper")
+        assert result.found is True
+        assert result.symbol is sym
+
+        # Intermediate suffix
+        result2 = resolver.lookup("Utils\\helper")
+        assert result2.found is True
+        assert result2.symbol is sym
+
+    def test_colon_separator_luau(self) -> None:
+        """Luau : separator: 'Player:attack' → lookup 'attack' finds it."""
+        sym = make_symbol("Player:attack", "/src/player.luau", "luau")
+        registry = {"Player:attack": sym}
+        resolver = NameResolver(registry)
+
+        result = resolver.lookup("attack")
+        assert result.found is True
+        assert result.symbol is sym
+
+    def test_colon_vs_double_colon(self) -> None:
+        """Single : and :: are both handled without conflict."""
+        sym_lua = make_symbol("Obj:method", "/src/obj.luau", "luau")
+        sym_rust = make_symbol("Obj::method", "/src/obj.rs", "rust")
+        registry = {"Obj:method": sym_lua, "Obj::method": sym_rust}
+        resolver = NameResolver(registry)
+
+        # "method" suffix matches both
+        result = resolver.lookup("method")
+        assert result.found is True
+        assert result.match_type == "suffix_ambiguous"
+        assert len(result.candidates) == 2
+
+        # Full qualified name still exact matches
+        result_lua = resolver.lookup("Obj:method")
+        assert result_lua.found is True
+        assert result_lua.symbol is sym_lua
+        assert result_lua.confidence == 1.0
+
+        result_rust = resolver.lookup("Obj::method")
+        assert result_rust.found is True
+        assert result_rust.symbol is sym_rust
+        assert result_rust.confidence == 1.0

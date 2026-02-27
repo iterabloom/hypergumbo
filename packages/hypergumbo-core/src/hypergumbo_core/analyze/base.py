@@ -1170,7 +1170,12 @@ class TreeSitterAnalyzer:
     ) -> None:
         """Add a symbol to the global registry for cross-file resolution.
 
-        Default stores by short name (last segment after ".").
+        Default stores by qualified name only. The ``NameResolver`` suffix
+        index handles short-name lookups (e.g., ``"compute"`` →
+        ``"Diff::compute"``) so individual analyzers should NOT register
+        short names — doing so causes false exact matches when multiple
+        types share a method name.
+
         Override for language-specific indexing (e.g., Go stores lists).
 
         Args:

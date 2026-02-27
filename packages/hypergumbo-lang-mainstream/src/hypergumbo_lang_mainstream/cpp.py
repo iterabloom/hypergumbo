@@ -915,17 +915,25 @@ class CppAnalyzer(TreeSitterAnalyzer):
         symbol: Symbol,
         global_symbols: dict,
     ) -> None:
-        """Register symbol, preferring source files over headers for definitions."""
-        short_name = symbol.name.split("::")[-1] if "::" in symbol.name else symbol.name
-        sym_is_source = any(symbol.path.endswith(ext) for ext in ('.cpp', '.cc', '.cxx'))
-        for name in (short_name, symbol.name):
-            existing = global_symbols.get(name)
-            if existing is None:
-                global_symbols[name] = symbol
-            else:
-                existing_is_source = any(existing.path.endswith(ext) for ext in ('.cpp', '.cc', '.cxx'))
-                if sym_is_source and not existing_is_source:
-                    global_symbols[name] = symbol  # pragma: no cover
+        """Register symbol by qualified name, preferring source over headers.
+
+        Does NOT register short names — the ``NameResolver`` suffix index
+        handles ``"compute"`` → ``"MyClass::compute"`` lookups. Registering
+        short names caused false exact matches when multiple types share a
+        method name.
+        """
+        existing = global_symbols.get(symbol.name)
+        if existing is None:
+            global_symbols[symbol.name] = symbol
+        else:
+            sym_is_source = any(
+                symbol.path.endswith(ext) for ext in ('.cpp', '.cc', '.cxx')
+            )
+            existing_is_source = any(
+                existing.path.endswith(ext) for ext in ('.cpp', '.cc', '.cxx')
+            )
+            if sym_is_source and not existing_is_source:
+                global_symbols[symbol.name] = symbol  # pragma: no cover
 
     def extract_edges_from_file(
         self,

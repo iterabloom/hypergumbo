@@ -360,15 +360,15 @@ def _resolve_call(
             if qualified in symbol_registry:
                 return symbol_registry[qualified]
 
-    if "::" in call_name:  # pragma: no cover
+    if "::" in call_name:
         if current_namespace:
             qualified = f"{current_namespace}\\{call_name}"
             if qualified in symbol_registry:
                 return symbol_registry[qualified]
-        if call_name in symbol_registry:
-            return symbol_registry[call_name]
+        if call_name in symbol_registry:  # pragma: no cover
+            return symbol_registry[call_name]  # pragma: no cover
 
-    if current_namespace and "\\" not in call_name:  # pragma: no cover
+    if current_namespace and "\\" not in call_name:
         qualified = f"{current_namespace}\\{call_name}"
         if qualified in symbol_registry:
             return symbol_registry[qualified]
@@ -480,11 +480,30 @@ class HackAnalyzer(TreeSitterAnalyzer):
     def register_symbol(
         self, symbol: Symbol, global_symbols: dict,
     ) -> None:
-        """Register symbol by name and short name for cross-file resolution."""
+        """Register symbol by qualified name only.
+
+        The ``NameResolver`` suffix index handles short-name lookups
+        across ``\\`` separators.
+        """
         global_symbols[symbol.name] = symbol
-        short_name = symbol.name.split("\\")[-1]
-        if short_name not in global_symbols:
-            global_symbols[short_name] = symbol
+
+    def get_import_aliases(
+        self, tree: "tree_sitter.Tree", source: bytes,
+    ) -> dict[str, str]:
+        """Extract namespace declaration for edge resolution.
+
+        Hack uses ``namespace Foo\\Bar;`` declarations.  The namespace is
+        stored under the ``__namespace__`` key so that
+        ``extract_edges_from_file`` can qualify bare call names.
+        """
+        aliases: dict[str, str] = {}
+        for child in tree.root_node.children:
+            if child.type == "namespace_declaration":
+                for sub in child.children:
+                    if sub.type == "qualified_identifier":
+                        aliases["__namespace__"] = _get_node_text(sub)
+                        return aliases
+        return aliases
 
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,

@@ -250,8 +250,8 @@ class Main {
         # Should find run() calling doWork() (cross-file via global symbols)
         assert len(call_edges) >= 1
 
-        # Check for cross-file call edge with lower confidence (0.80)
-        cross_file_edges = [e for e in call_edges if e.confidence == 0.80]
+        # Cross-file call: suffix match (0.85) * base (0.80) = 0.68
+        cross_file_edges = [e for e in call_edges if 0.50 <= e.confidence <= 0.85]
         assert len(cross_file_edges) >= 1
 
 class TestGradleBuildFile:

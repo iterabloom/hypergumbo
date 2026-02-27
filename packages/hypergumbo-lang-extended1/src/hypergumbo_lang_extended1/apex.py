@@ -812,12 +812,11 @@ class ApexAnalyzer(TreeSitterAnalyzer):
     def register_symbol(
         self, symbol: Symbol, global_symbols: dict,
     ) -> None:
-        """Register symbol by name and short name for cross-file resolution."""
+        """Register symbol by qualified name only.
+
+        The ``NameResolver`` suffix index handles short-name lookups.
+        """
         global_symbols[symbol.name] = symbol
-        if "." in symbol.name:
-            short_name = symbol.name.split(".")[-1]
-            if short_name not in global_symbols:
-                global_symbols[short_name] = symbol
 
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
