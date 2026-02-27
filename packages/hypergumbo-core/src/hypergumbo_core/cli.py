@@ -92,6 +92,7 @@ from .supply_chain import classify_file, detect_package_roots
 from .ranking import (
     rank_symbols, _is_test_path, compute_transitive_test_coverage,
     compute_symbol_mention_centrality_batch, compute_raw_in_degree,
+    is_utility_symbol,
 )
 from .compact import (
     CompactConfig,
@@ -2478,7 +2479,7 @@ def cmd_symbols(args: argparse.Namespace) -> int:
 
         symbol_rows.append((name, kind, ind, outd, degree, path))
 
-    # Sort by bidirectional centrality with sink dampening.
+    # Sort by bidirectional centrality with sink + utility dampening.
     # Base formula: in_degree * (1 + ln(1 + out_degree))
     # Sink dampening: symbols with very low out/in ratio (pure sinks like
     # noopMetric.Inc, Timer.Duration, errDuplicate*) get their effective
@@ -2486,17 +2487,26 @@ def cmd_symbols(args: argparse.Namespace) -> int:
     # from outranking genuine architectural connectors (evaluator.eval,
     # API.rules) that have balanced in/out edges.
     #
-    # Factor ranges from 0.3 (pure sink, out/in=0) to 1.0 (ratio >= 0.33).
+    # Utility dampening: infrastructure symbols (exceptions, loggers, error
+    # sentinels) get a 0.10x score reduction.  These have non-zero out-degree
+    # (from extends/implements), so sink dampening alone doesn't suffice.
+    #
+    # Sink factor: 0.3 (pure sink, out/in=0) to 1.0 (ratio >= 0.33).
     # Only applied when in-degree > 5 to avoid dampening leaf nodes.
-    def _sink_dampened_score(ind: int, outd: int) -> float:
+    _UTILITY_DAMPENING = 0.10
+
+    def _dampened_score(name: str, ind: int, outd: int) -> float:
         if ind > 5:
             out_ratio = min(outd / ind, 1.0)
             sink_factor = min(0.3 + 0.7 * out_ratio * 3, 1.0)
         else:
             sink_factor = 1.0
-        return ind * sink_factor * (1 + math.log(1 + outd))
+        score = ind * sink_factor * (1 + math.log(1 + outd))
+        if is_utility_symbol(name):
+            score *= _UTILITY_DAMPENING
+        return score
 
-    symbol_rows.sort(key=lambda r: (-_sink_dampened_score(r[2], r[3]), r[0]))
+    symbol_rows.sort(key=lambda r: (-_dampened_score(r[0], r[2], r[3]), r[0]))
 
     # Apply --max-per-file limit if specified
     max_per_file = getattr(args, "max_per_file", None)

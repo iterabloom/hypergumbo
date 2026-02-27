@@ -1287,6 +1287,141 @@ def test_cmd_symbols_extreme_sink_dampened(tmp_path: Path, capsys) -> None:
     )
 
 
+def test_cmd_symbols_utility_symbol_dampened(tmp_path: Path, capsys) -> None:
+    """Utility symbols (exceptions, loggers) rank below domain symbols.
+
+    Regression test for DEEP bakeoff cohort 8: GuacamoleServerException
+    (in=81, out=2, deg=83) ranked position 8, pushing domain-relevant
+    classes like ObjectPermission and UserService far below their
+    architectural importance.
+
+    Exception classes have non-zero out-degree (from extends/implements
+    edges), so sink dampening alone doesn't sufficiently demote them.
+    The fix: apply is_utility_symbol() dampening in cmd_symbols() to
+    reduce the effective score of infrastructure symbols.
+
+    Without utility dampening (sink dampening alone):
+      SomeException:  in=80, out=2 → sink_factor ~0.35 → 28.2 * 2.099 = 59.2
+      DomainService:  in=8,  out=15 → sink_factor 1.0  → 8.0 * 3.773 = 30.2
+    → SomeException wins (wrong: infrastructure outranks domain logic).
+
+    With utility dampening (0.10x applied to exception names):
+      SomeException:  59.2 * 0.10 = 5.92
+      DomainService:  30.2 * 1.0  = 30.2
+    → DomainService wins (correct: domain logic surfaces above infrastructure).
+    """
+    exception_node = {
+        "id": "java:src/SomeException.java:1-10:SomeException:class",
+        "name": "SomeException",
+        "kind": "class",
+        "language": "java",
+        "path": "src/SomeException.java",
+        "span": {"start_line": 1, "end_line": 10, "start_col": 0, "end_col": 5},
+    }
+    domain_node = {
+        "id": "java:src/DomainService.java:1-200:DomainService:class",
+        "name": "DomainService",
+        "kind": "class",
+        "language": "java",
+        "path": "src/DomainService.java",
+        "span": {"start_line": 1, "end_line": 200, "start_col": 0, "end_col": 5},
+    }
+
+    nodes = [exception_node, domain_node]
+    edges = []
+    eid = 1
+
+    # 80 callers → SomeException (high in-degree exception class)
+    for i in range(80):
+        caller_id = f"java:src/caller{i}.java:1-5:caller{i}:function"
+        nodes.append({
+            "id": caller_id, "name": f"caller{i}", "kind": "function",
+            "language": "java", "path": f"src/caller{i}.java",
+            "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 5},
+        })
+        edges.append({
+            "id": f"edge:{eid}", "src": caller_id,
+            "dst": exception_node["id"], "type": "calls", "confidence": 0.9,
+        })
+        eid += 1
+
+    # SomeException extends BaseException (out=2)
+    base_exc = {
+        "id": "java:src/BaseException.java:1-5:BaseException:class",
+        "name": "BaseException",
+        "kind": "class",
+        "language": "java",
+        "path": "src/BaseException.java",
+        "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 5},
+    }
+    nodes.append(base_exc)
+    edges.append({
+        "id": f"edge:{eid}", "src": exception_node["id"],
+        "dst": base_exc["id"], "type": "extends", "confidence": 1.0,
+    })
+    eid += 1
+    edges.append({
+        "id": f"edge:{eid}", "src": exception_node["id"],
+        "dst": base_exc["id"], "type": "calls", "confidence": 0.9,
+    })
+    eid += 1
+
+    # 8 callers → DomainService (moderate in-degree, domain class)
+    for i in range(8):
+        caller_id = f"java:src/caller{i}.java:1-5:caller{i}:function"
+        edges.append({
+            "id": f"edge:{eid}", "src": caller_id,
+            "dst": domain_node["id"], "type": "calls", "confidence": 0.9,
+        })
+        eid += 1
+
+    # DomainService → 15 callees (balanced connector)
+    for i in range(15):
+        callee_id = f"java:src/callee{i}.java:1-5:callee{i}:function"
+        nodes.append({
+            "id": callee_id, "name": f"callee{i}", "kind": "function",
+            "language": "java", "path": f"src/callee{i}.java",
+            "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 5},
+        })
+        edges.append({
+            "id": f"edge:{eid}", "src": domain_node["id"],
+            "dst": callee_id, "type": "calls", "confidence": 0.9,
+        })
+        eid += 1
+
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": nodes,
+        "edges": edges,
+    }
+    results_file = tmp_path / "hypergumbo.results.json"
+    results_file.write_text(json.dumps(behavior_map))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = None
+    args.kind = None
+    args.language = None
+    args.limit = 5
+    args.all = False
+    args.exclude_tests = False
+    args.max_per_file = None
+
+    result = cmd_symbols(args)
+    assert result == 0
+
+    out, _ = capsys.readouterr()
+    domain_pos = out.find("DomainService")
+    exc_pos = out.find("SomeException")
+    assert domain_pos != -1, f"DomainService not found in output: {out}"
+    assert exc_pos != -1, f"SomeException not found in output: {out}"
+    assert domain_pos < exc_pos, (
+        f"DomainService (connector, in=8 out=15) should rank above "
+        f"SomeException (utility exception class, in=80 out=2) with utility dampening, "
+        f"but found domain at {domain_pos}, exception at {exc_pos}"
+    )
+
+
 def test_main_with_symbols(tmp_path: Path, capsys) -> None:
     """Main with symbols command."""
     behavior_map = {
