@@ -71,6 +71,7 @@ Environment:
 import argparse
 import datetime
 import glob
+import gzip
 import hashlib
 import json
 import os
@@ -177,6 +178,93 @@ RECOMMENDED_REPOS = [
     # Elixir
     {"name": "phoenix", "url": "https://github.com/phoenixframework/phoenix", "lang": "elixir"},
 ]
+
+
+# =============================================================================
+# hg.json compression helpers
+# =============================================================================
+
+# Derived artifacts that indicate hg.json has been fully processed.
+# If all of these exist, hg.json is no longer needed for derivation.
+_DERIVED_ARTIFACTS = ("entries.txt", "symbols.txt", "routes.txt")
+
+
+def _find_hg_json(repo_out: str) -> "str | None":
+    """Find hg.json or hg.json.gz in a repo output directory.
+
+    Prefers plain hg.json over hg.json.gz when both exist.
+    Returns the full path, or None if neither exists.
+    """
+    plain = os.path.join(repo_out, "hg.json")
+    if os.path.exists(plain):
+        return plain
+    gz = os.path.join(repo_out, "hg.json.gz")
+    if os.path.exists(gz):
+        return gz
+    return None
+
+
+def _has_hg_json(repo_out: str) -> bool:
+    """Check if a repo output directory has hg.json (plain or compressed)."""
+    return _find_hg_json(repo_out) is not None
+
+
+def _open_hg_json(path: str) -> dict:
+    """Read and parse hg.json or hg.json.gz transparently.
+
+    Args:
+        path: Full path to hg.json or hg.json.gz file.
+
+    Returns:
+        Parsed JSON data as a dict.
+    """
+    if path.endswith(".gz"):
+        with gzip.open(path, "rt") as f:
+            return json.load(f)
+    else:
+        with open(path) as f:
+            return json.load(f)
+
+
+def _should_compress_repo(repo_out: str, min_age_hours: float = 8.0) -> bool:
+    """Check if a repo's hg.json is eligible for compression.
+
+    Eligible when:
+    1. Plain hg.json exists (not already compressed)
+    2. All derived artifacts exist
+    3. The newest derived artifact is at least min_age_hours old
+    """
+    plain = os.path.join(repo_out, "hg.json")
+    if not os.path.exists(plain):
+        return False
+
+    now = time.time()
+    for artifact in _DERIVED_ARTIFACTS:
+        art_path = os.path.join(repo_out, artifact)
+        if not os.path.exists(art_path):
+            return False
+        age_hours = (now - os.path.getmtime(art_path)) / 3600
+        if age_hours < min_age_hours:
+            return False
+
+    return True
+
+
+def _compress_hg_json(hg_path: str) -> bool:
+    """Compress hg.json to hg.json.gz and remove the original.
+
+    Returns True if compression succeeded, False if file doesn't exist.
+    """
+    if not os.path.exists(hg_path):
+        return False
+
+    gz_path = hg_path + ".gz"
+    with open(hg_path, "rb") as f_in:
+        with gzip.open(gz_path, "wb") as f_out:
+            shutil.copyfileobj(f_in, f_out)
+
+    os.remove(hg_path)
+    return True
 
 
 # =============================================================================
@@ -554,8 +642,7 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     Returns empty list if hg.json can't be read or has no edges.
     """
     try:
-        with open(hg_json) as f:
-            data = json.load(f)
+        data = _open_hg_json(hg_json)
     except (OSError, json.JSONDecodeError):
         return []
 
@@ -1280,9 +1367,9 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
 
     for repo_name in repo_names:
         repo_out = os.path.join(out_dir, repo_name)
-        hg_path = os.path.join(repo_out, "hg.json")
+        hg_path = _find_hg_json(repo_out)
 
-        if not os.path.exists(hg_path):
+        if hg_path is None:
             print(f"[{repo_name}] Skipped (no hg.json)")
             verdicts.append(RepoVerdict(
                 repo_name=repo_name,
@@ -1294,8 +1381,7 @@ def _diagnose_cohort(workdir, out_dir, diag_dir, repo_names):
         print(f"[{repo_name}]")
 
         try:
-            with open(hg_path) as f:
-                data = json.load(f)
+            data = _open_hg_json(hg_path)
         except Exception as e:
             print(f"  Error reading hg.json: {e}")
             verdicts.append(RepoVerdict(
@@ -1555,7 +1641,7 @@ def cmd_diagnose(args):
         repo_names = sorted(
             d for d in os.listdir(out_dir)
             if os.path.isdir(os.path.join(out_dir, d))
-            and os.path.exists(os.path.join(out_dir, d, "hg.json"))
+            and _has_hg_json(os.path.join(out_dir, d))
         )
         # Also include repos that failed (no hg.json but have a directory)
         all_repo_dirs = sorted(
@@ -1604,6 +1690,88 @@ def cmd_diagnose(args):
     print(f"  GOOD: {good_count}  WARN: {warn_count}  FAIL: {fail_count}")
     print()
     print("Next: Run `bakeoff-features-reflect` for developer-perspective assessment")
+    return 0
+
+
+def cmd_compress(args):
+    """Compress hg.json files to hg.json.gz to reclaim disk space.
+
+    Scans all cohort output directories for hg.json files where derived
+    artifacts (entries.txt, symbols.txt, routes.txt) exist and have been
+    around for at least 8 hours. Qualifying hg.json files are gzipped
+    in-place (hg.json -> hg.json.gz), typically achieving 5-10x compression.
+
+    All code that reads hg.json uses _find_hg_json/_open_hg_json, so
+    compressed files are transparently readable by diagnose, run, etc.
+    """
+    workdir = resolve_workdir(getattr(args, "workdir", None))
+    if workdir is None:
+        print("Error: No active session found.", file=sys.stderr)
+        return 1
+
+    dry_run = getattr(args, "dry_run", False)
+    print(f"Session: {workdir}")
+    if dry_run:
+        print("DRY RUN — no files will be modified")
+    print()
+
+    out_base = os.path.join(workdir, "out")
+    if not os.path.isdir(out_base):
+        print("No output directories found.")
+        return 0
+
+    compressed_count = 0
+    skipped_count = 0
+    total_saved = 0
+
+    for cohort_dir in sorted(os.listdir(out_base)):
+        cohort_path = os.path.join(out_base, cohort_dir)
+        if not os.path.isdir(cohort_path):
+            continue
+
+        for iter_dir in sorted(os.listdir(cohort_path)):
+            iter_path = os.path.join(cohort_path, iter_dir)
+            if not iter_dir.startswith("iter-") or not os.path.isdir(iter_path):
+                continue
+
+            for repo_name in sorted(os.listdir(iter_path)):
+                repo_out = os.path.join(iter_path, repo_name)
+                if not os.path.isdir(repo_out):
+                    continue
+
+                if _should_compress_repo(repo_out):
+                    hg_path = os.path.join(repo_out, "hg.json")
+                    original_size = os.path.getsize(hg_path)
+
+                    if dry_run:
+                        print(f"  Would compress: {cohort_dir}/{iter_dir}/{repo_name}"
+                              f" ({original_size / 1024 / 1024:.1f} MB)")
+                        compressed_count += 1
+                        total_saved += original_size  # approximate
+                    else:
+                        _compress_hg_json(hg_path)
+                        gz_path = hg_path + ".gz"
+                        gz_size = os.path.getsize(gz_path)
+                        saved = original_size - gz_size
+                        total_saved += saved
+                        compressed_count += 1
+                        ratio = original_size / gz_size if gz_size > 0 else 0
+                        print(f"  Compressed: {cohort_dir}/{iter_dir}/{repo_name}"
+                              f" ({original_size / 1024 / 1024:.1f} MB → "
+                              f"{gz_size / 1024 / 1024:.1f} MB, {ratio:.1f}x)")
+                else:
+                    skipped_count += 1
+
+    print()
+    if compressed_count == 0:
+        print("No eligible hg.json files found (need derived artifacts 8+ hours old).")
+    else:
+        verb = "Would compress" if dry_run else "Compressed"
+        print(f"{verb}: {compressed_count} file(s), "
+              f"~{total_saved / 1024 / 1024:.1f} MB saved")
+    if skipped_count > 0:
+        print(f"Skipped: {skipped_count} (already compressed, too recent, or no derived artifacts)")
+
     return 0
 
 
@@ -2074,6 +2242,12 @@ def main():
     p_cycle = subparsers.add_parser("cycle", help="Run full cycle (run + diagnose)")
     p_cycle.add_argument("--workdir", help="Override workdir")
 
+    # compress
+    p_compress = subparsers.add_parser("compress", help="Gzip hg.json files with old derived artifacts")
+    p_compress.add_argument("--workdir", help="Override workdir")
+    p_compress.add_argument("--dry-run", action="store_true", dest="dry_run",
+                            help="Show what would be compressed without actually compressing")
+
     # recommend
     subparsers.add_parser("recommend", help="Show recommended repos for testing")
 
@@ -2088,6 +2262,7 @@ def main():
         "cohort": cmd_cohort,
         "run": cmd_run,
         "diagnose": cmd_diagnose,
+        "compress": cmd_compress,
         "status": cmd_status,
         "active": cmd_active,
         "compare": cmd_compare,
