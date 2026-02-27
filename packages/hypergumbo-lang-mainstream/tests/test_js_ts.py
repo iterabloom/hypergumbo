@@ -6701,6 +6701,200 @@ function fetch() {
         assert len(chain_edges) == 0
 
 
+class TestCrossPackageGuardAllPaths:
+    """Tests for cross-package guard on namespace calls, method inference,
+    object field references, and direct call fallback.
+
+    These edge creation paths previously lacked the cross-package guard
+    that was applied to ``callback_argument_reference`` and direct calls
+    with import-path disambiguation.  Common names like ``error``,
+    ``request``, ``f``, ``apply`` resolved across npm package boundaries.
+    """
+
+    def test_namespace_call_no_cross_package(
+        self, tmp_path: Path
+    ) -> None:
+        """Namespace alias.error() must not resolve to another package.
+
+        When ``utils`` is imported via ``import * as utils`` and
+        ``utils.error()`` is called, the resolver may find ``error``
+        in a different npm package. The cross-package guard must block it.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "server" / "package.json").parent.mkdir()
+        (tmp_path / "server" / "package.json").write_text('{"name": "server"}')
+        (tmp_path / "server" / "app.js").write_text(
+            "import * as utils from './utils';\n"
+            "function handler() {\n"
+            "    utils.error('oops');\n"
+            "}\n"
+        )
+        (tmp_path / "server" / "utils.js").write_text(
+            "export function log(msg) { console.log(msg); }\n"
+        )
+        (tmp_path / "client" / "package.json").parent.mkdir()
+        (tmp_path / "client" / "package.json").write_text('{"name": "client"}')
+        (tmp_path / "client" / "actions.js").write_text(
+            "function error(msg) { alert(msg); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ns_edges = [
+            e for e in result.edges
+            if e.evidence_type == "ast_call_namespace"
+            and "error" in e.dst
+            and "client" in e.dst
+        ]
+        assert len(ns_edges) == 0, (
+            f"Namespace call should not cross package boundary: {ns_edges}"
+        )
+
+    def test_namespace_call_same_package_resolves(
+        self, tmp_path: Path
+    ) -> None:
+        """Namespace alias.doWork() should resolve within same package."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "pkg" / "package.json").parent.mkdir()
+        (tmp_path / "pkg" / "package.json").write_text('{"name": "pkg"}')
+        (tmp_path / "pkg" / "app.js").write_text(
+            "import * as helpers from './helpers';\n"
+            "function handler() {\n"
+            "    helpers.doWork('data');\n"
+            "}\n"
+        )
+        (tmp_path / "pkg" / "helpers.js").write_text(
+            "export function doWork(x) { return x; }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ns_edges = [
+            e for e in result.edges
+            if e.evidence_type == "ast_call_namespace"
+            and "doWork" in e.dst
+        ]
+        assert len(ns_edges) >= 1, (
+            "Namespace call within same package should resolve"
+        )
+
+    def test_method_inferred_no_cross_package(
+        self, tmp_path: Path
+    ) -> None:
+        """Fallback method inference should not cross package boundary."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "server" / "package.json").parent.mkdir()
+        (tmp_path / "server" / "package.json").write_text('{"name": "server"}')
+        (tmp_path / "server" / "app.js").write_text(
+            "function handler() {\n"
+            "    const obj = getObj();\n"
+            "    obj.apply('data');\n"
+            "}\n"
+        )
+        (tmp_path / "client" / "package.json").parent.mkdir()
+        (tmp_path / "client" / "package.json").write_text('{"name": "client"}')
+        (tmp_path / "client" / "plugin.js").write_text(
+            "class Plugin {\n"
+            "    apply(compiler) { return compiler; }\n"
+            "}\n"
+        )
+        result = analyze_javascript(tmp_path)
+        method_edges = [
+            e for e in result.edges
+            if e.evidence_type == "ast_method_inferred"
+            and "apply" in e.dst
+        ]
+        for edge in method_edges:
+            assert "client" not in edge.dst, (
+                f"Method inference should not cross package boundary: {edge.dst}"
+            )
+
+    def test_object_field_ref_no_cross_package(
+        self, tmp_path: Path
+    ) -> None:
+        """Object literal {handler: myFunc} should not cross packages."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "server" / "package.json").parent.mkdir()
+        (tmp_path / "server" / "package.json").write_text('{"name": "server"}')
+        (tmp_path / "server" / "config.js").write_text(
+            "function setup() {\n"
+            "    const routes = {onError: error};\n"
+            "    return routes;\n"
+            "}\n"
+        )
+        (tmp_path / "client" / "package.json").parent.mkdir()
+        (tmp_path / "client" / "package.json").write_text('{"name": "client"}')
+        (tmp_path / "client" / "actions.js").write_text(
+            "function error(msg) { alert(msg); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.evidence_type == "object_field_reference"
+            and "error" in e.dst
+        ]
+        assert len(ref_edges) == 0, (
+            f"Object field ref should not cross package boundary: {ref_edges}"
+        )
+
+    def test_shorthand_property_no_cross_package(
+        self, tmp_path: Path
+    ) -> None:
+        """Shorthand property {error} should not cross packages."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "server" / "package.json").parent.mkdir()
+        (tmp_path / "server" / "package.json").write_text('{"name": "server"}')
+        (tmp_path / "server" / "config.js").write_text(
+            "function setup() {\n"
+            "    const handlers = {error};\n"
+            "    return handlers;\n"
+            "}\n"
+        )
+        (tmp_path / "client" / "package.json").parent.mkdir()
+        (tmp_path / "client" / "package.json").write_text('{"name": "client"}')
+        (tmp_path / "client" / "actions.js").write_text(
+            "function error(msg) { alert(msg); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.evidence_type == "object_field_reference"
+            and "error" in e.dst
+        ]
+        assert len(ref_edges) == 0, (
+            f"Shorthand prop ref should not cross package boundary: {ref_edges}"
+        )
+
+    def test_direct_call_fallback_no_cross_package(
+        self, tmp_path: Path
+    ) -> None:
+        """Direct call fallback (no import, no same-package) must not cross."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "server" / "package.json").parent.mkdir()
+        (tmp_path / "server" / "package.json").write_text('{"name": "server"}')
+        (tmp_path / "server" / "app.js").write_text(
+            "function handler() {\n"
+            "    formatDate('2024-01-01');\n"
+            "}\n"
+        )
+        (tmp_path / "client" / "package.json").parent.mkdir()
+        (tmp_path / "client" / "package.json").write_text('{"name": "client"}')
+        (tmp_path / "client" / "utils.js").write_text(
+            "function formatDate(d) { return d.toString(); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        call_edges = [
+            e for e in result.edges
+            if e.evidence_type == "ast_call_direct"
+            and "formatDate" in e.dst
+        ]
+        assert len(call_edges) == 0, (
+            f"Direct call fallback should not cross package boundary: {call_edges}"
+        )
+
+
 class TestNormalizeJstsSignature:
     """Tests for JS/TS signature normalization (ADR-0014 §3)."""
 

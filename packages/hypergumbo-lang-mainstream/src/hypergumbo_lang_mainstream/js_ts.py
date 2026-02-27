@@ -2734,9 +2734,16 @@ def _extract_edges(
                                 edge_confidence = 0.85  # same-package heuristic
                         if callee is None:
                             lookup_result = resolver.lookup(func_name)
-                            if lookup_result.found:
-                                callee = lookup_result.symbol
-                                edge_confidence = 0.85 * lookup_result.confidence
+                            if lookup_result.found and lookup_result.symbol is not None:
+                                # Cross-package guard: the resolver fallback
+                                # should not cross npm packages (import-path
+                                # and same-package checks above already had
+                                # their chance to find a valid callee).
+                                if not _is_cross_package(
+                                    file_path, lookup_result.symbol.path,
+                                ):
+                                    callee = lookup_result.symbol
+                                    edge_confidence = 0.85 * lookup_result.confidence
                         if callee is not None:
                             edge = Edge.create(
                                 src=current_function.id,
@@ -2850,19 +2857,24 @@ def _extract_edges(
                             import_path = namespace_imports[obj_name]
                             lookup_result = resolver.lookup(method_name, path_hint=import_path)
                             if lookup_result.found and lookup_result.symbol is not None:
-                                is_class = lookup_result.symbol.kind == "class"
-                                edge = Edge.create(
-                                    src=current_function.id,
-                                    dst=lookup_result.symbol.id,
-                                    edge_type="instantiates" if is_class else "calls",
-                                    line=node.start_point[0] + 1 + line_offset,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    evidence_type="ast_new" if is_class else "ast_call_namespace",
-                                    confidence=0.90 * lookup_result.confidence,
-                                )
-                                edges.append(edge)
-                                edge_added = True
+                                # Cross-package guard: block resolution when
+                                # the target lives in a different npm package.
+                                if _is_cross_package(file_path, lookup_result.symbol.path):
+                                    pass  # suppress cross-package namespace call
+                                else:
+                                    is_class = lookup_result.symbol.kind == "class"
+                                    edge = Edge.create(
+                                        src=current_function.id,
+                                        dst=lookup_result.symbol.id,
+                                        edge_type="instantiates" if is_class else "calls",
+                                        line=node.start_point[0] + 1 + line_offset,
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                        evidence_type="ast_new" if is_class else "ast_call_namespace",
+                                        confidence=0.90 * lookup_result.confidence,
+                                    )
+                                    edges.append(edge)
+                                    edge_added = True
 
                         # Case 3: variable.method() via type inference
                         elif obj_name and obj_name in var_types:
@@ -2900,17 +2912,20 @@ def _extract_edges(
                         if not edge_added:
                             lookup_result = method_resolver.lookup(method_name)
                             if lookup_result.found and lookup_result.symbol is not None:
-                                edge = Edge.create(
-                                    src=current_function.id,
-                                    dst=lookup_result.symbol.id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1 + line_offset,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                    evidence_type="ast_method_inferred",
-                                    confidence=0.60 * lookup_result.confidence,
-                                )
-                                edges.append(edge)
+                                # Cross-package guard: low-confidence method
+                                # inference should not cross npm packages.
+                                if not _is_cross_package(file_path, lookup_result.symbol.path):
+                                    edge = Edge.create(
+                                        src=current_function.id,
+                                        dst=lookup_result.symbol.id,
+                                        edge_type="calls",
+                                        line=node.start_point[0] + 1 + line_offset,
+                                        origin=PASS_ID,
+                                        origin_run_id=run.execution_id,
+                                        evidence_type="ast_method_inferred",
+                                        confidence=0.60 * lookup_result.confidence,
+                                    )
+                                    edges.append(edge)
 
             # Callback argument references: func(handler) or app.get("/path", handler)
             # When a bare identifier in the arguments resolves to a function,
@@ -3124,7 +3139,13 @@ def _extract_edges(
                     lookup_result = resolver.lookup(ref_name)
                     if lookup_result.found and lookup_result.symbol is not None:
                         target = lookup_result.symbol
-                if target is not None and target.kind in ("function", "method"):
+                # Cross-package guard: object field refs should not
+                # cross npm package boundaries.
+                if (
+                    target is not None
+                    and target.kind in ("function", "method")
+                    and not _is_cross_package(file_path, target.path)
+                ):
                     current_function = _get_enclosing_function(
                         node, source, file_path, global_symbols,
                         symbol_by_position, line_offset,
@@ -3149,7 +3170,12 @@ def _extract_edges(
                 lookup_result = resolver.lookup(ref_name)
                 if lookup_result.found and lookup_result.symbol is not None:
                     target = lookup_result.symbol
-            if target is not None and target.kind in ("function", "method"):
+            # Cross-package guard: shorthand props should not cross packages
+            if (
+                target is not None
+                and target.kind in ("function", "method")
+                and not _is_cross_package(file_path, target.path)
+            ):
                 current_function = _get_enclosing_function(
                     node, source, file_path, global_symbols,
                     symbol_by_position, line_offset,
