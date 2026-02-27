@@ -5803,6 +5803,127 @@ function createEvents() {
         assert len(ref_edges) == 2
 
 
+class TestCallbackArgumentFunctionReferences:
+    """Tests for function references passed as arguments to calls.
+
+    When code passes a function reference as an argument (e.g.
+    ``app.get("/path", handleUsers)``), the analyzer should create
+    a ``references`` edge from the enclosing function to the handler,
+    with evidence_type ``callback_argument_reference``.
+    """
+
+    def test_express_route_handler_reference(self, tmp_path: Path) -> None:
+        """app.get('/path', handler) creates a references edge to handler."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function handleUsers(req, res) {
+    res.json([]);
+}
+
+function setupRoutes(app) {
+    app.get("/api/users", handleUsers);
+}
+"""
+        (tmp_path / "routes.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "callback_argument_reference"]
+        assert len(ref_edges) == 1
+        assert "handleUsers" in ref_edges[0].dst
+        assert "setupRoutes" in ref_edges[0].src
+        assert ref_edges[0].confidence == pytest.approx(0.75, rel=0.01)
+
+    def test_callback_arg_cross_file(self, tmp_path: Path) -> None:
+        """Function reference as argument resolves across files."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "handler.js").write_text("""
+function processData(data) {
+    return data;
+}
+""")
+        (tmp_path / "app.js").write_text("""
+function main() {
+    items.forEach(processData);
+}
+""")
+        result = analyze_javascript(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "callback_argument_reference"]
+        assert len(ref_edges) == 1
+        assert "processData" in ref_edges[0].dst
+        assert "main" in ref_edges[0].src
+
+    def test_non_function_arg_not_matched(self, tmp_path: Path) -> None:
+        """Passing a non-function identifier as argument creates no edge."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+const TIMEOUT = 5000;
+
+function setup() {
+    setTimeout(callback, TIMEOUT);
+}
+"""
+        (tmp_path / "app.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "callback_argument_reference"]
+        assert len(ref_edges) == 0
+
+    def test_multiple_callback_args(self, tmp_path: Path) -> None:
+        """Multiple function arguments produce multiple reference edges."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function onSuccess(data) { return data; }
+function onError(err) { throw err; }
+
+function fetchData() {
+    promise.then(onSuccess, onError);
+}
+"""
+        (tmp_path / "fetch.js").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "callback_argument_reference"]
+        assert len(ref_edges) == 2
+        dst_names = {e.dst for e in ref_edges}
+        assert any("onSuccess" in d for d in dst_names)
+        assert any("onError" in d for d in dst_names)
+
+    def test_typescript_callback_arg(self, tmp_path: Path) -> None:
+        """TypeScript: function reference as argument works."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        code = """
+function validate(input: string): boolean {
+    return input.length > 0;
+}
+
+function processForm(app: Express): void {
+    app.post("/submit", validate);
+}
+"""
+        (tmp_path / "form.ts").write_text(code)
+        result = analyze_javascript(tmp_path)
+
+        ref_edges = [e for e in result.edges
+                     if e.edge_type == "references"
+                     and e.evidence_type == "callback_argument_reference"]
+        assert len(ref_edges) == 1
+        assert "validate" in ref_edges[0].dst
+
+
 class TestNormalizeJstsSignature:
     """Tests for JS/TS signature normalization (ADR-0014 §3)."""
 

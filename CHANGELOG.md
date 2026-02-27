@@ -30,6 +30,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Analyzers
 
+- **Clojure UsageContext generation**: The Clojure analyzer now emits `UsageContext` records for function calls, enabling YAML-driven framework pattern matching for Ring/Compojure route detection. Compojure macros like `(GET "/users" [] handler)` have their string-literal first argument captured as `metadata["url"]` for route path extraction.
+- **JS/TS callback argument function references**: When a function identifier is passed as an argument (e.g., `app.get("/users", handleUsers)`, `items.forEach(processData)`, `promise.then(onSuccess, onError)`), the analyzer now creates a `references` edge from the enclosing function to the handler. Previously, 95% of Express route handler connections were orphaned because the route registration call didn't link to the handler function definition. Correctly resolves route-shadowed symbols back to their function definitions via `symbols_by_name`.
 - **Assembly language**: Tree-sitter-based analyzer for `.s`/`.asm`/`.S` files. Extracts labels as function/variable symbols, detects call instructions with cross-file resolution.
 
 #### Sketch

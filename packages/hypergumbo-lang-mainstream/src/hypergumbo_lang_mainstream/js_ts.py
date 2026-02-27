@@ -2735,6 +2735,58 @@ def _extract_edges(
                                 )
                                 edges.append(edge)
 
+            # Callback argument references: func(handler) or app.get("/path", handler)
+            # When a bare identifier in the arguments resolves to a function,
+            # create a references edge. Common with Express route handlers,
+            # Array.forEach/map callbacks, and event listener patterns.
+            if args_node is not None:
+                current_function = _get_enclosing_function(
+                    node, source, file_path, global_symbols,
+                    symbol_by_position, line_offset,
+                )
+                if current_function is not None:
+                    for arg in args_node.children:
+                        if arg.type != "identifier":
+                            continue
+                        arg_name = _node_text(arg, source)
+                        target = global_symbols.get(arg_name)
+                        if target is None:  # pragma: no cover - defensive resolver fallback
+                            lookup_result = resolver.lookup(arg_name)
+                            if lookup_result.found and lookup_result.symbol is not None:
+                                target = lookup_result.symbol
+                        # Route symbols can shadow function symbols in
+                        # global_symbols (last-one-wins).  When target is
+                        # a route, prefer the function symbol with the
+                        # same name via symbols_by_name, so the edge
+                        # points to the function definition.
+                        if target is not None and target.kind == "route" and symbols_by_name:
+                            fn_candidates = [
+                                s for s in symbols_by_name.get(arg_name, [])
+                                if s.kind in ("function", "method")
+                            ]
+                            if fn_candidates:
+                                target = fn_candidates[0]
+                        if (
+                            target is not None
+                            and target.kind in ("function", "method", "route")
+                            and target.id != current_function.id
+                        ):
+                            # Avoid duplicate: skip if we already created a
+                            # direct call edge to the same target (the callee
+                            # identifier itself is also an argument child).
+                            if func_node is not None and _node_text(func_node, source) == arg_name:  # pragma: no cover - dedup with direct call
+                                continue
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=target.id,
+                                edge_type="references",
+                                line=node.start_point[0] + 1 + line_offset,
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                                evidence_type="callback_argument_reference",
+                                confidence=0.75,
+                            ))
+
         # new ClassName() or new namespace.ClassName()
         elif node.type == "new_expression":
             current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset)
