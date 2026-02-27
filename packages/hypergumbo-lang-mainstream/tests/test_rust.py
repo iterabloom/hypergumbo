@@ -2061,3 +2061,145 @@ impl Foo {
         src_ids = {e.src for e in call_edges}
         assert free_caller.id in src_ids, "Free function caller should call helper"
         assert foo_caller.id in src_ids, "Foo::caller should call helper"
+
+
+class TestRustScopedFallbackAmbiguity:
+    """Tests for ambiguity guard on scoped identifier fallback to short name.
+
+    When ``Type::new()`` cannot resolve the full scoped name ``Type::new``,
+    the fallback to the bare method name ``new`` must use the
+    ``method_resolver`` with its ambiguity threshold.  Without this guard,
+    ``SomeType::new()`` silently resolves to an arbitrary ``new`` symbol
+    producing massive false in-edges on common associated function names
+    (``new``, ``default``, ``from``).
+    """
+
+    def test_scoped_fallback_many_candidates_no_edge(self, tmp_path: Path) -> None:
+        """Type::new() with 20 'new' candidates produces no call edge.
+
+        When the full scoped name ``UnknownType::new`` is not in the registry
+        and the short name ``new`` has 20 candidates, the method_resolver
+        (ambiguity_threshold=3) should suppress the edge.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    MyType::new();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        # Build a registry with many symbols named "new" under different types
+        registry: dict[str, Symbol] = {}
+        method_reg: dict[str, list[Symbol]] = {}
+        for i in range(20):
+            sym = Symbol(
+                id=f"rust:lib.rs:{i}-{i}:Type{i}::new:function",
+                name=f"Type{i}::new", kind="function", language="rust",
+                path="lib.rs",
+                span=Span(start_line=i, end_line=i, start_col=0, end_col=1),
+                origin="test", origin_run_id="run",
+            )
+            registry[f"Type{i}::new"] = sym
+            method_reg.setdefault("new", []).append(sym)
+
+        resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, registry,
+            "run", resolver, {},
+            method_resolver=method_resolver,
+            span_index={
+                (caller.span.start_line, caller.span.end_line): caller,
+            },
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        # The ambiguity guard should suppress the edge — no false resolution
+        assert len(call_edges) == 0, (
+            f"Expected 0 call edges but got {len(call_edges)}: "
+            f"{[e.dst for e in call_edges]}"
+        )
+
+    def test_scoped_fallback_single_candidate_resolves(
+        self, tmp_path: Path,
+    ) -> None:
+        """Type::method() with 1 candidate for short name resolves correctly.
+
+        When ``UnknownType::compute`` isn't found but ``compute`` has exactly
+        1 candidate, the fallback should produce a call edge.
+        """
+        from hypergumbo_lang_mainstream.rust import (
+            _extract_edges_from_file,
+            is_rust_tree_sitter_available,
+        )
+        from hypergumbo_core.ir import Symbol, Span
+        from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
+
+        if not is_rust_tree_sitter_available():
+            pytest.skip("tree-sitter-rust not available")
+
+        import tree_sitter_rust
+        import tree_sitter
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_text = b"fn caller() {\n    Foo::compute();\n}\n"
+        tree = parser.parse(source_text)
+
+        caller = Symbol(
+            id="rust:test.rs:1-3:caller:function",
+            name="caller", kind="function", language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+        target = Symbol(
+            id="rust:lib.rs:1-10:compute:function",
+            name="compute", kind="function", language="rust",
+            path="lib.rs",
+            span=Span(start_line=1, end_line=10, start_col=0, end_col=1),
+            origin="test", origin_run_id="run",
+        )
+
+        registry: dict[str, Symbol] = {"compute": target}
+        method_reg: dict[str, list[Symbol]] = {"compute": [target]}
+
+        resolver = NameResolver(registry)
+        method_resolver = ListNameResolver(method_reg, ambiguity_threshold=3)
+        local_symbols = {"caller": caller}
+
+        edges = _extract_edges_from_file(
+            tree, source_text, "test.rs", local_symbols, registry,
+            "run", resolver, {},
+            method_resolver=method_resolver,
+            span_index={
+                (caller.span.start_line, caller.span.end_line): caller,
+            },
+        )
+
+        call_edges = [e for e in edges if e.edge_type == "calls"]
+        assert len(call_edges) == 1
+        assert call_edges[0].dst == target.id

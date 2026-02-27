@@ -936,11 +936,16 @@ def _extract_edges_from_file(
                                 ))
                             # Check global symbols via resolver
                             else:
-                                # For method calls (foo.bar()), use method_resolver
-                                # which enforces the AMB-METHOD guard: 3+ candidates
-                                # → unresolved.  For regular function calls (identifier),
-                                # use the NameResolver which provides suffix matching.
-                                if is_method_call and method_resolver is not None:
+                                # Use method_resolver (ambiguity guard: 3+ candidates
+                                # → unresolved) for: (a) method calls (foo.bar()),
+                                # (b) scoped identifier fallback (Type::new() where
+                                # full "Type::new" wasn't found).  Both are
+                                # method-like calls that should not resolve to
+                                # arbitrary same-name symbols.
+                                use_method_guard = (
+                                    is_method_call or full_scoped_name is not None
+                                )
+                                if use_method_guard and method_resolver is not None:
                                     lookup_result = method_resolver.lookup(callee_name)
                                 else:
                                     import_hint = use_aliases.get(callee_name)
