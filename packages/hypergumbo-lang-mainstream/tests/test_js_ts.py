@@ -6105,6 +6105,95 @@ function processForm(app: Express): void {
         assert "validate" in ref_edges[0].dst
 
 
+class TestJsBuiltinNameGuard:
+    """Tests for JavaScript built-in name collision guard.
+
+    Calls to JS built-ins (Number, String, Boolean, etc.) should not
+    resolve to user-defined functions with the same name.  Without this
+    guard, ``Number(x)`` in server code resolves to a React component
+    named ``Number`` in client code.
+    """
+
+    def test_number_call_not_resolved_to_user_component(
+        self, tmp_path: Path
+    ) -> None:
+        """Number(x) should not create an edge to a user-defined Number."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "component.js").write_text(
+            "function Number({ value }) { return value; }\n"
+        )
+        (tmp_path / "server.js").write_text("""
+function convert(x) {
+    return Number(x);
+}
+""")
+        result = analyze_javascript(tmp_path)
+        calls = [e for e in result.edges if e.edge_type == "calls"
+                 and "convert" in e.src and "Number" in e.dst]
+        assert len(calls) == 0, (
+            f"Number(x) should not resolve to user component, got: {calls}"
+        )
+
+    def test_parseint_not_resolved_to_user_function(
+        self, tmp_path: Path
+    ) -> None:
+        """parseInt(str) should not resolve to user-defined parseInt."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "utils.js").write_text(
+            "function parseInt(str) { return str | 0; }\n"
+        )
+        (tmp_path / "app.js").write_text("""
+function getAge(input) {
+    return parseInt(input);
+}
+""")
+        result = analyze_javascript(tmp_path)
+        calls = [e for e in result.edges if e.edge_type == "calls"
+                 and "getAge" in e.src and "parseInt" in e.dst]
+        assert len(calls) == 0
+
+    def test_builtin_as_callback_arg_not_resolved(
+        self, tmp_path: Path
+    ) -> None:
+        """Built-in name passed as callback arg creates no reference edge."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "comp.js").write_text(
+            "function Number(v) { return v; }\n"
+        )
+        (tmp_path / "app.js").write_text("""
+function process() {
+    items.map(Number);
+}
+""")
+        result = analyze_javascript(tmp_path)
+        ref_edges = [
+            e for e in result.edges
+            if e.evidence_type == "callback_argument_reference"
+            and "Number" in e.dst
+        ]
+        assert len(ref_edges) == 0
+
+    def test_non_builtin_still_resolves(self, tmp_path: Path) -> None:
+        """User-defined functions with non-builtin names still resolve."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "utils.js").write_text(
+            "function processData(x) { return x; }\n"
+        )
+        (tmp_path / "app.js").write_text("""
+function main() {
+    processData(42);
+}
+""")
+        result = analyze_javascript(tmp_path)
+        calls = [e for e in result.edges if e.edge_type == "calls"
+                 and "main" in e.src and "processData" in e.dst]
+        assert len(calls) == 1
+
+
 class TestMiddlewareChainEdges:
     """Tests for Express-style middleware chain edge creation.
 

@@ -474,6 +474,37 @@ def _same_package_candidate(
     return None
 
 
+# JavaScript built-in constructor and global function names.
+# Calls like `Number(x)`, `String(x)`, `Boolean(x)` are type conversions,
+# not calls to user-defined functions.  Skip these during call resolution
+# to prevent false-positive edges to user-defined components that shadow
+# built-in names (e.g., a React component named `Number`).
+JS_BUILTIN_NAMES: set[str] = {
+    # Primitives / wrapper constructors
+    "Number", "String", "Boolean", "Symbol", "BigInt",
+    # Structural types
+    "Object", "Array", "Function", "RegExp", "Date",
+    # Error hierarchy
+    "Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError",
+    "URIError", "EvalError",
+    # Collections
+    "Map", "Set", "WeakMap", "WeakSet",
+    # Async / promise
+    "Promise",
+    # Typed arrays
+    "ArrayBuffer", "DataView", "Int8Array", "Uint8Array",
+    "Uint8ClampedArray", "Int16Array", "Uint16Array",
+    "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
+    "BigInt64Array", "BigUint64Array",
+    # Other globals
+    "JSON", "Math", "Reflect", "Proxy", "Intl",
+    # Global functions
+    "parseInt", "parseFloat", "isNaN", "isFinite",
+    "encodeURI", "encodeURIComponent", "decodeURI", "decodeURIComponent",
+    "setTimeout", "setInterval", "clearTimeout", "clearInterval",
+    "console", "require",
+}
+
 # HTTP methods recognized as route handlers (Express, Fastify, Koa, etc.)
 # Note: Express-style route detection uses function calls (app.get, router.post) rather
 # than decorators. These are now matched via UsageContext (ADR-0003 v1.1.x) which
@@ -2592,8 +2623,12 @@ def _extract_edges(
                             break
                 else:
                     # Regular function call - use resolver for suffix matching
-                    current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset)
-                    if current_function:
+                    # Skip JS built-in names to prevent false edges to
+                    # user-defined functions that shadow built-ins
+                    # (e.g., Number(x) → React component named Number).
+                    if func_name in JS_BUILTIN_NAMES:
+                        pass  # fall through to callback/middleware handling below
+                    elif (current_function := _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset)):
                         # Try import-path disambiguation first (cross-package
                         # same-name functions, e.g. two packages both export
                         # ``process()`` but main.js imports from one specific
@@ -2811,6 +2846,8 @@ def _extract_edges(
                         if arg.type != "identifier":
                             continue
                         arg_name = _node_text(arg, source)
+                        if arg_name in JS_BUILTIN_NAMES:
+                            continue
                         target = global_symbols.get(arg_name)
                         if target is None:  # pragma: no cover - defensive resolver fallback
                             lookup_result = resolver.lookup(arg_name)
