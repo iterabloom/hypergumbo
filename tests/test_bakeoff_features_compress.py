@@ -297,6 +297,54 @@ class TestCompressedReadIntegration:
         # Should return results (or empty list) without error
         assert isinstance(seeds, list)
 
+    def test_pick_reverse_slice_seeds_lang_diversity(self, tmp_path: Path) -> None:
+        """Language-diversity guarantee ensures underrepresented major languages get a seed.
+
+        Without diversity logic, all 3 seeds would be Python (higher scores due to
+        higher out-degree).  With diversity, TypeScript gets at least one seed since
+        it has >= 10% of callable nodes.
+        """
+        # Python nodes with high in-degree and out-degree (would dominate without diversity)
+        py_nodes = [
+            {"id": f"py{i}", "name": f"py_func_{i}", "kind": "function", "language": "python"}
+            for i in range(10)
+        ]
+        # TypeScript nodes with moderate in-degree and out-degree
+        ts_nodes = [
+            {"id": f"ts{i}", "name": f"ts_handler_{i}", "kind": "function", "language": "typescript"}
+            for i in range(5)
+        ]
+        # Edges: py0 has highest in-degree (called by many), py1 second, etc.
+        edges = []
+        # High out-degree for Python (each calls 5 others)
+        for i in range(5):
+            for j in range(5):
+                if i != j:
+                    edges.append({"src": f"py{i}", "dst": f"py{j}", "type": "calls"})
+        # Moderate for TypeScript (each calls 4 others)
+        for i in range(5):
+            for j in range(4):
+                if i != j:
+                    edges.append({"src": f"ts{i}", "dst": f"ts{j}", "type": "calls"})
+        # Extra incoming edges to py0, py1, py2 to boost their in-degree
+        for i in range(5, 10):
+            for j in range(3):
+                edges.append({"src": f"py{i}", "dst": f"py{j}", "type": "calls"})
+
+        data = {"nodes": py_nodes + ts_nodes, "edges": edges}
+        repo_out = _make_repo_output(tmp_path, "polyglot-repo", hg_data=data)
+        hg_path = str(repo_out / "hg.json")
+
+        seeds = bf.pick_reverse_slice_seeds(hg_path, count=3)
+        assert len(seeds) == 3
+
+        # At least one seed should be TypeScript (ts* prefix)
+        ts_seeds = [s for s in seeds if s.startswith("ts")]
+        assert len(ts_seeds) >= 1, (
+            f"Expected at least 1 TypeScript seed for language diversity, "
+            f"but got: {seeds}"
+        )
+
     def test_has_hg_json_detects_compressed(self, tmp_path: Path) -> None:
         """_has_hg_json should return True for repos with only hg.json.gz."""
         repo_out = _make_repo_output(tmp_path, "repo-a", already_compressed=True)

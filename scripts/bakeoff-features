@@ -751,6 +751,43 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
     for score, in_deg, entry, name in candidates[:count]:
         result.append(entry)
 
+    # Language-diversity guarantee: ensure each major language (≥10% of
+    # callable nodes) has at least one seed.  Without this, polyglot repos
+    # like polis (JS+TS+Python+Clojure) can end up with all seeds from one
+    # language, giving zero reverse-slice coverage of other major services.
+    if result and lang_counts:
+        total_callable = sum(lang_counts.values())
+        major_langs = {
+            lang for lang, cnt in lang_counts.items()
+            if cnt / total_callable >= 0.10
+        }
+        result_langs = set()
+        for entry_id in result:
+            node = node_map.get(entry_id)
+            if node:
+                result_langs.add(node.get("language", "unknown"))
+        missing_langs = major_langs - result_langs
+        if missing_langs:
+            # Build per-language top candidates (not already in result)
+            result_set = set(result)
+            for mlang in missing_langs:
+                best = None
+                for score, in_deg, entry, name in candidates:
+                    if entry in result_set:
+                        continue
+                    node = node_map.get(entry)
+                    if node and node.get("language") == mlang:
+                        best = entry
+                        break
+                if best and len(result) >= count:
+                    # Replace lowest-scoring seed with this language's top
+                    result[-1] = best
+                    result_set.discard(result[-1])
+                    result_set.add(best)
+                elif best:
+                    result.append(best)
+                    result_set.add(best)
+
     if result:
         return result
 
