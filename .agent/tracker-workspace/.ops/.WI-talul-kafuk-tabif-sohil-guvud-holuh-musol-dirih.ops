@@ -90,3 +90,24 @@
   clock: 11  # 7033
   nonce: '7033'  # 7033
   message: "\"CHANGELOG.md covers the status/compare/active subcommands\" -- but that's the wrong place to go into detail; that info ought to be in the command docstring/help plus AGENTS.md/other agent-facing instructions."  # 7033
+- op: discuss  # a14d
+  at: '2026-02-27T04:09:37Z'  # a14d
+  by: agent  # a14d
+  actor: jgstern_agent  # a14d
+  clock: 12  # a14d
+  nonce: a14d  # a14d
+  message: "Good point. The status/compare/active subcommands have minimal argparse help and no mention in AGENTS.md. I'll: (1) add description= to each subparser in bakeoff-features so --help shows what they do and what output to expect, (2) add them to the DEEP mode scripts section in AGENTS.md alongside init/cohort/run/diagnose. Will include in next PR."  # a14d
+- op: discuss  # a510
+  at: '2026-02-27T04:38:29Z'  # a510
+  by: human  # a510
+  actor: jgstern  # a510
+  clock: 13  # a510
+  nonce: a510  # a510
+  message: "please confirm that you have done this"  # a510
+- op: discuss  # fe84
+  at: '2026-02-27T05:23:25Z'  # fe84
+  by: agent  # fe84
+  actor: jgstern_agent  # fe84
+  clock: 14  # fe84
+  nonce: fe84  # fe84
+  message: "Confirmed: done in PR #1540 (commit f1686833). Changes: (1) Added description= to argparse subparsers for status, active, and compare in scripts/bakeoff-features so --help shows what each does. (2) Added 'Session introspection' section to AGENTS.md under DEEP mode scripts listing status/active/compare with one-line descriptions. Both changes are on dev."  # fe84
