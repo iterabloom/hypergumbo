@@ -654,6 +654,163 @@ class TestDILinkerIntegration:
         assert len(cs_edges) >= 1
 
 
+# ===========================================================================
+# Java: Guice @Provides methods
+# ===========================================================================
+
+
+class TestGuiceProvidesBindings:
+    """Tests for Guice @Provides method detection."""
+
+    def test_provides_with_new_impl(self, tmp_path: Path) -> None:
+        """@Provides method returning interface type with new Impl() body."""
+        src = tmp_path / "Module.java"
+        src.write_text(
+            "public class AppModule extends AbstractModule {\n"
+            "  @Provides\n"
+            "  public UserService provideUserService() {\n"
+            "    return new UserServiceImpl();\n"
+            "  }\n"
+            "}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        assert any(
+            b.interface_name == "UserService" and b.impl_name == "UserServiceImpl"
+            for b in bindings
+        )
+
+    def test_provides_without_access_modifier(self, tmp_path: Path) -> None:
+        """@Provides method without public/protected/private modifier."""
+        src = tmp_path / "Module.java"
+        src.write_text(
+            "@Provides\n"
+            "UserService provideUserService() {\n"
+            "  return new UserServiceImpl();\n"
+            "}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        assert any(
+            b.interface_name == "UserService" and b.impl_name == "UserServiceImpl"
+            for b in bindings
+        )
+
+    def test_provides_with_singleton_annotation(self, tmp_path: Path) -> None:
+        """@Provides @Singleton still detected."""
+        src = tmp_path / "Module.java"
+        src.write_text(
+            "@Provides\n"
+            "@Singleton\n"
+            "public CacheService provideCacheService() {\n"
+            "  return new RedisCacheService();\n"
+            "}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        assert any(
+            b.interface_name == "CacheService" and b.impl_name == "RedisCacheService"
+            for b in bindings
+        )
+
+    def test_provides_self_binding_ignored(self, tmp_path: Path) -> None:
+        """@Provides method returning same type as new'd class is ignored."""
+        src = tmp_path / "Module.java"
+        src.write_text(
+            "@Provides\n"
+            "public Foo provideFoo() {\n"
+            "  return new Foo();\n"
+            "}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        assert not any(b.interface_name == "Foo" for b in bindings)
+
+
+# ===========================================================================
+# Java: Guice @ImplementedBy annotation
+# ===========================================================================
+
+
+class TestGuiceImplementedByBindings:
+    """Tests for Guice @ImplementedBy annotation on interfaces."""
+
+    def test_implemented_by_annotation(self, tmp_path: Path) -> None:
+        """@ImplementedBy(Impl.class) on interface produces binding."""
+        src = tmp_path / "Service.java"
+        src.write_text(
+            "@ImplementedBy(ServiceImpl.class)\n"
+            "public interface Service {\n"
+            "  void execute();\n"
+            "}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        assert any(
+            b.interface_name == "Service" and b.impl_name == "ServiceImpl"
+            and b.confidence == 0.85
+            for b in bindings
+        )
+
+    def test_implemented_by_with_fqn(self, tmp_path: Path) -> None:
+        """@ImplementedBy with fully-qualified class reference."""
+        src = tmp_path / "Service.java"
+        src.write_text(
+            "@ImplementedBy(com.example.impl.ServiceImpl.class)\n"
+            "public interface Service {\n"
+            "  void execute();\n"
+            "}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        assert any(
+            b.interface_name == "Service" and b.impl_name == "ServiceImpl"
+            for b in bindings
+        )
+
+    def test_implemented_by_without_public(self, tmp_path: Path) -> None:
+        """@ImplementedBy on package-private interface."""
+        src = tmp_path / "Service.java"
+        src.write_text(
+            "@ImplementedBy(ServiceImpl.class)\n"
+            "interface Service {\n"
+            "  void run();\n"
+            "}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        assert any(
+            b.interface_name == "Service" and b.impl_name == "ServiceImpl"
+            for b in bindings
+        )
+
+    def test_implemented_by_self_binding_ignored(self, tmp_path: Path) -> None:
+        """@ImplementedBy(Service.class) on interface Service is self-binding, ignored."""
+        src = tmp_path / "Service.java"
+        src.write_text(
+            "@ImplementedBy(Service.class)\n"
+            "public interface Service {\n"
+            "  void execute();\n"
+            "}\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        assert not any(b.interface_name == "Service" for b in bindings)
+
+    def test_implemented_by_explicit_bind_overrides(self, tmp_path: Path) -> None:
+        """Explicit bind().to() should override @ImplementedBy (higher confidence)."""
+        src = tmp_path / "Module.java"
+        src.write_text(
+            "@ImplementedBy(DefaultService.class)\n"
+            "public interface Service {\n"
+            "  void execute();\n"
+            "}\n"
+        )
+        src2 = tmp_path / "AppModule.java"
+        src2.write_text(
+            "bind(Service.class).to(CustomService.class);\n"
+        )
+        bindings = extract_bindings_from_source(tmp_path)
+        # Both should appear; the resolution cascade picks the higher-confidence one
+        iface_bindings = [b for b in bindings if b.interface_name == "Service"]
+        assert len(iface_bindings) == 2
+        # bind().to() has 0.90, @ImplementedBy has 0.85
+        confs = sorted([b.confidence for b in iface_bindings])
+        assert confs == [0.85, 0.90]
+
+
 class TestPassId:
     """Verify PASS_ID constant."""
 

@@ -31,7 +31,8 @@ How It Works
 
 Supported Frameworks
 --------------------
-Java: Guice, Spring (``@Bean``), CDI, SPI.  Kotlin: Koin.  C#: ASP.NET Core DI.
+Java: Guice (``bind().to()``, ``@Provides``, ``@ImplementedBy``), Spring
+(``@Bean``), CDI, SPI.  Kotlin: Koin, Guice.  C#: ASP.NET Core DI.
 TypeScript: NestJS, Angular, InversifyJS.  Python: injector.  Scala: Guice (same
 patterns as Java).
 """
@@ -98,6 +99,26 @@ _PYTHON_BIND = re.compile(
     r"\.bind\s*\(\s*(\w+)\s*,\s*to\s*=\s*(\w+)\s*\)",
 )
 
+# Java/Kotlin/Scala: Guice @Provides method — captures return type and new Impl()
+_GUICE_PROVIDES = re.compile(
+    r"@Provides\b[^{]*?"                          # @Provides with optional annotations
+    r"(?:public\s+|protected\s+|private\s+)?"     # optional access modifier
+    r"(\w+)\s+\w+\s*\([^)]*\)\s*\{"              # return-type method() {
+    r"[^}]*?new\s+(\w+)\s*\(",                    # new Impl(
+    re.DOTALL,
+)
+
+# Java: @ImplementedBy(Impl.class) on interface declaration
+# Group 1 = impl class (from annotation), group 2 = interface name
+_GUICE_IMPLEMENTED_BY = re.compile(
+    r"@ImplementedBy\s*\(\s*"
+    r"(?:[\w.]+\.)?(\w+)\.class"                  # Impl.class (optional FQN prefix)
+    r"\s*\)\s*"
+    r"(?:public\s+)?"                             # optional public
+    r"interface\s+(\w+)",                         # interface Name
+    re.DOTALL,
+)
+
 # Kotlin: single<IFoo> { FooImpl() }
 _KOIN_SINGLE = re.compile(
     r"single\s*<\s*(\w+)\s*>\s*\{[^}]*?(\w+)\s*\(\s*\)",
@@ -109,13 +130,16 @@ _PATTERNS_BY_EXT: dict[str, list[tuple[re.Pattern[str], float]]] = {
     ".java": [
         (_GUICE_BIND, 0.90),
         (_SPRING_BEAN, 0.90),
+        (_GUICE_PROVIDES, 0.90),
     ],
     ".kt": [
         (_GUICE_BIND, 0.90),
         (_KOIN_SINGLE, 0.90),
+        (_GUICE_PROVIDES, 0.90),
     ],
     ".scala": [
         (_GUICE_BIND, 0.90),
+        (_GUICE_PROVIDES, 0.90),
     ],
     ".cs": [
         (_CSHARP_DI, 0.90),
@@ -133,8 +157,17 @@ _PATTERNS_BY_EXT: dict[str, list[tuple[re.Pattern[str], float]]] = {
     ],
 }
 
-# Extensions to scan
-_SOURCE_EXTENSIONS = list(_PATTERNS_BY_EXT.keys())
+# Patterns where capture groups are reversed: group(1)=impl, group(2)=iface
+_REVERSED_PATTERNS_BY_EXT: dict[str, list[tuple[re.Pattern[str], float]]] = {
+    ".java": [
+        (_GUICE_IMPLEMENTED_BY, 0.85),
+    ],
+}
+
+# Extensions to scan (union of both pattern dicts)
+_SOURCE_EXTENSIONS = list(
+    set(_PATTERNS_BY_EXT.keys()) | set(_REVERSED_PATTERNS_BY_EXT.keys()),
+)
 _SOURCE_GLOBS = [f"*{ext}" for ext in _SOURCE_EXTENSIONS]
 
 
@@ -228,7 +261,8 @@ def extract_bindings_from_source(root: Path) -> list[DIBinding]:
     for file_path in find_files(root, _SOURCE_GLOBS):
         ext = file_path.suffix.lower()
         patterns = _PATTERNS_BY_EXT.get(ext, [])
-        if not patterns:
+        reversed_patterns = _REVERSED_PATTERNS_BY_EXT.get(ext, [])
+        if not patterns and not reversed_patterns:
             continue  # pragma: no cover - defensive
 
         try:
@@ -236,10 +270,10 @@ def extract_bindings_from_source(root: Path) -> list[DIBinding]:
         except OSError:  # pragma: no cover - defensive filesystem
             continue
 
+        # Standard patterns: group(1)=iface, group(2)=impl
         for regex, confidence in patterns:
             for match in regex.finditer(content):
                 iface_name, impl_name = match.group(1), match.group(2)
-                # Avoid self-bindings
                 if iface_name == impl_name:
                     continue
                 bindings.append(DIBinding(
@@ -247,6 +281,19 @@ def extract_bindings_from_source(root: Path) -> list[DIBinding]:
                     impl_name=impl_name,
                     confidence=confidence,
                     source=f"regex:{ext}",
+                ))
+
+        # Reversed patterns: group(1)=impl, group(2)=iface
+        for regex, confidence in reversed_patterns:
+            for match in regex.finditer(content):
+                impl_name, iface_name = match.group(1), match.group(2)
+                if iface_name == impl_name:
+                    continue
+                bindings.append(DIBinding(
+                    interface_name=iface_name,
+                    impl_name=impl_name,
+                    confidence=confidence,
+                    source=f"annotation:{ext}",
                 ))
 
     # SPI files
@@ -493,8 +540,9 @@ def link_di_resolution(ctx: LinkerContext) -> LinkerResult:
     priority=65,
     description=(
         "Creates di_resolves edges from interface methods to DI-bound "
-        "implementation methods (Guice, Spring, ASP.NET Core, NestJS, "
-        "Angular, Inversify, Koin, Python injector, Java SPI)"
+        "implementation methods (Guice bind/provides/implementedBy, "
+        "Spring, ASP.NET Core, NestJS, Angular, Inversify, Koin, "
+        "Python injector, Java SPI)"
     ),
     activation=LinkerActivation(always=True),
 )
