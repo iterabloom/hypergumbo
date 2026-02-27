@@ -412,6 +412,32 @@ class TestGetRegisteredAnalyzerLanguages:
         assert "javascript" in registered
         assert "typescript" in registered
 
+    def test_javascript_analyzer_covers_typescript(self) -> None:
+        """Analyzer registered as 'javascript' implies TypeScript support too.
+
+        The JS/TS analyzer is registered as 'javascript' via
+        @register_analyzer('javascript') but handles both .js and .ts files.
+        Without this mapping, repos with TypeScript files produce a spurious
+        'Typescript analyzer not installed' warning.
+        """
+        from unittest.mock import MagicMock, patch
+
+        from hypergumbo_core.partial_install_warnings import (
+            _get_registered_analyzer_languages,
+        )
+
+        mock_spec = MagicMock()
+        mock_spec.name = "javascript"
+
+        with patch(
+            "hypergumbo_core.analyze.all_analyzers.get_analyzers",
+            return_value=[mock_spec],
+        ):
+            registered = _get_registered_analyzer_languages()
+
+        assert "javascript" in registered
+        assert "typescript" in registered
+
     def test_handles_underscore_names(self) -> None:
         """Analyzer names with underscores map parts to languages."""
         from unittest.mock import patch, MagicMock

@@ -175,7 +175,7 @@ def _get_registered_analyzer_languages() -> set[str]:
         name = spec.name.lower()
 
         # Map common analyzer name patterns to language names
-        if name in ("javascript_ts", "js_ts", "js"):
+        if name in ("javascript_ts", "js_ts", "js", "javascript"):
             registered_languages.add("javascript")
             registered_languages.add("typescript")
         elif name in ("c_cpp", "cpp"):
