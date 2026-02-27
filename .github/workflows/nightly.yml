@@ -1,0 +1,173 @@
+name: Nightly Tests
+
+# Nightly workflow runs expensive cross-Python and integration tests.
+# Results are recorded as commit statuses so release.yml can skip them
+# when the release SHA was already covered by nightly.
+
+on:
+  schedule:
+    - cron: '0 23 * * *'  # 11 PM UTC daily
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-singleton
+  cancel-in-progress: false
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # Test matrix (Python versions on Linux)
+  # Lifted from release.yml — keeps multi-Python coverage running
+  # nightly instead of only at release time.
+  # ─────────────────────────────────────────────────────────────
+  test-matrix:
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+      fail-fast: false
+
+    runs-on: codeberg-small-lazy
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          if [ -d "packages/hypergumbo-core" ]; then
+            pip install -e "packages/hypergumbo-core[dev]" \
+                        -e packages/hypergumbo-lang-mainstream \
+                        -e packages/hypergumbo-lang-common \
+                        -e packages/hypergumbo-lang-extended1
+          else
+            pip install -e .[dev]
+          fi
+
+      - name: Build source-only grammars
+        run: ./scripts/build-source-grammars
+
+      - name: Check for sentence-transformers
+        run: |
+          if python -c "import sentence_transformers" 2>/dev/null; then
+            echo "sentence-transformers available"
+            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "sentence-transformers not installed, embedding tests will be skipped"
+            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run tests with coverage
+        run: |
+          if [ -d "packages/hypergumbo-core" ]; then
+            COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src"
+            TEST_PATHS="packages/*/tests/"
+          else
+            COV_PATHS="--cov=src"
+            TEST_PATHS=""
+          fi
+
+          if [ "$EMBEDDINGS_AVAILABLE" = "true" ]; then
+            pytest -n 2 $COV_PATHS --cov-report=term-missing --cov-fail-under=100 $TEST_PATHS
+          else
+            pytest -n 2 $COV_PATHS --cov-report=term-missing --cov-fail-under=100 \
+              --cov-config=.coveragerc.no-embeddings $TEST_PATHS
+          fi
+
+  # ─────────────────────────────────────────────────────────────
+  # Integration tests
+  # ─────────────────────────────────────────────────────────────
+  integration-tests:
+    runs-on: codeberg-small-lazy
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          if [ -d "packages/hypergumbo-core" ]; then
+            pip install -e "packages/hypergumbo-core[dev]" \
+                        -e packages/hypergumbo-lang-mainstream \
+                        -e packages/hypergumbo-lang-common \
+                        -e packages/hypergumbo-lang-extended1
+          else
+            pip install -e .[dev]
+          fi
+
+      - name: Build source-only grammars
+        run: ./scripts/build-source-grammars
+
+      - name: Install jq
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq || true
+
+      - name: Run integration tests
+        run: ./scripts/integration-test --quick
+
+  # ─────────────────────────────────────────────────────────────
+  # Report results as commit statuses
+  # ─────────────────────────────────────────────────────────────
+  report:
+    needs: [test-matrix, integration-tests]
+    if: always()
+    runs-on: codeberg-small-lazy
+
+    steps:
+      - name: Set commit statuses
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+        run: |
+          SHA="${{ github.sha }}"
+          REPO="${{ github.repository }}"
+          API="https://codeberg.org/api/v1/repos/${REPO}/statuses/${SHA}"
+
+          if [ -z "$FORGEJO_TOKEN" ]; then
+            echo "::warning::FORGEJO_TOKEN not set, skipping commit status updates"
+            exit 0
+          fi
+
+          # Report test-matrix status
+          MATRIX_STATE="success"
+          if [ "${{ needs.test-matrix.result }}" != "success" ]; then
+            MATRIX_STATE="failure"
+          fi
+          curl -s -X POST \
+            -H "Authorization: token $FORGEJO_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"state\": \"${MATRIX_STATE}\",
+              \"context\": \"nightly/test-matrix\",
+              \"description\": \"Nightly Python 3.10-3.13 test matrix\",
+              \"target_url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+            }" \
+            "$API"
+          echo "Set nightly/test-matrix status: $MATRIX_STATE"
+
+          # Report integration-tests status
+          INTEGRATION_STATE="success"
+          if [ "${{ needs.integration-tests.result }}" != "success" ]; then
+            INTEGRATION_STATE="failure"
+          fi
+          curl -s -X POST \
+            -H "Authorization: token $FORGEJO_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"state\": \"${INTEGRATION_STATE}\",
+              \"context\": \"nightly/integration-tests\",
+              \"description\": \"Nightly integration tests\",
+              \"target_url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+            }" \
+            "$API"
+          echo "Set nightly/integration-tests status: $INTEGRATION_STATE"

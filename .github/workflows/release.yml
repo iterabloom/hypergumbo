@@ -22,78 +22,52 @@ on:
 
 jobs:
   # ─────────────────────────────────────────────────────────────
-  # Test matrix (Python versions on Linux)
-  # Note: Forgejo/Codeberg only has Linux runners. Multi-platform
-  # testing should be done locally before tagging a release.
+  # Check if nightly already covered this SHA
+  # Queries Forgejo commit status API for nightly/test-matrix and
+  # nightly/integration-tests contexts set by nightly.yml.
   # ─────────────────────────────────────────────────────────────
-  test-matrix:
-    strategy:
-      matrix:
-        python-version: ['3.10', '3.11', '3.12', '3.13']
-      fail-fast: false
-
+  check-nightly:
     runs-on: codeberg-small-lazy
-
+    outputs:
+      matrix_covered: ${{ steps.check.outputs.matrix_covered }}
+      integration_covered: ${{ steps.check.outputs.integration_covered }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: 'pip'
-
-      - name: Install dependencies
+      - name: Check nightly commit statuses
+        id: check
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
         run: |
-          pip install --upgrade pip
-          # Install modular packages if available, otherwise legacy
-          # Note: Use hypergumbo-core[dev] for test deps, don't use meta-package (pulls PyTorch)
-          if [ -d "packages/hypergumbo-core" ]; then
-            pip install -e "packages/hypergumbo-core[dev]" \
-                        -e packages/hypergumbo-lang-mainstream \
-                        -e packages/hypergumbo-lang-common \
-                        -e packages/hypergumbo-lang-extended1
+          SHA="${{ github.sha }}"
+          REPO="${{ github.repository }}"
+          API="https://codeberg.org/api/v1/repos/${REPO}/statuses/${SHA}"
+
+          matrix_covered=false
+          integration_covered=false
+
+          if [ -n "$FORGEJO_TOKEN" ]; then
+            STATUSES=$(curl -s -H "Authorization: token $FORGEJO_TOKEN" "$API")
+
+            # Check for successful nightly/test-matrix status
+            if echo "$STATUSES" | jq -e '.[] | select(.context == "nightly/test-matrix" and .status == "success")' > /dev/null 2>&1; then
+              matrix_covered=true
+              echo "Nightly test-matrix already passed for $SHA"
+            fi
+
+            # Check for successful nightly/integration-tests status
+            if echo "$STATUSES" | jq -e '.[] | select(.context == "nightly/integration-tests" and .status == "success")' > /dev/null 2>&1; then
+              integration_covered=true
+              echo "Nightly integration-tests already passed for $SHA"
+            fi
           else
-            pip install -e .[dev]
+            echo "::warning::FORGEJO_TOKEN not set, cannot check nightly status"
           fi
 
-      - name: Build source-only grammars
-        run: ./scripts/build-source-grammars
-
-      - name: Check for sentence-transformers
-        run: |
-          # Don't try to install - just check if it's already available.
-          # Installing sentence-transformers on small runners often times out.
-          if python -c "import sentence_transformers" 2>/dev/null; then
-            echo "sentence-transformers available"
-            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
-          else
-            echo "sentence-transformers not installed, embedding tests will be skipped"
-            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
-          fi
-
-      - name: Run tests with coverage
-        run: |
-          # Use modular package paths if available
-          if [ -d "packages/hypergumbo-core" ]; then
-            COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src"
-            TEST_PATHS="packages/*/tests/"
-          else
-            COV_PATHS="--cov=src"
-            TEST_PATHS=""
-          fi
-
-          if [ "$EMBEDDINGS_AVAILABLE" = "true" ]; then
-            echo "Embeddings available - using standard coverage"
-            pytest -n 2 $COV_PATHS --cov-report=term-missing --cov-fail-under=100 $TEST_PATHS
-          else
-            echo "::warning::Embeddings unavailable - using reduced coverage config"
-            pytest -n 2 $COV_PATHS --cov-report=term-missing --cov-fail-under=100 \
-              --cov-config=.coveragerc.no-embeddings $TEST_PATHS
-          fi
+          echo "matrix_covered=$matrix_covered" >> "$GITHUB_OUTPUT"
+          echo "integration_covered=$integration_covered" >> "$GITHUB_OUTPUT"
+          echo "Matrix covered: $matrix_covered, Integration covered: $integration_covered"
 
   # ─────────────────────────────────────────────────────────────
-  # Security audit
+  # Security audit (always runs — hard gate before publish)
   # ─────────────────────────────────────────────────────────────
   security-audit:
     runs-on: codeberg-small-lazy
@@ -151,50 +125,12 @@ jobs:
           trufflehog filesystem . --no-update --only-verified || true
 
   # ─────────────────────────────────────────────────────────────
-  # Integration tests
-  # ─────────────────────────────────────────────────────────────
-  integration-tests:
-    runs-on: codeberg-small-lazy
-    timeout-minutes: 30
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          # Install modular packages if available, otherwise legacy
-          # Note: Use hypergumbo-core[dev] for test deps, don't use meta-package (pulls PyTorch)
-          if [ -d "packages/hypergumbo-core" ]; then
-            pip install -e "packages/hypergumbo-core[dev]" \
-                        -e packages/hypergumbo-lang-mainstream \
-                        -e packages/hypergumbo-lang-common \
-                        -e packages/hypergumbo-lang-extended1
-          else
-            pip install -e .[dev]
-          fi
-
-      - name: Build source-only grammars
-        run: ./scripts/build-source-grammars
-
-      - name: Install jq
-        run: |
-          sudo apt-get update && sudo apt-get install -y jq || true
-
-      - name: Run integration tests
-        run: ./scripts/integration-test --quick
-
-  # ─────────────────────────────────────────────────────────────
   # Build and publish
+  # Now only gated on security-audit. Test-matrix and integration
+  # are either covered by nightly or run post-publish as fallback.
   # ─────────────────────────────────────────────────────────────
   build-and-publish:
-    needs: [test-matrix, security-audit, integration-tests]
+    needs: [security-audit]
     runs-on: codeberg-small-lazy
 
     steps:
@@ -347,3 +283,109 @@ jobs:
           done
 
           echo "Release created: https://codeberg.org/${{ github.repository }}/releases/tag/$TAG"
+
+  # ─────────────────────────────────────────────────────────────
+  # Post-publish test matrix (runs only if nightly didn't cover it)
+  # Verifies multi-Python compatibility after publish. If this fails,
+  # the release is already out but the failure is visible for triage.
+  # ─────────────────────────────────────────────────────────────
+  post-publish-matrix:
+    needs: [check-nightly, build-and-publish]
+    if: needs.check-nightly.outputs.matrix_covered != 'true'
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+      fail-fast: false
+
+    runs-on: codeberg-small-lazy
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          if [ -d "packages/hypergumbo-core" ]; then
+            pip install -e "packages/hypergumbo-core[dev]" \
+                        -e packages/hypergumbo-lang-mainstream \
+                        -e packages/hypergumbo-lang-common \
+                        -e packages/hypergumbo-lang-extended1
+          else
+            pip install -e .[dev]
+          fi
+
+      - name: Build source-only grammars
+        run: ./scripts/build-source-grammars
+
+      - name: Check for sentence-transformers
+        run: |
+          if python -c "import sentence_transformers" 2>/dev/null; then
+            echo "sentence-transformers available"
+            echo "EMBEDDINGS_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "sentence-transformers not installed, embedding tests will be skipped"
+            echo "EMBEDDINGS_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run tests with coverage
+        run: |
+          if [ -d "packages/hypergumbo-core" ]; then
+            COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src"
+            TEST_PATHS="packages/*/tests/"
+          else
+            COV_PATHS="--cov=src"
+            TEST_PATHS=""
+          fi
+
+          if [ "$EMBEDDINGS_AVAILABLE" = "true" ]; then
+            pytest -n 2 $COV_PATHS --cov-report=term-missing --cov-fail-under=100 $TEST_PATHS
+          else
+            pytest -n 2 $COV_PATHS --cov-report=term-missing --cov-fail-under=100 \
+              --cov-config=.coveragerc.no-embeddings $TEST_PATHS
+          fi
+
+  # ─────────────────────────────────────────────────────────────
+  # Post-publish integration tests (runs only if nightly didn't cover it)
+  # ─────────────────────────────────────────────────────────────
+  post-publish-integration:
+    needs: [check-nightly, build-and-publish]
+    if: needs.check-nightly.outputs.integration_covered != 'true'
+    runs-on: codeberg-small-lazy
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          if [ -d "packages/hypergumbo-core" ]; then
+            pip install -e "packages/hypergumbo-core[dev]" \
+                        -e packages/hypergumbo-lang-mainstream \
+                        -e packages/hypergumbo-lang-common \
+                        -e packages/hypergumbo-lang-extended1
+          else
+            pip install -e .[dev]
+          fi
+
+      - name: Build source-only grammars
+        run: ./scripts/build-source-grammars
+
+      - name: Install jq
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq || true
+
+      - name: Run integration tests
+        run: ./scripts/integration-test --quick

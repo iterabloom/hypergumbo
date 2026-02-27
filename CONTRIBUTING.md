@@ -305,7 +305,7 @@ We maintain 100% test coverage. Two coverage configurations exist:
        data = None  # fallback
    ```
 
-**Release workflow note:** The release CI (`release.yml`) runs a test matrix on Python 3.10-3.13. The 3.10 jobs use `.coveragerc.no-embeddings` since sentence-transformers may not be available. If you add new embedding-related code, ensure it's either omitted or marked with pragma.
+**Release workflow note:** Multi-Python testing (3.10-3.13) and integration tests run nightly (`nightly.yml`), not during release. `release.yml` checks whether nightly already covered the release SHA — if so, it skips those jobs; otherwise they run post-publish as verification. The 3.10 jobs use `.coveragerc.no-embeddings` since sentence-transformers may not be available. If you add new embedding-related code, ensure it's either omitted or marked with pragma.
 
 ---
 

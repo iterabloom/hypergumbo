@@ -33,44 +33,48 @@ The release workflow starts under two conditions:
 
 ### Pipeline Stages
 
-The workflow runs four jobs in sequence:
+The workflow runs in two phases: pre-publish (hard gates) and post-publish (verification).
+
+Multi-Python matrix testing and integration tests now run nightly (`nightly.yml` at 11 PM UTC).
+The release workflow checks whether nightly already covered the release SHA. If so, those jobs
+are skipped entirely, making releases fast (security-audit + build-and-publish only). If not,
+they run post-publish as verification.
 
 ```
-┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
-│   test-matrix   │  │  security-audit │  │integration-tests│
-│  (Python 3.10-  │  │  (pip-audit,    │  │  (quick mode)   │
-│   3.13 on Linux)│  │  bandit, etc.)  │  │                 │
-└────────┬────────┘  └────────┬────────┘  └────────┬────────┘
-         │                    │                    │
-         └────────────────────┼────────────────────┘
-                              ▼
-                   ┌─────────────────────┐
-                   │  build-and-publish  │
-                   │  (only if all pass) │
-                   └─────────────────────┘
+┌──────────────┐  ┌─────────────────┐
+│check-nightly │  │  security-audit │  ← hard gate
+│(query commit │  │  (pip-audit,    │
+│ statuses)    │  │  bandit, etc.)  │
+└──────┬───────┘  └────────┬────────┘
+       │                   │
+       │                   ▼
+       │        ┌─────────────────────┐
+       │        │  build-and-publish  │
+       │        │  (gated on audit)   │
+       │        └────────┬────────────┘
+       │                 │
+       ▼                 ▼
+┌────────────────────────────────────────┐
+│  post-publish-matrix (if not covered)  │
+│  post-publish-integration (if not      │
+│  covered by nightly)                   │
+└────────────────────────────────────────┘
 ```
 
-#### Job 1: test-matrix
-- Runs tests on Python 3.10, 3.11, 3.12, and 3.13
-- Builds source-only grammars (tree-sitter-lean, tree-sitter-wolfram)
-- Requires 100% test coverage
-- Uses conditional coverage config when `sentence-transformers` unavailable
+#### Job 1: check-nightly
+- Queries Forgejo commit status API for `nightly/test-matrix` and `nightly/integration-tests`
+- Outputs `matrix_covered` and `integration_covered` booleans
+- If nightly already passed on the release SHA, post-publish jobs are skipped
 
-#### Job 2: security-audit
+#### Job 2: security-audit (hard gate)
 - **pip-audit**: Scans for known vulnerabilities in dependencies
 - **Bandit**: Security linting for Python code
 - **Safety**: Dependency safety check (advisory, non-blocking)
 - **pip-licenses**: Audits dependency licenses, warns on copyleft
 - **trufflehog**: Scans for accidentally committed secrets
 
-#### Job 3: integration-tests
-- Runs `./scripts/integration-test --quick`
-- Tests CLI functionality on real repositories
-- Uses lightweight repos only (Express) to avoid OOM on small runners
-- 30-minute timeout
-
-#### Job 4: build-and-publish
-Only runs if all previous jobs succeed.
+#### Job 3: build-and-publish
+Only runs if security-audit passes. No longer gated on test-matrix or integration-tests.
 
 1. **Build**: Creates wheel and source distribution
 2. **Checksums**: Generates SHA256SUMS for all artifacts
@@ -80,6 +84,18 @@ Only runs if all previous jobs succeed.
 6. **Create Forgejo Release**: Uses `FORGEJO_TOKEN` secret to:
    - Create a release with changelog notes
    - Upload wheel, tarball, checksums, and SBOM
+
+#### Job 4: post-publish-matrix (conditional)
+- Runs after build-and-publish, only if `check-nightly.outputs.matrix_covered != 'true'`
+- Tests on Python 3.10, 3.11, 3.12, and 3.13
+- Builds source-only grammars (tree-sitter-lean, tree-sitter-wolfram)
+- Requires 100% test coverage
+
+#### Job 5: post-publish-integration (conditional)
+- Runs after build-and-publish, only if `check-nightly.outputs.integration_covered != 'true'`
+- Runs `./scripts/integration-test --quick`
+- Tests CLI functionality on real repositories
+- 30-minute timeout
 
 ## Prerequisites
 

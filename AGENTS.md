@@ -144,7 +144,7 @@ TOTAL                   33003     10    99%
 FAIL Required test coverage of 100% not reached. Total coverage: 99.97%
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Full output: .ci/pytest-output.log
-Targeted run (14 test files, 3 changed sources). Full suite runs in CI after merge; running it now would be wasteful.
+Targeted run (14 test files, 3 changed sources). Full suite runs in CI every 4 hours (not post-merge); running it now would be wasteful.
 ```
 
 The Missing column shows exact line numbers to fix. **Do NOT re-run tests** just to find missing lines. The "Targeted run" message means smart-test already validated 100% coverage for your changed files — do NOT follow up with `pytest --full`.
@@ -414,6 +414,12 @@ When CI fails but tests pass locally, use `./scripts/ci-debug`:
 # Analyze tree-sitter dependencies (finds missing packages)
 ./scripts/ci-debug analyze-deps
 ```
+
+**CI workflow topology:**
+- **`ci.yml`**: Fast per-PR check (smart-test on changed packages). Gates merge.
+- **`full-suite.yml`**: Periodic validation (every 4 hours + manual dispatch). Runs all packages in parallel. Does NOT trigger on push to dev — with 20+ merges/day and singleton concurrency, the queue never clears. Stop-the-line fires from scheduled runs, so there may be a delay between a breaking merge and the andon cord — this is expected, not a bug.
+- **`nightly.yml`**: Runs at 11 PM UTC. Multi-Python matrix (3.10–3.13) and integration tests. Sets commit statuses (`nightly/test-matrix`, `nightly/integration-tests`) so release.yml can skip them when the release SHA was already covered. `ci-debug status` works for nightly runs too.
+- **`release.yml`**: Triggered by version tag push or manual dispatch. Security audit is a hard gate before publish. Test-matrix and integration-tests are deferred: if nightly already covered the SHA they're skipped, otherwise they run post-publish as verification.
 
 **Common root causes**:
 - **Missing dependencies**: Analyzer uses a package not listed in `pyproject.toml`

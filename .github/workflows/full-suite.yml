@@ -5,17 +5,14 @@ name: Full Test Suite
 # When any job fails, the stop-the-line protocol blocks PRs until fixed.
 
 on:
-  # Triggered after PR merges to dev
-  push:
-    branches: [ "dev" ]
-    paths-ignore:
-      - '.agent/tracker/.ops/**'
-      - '.agent/tracker-workspace/.ops/**'
   # Manual trigger for debugging
   workflow_dispatch:
-  # Nightly validation
+  # Periodic validation (every 4 hours)
+  # Post-merge push trigger removed: with 20+ merges/day and singleton
+  # concurrency, the queue never clears. Periodic runs catch regressions
+  # within hours while saving CI resources.
   schedule:
-    - cron: '0 4 * * *'  # 4 AM UTC daily
+    - cron: '0 */4 * * *'  # Every 4 hours
 
 # Singleton concurrency - only one full suite runs at a time
 # This prevents resource contention and ensures clear pass/fail state
