@@ -49,6 +49,9 @@ EXCLUDED_KINDS = frozenset({
     "font_face",        # CSS @font-face declarations
     "npm_package",      # external npm dependencies (inflate centrality)
     "module_file",      # synthetic JS/TS module resolution nodes
+    "section",          # markdown headings (inflate centrality over code)
+    "code_block",       # markdown fenced code blocks
+    "link",             # markdown links
 })
 
 # Path patterns indicating example/demo code
