@@ -77,3 +77,25 @@
   clock: 8  # 1c4e
   nonce: 1c4e  # 1c4e
   message: "let's make the invariant hold for the remaining languages"  # 1c4e
+- op: update  # 2c29
+  at: '2026-02-27T02:58:03Z'  # 2c29
+  by: agent  # 2c29
+  actor: jgstern_agent  # 2c29
+  clock: 9  # 2c29
+  nonce: 2c29  # 2c29
+  set:  # 2c29
+    status: holding  # 2c29
+- op: discuss  # b998
+  at: '2026-02-27T02:58:03Z'  # b998
+  by: agent  # b998
+  actor: jgstern_agent  # b998
+  clock: 10  # b998
+  nonce: b998  # b998
+  message: "All languages now comply. Adoption: Go, PHP, JS/TS, Kotlin, C#, Groovy, Dart (prior). Ruby, Java, Rust (this PR). Python exempt — SymbolResolver uses (module, name) tuple keys, inherently module-qualified."  # b998
+- op: discuss  # 44c6
+  at: '2026-02-27T02:58:09Z'  # 44c6
+  by: agent  # 44c6
+  actor: jgstern_agent  # 44c6
+  clock: 11  # 44c6
+  nonce: 44c6  # 44c6
+  message: "Done. Ruby: added ListNameResolver for receiver-call fallback path. Rust: replaced ad-hoc 3/N penalty with ListNameResolver(ambiguity_threshold=3). Java: added method registry infrastructure (invariant already held by construction — qualified lookups). Python: exempt — SymbolResolver uses (module, symbol) tuple keys, no bare method name fallback exists. Dart: was already adopted."  # 44c6
