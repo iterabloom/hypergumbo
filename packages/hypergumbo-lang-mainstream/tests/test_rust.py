@@ -728,6 +728,36 @@ fn decorated() {}
         edges = _extract_attribute_edges([sym], {}, "test-run")
         assert edges == []
 
+    def test_builtin_attributes_produce_no_edges(self, tmp_path: Path) -> None:
+        """Built-in attributes like derive, test, cfg produce zero edges.
+
+        Previously builtins produced unresolved edges
+        (e.g. ``rust:unresolved:0-0:derive:unresolved`` with 175 in-edges).
+        """
+        from hypergumbo_lang_mainstream.rust import _extract_attribute_edges
+        from hypergumbo_core.ir import Symbol, Span
+
+        sym = Symbol(
+            id="test:my_struct",
+            name="MyStruct",
+            kind="struct",
+            language="rust",
+            path="test.rs",
+            span=Span(start_line=1, end_line=5, start_col=0, end_col=1),
+            origin="test",
+            meta={"annotations": [
+                {"name": "derive", "args": ["Debug", "Clone"]},
+                {"name": "test"},
+                {"name": "cfg", "args": ["test"]},
+                {"name": "allow", "args": ["dead_code"]},
+            ]},
+        )
+        edges = _extract_attribute_edges([sym], {}, "test-run")
+        assert edges == [], (
+            f"Built-in attributes should produce no edges, got: "
+            f"{[(e.dst, e.edge_type) for e in edges]}"
+        )
+
 
 class TestReexportResolution:
     """Tests for pub use re-export resolution."""

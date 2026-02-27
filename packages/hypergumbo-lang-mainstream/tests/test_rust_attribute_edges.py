@@ -68,8 +68,12 @@ fn handler() {}
 
         assert len(decorated_by_edges) >= 2, "Expected two decorated_by edges for stacked attributes"
 
-    def test_struct_derive_creates_edge(self, tmp_path: Path) -> None:
-        """A #[derive(...)] on a struct creates a decorated_by edge."""
+    def test_struct_derive_produces_no_edge(self, tmp_path: Path) -> None:
+        """A #[derive(...)] on a struct produces no decorated_by edge.
+
+        Built-in attributes are skipped entirely to avoid noise
+        (derive used to produce 175 unresolved in-edges in mermaid-rs).
+        """
         code = '''
 #[derive(Debug)]
 struct User {
@@ -81,19 +85,16 @@ struct User {
 
         result = analyze_rust(tmp_path)
 
-        # Find decorated_by edges
         decorated_by_edges = [
             e for e in result.edges
             if e.edge_type == "decorated_by"
         ]
 
-        # Should have edge from User to derive
-        assert len(decorated_by_edges) >= 1, "Expected at least one decorated_by edge for derive"
-
-        edge = decorated_by_edges[0]
-        assert "User" in edge.src
-        # derive is the attribute name
-        assert "derive" in edge.dst
+        # Built-in derive should produce NO edge
+        assert len(decorated_by_edges) == 0, (
+            f"Expected no decorated_by edges for derive but got: "
+            f"{[(e.src, e.dst) for e in decorated_by_edges]}"
+        )
 
     def test_actix_web_attribute_creates_edge(self, tmp_path: Path) -> None:
         """A #[get("/path")] Actix-web attribute creates a decorated_by edge."""
@@ -146,8 +147,8 @@ async fn api_handler() -> String {
         # Qualified name includes path
         assert "actix_web::get" in edge.dst or "get" in edge.dst
 
-    def test_enum_attribute_creates_edge(self, tmp_path: Path) -> None:
-        """A #[derive(...)] on an enum creates a decorated_by edge."""
+    def test_enum_derive_produces_no_edge(self, tmp_path: Path) -> None:
+        """A #[derive(...)] on an enum produces no decorated_by edge."""
         code = '''
 #[derive(Clone)]
 enum Status {
@@ -160,20 +161,22 @@ enum Status {
 
         result = analyze_rust(tmp_path)
 
-        # Find decorated_by edges for Status
         decorated_by_edges = [
             e for e in result.edges
             if e.edge_type == "decorated_by" and "Status" in e.src
         ]
 
-        assert len(decorated_by_edges) >= 1, "Expected decorated_by edge for enum derive"
+        assert len(decorated_by_edges) == 0, (
+            f"Built-in #[derive] should produce no edge but got: "
+            f"{[(e.src, e.dst) for e in decorated_by_edges]}"
+        )
 
-    def test_trait_attribute_creates_edge(self, tmp_path: Path) -> None:
-        """A #[attribute] on a trait creates a decorated_by edge."""
+    def test_trait_custom_attribute_creates_edge(self, tmp_path: Path) -> None:
+        """A non-built-in #[custom] attribute on a trait creates a decorated_by edge."""
         code = '''
-fn deprecated() {}
+fn my_custom() {}
 
-#[deprecated]
+#[my_custom]
 trait OldApi {
     fn old_method(&self);
 }
@@ -183,13 +186,12 @@ trait OldApi {
 
         result = analyze_rust(tmp_path)
 
-        # Find decorated_by edges for OldApi
         decorated_by_edges = [
             e for e in result.edges
             if e.edge_type == "decorated_by" and "OldApi" in e.src
         ]
 
-        assert len(decorated_by_edges) >= 1, "Expected decorated_by edge for trait attribute"
+        assert len(decorated_by_edges) >= 1, "Expected decorated_by edge for custom attribute"
 
 
 class TestRustBuiltinAttributeFalsePositives:
@@ -205,7 +207,7 @@ class TestRustBuiltinAttributeFalsePositives:
     """
 
     def test_test_attr_does_not_resolve_to_test_function(self, tmp_path: Path) -> None:
-        """#[test] must not create a resolved edge to a function named 'test'."""
+        """#[test] must not create any edge — not even an unresolved one."""
         code = '''
 fn test() -> bool {
     true
@@ -225,15 +227,13 @@ fn it_works() {
             e for e in result.edges
             if e.edge_type == "decorated_by" and "it_works" in e.src
         ]
-        assert len(decorated_by_edges) == 1, "Expected exactly one decorated_by edge"
-        edge = decorated_by_edges[0]
-        # Must be unresolved — NOT pointing at the user function named "test"
-        assert "unresolved" in edge.dst, (
-            f"#[test] should be unresolved but resolved to {edge.dst}"
+        assert len(decorated_by_edges) == 0, (
+            f"Built-in #[test] should produce no edge but got: "
+            f"{[(e.src, e.dst) for e in decorated_by_edges]}"
         )
 
     def test_cfg_attr_does_not_resolve_to_cfg_function(self, tmp_path: Path) -> None:
-        """#[cfg(test)] must not resolve to a function named 'cfg'."""
+        """#[cfg(test)] must not create any edge."""
         code = '''
 fn cfg() -> String {
     "config".to_string()
@@ -253,14 +253,13 @@ mod tests {
             e for e in result.edges
             if e.edge_type == "decorated_by" and "tests" in e.src
         ]
-        for edge in decorated_by_edges:
-            if "cfg" in edge.dst:
-                assert "unresolved" in edge.dst, (
-                    f"#[cfg(...)] should be unresolved but resolved to {edge.dst}"
-                )
+        assert len(decorated_by_edges) == 0, (
+            f"Built-in #[cfg] should produce no edge but got: "
+            f"{[(e.src, e.dst) for e in decorated_by_edges]}"
+        )
 
     def test_allow_attr_does_not_resolve_to_allow_function(self, tmp_path: Path) -> None:
-        """#[allow(unused)] must not resolve to a function named 'allow'."""
+        """#[allow(unused)] must not create any edge."""
         code = '''
 fn allow() {}
 
@@ -276,14 +275,13 @@ fn unused_fn() {}
             e for e in result.edges
             if e.edge_type == "decorated_by" and "unused_fn" in e.src
         ]
-        assert len(decorated_by_edges) == 1
-        edge = decorated_by_edges[0]
-        assert "unresolved" in edge.dst, (
-            f"#[allow(...)] should be unresolved but resolved to {edge.dst}"
+        assert len(decorated_by_edges) == 0, (
+            f"Built-in #[allow] should produce no edge but got: "
+            f"{[(e.src, e.dst) for e in decorated_by_edges]}"
         )
 
     def test_inline_attr_does_not_resolve_to_inline_function(self, tmp_path: Path) -> None:
-        """#[inline] must not resolve to a function named 'inline'."""
+        """#[inline] must not create any edge."""
         code = '''
 fn inline() {}
 
@@ -301,10 +299,9 @@ fn fast_path() -> i32 {
             e for e in result.edges
             if e.edge_type == "decorated_by" and "fast_path" in e.src
         ]
-        assert len(decorated_by_edges) == 1
-        edge = decorated_by_edges[0]
-        assert "unresolved" in edge.dst, (
-            f"#[inline] should be unresolved but resolved to {edge.dst}"
+        assert len(decorated_by_edges) == 0, (
+            f"Built-in #[inline] should produce no edge but got: "
+            f"{[(e.src, e.dst) for e in decorated_by_edges]}"
         )
 
     def test_custom_proc_macro_still_resolves(self, tmp_path: Path) -> None:
@@ -331,7 +328,7 @@ fn handler() {}
         assert "unresolved" not in edge.dst
 
     def test_must_use_attr_does_not_resolve(self, tmp_path: Path) -> None:
-        """#[must_use] must not resolve to a function named 'must_use'."""
+        """#[must_use] must not create any edge."""
         code = '''
 fn must_use() {}
 
@@ -349,14 +346,13 @@ fn compute() -> i32 {
             e for e in result.edges
             if e.edge_type == "decorated_by" and "compute" in e.src
         ]
-        assert len(decorated_by_edges) == 1
-        edge = decorated_by_edges[0]
-        assert "unresolved" in edge.dst, (
-            f"#[must_use] should be unresolved but resolved to {edge.dst}"
+        assert len(decorated_by_edges) == 0, (
+            f"Built-in #[must_use] should produce no edge but got: "
+            f"{[(e.src, e.dst) for e in decorated_by_edges]}"
         )
 
-    def test_derive_attr_still_unresolved(self, tmp_path: Path) -> None:
-        """#[derive(Debug)] should remain unresolved (it's a built-in)."""
+    def test_derive_attr_skipped_entirely(self, tmp_path: Path) -> None:
+        """#[derive(Debug)] should produce no edge (built-in, skipped)."""
         code = '''
 fn derive() {}
 
@@ -374,12 +370,10 @@ struct Foo {
             e for e in result.edges
             if e.edge_type == "decorated_by" and "Foo" in e.src
         ]
-        assert len(decorated_by_edges) >= 1
-        for edge in decorated_by_edges:
-            if "derive" in edge.dst:
-                assert "unresolved" in edge.dst, (
-                    f"#[derive] should be unresolved but resolved to {edge.dst}"
-                )
+        assert len(decorated_by_edges) == 0, (
+            f"Built-in #[derive] should produce no edge but got: "
+            f"{[(e.src, e.dst) for e in decorated_by_edges]}"
+        )
 
 
 class TestRustAttributeEdgesDefensiveBranches:

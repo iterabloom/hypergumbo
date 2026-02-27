@@ -1047,17 +1047,17 @@ def _extract_attribute_edges(
                 continue
 
             # Built-in attributes must never resolve to user symbols.
-            # Skip resolution entirely for these — they have no user-space
-            # definition and matching by name creates false edges.
+            # Skip entirely — they have no user-space definition, and even
+            # unresolved edges create noise (derive gets 175 in-edges).
             if attr_name in _BUILTIN_RUST_ATTRIBUTES:
-                attr_sym = None
-            else:
-                # Try to resolve the attribute to a symbol
-                # For qualified names like "actix_web::get", try both full and short name
-                attr_sym = global_symbols.get(attr_name)
-                if not attr_sym and "::" in attr_name:
-                    short_name = attr_name.rsplit("::", 1)[-1]
-                    attr_sym = global_symbols.get(short_name)
+                continue
+
+            # Try to resolve the attribute to a symbol
+            # For qualified names like "actix_web::get", try both full and short name
+            attr_sym = global_symbols.get(attr_name)
+            if not attr_sym and "::" in attr_name:
+                short_name = attr_name.rsplit("::", 1)[-1]
+                attr_sym = global_symbols.get(short_name)
 
             line = sym.span.start_line if sym.span else 0
 
