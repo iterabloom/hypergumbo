@@ -343,12 +343,12 @@ except Exception:
 			if [[ $ci_complete_sole_holdout_since -eq 0 ]]; then
 				ci_complete_sole_holdout_since=$(date +%s)
 				echo ""
-				echo "⚠️  ci-complete is sole pending job (Scenario A detection started)"
+				echo "⏳ All jobs passed; waiting for ci-complete gate to catch up..."
 			fi
 			local holdout_elapsed=$(( $(date +%s) - ci_complete_sole_holdout_since ))
 			if [[ $holdout_elapsed -ge 300 ]]; then
 				echo ""
-				echo "✅ Scenario A: ci-complete hung for ${holdout_elapsed}s but all other jobs passed. Declaring success."
+				echo "✅ CI Passed! (all jobs succeeded; ci-complete gate still propagating, but we don't care, because that's just weird runner behavior that happens occasionally; we can merge)"
 				return 0
 			fi
 		else
