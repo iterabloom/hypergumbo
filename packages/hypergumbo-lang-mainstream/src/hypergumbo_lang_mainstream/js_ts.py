@@ -2407,8 +2407,18 @@ def _is_shadowed_by_param(node: "tree_sitter.Node", name: str, source: bytes) ->
     ``resolve`` / ``reject`` inside ``new Promise((resolve, reject) => {...})``)
     happens to share a name with a globally-defined function.
 
-    Stops walking after the first enclosing function body boundary to avoid
-    leaking scope outward.
+    Walks through ALL enclosing function boundaries (not just the nearest)
+    because JavaScript has lexical scoping — parameters from outer functions
+    are visible in nested callbacks.  For example::
+
+        new Promise(function(resolve, reject) {
+            doAsync(function(err) {
+                resolve(42);  // resolve is from the OUTER function
+            });
+        });
+
+    Stops at ``function_declaration`` boundaries since those represent
+    named top-level functions that form the analysis unit.
     """
     current = node.parent
     while current is not None:
@@ -2434,11 +2444,13 @@ def _is_shadowed_by_param(node: "tree_sitter.Node", name: str, source: bytes) ->
                 if current.type == "arrow_function" and child.type == "identifier":
                     if _node_text(child, source) == name:
                         return True
-            # Found an enclosing function but name is not a param — stop checking.
-            # The name could be a local variable in an outer scope, but that's
-            # a separate (and rarer) concern; we only guard against parameter
-            # shadowing here.
-            return False
+            # Not found in this function's params.  For named function
+            # declarations (top-level), stop — these are analysis units.
+            # For closures (arrow_function, function_expression), continue
+            # walking up since JS lexical scoping makes outer params visible.
+            if current.type == "function_declaration":
+                return False
+            # else: keep walking up through closure scopes
         current = current.parent
     return False
 

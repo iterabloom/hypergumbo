@@ -6278,6 +6278,40 @@ function getEmail(s: string) {
             f"resolve() in TS function expression should not resolve to global, got: {false_edges}"
         )
 
+    def test_nested_callback_inherits_outer_param(
+        self, tmp_path: Path
+    ) -> None:
+        """resolve() in nested callback inherits param from outer closure."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "other.js").write_text(
+            "function resolve(x) { return x; }\n"
+        )
+        (tmp_path / "app.ts").write_text("""
+function saveData(zid: number) {
+    return new Promise(function(
+        resolve: (arg0: number) => void,
+        reject: (arg0: any) => void
+    ) {
+        doAsync(zid, function(err: any) {
+            if (err) {
+                reject(err);
+            } else {
+                resolve(0);
+            }
+        });
+    });
+}
+""")
+        result = analyze_javascript(tmp_path)
+        false_edges = [
+            e for e in result.edges if e.edge_type == "calls"
+            and "saveData" in e.src and "resolve" in e.dst
+        ]
+        assert len(false_edges) == 0, (
+            f"resolve() in nested callback should not resolve to global, got: {false_edges}"
+        )
+
     def test_callback_param_shadows_global(
         self, tmp_path: Path
     ) -> None:
