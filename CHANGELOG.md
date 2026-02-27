@@ -121,6 +121,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Supply chain
 
 - **Maven multi-module workspace detection**: `detect_package_roots()` now parses Maven parent `pom.xml` for `<modules>` elements and registers child module directories as internal package roots. Fixes supply chain tier classification for Maven multi-module projects like guacamole-client where all nodes were incorrectly classified as tier 1. Module source code (`src/main/java/`) gets tier 1; non-source files get tier 2. Handles Maven XML namespace (`xmlns="http://maven.apache.org/POM/4.0.0"`).
+- **Exception/error class centrality dampening**: `is_utility_symbol()` now detects PascalCase exception and error class names (`*Exception`, `*Error`) as infrastructure utility symbols. Applies 90% centrality reduction, preventing `GuacamoleServerException` (deg=83), `GuacamoleSecurityException` (deg=73), and similar thrown/caught infrastructure from dominating rankings over domain symbols like `UserService` and `ObjectPermission`.
 
 #### Tracker
 

@@ -348,6 +348,7 @@ def apply_noise_weights(
 #   - Timing: Clock, DefaultClock, SystemClock
 #   - Metrics: Metrics, MetricsCollector, metricsRecorder
 #   - Error sentinels: ErrNotFound, ErrTimeout (Go convention)
+#   - Exception/error classes: IOException, ValueError, GuacamoleServerException
 #   - STL accessors: empty, size, begin, end, length
 #   - Boilerplate: toString, hashCode, equals, __repr__, __str__, __hash__, __eq__
 _UTILITY_SYMBOL_PATTERNS: list[re.Pattern[str]] = [
@@ -362,6 +363,11 @@ _UTILITY_SYMBOL_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"(?i)clock$"),           # Clock, DefaultClock, SystemClock
     re.compile(r"(?i)^metrics"),         # Metrics, MetricsCollector
     re.compile(r"(?i)^err[A-Z_]"),       # ErrNotFound, ErrTimeout, err_invalid
+    # Exception/error classes: thrown/caught infrastructure, not domain logic.
+    # Catches: IOException, GuacamoleServerException, ValueError, TypeError.
+    # Avoids: ExceptionHandler, ErrorHandler, ErrorResponse, ErrorBoundary.
+    re.compile(r"(?i)Exception$"),       # Java/C# exception classes
+    re.compile(r"^[A-Z].*Error$"),       # PascalCase error classes (ValueError, TypeError)
     re.compile(r"^(?:empty|size|begin|end|length|capacity)$"),  # STL accessors
     re.compile(r"^(?:insert|erase|push_back|pop_back|front|back|clear|swap|reserve|resize|at)$"),
     re.compile(r"^(?:toString|hashCode|equals|compareTo|clone|finalize)$"),  # Java boilerplate

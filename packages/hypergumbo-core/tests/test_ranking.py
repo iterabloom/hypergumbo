@@ -1977,6 +1977,38 @@ class TestIsUtilitySymbol:
         assert not is_utility_symbol("dialog")
         assert not is_utility_symbol("catalog")
 
+    def test_exception_class_names(self):
+        """Exception/error classes are utility (thrown/caught infrastructure)."""
+        # Java-style exceptions
+        assert is_utility_symbol("GuacamoleServerException")
+        assert is_utility_symbol("GuacamoleSecurityException")
+        assert is_utility_symbol("IOException")
+        assert is_utility_symbol("RuntimeException")
+        assert is_utility_symbol("NullPointerException")
+        # Python-style errors
+        assert is_utility_symbol("ValueError")
+        assert is_utility_symbol("TypeError")
+        assert is_utility_symbol("KeyError")
+        assert is_utility_symbol("FileNotFoundError")
+        # C#-style exceptions
+        assert is_utility_symbol("ArgumentNullException")
+        assert is_utility_symbol("InvalidOperationException")
+        # Custom project exceptions
+        assert is_utility_symbol("GuacamoleUnsupportedException")
+        assert is_utility_symbol("GuacamoleResourceNotFoundException")
+
+    def test_exception_false_positives(self):
+        """Names containing 'Exception'/'Error' as substrings are NOT matched.
+
+        Note: ErrorHandler, ErrorResponse etc. ARE already matched by the
+        existing Go error sentinel pattern ``^err[A-Z_]`` — that's correct.
+        """
+        # ExceptionHandler ends with "Handler", not "Exception"
+        assert not is_utility_symbol("ExceptionHandler")
+        # camelCase compound words starting with lowercase
+        assert not is_utility_symbol("handleError")
+        assert not is_utility_symbol("showError")
+
     def test_domain_names_not_matched(self):
         """Domain-relevant symbol names are NOT detected as utility."""
         assert not is_utility_symbol("handleRequest")
