@@ -3040,7 +3040,11 @@ def _extract_edges(
                                     resolved = global_symbols.get(fn_name)
                                     break
                         if resolved is not None and resolved.kind in ("function", "method", "route"):
-                            chain_symbols.append(resolved)
+                            # Cross-package guard: middleware chain symbols
+                            # should come from the same package as the
+                            # route registration file.
+                            if not _is_cross_package(file_path, resolved.path):
+                                chain_symbols.append(resolved)
                     # Create edges between consecutive chain entries
                     for i in range(len(chain_symbols) - 1):
                         src_sym = chain_symbols[i]

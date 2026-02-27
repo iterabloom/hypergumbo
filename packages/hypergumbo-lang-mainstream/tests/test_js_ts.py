@@ -6866,6 +6866,45 @@ class TestCrossPackageGuardAllPaths:
             f"Shorthand prop ref should not cross package boundary: {ref_edges}"
         )
 
+    def test_middleware_chain_no_cross_package(
+        self, tmp_path: Path
+    ) -> None:
+        """Middleware chain should not include cross-package symbols.
+
+        ``app.get('/path', timeout(15000), moveToBody, handler)`` should
+        only chain symbols from the same npm package. If ``timeout``
+        resolves to a function in a different package, it must be skipped.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "server" / "package.json").parent.mkdir()
+        (tmp_path / "server" / "package.json").write_text('{"name": "server"}')
+        (tmp_path / "server" / "middleware.js").write_text(
+            "function moveToBody(req, res, next) { next(); }\n"
+            "function handler(req, res) { res.send('ok'); }\n"
+        )
+        (tmp_path / "server" / "app.js").write_text(
+            "const app = require('express')();\n"
+            "app.get('/api/data', timeout(15000), moveToBody, handler);\n"
+        )
+        (tmp_path / "client" / "package.json").parent.mkdir()
+        (tmp_path / "client" / "package.json").write_text('{"name": "client"}')
+        (tmp_path / "client" / "utils.js").write_text(
+            "function timeout(ms) { return setTimeout(() => {}, ms); }\n"
+        )
+        result = analyze_javascript(tmp_path)
+        chain_edges = [
+            e for e in result.edges
+            if e.evidence_type == "middleware_chain"
+        ]
+        for edge in chain_edges:
+            assert "client" not in edge.src, (
+                f"Middleware chain should not use cross-package symbol: {edge.src}"
+            )
+            assert "client" not in edge.dst, (
+                f"Middleware chain should not use cross-package symbol: {edge.dst}"
+            )
+
     def test_direct_call_fallback_no_cross_package(
         self, tmp_path: Path
     ) -> None:
