@@ -76,3 +76,17 @@
   clock: 9  # 9260
   nonce: '9260'  # 9260
   message: "is all relevant documentation up-to-date in light of these fixes? do these fixes apply to bakeoffs both for DEEP mode *and* for BROAD mode? is the scenario of autonomous mode active but no bakeoff worth considering?"  # 9260
+- op: discuss  # b245
+  at: '2026-02-26T23:51:59Z'  # b245
+  by: agent  # b245
+  actor: jgstern_agent  # b245
+  clock: 10  # b245
+  nonce: b245  # b245
+  message: "Yes, documentation is up-to-date: AGENTS.md documents both bakeoff-features (DEEP) and bakeoff (BROAD) commands, and CHANGELOG.md covers the status/compare/active subcommands. The reflect_statuses fix applies to DEEP mode only (bakeoff-features-reflect). BROAD mode uses a separate bakeoff-reflect script with its own state tracking. The autonomous-mode-active-but-no-bakeoff scenario is handled: the stop hook's bakeoff convergence section simply shows nothing if no bakeoff session exists — the guidance focuses on tracker items and priority queue instead."  # b245
+- op: discuss  # 7033
+  at: '2026-02-27T00:29:04Z'  # 7033
+  by: human  # 7033
+  actor: jgstern  # 7033
+  clock: 11  # 7033
+  nonce: '7033'  # 7033
+  message: "\"CHANGELOG.md covers the status/compare/active subcommands\" -- but that's the wrong place to go into detail; that info ought to be in the command docstring/help plus AGENTS.md/other agent-facing instructions."  # 7033

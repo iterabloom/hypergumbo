@@ -1,0 +1,19 @@
+- op: create  # fbce
+  at: '2026-02-27T00:40:50Z'  # fbce
+  by: agent  # fbce
+  actor: jgstern_agent  # fbce
+  clock: 1  # fbce
+  nonce: fbce  # fbce
+  data:  # fbce
+    kind: work_item  # fbce
+    title: "C analyzer: orphaned header declarations inflate orphan rate by 15-20pp"  # fbce
+    status: todo_soft  # fbce
+    priority: 3  # fbce
+    parent:  # fbce
+    tags: []  # fbce
+    before: []  # fbce
+    duplicate_of: []  # fbce
+    not_duplicate_of: []  # fbce
+    pr_ref:  # fbce
+    description: ""  # fbce
+    fields: {}  # fbce
