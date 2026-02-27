@@ -3605,6 +3605,74 @@ function run() {
             "Namespace import path_hint should disambiguate when same function exists in multiple modules."
         )
 
+    def test_named_import_disambiguates_same_name_functions(self, tmp_path: Path) -> None:
+        """Named imports (import { X } from) disambiguate same-name functions.
+
+        When two files define the same function name, a named import should
+        resolve calls to the correct module via import path disambiguation.
+        Previously, direct calls like ``process()`` after
+        ``import { process } from './dir_a/utils'`` would resolve to whichever
+        file was processed last (global_symbols last-one-wins), ignoring the
+        import statement entirely.
+
+        Uses two consumers (one importing from each dir) so the test is
+        order-independent: regardless of which symbol wins global_symbols,
+        one consumer MUST break without the fix.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        dir_a = tmp_path / "dir_a"
+        dir_a.mkdir()
+        (dir_a / "utils.js").write_text(
+            "export function process() {\n    return 'A';\n}\n"
+        )
+
+        dir_b = tmp_path / "dir_b"
+        dir_b.mkdir()
+        (dir_b / "utils.js").write_text(
+            "export function process() {\n    return 'B';\n}\n"
+        )
+
+        # Two consumers, each importing process() from a different module
+        (tmp_path / "consumer_a.js").write_text(
+            "import { process } from './dir_a/utils';\n"
+            "\n"
+            "function useA() {\n"
+            "    process();\n"
+            "}\n"
+        )
+        (tmp_path / "consumer_b.js").write_text(
+            "import { process } from './dir_b/utils';\n"
+            "\n"
+            "function useB() {\n"
+            "    process();\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        # Find edge from useA -> process
+        edge_a = next(
+            (e for e in call_edges if "useA" in e.src and "process" in e.dst), None,
+        )
+        assert edge_a is not None, "Expected call edge from useA to process"
+        assert "dir_a" in edge_a.dst, (
+            f"useA imports from dir_a but edge resolves to {edge_a.dst}. "
+            "Named import should disambiguate direct calls."
+        )
+
+        # Find edge from useB -> process
+        edge_b = next(
+            (e for e in call_edges if "useB" in e.src and "process" in e.dst), None,
+        )
+        assert edge_b is not None, "Expected call edge from useB to process"
+        assert "dir_b" in edge_b.dst, (
+            f"useB imports from dir_b but edge resolves to {edge_b.dst}. "
+            "Named import should disambiguate direct calls."
+        )
+
     def test_new_namespace_class_disambiguates(self, tmp_path: Path) -> None:
         """When same class name exists in multiple modules, namespace import disambiguates.
 

@@ -2556,13 +2556,29 @@ def _extract_edges(
                     # Regular function call - use resolver for suffix matching
                     current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset)
                     if current_function:
-                        lookup_result = resolver.lookup(func_name)
-                        if lookup_result.found:
-                            # Scale confidence by resolver's confidence multiplier
-                            edge_confidence = 0.85 * lookup_result.confidence
+                        # Try import-path disambiguation first (cross-package
+                        # same-name functions, e.g. two packages both export
+                        # ``process()`` but main.js imports from one specific
+                        # module).  Falls back to resolver if no named import
+                        # exists for this function name.
+                        callee = None
+                        edge_confidence = 0.85
+                        import_module = (named_imports or {}).get(func_name)
+                        if import_module and symbols_by_name:
+                            callee = _disambiguate_by_import(
+                                import_module, file_path, func_name, symbols_by_name,
+                            )
+                            if callee is not None:
+                                edge_confidence = 0.90  # explicit import match
+                        if callee is None:
+                            lookup_result = resolver.lookup(func_name)
+                            if lookup_result.found:
+                                callee = lookup_result.symbol
+                                edge_confidence = 0.85 * lookup_result.confidence
+                        if callee is not None:
                             edge = Edge.create(
                                 src=current_function.id,
-                                dst=lookup_result.symbol.id,
+                                dst=callee.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1 + line_offset,
                                 origin=PASS_ID,
@@ -2574,10 +2590,9 @@ def _extract_edges(
 
                             # Return type inference: if function has a return
                             # type annotation, track the variable's type
-                            resolved_sym = lookup_result.symbol
-                            if resolved_sym.kind in ("function", "method"):
+                            if callee.kind in ("function", "method"):
                                 ret_name = _extract_jsts_return_type_name(
-                                    resolved_sym.signature
+                                    callee.signature
                                 )
                                 if ret_name and node.parent and node.parent.type == "variable_declarator":
                                     # Check return type is a known class
