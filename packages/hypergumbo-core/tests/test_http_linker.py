@@ -278,6 +278,177 @@ class TestScanJavaScriptFile:
         assert calls[0].method == "DELETE"
         assert calls[0].url == "/api/v1/users/"
 
+    def test_angularjs_http_get(self):
+        """Detects AngularJS $http.get('/api/users')."""
+        code = dedent('''
+            $http.get('/api/users')
+        ''')
+        calls = _scan_javascript_file(Path("service.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/users"
+        assert calls[0].url_type == "literal"
+
+    def test_angularjs_http_post(self):
+        """Detects AngularJS $http.post('/api/users', data)."""
+        code = dedent('''
+            $http.post('/api/users', userData)
+        ''')
+        calls = _scan_javascript_file(Path("service.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+        assert calls[0].url == "/api/users"
+
+    def test_angularjs_http_patch(self):
+        """Detects AngularJS $http.patch('/api/permissions', patch)."""
+        code = dedent('''
+            $http.patch('api/session/data/' + dataSource + '/permissions', permissionPatch)
+        ''')
+        calls = _scan_javascript_file(Path("permissionService.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "PATCH"
+        # Only captures the first string fragment before concatenation
+        assert calls[0].url == "api/session/data/"
+        assert calls[0].url_type == "literal"
+
+    def test_angularjs_http_delete(self):
+        """Detects AngularJS $http.delete('/api/users/1')."""
+        code = dedent('''
+            $http.delete('/api/users/' + userId)
+        ''')
+        calls = _scan_javascript_file(Path("service.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "DELETE"
+
+    def test_angularjs_http_put(self):
+        """Detects AngularJS $http.put('/api/users/1', data)."""
+        code = dedent('''
+            $http.put('/api/users/1', userData)
+        ''')
+        calls = _scan_javascript_file(Path("service.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "PUT"
+        assert calls[0].url == "/api/users/1"
+
+    def test_angularjs_http_with_variable_url(self):
+        """Detects AngularJS $http.get(apiUrl) with variable URL."""
+        code = dedent('''
+            $http.get(apiUrl)
+        ''')
+        calls = _scan_javascript_file(Path("service.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "apiUrl"
+        assert calls[0].url_type == "variable"
+
+    def test_angularjs_http_config_object(self):
+        """Detects AngularJS $http({method: 'GET', url: '/api/users'})."""
+        code = dedent('''
+            $http({
+                method: 'GET',
+                url: '/api/users'
+            })
+        ''')
+        calls = _scan_javascript_file(Path("service.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/users"
+
+    def test_angularjs_http_config_url_first(self):
+        """Detects AngularJS $http({url: '/api/users', method: 'POST'})."""
+        code = dedent('''
+            $http({
+                url: '/api/users',
+                method: 'POST',
+                data: userData
+            })
+        ''')
+        calls = _scan_javascript_file(Path("service.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+        assert calls[0].url == "/api/users"
+
+    def test_angularjs_http_no_false_positive_on_variable(self):
+        """Does not false-positive on $http as a variable name in non-HTTP contexts."""
+        code = dedent('''
+            var $httpProvider = injector.get('$httpProvider');
+            $httpProvider.interceptors.push('authInterceptor');
+        ''')
+        calls = _scan_javascript_file(Path("config.js"), code)
+        assert len(calls) == 0
+
+    def test_angularjs_multiple_calls(self):
+        """Detects multiple AngularJS $http calls in one file."""
+        code = dedent('''
+            $http.get('/api/users')
+            $http.post('/api/users', data)
+            $http.delete('/api/users/1')
+        ''')
+        calls = _scan_javascript_file(Path("service.js"), code)
+        assert len(calls) == 3
+
+    def test_jquery_ajax_get(self):
+        """Detects jQuery $.ajax({url: '/api/users', type: 'GET'})."""
+        code = dedent('''
+            $.ajax({
+                url: '/api/users',
+                type: 'GET',
+                success: function(data) {}
+            })
+        ''')
+        calls = _scan_javascript_file(Path("app.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/users"
+
+    def test_jquery_get_shorthand(self):
+        """Detects jQuery $.get('/api/users')."""
+        code = dedent('''
+            $.get('/api/users', function(data) {})
+        ''')
+        calls = _scan_javascript_file(Path("app.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "GET"
+        assert calls[0].url == "/api/users"
+
+    def test_jquery_post_shorthand(self):
+        """Detects jQuery $.post('/api/users', data)."""
+        code = dedent('''
+            $.post('/api/users', userData, function(result) {})
+        ''')
+        calls = _scan_javascript_file(Path("app.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "POST"
+        assert calls[0].url == "/api/users"
+
+    def test_jquery_ajax_method_variant(self):
+        """Detects jQuery $.ajax with 'method' instead of 'type'."""
+        code = dedent('''
+            $.ajax({
+                url: '/api/items',
+                method: 'PUT',
+                data: payload
+            })
+        ''')
+        calls = _scan_javascript_file(Path("app.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "PUT"
+        assert calls[0].url == "/api/items"
+
+    def test_jquery_ajax_type_before_url(self):
+        """Detects jQuery $.ajax with type/method before url."""
+        code = dedent('''
+            $.ajax({
+                type: 'DELETE',
+                url: '/api/users/1',
+                success: callback
+            })
+        ''')
+        calls = _scan_javascript_file(Path("app.js"), code)
+        assert len(calls) == 1
+        assert calls[0].method == "DELETE"
+        assert calls[0].url == "/api/users/1"
+
 
 class TestLinkHttp:
     """Tests for the main HTTP linking function."""

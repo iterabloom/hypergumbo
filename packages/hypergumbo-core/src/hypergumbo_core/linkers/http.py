@@ -1,8 +1,8 @@
 """HTTP client-server linker for detecting cross-language API calls.
 
-This linker detects HTTP client calls (fetch, axios, requests, OpenAPI clients,
-RestClient, HTTParty, Faraday, Net::HTTP, RestTemplate, Retrofit) and links them
-to server route handlers detected by language analyzers.
+This linker detects HTTP client calls (fetch, axios, AngularJS $http, jQuery $.ajax,
+requests, OpenAPI clients, RestClient, HTTParty, Faraday, Net::HTTP, RestTemplate,
+Retrofit) and links them to server route handlers detected by language analyzers.
 
 Detected Client Patterns
 ------------------------
@@ -13,6 +13,11 @@ JavaScript/TypeScript:
 - axios.get("/api/users") - Axios library with literal URL
 - axios.get(config.apiUrl) - Axios with variable URL
 - __request(OpenAPI, { method: 'GET', url: '/api/users' }) - OpenAPI generated clients
+- $http.get("/api/users") - AngularJS $http service
+- $http({method: 'GET', url: '/api/users'}) - AngularJS config object
+- $.get("/api/users") - jQuery shorthand
+- $.post("/api/users", data) - jQuery shorthand
+- $.ajax({url: '/api/users', type: 'GET'}) - jQuery $.ajax
 
 Python:
 - requests.get("/api/users") - requests library with literal URL
@@ -163,6 +168,52 @@ JS_OPENAPI_REQUEST_ALT_PATTERN = re.compile(
         url\s*:\s*["']([^"']+)["'][^}]*
         method\s*:\s*["'](\w+)["']""",
     re.VERBOSE | re.IGNORECASE | re.DOTALL,
+)
+
+# AngularJS $http service patterns
+# $http.get/post/put/patch/delete("url") - method shorthand
+JS_ANGULARJS_HTTP_PATTERN = re.compile(
+    rf"""\$http\.(get|post|put|patch|delete|head|options)
+        \s*\(\s*{_URL_ARG}""",
+    re.VERBOSE | re.IGNORECASE,
+)
+
+# $http({method: 'GET', url: '/api/users'}) - config object (method before url)
+JS_ANGULARJS_HTTP_CONFIG_PATTERN = re.compile(
+    r"""\$http\s*\(\s*\{[^}]*
+        method\s*:\s*["'](\w+)["'][^}]*
+        url\s*:\s*["']([^"']+)["']""",
+    re.VERBOSE | re.IGNORECASE | re.DOTALL,
+)
+
+# $http({url: '/api/users', method: 'POST'}) - config object (url before method)
+JS_ANGULARJS_HTTP_CONFIG_ALT_PATTERN = re.compile(
+    r"""\$http\s*\(\s*\{[^}]*
+        url\s*:\s*["']([^"']+)["'][^}]*
+        method\s*:\s*["'](\w+)["']""",
+    re.VERBOSE | re.IGNORECASE | re.DOTALL,
+)
+
+# jQuery $.ajax({url: '/api/users', type: 'GET'}) or method: 'GET'
+JS_JQUERY_AJAX_PATTERN = re.compile(
+    r"""\$\.ajax\s*\(\s*\{[^}]*
+        url\s*:\s*["']([^"']+)["'][^}]*
+        (?:type|method)\s*:\s*["'](\w+)["']""",
+    re.VERBOSE | re.IGNORECASE | re.DOTALL,
+)
+
+# jQuery $.ajax with type/method before url
+JS_JQUERY_AJAX_ALT_PATTERN = re.compile(
+    r"""\$\.ajax\s*\(\s*\{[^}]*
+        (?:type|method)\s*:\s*["'](\w+)["'][^}]*
+        url\s*:\s*["']([^"']+)["']""",
+    re.VERBOSE | re.IGNORECASE | re.DOTALL,
+)
+
+# jQuery $.get/$.post shorthand - $.get("url", ...) or $.post("url", ...)
+JS_JQUERY_SHORTHAND_PATTERN = re.compile(
+    rf"""\$\.(get|post)\s*\(\s*{_URL_ARG}""",
+    re.VERBOSE | re.IGNORECASE,
 )
 
 
@@ -448,6 +499,118 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
             continue  # Already captured
         url = match.group(1)
         method = match.group(2).upper()
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="javascript",
+                url_type="literal",
+            )
+        )
+
+    # Check for AngularJS $http.method() calls - supports variables
+    for match in JS_ANGULARJS_HTTP_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        # Groups: 1=method, 2=literal URL, 3=variable URL
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="javascript",
+                url_type=url_type,
+            )
+        )
+
+    # Check for AngularJS $http({method: ..., url: ...}) config object
+    angularjs_config_matches = set()
+    for match in JS_ANGULARJS_HTTP_CONFIG_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        url = match.group(2)
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="javascript",
+                url_type="literal",
+            )
+        )
+        angularjs_config_matches.add(match.start())
+
+    # Check alternative pattern (url before method)
+    for match in JS_ANGULARJS_HTTP_CONFIG_ALT_PATTERN.finditer(content):
+        if match.start() in angularjs_config_matches:  # pragma: no cover
+            continue
+        url = match.group(1)
+        method = match.group(2).upper()
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="javascript",
+                url_type="literal",
+            )
+        )
+
+    # Check for jQuery $.get/$.post shorthand
+    for match in JS_JQUERY_SHORTHAND_PATTERN.finditer(content):
+        method = match.group(1).upper()
+        # Groups: 1=method, 2=literal URL, 3=variable URL
+        url, url_type = _extract_url_from_match(match, literal_group=2, var_group=3)
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="javascript",
+                url_type=url_type,
+            )
+        )
+
+    # Check for jQuery $.ajax({url: ..., type/method: ...})
+    jquery_ajax_matches = set()
+    for match in JS_JQUERY_AJAX_PATTERN.finditer(content):
+        url = match.group(1)
+        method = match.group(2).upper()
+        line_num = content[: match.start()].count("\n") + 1
+
+        calls.append(
+            HttpClientCall(
+                method=method,
+                url=url,
+                line=line_num,
+                file_path=str(file_path),
+                language="javascript",
+                url_type="literal",
+            )
+        )
+        jquery_ajax_matches.add(match.start())
+
+    # Check alternative pattern (type/method before url)
+    for match in JS_JQUERY_AJAX_ALT_PATTERN.finditer(content):
+        if match.start() in jquery_ajax_matches:  # pragma: no cover
+            continue
+        method = match.group(1).upper()
+        url = match.group(2)
         line_num = content[: match.start()].count("\n") + 1
 
         calls.append(
