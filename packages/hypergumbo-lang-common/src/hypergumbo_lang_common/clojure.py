@@ -10,6 +10,7 @@ This analyzer uses tree-sitter to parse Clojure files and extract:
 - Multimethod definitions (defmulti)
 - Function call relationships
 - Require/import statements
+- UsageContext records for framework pattern matching (Ring/Compojure routes)
 
 If tree-sitter with Clojure support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -47,7 +48,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import Edge, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -412,6 +413,74 @@ def _extract_edges_from_file(
     return edges
 
 
+def _extract_usage_contexts(
+    root_node: "tree_sitter.Node",
+    source: bytes,
+    file_path: str,
+) -> list[UsageContext]:
+    """Extract UsageContext records for function calls in a Clojure file.
+
+    Emits a UsageContext for every S-expression call ``(name args...)``, skipping
+    ``def``-family forms (defn, def, defmacro, etc.) and the ``ns`` form since
+    those define symbols rather than use frameworks.
+
+    For Ring/Compojure patterns like ``(GET "/users" [] handler)``, the first
+    string-literal argument is captured as ``metadata["url"]`` so the
+    ring-compojure.yaml ``extract.path = "metadata.url"`` rule can pick it up.
+    """
+    # Forms that define symbols — not framework usage
+    _DEF_FORMS = frozenset({
+        "ns", "def", "defonce", "defn", "defn-", "defmacro",
+        "defprotocol", "defrecord", "deftype", "defmulti", "defmethod",
+    })
+
+    contexts: list[UsageContext] = []
+
+    for node in iter_tree(root_node):
+        if node.type != "list_lit":
+            continue
+
+        inner = [c for c in node.children if c.type not in ("(", ")")]
+        if not inner or inner[0].type != "sym_lit":
+            continue
+
+        call_name = _get_sym_name(inner[0], source)
+
+        # Skip def-family forms
+        if call_name in _DEF_FORMS:
+            continue
+
+        span = Span(
+            start_line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
+            start_col=node.start_point[1],
+            end_col=node.end_point[1],
+        )
+
+        # Extract first string-literal argument as url metadata
+        metadata: dict[str, object] = {}
+        args = inner[1:]  # skip the function name
+        if args:
+            first_arg = args[0]
+            if first_arg.type == "str_lit":
+                # Strip surrounding quotes
+                raw = node_text(first_arg, source)
+                url = raw.strip('"')
+                metadata["url"] = url
+
+        ctx = UsageContext.create(
+            kind="call",
+            context_name=call_name,
+            position="args[0]",
+            path=file_path,
+            span=span,
+            metadata=metadata if metadata else None,
+        )
+        contexts.append(ctx)
+
+    return contexts
+
+
 class ClojureAnalyzer(TreeSitterAnalyzer):
     """Clojure language analyzer using tree-sitter-language-pack.
 
@@ -463,6 +532,15 @@ class ClojureAnalyzer(TreeSitterAnalyzer):
             tree, source, rel_path, file_symbols,
             resolver, run.execution_id,
             require_aliases=import_aliases,
+        )
+
+    def extract_usage_contexts_from_file(
+        self, tree: "tree_sitter.Tree", source: bytes,
+        file_path: Path, symbol_by_name: dict[str, Symbol],
+    ) -> list[UsageContext]:
+        """Extract usage contexts for YAML framework pattern matching."""
+        return _extract_usage_contexts(
+            tree.root_node, source, str(file_path),
         )
 
 

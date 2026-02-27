@@ -443,3 +443,100 @@ class TestClojureSignatureExtraction:
         funcs = [s for s in result.symbols if s.kind == "function" and s.name == "documented"]
         assert len(funcs) == 1
         assert funcs[0].signature == "[x]"
+
+
+class TestClojureUsageContexts:
+    """Tests for Clojure usage context generation.
+
+    Usage contexts enable YAML-driven framework pattern matching for
+    Ring/Compojure route detection.  The Clojure analyzer should emit
+    UsageContext records for function calls (list_lit starting with sym_lit).
+    """
+
+    def test_compojure_get_route_usage_context(self, tmp_path: Path) -> None:
+        """Compojure GET macro generates usage context with URL metadata."""
+        make_clj_file(
+            tmp_path,
+            "routes.clj",
+            '''
+(ns myapp.routes
+  (:require [compojure.core :refer [GET POST defroutes]]))
+
+(defroutes app-routes
+  (GET "/users" [] (list-users))
+  (POST "/users" [name] (create-user name)))
+''',
+        )
+        result = analyze_clojure(tmp_path)
+        ucs = result.usage_contexts
+
+        # Should have usage contexts for GET, POST, and defroutes
+        get_ucs = [uc for uc in ucs if uc.context_name == "GET"]
+        assert len(get_ucs) == 1, f"Expected 1 GET usage context, got {len(get_ucs)}"
+        assert get_ucs[0].kind == "call"
+        assert get_ucs[0].position == "args[0]"
+        assert get_ucs[0].metadata.get("url") == "/users"
+
+    def test_usage_context_for_regular_call(self, tmp_path: Path) -> None:
+        """Regular function calls also generate usage contexts."""
+        make_clj_file(
+            tmp_path,
+            "core.clj",
+            '''
+(ns myapp.core)
+
+(defn handler [req]
+  (wrap-json-response (process req)))
+''',
+        )
+        result = analyze_clojure(tmp_path)
+        ucs = result.usage_contexts
+
+        # Should have usage contexts for wrap-json-response and process
+        wrap_ucs = [uc for uc in ucs if uc.context_name == "wrap-json-response"]
+        assert len(wrap_ucs) == 1
+        assert wrap_ucs[0].kind == "call"
+
+    def test_usage_context_string_arg_in_metadata(self, tmp_path: Path) -> None:
+        """String literal first argument captured as url in metadata."""
+        make_clj_file(
+            tmp_path,
+            "routes.clj",
+            '''
+(ns myapp.routes)
+
+(defn setup []
+  (context "/api" []
+    (GET "/items" [] (list-items))))
+''',
+        )
+        result = analyze_clojure(tmp_path)
+        ucs = result.usage_contexts
+
+        context_ucs = [uc for uc in ucs if uc.context_name == "context"]
+        assert len(context_ucs) == 1
+        assert context_ucs[0].metadata.get("url") == "/api"
+
+        get_ucs = [uc for uc in ucs if uc.context_name == "GET"]
+        assert len(get_ucs) == 1
+        assert get_ucs[0].metadata.get("url") == "/items"
+
+    def test_no_usage_contexts_for_def_forms(self, tmp_path: Path) -> None:
+        """def/defn/defmacro forms should NOT produce usage contexts."""
+        make_clj_file(
+            tmp_path,
+            "core.clj",
+            '''
+(ns myapp.core)
+
+(def my-var 42)
+(defn my-fn [x] x)
+(defmacro my-macro [x] x)
+''',
+        )
+        result = analyze_clojure(tmp_path)
+        ucs = result.usage_contexts
+
+        # No usage contexts for def forms
+        def_ucs = [uc for uc in ucs if uc.context_name in ("def", "defn", "defmacro")]
+        assert len(def_ucs) == 0, f"def forms should not produce usage contexts: {[uc.context_name for uc in def_ucs]}"
