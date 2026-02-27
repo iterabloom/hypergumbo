@@ -118,6 +118,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Bakeoff test path detection fix**: Fixed `_TEST_PATH_RE` in `bakeoff-features` to match Go `_test.go` files without requiring a `/` prefix. Previously, `scrape/helpers_test.go` was not detected as a test file, causing test helpers like `newTestScrapeLoop` to be selected as reverse slice seeds.
 - **DEEP bakeoff seed selection language-dominance weighting**: `pick_reverse_slice_seeds()` now weights candidates by language dominance. The dominant language (by callable symbol count) gets weight 1.0, with minority languages proportionally reduced. Prevents bash utility functions (5% of codebase, high out-degree) from outscoring Java/C entrypoints (70% of codebase) in polyglot repos. Also adds a 1.5x route boost for HTTP entrypoint symbols, which are high-value reverse-slice seeds but score low due to thin-dispatcher out-degree.
 
+#### Supply chain
+
+- **Maven multi-module workspace detection**: `detect_package_roots()` now parses Maven parent `pom.xml` for `<modules>` elements and registers child module directories as internal package roots. Fixes supply chain tier classification for Maven multi-module projects like guacamole-client where all nodes were incorrectly classified as tier 1. Module source code (`src/main/java/`) gets tier 1; non-source files get tier 2. Handles Maven XML namespace (`xmlns="http://maven.apache.org/POM/4.0.0"`).
+
 #### Tracker
 
 - **Tier 2 embedding-based near-duplicate detection**: `validate --deep-similar` uses dense embeddings (ONNX ModernBERT) to detect semantically similar items. Requires `pip install hypergumbo-tracker[dedup]`.

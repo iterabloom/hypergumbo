@@ -373,6 +373,7 @@ def detect_package_roots(repo_root: Path) -> set[Path]:
     Scans for:
     - npm/yarn/pnpm workspaces in package.json
     - Cargo workspace members in Cargo.toml
+    - Maven modules in pom.xml
 
     Args:
         repo_root: Root directory of the repository
@@ -422,6 +423,28 @@ def detect_package_roots(repo_root: Path) -> set[Path]:
                             if path.is_dir():
                                 roots.add(path)
         except OSError:
+            pass
+
+    # Maven multi-module projects
+    pom_xml = repo_root / "pom.xml"
+    if pom_xml.exists():
+        try:
+            import xml.etree.ElementTree as ET  # nosec B405 - parsing local pom.xml
+
+            tree = ET.parse(pom_xml)  # noqa: S314  # nosec B314
+            root_el = tree.getroot()
+            # Handle Maven namespace (xmlns="http://maven.apache.org/POM/4.0.0")
+            ns = ""
+            if root_el.tag.startswith("{"):
+                ns = root_el.tag.split("}")[0] + "}"
+            modules_el = root_el.find(f"{ns}modules")
+            if modules_el is not None:
+                for mod_el in modules_el.findall(f"{ns}module"):
+                    if mod_el.text:
+                        mod_path = repo_root / mod_el.text.strip()
+                        if mod_path.is_dir():
+                            roots.add(mod_path)
+        except (OSError, ET.ParseError):
             pass
 
     return roots

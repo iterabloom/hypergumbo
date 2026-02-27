@@ -274,6 +274,92 @@ members = ["crates/*"]
         assert result.tier == Tier.FIRST_PARTY
         assert "source" in result.reason
 
+    def test_maven_workspaces(self, tmp_path):
+        """Detect internal modules from Maven parent pom.xml."""
+        pom_xml = tmp_path / "pom.xml"
+        pom_xml.write_text('''\
+<project>
+  <packaging>pom</packaging>
+  <modules>
+    <module>guacamole-common</module>
+    <module>guacamole-ext</module>
+    <module>guacamole</module>
+  </modules>
+</project>
+''')
+
+        # Create module directories with src/main/java structure
+        for mod in ["guacamole-common", "guacamole-ext", "guacamole"]:
+            mod_dir = tmp_path / mod / "src" / "main" / "java" / "org"
+            mod_dir.mkdir(parents=True)
+            (mod_dir / "App.java").write_text("class App {}")
+
+        roots = detect_package_roots(tmp_path)
+        assert tmp_path / "guacamole-common" in roots
+        assert tmp_path / "guacamole-ext" in roots
+        assert tmp_path / "guacamole" in roots
+
+        # Files in module src/ are tier 1 (source code)
+        result = classify_file(
+            tmp_path / "guacamole-common" / "src" / "main" / "java" / "org" / "App.java",
+            tmp_path, roots,
+        )
+        assert result.tier == Tier.FIRST_PARTY
+        assert "source" in result.reason
+
+    def test_maven_workspaces_nonexistent_module(self, tmp_path):
+        """Maven modules that don't exist on disk are ignored."""
+        pom_xml = tmp_path / "pom.xml"
+        pom_xml.write_text('''\
+<project>
+  <modules>
+    <module>exists</module>
+    <module>does-not-exist</module>
+  </modules>
+</project>
+''')
+
+        (tmp_path / "exists").mkdir()
+        roots = detect_package_roots(tmp_path)
+        assert tmp_path / "exists" in roots
+        assert tmp_path / "does-not-exist" not in roots
+
+    def test_maven_pom_without_modules(self, tmp_path):
+        """pom.xml without modules section doesn't add package roots."""
+        pom_xml = tmp_path / "pom.xml"
+        pom_xml.write_text('''\
+<project>
+  <groupId>com.example</groupId>
+  <artifactId>single-module</artifactId>
+</project>
+''')
+        roots = detect_package_roots(tmp_path)
+        assert roots == set()
+
+    def test_maven_workspaces_with_namespace(self, tmp_path):
+        """Maven pom.xml with xmlns namespace is parsed correctly."""
+        pom_xml = tmp_path / "pom.xml"
+        pom_xml.write_text('''\
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modules>
+    <module>core</module>
+    <module>api</module>
+  </modules>
+</project>
+''')
+        for mod in ["core", "api"]:
+            (tmp_path / mod).mkdir()
+        roots = detect_package_roots(tmp_path)
+        assert tmp_path / "core" in roots
+        assert tmp_path / "api" in roots
+
+    def test_malformed_pom_xml(self, tmp_path):
+        """Malformed pom.xml doesn't crash."""
+        pom_xml = tmp_path / "pom.xml"
+        pom_xml.write_text("<project><modules><module>")
+        roots = detect_package_roots(tmp_path)
+        assert roots == set()
+
     def test_workspace_source_is_first_party(self, tmp_path):
         """Files in workspace src/lib/app are tier 1 (library monorepos)."""
         pkg_json = tmp_path / "package.json"
