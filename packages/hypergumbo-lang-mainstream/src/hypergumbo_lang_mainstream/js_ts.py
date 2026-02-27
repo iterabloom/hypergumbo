@@ -436,6 +436,44 @@ def _disambiguate_by_import(
     return None
 
 
+def _find_package_root(file_path: Path) -> Path | None:
+    """Walk up from *file_path* to find the nearest directory containing package.json."""
+    current = file_path.parent if file_path.is_file() else file_path
+    while current != current.parent:
+        if (current / "package.json").exists():
+            return current
+        current = current.parent
+    return None
+
+
+def _same_package_candidate(
+    file_path: Path,
+    func_name: str,
+    symbols_by_name: dict[str, list["Symbol"]],
+) -> "Symbol | None":
+    """Prefer same-package symbol when multiple packages define the same name.
+
+    When ``symbols_by_name[func_name]`` has multiple candidates, picks the one
+    whose file lives under the same npm package root (nearest ``package.json``
+    ancestor) as *file_path*.  Returns None if there's only one candidate, if
+    no package root is found, or if no candidate matches.
+    """
+    candidates = symbols_by_name.get(func_name)
+    if not candidates or len(candidates) < 2:
+        return None
+
+    pkg_root = _find_package_root(file_path)
+    if pkg_root is None:
+        return None
+
+    pkg_root_str = str(pkg_root)
+    for candidate in candidates:
+        if candidate.path.startswith(pkg_root_str):
+            return candidate
+
+    return None
+
+
 # HTTP methods recognized as route handlers (Express, Fastify, Koa, etc.)
 # Note: Express-style route detection uses function calls (app.get, router.post) rather
 # than decorators. These are now matched via UsageContext (ADR-0003 v1.1.x) which
@@ -2570,6 +2608,15 @@ def _extract_edges(
                             )
                             if callee is not None:
                                 edge_confidence = 0.90  # explicit import match
+                        # Try same-package preference (avoids cross-package
+                        # false positives for common names like error,
+                        # resolve, reject when there's no import).
+                        if callee is None and symbols_by_name:
+                            callee = _same_package_candidate(
+                                file_path, func_name, symbols_by_name,
+                            )
+                            if callee is not None:
+                                edge_confidence = 0.85  # same-package heuristic
                         if callee is None:
                             lookup_result = resolver.lookup(func_name)
                             if lookup_result.found:

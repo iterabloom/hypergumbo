@@ -3673,6 +3673,119 @@ function run() {
             "Named import should disambiguate direct calls."
         )
 
+    def test_same_package_preference_no_import(self, tmp_path: Path) -> None:
+        """Direct calls without imports prefer symbols from the same package.
+
+        When ``error()`` is called without any import in two different packages,
+        each should resolve to their own package's ``error()`` function.
+        Previously, ``global_symbols`` used last-one-wins, so one of the two
+        callers would incorrectly resolve to the other package's function.
+
+        Uses two packages (each with its own package.json) and two callers
+        to make the test filesystem-order-independent.
+        """
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        # Package A: server
+        server = tmp_path / "server" / "src"
+        server.mkdir(parents=True)
+        (tmp_path / "server" / "package.json").write_text('{"name": "server"}')
+        (server / "errors.js").write_text(
+            "export function error(msg) {\n    console.log(msg);\n}\n"
+        )
+        (server / "handler.js").write_text(
+            "// No import of error — it's a same-package helper.\n"
+            "function handleRequest() {\n"
+            "    error('something went wrong');\n"
+            "}\n"
+        )
+
+        # Package B: client (different package)
+        client = tmp_path / "client" / "js"
+        client.mkdir(parents=True)
+        (tmp_path / "client" / "package.json").write_text('{"name": "client"}')
+        (client / "actions.js").write_text(
+            "export function error(msg) {\n    alert(msg);\n}\n"
+        )
+        (client / "app.js").write_text(
+            "// No import — uses same-package error helper.\n"
+            "function showError() {\n"
+            "    error('user-facing message');\n"
+            "}\n"
+        )
+
+        result = analyze_javascript(tmp_path)
+
+        call_edges = [e for e in result.edges if e.edge_type == "calls"]
+
+        # Server handler should resolve to server's error
+        handler_error = next(
+            (e for e in call_edges if "handleRequest" in e.src and "error" in e.dst),
+            None,
+        )
+        assert handler_error is not None, "Expected call edge from handleRequest to error"
+        assert "server" in handler_error.dst, (
+            f"handleRequest is in server/ but call resolves to {handler_error.dst}. "
+            "Same-package preference should pick the same-package symbol."
+        )
+
+        # Client app should resolve to client's error
+        client_error = next(
+            (e for e in call_edges if "showError" in e.src and "error" in e.dst),
+            None,
+        )
+        assert client_error is not None, "Expected call edge from showError to error"
+        assert "client" in client_error.dst, (
+            f"showError is in client/ but call resolves to {client_error.dst}. "
+            "Same-package preference should pick the same-package symbol."
+        )
+
+    def test_same_package_candidate_no_package_json(self, tmp_path: Path) -> None:
+        """_same_package_candidate returns None when no package.json exists."""
+        from hypergumbo_lang_mainstream.js_ts import _same_package_candidate
+
+        from hypergumbo_core.ir import Symbol, Span
+
+        sym_a = Symbol(
+            id="js:a.js:1-1:helper:function", name="helper", kind="function",
+            path=str(tmp_path / "a.js"), span=Span(1, 0, 1, 0),
+            language="javascript", origin="test",
+        )
+        sym_b = Symbol(
+            id="js:b.js:1-1:helper:function", name="helper", kind="function",
+            path=str(tmp_path / "b.js"), span=Span(1, 0, 1, 0),
+            language="javascript", origin="test",
+        )
+        # No package.json anywhere — should return None
+        result = _same_package_candidate(
+            tmp_path / "a.js", "helper", {"helper": [sym_a, sym_b]},
+        )
+        assert result is None
+
+    def test_same_package_candidate_no_match(self, tmp_path: Path) -> None:
+        """_same_package_candidate returns None when no candidate matches package root."""
+        from hypergumbo_lang_mainstream.js_ts import _same_package_candidate
+
+        from hypergumbo_core.ir import Symbol, Span
+
+        # Caller is in pkg_a/, but both candidates are in other_pkg/
+        (tmp_path / "pkg_a").mkdir()
+        (tmp_path / "pkg_a" / "package.json").write_text('{"name": "a"}')
+        sym_x = Symbol(
+            id="js:other/x.js:1-1:helper:function", name="helper", kind="function",
+            path=str(tmp_path / "other_pkg" / "x.js"), span=Span(1, 0, 1, 0),
+            language="javascript", origin="test",
+        )
+        sym_y = Symbol(
+            id="js:other/y.js:1-1:helper:function", name="helper", kind="function",
+            path=str(tmp_path / "other_pkg" / "y.js"), span=Span(1, 0, 1, 0),
+            language="javascript", origin="test",
+        )
+        result = _same_package_candidate(
+            tmp_path / "pkg_a" / "handler.js", "helper", {"helper": [sym_x, sym_y]},
+        )
+        assert result is None
+
     def test_new_namespace_class_disambiguates(self, tmp_path: Path) -> None:
         """When same class name exists in multiple modules, namespace import disambiguates.
 
