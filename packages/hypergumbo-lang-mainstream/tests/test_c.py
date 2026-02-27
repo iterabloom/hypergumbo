@@ -813,10 +813,20 @@ class TestHeaderDedup:
         )
 
     def test_includes_h_files_in_pure_c_repo(self, tmp_path: Path) -> None:
-        """C analyzer includes .h files in pure-C repos (no C++ files)."""
+        """C analyzer includes .h files in pure-C repos (no C++ files).
+
+        Headers are analyzed for symbol registration and cross-file
+        resolution.  Declaration-only symbols are filtered from the output
+        when a definition exists (see TestDeclarationDefinitionDedup), but
+        header-only symbols (structs, enums, typedefs) and declaration-only
+        functions (no definition) are kept.
+        """
         from hypergumbo_lang_mainstream.c import analyze_c
 
-        (tmp_path / "utils.h").write_text("void helper();")
+        (tmp_path / "utils.h").write_text("""
+void helper();
+struct Config { int verbose; };
+""")
         (tmp_path / "main.c").write_text("""
 void helper() {}
 void main_func() { helper(); }
@@ -824,14 +834,18 @@ void main_func() { helper(); }
 
         result = analyze_c(tmp_path)
 
-        # Both .h and .c files should be analyzed
+        # The .h struct symbol should be present
         paths = {s.path for s in result.symbols}
         assert any(p.endswith(".h") for p in paths), (
-            "Should include .h file symbols in pure-C repos"
+            "Should include .h file symbols (struct) in pure-C repos"
         )
         assert any(p.endswith(".c") for p in paths), (
             "Should include .c file symbols in pure-C repos"
         )
+        # Declaration of helper() is filtered (definition in .c exists)
+        helpers = [s for s in result.symbols if s.name == "helper"]
+        assert len(helpers) == 1
+        assert helpers[0].path.endswith(".c")
 
     def test_find_c_files_skips_headers(self, tmp_path: Path) -> None:
         """find_c_files with include_headers=False yields only .c files."""
@@ -1449,6 +1463,88 @@ int cmd_add(int argc, const char **argv) {
         funcs = [s for s in result.symbols if s.kind == "function"]
         assert len(funcs) == 1
         assert "declaration" not in funcs[0].modifiers
+
+
+class TestDeclarationDefinitionDedup:
+    """Tests for filtering out declaration-only symbols when a definition exists.
+
+    When a function is declared in a header and defined in a source file,
+    the declaration symbol is redundant — it inflates the orphan rate because
+    calls resolve to the definition.  The analyzer should keep only the
+    definition in the final symbol list.
+    """
+
+    def test_declaration_removed_when_definition_exists(self, tmp_path: Path) -> None:
+        """Header declaration is filtered out when .c definition exists."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "utils.h").write_text("void helper(int x);\n")
+        (tmp_path / "utils.c").write_text("""
+void helper(int x) {
+    // implementation
+}
+""")
+
+        result = analyze_c(tmp_path)
+
+        helpers = [s for s in result.symbols if s.name == "helper"]
+        assert len(helpers) == 1, (
+            f"Expected 1 'helper' symbol (definition only), got {len(helpers)}: "
+            f"{[(s.name, s.path, s.modifiers) for s in helpers]}"
+        )
+        assert helpers[0].path.endswith(".c")
+        assert "declaration" not in helpers[0].modifiers
+
+    def test_declaration_kept_when_no_definition(self, tmp_path: Path) -> None:
+        """Declaration-only function (no .c definition) is kept."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "extern.h").write_text("void external_func(void);\n")
+
+        result = analyze_c(tmp_path)
+
+        funcs = [s for s in result.symbols if s.name == "external_func"]
+        assert len(funcs) == 1
+        assert "declaration" in funcs[0].modifiers
+
+    def test_multiple_declarations_single_definition(self, tmp_path: Path) -> None:
+        """Multiple declarations in different headers, one definition: keep only definition."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "api.h").write_text("int compute(int a, int b);\n")
+        (tmp_path / "internal.h").write_text("int compute(int a, int b);\n")
+        (tmp_path / "compute.c").write_text("""
+int compute(int a, int b) {
+    return a + b;
+}
+""")
+
+        result = analyze_c(tmp_path)
+
+        computes = [s for s in result.symbols if s.name == "compute"]
+        assert len(computes) == 1, (
+            f"Expected 1 'compute' symbol, got {len(computes)}"
+        )
+        assert computes[0].path.endswith(".c")
+
+    def test_non_function_symbols_unaffected(self, tmp_path: Path) -> None:
+        """Structs, enums, typedefs are not affected by declaration dedup."""
+        from hypergumbo_lang_mainstream.c import analyze_c
+
+        (tmp_path / "types.h").write_text("""
+struct Point { int x; int y; };
+enum Color { RED, GREEN, BLUE };
+""")
+        (tmp_path / "main.c").write_text("""
+void use_point(void) {}
+""")
+
+        result = analyze_c(tmp_path)
+
+        structs = [s for s in result.symbols if s.kind == "struct"]
+        enums = [s for s in result.symbols if s.kind == "enum"]
+        assert len(structs) == 1
+        assert len(enums) == 1
 
 
 class TestCDocstrings:

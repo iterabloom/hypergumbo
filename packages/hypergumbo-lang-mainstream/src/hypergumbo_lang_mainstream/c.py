@@ -750,6 +750,40 @@ class CAnalyzer(TreeSitterAnalyzer):
             )
             all_edges.extend(edges)
 
+        # Deduplicate: remove declaration-only symbols when a definition
+        # exists for the same function name.  Declarations in headers produce
+        # orphan nodes because calls resolve to the definition.
+        definition_by_name: dict[str, Symbol] = {}
+        for sym in all_symbols:
+            if sym.kind == "function" and "declaration" not in sym.modifiers:
+                definition_by_name[sym.name] = sym
+
+        # Build a remap table: declaration ID → definition ID.
+        # Edges targeting a removed declaration should point to the
+        # surviving definition instead.
+        id_remap: dict[str, str] = {}
+        kept: list[Symbol] = []
+        for sym in all_symbols:
+            if (
+                sym.kind == "function"
+                and "declaration" in sym.modifiers
+                and sym.name in definition_by_name
+            ):
+                id_remap[sym.id] = definition_by_name[sym.name].id
+            else:
+                kept.append(sym)
+        all_symbols = kept
+
+        # Rewrite edge src/dst that reference removed declaration IDs
+        if id_remap:
+            from dataclasses import replace as _dc_replace
+
+            for i, edge in enumerate(all_edges):
+                new_src = id_remap.get(edge.src, edge.src)
+                new_dst = id_remap.get(edge.dst, edge.dst)
+                if new_src != edge.src or new_dst != edge.dst:
+                    all_edges[i] = _dc_replace(edge, src=new_src, dst=new_dst)
+
         run.files_analyzed = files_analyzed
         run.files_skipped = files_skipped
         run.duration_ms = int((_time.time() - start_time) * 1000)
