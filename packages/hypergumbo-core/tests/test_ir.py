@@ -297,6 +297,75 @@ def test_deduplicate_edges_removes_self_loops() -> None:
     assert result[0].id == normal.id
 
 
+def test_deduplicate_edges_handles_none_edge_key() -> None:
+    """Edges with edge_key=None must not collapse into a single edge.
+
+    Regression test: Edge() constructor (not Edge.create()) defaults
+    edge_key to None.  When multiple such edges existed, only the first
+    survived deduplication because None was treated as a valid dedup key.
+    This silently dropped ALL routes_to edges from the route-handler linker.
+    """
+    from hypergumbo_core.ir import deduplicate_edges
+
+    # Simulate edges created by the route_handler linker (using Edge constructor)
+    edge_a = Edge(
+        id="edge:route1->handler1",
+        src="go:server.go:10-10:GET /users:route",
+        dst="go:server.go:20-30:listUsers:method",
+        edge_type="routes_to",
+        line=10,
+        # edge_key deliberately not set (None) — matches real bug
+    )
+    edge_b = Edge(
+        id="edge:route2->handler2",
+        src="go:server.go:11-11:POST /users:route",
+        dst="go:server.go:40-50:createUser:method",
+        edge_type="routes_to",
+        line=11,
+    )
+    edge_c = Edge(
+        id="edge:dockerfile->stage",
+        src="docker:Dockerfile:1-1:stage1:stage",
+        dst="docker:Dockerfile:10-10:stage2:stage",
+        edge_type="depends_on",
+        line=1,
+    )
+
+    result = deduplicate_edges([edge_a, edge_b, edge_c])
+
+    # All three edges are unique relationships — all must survive
+    assert len(result) == 3, (
+        f"Expected 3 unique edges but got {len(result)}; "
+        f"None edge_key must not cause false deduplication"
+    )
+
+
+def test_deduplicate_edges_none_key_still_deduplicates_true_duplicates() -> None:
+    """True duplicates (same src+dst+type) with None edge_key are still collapsed."""
+    from hypergumbo_core.ir import deduplicate_edges
+
+    edge_a = Edge(
+        id="edge:route1->handler1:line10",
+        src="go:server.go:10-10:GET /users:route",
+        dst="go:server.go:20-30:listUsers:method",
+        edge_type="routes_to",
+        line=10,
+    )
+    edge_a_dup = Edge(
+        id="edge:route1->handler1:line15",
+        src="go:server.go:10-10:GET /users:route",
+        dst="go:server.go:20-30:listUsers:method",
+        edge_type="routes_to",
+        line=15,
+    )
+
+    result = deduplicate_edges([edge_a, edge_a_dup])
+
+    # Same src+dst+type → should collapse to 1 even with None edge_key
+    assert len(result) == 1
+    assert result[0].id == edge_a.id
+
+
 def test_deduplicate_edges_preserves_different_types() -> None:
     """Edges with same src/dst but different edge_types are distinct."""
     from hypergumbo_core.ir import deduplicate_edges

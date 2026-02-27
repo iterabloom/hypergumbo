@@ -455,10 +455,16 @@ def deduplicate_edges(
 
     Preserves encounter order: the first edge for each key is kept.
     """
-    seen: set[str | None] = set()
+    seen: set[str] = set()
     result: list[Edge] = []
     for edge in edges:
         key = edge.edge_key
+        # Compute edge_key on-the-fly when missing (None).  Many analyzers
+        # and linkers use the Edge() constructor directly instead of
+        # Edge.create(), leaving edge_key unset.  Without this fallback
+        # all None-keyed edges collapse to one — silently dropping edges.
+        if key is None:
+            key = _compute_edge_key(edge.src, edge.dst, edge.edge_type)
         if key in seen:
             continue
         if remove_self_loops and edge.src == edge.dst:
