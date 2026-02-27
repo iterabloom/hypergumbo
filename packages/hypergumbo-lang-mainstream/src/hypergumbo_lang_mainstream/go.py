@@ -754,6 +754,7 @@ def _extract_symbols_from_file(
                     stable_id=stable_id,
                     signature=signature,
                     modifiers=modifiers,
+                    lines_of_code=end_line - start_line + 1,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[func_name] = symbol
@@ -803,6 +804,7 @@ def _extract_symbols_from_file(
                     stable_id=stable_id,
                     signature=signature,
                     modifiers=modifiers,
+                    lines_of_code=end_line - start_line + 1,
                 )
                 analysis.symbols.append(symbol)
                 analysis.symbol_by_name[method_name] = symbol
@@ -850,6 +852,7 @@ def _extract_symbols_from_file(
                             origin_run_id=run.execution_id,
                             modifiers=_go_visibility_modifiers(type_name),
                             meta={"base_classes": embedded_types} if embedded_types else None,
+                            lines_of_code=end_line - start_line + 1,
                         )
                         analysis.symbols.append(symbol)
                         analysis.symbol_by_name[type_name] = symbol
@@ -902,6 +905,7 @@ def _extract_symbols_from_file(
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         modifiers=modifiers,
+                        lines_of_code=end_line - start_line + 1,
                     )
                     analysis.symbols.append(vsymbol)
                     analysis.symbol_by_name[vname] = vsymbol

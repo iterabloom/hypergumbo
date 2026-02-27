@@ -4836,3 +4836,67 @@ func main() {
             f"main() -> log.Err() should resolve to a symbol in pkg/log, "
             f"got targets: {[e.dst for e in call_edges]}"
         )
+
+
+class TestGoLinesOfCode:
+    """Tests for lines_of_code on Go symbols."""
+
+    def test_function_lines_of_code(self, tmp_path: Path) -> None:
+        """Function symbols have lines_of_code set from span."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+func small() {
+    println("one liner body")
+}
+
+func medium(x int) int {
+    y := x + 1
+    z := y * 2
+    return z
+}
+""")
+
+        result = analyze_go(tmp_path)
+        small = next(s for s in result.symbols if s.name == "small")
+        medium = next(s for s in result.symbols if s.name == "medium")
+        assert small.lines_of_code == 3
+        assert medium.lines_of_code == 5
+
+    def test_method_lines_of_code(self, tmp_path: Path) -> None:
+        """Method symbols have lines_of_code set from span."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Server struct{}
+
+func (s *Server) Start() error {
+    return nil
+}
+""")
+
+        result = analyze_go(tmp_path)
+        start = next(s for s in result.symbols if s.name == "Server.Start")
+        assert start.lines_of_code == 3
+
+    def test_struct_lines_of_code(self, tmp_path: Path) -> None:
+        """Struct/interface symbols have lines_of_code set from span."""
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        go_file = tmp_path / "main.go"
+        go_file.write_text("""package main
+
+type Config struct {
+    Host string
+    Port int
+    Debug bool
+}
+""")
+
+        result = analyze_go(tmp_path)
+        config = next(s for s in result.symbols if s.name == "Config")
+        assert config.lines_of_code == 5
