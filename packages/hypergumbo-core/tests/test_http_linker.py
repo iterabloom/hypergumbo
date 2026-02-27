@@ -6,6 +6,7 @@ from textwrap import dedent
 from hypergumbo_core.ir import Span, Symbol
 from hypergumbo_core.linkers.http import (
     _extract_path_from_url,
+    _find_source_files,
     _match_route_pattern,
     _scan_go_file,
     _scan_java_file,
@@ -1731,3 +1732,53 @@ class TestJavaHttpLinking:
 
         assert len(result.edges) == 1
         assert result.edges[0].meta["cross_language"] is True
+
+
+class TestFindSourceFiles:
+    """Tests for _find_source_files minified file filtering."""
+
+    def test_skips_minified_js(self, tmp_path: Path):
+        """Minified .min.js files are excluded from HTTP scanning."""
+        normal = tmp_path / "api.js"
+        normal.write_text("fetch('/api/users');")
+        minified = tmp_path / "jquery.min.js"
+        minified.write_text("fetch('/api/users');")
+
+        found = [p.name for p in _find_source_files(tmp_path)]
+        assert "api.js" in found
+        assert "jquery.min.js" not in found
+
+    def test_skips_minified_ts(self, tmp_path: Path):
+        """Minified .min.ts files are excluded from HTTP scanning."""
+        normal = tmp_path / "client.ts"
+        normal.write_text("fetch('/api/users');")
+        minified = tmp_path / "bundle.min.ts"
+        minified.write_text("fetch('/api/users');")
+
+        found = [p.name for p in _find_source_files(tmp_path)]
+        assert "client.ts" in found
+        assert "bundle.min.ts" not in found
+
+    def test_keeps_non_minified(self, tmp_path: Path):
+        """Non-minified files with 'min' in name are kept."""
+        admin = tmp_path / "admin.js"
+        admin.write_text("fetch('/api/users');")
+        mining = tmp_path / "mining.ts"
+        mining.write_text("fetch('/api/users');")
+
+        found = [p.name for p in _find_source_files(tmp_path)]
+        assert "admin.js" in found
+        assert "mining.ts" in found
+
+    def test_non_js_ts_unaffected(self, tmp_path: Path):
+        """Python, Go, Ruby, Java files are unaffected by minified filter."""
+        (tmp_path / "app.py").write_text("requests.get('/api')")
+        (tmp_path / "main.go").write_text("http.Get('/api')")
+        (tmp_path / "client.rb").write_text("RestClient.get('/api')")
+        (tmp_path / "Api.java").write_text("restTemplate.getForObject('/api')")
+
+        found = [p.name for p in _find_source_files(tmp_path)]
+        assert "app.py" in found
+        assert "main.go" in found
+        assert "client.rb" in found
+        assert "Api.java" in found

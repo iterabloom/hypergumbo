@@ -5,6 +5,7 @@ from textwrap import dedent
 
 from hypergumbo_core.linkers.event_sourcing import (
     _create_event_symbol,
+    _find_source_files,
     _scan_javascript_events,
     _scan_python_events,
     _scan_java_events,
@@ -773,3 +774,40 @@ class TestEventSourcingLinkerRegistry:
         assert len(result.symbols) >= 2
         assert len(result.edges) >= 1
         assert result.run is not None
+
+
+class TestFindSourceFiles:
+    """Tests for _find_source_files minified file filtering."""
+
+    def test_skips_minified_js(self, tmp_path: Path):
+        """Minified .min.js files are excluded from scanning."""
+        normal = tmp_path / "app.js"
+        normal.write_text("emitter.emit('start');")
+        minified = tmp_path / "d3.v4.min.js"
+        minified.write_text("emitter.emit('start');")
+
+        found = [p.name for p in _find_source_files(tmp_path)]
+        assert "app.js" in found
+        assert "d3.v4.min.js" not in found
+
+    def test_skips_minified_ts(self, tmp_path: Path):
+        """Minified .min.ts files are excluded from scanning."""
+        normal = tmp_path / "app.ts"
+        normal.write_text("emitter.emit('start');")
+        minified = tmp_path / "vendor.min.ts"
+        minified.write_text("emitter.emit('start');")
+
+        found = [p.name for p in _find_source_files(tmp_path)]
+        assert "app.ts" in found
+        assert "vendor.min.ts" not in found
+
+    def test_keeps_non_minified(self, tmp_path: Path):
+        """Files with 'min' in the name but not as .min suffix are kept."""
+        admin = tmp_path / "admin.js"
+        admin.write_text("emitter.emit('start');")
+        minimum = tmp_path / "minimum.ts"
+        minimum.write_text("emitter.emit('start');")
+
+        found = [p.name for p in _find_source_files(tmp_path)]
+        assert "admin.js" in found
+        assert "minimum.ts" in found

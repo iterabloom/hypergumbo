@@ -379,12 +379,18 @@ JAVA_RETROFIT_ANNOTATION_PATTERN = re.compile(
 
 
 def _find_source_files(root: Path) -> Iterator[Path]:
-    """Find files that might contain HTTP client calls."""
+    """Find files that might contain HTTP client calls.
+
+    Skips minified files (``*.min.js``, ``*.min.ts``) which can produce
+    false-positive HTTP call detections from compressed library code.
+    """
     patterns = [
         "**/*.py", "**/*.js", "**/*.ts", "**/*.jsx", "**/*.tsx",
         "**/*.go", "**/*.rb", "**/*.java",
     ]
     for path in find_files(root, patterns):
+        if path.stem.endswith(".min"):
+            continue
         yield path
 
 

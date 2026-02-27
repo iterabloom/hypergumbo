@@ -213,9 +213,16 @@ SPRING_TRANSACTIONAL_LISTENER_PATTERN = re.compile(
 
 
 def _find_source_files(root: Path) -> Iterator[Path]:
-    """Find files that might contain event patterns."""
+    """Find files that might contain event patterns.
+
+    Skips minified files (``*.min.js``, ``*.min.ts``) because minified
+    libraries produce false-positive event publisher/subscriber symbols
+    for generic names like ``start``, ``end``, ``error``.
+    """
     patterns = ["**/*.py", "**/*.js", "**/*.ts", "**/*.java"]
     for path in find_files(root, patterns):
+        if path.stem.endswith(".min"):
+            continue
         yield path
 
 
