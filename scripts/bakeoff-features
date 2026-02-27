@@ -780,10 +780,31 @@ def pick_reverse_slice_seeds(hg_json: str, count: int = 3) -> list:
                         best = entry
                         break
                 if best and len(result) >= count:
-                    # Replace lowest-scoring seed with this language's top
-                    result[-1] = best
-                    result_set.discard(result[-1])
-                    result_set.add(best)
+                    # Replace a seed from an over-represented language
+                    # (one that has >1 seeds), searching from lowest score.
+                    lang_seed_count: dict[str, int] = {}
+                    for eid in result:
+                        n = node_map.get(eid)
+                        if n:
+                            l = n.get("language", "unknown")
+                            lang_seed_count[l] = lang_seed_count.get(l, 0) + 1
+                    replaced = False
+                    for idx in range(len(result) - 1, -1, -1):
+                        n = node_map.get(result[idx])
+                        if not n:
+                            continue
+                        l = n.get("language", "unknown")
+                        if lang_seed_count.get(l, 0) > 1:
+                            result_set.discard(result[idx])
+                            result[idx] = best
+                            result_set.add(best)
+                            lang_seed_count[l] -= 1
+                            replaced = True
+                            break
+                    if not replaced:
+                        # All languages have exactly 1 seed — can't replace
+                        # without losing another language.  Skip this one.
+                        pass
                 elif best:
                     result.append(best)
                     result_set.add(best)

@@ -345,6 +345,66 @@ class TestCompressedReadIntegration:
             f"but got: {seeds}"
         )
 
+    def test_pick_reverse_slice_seeds_replaces_overrepresented(self, tmp_path: Path) -> None:
+        """Diversity replacement only replaces seeds from over-represented languages.
+
+        With 3 major languages (Python, TypeScript, Clojure), count=3 should
+        yield one seed per language.  The replacement should take a Python seed
+        (which has 2) rather than removing the only JS or Clojure seed.
+        """
+        py_nodes = [
+            {"id": f"py{i}", "name": f"py_func_{i}", "kind": "function", "language": "python"}
+            for i in range(10)
+        ]
+        ts_nodes = [
+            {"id": f"ts{i}", "name": f"ts_handler_{i}", "kind": "function", "language": "typescript"}
+            for i in range(5)
+        ]
+        clj_nodes = [
+            {"id": f"clj{i}", "name": f"clj_fn_{i}", "kind": "function", "language": "clojure"}
+            for i in range(5)
+        ]
+        edges = []
+        # Python: high connectivity (each of 5 calls 4 others = out-degree 4)
+        for i in range(5):
+            for j in range(5):
+                if i != j:
+                    edges.append({"src": f"py{i}", "dst": f"py{j}", "type": "calls"})
+        # Extra incoming to py0-py2 to boost in-degree
+        for i in range(5, 10):
+            for j in range(3):
+                edges.append({"src": f"py{i}", "dst": f"py{j}", "type": "calls"})
+        # TypeScript: moderate (each of 5 calls 4 others)
+        for i in range(5):
+            for j in range(5):
+                if i != j:
+                    edges.append({"src": f"ts{i}", "dst": f"ts{j}", "type": "calls"})
+        # Clojure: moderate (each of 5 calls 4 others)
+        for i in range(5):
+            for j in range(5):
+                if i != j:
+                    edges.append({"src": f"clj{i}", "dst": f"clj{j}", "type": "calls"})
+
+        data = {"nodes": py_nodes + ts_nodes + clj_nodes, "edges": edges}
+        repo_out = _make_repo_output(tmp_path, "trilingual-repo", hg_data=data)
+        hg_path = str(repo_out / "hg.json")
+
+        seeds = bf.pick_reverse_slice_seeds(hg_path, count=3)
+        assert len(seeds) == 3
+
+        # Each major language should have exactly one seed
+        seed_langs = set()
+        for s in seeds:
+            if s.startswith("py"):
+                seed_langs.add("python")
+            elif s.startswith("ts"):
+                seed_langs.add("typescript")
+            elif s.startswith("clj"):
+                seed_langs.add("clojure")
+        assert seed_langs == {"python", "typescript", "clojure"}, (
+            f"Expected one seed per major language, but got: {seeds}"
+        )
+
     def test_has_hg_json_detects_compressed(self, tmp_path: Path) -> None:
         """_has_hg_json should return True for repos with only hg.json.gz."""
         repo_out = _make_repo_output(tmp_path, "repo-a", already_compressed=True)
