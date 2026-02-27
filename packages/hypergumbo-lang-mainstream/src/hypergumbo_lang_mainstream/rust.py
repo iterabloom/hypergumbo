@@ -696,13 +696,21 @@ def _get_enclosing_function(
     node: "tree_sitter.Node",
     source: bytes,
     local_symbols: dict[str, Symbol],
+    span_index: dict[tuple[int, int], Symbol] | None = None,
 ) -> Optional[Symbol]:
     """Walk up the tree to find the enclosing function.
+
+    Uses a span-based index to avoid the short-name collision where
+    ``symbol_by_name["compute"]`` is overwritten by whichever impl
+    block is processed last, causing call edges to get the wrong
+    ``src``.  Falls back to name-based lookup when no span index is
+    provided (backward compatibility).
 
     Args:
         node: The current node.
         source: Source bytes for extracting text.
         local_symbols: Map of function names to Symbol objects.
+        span_index: Optional ``(start_line, end_line) → Symbol`` index.
 
     Returns:
         The Symbol for the enclosing function, or None if not inside a function.
@@ -710,9 +718,23 @@ def _get_enclosing_function(
     current = node.parent
     while current is not None:
         if current.type == "function_item":
+            # Prefer span-based lookup (immune to name collisions)
+            if span_index is not None:
+                start_line = current.start_point[0] + 1
+                end_line = current.end_point[0] + 1
+                sym = span_index.get((start_line, end_line))
+                if sym is not None:
+                    return sym
+            # Fallback: name-based lookup
             name_node = _find_child_by_field(current, "name")
             if name_node:
                 func_name = node_text(name_node, source)
+                # Try qualified name first (e.g., "Diff::compute")
+                impl_target = _get_impl_target(current, source)
+                if impl_target:  # pragma: no cover - defensive fallback
+                    qualified = f"{impl_target}::{func_name}"
+                    if qualified in local_symbols:
+                        return local_symbols[qualified]
                 if func_name in local_symbols:
                     return local_symbols[func_name]
         current = current.parent
@@ -788,6 +810,7 @@ def _extract_edges_from_file(
     resolver: "NameResolver",
     use_aliases: dict[str, str],
     method_resolver: ListNameResolver | None = None,
+    span_index: dict[tuple[int, int], Symbol] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -798,6 +821,8 @@ def _extract_edges_from_file(
         method_resolver: Optional ListNameResolver with ambiguity_threshold for
             method-specific lookups.  When provided, used for method calls
             (``foo.bar()``) to guard against 3+ ambiguous candidates.
+        span_index: Optional line-span index for enclosing function detection.
+            Built from global_symbols to avoid name collisions in symbol_by_name.
     """
     edges: list[Edge] = []
     file_id = make_file_id("rust", str(file_path))
@@ -829,7 +854,7 @@ def _extract_edges_from_file(
 
         # Detect function calls
         elif node.type == "call_expression":
-            current_function = _get_enclosing_function(node, source, local_symbols)
+            current_function = _get_enclosing_function(node, source, local_symbols, span_index)
             if current_function is not None:
                 func_node = _find_child_by_field(node, "function")
                 if func_node:
@@ -1116,11 +1141,25 @@ class RustAnalyzer(TreeSitterAnalyzer):
             self._mr_cache = (global_symbols, mr)
         else:
             mr = cache[1]
+
+        # Build span index from global_symbols for this file.
+        # local_symbols (symbol_by_name) loses entries when short names
+        # collide — e.g., free function "caller" is overwritten by
+        # method "Foo::caller".  The global registry preserves all
+        # qualified names, so filtering by path gives a complete set.
+        # Symbols store paths as relative (rel_path), not absolute.
+        file_syms = [
+            s for s in global_symbols.values()
+            if s.path == rel_path and s.kind in ("function", "method")
+        ]
+        span_idx = {(s.span.start_line, s.span.end_line): s for s in file_syms}
+
         return _extract_edges_from_file(
             tree, source, rel_path,
             local_symbols, global_symbols,
             run.execution_id, resolver, import_aliases,
             method_resolver=mr,
+            span_index=span_idx,
         )
 
     def extract_usage_contexts_from_file(

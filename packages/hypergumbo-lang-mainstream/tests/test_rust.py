@@ -1876,3 +1876,188 @@ class TestRustScopedIdentifierResolution:
         assert len(call_edges) == 1
         assert call_edges[0].dst == target.id
 
+
+class TestRustEnclosingFunctionQualified:
+    """Tests for correct enclosing function detection in impl blocks.
+
+    When two impl blocks define methods with the same short name,
+    _get_enclosing_function must return the correct qualified symbol
+    (e.g., Diff::compute, not Parser::compute) for call attribution.
+    This is critical for forward slices — if call edges have the wrong
+    src, the slice from the right function won't find its callees.
+    """
+
+    def test_call_attributed_to_correct_impl_method(self, tmp_path: Path) -> None:
+        """Calls inside Diff::compute are attributed to Diff::compute, not Parser::compute.
+
+        The bug: symbol_by_name["compute"] is overwritten by whichever impl
+        is processed last. _get_enclosing_function uses only the short name,
+        so calls inside Diff::compute get attributed to Parser::compute.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "lib.rs"
+        rs_file.write_text("""
+fn helper() {}
+
+struct Diff;
+struct Parser;
+
+impl Diff {
+    fn compute(&self) {
+        helper();
+    }
+}
+
+impl Parser {
+    fn compute(&self) {
+        // Parser's compute does nothing
+    }
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        diff_compute = next(
+            (s for s in result.symbols if s.name == "Diff::compute"), None,
+        )
+        parser_compute = next(
+            (s for s in result.symbols if s.name == "Parser::compute"), None,
+        )
+        helper_func = next(
+            (s for s in result.symbols if s.name == "helper"), None,
+        )
+
+        assert diff_compute is not None, "Should find Diff::compute"
+        assert parser_compute is not None, "Should find Parser::compute"
+        assert helper_func is not None, "Should find helper"
+
+        # The call to helper() in Diff::compute must have src = Diff::compute
+        call_edge = next(
+            (
+                e for e in result.edges
+                if e.dst == helper_func.id
+                and e.edge_type == "calls"
+            ),
+            None,
+        )
+        assert call_edge is not None, "Should have call edge to helper()"
+        assert call_edge.src == diff_compute.id, (
+            f"Call to helper() should be from Diff::compute ({diff_compute.id}), "
+            f"not Parser::compute ({parser_compute.id}). Got: {call_edge.src}"
+        )
+
+    def test_calls_in_multiple_same_named_methods(self, tmp_path: Path) -> None:
+        """Each same-named method's calls are correctly attributed.
+
+        Both Foo::run and Bar::run call different functions. Each call
+        must be attributed to the correct enclosing method.
+        """
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "lib.rs"
+        rs_file.write_text("""
+fn alpha() {}
+fn beta() {}
+
+struct Foo;
+struct Bar;
+
+impl Foo {
+    fn run(&self) {
+        alpha();
+    }
+}
+
+impl Bar {
+    fn run(&self) {
+        beta();
+    }
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        foo_run = next(
+            (s for s in result.symbols if s.name == "Foo::run"), None,
+        )
+        bar_run = next(
+            (s for s in result.symbols if s.name == "Bar::run"), None,
+        )
+        alpha = next(
+            (s for s in result.symbols if s.name == "alpha"), None,
+        )
+        beta = next(
+            (s for s in result.symbols if s.name == "beta"), None,
+        )
+
+        assert foo_run is not None
+        assert bar_run is not None
+        assert alpha is not None
+        assert beta is not None
+
+        # alpha() call should come from Foo::run
+        alpha_edge = next(
+            (e for e in result.edges if e.dst == alpha.id and e.edge_type == "calls"),
+            None,
+        )
+        assert alpha_edge is not None
+        assert alpha_edge.src == foo_run.id, (
+            f"alpha() should be called from Foo::run, got src={alpha_edge.src}"
+        )
+
+        # beta() call should come from Bar::run
+        beta_edge = next(
+            (e for e in result.edges if e.dst == beta.id and e.edge_type == "calls"),
+            None,
+        )
+        assert beta_edge is not None
+        assert beta_edge.src == bar_run.id, (
+            f"beta() should be called from Bar::run, got src={beta_edge.src}"
+        )
+
+    def test_free_function_still_works(self, tmp_path: Path) -> None:
+        """Functions outside impl blocks still have correct call attribution."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        rs_file = tmp_path / "lib.rs"
+        rs_file.write_text("""
+fn helper() {}
+
+fn caller() {
+    helper();
+}
+
+struct Foo;
+
+impl Foo {
+    fn caller(&self) {
+        helper();
+    }
+}
+""")
+
+        result = analyze_rust(tmp_path)
+
+        free_caller = next(
+            (s for s in result.symbols if s.name == "caller"), None,
+        )
+        foo_caller = next(
+            (s for s in result.symbols if s.name == "Foo::caller"), None,
+        )
+        helper_func = next(
+            (s for s in result.symbols if s.name == "helper"), None,
+        )
+
+        assert free_caller is not None
+        assert foo_caller is not None
+        assert helper_func is not None
+
+        # Both should have call edges to helper
+        call_edges = [
+            e for e in result.edges
+            if e.dst == helper_func.id and e.edge_type == "calls"
+        ]
+        src_ids = {e.src for e in call_edges}
+        assert free_caller.id in src_ids, "Free function caller should call helper"
+        assert foo_caller.id in src_ids, "Foo::caller should call helper"
