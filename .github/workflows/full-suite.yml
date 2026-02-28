@@ -30,9 +30,46 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Check if SHA already tested
+        id: sha-check
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+        run: |
+          SHA="${{ github.sha }}"
+          REPO="${{ github.repository }}"
+          API="https://codeberg.org/api/v1/repos/${REPO}/statuses/${SHA}"
+
+          if [ -z "$FORGEJO_TOKEN" ]; then
+            echo "FORGEJO_TOKEN not set, skipping SHA check"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          STATUSES=$(curl -sf -H "Authorization: token $FORGEJO_TOKEN" "$API" 2>/dev/null) || {
+            echo "API request failed, skipping SHA check"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+
+          if echo "$STATUSES" | jq -e '.[] | select(.context == "full-suite/aggregate" and .status == "success")' > /dev/null 2>&1; then
+            echo "SHA $SHA already tested successfully — skipping full suite"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No successful full-suite/aggregate status for $SHA"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Detect code changes
         id: filter
         run: |
+          # Skip if SHA already tested
+          if [ "${{ steps.sha-check.outputs.skip }}" = "true" ]; then
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "SHA already tested — skipping"
+            exit 0
+          fi
+
           # Compare against previous commit
           base="${{ github.event.before }}"
           head="${{ github.sha }}"
@@ -834,6 +871,32 @@ jobs:
           fi
           git commit -m "Update coverage badge: ${COV}%" || echo "No changes to commit"
           git push origin badges --force || echo "Push failed - may need write permissions"
+
+      - name: Set commit status on success
+        if: needs.changes.outputs.code == 'true' && steps.results.outputs.conclusion == 'success'
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+        run: |
+          SHA="${{ github.sha }}"
+          REPO="${{ github.repository }}"
+          API="https://codeberg.org/api/v1/repos/${REPO}/statuses/${SHA}"
+
+          if [ -z "$FORGEJO_TOKEN" ]; then
+            echo "::warning::FORGEJO_TOKEN not set, skipping commit status update"
+            exit 0
+          fi
+
+          curl -sf -X POST \
+            -H "Authorization: token $FORGEJO_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"state\": \"success\",
+              \"context\": \"full-suite/aggregate\",
+              \"description\": \"Full test suite passed\",
+              \"target_url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+            }" \
+            "$API" > /dev/null && echo "Set full-suite/aggregate status: success" \
+            || echo "::warning::Failed to set commit status (non-fatal)"
 
       - name: Fail if any job failed
         if: needs.changes.outputs.code == 'true' && steps.results.outputs.conclusion != 'success'
