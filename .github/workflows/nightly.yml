@@ -44,7 +44,7 @@ jobs:
         run: |
           pip install --upgrade pip
           if [ -d "packages/hypergumbo-core" ]; then
-            pip install -e "packages/hypergumbo-core[dev]" \
+            pip install -e packages/hypergumbo-core \
                         -e packages/hypergumbo-lang-mainstream \
                         -e packages/hypergumbo-lang-common \
                         -e packages/hypergumbo-lang-extended1 \
@@ -125,7 +125,7 @@ jobs:
         run: |
           pip install --upgrade pip
           if [ -d "packages/hypergumbo-core" ]; then
-            pip install -e "packages/hypergumbo-core[dev]" \
+            pip install -e packages/hypergumbo-core \
                         -e packages/hypergumbo-lang-mainstream \
                         -e packages/hypergumbo-lang-common \
                         -e packages/hypergumbo-lang-extended1 \
@@ -198,7 +198,7 @@ jobs:
         run: |
           pip install --upgrade pip
           if [ -d "packages/hypergumbo-core" ]; then
-            pip install -e "packages/hypergumbo-core[dev]" \
+            pip install -e packages/hypergumbo-core \
                         -e packages/hypergumbo-lang-mainstream \
                         -e packages/hypergumbo-lang-common \
                         -e packages/hypergumbo-lang-extended1 \
