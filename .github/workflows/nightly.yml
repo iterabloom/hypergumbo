@@ -49,7 +49,8 @@ jobs:
                         -e packages/hypergumbo-lang-common \
                         -e packages/hypergumbo-lang-extended1 \
                         -e "packages/hypergumbo-tracker[dev]" \
-                        -e packages/hypergumbo
+                        -e packages/hypergumbo \
+                        jsonschema
           else
             pip install -e .[dev]
           fi
@@ -130,7 +131,8 @@ jobs:
                         -e packages/hypergumbo-lang-common \
                         -e packages/hypergumbo-lang-extended1 \
                         -e "packages/hypergumbo-tracker[dev]" \
-                        -e packages/hypergumbo
+                        -e packages/hypergumbo \
+                        jsonschema
           else
             pip install -e .[dev]
           fi
