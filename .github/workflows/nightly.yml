@@ -33,6 +33,11 @@ jobs:
       SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
 
     steps:
+      # Forgejo runner needs Node.js in the container to execute
+      # JS-based actions. python:*-bookworm images don't ship it.
+      - name: Install Node.js for JS-based actions
+        run: apt-get update && apt-get install -y nodejs
+
       - uses: actions/checkout@v4
 
       - name: Install dependencies
@@ -111,6 +116,9 @@ jobs:
       SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
 
     steps:
+      - name: Install Node.js for JS-based actions
+        run: apt-get update && apt-get install -y nodejs
+
       - uses: actions/checkout@v4
 
       - name: Install dependencies
