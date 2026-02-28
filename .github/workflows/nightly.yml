@@ -16,8 +16,9 @@ concurrency:
 jobs:
   # ─────────────────────────────────────────────────────────────
   # Test matrix (Python versions on Linux)
-  # Lifted from release.yml — keeps multi-Python coverage running
-  # nightly instead of only at release time.
+  # Uses container images to guarantee Python availability —
+  # setup-python@v5 can't find pre-built binaries for Debian 12
+  # (the versions manifest only ships Ubuntu builds).
   # ─────────────────────────────────────────────────────────────
   test-matrix:
     strategy:
@@ -26,16 +27,13 @@ jobs:
       fail-fast: false
 
     runs-on: codeberg-small-lazy
+    container: python:${{ matrix.python-version }}-bookworm
+    timeout-minutes: 15
     env:
       SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
         run: |
@@ -45,6 +43,7 @@ jobs:
                         -e packages/hypergumbo-lang-mainstream \
                         -e packages/hypergumbo-lang-common \
                         -e packages/hypergumbo-lang-extended1 \
+                        -e "packages/hypergumbo-tracker[dev]" \
                         -e packages/hypergumbo
           else
             pip install -e .[dev]
@@ -66,22 +65,34 @@ jobs:
       - name: Run tests with coverage
         run: |
           if [ -d "packages/hypergumbo-core" ]; then
-            COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src"
+            COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov=packages/hypergumbo-tracker/src"
             TEST_PATHS="packages/*/tests/"
           else
             COV_PATHS="--cov=src"
             TEST_PATHS=""
           fi
 
-          if [ "$EMBEDDINGS_AVAILABLE" = "true" ]; then
-            pytest -n 2 $COV_PATHS --cov-report=term-missing --cov-fail-under=100 $TEST_PATHS
+          # Detect available CPUs from cgroup limits
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
           else
-            pytest -n 2 $COV_PATHS --cov-report=term-missing --cov-fail-under=100 \
+            WORKERS=$(nproc)
+          fi
+
+          if [ "$EMBEDDINGS_AVAILABLE" = "true" ]; then
+            pytest -n "$WORKERS" $COV_PATHS --cov-report=term-missing --cov-fail-under=100 $TEST_PATHS
+          else
+            pytest -n "$WORKERS" $COV_PATHS --cov-report=term-missing --cov-fail-under=100 \
               --cov-config=.coveragerc.no-embeddings $TEST_PATHS
           fi
 
   # ─────────────────────────────────────────────────────────────
-  # Test matrix retry (handles transient cache/infra failures)
+  # Test matrix retry (handles transient infra failures)
   # ─────────────────────────────────────────────────────────────
   test-matrix-retry:
     needs: [test-matrix]
@@ -94,17 +105,13 @@ jobs:
       fail-fast: false
 
     runs-on: self-hosted
+    container: python:${{ matrix.python-version }}-bookworm
     timeout-minutes: 15
     env:
       SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
         run: |
@@ -114,6 +121,7 @@ jobs:
                         -e packages/hypergumbo-lang-mainstream \
                         -e packages/hypergumbo-lang-common \
                         -e packages/hypergumbo-lang-extended1 \
+                        -e "packages/hypergumbo-tracker[dev]" \
                         -e packages/hypergumbo
           else
             pip install -e .[dev]
@@ -135,17 +143,29 @@ jobs:
       - name: Run tests with coverage
         run: |
           if [ -d "packages/hypergumbo-core" ]; then
-            COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src"
+            COV_PATHS="--cov=packages/hypergumbo-core/src --cov=packages/hypergumbo-lang-mainstream/src --cov=packages/hypergumbo-lang-common/src --cov=packages/hypergumbo-lang-extended1/src --cov=packages/hypergumbo-tracker/src"
             TEST_PATHS="packages/*/tests/"
           else
             COV_PATHS="--cov=src"
             TEST_PATHS=""
           fi
 
-          if [ "$EMBEDDINGS_AVAILABLE" = "true" ]; then
-            pytest -n 2 $COV_PATHS --cov-report=term-missing --cov-fail-under=100 $TEST_PATHS
+          # Detect available CPUs from cgroup limits
+          if [ -f /sys/fs/cgroup/cpu.max ]; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            if [ "$quota" != "max" ]; then
+              WORKERS=$((quota / period))
+            else
+              WORKERS=$(nproc)
+            fi
           else
-            pytest -n 2 $COV_PATHS --cov-report=term-missing --cov-fail-under=100 \
+            WORKERS=$(nproc)
+          fi
+
+          if [ "$EMBEDDINGS_AVAILABLE" = "true" ]; then
+            pytest -n "$WORKERS" $COV_PATHS --cov-report=term-missing --cov-fail-under=100 $TEST_PATHS
+          else
+            pytest -n "$WORKERS" $COV_PATHS --cov-report=term-missing --cov-fail-under=100 \
               --cov-config=.coveragerc.no-embeddings $TEST_PATHS
           fi
 
