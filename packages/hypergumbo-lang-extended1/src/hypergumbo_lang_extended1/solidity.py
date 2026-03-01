@@ -323,10 +323,35 @@ def _extract_edges_from_tree(
                 edges.append(edge)
                 import_aliases.update(aliases)
 
-    # Second pass: extract call edges with alias resolution
+    # Second pass: extract inheritance and call edges
     for node in iter_tree(tree.root_node):
+        # Contract/interface inheritance: contract A is B, C { ... }
+        if node.type in ("contract_declaration", "interface_declaration"):
+            name_node = find_child_by_type(node, "identifier")
+            if name_node:
+                child_name = node_text(name_node, source)
+                child_sym = local_symbols.get(child_name) or global_symbols.get(child_name)
+                if child_sym:
+                    for child in node.children:
+                        if child.type == "inheritance_specifier":
+                            parent_type_node = find_child_by_type(child, "user_defined_type")
+                            if parent_type_node:
+                                parent_name = node_text(parent_type_node, source)
+                                parent_sym = local_symbols.get(parent_name) or global_symbols.get(parent_name)
+                                if parent_sym:
+                                    edge = Edge.create(
+                                        src=child_sym.id,
+                                        dst=parent_sym.id,
+                                        edge_type="inherits",
+                                        line=child.start_point[0] + 1,
+                                        confidence=0.95,
+                                        origin=PASS_ID,
+                                        origin_run_id=run_id,
+                                    )
+                                    edges.append(edge)
+
         # Function call
-        if node.type == "call_expression":
+        elif node.type == "call_expression":
             func_node = _find_child_by_field(node, "function")
             current_function = _get_enclosing_function_solidity(
                 node, source, local_symbols, global_symbols

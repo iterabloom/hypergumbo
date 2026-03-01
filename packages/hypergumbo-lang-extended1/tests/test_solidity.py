@@ -529,6 +529,81 @@ contract Token {
         assert "view" in funcs[0].modifiers
 
 
+class TestSolidityInheritance:
+    """Tests for Solidity inheritance edge detection."""
+
+    def test_detects_contract_inheritance(self, temp_repo: Path) -> None:
+        """Detects 'inherits' edges for contract is Base."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Base {
+    function baseFunc() public virtual returns (uint256) { return 0; }
+}
+
+contract Token is Base {
+    function transfer(address to, uint256 amount) public returns (bool) {
+        return true;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        inherit_edges = [e for e in result.edges if e.edge_type == "inherits"]
+        assert len(inherit_edges) >= 1
+        # Token inherits from Base
+        token = next(s for s in result.symbols if s.name == "Token" and s.kind == "contract")
+        base = next(s for s in result.symbols if s.name == "Base" and s.kind == "contract")
+        assert any(e.src == token.id and e.dst == base.id for e in inherit_edges)
+
+    def test_detects_multiple_inheritance(self, temp_repo: Path) -> None:
+        """Detects inheritance from multiple parents."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+interface IERC20 {
+    function totalSupply() external view returns (uint256);
+}
+
+contract Ownable {
+    address public owner;
+}
+
+contract Token is IERC20, Ownable {
+    function totalSupply() external view returns (uint256) { return 0; }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        inherit_edges = [e for e in result.edges if e.edge_type == "inherits"]
+        # Token inherits from both IERC20 and Ownable
+        assert len(inherit_edges) >= 2
+
+    def test_interface_inheritance(self, temp_repo: Path) -> None:
+        """Detects interface extending another interface."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+interface IERC20 {
+    function totalSupply() external view returns (uint256);
+}
+
+interface IERC20Metadata is IERC20 {
+    function name() external view returns (string memory);
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        inherit_edges = [e for e in result.edges if e.edge_type == "inherits"]
+        assert len(inherit_edges) >= 1
+
+
 class TestSolidityImportAliases:
     """Tests for Solidity import alias tracking (ADR-0007)."""
 
