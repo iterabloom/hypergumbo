@@ -689,6 +689,88 @@ contract Token {
         )
 
 
+class TestSolidityEmitEdges:
+    """Tests for Solidity emit event edge detection.
+
+    Solidity's emit statement (emit Transfer(...)) creates edges from the
+    emitting function to the event definition, connecting event symbols
+    to the call graph.
+    """
+
+    def test_emit_creates_edge_to_event(self, temp_repo: Path) -> None:
+        """emit Transfer(...) creates an 'emits' edge from function to event."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    event Transfer(address indexed from, address indexed to, uint256 amount);
+
+    function transfer(address to, uint256 amount) public returns (bool) {
+        emit Transfer(msg.sender, to, amount);
+        return true;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        emit_edges = [e for e in result.edges if e.edge_type == "emits"]
+        assert len(emit_edges) >= 1, "Expected at least one 'emits' edge"
+
+        transfer_func = next(s for s in result.symbols if "transfer" in s.name and s.kind == "function")
+        transfer_event = next(s for s in result.symbols if "Transfer" in s.name and s.kind == "event")
+        assert any(e.src == transfer_func.id and e.dst == transfer_event.id for e in emit_edges)
+
+    def test_multiple_emits_in_same_function(self, temp_repo: Path) -> None:
+        """Multiple emit statements create separate edges."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    event Transfer(address indexed from, address indexed to, uint256 amount);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+
+    function transferAndApprove(address to, uint256 amount) public {
+        emit Transfer(msg.sender, to, amount);
+        emit Approval(msg.sender, to, amount);
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        emit_edges = [e for e in result.edges if e.edge_type == "emits"]
+        assert len(emit_edges) >= 2, f"Expected 2+ emits edges, got {len(emit_edges)}"
+
+    def test_event_not_orphaned_when_emitted(self, temp_repo: Path) -> None:
+        """Events that are emitted should not be orphans."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Token {
+    event Transfer(address indexed from, address indexed to, uint256 amount);
+
+    function transfer(address to, uint256 amount) public returns (bool) {
+        emit Transfer(msg.sender, to, amount);
+        return true;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        connected = set()
+        for e in result.edges:
+            connected.add(e.src)
+            connected.add(e.dst)
+
+        transfer_event = next(s for s in result.symbols if "Transfer" in s.name and s.kind == "event")
+        assert transfer_event.id in connected, "Event should be connected via emits edge"
+
+
 class TestSolidityImportAliases:
     """Tests for Solidity import alias tracking (ADR-0007)."""
 

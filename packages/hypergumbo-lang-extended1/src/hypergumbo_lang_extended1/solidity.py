@@ -418,6 +418,29 @@ def _extract_edges_from_tree(
                         )
                         edges.append(edge)
 
+        # Emit statement: emit Transfer(...) → emits edge to event definition
+        elif node.type == "emit_statement":
+            # emit_statement children: "emit", expression (event name), "(", args, ")"
+            event_name_node = find_child_by_type(node, "expression")
+            current_function = _get_enclosing_function_solidity(
+                node, source, local_symbols, global_symbols,
+                symbols_by_span=symbols_by_span,
+            )
+            if event_name_node and current_function:
+                event_name = node_text(event_name_node, source)
+                event_sym = local_symbols.get(event_name) or global_symbols.get(event_name)
+                if event_sym and event_sym.kind == "event":
+                    edge = Edge.create(
+                        src=current_function.id,
+                        dst=event_sym.id,
+                        edge_type="emits",
+                        line=node.start_point[0] + 1,
+                        confidence=0.95,
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
+                    )
+                    edges.append(edge)
+
     return edges, import_aliases
 
 
