@@ -466,6 +466,55 @@ def _extract_edges_from_tree(
                     )
                     edges.append(edge)
 
+    # Third pass: override edges.
+    # For each contract that inherits from parents, connect child functions
+    # to parent functions with the same unqualified name.
+    for node in iter_tree(tree.root_node):
+        if node.type not in ("contract_declaration", "interface_declaration"):
+            continue
+        name_node = find_child_by_type(node, "identifier")
+        if not name_node:
+            continue  # pragma: no cover - defensive
+        child_contract = node_text(name_node, source)
+
+        # Collect parent contract names from inheritance_specifier
+        parent_names: list[str] = []
+        for child in node.children:
+            if child.type == "inheritance_specifier":
+                parent_type_node = find_child_by_type(child, "user_defined_type")
+                if parent_type_node:
+                    parent_names.append(node_text(parent_type_node, source))
+
+        if not parent_names:
+            continue
+
+        # Collect functions defined in this contract
+        child_functions: dict[str, Symbol] = {}
+        for sym in (all_local_symbols or []):
+            if sym.kind == "function" and sym.name.startswith(f"{child_contract}."):
+                unqualified = sym.name[len(child_contract) + 1:]
+                child_functions[unqualified] = sym
+
+        # Create override edges for matching parent functions
+        for func_name, child_sym in child_functions.items():
+            for parent_name in parent_names:
+                parent_qualified = f"{parent_name}.{func_name}"
+                parent_sym = (
+                    local_symbols.get(parent_qualified)
+                    or global_symbols.get(parent_qualified)
+                )
+                if parent_sym and parent_sym.kind == "function":
+                    edge = Edge.create(
+                        src=child_sym.id,
+                        dst=parent_sym.id,
+                        edge_type="overrides",
+                        line=child_sym.span.start_line,
+                        confidence=0.85,
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
+                    )
+                    edges.append(edge)
+
     return edges, import_aliases
 
 

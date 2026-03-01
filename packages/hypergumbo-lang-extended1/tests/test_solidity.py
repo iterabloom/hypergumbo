@@ -940,6 +940,116 @@ contract Vault {
         )
 
 
+class TestSolidityOverrideEdges:
+    """Tests for Solidity function override edge detection.
+
+    When a contract overrides a function from a parent contract (via
+    inheritance), the analyzer should create 'overrides' edges connecting
+    the child function to the parent function. This prevents override
+    functions from being orphans in the call graph.
+    """
+
+    def test_override_creates_edge(self, temp_repo: Path) -> None:
+        """Override function creates an 'overrides' edge to parent function."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract ERC165 {
+    function supportsInterface(bytes4 interfaceId) public virtual view returns (bool) {
+        return false;
+    }
+}
+
+contract Token is ERC165 {
+    function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
+        return true;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        override_edges = [e for e in result.edges if e.edge_type == "overrides"]
+        assert len(override_edges) >= 1, f"Expected override edges, found {len(override_edges)}"
+
+        # Token.supportsInterface overrides ERC165.supportsInterface
+        token_fn = next(
+            s for s in result.symbols
+            if s.name == "Token.supportsInterface" and s.kind == "function"
+        )
+        parent_fn = next(
+            s for s in result.symbols
+            if s.name == "ERC165.supportsInterface" and s.kind == "function"
+        )
+        assert any(
+            e.src == token_fn.id and e.dst == parent_fn.id
+            for e in override_edges
+        ), "Expected overrides edge from Token.supportsInterface → ERC165.supportsInterface"
+
+    def test_multiple_inheritance_overrides(self, temp_repo: Path) -> None:
+        """Override matching works across multiple parent contracts."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+interface IERC20 {
+    function totalSupply() external view returns (uint256);
+    function balanceOf(address) external view returns (uint256);
+}
+
+contract ERC20Base {
+    function totalSupply() public virtual view returns (uint256) { return 0; }
+}
+
+contract Token is IERC20, ERC20Base {
+    function totalSupply() public view override returns (uint256) { return 100; }
+    function balanceOf(address) public view returns (uint256) { return 0; }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        override_edges = [e for e in result.edges if e.edge_type == "overrides"]
+        # Token.totalSupply should override both IERC20.totalSupply and ERC20Base.totalSupply
+        token_ts = next(
+            s for s in result.symbols
+            if s.name == "Token.totalSupply" and s.kind == "function"
+        )
+        overridden_ids = {e.dst for e in override_edges if e.src == token_ts.id}
+        assert len(overridden_ids) >= 2, (
+            f"Expected Token.totalSupply to override 2+ parent functions, "
+            f"found {len(overridden_ids)}"
+        )
+
+    def test_no_override_for_unique_functions(self, temp_repo: Path) -> None:
+        """Functions only in child (not in parent) get no override edges."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Base {
+    function baseFunc() public virtual returns (uint256) { return 0; }
+}
+
+contract Child is Base {
+    function childOnly() public returns (uint256) { return 1; }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        override_edges = [e for e in result.edges if e.edge_type == "overrides"]
+        child_only = next(
+            s for s in result.symbols
+            if s.name == "Child.childOnly" and s.kind == "function"
+        )
+        # childOnly should not have any override edges
+        assert not any(e.src == child_only.id for e in override_edges), (
+            "childOnly should not override anything"
+        )
+
+
 class TestSoliditySignatureExtraction:
     """Tests for Solidity function signature extraction."""
 
