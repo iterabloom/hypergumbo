@@ -5,20 +5,22 @@
 # stopping at the point where human action is required (merging PR, signing tag).
 #
 # Usage:
-#   ./scripts/prepare-release VERSION [--dry-run] [--no-pr]
+#   ./scripts/prepare-release VERSION [--tracker TRACKER_VERSION] [--dry-run] [--no-pr]
 #
 # Arguments:
-#   VERSION      Version to release (e.g., 0.8.0)
-#   --dry-run    Show what would happen without making changes
-#   --no-pr      Skip PR creation (just prepare locally)
+#   VERSION              Version to release (e.g., 2.1.0)
+#   --tracker VERSION    Also bump hypergumbo-tracker to VERSION
+#   --dry-run            Show what would happen without making changes
+#   --no-pr              Skip PR creation (just prepare locally)
 #
 # What this script does:
-#   1. Bumps version in pyproject.toml and __init__.py
+#   1. Bumps version via bump-version (main + optional tracker)
 #   2. Updates CHANGELOG.md (Unreleased → new version)
-#   3. Commits the changes
-#   4. Runs release-check validations
-#   5. Creates PR from dev → main
-#   6. Outputs handoff instructions for human
+#   3. Optionally updates tracker CHANGELOG.md
+#   4. Commits the changes
+#   5. Runs release-check validations
+#   6. Creates PR from dev → main
+#   7. Outputs handoff instructions for human
 #
 # What the human must do after:
 #   1. Review and merge the PR on Codeberg
@@ -36,6 +38,7 @@ NC='\033[0m'
 DRY_RUN=false
 NO_PR=false
 VERSION=""
+TRACKER_VERSION=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -48,15 +51,20 @@ while [[ $# -gt 0 ]]; do
             NO_PR=true
             shift
             ;;
+        --tracker)
+            TRACKER_VERSION="$2"
+            shift 2
+            ;;
         -h|--help)
-            echo "Usage: $0 VERSION [--dry-run] [--no-pr]"
+            echo "Usage: $0 VERSION [--tracker TRACKER_VERSION] [--dry-run] [--no-pr]"
             echo ""
             echo "Prepares a release for human approval."
             echo ""
             echo "Arguments:"
-            echo "  VERSION      Version to release (e.g., 0.8.0)"
-            echo "  --dry-run    Show what would happen without making changes"
-            echo "  --no-pr      Skip PR creation (just prepare locally)"
+            echo "  VERSION              Version to release (e.g., 2.1.0)"
+            echo "  --tracker VERSION    Also bump hypergumbo-tracker to VERSION"
+            echo "  --dry-run            Show what would happen without making changes"
+            echo "  --no-pr              Skip PR creation (just prepare locally)"
             exit 0
             ;;
         -*)
@@ -72,7 +80,7 @@ done
 
 if [[ -z "$VERSION" ]]; then
     echo -e "${RED}Error: VERSION is required${NC}"
-    echo "Usage: $0 VERSION [--dry-run] [--no-pr]"
+    echo "Usage: $0 VERSION [--tracker TRACKER_VERSION] [--dry-run] [--no-pr]"
     exit 1
 fi
 
@@ -83,13 +91,26 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
     exit 1
 fi
 
+if [[ -n "$TRACKER_VERSION" ]]; then
+    if ! [[ "$TRACKER_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+        echo -e "${RED}Error: Invalid tracker version format: $TRACKER_VERSION${NC}"
+        echo "Expected: MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-suffix"
+        exit 1
+    fi
+fi
+
 # Get project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
+HEADER="Prepare Release v$VERSION"
+if [[ -n "$TRACKER_VERSION" ]]; then
+    HEADER="$HEADER (tracker $TRACKER_VERSION)"
+fi
+
 echo "╔════════════════════════════════════════╗"
-echo "║     Prepare Release v$VERSION"
+echo "║     $HEADER"
 echo "╚════════════════════════════════════════╝"
 echo ""
 
@@ -145,42 +166,46 @@ echo ""
 echo "━━━ Step 2: Bump version ━━━"
 # ─────────────────────────────────────────────────────────────
 
-CURRENT_VERSION=$(grep -E '^version\s*=' pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
-echo "Current version: $CURRENT_VERSION"
-echo "New version: $VERSION"
+CURRENT_VERSION=$(grep -E '^version\s*=' packages/hypergumbo-core/pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+echo "Current main version: $CURRENT_VERSION"
+echo "New main version: $VERSION"
+
+TRACKER_PYPROJECT="packages/hypergumbo-tracker/pyproject.toml"
+if [[ -f "$TRACKER_PYPROJECT" ]]; then
+    TRACKER_CURRENT=$(grep -E '^version\s*=' "$TRACKER_PYPROJECT" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+    if [[ -n "$TRACKER_VERSION" ]]; then
+        echo "Current tracker version: $TRACKER_CURRENT"
+        echo "New tracker version: $TRACKER_VERSION"
+    else
+        echo "Tracker: $TRACKER_CURRENT (unchanged)"
+    fi
+fi
 
 if ! $DRY_RUN; then
-    # Update pyproject.toml
-    sed -i "s/^version = \"$CURRENT_VERSION\"/version = \"$VERSION\"/" pyproject.toml
-    echo -e "${GREEN}✓${NC} Updated pyproject.toml"
-
-    # Update __init__.py
-    INIT_FILE="src/hypergumbo/__init__.py"
-    if [[ -f "$INIT_FILE" ]] && grep -q "__version__" "$INIT_FILE"; then
-        sed -i "s/__version__ = \"$CURRENT_VERSION\"/__version__ = \"$VERSION\"/" "$INIT_FILE"
-        echo -e "${GREEN}✓${NC} Updated $INIT_FILE"
+    # Delegate to bump-version (handles all pyproject.toml + __init__.py files)
+    BUMP_ARGS=("$VERSION")
+    if [[ -n "$TRACKER_VERSION" ]]; then
+        BUMP_ARGS+=("--tracker" "$TRACKER_VERSION")
     fi
+    # Run non-interactively by piping 'n' for the CHANGELOG prompt (we handle it ourselves)
+    echo "n" | ./scripts/bump-version "${BUMP_ARGS[@]}"
+    echo -e "${GREEN}✓${NC} Version bumped via bump-version"
 else
-    echo -e "${BLUE}[dry-run]${NC} Would update pyproject.toml: $CURRENT_VERSION → $VERSION"
-    echo -e "${BLUE}[dry-run]${NC} Would update src/hypergumbo/__init__.py"
+    echo -e "${BLUE}[dry-run]${NC} Would run: ./scripts/bump-version $VERSION${TRACKER_VERSION:+ --tracker $TRACKER_VERSION}"
 fi
 
 # ─────────────────────────────────────────────────────────────
 echo ""
-echo "━━━ Step 3: Update CHANGELOG ━━━"
+echo "━━━ Step 3: Update CHANGELOGs ━━━"
 # ─────────────────────────────────────────────────────────────
 
 TODAY=$(date +%Y-%m-%d)
 
+# Main CHANGELOG
 if grep -q "## \[Unreleased\]" CHANGELOG.md; then
     if ! $DRY_RUN; then
-        # Insert new version header after [Unreleased]
-        # This keeps [Unreleased] for future changes and adds the version below it
         sed -i "s/## \[Unreleased\]/## [Unreleased]\n\n## [$VERSION] - $TODAY/" CHANGELOG.md
-
-        # Update the header line that shows released version
         sed -i "s/^- Released \*\*tool\*\* is at: v[0-9.]*$/- Released **tool** is at: v$VERSION/" CHANGELOG.md
-
         echo -e "${GREEN}✓${NC} Updated CHANGELOG.md with [$VERSION] - $TODAY"
     else
         echo -e "${BLUE}[dry-run]${NC} Would update CHANGELOG.md: [Unreleased] → [$VERSION] - $TODAY"
@@ -189,17 +214,37 @@ else
     echo -e "${YELLOW}!${NC} CHANGELOG.md has no [Unreleased] section"
 fi
 
+# Tracker CHANGELOG (only when --tracker is given)
+TRACKER_CHANGELOG="packages/hypergumbo-tracker/CHANGELOG.md"
+if [[ -n "$TRACKER_VERSION" && -f "$TRACKER_CHANGELOG" ]]; then
+    if grep -q "## \[Unreleased\]" "$TRACKER_CHANGELOG"; then
+        if ! $DRY_RUN; then
+            sed -i "s/## \[Unreleased\]/## [Unreleased]\n\n## [$TRACKER_VERSION] - $TODAY/" "$TRACKER_CHANGELOG"
+            echo -e "${GREEN}✓${NC} Updated tracker CHANGELOG.md with [$TRACKER_VERSION] - $TODAY"
+        else
+            echo -e "${BLUE}[dry-run]${NC} Would update tracker CHANGELOG: [Unreleased] → [$TRACKER_VERSION] - $TODAY"
+        fi
+    else
+        echo -e "${YELLOW}!${NC} Tracker CHANGELOG.md has no [Unreleased] section"
+    fi
+fi
+
 # ─────────────────────────────────────────────────────────────
 echo ""
 echo "━━━ Step 4: Commit changes ━━━"
 # ─────────────────────────────────────────────────────────────
 
+COMMIT_MSG="chore: release $VERSION"
+if [[ -n "$TRACKER_VERSION" ]]; then
+    COMMIT_MSG="chore: release $VERSION (tracker $TRACKER_VERSION)"
+fi
+
 if ! $DRY_RUN; then
-    git add pyproject.toml src/hypergumbo/__init__.py CHANGELOG.md
-    git commit -s -m "chore: release $VERSION"
-    echo -e "${GREEN}✓${NC} Committed: chore: release $VERSION"
+    git add -A
+    git commit -s -m "$COMMIT_MSG"
+    echo -e "${GREEN}✓${NC} Committed: $COMMIT_MSG"
 else
-    echo -e "${BLUE}[dry-run]${NC} Would commit: chore: release $VERSION"
+    echo -e "${BLUE}[dry-run]${NC} Would commit: $COMMIT_MSG"
 fi
 
 # ─────────────────────────────────────────────────────────────
@@ -239,6 +284,15 @@ echo ""
 echo "━━━ Step 7: Create PR to main ━━━"
 # ─────────────────────────────────────────────────────────────
 
+PR_TITLE="Release v$VERSION"
+PR_DESCRIPTION="Merge dev into main for v$VERSION release."
+if [[ -n "$TRACKER_VERSION" ]]; then
+    PR_TITLE="Release v$VERSION (tracker $TRACKER_VERSION)"
+    PR_DESCRIPTION="Merge dev into main for v$VERSION release.
+
+Includes hypergumbo-tracker $TRACKER_VERSION."
+fi
+
 if $NO_PR; then
     echo -e "${YELLOW}Skipping PR creation (--no-pr)${NC}"
     PR_URL="(not created)"
@@ -246,8 +300,8 @@ else
     if ! $DRY_RUN; then
         # Create PR using Codeberg's refs/for/ syntax
         PR_OUTPUT=$(git push origin "dev:refs/for/main/release-$VERSION" \
-            -o title="Release v$VERSION" \
-            -o description="Merge dev into main for v$VERSION release.
+            -o title="$PR_TITLE" \
+            -o description="$PR_DESCRIPTION
 
 ## Checklist for reviewer
 - [ ] Version bumped correctly
@@ -290,4 +344,20 @@ echo -e "     ${GREEN}./scripts/tag-release $VERSION${NC}"
 echo ""
 echo "  This will create a signed tag and push it, triggering the"
 echo "  release workflow that publishes to PyPI and Codeberg releases."
+echo ""
+echo "Packages in this release:"
+echo "  - hypergumbo-core $VERSION"
+echo "  - hypergumbo-lang-mainstream $VERSION"
+echo "  - hypergumbo-lang-common $VERSION"
+echo "  - hypergumbo-lang-extended1 $VERSION"
+echo "  - hypergumbo (meta-package) $VERSION"
+
+if [[ -n "$TRACKER_VERSION" ]]; then
+    echo "  - hypergumbo-tracker $TRACKER_VERSION"
+else
+    if [[ -f "$TRACKER_PYPROJECT" ]]; then
+        echo ""
+        echo "  Tracker: $TRACKER_CURRENT (unchanged, twine --skip-existing will no-op)"
+    fi
+fi
 echo ""

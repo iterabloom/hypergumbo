@@ -73,14 +73,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Sketch**: Exclude 9 lock files from config section. **Supply chain**: Maven multi-module workspace detection.
 - **CLI**: Secret scanning via gitleaks, extras/cache management subcommands, redesigned bakeoff tooling (numeric scores, trajectory, orphan recovery, idea ingestion, artifact compression, domain-scored seed selection).
 
-#### Tracker & TUI
-
-- Embedding-based near-duplicate detection, SQLite read cache, positional alias persistence, auto-sync (threshold 40).
-- **TUI**: Textual 7.x with three responsive layouts, 8 write-mode dialogs, SVG snapshot tests, unread discussion indicator.
-
 #### Documentation & Testing
 
-- Tracker quick-start guide. Scoped smart-test coverage, per-package checks, CI auto-retry, `ci-debug logs`.
+- Scoped smart-test coverage, per-package checks, CI auto-retry, `ci-debug logs`.
 
 ### Changed
 

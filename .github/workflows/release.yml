@@ -90,7 +90,8 @@ jobs:
             pip install -e "packages/hypergumbo-core[dev]" \
                         -e packages/hypergumbo-lang-mainstream \
                         -e packages/hypergumbo-lang-common \
-                        -e packages/hypergumbo-lang-extended1
+                        -e packages/hypergumbo-lang-extended1 \
+                        -e packages/hypergumbo-tracker
           else
             pip install -e .[dev]
           fi
@@ -167,7 +168,7 @@ jobs:
             mkdir -p dist
 
             # Build in dependency order
-            for pkg in hypergumbo-core hypergumbo-lang-mainstream hypergumbo-lang-common hypergumbo-lang-extended1 hypergumbo; do
+            for pkg in hypergumbo-core hypergumbo-lang-mainstream hypergumbo-lang-common hypergumbo-lang-extended1 hypergumbo hypergumbo-tracker; do
               echo "Building packages/$pkg..."
               python -m build "packages/$pkg" --outdir dist/
             done

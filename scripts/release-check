@@ -155,6 +155,29 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────
+section "2b. Tracker Version Consistency"
+# ─────────────────────────────────────────────────────────────
+
+# Tracker is independently versioned (NOT required to match main version)
+TRACKER_PYPROJECT="packages/hypergumbo-tracker/pyproject.toml"
+TRACKER_INIT="packages/hypergumbo-tracker/src/hypergumbo_tracker/__init__.py"
+if [[ -f "$TRACKER_PYPROJECT" ]]; then
+    TRACKER_PYPROJECT_VER=$(grep -E '^version\s*=' "$TRACKER_PYPROJECT" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+    if [[ -f "$TRACKER_INIT" ]] && grep -q "__version__" "$TRACKER_INIT"; then
+        TRACKER_INIT_VER=$(grep "__version__" "$TRACKER_INIT" | sed 's/.*"\(.*\)".*/\1/')
+        if [[ "$TRACKER_PYPROJECT_VER" == "$TRACKER_INIT_VER" ]]; then
+            pass "Tracker version consistent: $TRACKER_PYPROJECT_VER (pyproject.toml == __init__.py)"
+        else
+            fail "Tracker version mismatch: pyproject.toml=$TRACKER_PYPROJECT_VER, __init__.py=$TRACKER_INIT_VER"
+        fi
+    else
+        pass "Tracker version: $TRACKER_PYPROJECT_VER (no __init__.py version to check)"
+    fi
+else
+    warn "hypergumbo-tracker package not found"
+fi
+
+# ─────────────────────────────────────────────────────────────
 section "3. Dependencies & Security"
 # ─────────────────────────────────────────────────────────────
 
@@ -260,7 +283,22 @@ for pkg in "${PACKAGES[@]}"; do
 done
 
 if [[ $BUILD_FAILED -eq 0 ]]; then
-    pass "All packages build successfully"
+    pass "All main packages build successfully"
+fi
+
+# Build tracker separately (independent version)
+if [[ -f "packages/hypergumbo-tracker/pyproject.toml" ]]; then
+    echo "    Building packages/hypergumbo-tracker..."
+    if pip wheel "packages/hypergumbo-tracker" --no-deps --wheel-dir dist/ --quiet 2>/dev/null; then
+        TRACKER_WHEEL=$(ls dist/*hypergumbo_tracker*.whl 2>/dev/null | head -1 || echo "")
+        if [[ -n "$TRACKER_WHEEL" ]]; then
+            pass "  Built: $(basename "$TRACKER_WHEEL")"
+        else
+            fail "  Wheel not created for hypergumbo-tracker"
+        fi
+    else
+        fail "  Build failed for hypergumbo-tracker"
+    fi
 fi
 
 # Verify wheels can be installed
@@ -284,6 +322,16 @@ for pkg in "${INSTALL_ORDER[@]}"; do
         fi
     fi
 done
+
+# Verify tracker wheel can be installed
+TRACKER_WHEEL=$(ls dist/*hypergumbo_tracker*.whl 2>/dev/null | head -1 || echo "")
+if [[ -n "$TRACKER_WHEEL" ]]; then
+    if pip install "$TRACKER_WHEEL" --quiet --dry-run 2>/dev/null; then
+        pass "  hypergumbo-tracker can be installed"
+    else
+        warn "  hypergumbo-tracker installation check failed (may be pip version issue)"
+    fi
+fi
 
 # ─────────────────────────────────────────────────────────────
 section "7. Documentation"
@@ -339,8 +387,11 @@ if [[ $FAILED -eq 0 ]]; then
     echo ""
     echo "Packages to release:"
     for pkg in "${PACKAGES[@]}"; do
-        echo "  - $(basename "$pkg")"
+        echo "  - $(basename "$pkg") v$VERSION"
     done
+    if [[ -f "$TRACKER_PYPROJECT" ]]; then
+        echo "  - hypergumbo-tracker v$TRACKER_PYPROJECT_VER (independent version)"
+    fi
     echo ""
     echo "Next steps:"
     echo "  1. Review CHANGELOG.md"
