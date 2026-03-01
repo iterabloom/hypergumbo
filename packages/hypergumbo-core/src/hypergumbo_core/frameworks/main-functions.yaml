@@ -139,4 +139,10 @@ patterns:
     symbol_kind: "^function$"
     language: "^haxe$"
 
+  # Circom: component main = Template() = Template() — circuit entry point
+  - concept: main_function
+    symbol_name: "^main$"
+    symbol_kind: "^variable$"
+    language: "^circom$"
+
 linkers: []
