@@ -2820,7 +2820,7 @@ class TestFormatDatamodels:
     """Tests for data model formatting."""
 
     def test_formats_datamodels(self, tmp_path: Path) -> None:
-        """Formats data models as Markdown."""
+        """Formats data models grouped by file path."""
         symbols = [
             Symbol(id="test:User", name="User", kind="class", language="python",
                    path=str(tmp_path / "models.py"), span=Span(1, 1, 1, 10)),
@@ -2833,8 +2833,8 @@ class TestFormatDatamodels:
         result = _format_datamodels(datamodels, symbols, tmp_path)
 
         assert "## Data Models" in result
-        assert "`User`" in result
-        assert "Django model" in result
+        assert "`models.py`:" in result
+        assert "  - `User` (Django model)" in result
 
     def test_respects_max_entries(self, tmp_path: Path) -> None:
         """Limits output to max_entries."""
@@ -2859,7 +2859,7 @@ class TestFormatDatamodels:
         assert result == ""
 
     def test_missing_symbol_fallback(self, tmp_path: Path) -> None:
-        """Falls back to symbol_id when symbol not found."""
+        """Falls back to symbol_id in Unknown group when symbol not found."""
         datamodels = [
             DataModel(symbol_id="unknown:Model", kind=DataModelKind.DATACLASS,
                       confidence=0.90, label="@dataclass", framework="Python"),
@@ -2867,11 +2867,11 @@ class TestFormatDatamodels:
 
         result = _format_datamodels(datamodels, [], tmp_path)
 
-        assert "`unknown:Model`" in result
-        assert "@dataclass" in result
+        assert "Unknown:" in result
+        assert "  - `unknown:Model` (@dataclass)" in result
 
     def test_format_without_framework(self, tmp_path: Path) -> None:
-        """Formats model without framework info."""
+        """Formats model without framework info under file group."""
         symbols = [
             Symbol(id="test:UserModel", name="UserModel", kind="class", language="python",
                    path=str(tmp_path / "models.py"), span=Span(1, 1, 1, 10)),
@@ -2883,11 +2883,11 @@ class TestFormatDatamodels:
 
         result = _format_datamodels(datamodels, symbols, tmp_path)
 
-        assert "`UserModel`" in result
-        assert "(Domain model)" in result
+        assert "`models.py`:" in result
+        assert "  - `UserModel` (Domain model)" in result
 
     def test_strips_repo_root_from_path(self, tmp_path: Path) -> None:
-        """Strips repo root from file paths."""
+        """Strips repo root from file path group headers."""
         symbols = [
             Symbol(id="test:User", name="User", kind="class", language="python",
                    path=str(tmp_path / "src" / "models.py"), span=Span(1, 1, 1, 10)),
@@ -2899,8 +2899,43 @@ class TestFormatDatamodels:
 
         result = _format_datamodels(datamodels, symbols, tmp_path)
 
-        # Path should be relative, not absolute
-        assert "src/models.py" in result or "src\\models.py" in result
+        # Path should appear as a group header, relative not absolute
+        assert "`src/models.py`:" in result or "`src\\models.py`:" in result
+        assert str(tmp_path) not in result
+
+    def test_groups_models_by_file(self, tmp_path: Path) -> None:
+        """Groups multiple models from the same file under one header."""
+        symbols = [
+            Symbol(id="test:User", name="User", kind="class", language="python",
+                   path=str(tmp_path / "models.py"), span=Span(1, 1, 1, 10)),
+            Symbol(id="test:Post", name="Post", kind="class", language="python",
+                   path=str(tmp_path / "models.py"), span=Span(10, 1, 10, 10)),
+            Symbol(id="test:Config", name="Config", kind="class", language="python",
+                   path=str(tmp_path / "settings.py"), span=Span(1, 1, 1, 10)),
+        ]
+        datamodels = [
+            DataModel(symbol_id="test:User", kind=DataModelKind.ORM_MODEL,
+                      confidence=0.95, label="model", framework="Django"),
+            DataModel(symbol_id="test:Post", kind=DataModelKind.ORM_MODEL,
+                      confidence=0.90, label="model", framework="Django"),
+            DataModel(symbol_id="test:Config", kind=DataModelKind.DATACLASS,
+                      confidence=0.85, label="@dataclass", framework="Python"),
+        ]
+
+        result = _format_datamodels(datamodels, symbols, tmp_path)
+
+        # File path appears once as a group header
+        assert result.count("`models.py`:") == 1
+        assert result.count("`settings.py`:") == 1
+        # Both models under models.py
+        assert "  - `User` (Django model)" in result
+        assert "  - `Post` (Django model)" in result
+        # Config under settings.py
+        assert "  - `Config` (Python @dataclass)" in result
+        # models.py group comes first (User has higher confidence)
+        models_pos = result.index("`models.py`:")
+        settings_pos = result.index("`settings.py`:")
+        assert models_pos < settings_pos
 
 
 class TestFormatSymbols:

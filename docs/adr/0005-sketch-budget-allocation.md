@@ -116,7 +116,7 @@ max_items = max(minimum, budget_for_section // tokens_per_item)
 |---------|-----------------|---------|-----------------|-------|
 | Structure | — | — | 10 root dirs | Tree expands until N root dirs shown |
 | Entry Points | ~25 | 5 | 20 | Shows CLI commands + HTTP routes |
-| Data Models | ~20 | 3 | 30 | ORM models, entities, core data structures |
+| Data Models | ~15 | 3 | 30 | ORM models, entities, grouped by file |
 | Source Files | ~15 | 5 | 50 | Paths only; shrinks with --with-source |
 | Key Symbols | ~25 | 5 | 100 | Max 5 per file to ensure breadth |
 | Additional Files | ~15 | 1 | — | Paths only; shrinks with --with-source |

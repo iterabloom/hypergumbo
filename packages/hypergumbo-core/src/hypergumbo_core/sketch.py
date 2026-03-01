@@ -4955,21 +4955,36 @@ def _format_datamodels(
     # Sort by confidence (highest first) - already sorted but ensure
     sorted_models = sorted(datamodels, key=lambda m: -m.confidence)
 
-    lines = [_section_header("Data Models", exclude_tests), ""]
+    # Truncate to max_entries first, then group
+    shown = sorted_models[:max_entries]
 
-    for model in sorted_models[:max_entries]:
+    # Group by file path (preserves insertion order)
+    grouped: dict[str, list[str]] = {}
+    fallback_lines: list[str] = []
+
+    for model in shown:
         sym = symbol_by_id.get(model.symbol_id)
         if sym:
             rel_path = sym.path
             if rel_path.startswith(str(repo_root)):
                 rel_path = rel_path[len(str(repo_root)) + 1:]
-            # Include framework if known
             if model.framework:
-                lines.append(f"- `{sym.name}` ({model.framework} {model.label}) — `{rel_path}`")
+                bullet = f"  - `{sym.name}` ({model.framework} {model.label})"
             else:
-                lines.append(f"- `{sym.name}` ({model.label}) — `{rel_path}`")
+                bullet = f"  - `{sym.name}` ({model.label})"
+            grouped.setdefault(rel_path, []).append(bullet)
         else:
-            lines.append(f"- `{model.symbol_id}` ({model.label})")
+            fallback_lines.append(f"  - `{model.symbol_id}` ({model.label})")
+
+    lines = [_section_header("Data Models", exclude_tests), ""]
+
+    for path, bullets in grouped.items():
+        lines.append(f"`{path}`:")
+        lines.extend(bullets)
+
+    if fallback_lines:
+        lines.append("Unknown:")
+        lines.extend(fallback_lines)
 
     if len(datamodels) > max_entries:
         lines.append(f"- ... and {len(datamodels) - max_entries} more data models")
@@ -5847,7 +5862,7 @@ def generate_sketch(
         if datamodels:
             # Data Models get 20% of remaining budget (ADR-0005)
             budget_for_models = (remaining_tokens * 20) // 100
-            max_models = max(3, budget_for_models // 20)  # ~20 tokens per model line
+            max_models = max(3, budget_for_models // 15)  # ~15 tokens per model (grouped format)
 
             dm_section = _format_datamodels(
                 datamodels, symbols, repo_root, max_entries=max_models,
