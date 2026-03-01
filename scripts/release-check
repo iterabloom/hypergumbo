@@ -164,7 +164,7 @@ TRACKER_INIT="packages/hypergumbo-tracker/src/hypergumbo_tracker/__init__.py"
 if [[ -f "$TRACKER_PYPROJECT" ]]; then
     TRACKER_PYPROJECT_VER=$(grep -E '^version\s*=' "$TRACKER_PYPROJECT" | head -1 | sed 's/.*"\(.*\)".*/\1/')
     if [[ -f "$TRACKER_INIT" ]] && grep -q "__version__" "$TRACKER_INIT"; then
-        TRACKER_INIT_VER=$(grep "__version__" "$TRACKER_INIT" | sed 's/.*"\(.*\)".*/\1/')
+        TRACKER_INIT_VER=$(grep "^__version__" "$TRACKER_INIT" | sed 's/.*"\(.*\)".*/\1/')
         if [[ "$TRACKER_PYPROJECT_VER" == "$TRACKER_INIT_VER" ]]; then
             pass "Tracker version consistent: $TRACKER_PYPROJECT_VER (pyproject.toml == __init__.py)"
         else

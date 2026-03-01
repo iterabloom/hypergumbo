@@ -12,9 +12,6 @@ direct function calls.
 import importlib
 import json
 import os
-import statistics
-import subprocess
-import sys
 from pathlib import Path
 from unittest import mock
 

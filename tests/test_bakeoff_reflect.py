@@ -12,8 +12,6 @@ direct function calls.
 import importlib
 import json
 import os
-import sys
-import textwrap
 from pathlib import Path
 from unittest import mock
 

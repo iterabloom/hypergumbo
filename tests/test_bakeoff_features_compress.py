@@ -6,9 +6,6 @@ import json
 import os
 import time
 from pathlib import Path
-from unittest.mock import patch
-
-import pytest
 
 # Import the bakeoff-features script as a module
 import importlib
@@ -172,8 +169,6 @@ class TestCompressHgJson:
         repo_out = _make_repo_output(tmp_path, "repo-a", hg_data=data,
                                      derived_age_hours=24.0)
         hg_path = repo_out / "hg.json"
-        original_size = hg_path.stat().st_size
-
         result = bf._compress_hg_json(str(hg_path))
         assert result is True
         assert not hg_path.exists(), "Original hg.json should be removed"
