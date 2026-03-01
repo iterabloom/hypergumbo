@@ -1602,6 +1602,14 @@ def _is_low_quality_chunk(chunk_text: str) -> bool:
     return False
 
 
+# Threshold for cross-file deduplication in embedding-based config extraction.
+# Chunks with cosine similarity >= this value to an already-selected chunk from
+# a different file are considered near-duplicates and suppressed.  0.95 is high
+# enough that only near-identical text is affected (e.g. identical build-system
+# stanzas across monorepo packages).
+_CROSS_FILE_SIM_THRESHOLD = 0.95
+
+
 def _extract_config_embedding(
     repo_root: Path,
     max_lines: int = 30,
@@ -1818,15 +1826,24 @@ def _extract_config_embedding(
     selected_embeddings_per_file: dict[str, list[np.ndarray]] = {
         source: [] for source in file_candidates
     }
+    # Global embedding list for cross-file deduplication (Change A from plan)
+    selected_embeddings_global: list[np.ndarray] = []
 
-    # First: give each file its base allocation
+    # First: give each file its base allocation, skipping cross-file near-duplicates
     for source, candidates in file_candidates.items():
         for sim, center_idx, chunk_text, _file_lines, embedding in candidates[
             :base_per_file
         ]:
+            # Skip if near-duplicate of already-selected chunk from another file
+            if selected_embeddings_global:
+                global_embs = np.array(selected_embeddings_global)
+                max_cross_sim = float(np.max(np.dot(global_embs, embedding)))
+                if max_cross_sim >= _CROSS_FILE_SIM_THRESHOLD:
+                    continue
             selected_chunks.append((sim, source, center_idx, chunk_text))
             picks_per_file[source] += 1
             selected_embeddings_per_file[source].append(embedding)
+            selected_embeddings_global.append(embedding)
 
     # Second: if budget remains, fill with diminishing returns + diversity selection
     remaining_budget = max_lines - len(selected_chunks)
@@ -1849,15 +1866,22 @@ def _extract_config_embedding(
                 picks = picks_per_file[source]
                 marginal = sim / (1 + diminishing_alpha * picks)
 
-                # Compute diversity penalty (max similarity to already-selected from same file)
-                diversity_penalty = 0.0
+                # Intra-file diversity penalty
+                intra_penalty = 0.0
                 if selected_embeddings_per_file[source]:
                     selected_embs = np.array(selected_embeddings_per_file[source])
-                    # embedding is already normalized, selected_embs are normalized
                     chunk_sims = np.dot(selected_embs, embedding)
-                    diversity_penalty = float(np.max(chunk_sims))
+                    intra_penalty = float(np.max(chunk_sims))
 
-                # Adjusted score: diminishing returns * diversity discount
+                # Cross-file diversity penalty
+                cross_penalty = 0.0
+                if selected_embeddings_global:
+                    global_embs = np.array(selected_embeddings_global)
+                    cross_sims = np.dot(global_embs, embedding)
+                    cross_penalty = float(np.max(cross_sims))
+
+                # Strongest penalty wins: intra-file or cross-file
+                diversity_penalty = max(intra_penalty, cross_penalty)
                 adjusted = marginal * (1 - diversity_weight * diversity_penalty)
                 heapq.heappush(
                     pq, (-adjusted, sim, source, center_idx, chunk_text, embedding)
@@ -1871,30 +1895,33 @@ def _extract_config_embedding(
             selected_chunks.append((sim, source, center_idx, chunk_text))
             picks_per_file[source] += 1
             selected_embeddings_per_file[source].append(embedding)
+            selected_embeddings_global.append(embedding)
 
-            # Recompute scores for remaining candidates from the SAME file
-            # (their diversity penalty has changed)
+            # Recompute scores for ALL remaining candidates (cross-file penalty
+            # changed for everyone, not just same-file candidates)
             new_pq: list[tuple[float, float, str, int, str, np.ndarray]] = []
             while pq:
                 neg_adj2, sim2, source2, center_idx2, chunk_text2, emb2 = heapq.heappop(
                     pq
                 )
-                if source2 == source:
-                    # Recompute adjusted score for this candidate
-                    picks = picks_per_file[source2]
-                    marginal = sim2 / (1 + diminishing_alpha * picks)
-                    selected_embs = np.array(selected_embeddings_per_file[source2])
-                    chunk_sims = np.dot(selected_embs, emb2)
-                    diversity_penalty = float(np.max(chunk_sims))
-                    adjusted = marginal * (1 - diversity_weight * diversity_penalty)
-                    new_pq.append(
-                        (-adjusted, sim2, source2, center_idx2, chunk_text2, emb2)
-                    )
-                else:
-                    # Keep original score (unchanged)
-                    new_pq.append(
-                        (neg_adj2, sim2, source2, center_idx2, chunk_text2, emb2)
-                    )
+                picks = picks_per_file[source2]
+                marginal = sim2 / (1 + diminishing_alpha * picks)
+
+                # Intra-file penalty
+                intra_penalty = 0.0
+                if selected_embeddings_per_file[source2]:
+                    sel_embs = np.array(selected_embeddings_per_file[source2])
+                    intra_penalty = float(np.max(np.dot(sel_embs, emb2)))
+
+                # Cross-file penalty (global includes the just-picked embedding)
+                global_embs = np.array(selected_embeddings_global)
+                cross_penalty = float(np.max(np.dot(global_embs, emb2)))
+
+                diversity_penalty = max(intra_penalty, cross_penalty)
+                adjusted = marginal * (1 - diversity_weight * diversity_penalty)
+                new_pq.append(
+                    (-adjusted, sim2, source2, center_idx2, chunk_text2, emb2)
+                )
             # Rebuild heap
             heapq.heapify(new_pq)
             pq = new_pq

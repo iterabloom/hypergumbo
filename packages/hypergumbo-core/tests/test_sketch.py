@@ -5686,6 +5686,80 @@ services:
         assert _is_config_excluded_path("config.json") is False
 
 
+class TestCrossFileDedup:
+    """Tests for cross-file deduplication in embedding-based config extraction."""
+
+    @pytest.mark.skipif(
+        not _has_sentence_transformers(),
+        reason="sentence-transformers not installed (1GB+ torch dependency)"
+    )
+    def test_cross_file_dedup_identical_content(self, tmp_path: Path) -> None:
+        """Identical build-system stanzas across monorepo packages collapse to one."""
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
+
+        identical_build = '[build-system]\nrequires = ["hatchling>=1.24"]\nbuild-backend = "hatchling.build"'
+
+        # Three monorepo packages with identical build-system but different names
+        for pkg in ("core", "utils", "cli"):
+            pkg_dir = tmp_path / "packages" / pkg
+            pkg_dir.mkdir(parents=True)
+            (pkg_dir / "pyproject.toml").write_text(
+                f'[project]\nname = "myapp-{pkg}"\nversion = "1.0.0"\n'
+                f'description = "The {pkg} package for myapp"\n\n'
+                f'{identical_build}\n'
+            )
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.EMBEDDING)
+
+        # The identical build-system line should appear at most once
+        count = result.count('requires = ["hatchling>=1.24"]')
+        assert count <= 1, (
+            f"Expected build-system line at most once, found {count} times:\n{result}"
+        )
+
+    @pytest.mark.skipif(
+        not _has_sentence_transformers(),
+        reason="sentence-transformers not installed (1GB+ torch dependency)"
+    )
+    def test_cross_file_dedup_preserves_unique(self, tmp_path: Path) -> None:
+        """Different config content across files is preserved despite dedup."""
+        from hypergumbo_core.sketch import _extract_config_info, ConfigExtractionMode
+
+        # Two packages with genuinely different content
+        pkg_a = tmp_path / "packages" / "api"
+        pkg_a.mkdir(parents=True)
+        (pkg_a / "pyproject.toml").write_text(
+            '[project]\nname = "myapp-api"\nversion = "2.0.0"\n'
+            'description = "REST API server using Flask and PostgreSQL"\n'
+            'dependencies = ["flask>=3.0", "psycopg2>=2.9"]\n'
+        )
+
+        pkg_b = tmp_path / "packages" / "ml"
+        pkg_b.mkdir(parents=True)
+        (pkg_b / "pyproject.toml").write_text(
+            '[project]\nname = "myapp-ml"\nversion = "0.5.0"\n'
+            'description = "Machine learning pipeline using PyTorch"\n'
+            'dependencies = ["torch>=2.0", "transformers>=4.30"]\n'
+        )
+
+        result = _extract_config_info(tmp_path, mode=ConfigExtractionMode.EMBEDDING)
+
+        # Both packages' unique content should be represented
+        has_api = "flask" in result.lower() or "myapp-api" in result
+        has_ml = "torch" in result.lower() or "myapp-ml" in result
+        assert has_api and has_ml, (
+            f"Expected content from both packages. API present: {has_api}, "
+            f"ML present: {has_ml}.\nResult:\n{result}"
+        )
+
+    def test_cross_file_sim_threshold_value(self) -> None:
+        """_CROSS_FILE_SIM_THRESHOLD is set high enough for near-identical text only."""
+        from hypergumbo_core.sketch import _CROSS_FILE_SIM_THRESHOLD
+
+        # Must be in (0.9, 1.0) — high enough to avoid false positives
+        assert 0.9 < _CROSS_FILE_SIM_THRESHOLD <= 1.0
+
+
 class TestNegativePatterns:
     """Tests for negative probe patterns that reduce false positives."""
 
