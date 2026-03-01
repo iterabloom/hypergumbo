@@ -34,7 +34,6 @@ Why This Design
 """
 from __future__ import annotations
 
-import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -321,8 +320,7 @@ def _process_import_declaration(
         confidence = 0.9
 
     edges.append(
-        Edge(
-            id=f"edge:d:{uuid.uuid4().hex[:12]}",
+        Edge.create(
             src=file_stable_id,
             dst=dst,
             edge_type="imports",
@@ -460,8 +458,7 @@ def _resolve_and_emit_call_edge(
         dst_id = f"d:external:{target_name}:function"
         confidence = 0.70
 
-    edges.append(Edge(
-        id=f"edge:d:{uuid.uuid4().hex[:12]}",
+    edges.append(Edge.create(
         src=caller.id,
         dst=dst_id,
         edge_type="calls",

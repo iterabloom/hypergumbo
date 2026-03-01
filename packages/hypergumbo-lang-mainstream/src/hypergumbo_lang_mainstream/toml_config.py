@@ -270,10 +270,8 @@ def _process_toml_tree(
 
             # Create edge from build target to source file
             if target_path:
-                edge_id = _make_edge_id(symbol_id, target_path, "defines_target")
                 edges.append(
-                    Edge(
-                        id=edge_id,
+                    Edge.create(
                         src=symbol_id,
                         dst=target_path,
                         edge_type="defines_target",

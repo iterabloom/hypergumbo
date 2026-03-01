@@ -60,12 +60,6 @@ def find_verilog_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.v", "*.sv", "*.vh", "*.svh"])
 
 
-def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
-    """Generate deterministic edge ID."""
-    content = f"{edge_type}:{src}:{dst}"
-    return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
-
-
 def _extract_module_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract module name from module_declaration node."""
     # Look for module_header -> simple_identifier
@@ -249,8 +243,7 @@ class VerilogAnalyzer(TreeSitterAnalyzer):
                     else:
                         dst_id = f"verilog:external:{module_type}:module"
 
-                    edge = Edge(
-                        id=_make_edge_id(current_module_id, dst_id, "instantiates"),
+                    edge = Edge.create(
                         src=current_module_id,
                         dst=dst_id,
                         edge_type="instantiates",

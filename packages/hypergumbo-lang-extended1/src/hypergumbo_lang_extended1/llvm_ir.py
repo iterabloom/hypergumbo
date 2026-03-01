@@ -37,7 +37,6 @@ LLVM IR-Specific Considerations
 """
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator
 
@@ -64,12 +63,6 @@ PASS_ID = make_pass_id("llvm_ir")
 def find_llvm_ir_files(repo_root: Path) -> Iterator[Path]:
     """Yield all LLVM IR files in the repository."""
     yield from find_files(repo_root, ["*.ll"])
-
-
-def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
-    """Generate deterministic edge ID."""
-    content = f"{edge_type}:{src}:{dst}"
-    return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
 
 
 def _get_function_name(header_node: "tree_sitter.Node", source: bytes) -> str | None:
@@ -292,8 +285,7 @@ def _resolve_calls(
             confidence = base_confidence * min(
                 caller_result.confidence, callee_result.confidence
             )
-            edge = Edge(
-                id=_make_edge_id(caller_sym.id, callee_sym.id, "calls"),
+            edge = Edge.create(
                 src=caller_sym.id,
                 dst=callee_sym.id,
                 edge_type="calls",

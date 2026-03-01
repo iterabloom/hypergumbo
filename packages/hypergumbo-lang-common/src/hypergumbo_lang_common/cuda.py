@@ -272,8 +272,7 @@ def _extract_cuda_edges(
                     dst_id = f"cuda:external:{called_name}:function"
                     confidence = 0.70
 
-                edge = Edge(
-                    id=_make_edge_id(caller.id, dst_id, edge_type),
+                edge = Edge.create(
                     src=caller.id,
                     dst=dst_id,
                     edge_type=edge_type,

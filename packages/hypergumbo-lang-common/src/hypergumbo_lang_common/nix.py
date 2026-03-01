@@ -423,8 +423,7 @@ def _extract_nix_edges(
                     src_id = f"nix:{rel_path}:{start_line}:import"
                     dst_id = f"nix:external:{target}"
 
-                    edge = Edge(
-                        id=_make_edge_id(src_id, dst_id, "imports"),
+                    edge = Edge.create(
                         src=src_id,
                         dst=dst_id,
                         edge_type="imports",
@@ -450,8 +449,7 @@ def _extract_nix_edges(
                             dst_id = f"nix:external:{target_name}:function"
                             confidence = 0.70
 
-                        edges.append(Edge(
-                            id=_make_edge_id(caller.id, dst_id, "calls"),
+                        edges.append(Edge.create(
                             src=caller.id,
                             dst=dst_id,
                             edge_type="calls",

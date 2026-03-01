@@ -31,7 +31,6 @@ Why This Design
 """
 from __future__ import annotations
 
-import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -339,8 +338,7 @@ class AdaAnalyzer(TreeSitterAnalyzer):
                     if child.type == "selected_component":
                         import_name = node_text(child, source)
                         edges.append(
-                            Edge(
-                                id=f"edge:ada:{uuid.uuid4().hex[:12]}",
+                            Edge.create(
                                 src=file_stable_id,
                                 dst=f"ada:?:{import_name}:package",
                                 edge_type="imports",
@@ -354,8 +352,7 @@ class AdaAnalyzer(TreeSitterAnalyzer):
                         text = node_text(child, source)
                         if text != "with":  # Skip the keyword
                             edges.append(
-                                Edge(
-                                    id=f"edge:ada:{uuid.uuid4().hex[:12]}",
+                                Edge.create(
                                     src=file_stable_id,
                                     dst=f"ada:?:{text}:package",
                                     edge_type="imports",
@@ -384,8 +381,7 @@ class AdaAnalyzer(TreeSitterAnalyzer):
                             dst_id = f"ada:external:{target_name}:procedure"
                             confidence = 0.70
 
-                        edges.append(Edge(
-                            id=f"edge:ada:{uuid.uuid4().hex[:12]}",
+                        edges.append(Edge.create(
                             src=caller.id,
                             dst=dst_id,
                             edge_type="calls",
@@ -413,8 +409,7 @@ class AdaAnalyzer(TreeSitterAnalyzer):
                             dst_id = f"ada:external:{target_name}:function"
                             confidence = 0.70
 
-                        edges.append(Edge(
-                            id=f"edge:ada:{uuid.uuid4().hex[:12]}",
+                        edges.append(Edge.create(
                             src=caller.id,
                             dst=dst_id,
                             edge_type="calls",

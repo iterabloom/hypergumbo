@@ -498,8 +498,7 @@ def link_routes_to_handlers(
             )
 
         if handler:
-            edge = Edge(
-                id=f"edge:{route.id}->routes_to->{handler.id}",
+            edge = Edge.create(
                 src=route.id,
                 dst=handler.id,
                 edge_type="routes_to",

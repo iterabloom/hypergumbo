@@ -65,11 +65,6 @@ def find_proto_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.proto"])
 
 
-def _make_edge_id() -> str:
-    """Generate a unique edge ID."""
-    return f"edge:proto:{uuid.uuid4().hex[:12]}"
-
-
 def _extract_rpc_signature(rpc_node: "tree_sitter.Node", source: bytes) -> str:
     """Extract RPC signature showing request/response types.
 
@@ -246,8 +241,7 @@ def _extract_symbols_and_edges(
 
                 # Create contains edge from service to rpc
                 if service_name and service_name in service_symbols:
-                    edges.append(Edge(
-                        id=_make_edge_id(),
+                    edges.append(Edge.create(
                         src=service_symbols[service_name].id,
                         dst=rpc_sym.id,
                         edge_type="contains",
@@ -284,8 +278,7 @@ def _extract_symbols_and_edges(
             if import_string:
                 import_path = node_text(import_string, source).strip().strip('"')
                 # Create import edge from this file to the imported file
-                edges.append(Edge(
-                    id=_make_edge_id(),
+                edges.append(Edge.create(
                     src=make_file_id("proto", file_path),
                     dst=f"proto:{import_path}:1-1:file:file",
                     edge_type="imports",

@@ -818,18 +818,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 def _edge_from_dict(d: Dict[str, Any]) -> Edge:
     """Reconstruct an Edge from its dict representation."""
-    meta = d.get("meta", {})
-    return Edge(
-        id=d["id"],
-        src=d["src"],
-        dst=d["dst"],
-        edge_type=d["type"],
-        line=d.get("line", 0),
-        confidence=d.get("confidence", 0.85),
-        origin=d.get("origin", ""),
-        origin_run_id=d.get("origin_run_id", ""),
-        evidence_type=meta.get("evidence_type", "unknown"),
-    )
+    return Edge.from_dict(d)
 
 
 def _format_symbol_display_name(node: Dict[str, Any] | None, fallback_id: str = "") -> str:

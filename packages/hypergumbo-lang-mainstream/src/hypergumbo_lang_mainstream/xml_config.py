@@ -197,8 +197,7 @@ def _process_maven_dependency(
 
         # Create dependency edge from project to dependency
         if project_id:
-            edge = Edge(
-                id=_make_edge_id(project_id, symbol_id, "depends_on"),
+            edge = Edge.create(
                 src=project_id,
                 dst=symbol_id,
                 edge_type="depends_on",

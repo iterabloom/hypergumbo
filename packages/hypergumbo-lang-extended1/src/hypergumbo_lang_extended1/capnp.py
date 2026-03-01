@@ -39,7 +39,6 @@ Cap'n Proto-Specific Considerations
 """
 from __future__ import annotations
 
-import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -73,11 +72,6 @@ def find_capnp_files(repo_root: Path) -> Iterator[Path]:
 def is_capnp_tree_sitter_available() -> bool:
     """Check if tree-sitter with Cap'n Proto grammar is available."""
     return _analyzer._check_grammar_available()
-
-
-def _make_edge_id() -> str:
-    """Generate a unique edge ID."""
-    return f"edge:capnp:{uuid.uuid4().hex[:12]}"
 
 
 def _extract_method_signature(method_node: "tree_sitter.Node", source: bytes) -> str:
@@ -220,8 +214,7 @@ def _extract_symbols_and_edges(
                 # Create contains edge from interface to method
                 if interface_name and interface_name in interface_symbols:
                     interface_sym = interface_symbols[interface_name]
-                    edges.append(Edge(
-                        id=_make_edge_id(),
+                    edges.append(Edge.create(
                         src=interface_sym.id,
                         dst=method_sym.id,
                         edge_type="contains",
@@ -249,8 +242,7 @@ def _extract_symbols_and_edges(
                             for path_child in import_child.children:
                                 if path_child.type == "string_fragment":
                                     import_path = node_text(path_child, source).strip()
-                                    edges.append(Edge(
-                                        id=_make_edge_id(),
+                                    edges.append(Edge.create(
                                         src=make_file_id("capnp", file_path),
                                         dst=f"capnp:{import_path}:1-1:file:file",
                                         edge_type="imports",

@@ -188,8 +188,7 @@ def _process_dockerfile_tree(
             # Create base_image edge if this FROM references another stage
             if image_name and image_name.lower() in stage_registry:
                 dst_id = stage_registry[image_name.lower()]
-                edge = Edge(
-                    id=_make_edge_id(symbol_id, dst_id, "base_image"),
+                edge = Edge.create(
                     src=symbol_id,
                     dst=dst_id,
                     edge_type="base_image",
@@ -301,8 +300,7 @@ def _process_dockerfile_tree(
                 if current_stage_id and from_stage.lower() in stage_registry:
                     src_stage_id = stage_registry[from_stage.lower()]
                     start_line = node.start_point[0] + 1
-                    edge = Edge(
-                        id=_make_edge_id(current_stage_id, src_stage_id, "depends_on"),
+                    edge = Edge.create(
                         src=current_stage_id,
                         dst=src_stage_id,
                         edge_type="depends_on",

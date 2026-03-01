@@ -36,7 +36,6 @@ PowerShell-Specific Considerations
 """
 from __future__ import annotations
 
-import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -64,11 +63,6 @@ PASS_ID = make_pass_id("powershell")
 def find_powershell_files(repo_root: Path) -> Iterator[Path]:
     """Yield all PowerShell files in the repository."""
     yield from find_files(repo_root, ["*.ps1", "*.psm1", "*.psd1"])
-
-
-def _make_edge_id() -> str:
-    """Generate a unique edge ID."""
-    return f"edge:powershell:{uuid.uuid4().hex[:12]}"
 
 
 def _extract_function_signature(func_node: "tree_sitter.Node", source: bytes) -> str:
@@ -200,8 +194,7 @@ def _process_import_module(
             if child.type == "generic_token":
                 module_text = node_text(child, source).strip()
                 if module_text and not module_text.startswith("-"):
-                    edges.append(Edge(
-                        id=_make_edge_id(),
+                    edges.append(Edge.create(
                         src=make_file_id("powershell", file_path),
                         dst=f"powershell:?:?:{module_text}:module",
                         edge_type="imports",
@@ -226,8 +219,7 @@ def _process_using_command(
         ]
         if len(tokens) >= 2 and tokens[0].lower() == "module":
             module_name = tokens[1]
-            edges.append(Edge(
-                id=_make_edge_id(),
+            edges.append(Edge.create(
                 src=make_file_id("powershell", file_path),
                 dst=f"powershell:?:?:{module_name}:module",
                 edge_type="imports",
@@ -305,8 +297,7 @@ def _extract_powershell_edges(
                             dst_id = f"powershell:external:{command_name}:function"
                             confidence = 0.70
 
-                        edges.append(Edge(
-                            id=_make_edge_id(),
+                        edges.append(Edge.create(
                             src=caller.id,
                             dst=dst_id,
                             edge_type="calls",

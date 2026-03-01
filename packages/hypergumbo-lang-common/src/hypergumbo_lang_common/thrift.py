@@ -66,11 +66,6 @@ def find_thrift_files(repo_root: Path) -> Iterator[Path]:
     yield from find_files(repo_root, ["*.thrift"])
 
 
-def _make_edge_id() -> str:
-    """Generate a unique edge ID."""
-    return f"edge:thrift:{uuid.uuid4().hex[:12]}"
-
-
 def _extract_function_signature(func_node: "tree_sitter.Node", source: bytes) -> str:
     """Extract function signature showing return type and parameters.
 
@@ -203,8 +198,7 @@ def _extract_symbols_and_edges(
                     symbols.append(func_sym)
 
                     # Create contains edge from service to function
-                    edges.append(Edge(
-                        id=_make_edge_id(),
+                    edges.append(Edge.create(
                         src=service_sym.id,
                         dst=func_sym.id,
                         edge_type="contains",
@@ -242,8 +236,7 @@ def _extract_symbols_and_edges(
             for subchild in node.children:
                 if subchild.type == "string":
                     include_path = node_text(subchild, source).strip().strip('"')
-                    edges.append(Edge(
-                        id=_make_edge_id(),
+                    edges.append(Edge.create(
                         src=make_file_id("thrift", file_path),
                         dst=f"thrift:{include_path}:1-1:file:file",
                         edge_type="imports",

@@ -16,7 +16,7 @@ from hypergumbo_lang_mainstream.xml_config import (
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "xml-v1"
-    assert PASS_VERSION == "2.0.2"
+    assert PASS_VERSION == "2.1.0"
 
 def test_analyze_maven_pom(tmp_path):
     """Test parsing Maven pom.xml with dependencies."""

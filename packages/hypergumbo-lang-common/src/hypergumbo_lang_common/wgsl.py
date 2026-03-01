@@ -380,8 +380,7 @@ def _extract_wgsl_edges(
                     dst_id = f"wgsl:builtin:{func_name}"
                     confidence = 0.70
 
-                edge = Edge(
-                    id=_make_edge_id(caller.id, dst_id, "calls"),
+                edge = Edge.create(
                     src=caller.id,
                     dst=dst_id,
                     edge_type="calls",

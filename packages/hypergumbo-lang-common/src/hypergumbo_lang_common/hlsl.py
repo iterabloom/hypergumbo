@@ -213,8 +213,7 @@ def _extract_hlsl_edges(
                 dst_id = f"hlsl:external:{target_name}:function"
                 confidence = 0.70
 
-            edge = Edge(
-                id=_make_edge_id(caller.id, dst_id, "calls"),
+            edge = Edge.create(
                 src=caller.id,
                 dst=dst_id,
                 edge_type="calls",

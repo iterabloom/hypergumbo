@@ -39,7 +39,6 @@ GDScript-Specific Considerations
 """
 from __future__ import annotations
 
-import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -73,11 +72,6 @@ def find_gdscript_files(repo_root: Path) -> Iterator[Path]:
 def is_gdscript_tree_sitter_available() -> bool:
     """Check if tree-sitter with GDScript grammar is available."""
     return _analyzer._check_grammar_available()
-
-
-def _make_edge_id() -> str:
-    """Generate a unique edge ID."""
-    return f"edge:gdscript:{uuid.uuid4().hex[:12]}"
 
 
 def _extract_function_signature(func_node: "tree_sitter.Node", source: bytes) -> str:
@@ -249,8 +243,7 @@ class GDScriptAnalyzer(TreeSitterAnalyzer):
                             for arg_child in args_node.children:
                                 if arg_child.type == "string":
                                     path_str = node_text(arg_child, source).strip().strip('"\'')
-                                    edges.append(Edge(
-                                        id=_make_edge_id(),
+                                    edges.append(Edge.create(
                                         src=make_file_id("gdscript", rel_path),
                                         dst=f"gdscript:{path_str}:file",
                                         edge_type="imports",
@@ -271,8 +264,7 @@ class GDScriptAnalyzer(TreeSitterAnalyzer):
                                     dst_id = f"gdscript:external:{called_name}:function"
                                     confidence = 0.70
 
-                                edges.append(Edge(
-                                    id=_make_edge_id(),
+                                edges.append(Edge.create(
                                     src=caller.id,
                                     dst=dst_id,
                                     edge_type="calls",

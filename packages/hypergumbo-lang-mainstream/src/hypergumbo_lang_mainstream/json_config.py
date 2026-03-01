@@ -201,8 +201,7 @@ def _process_dependencies(
 
                 # Create dependency edge
                 if project_id:
-                    edge = Edge(
-                        id=_make_edge_id(project_id, symbol_id, "depends_on"),
+                    edge = Edge.create(
                         src=project_id,
                         dst=symbol_id,
                         edge_type="depends_on",
@@ -512,8 +511,7 @@ def _process_tsconfig(
                         symbols.append(ref_sym)
 
                         # Create reference edge
-                        edge = Edge(
-                            id=_make_edge_id(config_id, ref_id, "references"),
+                        edge = Edge.create(
                             src=config_id,
                             dst=ref_id,
                             edge_type="references",

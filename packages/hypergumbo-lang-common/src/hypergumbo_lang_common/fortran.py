@@ -497,8 +497,7 @@ def _extract_fortran_edges(
                     dst_id = f"fortran:external:{mod_name}"
                     confidence = 0.70
 
-                edge = Edge(
-                    id=_make_edge_id(current_symbol, dst_id, "imports"),
+                edge = Edge.create(
                     src=current_symbol,
                     dst=dst_id,
                     edge_type="imports",
@@ -533,8 +532,7 @@ def _extract_fortran_edges(
                     dst_id = f"fortran:external:{call_name}"
                     confidence = 0.70
 
-                edge = Edge(
-                    id=_make_edge_id(current_symbol, dst_id, "calls"),
+                edge = Edge.create(
                     src=current_symbol,
                     dst=dst_id,
                     edge_type="calls",

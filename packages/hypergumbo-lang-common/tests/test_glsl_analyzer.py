@@ -18,7 +18,7 @@ from hypergumbo_lang_common.glsl import (
 def test_pass_metadata():
     """Verify pass ID and version are set correctly."""
     assert PASS_ID == "glsl-v1"
-    assert PASS_VERSION == "2.0.2"
+    assert PASS_VERSION == "2.1.0"
 
 def test_analyze_function(tmp_path):
     """Test detection of shader functions."""

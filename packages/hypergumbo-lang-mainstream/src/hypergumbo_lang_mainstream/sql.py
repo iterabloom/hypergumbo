@@ -397,8 +397,7 @@ def _extract_sql_edges(
                             if lookup_result.found and lookup_result.symbol:
                                 dst_id = lookup_result.symbol.id
                                 confidence = 0.90 * lookup_result.confidence
-                                edge = Edge(
-                                    id=_make_edge_id(table_sym.id, dst_id, "references"),
+                                edge = Edge.create(
                                     src=table_sym.id,
                                     dst=dst_id,
                                     edge_type="references",

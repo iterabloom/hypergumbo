@@ -31,7 +31,6 @@ Assembly-Specific Considerations
 """
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -64,12 +63,6 @@ def find_asm_files(repo_root: Path) -> Iterator[Path]:
 def is_asm_tree_sitter_available() -> bool:
     """Check if tree-sitter with asm grammar is available."""
     return _analyzer._check_grammar_available()
-
-
-def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
-    """Generate deterministic edge ID."""
-    content = f"{edge_type}:{src}:{dst}"
-    return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
 
 
 def _determine_label_kind(current_section: str) -> str:
@@ -216,8 +209,7 @@ class AsmAnalyzer(TreeSitterAnalyzer):
                 dst_id = f"asm:external:{target_name}:function"
                 confidence = 0.70
 
-            edges.append(Edge(
-                id=_make_edge_id(caller.id, dst_id, "calls"),
+            edges.append(Edge.create(
                 src=caller.id,
                 dst=dst_id,
                 edge_type="calls",

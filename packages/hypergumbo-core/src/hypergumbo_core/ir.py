@@ -364,6 +364,7 @@ class Edge:
         confidence: float = 0.85,
         evidence_lang: Optional[str] = None,
         evidence_spans: Optional[List[Dict[str, Any]]] = None,
+        meta: Optional[Dict[str, Any]] = None,
     ) -> "Edge":
         """Create an Edge with auto-generated ID and edge_key."""
         # Generate deterministic edge ID from src, dst, type, AND line
@@ -384,6 +385,7 @@ class Edge:
             evidence_type=evidence_type,
             evidence_lang=evidence_lang,
             evidence_spans=evidence_spans,
+            meta=meta,
         )
 
     def to_dict(self) -> dict:

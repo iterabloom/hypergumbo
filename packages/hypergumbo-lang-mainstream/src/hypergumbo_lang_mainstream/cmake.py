@@ -237,8 +237,7 @@ def _process_cmake_tree(
                             dst_id = f"cmake:external:{dep}:library"
                             confidence = 0.70
 
-                        edge = Edge(
-                            id=_make_edge_id(src_id, dst_id, "links"),
+                        edge = Edge.create(
                             src=src_id,
                             dst=dst_id,
                             edge_type="links",
