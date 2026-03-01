@@ -7,7 +7,7 @@ These are languages that most developers will encounter regularly, representing
 the core of modern software development stacks.
 """
 
-__version__ = "2.0.2"
+__version__ = "2.1.0"
 
 # Module paths for analyzer discovery via entry-points (ADR-0012 Step 1).
 # Importing each module triggers the @register_analyzer decorator within it.
