@@ -19,6 +19,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Solidity visibility modifiers**: Extracts `public`/`private`/`internal`/`external` visibility as symbol metadata for export detection.
 - **Solidity library export patterns**: Libraries with `public`/`external` functions are detected as entrypoints.
 - **Solidity `using Library for Type` call resolution**: Resolves implicit library calls like `x.add(y)` to `SafeMath.add(x, y)` by tracking `using` directive AST nodes per contract. Correctly disambiguates when multiple libraries define the same function name.
+- **Circom language support**: New analyzer for Circom (.circom) zero-knowledge circuit files. Extracts template definitions (as classes), function definitions, signal declarations (with input/output visibility), main component definitions. Creates call edges for template instantiation, function calls, and include directives. Built from source via `build-source-grammars`.
 - **Rust trait `impl` edges**: Creates `implements` edges from `impl Trait for Struct` declarations, linking struct methods to trait definitions.
 - **Rust JNI support**: JNI linker now detects Rust `#[no_mangle] pub extern "C"` functions matching `Java_*` naming conventions.
 
@@ -31,6 +32,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Cargo workspace handling**: Skip `"."` member in Cargo workspace `members` lists to avoid self-referential package roots.
 - **Dependency symbol tier classification**: Dependency-directory symbols are correctly classified as tier 3 (external). Benchmark directories (`bench/`, `benches/`) excluded from production slices.
 - **Test file classification**: Added `fv/` (formal verification) and `harnesses/` directories to test detection. Added `build.rs` as utility file for entrypoint ranking demotion.
+- **Symbol path normalization**: Centralized path normalization in `run_all_analyzers` and `run_behavior_map` strips absolute repo_root prefix from symbol and usage context paths. Fixes incorrect tier classification in Java, TypeScript, Kotlin, HTML, C, Objective-C, Swift analyzers and event-sourcing/websocket/swift-objc linkers.
 
 ### Changed
 

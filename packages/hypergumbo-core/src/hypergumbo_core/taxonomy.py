@@ -312,6 +312,11 @@ LANGUAGES: dict[str, LanguageSpec] = {
         extensions=["*.sol"],
         roles=FileRole.ANALYZABLE,
     ),
+    "circom": LanguageSpec(
+        name="circom",
+        extensions=["*.circom"],
+        roles=FileRole.ANALYZABLE,
+    ),
     "verilog": LanguageSpec(
         name="verilog",
         extensions=["*.v", "*.sv", "*.svh"],

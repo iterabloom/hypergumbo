@@ -30,6 +30,7 @@ ANALYZER_MODULES = [
 
     # Blockchain and smart contracts
     "hypergumbo_lang_extended1.solidity",
+    "hypergumbo_lang_extended1.circom",
 
     # Hardware description
     "hypergumbo_lang_extended1.verilog",

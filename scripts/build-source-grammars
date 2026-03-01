@@ -29,6 +29,7 @@ WHEELS_DIR=""
 # Update these when intentionally upgrading grammars, and bump SHAPE_ID_SCHEME.
 LEAN_COMMIT="efe6b87145608d12f5996bd7f0cf6095a0e82261"      # 2026-02-20
 WOLFRAM_COMMIT="63ebdac6f040d9082d3d8fa88be96ce24549adc5"   # 2026-02-20
+CIRCOM_COMMIT="02150524228b1e6afef96949f2d6b7cc0aaf999e"    # 2024-09-09
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -57,12 +58,14 @@ install_from_wheels() {
 
     local lean_wheel="$WHEELS_DIR/tree_sitter_lean-"*.whl
     local wolfram_wheel="$WHEELS_DIR/tree_sitter_wolfram-"*.whl
+    local circom_wheel="$WHEELS_DIR/tree_sitter_circom-"*.whl
 
-    # Check if both wheels exist
-    if ls $lean_wheel 1>/dev/null 2>&1 && ls $wolfram_wheel 1>/dev/null 2>&1; then
+    # Check if all wheels exist
+    if ls $lean_wheel 1>/dev/null 2>&1 && ls $wolfram_wheel 1>/dev/null 2>&1 && ls $circom_wheel 1>/dev/null 2>&1; then
         echo "Installing from cached wheels..."
         pip install "$WHEELS_DIR"/tree_sitter_lean-*.whl --quiet --no-cache-dir 2>&1
         pip install "$WHEELS_DIR"/tree_sitter_wolfram-*.whl --quiet --no-cache-dir 2>&1
+        pip install "$WHEELS_DIR"/tree_sitter_circom-*.whl --quiet --no-cache-dir 2>&1
         echo "Successfully installed grammars from wheels"
         return 0
     fi
@@ -76,6 +79,7 @@ if install_from_wheels; then
     echo "=== Grammars installed from cache ==="
     python3 -c "import tree_sitter_lean; print('tree-sitter-lean:', tree_sitter_lean.language())"
     python3 -c "import tree_sitter_wolfram; print('tree-sitter-wolfram:', tree_sitter_wolfram.language())"
+    python3 -c "import tree_sitter_circom; print('tree-sitter-circom:', tree_sitter_circom.language())"
     exit 0
 fi
 
@@ -268,6 +272,11 @@ build_grammar "lean" "https://github.com/Julian/tree-sitter-lean.git" "tree_sitt
 # Has scanner.cc (C++)
 build_grammar "wolfram" "https://github.com/bostick/tree-sitter-wolfram.git" "tree_sitter_wolfram" "cc" "$WOLFRAM_COMMIT"
 
+# Build tree-sitter-circom
+# Repository: https://github.com/Decurity/tree-sitter-circom
+# No scanner file (parser-only grammar)
+build_grammar "circom" "https://github.com/Decurity/tree-sitter-circom.git" "tree_sitter_circom" "none" "$CIRCOM_COMMIT"
+
 echo ""
 echo "=== All grammars built successfully ==="
 echo ""
@@ -275,3 +284,4 @@ echo ""
 # Verify installation
 python3 -c "import tree_sitter_lean; print('tree-sitter-lean:', tree_sitter_lean.language())"
 python3 -c "import tree_sitter_wolfram; print('tree-sitter-wolfram:', tree_sitter_wolfram.language())"
+python3 -c "import tree_sitter_circom; print('tree-sitter-circom:', tree_sitter_circom.language())"

@@ -10,7 +10,7 @@ Hypergumbo includes language analyzers for dozens of languages and file formats.
 | **Systems** | C, C++, Zig, Objective-C, D, Ada, Nim, Pascal, V, Odin, Fortran, CUDA, LLVM IR |
 | **Functional** | PureScript, Racket, Scheme, Elm, Gleam, Janet, Fennel |
 | **Frontend/Web** | Vue, Svelte, Astro, HTML, CSS/SCSS |
-| **Smart Contracts** | Solidity, Apex |
+| **Smart Contracts** | Solidity, Circom*, Apex |
 | **Hardware/GPU** | Verilog/SystemVerilog, VHDL, GLSL, HLSL, WGSL |
 | **Infrastructure** | Terraform/HCL, Dockerfile, CMake, Make, Meson, Nix, Starlark, Bash, PowerShell, Fish, Puppet, Bitbake, YAML/Ansible |
 | **Data/Schema** | SQL, SPARQL, GraphQL, Protocol Buffers, Thrift, Cap'n Proto, Smithy, Prisma, JSON, TOML, XML, INI, Properties, KDL, JSONNet |
@@ -20,7 +20,7 @@ Hypergumbo includes language analyzers for dozens of languages and file formats.
 | **Testing** | Robot Framework |
 | **Legacy** | COBOL, Tcl, Pony, Hack, Twig |
 
-\* Lean and Wolfram require building tree-sitter grammars from source (not yet on PyPI). Run `hypergumbo build-grammars` to enable these analyzers.
+\* Lean, Wolfram, and Circom require building tree-sitter grammars from source (not yet on PyPI). Run `hypergumbo build-grammars` to enable these analyzers.
 
 Analyzers are distributed across three packages: `hypergumbo-lang-mainstream`, `hypergumbo-lang-common`, and `hypergumbo-lang-extended1`. Installing the `hypergumbo` meta-package includes all three.
 
