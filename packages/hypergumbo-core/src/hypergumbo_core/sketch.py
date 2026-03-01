@@ -44,8 +44,8 @@ from .ranking import (
     _is_test_path,
     compute_transitive_test_coverage,
     compute_raw_in_degree,
-    compute_symbol_importance_density,
     compute_symbol_mention_centrality_batch,
+    rank_files,
 )
 from .selection.language_proportional import (
     allocate_language_budget as _allocate_language_budget,
@@ -5745,17 +5745,16 @@ def generate_sketch(
                 progress_callback=analysis_progress_with_budget
             )
 
-        # Compute raw in-degree and density scores for source file ordering
+        # Compute density scores for source file ordering using rank_files()
+        # (canonical pipeline: edge filtering, hub saturation, full dampening).
+        # Also compute raw in-degree for stats tracking.
         raw_in_degree: dict[str, int] = {}  # Initialize for structure tree update
         if symbols and edges:
             raw_in_degree = compute_raw_in_degree(symbols, edges)
-            by_file: dict[str, list[Symbol]] = {}
-            for sym in symbols:
-                if sym.path:
-                    by_file.setdefault(sym.path, []).append(sym)
-            density_scores = compute_symbol_importance_density(
-                by_file, raw_in_degree, repo_root, min_loc=5
-            )
+            ranked_files = rank_files(symbols, edges)
+            density_scores = {
+                rf.path: rf.density_score for rf in ranked_files
+            }
 
     prog.complete_phase("analysis")
 

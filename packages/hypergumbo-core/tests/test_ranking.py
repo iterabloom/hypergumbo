@@ -14,6 +14,7 @@ from hypergumbo_core.ranking import (
     apply_common_method_name_weights,
     group_symbols_by_file,
     compute_file_scores,
+    filter_edges_for_ranking,
     rank_symbols,
     rank_files,
     get_importance_threshold,
@@ -875,6 +876,88 @@ class TestRankSymbols:
         assert iface_ranked.raw_centrality == 1.0
 
 
+class TestFilterEdgesForRanking:
+    """Tests for filter_edges_for_ranking function."""
+
+    def test_excludes_test_edges(self):
+        """Edges from test files are excluded by default."""
+        prod = make_symbol("prod_func", path="src/main.py")
+        test_sym = make_symbol("test_func", path="tests/test_main.py")
+        edge = make_edge(test_sym.id, prod.id, edge_type="calls")
+
+        result = filter_edges_for_ranking([edge], [prod, test_sym])
+        assert len(result) == 0
+
+    def test_preserves_structural_edges_from_tests(self):
+        """Structural edges (extends, implements) from tests are preserved."""
+        base = make_symbol("Base", path="src/base.py")
+        test_sym = make_symbol("TestHelper", path="tests/helpers.py")
+        edge = make_edge(test_sym.id, base.id, edge_type="extends")
+
+        result = filter_edges_for_ranking([edge], [base, test_sym])
+        assert len(result) == 1
+
+    def test_excludes_import_edges(self):
+        """Import edges are excluded by default."""
+        a = make_symbol("a", path="src/a.py")
+        b = make_symbol("b", path="src/b.py")
+        import_edge = make_edge(a.id, b.id, edge_type="imports")
+        call_edge = make_edge(a.id, b.id, edge_type="calls")
+
+        result = filter_edges_for_ranking(
+            [import_edge, call_edge], [a, b]
+        )
+        assert len(result) == 1
+        assert result[0].edge_type == "calls"
+
+    def test_filters_low_confidence(self):
+        """Edges below min_edge_confidence are excluded."""
+        a = make_symbol("a", path="src/a.py")
+        b = make_symbol("b", path="src/b.py")
+        low_conf = make_edge(a.id, b.id, confidence=0.3)
+        high_conf = make_edge(a.id, b.id, confidence=0.8)
+
+        result = filter_edges_for_ranking(
+            [low_conf, high_conf], [a, b], min_edge_confidence=0.5
+        )
+        assert len(result) == 1
+        assert result[0].confidence == 0.8
+
+    def test_no_filtering(self):
+        """All filters disabled passes through all edges."""
+        a = make_symbol("a", path="tests/test_a.py")
+        b = make_symbol("b", path="src/b.py")
+        call_edge = make_edge(a.id, b.id, edge_type="calls")
+        import_edge = make_edge(a.id, b.id, edge_type="imports")
+
+        result = filter_edges_for_ranking(
+            [call_edge, import_edge], [a, b],
+            exclude_test_edges=False,
+            exclude_import_edges=False,
+        )
+        assert len(result) == 2
+
+    def test_combined_filters(self):
+        """Multiple filters combine correctly."""
+        prod = make_symbol("prod", path="src/main.py")
+        test_sym = make_symbol("test", path="tests/test.py")
+        # Test edge (should be filtered by test filter)
+        e1 = make_edge(test_sym.id, prod.id, edge_type="calls")
+        # Import edge from prod (should be filtered by import filter)
+        e2 = make_edge(prod.id, test_sym.id, edge_type="imports")
+        # Low-confidence prod edge (should be filtered by confidence)
+        e3 = make_edge(prod.id, test_sym.id, edge_type="calls", confidence=0.1)
+        # Good prod edge (should survive)
+        e4 = make_edge(prod.id, test_sym.id, edge_type="calls", confidence=0.9)
+
+        result = filter_edges_for_ranking(
+            [e1, e2, e3, e4], [prod, test_sym],
+            min_edge_confidence=0.5,
+        )
+        assert len(result) == 1
+        assert result[0] is e4
+
+
 class TestRankFiles:
     """Tests for rank_files function."""
 
@@ -949,6 +1032,32 @@ class TestRankFiles:
         # (because lodash has an incoming edge)
         top_file = result[0]
         assert "lodash" in top_file.path or top_file.density_score > 0
+
+    def test_filters_test_edges(self):
+        """Test edges are filtered from file ranking by default."""
+        prod = make_symbol("prod_func", path="src/main.py")
+        test_sym = make_symbol("test_func", path="tests/test_main.py")
+        # Only edge is from test file
+        edges = [make_edge(test_sym.id, prod.id)]
+
+        result = rank_files([prod, test_sym], edges)
+
+        # With test edges filtered, prod_func has 0 in-degree
+        main_file = next(r for r in result if r.path == "src/main.py")
+        assert main_file.density_score == 0.0
+
+    def test_filters_import_edges(self):
+        """Import edges are filtered from file ranking by default."""
+        a = make_symbol("a", path="src/a.py")
+        b = make_symbol("b", path="src/b.py")
+        # Import edge only
+        edges = [make_edge(a.id, b.id, edge_type="imports")]
+
+        result = rank_files([a, b], edges)
+
+        # With import edges filtered, b has 0 in-degree
+        b_file = next(r for r in result if r.path == "src/b.py")
+        assert b_file.density_score == 0.0
 
 
 class TestIsTestPath:
@@ -1245,6 +1354,22 @@ class TestComputeSymbolImportanceDensity:
 
         # File doesn't exist, LOC is 0, below min_loc
         assert result["does_not_exist.py"] == 0.0
+
+    def test_absolute_path_normalized(self, tmp_path):
+        """Absolute paths are normalized to relative for consistent keys."""
+        src = tmp_path / "main.py"
+        src.write_text("\n".join(["line"] * 10) + "\n")
+
+        abs_path = str(src)
+        foo = make_symbol("foo", path=abs_path)
+        by_file = {abs_path: [foo]}
+        in_degree = {foo.id: 5}
+
+        result = compute_symbol_importance_density(by_file, in_degree, tmp_path)
+
+        # Absolute path normalized to relative "main.py"
+        assert "main.py" in result
+        assert result["main.py"] == pytest.approx(0.5)
 
 
 class TestComputeSymbolMentionCentrality:

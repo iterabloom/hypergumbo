@@ -621,6 +621,61 @@ def compute_file_scores(
     return file_scores
 
 
+def filter_edges_for_ranking(
+    edges: List[Edge],
+    symbols: List[Symbol],
+    exclude_test_edges: bool = True,
+    exclude_import_edges: bool = True,
+    min_edge_confidence: float = 0.0,
+) -> List[Edge]:
+    """Filter edges for ranking, removing test, import, and low-confidence edges.
+
+    Structural edges (extends, implements) are always preserved because they
+    reflect architectural importance of the target (base class / interface),
+    regardless of whether the source lives in a test file.
+
+    Args:
+        edges: List of edges to filter.
+        symbols: List of symbols (used to look up source paths for test filtering).
+        exclude_test_edges: If True, ignore edges originating from test
+            files. Default True.
+        exclude_import_edges: If True, ignore import/imports_module edges.
+            Import edges represent file-level visibility, not actual call
+            relationships. Default True.
+        min_edge_confidence: Minimum edge confidence to include. Edges below
+            this threshold are excluded. Default 0.0 (include all).
+
+    Returns:
+        Filtered list of edges.
+    """
+    _STRUCTURAL_EDGE_TYPES = {"extends", "implements"}
+    _IMPORT_EDGE_TYPES = {"imports", "imports_module"}
+
+    if exclude_test_edges:
+        symbol_path_by_id = {s.id: s.path for s in symbols}
+        filtered = [
+            e for e in edges
+            if e.edge_type in _STRUCTURAL_EDGE_TYPES
+            or not _is_test_path(symbol_path_by_id.get(e.src, ''))
+        ]
+    else:
+        filtered = list(edges)
+
+    if exclude_import_edges:
+        filtered = [
+            e for e in filtered
+            if e.edge_type not in _IMPORT_EDGE_TYPES
+        ]
+
+    if min_edge_confidence > 0:
+        filtered = [
+            e for e in filtered
+            if e.confidence >= min_edge_confidence
+        ]
+
+    return filtered
+
+
 def rank_symbols(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -657,44 +712,12 @@ def rank_symbols(
     if not symbols:
         return []
 
-    # Build lookup for filtering edges
-    symbol_path_by_id = {s.id: s.path for s in symbols}
-
-    # Filter edges if requested.  Structural edges (extends, implements)
-    # are always preserved because they reflect architectural importance
-    # of the *target* (base class / interface), regardless of whether the
-    # *source* lives in a test file.
-    _STRUCTURAL_EDGE_TYPES = {"extends", "implements"}
-    _IMPORT_EDGE_TYPES = {"imports", "imports_module"}
-    if exclude_test_edges:
-        filtered_edges = [
-            e for e in edges
-            if e.edge_type in _STRUCTURAL_EDGE_TYPES
-            or not _is_test_path(symbol_path_by_id.get(e.src, ''))
-        ]
-    else:
-        filtered_edges = list(edges)
-
-    # Filter import edges — they represent file-level visibility (file A
-    # imports file B), not actual call relationships.  A symbol being
-    # imported widely doesn't make it architecturally significant;
-    # being *called* from many places does.
-    if exclude_import_edges:
-        filtered_edges = [
-            e for e in filtered_edges
-            if e.edge_type not in _IMPORT_EDGE_TYPES
-        ]
-
-    # Filter low-confidence edges — inferred method edges
-    # (ast_method_inferred, confidence <0.5) inflate in-degree for
-    # common method names like .Lock(), .get(), .setValue().
-    # DirLocker.Lock gets 255 false in-degree when only 2 production
-    # call sites exist.
-    if min_edge_confidence > 0:
-        filtered_edges = [
-            e for e in filtered_edges
-            if e.confidence >= min_edge_confidence
-        ]
+    filtered_edges = filter_edges_for_ranking(
+        edges, symbols,
+        exclude_test_edges=exclude_test_edges,
+        exclude_import_edges=exclude_import_edges,
+        min_edge_confidence=min_edge_confidence,
+    )
 
     # Compute centrality with hub saturation (threshold=100 dampens
     # infrastructure utilities like error sentinels and loggers).
@@ -747,14 +770,24 @@ def rank_files(
     edges: List[Edge],
     first_party_priority: bool = True,
     top_k: int = 3,
+    exclude_test_edges: bool = True,
+    exclude_import_edges: bool = True,
+    min_edge_confidence: float = 0.0,
 ) -> List[RankedFile]:
     """Rank files by importance using symbol density scoring.
+
+    Uses the same pipeline as rank_symbols(): edge filtering, hub saturation,
+    tier weighting, and full dampening (noise, utility, common method name,
+    trivial sink) before computing file scores.
 
     Args:
         symbols: List of symbols to analyze.
         edges: List of edges between symbols.
         first_party_priority: If True, apply tier weighting. Default True.
         top_k: Number of top symbols to sum for file score. Default 3.
+        exclude_test_edges: If True, ignore edges from test files. Default True.
+        exclude_import_edges: If True, ignore import edges. Default True.
+        min_edge_confidence: Minimum edge confidence to include. Default 0.0.
 
     Returns:
         List of RankedFile objects sorted by importance (highest first).
@@ -762,13 +795,29 @@ def rank_files(
     if not symbols:
         return []
 
-    # Compute symbol centrality
-    raw_centrality = compute_centrality(symbols, edges)
+    # Filter edges (same as rank_symbols)
+    filtered_edges = filter_edges_for_ranking(
+        edges, symbols,
+        exclude_test_edges=exclude_test_edges,
+        exclude_import_edges=exclude_import_edges,
+        min_edge_confidence=min_edge_confidence,
+    )
+
+    # Compute centrality with hub saturation (same as rank_symbols)
+    raw_centrality = compute_centrality(
+        symbols, filtered_edges, hub_threshold=100
+    )
 
     if first_party_priority:
         centrality = apply_tier_weights(raw_centrality, symbols)
     else:
         centrality = raw_centrality
+
+    # Apply full dampening pipeline (same as rank_symbols)
+    centrality = apply_noise_weights(centrality, symbols)
+    centrality = apply_utility_symbol_weights(centrality, symbols)
+    centrality = apply_common_method_name_weights(centrality, symbols)
+    centrality = apply_trivial_sink_weights(centrality, symbols, filtered_edges)
 
     # Group by file
     by_file = group_symbols_by_file(symbols)

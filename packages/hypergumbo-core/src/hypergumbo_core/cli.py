@@ -92,7 +92,6 @@ from .supply_chain import classify_file, detect_package_roots
 from .ranking import (
     rank_symbols, _is_test_path, compute_transitive_test_coverage,
     compute_symbol_mention_centrality_batch, compute_raw_in_degree,
-    is_utility_symbol,
 )
 from .compact import (
     CompactConfig,
@@ -2407,7 +2406,7 @@ def cmd_symbols(args: argparse.Namespace) -> int:
     # Load behavior map
     behavior_map = json.loads(input_path.read_text())
     nodes = behavior_map.get("nodes", [])
-    edges = behavior_map.get("edges", [])
+    edges_raw = behavior_map.get("edges", [])
 
     # Build node ID set and ID->path mapping for filtering
     node_ids = {n["id"] for n in nodes}
@@ -2416,18 +2415,26 @@ def cmd_symbols(args: argparse.Namespace) -> int:
     # Check exclude_tests flag before computing degrees
     exclude_tests = getattr(args, "exclude_tests", False)
 
-    # Minimum edge confidence for degree computation.
+    # Convert to IR objects for rank_symbols()
+    ir_symbols = [Symbol.from_dict(n) for n in nodes]
+    ir_edges = [Edge.from_dict(e) for e in edges_raw]
+
+    # Get canonical ranking from rank_symbols()
+    ranked = rank_symbols(ir_symbols, ir_edges)
+    rank_by_id: dict[str, int] = {rs.symbol.id: rs.rank for rs in ranked}
+
+    # Minimum edge confidence for degree *display* counts.
     # Low-confidence inferred edges (ast_method_inferred, <0.5) inflate
     # in-degree for common method names like .Lock(), .get(), .setValue().
-    # Same threshold as rank_symbols() in cmd_slice.
     _MIN_EDGE_CONFIDENCE = 0.5
 
-    # Compute in-degree and out-degree for each node
-    # When exclude_tests is set, skip edges where src or dst is a test path
+    # Compute in-degree and out-degree for display (In/Out/Deg columns).
+    # This filtering is for display counts only — sort order comes from
+    # rank_symbols() above.
     in_degree: dict[str, int] = {n["id"]: 0 for n in nodes}
     out_degree: dict[str, int] = {n["id"]: 0 for n in nodes}
 
-    for edge in edges:
+    for edge in edges_raw:
         src = edge.get("src", "")
         dst = edge.get("dst", "")
 
@@ -2454,8 +2461,8 @@ def cmd_symbols(args: argparse.Namespace) -> int:
             in_degree[dst] = in_degree.get(dst, 0) + 1
 
     # Build list of symbols with their degrees
-    # Tuple: (name, kind, in_degree, out_degree, total_degree, path)
-    symbol_rows: list[tuple[str, str, int, int, int, str]] = []
+    # Tuple: (name, kind, in_degree, out_degree, total_degree, path, node_id)
+    symbol_rows: list[tuple[str, str, int, int, int, str, str]] = []
 
     for node in nodes:
         node_id = node["id"]
@@ -2477,42 +2484,16 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         if exclude_tests and _is_test_path(path):
             continue
 
-        symbol_rows.append((name, kind, ind, outd, degree, path))
+        symbol_rows.append((name, kind, ind, outd, degree, path, node_id))
 
-    # Sort by bidirectional centrality with sink + utility dampening.
-    # Base formula: in_degree * (1 + ln(1 + out_degree))
-    # Sink dampening: symbols with very low out/in ratio (pure sinks like
-    # noopMetric.Inc, Timer.Duration, errDuplicate*) get their effective
-    # in-degree reduced.  This prevents trivial stubs with 100+ in-degree
-    # from outranking genuine architectural connectors (evaluator.eval,
-    # API.rules) that have balanced in/out edges.
-    #
-    # Utility dampening: infrastructure symbols (exceptions, loggers, error
-    # sentinels) get a 0.10x score reduction.  These have non-zero out-degree
-    # (from extends/implements), so sink dampening alone doesn't suffice.
-    #
-    # Sink factor: 0.3 (pure sink, out/in=0) to 1.0 (ratio >= 0.33).
-    # Only applied when in-degree > 5 to avoid dampening leaf nodes.
-    _UTILITY_DAMPENING = 0.10
-
-    def _dampened_score(name: str, ind: int, outd: int) -> float:
-        if ind > 5:
-            out_ratio = min(outd / ind, 1.0)
-            sink_factor = min(0.3 + 0.7 * out_ratio * 3, 1.0)
-        else:
-            sink_factor = 1.0
-        score = ind * sink_factor * (1 + math.log(1 + outd))
-        if is_utility_symbol(name):
-            score *= _UTILITY_DAMPENING
-        return score
-
-    symbol_rows.sort(key=lambda r: (-_dampened_score(r[0], r[2], r[3]), r[0]))
+    # Sort by canonical rank_symbols() position (lower rank = more important)
+    symbol_rows.sort(key=lambda r: (rank_by_id.get(r[6], len(nodes)), r[0]))
 
     # Apply --max-per-file limit if specified
     max_per_file = getattr(args, "max_per_file", None)
     if max_per_file is not None:
         file_counts: dict[str, int] = {}
-        filtered_rows: list[tuple[str, str, int, int, int, str]] = []
+        filtered_rows: list[tuple[str, str, int, int, int, str, str]] = []
         for row in symbol_rows:
             path = row[5]
             count = file_counts.get(path, 0)
@@ -2554,7 +2535,7 @@ def cmd_symbols(args: argparse.Namespace) -> int:
     table.add_column("File", style="dim", no_wrap=False)
 
     # Add rows
-    for name, kind, ind, outd, degree, path in display_rows:
+    for name, kind, ind, outd, degree, path, _nid in display_rows:
         table.add_row(name, kind, str(ind), str(outd), str(degree), path)
 
     console.print(table)
