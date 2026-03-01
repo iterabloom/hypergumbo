@@ -5752,9 +5752,16 @@ def generate_sketch(
         if symbols and edges:
             raw_in_degree = compute_raw_in_degree(symbols, edges)
             ranked_files = rank_files(symbols, edges)
-            density_scores = {
-                rf.path: rf.density_score for rf in ranked_files
-            }
+            # Normalize paths to relative for consistent lookup by
+            # _format_source_files (which uses str(f.relative_to(repo_root)))
+            density_scores = {}
+            for rf in ranked_files:
+                p = Path(rf.path)
+                try:
+                    key = str(p.relative_to(repo_root)) if p.is_absolute() else rf.path
+                except ValueError:  # pragma: no cover
+                    key = rf.path
+                density_scores[key] = rf.density_score
 
     prog.complete_phase("analysis")
 
