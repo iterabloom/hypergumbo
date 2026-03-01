@@ -892,6 +892,54 @@ contract Token {
         assert len(call_edges) == 1, f"Expected 1 edge from delegateTransfer→transfer, found {len(call_edges)}"
 
 
+class TestSolidityMemberAccessCalls:
+    """Tests for resolving dotted member access calls (e.g., IERC20(x).transfer())."""
+
+    def test_interface_cast_call_creates_edge(self, temp_repo: Path) -> None:
+        """IERC20(token).transfer() resolves to the local transfer function."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+interface IERC20 {
+    function transfer(address to, uint256 amount) external returns (bool);
+}
+
+contract Vault {
+    function withdraw(address token, address to, uint256 amount) external {
+        IERC20(token).transfer(to, amount);
+    }
+
+    function transfer(address to, uint256 amount) internal returns (bool) {
+        return true;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+        edges = result.edges
+
+        withdraw = next(
+            (s for s in result.symbols if "withdraw" in s.name and s.kind == "function"),
+            None,
+        )
+        assert withdraw is not None
+
+        # Should resolve "IERC20(token).transfer" to a transfer function
+        call_edges = [
+            e for e in edges
+            if e.src == withdraw.id and e.edge_type == "calls"
+        ]
+        # At minimum, the dotted call should resolve to a transfer symbol
+        transfer_calls = [
+            e for e in call_edges
+            if any("transfer" in s.name for s in result.symbols if s.id == e.dst)
+        ]
+        assert len(transfer_calls) >= 1, (
+            f"Expected at least 1 call edge from withdraw→transfer, found {len(transfer_calls)}"
+        )
+
+
 class TestSoliditySignatureExtraction:
     """Tests for Solidity function signature extraction."""
 

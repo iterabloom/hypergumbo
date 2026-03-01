@@ -422,6 +422,26 @@ def _extract_edges_from_tree(
                             origin_run_id=run_id,
                         )
                         edges.append(edge)
+                    elif "." in call_name:
+                        # Member access fallback: IERC20(token).transfer(...)
+                        # or contract.method() — try the method name after the
+                        # last dot against local/global symbols.
+                        method_name = call_name.rsplit(".", 1)[1]
+                        member_target = (
+                            local_symbols.get(method_name)
+                            or global_symbols.get(method_name)
+                        )
+                        if member_target:
+                            edge = Edge.create(
+                                src=current_function.id,
+                                dst=member_target.id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                confidence=0.60,
+                                origin=PASS_ID,
+                                origin_run_id=run_id,
+                            )
+                            edges.append(edge)
 
         # Emit statement: emit Transfer(...) → emits edge to event definition
         elif node.type == "emit_statement":
