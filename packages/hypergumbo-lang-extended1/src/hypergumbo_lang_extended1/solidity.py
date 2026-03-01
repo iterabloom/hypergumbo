@@ -335,9 +335,23 @@ def _extract_edges_from_tree(
             if sym.kind in ("function", "constructor", "modifier"):
                 symbols_by_span[(sym.span.start_line, sym.span.end_line)] = sym
 
+    # Collect `using Library for Type` directives per contract.
+    # Maps contract_name -> set of library names, used to resolve
+    # implicit library calls like x.add(y) -> SafeMath.add(x, y).
+    using_libraries: dict[str, set[str]] = {}
+    for node in iter_tree(tree.root_node):
+        if node.type == "using_directive":
+            contract_name = _get_enclosing_contract(node, source) or ""
+            # Extract library name from type_alias child (using Lib for Type)
+            for child in node.children:
+                if child.type == "type_alias":
+                    id_node = find_child_by_type(child, "identifier")
+                    if id_node:
+                        lib_name = node_text(id_node, source)
+                        using_libraries.setdefault(contract_name, set()).add(lib_name)
+
     # First pass: extract import aliases
     for node in iter_tree(tree.root_node):
-        if node.type == "import_directive":
             import_path, aliases = _extract_import_aliases(node, source)
             if import_path:
                 edge = Edge.create(
@@ -427,10 +441,27 @@ def _extract_edges_from_tree(
                         # or contract.method() — try the method name after the
                         # last dot against local/global symbols.
                         method_name = call_name.rsplit(".", 1)[1]
-                        member_target = (
-                            local_symbols.get(method_name)
-                            or global_symbols.get(method_name)
-                        )
+                        # Prefer library-qualified lookup via using directives.
+                        # This correctly resolves x.add(y) -> SafeMath.add
+                        # when 'using SafeMath for uint256' is declared.
+                        enclosing_contract = _get_enclosing_contract(
+                            node, source,
+                        ) or ""
+                        member_target = None
+                        for lib_name in using_libraries.get(enclosing_contract, ()):
+                            qualified = f"{lib_name}.{method_name}"
+                            candidate = (
+                                local_symbols.get(qualified)
+                                or global_symbols.get(qualified)
+                            )
+                            if candidate and candidate.kind == "function":
+                                member_target = candidate
+                                break
+                        if not member_target:
+                            member_target = (
+                                local_symbols.get(method_name)
+                                or global_symbols.get(method_name)
+                            )
                         if member_target:
                             edge = Edge.create(
                                 src=current_function.id,

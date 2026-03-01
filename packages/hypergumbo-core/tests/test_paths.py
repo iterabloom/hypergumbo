@@ -268,6 +268,13 @@ class TestIsTestFile:
         assert is_test_file("src/main.rs") is False
         assert is_test_file("src/consensus.rs") is False
 
+    def test_fv_and_harness_directories(self) -> None:
+        """Files in fv/ and harnesses/ directories are test files."""
+        assert is_test_file("fv/harnesses/TokenHarness.sol") is True
+        assert is_test_file("fv/specs/Token.spec") is True
+        assert is_test_file("harnesses/AccessManagerHarness.sol") is True
+        assert is_test_file("contracts/harnesses/mock.sol") is True
+
     def test_not_test_file(self) -> None:
         """Regular files are not test files."""
         assert is_test_file("main.py") is False

@@ -1050,6 +1050,96 @@ contract Child is Base {
         )
 
 
+class TestSolidityUsingLibraryCalls:
+    """Tests for resolving implicit library calls via 'using Library for Type'.
+
+    When a contract declares `using SafeMath for uint256`, calls like
+    `x.add(y)` should resolve to `SafeMath.add`, connecting the library
+    function to the call graph.
+    """
+
+    def test_using_library_call_creates_edge(self, temp_repo: Path) -> None:
+        """x.add(y) resolves to SafeMath.add when 'using SafeMath for uint256'."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+library SafeMath {
+    function add(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a + b;
+    }
+}
+
+contract Token {
+    using SafeMath for uint256;
+
+    function mint(uint256 amount) public returns (uint256) {
+        uint256 total = amount.add(1);
+        return total;
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        mint_fn = next(
+            s for s in result.symbols if "mint" in s.name and s.kind == "function"
+        )
+        add_fn = next(
+            s for s in result.symbols if s.name == "SafeMath.add" and s.kind == "function"
+        )
+
+        call_edges = [
+            e for e in result.edges
+            if e.src == mint_fn.id and e.dst == add_fn.id and e.edge_type == "calls"
+        ]
+        assert len(call_edges) >= 1, (
+            f"Expected call edge from mint→SafeMath.add, found {len(call_edges)}"
+        )
+
+    def test_using_library_prefers_qualified_match(self, temp_repo: Path) -> None:
+        """When multiple libraries define 'add', using directive resolves correctly."""
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+library MathA {
+    function add(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a + b;
+    }
+}
+
+library MathB {
+    function add(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a + b + 1;
+    }
+}
+
+contract Token {
+    using MathA for uint256;
+
+    function compute(uint256 x) public returns (uint256) {
+        return x.add(1);
+    }
+}
+""")
+
+        result = analyze_solidity(temp_repo)
+
+        compute_fn = next(
+            s for s in result.symbols if "compute" in s.name and s.kind == "function"
+        )
+        math_a_add = next(
+            s for s in result.symbols if s.name == "MathA.add" and s.kind == "function"
+        )
+
+        call_edges = [
+            e for e in result.edges
+            if e.src == compute_fn.id and e.dst == math_a_add.id
+        ]
+        assert len(call_edges) >= 1, "Should resolve to MathA.add, not MathB.add"
+
+
 class TestSoliditySignatureExtraction:
     """Tests for Solidity function signature extraction."""
 
