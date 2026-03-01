@@ -832,8 +832,30 @@ def _extract_edges_from_file(
     file_id = make_file_id("rust", str(file_path))
 
     for node in iter_tree(tree.root_node):
+        # Detect trait implementations: impl Trait for Struct → implements edge
+        if node.type == "impl_item":
+            trait_node = node.child_by_field_name("trait")
+            type_node = node.child_by_field_name("type")
+            if trait_node and type_node:
+                trait_name = _extract_base_type_name(trait_node, source)
+                impl_type_name = _extract_base_type_name(type_node, source)
+                if trait_name and impl_type_name:
+                    trait_sym = local_symbols.get(trait_name) or global_symbols.get(trait_name)
+                    impl_sym = local_symbols.get(impl_type_name) or global_symbols.get(impl_type_name)
+                    if trait_sym and impl_sym:
+                        edges.append(Edge.create(
+                            src=impl_sym.id,
+                            dst=trait_sym.id,
+                            edge_type="implements",
+                            line=node.start_point[0] + 1,
+                            evidence_type="trait_impl",
+                            confidence=0.95,
+                            origin=PASS_ID,
+                            origin_run_id=run_id,
+                        ))
+
         # Detect use statements
-        if node.type == "use_declaration":
+        elif node.type == "use_declaration":
             # Extract the path being imported
             path_node = find_child_by_type(node, "scoped_identifier")
             if not path_node:

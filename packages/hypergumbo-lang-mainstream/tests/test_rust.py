@@ -2279,3 +2279,92 @@ class TestRustScopedFallbackAmbiguity:
         call_edges = [e for e in edges if e.edge_type == "calls"]
         assert len(call_edges) == 1
         assert call_edges[0].dst == target.id
+
+
+class TestRustTraitImplEdges:
+    """Tests for Rust trait implementation edges.
+
+    `impl Trait for Struct` should produce an 'implements' edge from
+    the struct symbol to the trait symbol.
+    """
+
+    def test_impl_trait_for_struct(self, tmp_path: Path) -> None:
+        """impl Circuit for MyCircuit → implements edge."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(
+            "trait Circuit {\n"
+            "    fn synthesize(&self);\n"
+            "}\n"
+            "\n"
+            "struct MyCircuit;\n"
+            "\n"
+            "impl Circuit for MyCircuit {\n"
+            "    fn synthesize(&self) {}\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+        assert not result.skipped
+
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        assert len(impl_edges) == 1
+
+        # Find the trait and struct symbols
+        trait_sym = next(s for s in result.symbols if s.name == "Circuit" and s.kind == "trait")
+        struct_sym = next(s for s in result.symbols if s.name == "MyCircuit" and s.kind == "struct")
+
+        # Edge goes from struct → trait (struct implements the trait)
+        assert impl_edges[0].src == struct_sym.id
+        assert impl_edges[0].dst == trait_sym.id
+
+    def test_impl_without_trait_no_edge(self, tmp_path: Path) -> None:
+        """impl MyStruct (no trait) should not produce an implements edge."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(
+            "struct MyStruct;\n"
+            "\n"
+            "impl MyStruct {\n"
+            "    fn new() -> Self { MyStruct }\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        assert len(impl_edges) == 0
+
+    def test_multiple_impl_trait(self, tmp_path: Path) -> None:
+        """Multiple structs implementing the same trait produce multiple edges."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(
+            "trait Drawable {\n"
+            "    fn draw(&self);\n"
+            "}\n"
+            "\n"
+            "struct Circle;\n"
+            "struct Square;\n"
+            "\n"
+            "impl Drawable for Circle {\n"
+            "    fn draw(&self) {}\n"
+            "}\n"
+            "\n"
+            "impl Drawable for Square {\n"
+            "    fn draw(&self) {}\n"
+            "}\n"
+        )
+
+        result = analyze_rust(tmp_path)
+        impl_edges = [e for e in result.edges if e.edge_type == "implements"]
+        assert len(impl_edges) == 2
+
+        trait_sym = next(s for s in result.symbols if s.name == "Drawable")
+        dsts = {e.dst for e in impl_edges}
+        assert all(d == trait_sym.id for d in dsts)
+
+        srcs = {e.src for e in impl_edges}
+        circle = next(s for s in result.symbols if s.name == "Circle")
+        square = next(s for s in result.symbols if s.name == "Square")
+        assert circle.id in srcs
+        assert square.id in srcs
