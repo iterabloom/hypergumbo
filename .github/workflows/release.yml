@@ -192,10 +192,10 @@ jobs:
 
       - name: Verify wheels
         run: |
-          # Verify all wheels
+          # Verify all wheels (use dist/ as extra index so inter-package deps resolve)
           for wheel in dist/*.whl; do
             echo "Verifying $wheel..."
-            pip install "$wheel" --dry-run
+            pip install "$wheel" --dry-run --find-links dist/
           done
           twine check dist/*.whl dist/*.tar.gz
 
