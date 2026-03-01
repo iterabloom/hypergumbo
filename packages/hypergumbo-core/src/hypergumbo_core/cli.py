@@ -4051,6 +4051,20 @@ def run_behavior_map(
         all_symbols.extend(linker_result.symbols)
         all_edges.extend(linker_result.edges)
 
+    # Normalize linker-produced symbol/usage-context paths (same as analyzers
+    # in run_all_analyzers — linkers can also produce absolute paths).
+    from .paths import normalize_path as _norm_path
+
+    _root_prefix = _norm_path(str(repo_root)).rstrip("/") + "/"
+    for sym in all_symbols:
+        normed = _norm_path(sym.path)
+        if normed.startswith(_root_prefix):
+            sym.path = normed[len(_root_prefix):]
+    for uc in all_usage_contexts:
+        normed = _norm_path(uc.path)
+        if normed.startswith(_root_prefix):
+            uc.path = normed[len(_root_prefix):]  # pragma: no cover
+
     # Check for partial installation issues (ADR-0010 Item 8)
     # Emit warnings for: unanalyzed files, partial linker requirements
     check_partial_install_warnings(profile, linker_ctx, emit_warnings=True)
