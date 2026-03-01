@@ -182,6 +182,12 @@ def is_utility_file(path: str) -> bool:
         if lower.startswith("devel"):
             return True
 
+    # Filename-level build script detection:
+    # Cargo's build.rs is a compile-time build script, not user-facing code.
+    filename = path_parts[-1].lower() if path_parts else ""
+    if filename == "build.rs":
+        return True
+
     return False
 
 

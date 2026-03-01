@@ -331,6 +331,19 @@ class TestIsUtilityFile:
         # Should NOT match production paths that happen to contain "devel"
         assert is_utility_file("src/devel_utils.py") is False
 
+    def test_build_rs_is_utility(self) -> None:
+        """Cargo build.rs scripts are utility files.
+
+        build.rs is Cargo's compile-time build script — not user-facing code.
+        Its main() should not outrank library exports in entrypoint ranking.
+        """
+        assert is_utility_file("build.rs") is True
+        assert is_utility_file("crate/build.rs") is True
+        assert is_utility_file("sub/crate/build.rs") is True
+        # Regular Rust files should NOT match
+        assert is_utility_file("src/lib.rs") is False
+        assert is_utility_file("src/main.rs") is False
+
     def test_not_utility_file(self) -> None:
         """Regular source files are not utility files."""
         assert is_utility_file("src/main.py") is False
