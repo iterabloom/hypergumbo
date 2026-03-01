@@ -566,6 +566,24 @@ class TestTestFileClassification:
         result = classify_file(src_dir / "user_spec.rb", tmp_path, set())
         assert result.tier == Tier.INTERNAL_DEP
 
+    def test_rust_colocated_tests_rs_is_internal_dep(self, tmp_path):
+        """Rust co-located tests.rs modules are tier 2."""
+        src_dir = tmp_path / "core" / "lib" / "dal" / "src" / "consensus"
+        src_dir.mkdir(parents=True)
+        (src_dir / "tests.rs").write_text("#[cfg(test)]\nmod tests;")
+
+        result = classify_file(src_dir / "tests.rs", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
+    def test_rust_testonly_rs_is_internal_dep(self, tmp_path):
+        """Rust testonly.rs files are tier 2."""
+        src_dir = tmp_path / "core" / "lib" / "vm_executor" / "src"
+        src_dir.mkdir(parents=True)
+        (src_dir / "testonly.rs").write_text("pub fn test_helper() {}")
+
+        result = classify_file(src_dir / "testonly.rs", tmp_path, set())
+        assert result.tier == Tier.INTERNAL_DEP
+
     def test_unit_tests_dir_is_internal_dep(self, tmp_path):
         """C++ unit_tests/ directory is tier 2."""
         test_dir = tmp_path / "unit_tests" / "engine"

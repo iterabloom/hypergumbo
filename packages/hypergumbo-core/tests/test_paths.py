@@ -257,6 +257,17 @@ class TestIsTestFile:
         assert is_test_file("testhelper/setup.py") is True
         assert is_test_file("testhelpers/factory.rb") is True
 
+    def test_rust_colocated_test_modules(self) -> None:
+        """Rust co-located test modules (tests.rs, testonly.rs) are test files."""
+        assert is_test_file("core/lib/dal/src/consensus/tests.rs") is True
+        assert is_test_file("core/lib/vm_executor/src/testonly.rs") is True
+        assert is_test_file("src/tests.rs") is True
+        assert is_test_file("testonly.rs") is True
+        # But regular Rust files are not
+        assert is_test_file("src/lib.rs") is False
+        assert is_test_file("src/main.rs") is False
+        assert is_test_file("src/consensus.rs") is False
+
     def test_not_test_file(self) -> None:
         """Regular files are not test files."""
         assert is_test_file("main.py") is False

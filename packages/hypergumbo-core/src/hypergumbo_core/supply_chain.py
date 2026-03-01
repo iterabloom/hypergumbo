@@ -187,6 +187,8 @@ TEST_FILE_PATTERNS = [
     r"\.spec\.[jt]sx?$",         # JS/TS: service.spec.ts, component.spec.tsx
     r"_spec\.rb$",               # Ruby: user_spec.rb
     r"/test_[^/]+\.(?:cpp|cc|cxx|c|h|hpp)$",  # C/C++: test_utils.cpp (GTest convention)
+    r"(?:^|/)tests\.rs$",        # Rust: co-located test module (src/consensus/tests.rs)
+    r"(?:^|/)testonly\.rs$",     # Rust: test-only helpers (src/vm_executor/testonly.rs)
 ]
 
 # Simple first-party patterns to check within workspaces

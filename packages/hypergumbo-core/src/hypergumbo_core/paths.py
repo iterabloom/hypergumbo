@@ -227,6 +227,12 @@ def is_test_file(path: str) -> bool:
     if ".spec." in filename_lower:  # Matches main.spec.js, main.spec.ts
         return True
 
+    # Rust co-located test modules: tests.rs and testonly.rs live alongside
+    # production code (e.g., core/lib/dal/src/consensus/tests.rs).  These are
+    # test-only modules that should be excluded from production slices.
+    if filename_lower in ("tests.rs", "testonly.rs"):
+        return True
+
     # Mock/fake filename patterns (any language)
     name_without_ext = filename_lower.rsplit(".", 1)[0] if "." in filename_lower else filename_lower
     if name_without_ext.endswith("_mock") or name_without_ext.endswith("_fake"):
