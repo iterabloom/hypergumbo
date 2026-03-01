@@ -5908,8 +5908,8 @@ def generate_sketch(
     if remaining_tokens > 50 and source_files:
         # ADR-0005: --with-source mode reduces file listing budget to prioritize code
         if with_source:
-            # With source: shrink file listings to 15% to leave room for actual code
-            budget_for_files = (remaining_tokens * 15) // 100  # 15% of remaining
+            # With source: shrink file listings to 10% to leave room for actual code
+            budget_for_files = (remaining_tokens * 10) // 100  # 10% of remaining
         elif remaining_tokens < 300:
             # Default mode, small budgets: use 66% for file listings
             budget_for_files = (remaining_tokens * 2) // 3  # 66% at small budgets
@@ -5966,8 +5966,8 @@ def generate_sketch(
         # Calculate symbol budget based on remaining tokens
         # ADR-0005: --with-source mode reduces Key Symbols budget to prioritize code
         if with_source and remaining_tokens > 200:
-            # With source: shrink to 30% to leave room for actual code
-            budget_for_symbols = (remaining_tokens * 30) // 100  # 30% of remaining
+            # With source: shrink to 20% to leave room for actual code
+            budget_for_symbols = (remaining_tokens * 20) // 100  # 20% of remaining
             max_symbols = max(MIN_KEY_SYMBOLS, budget_for_symbols // tokens_per_symbol)
         elif remaining_tokens > 200:
             # Default mode: use most of remaining budget for symbols
@@ -6022,8 +6022,8 @@ def generate_sketch(
     if remaining_tokens > 50:
         # ADR-0005: --with-source mode reduces Additional Files budget
         if with_source:
-            # With source: shrink to 10% to leave room for actual code
-            budget_for_files = (remaining_tokens * 10) // 100  # 10% of remaining
+            # With source: shrink to 5% to leave room for actual code
+            budget_for_files = (remaining_tokens * 5) // 100  # 5% of remaining
         else:
             # Default mode: use most of remaining budget minus small reserve
             budget_for_files = remaining_tokens - 10
@@ -6103,8 +6103,8 @@ def generate_sketch(
                 )
 
             source_tokens_used = 0
-            # ADR-0005: allocate 70% of remaining for Source Files Content section
-            source_budget = (remaining_tokens * 70) // 100
+            # ADR-0005: allocate 75% of remaining for Source Files Content section
+            source_budget = (remaining_tokens * 75) // 100
 
             # Track files with content shown for stats
             source_content_files_added: list[Path] = []

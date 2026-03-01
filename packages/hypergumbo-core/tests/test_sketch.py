@@ -7017,7 +7017,7 @@ def func_b():
         large_content = "def big_func():\n" + "    x = 'abcdefghij' * 10\n" * 2000
         (src_dir / "z_large.py").write_text(large_content)
 
-        # Budget 5000: ~800 for overhead, ~4200 remaining, 70% = ~2940 for source.
+        # Budget 5000: ~800 for overhead, ~4200 remaining, 75% = ~3150 for source.
         # 3 small files use ~300 tokens. Remaining ~2640 is enough for a 500-token
         # truncation target. This exercises the median branch (>=3 token_counts).
         sketch = generate_sketch(tmp_path, max_tokens=5000, with_source=True)

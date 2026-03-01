@@ -73,10 +73,10 @@ When `--with-source` is set, budget shifts dramatically from file listings to ac
 | Configuration | Heuristic lines + semantic embedding | — |
 | Entry Points | 33% of remaining | High signal, keep as-is |
 | Data Models | 20% of remaining | High signal for domain understanding |
-| Source Files (list) | **15%** of remaining | Shrink: paths are low-value |
-| Key Symbols | **30%** of remaining | Shrink: actual code is better |
-| Additional Files (list) | **10%** of remaining | Shrink: paths are low-value |
-| Source Content | **70%** of remaining | Expand: this is the point |
+| Source Files (list) | **10%** of remaining | Shrink: paths are low-value |
+| Key Symbols | **20%** of remaining | Shrink: actual code is better |
+| Additional Files (list) | **5%** of remaining | Shrink: paths are low-value |
+| Source Content | **75%** of remaining | Expand: this is the point |
 | Additional File Content | 100% of remaining minus 50 | NEW: code for semantic picks |
 
 This rebalancing addresses the problem where a 32k `--with-source` sketch would show ~1600 file paths but only ~50 lines of actual code.
